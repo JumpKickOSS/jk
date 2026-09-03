@@ -47,8 +47,8 @@ class FormatPlansNotExcludedTest {
 
     @Test
     void a_bare_templates_package_is_not_excluded() {
-        // The bug: cc.jumpkick.templates (OfficialTemplatesFreshen.java, no .g8 in sight) was
-        // silently skipped by jk format because "templates" alone used to be an exclusion segment.
+        // A Java package named templates is not a giter8 root; only *.g8, a bare
+        // g8 dir, or a $placeholder$ segment is excluded.
         assertThat(FormatSources.notExcluded(
                         Path.of("shared/core/src/main/java/cc/jumpkick/templates/OfficialTemplatesFreshen.java")))
                 .isTrue();

@@ -108,7 +108,7 @@ public final class JarPackager {
             extraEntries = extraEntries == null ? Map.of() : Map.copyOf(extraEntries);
         }
 
-        /** Back-compat constructor: no generated (non-filesystem) entries. */
+        /** No generated (non-filesystem) entries. */
         public JarRequest(
                 Path inputDir,
                 Path outputJar,
@@ -118,7 +118,7 @@ public final class JarPackager {
             this(inputDir, outputJar, mainClass, timestampEpochSeconds, attributes, Map.of());
         }
 
-        /** Back-compat constructor without custom manifest attributes. */
+        /** No custom manifest attributes and no generated entries. */
         public JarRequest(Path inputDir, Path outputJar, String mainClass, long timestampEpochSeconds) {
             this(inputDir, outputJar, mainClass, timestampEpochSeconds, Map.of(), Map.of());
         }

@@ -42,4 +42,5 @@ need a rebuild-from-lock check, not as a substitute for the lockfile itself.
 
 ## Related
 
-[Packaging](packaging.md) · [Repositories](repositories.md) · [Lockfile](lockfile.md)
+[Packaging](packaging.md) · [Repositories](repositories.md) · [Lockfile](lockfile.md) ·
+[Security](security.md)

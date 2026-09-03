@@ -12,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.ServiceLoader;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The one entry point every out-of-process plugin jar declares as its {@code Main-Class}. Replaces
@@ -38,7 +39,7 @@ public final class PluginMain {
             System.exit(Exit.SOFTWARE);
             return;
         }
-        Plugin plugin = select(plugins);
+        @Nullable Plugin plugin = select(plugins);
         if (plugin == null) {
             System.exit(Exit.SOFTWARE);
             return;
@@ -75,8 +76,8 @@ public final class PluginMain {
      * plugin-api}, this class loads from the plain plugin-api jar, whose code source bundles no
      * plugin at all.
      */
-    static Plugin select(List<Plugin> plugins) {
-        String wanted = System.getProperty("jk.plugin.class");
+    static @Nullable Plugin select(List<Plugin> plugins) {
+        @Nullable String wanted = System.getProperty("jk.plugin.class");
         if (wanted != null && !wanted.isBlank()) {
             for (Plugin p : plugins) {
                 if (wanted.equals(p.getClass().getName())) return p;
@@ -88,7 +89,7 @@ public final class PluginMain {
         // A worker lib dir may carry a sibling plugin jar as a plain dependency (grails ships the
         // spring-boot plugin for its Boot packaging), so ServiceLoader can see both. The engine
         // names the intended plugin by its protocol prefix — stable on both sides of the fork.
-        String prefix = System.getProperty("jk.plugin.prefix");
+        @Nullable String prefix = System.getProperty("jk.plugin.prefix");
         if (prefix != null && !prefix.isBlank()) {
             for (Plugin p : plugins) {
                 if (prefix.equals(p.manifest().protocolPrefix())) return p;

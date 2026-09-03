@@ -196,18 +196,14 @@ public final class JdkEnsure {
     /**
      * One {@link JdkRegistry} per JDK root, for the life of the process.
      *
-     * <p>The registry's hit-list memo is a per-instance field, and this method used to construct a
-     * fresh instance on every call — so the memo never survived, and {@code ensure} is called
-     * <em>per module</em>. Each construction is a cold eleven-probe host scan (jk dir, SDKMAN, mise,
-     * IntelliJ, {@code $JAVA_HOME}, {@code PATH}, plus a {@code release} file parse per candidate),
-     * about 65 metadata operations. Sixty-two constructions in a workspace build is ~4,000 stats for
-     * facts that cannot change mid-build. A per-instance memo on an object built per call is not a
-     * missed optimisation, it is a bug the resident engine makes permanent.
+     * <p>The registry's hit-list memo is a per-instance field. {@code ensure} is called
+     * <em>per module</em>; a fresh registry each time would cold-scan eleven probes (jk dir, SDKMAN,
+     * mise, IntelliJ, {@code $JAVA_HOME}, {@code PATH}, plus a {@code release} file parse per
+     * candidate) — about 65 metadata operations — on facts that cannot change mid-build.
      *
      * <p>Sharing is safe because the registry already has the invalidation hook this needs:
-     * {@link JdkRegistry#refresh()} drops the memo after an install or uninstall, and because the
-     * instance is now shared that drop is seen by every later caller instead of only the one that
-     * happened to hold it.
+     * {@link JdkRegistry#refresh()} drops the memo after an install or uninstall, and every later
+     * caller sees that drop.
      */
     private static JdkRegistry sharedRegistry(@Nullable Path jdksDirOverride) {
         Path root = jdksDirOverride != null ? jdksDirOverride : JkDirs.jdks();

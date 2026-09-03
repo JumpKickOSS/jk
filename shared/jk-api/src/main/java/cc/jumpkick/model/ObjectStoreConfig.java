@@ -1,12 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.model;
 
+import org.jspecify.annotations.Nullable;
+
 /**
  * Optional object-store settings for {@code s3://}/{@code gs://} repositories. Unset fields fall
  * back to the AWS/default chain.
  */
 public record ObjectStoreConfig(
-        String region, String endpoint, String accessKey, String secretKey, String sessionToken) {
+        @Nullable String region,
+        @Nullable String endpoint,
+        @Nullable String accessKey,
+        @Nullable String secretKey,
+        @Nullable String sessionToken) {
 
     public static final ObjectStoreConfig EMPTY = new ObjectStoreConfig(null, null, null, null, null);
 

@@ -46,9 +46,18 @@ class BuildJobFingerprintTest {
                         BuildJobFingerprint.of("build", b.toString(), false, false, false, false, null, null, null));
     }
 
+    /**
+     * A build and a test on one workspace write the same compile outputs and the same test
+     * sandboxes (and the root after-build scripts reclaim disk under them), so they take one slot:
+     * the second is refused at admission instead of racing the first on target/.
+     */
     @Test
-    void build_and_test_kinds_differ(@TempDir Path dir) throws Exception {
+    void build_like_kinds_share_one_slot_per_dir(@TempDir Path dir) throws Exception {
         Files.createDirectories(dir);
+        String build = BuildJobFingerprint.ofRequest("build", "{\"dir\":" + Jsonl.quote(dir.toString()) + "}");
+        String test = BuildJobFingerprint.ofRequest("test", "{\"dir\":" + Jsonl.quote(dir.toString()) + "}");
+        assertThat(test).isEqualTo(build);
+        // The full-flag form (non-build-like kinds) still tells kinds apart.
         assertThat(BuildJobFingerprint.of("build", dir.toString(), false, false, false, false, null, null, null))
                 .isNotEqualTo(
                         BuildJobFingerprint.of("test", dir.toString(), false, false, false, false, null, null, null));
@@ -68,7 +77,7 @@ class BuildJobFingerprintTest {
 
         String image = BuildJobFingerprint.ofProject("image", dir.toString());
         String compile = BuildJobFingerprint.ofProject("compile", dir.toString());
-        assertThat(image).isNotEqualTo(compile);
-        assertThat(image).isNotEqualTo(BuildJobFingerprint.ofProject("build", dir.toString()));
+        assertThat(image).isEqualTo(compile);
+        assertThat(image).isEqualTo(BuildJobFingerprint.ofProject("build", dir.toString()));
     }
 }

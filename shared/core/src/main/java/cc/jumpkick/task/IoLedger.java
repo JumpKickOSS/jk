@@ -39,18 +39,15 @@ public final class IoLedger {
     /**
      * Inheritable so a request's runner thread — and any thread it forks — sees the run's ledger.
      *
-     * <p><strong>Inheritance is not enough for the shared pools, and must not be relied on there.</strong>
-     * This used to say that {@code JkThreads} pool threads pre-date the request and so inherit
-     * nothing. They do not: {@code JkThreads.cpu()} is a {@code ForkJoinPool} that grows lazily, so
-     * its workers are born inside whichever request first needed them and inherit <em>that</em>
-     * request's ledger for the engine's whole life. Because {@link cc.jumpkick.config.RequestScope}
-     * keys on the ledger to decide "which request am I in", that stale binding served one build's
-     * memoized directory scans to every build after it.
+     * <p>Shared {@code JkThreads} pools must not rely on that inheritance. {@code JkThreads.cpu()}
+     * is a lazily grown {@code ForkJoinPool}: workers are born inside whichever request first needed
+     * them and would keep that request's ledger for the engine's life. {@link
+     * cc.jumpkick.config.RequestScope} keys on the ledger, so a stale binding would serve one
+     * request's memoized scans to later requests.
      *
-     * <p>So the pool hop is explicit: {@code SessionContext}'s {@code ContextPropagator} captures the
-     * ambient ledger on the submitting thread and binds it around the task, clearing it when the
-     * submitter had none. Treat a value read on a pool thread as coming from that propagation, never
-     * from inheritance.
+     * <p>{@code SessionContext}'s {@code ContextPropagator} captures the ambient ledger on the
+     * submitting thread and binds it around the task, clearing it when the submitter had none. A
+     * value read on a pool thread comes from that propagation, never from inheritance.
      */
     private static final InheritableThreadLocal<IoLedger> AMBIENT = new InheritableThreadLocal<>();
 

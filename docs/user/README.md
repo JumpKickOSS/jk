@@ -75,6 +75,7 @@ If you are changing JumpKick itself, go to [../contributors/](../contributors/RE
 - [IDE and BSP](ide.md)
 - [Web dashboard](web.md)
 - [Engine](engine.md)
+- [Security](security.md) — report a vulnerability; trust boundaries
 
 ### Agents, CI, config
 

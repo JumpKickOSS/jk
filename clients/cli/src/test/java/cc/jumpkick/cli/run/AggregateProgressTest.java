@@ -6,7 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
-import cc.jumpkick.runtime.WorkspaceProgressTracker;
+import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.time.Duration;

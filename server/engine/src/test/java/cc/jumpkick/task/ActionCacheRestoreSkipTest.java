@@ -18,15 +18,10 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * A restore over an already-correct tree leaves it alone.
  *
- * <p>{@code restore} used to wipe {@code outputDir} and re-copy every output on every cache hit,
- * while its sibling {@code restoreArtifacts} already knew not to — and that sibling's comment says
- * why it matters: re-copying bumps the file's mtime, {@code FreshnessStamp} compares classpath
- * entries by mtime, so restoring an unchanged tree invalidated every downstream stamp and forced a
- * full KSP round and Kotlin recompile on every single build. The same reasoning applies to class
- * files, which is what ported.
- *
- * <p>These assert the mtime, not the wall clock: the cost is real but the *correctness* consequence —
- * downstream staleness — is what the churn actually broke.
+ * <p>{@code restore} must not re-copy byte-identical outputs: re-copying bumps mtime, and
+ * {@code FreshnessStamp} compares classpath entries by mtime, so an unchanged tree would
+ * invalidate every downstream stamp. These assert the mtime, not the wall clock — downstream
+ * staleness is the correctness consequence.
  */
 class ActionCacheRestoreSkipTest {
 
@@ -101,9 +96,8 @@ class ActionCacheRestoreSkipTest {
 
     @Test
     void freshness_stamps_survive_the_restore(@TempDir Path tmp) throws Exception {
-        // The stamps live inside the classes tree but are written by a *later* step, so a restore must
-        // not take them with it. They used to be read out and written back around a full wipe; they
-        // are simply owned now, which is cheaper and keeps their mtime too.
+        // The stamps live inside the classes tree but are written by a *later* step, so a restore
+        // must not take them with it. They are owned, which keeps their mtime too.
         Path cache = Files.createDirectories(tmp.resolve("cache"));
         SessionContext.install(Session.defaults().withCacheDir(cache));
         ActionCache ac = new ActionCache(new Cas(tmp.resolve("store")), cache.resolve("actions"));

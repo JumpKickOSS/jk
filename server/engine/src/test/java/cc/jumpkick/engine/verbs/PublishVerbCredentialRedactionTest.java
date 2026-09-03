@@ -10,14 +10,14 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.InFlightBuilds;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.plugin.PluginJar;
-import cc.jumpkick.engine.protocol.PublishRequest;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
-import cc.jumpkick.runtime.WorkspaceBuildListener;
 import cc.jumpkick.testing.SysProps;
+import cc.jumpkick.wire.protocol.PublishRequest;
+import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import java.io.BufferedWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -68,10 +68,7 @@ class PublishVerbCredentialRedactionTest {
                 version = "1.0.0"
                 """);
         Path worker = Files.createFile(tmp.resolve("jk-publisher.jar"));
-        // Restored by @ExtendWith(SysProps.class) on the class. It used to be three copies of a
-        // `finally { clearProperty(...) }`, one per test, each of which left the property set if
-        // anything between `project(tmp)` and the `try` threw — including this method itself and the
-        // precondition assertion above the first `try`.
+        // Restored by @ExtendWith(SysProps.class) on the class even if later setup throws.
         System.setProperty(PluginJar.PUBLISHER.jarProperty(), worker.toString());
         return dir;
     }

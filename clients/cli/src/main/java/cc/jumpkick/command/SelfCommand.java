@@ -14,7 +14,6 @@ import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.NerdFontDetect;
 import cc.jumpkick.config.NerdFontMode;
 import cc.jumpkick.config.UserConfigEditor;
-import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.HostPlatform;
@@ -27,6 +26,7 @@ import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.repo.ReleaseVerifier;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.wire.EnginePaths;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.net.URI;
@@ -294,17 +294,15 @@ public final class SelfCommand extends GroupCommand {
             URI dir = URI.create(base + "/" + version + "/");
             byte[] sums = get(http, dir.resolve("SHA256SUMS"), "release checksums");
             var verifier = ReleaseVerifier.current(GlobalConfig.releaseTrustedKeys());
-            if (verifier.available()) {
-                byte[] sig = get(http, dir.resolve("SHA256SUMS.sig"), "release signature");
-                verifier.verify(sums, new String(sig, StandardCharsets.UTF_8));
-            }
+            byte[] sig = get(http, dir.resolve("SHA256SUMS.sig"), "release signature");
+            verifier.verify(sums, new String(sig, StandardCharsets.UTF_8));
 
             // Engine jar (platform-neutral) + the platform client. Prefer the .xz (every OS,
             // including Windows); Windows releases also ship a .zip for install.ps1 / jk.bat,
             // which have no system xz. The native CLI never inflates xz — the engine jar does.
             String jarName = "jk-engine-" + version + ".jar";
             byte[] jar = verified(get(http, dir.resolve(jarName), "engine jar"), sums, jarName);
-            String clientName = pickClientArtifact(sums);
+            String clientName = pickClientArtifact(sums, version);
             byte[] clientArchive = verified(get(http, dir.resolve(clientName), "client binary"), sums, clientName);
             Path client = clientName.endsWith(".xz")
                     ? inflateXzViaEngine(jar, clientArchive)
@@ -333,18 +331,20 @@ public final class SelfCommand extends GroupCommand {
         }
 
         /**
-         * {@code jk-<os>-<arch>.xz} when the sums list it, else the Windows {@code .zip}.
-         * Unix releases do not ship a zip.
+         * {@code jk-<os>-<arch>-<version>.xz} when the sums list it, else the Windows {@code .zip}.
+         * Unix releases do not ship a zip. The version is part of the name on purpose: the manifest
+         * is signed but not bound to its directory, so a manifest copied from another release names
+         * that release's artifacts and cannot satisfy a request for this one.
          */
-        static String pickClientArtifact(byte[] sums) throws IOException {
+        static String pickClientArtifact(byte[] sums, String version) throws IOException {
             String os = HostPlatform.currentOs().toLowerCase(Locale.ROOT);
             String arch = HostPlatform.currentArch();
-            return pickClientArtifact(new String(sums, StandardCharsets.UTF_8), os, arch);
+            return pickClientArtifact(new String(sums, StandardCharsets.UTF_8), os, arch, version);
         }
 
         /** Visible for tests — pass HostPlatform vocabulary already lower-cased. */
-        static String pickClientArtifact(String sumsText, String os, String arch) throws IOException {
-            String base = "jk-" + os + "-" + arch;
+        static String pickClientArtifact(String sumsText, String os, String arch, String version) throws IOException {
+            String base = "jk-" + os + "-" + arch + "-" + version;
             String xz = base + ".xz";
             if (sumHas(sumsText, xz)) return xz;
             if ("windows".equals(os)) {
@@ -356,12 +356,14 @@ public final class SelfCommand extends GroupCommand {
                     + " — refusing to install an unverifiable client binary");
         }
 
-        private static boolean sumHas(String sumsText, String name) {
-            for (String line : sumsText.split("\n")) {
-                String[] parts = line.trim().split("\\s+");
-                if (parts.length == 2 && parts[1].equals(name)) return true;
+        private static boolean sumHas(String sumsText, String name) throws IOException {
+            try {
+                ReleaseVerifier.sha256For(sumsText.getBytes(StandardCharsets.UTF_8), name);
+                return true;
+            } catch (IOException e) {
+                if (e.getMessage().contains("no unique exact entry")) return false;
+                throw e;
             }
-            return false;
         }
 
         /**
@@ -448,12 +450,7 @@ public final class SelfCommand extends GroupCommand {
         }
 
         private static byte[] verified(byte[] body, byte[] sums, String name) throws IOException {
-            String expected = null;
-            for (String line : new String(sums, StandardCharsets.UTF_8).split("\n")) {
-                String[] parts = line.trim().split("\\s+");
-                if (parts.length == 2 && parts[1].equals(name)) expected = parts[0];
-            }
-            if (expected == null) throw new IOException(name + " is not covered by the release's SHA256SUMS");
+            String expected = ReleaseVerifier.sha256For(sums, name);
             String actual = Hashing.sha256Hex(body);
             if (!actual.equalsIgnoreCase(expected)) {
                 throw new IOException(name + " checksum mismatch — expected " + expected + ", got " + actual);

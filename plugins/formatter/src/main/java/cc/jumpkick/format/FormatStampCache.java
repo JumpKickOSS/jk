@@ -22,26 +22,8 @@ import java.util.concurrent.atomic.AtomicLong;
  *
  * <p>A hit means the file's bytes are already settled under the config in the key, so the formatter
  * can skip it. Fail-open throughout: a lost or corrupt index costs one extra format pass and never
- * an error.
- *
- * <p><strong>This used to be one empty file per stamp</strong>, CAS-sharded two levels deep, and it
- * was the largest instance of that shape left in the tree — measured on the maintainer's machine at
- * <b>13,508 files across 12,458 directories holding zero bytes</b>. Because the key folds the file's
- * <em>content</em>, every edit to every source minted a new permanent file, and the sharding meant
- * nearly every one also minted a directory. {@code CacheTier} already said the problem out loud:
- * "the cost is inodes and dirents, invisible to both du and stat, so a byte budget could not see
- * this tier at all" — which is why it needed a count cap that no other tier wants.
- *
- * <p>Per {@code record} that layout cost {@code createDirectories} (two new levels) plus an
- * {@code exists} plus a file creation: five syscalls, two of them creations, at ~200&nbsp;µs on NTFS
- * where Windows caps file creation at ~11,500/s and does not scale past four threads — so the
- * formatter's own thread pool could not amortise it. It was also strictly worse than the per-file
- * hash memo deleted, which at least did one {@code readAttributes}; measured that
- * layout as a <em>net loss</em> on Windows even against no cache at all.
- *
- * <p>The shape here is {@code FileHashMemo}'s post- shape, and its sibling
- * {@code FormatFreshnessIndex} — the same feature's other half — was already an index. 13,508 file
- * creations and 12,458 mkdirs become one read and one write.
+ * an error. {@code record} is a map write; the index is one read at load and one write at
+ * {@link #save()}.
  */
 final class FormatStampCache {
 
@@ -90,8 +72,7 @@ final class FormatStampCache {
     /** Whether {@code key} is settled. A map read — no filesystem call at all. */
     boolean contains(String key) {
         if (key == null) return false;
-        // Touch on read so save() keeps what this run actually used. The old layout could not rank
-        // entries at all without stat-ing every file.
+        // Touch on read so save() keeps what this run actually used.
         return keys.replace(key, tick.incrementAndGet()) != null;
     }
 
@@ -142,11 +123,9 @@ final class FormatStampCache {
     /**
      * Remove anything in the tier that is not an index file.
      *
-     * <p>That is the sharded {@code <aa>/<bb>/<60-hex>} tree an older jk wrote — measured at 13,508
-     * files across 12,458 directories, all of them zero bytes. Nothing reads it now, and retention
-     * ranks the tier by mtime, so without this it would sit there for a week per entry and be
-     * invisible to every byte report in the meantime. One {@code list} of a directory that normally
-     * holds a handful of index files; the same self-cleaning's hash memo does on load.
+     * <p>Residue includes a sharded {@code <aa>/<bb>/<60-hex>} tree nothing reads; retention ranks
+     * the tier by mtime, so leftover entries would sit for a week and stay invisible to every byte
+     * report. One {@code list} of a directory that normally holds a handful of index files.
      *
      * <p>Other configurations' indexes are kept — several coexist here, one per configuration a
      * workspace formats with, so two workers sweeping concurrently cannot delete each other's.

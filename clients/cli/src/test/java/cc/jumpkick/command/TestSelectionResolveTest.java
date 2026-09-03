@@ -97,6 +97,33 @@ class TestSelectionResolveTest {
         assertThat(sel.excludeTags()).containsExactly("slow");
     }
 
+    /** From inside a member directory the root's tags are still the baseline layer. */
+    @Test
+    void member_directory_reads_the_workspace_roots_tags(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), """
+                name = "ws"
+                group = "t"
+                version = "0.0.1"
+                java = 25
+
+                [workspace]
+                modules = ["member"]
+
+                [test]
+                exclude-tags = ["slow"]
+                gate-suites = ["test", "integration"]
+                """);
+        Path member = Files.createDirectories(dir.resolve("member"));
+        writeToml(member, "");
+
+        var sel = TestCommand.resolveTestSelection(parse("-C", member.toString()));
+        assertThat(sel.excludeTags()).containsExactly("slow");
+        assertThat(sel.tagsResolved()).isTrue();
+
+        var gate = TestCommand.resolveTestSelection(parse("-C", member.toString(), "--gate"));
+        assertThat(gate.suites()).containsExactly("test", "integration");
+    }
+
     @Test
     void baseline_tags_are_final(@TempDir Path dir) throws Exception {
         writeToml(dir, """

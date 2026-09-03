@@ -4,6 +4,7 @@ package cc.jumpkick.engine.journal;
 import cc.jumpkick.model.command.Exit;
 import java.util.List;
 import java.util.Locale;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The structured outcome of one build run, frozen at request-finish and persisted as {@code
@@ -164,6 +165,15 @@ public record BuildRecord(
      * {@code calibrate}, or {@code synthetic}).
      */
     public boolean synthetic() {
+        return isSyntheticTrigger(trigger);
+    }
+
+    /**
+     * The one definition of a fixture trigger, shared with the raw journal scan so a record that
+     * {@link #synthetic()} would hide is hidden on the verbatim path too — the journal writes
+     * {@code trigger}, never a {@code synthetic} key.
+     */
+    public static boolean isSyntheticTrigger(@Nullable String trigger) {
         if (trigger == null || trigger.isBlank()) return false;
         String t = trigger.trim().toLowerCase(Locale.ROOT);
         return "optimize".equals(t) || "calibrate".equals(t) || "synthetic".equals(t);

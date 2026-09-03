@@ -5,8 +5,8 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.JsonOut;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
-import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.wire.protocol.EngineProtocol;
 import java.io.BufferedWriter;
 
 public final class HistoryDeleteVerb implements HostedVerb {

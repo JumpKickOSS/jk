@@ -4,6 +4,7 @@ package cc.jumpkick.plugin.build;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * What a {@link PackagerSpec.Body} gets: the resolved declared inputs (with coordinate-named
@@ -26,9 +27,16 @@ public interface PackageIo {
      * so the path is a hash and carries no Maven layout.
      */
     record RuntimeEntry(
-            String fileName, Path jar, boolean snapshot, Path container, String group, String artifact, String version) {
+            String fileName,
+            @Nullable Path jar,
+            boolean snapshot,
+            @Nullable Path container,
+            String group,
+            String artifact,
+            String version) {
 
-        public RuntimeEntry(String fileName, Path jar, boolean snapshot, Path container) {
+        public RuntimeEntry(
+                String fileName, @Nullable Path jar, boolean snapshot, @Nullable Path container) {
             this(fileName, jar, snapshot, container, "", "", "");
         }
 

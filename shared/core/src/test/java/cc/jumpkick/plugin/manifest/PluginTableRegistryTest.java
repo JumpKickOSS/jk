@@ -47,8 +47,8 @@ class PluginTableRegistryTest {
         assertThat(manifest.schema()).containsKeys("version", "aot", "build-info", "include-tools", "aot-args");
         assertThat(manifest.schema().get("version").required()).isTrue();
         assertThat(manifest.schema().get("aot").defaultValue()).isNull(); // tri-state
-        // A table nobody owns stays unowned. Named so that shipping the next built-in plugin
-        // does not turn this assertion red — it used to name `micronaut`, which then shipped.
+        // A table nobody owns stays unowned. The name is fictional so a later built-in cannot
+        // occupy it and turn this assertion red.
         assertThat(PluginTableRegistry.byTable("not-a-plugin-table")).isEmpty();
     }
 

@@ -108,6 +108,9 @@ public final class EffectiveUserConfig {
         JkEngineConfig e = JkEngineConfig.resolve(file, env);
         add(out, "engine.max-heap-mb", d.maxHeapMb(), e.maxHeapMb());
         add(out, "engine.jobs", jobsLabel(d.jobs()), jobsLabel(e.jobs()));
+        add(out, "engine.continue", d.keepGoing(), e.keepGoing());
+        add(out, "engine.vfs-max-mb", d.vfsMaxMb(), e.vfsMaxMb());
+        add(out, "engine.auto-warmup", d.autoWarmup(), e.autoWarmup());
     }
 
     private static void addCache(

@@ -7,8 +7,8 @@ import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Machine-scoped {@code [engine]} policy ({@code max-heap-mb}, {@code jobs},
- * {@code vfs-max-mb}); not project-overridable. Read once at engine start — not hot-reloaded.
+ * Machine-scoped {@code [engine]} policy. Keys live in {@link EngineControls}. Not
+ * project-overridable. Read once at engine start — not hot-reloaded.
  *
  * <p>{@code jobs} is Mill-shaped concurrent-work budget: {@code null} = default (cores),
  * {@code 0} = all cores, {@code 1} = serial, {@code N} = cap. Resolved via {@link Jobs}.
@@ -23,7 +23,8 @@ import org.jspecify.annotations.Nullable;
  * reporting one failure per run turns a five-fault branch into five round trips. It never changes
  * the verdict — a run that kept going and had failures still fails.
  */
-public record JkEngineConfig(int maxHeapMb, @Nullable Integer jobs, boolean keepGoing, int vfsMaxMb) {
+public record JkEngineConfig(
+        int maxHeapMb, @Nullable Integer jobs, boolean keepGoing, int vfsMaxMb, boolean autoWarmup) {
 
     /** Default engine-process heap ceiling ({@code -Xmx}) when not on CI. */
     public static final int DEFAULT_MAX_HEAP_MB = 256;
@@ -37,9 +38,9 @@ public record JkEngineConfig(int maxHeapMb, @Nullable Integer jobs, boolean keep
     /** Per-job input-tree retain, in MiB. {@code 0} disables the VFS (always live-walk). CI does not change this. */
     public static final int DEFAULT_VFS_MAX_MB = 32;
 
-    /** Logical non-CI defaults (256 MiB heap, fail-fast, 32 MiB VFS). Prefer {@link #resolve()} for effective policy. */
+    /** Logical non-CI defaults (256 MiB heap, fail-fast, 32 MiB VFS, warmup on). Prefer {@link #resolve()} for effective policy. */
     public static final JkEngineConfig DEFAULTS =
-            new JkEngineConfig(DEFAULT_MAX_HEAP_MB, null, false, DEFAULT_VFS_MAX_MB);
+            new JkEngineConfig(DEFAULT_MAX_HEAP_MB, null, false, DEFAULT_VFS_MAX_MB, true);
 
     /** {@code max-heap-mb} / {@code JK_ENGINE_MAX_HEAP_MB}: negatives are not a heap, 0 = uncapped. */
     private static final MachineConfig<Integer> MAX_HEAP_MB =
@@ -54,14 +55,22 @@ public record JkEngineConfig(int maxHeapMb, @Nullable Integer jobs, boolean keep
     /** {@code vfs-max-mb} / {@code JK_ENGINE_VFS_MAX_MB}: {@code 0} = off, negatives fall through. */
     private static final MachineConfig<Integer> VFS_MAX_MB = MachineConfig.of(DEFAULT_VFS_MAX_MB, v -> v >= 0);
 
-    /** Heap-only config (jobs default, fail-fast, default VFS). */
+    /** {@code auto-warmup} / {@code JK_AUTO_WARMUP}: the built-in is on. */
+    private static final MachineConfig<Boolean> AUTO_WARMUP = MachineConfig.of(true);
+
+    /** Heap-only config (jobs default, fail-fast, default VFS, warmup on). */
     public JkEngineConfig(int maxHeapMb) {
-        this(maxHeapMb, null, false, DEFAULT_VFS_MAX_MB);
+        this(maxHeapMb, null, false, DEFAULT_VFS_MAX_MB, true);
     }
 
-    /** Heap + jobs + continue; VFS at the default 32 MiB. */
+    /** Heap + jobs + continue; VFS at the default 32 MiB, warmup on. */
     public JkEngineConfig(int maxHeapMb, @Nullable Integer jobs, boolean keepGoing) {
-        this(maxHeapMb, jobs, keepGoing, DEFAULT_VFS_MAX_MB);
+        this(maxHeapMb, jobs, keepGoing, DEFAULT_VFS_MAX_MB, true);
+    }
+
+    /** Heap + jobs + continue + VFS; warmup on. */
+    public JkEngineConfig(int maxHeapMb, @Nullable Integer jobs, boolean keepGoing, int vfsMaxMb) {
+        this(maxHeapMb, jobs, keepGoing, vfsMaxMb, true);
     }
 
     /** Effective machine config: user-global file + {@code JK_ENGINE_MAX_HEAP_MB} / {@code JK_JOBS}. */
@@ -91,12 +100,14 @@ public record JkEngineConfig(int maxHeapMb, @Nullable Integer jobs, boolean keep
                 // CI does not bump VFS: the heap bump is concurrency headroom.
                 VFS_MAX_MB.layer(
                         EnvValues.intValue(env, "JK_ENGINE_VFS_MAX_MB").orElse(null),
-                        scanInt(scan, "engine.vfs-max-mb")));
+                        scanInt(scan, "engine.vfs-max-mb")),
+                AUTO_WARMUP.layer(
+                        EnvValues.bool(env, "JK_AUTO_WARMUP").orElse(null), scanBool(scan, "engine.auto-warmup")));
     }
 
     /** Machine defaults only (CI-aware heap and continue, no file/env override). */
     public static JkEngineConfig resolvedDefaults(Function<String, String> env) {
-        return new JkEngineConfig(defaultMaxHeapMb(env), null, defaultKeepGoing(env), DEFAULT_VFS_MAX_MB);
+        return new JkEngineConfig(defaultMaxHeapMb(env), null, defaultKeepGoing(env), DEFAULT_VFS_MAX_MB, true);
     }
 
     /** Unset heap default: 512 MiB on CI, else 256 MiB. */
@@ -116,11 +127,12 @@ public record JkEngineConfig(int maxHeapMb, @Nullable Integer jobs, boolean keep
                 MAX_HEAP_MB.layer(scanInt(scan, "engine.max-heap-mb")),
                 JOBS.layer(scanInt(scan, "engine.jobs")),
                 KEEP_GOING.layer(scanBool(scan, "engine.continue")),
-                VFS_MAX_MB.layer(scanInt(scan, "engine.vfs-max-mb")));
+                VFS_MAX_MB.layer(scanInt(scan, "engine.vfs-max-mb")),
+                AUTO_WARMUP.layer(scanBool(scan, "engine.auto-warmup")));
     }
 
     private static TomlScan scan(Path file) {
-        return TomlScan.scan(file, "engine.max-heap-mb", "engine.jobs", "engine.continue", "engine.vfs-max-mb");
+        return TomlScan.scan(file, EngineControls.tomlScanKeys());
     }
 
     private static @Nullable Boolean scanBool(TomlScan scan, String key) {

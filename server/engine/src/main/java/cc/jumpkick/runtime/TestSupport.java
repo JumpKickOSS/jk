@@ -15,6 +15,7 @@ import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.TaskContext;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.task.ActionCache;
@@ -714,6 +715,13 @@ public final class TestSupport {
             } catch (Exception ignored) {
                 /* keep the up-front estimate */
             }
+        }
+        if (Perf.ENABLED && TaskNames.COMPILE_TEST.equals(taskId)) {
+            System.err.println("[jk-perf] live-compile-test " + outputDir
+                    + " key=" + ActionKey.forJavac(cacheTaskId, request, BuildIdentity.cacheKeyVersion())
+                    + " cp=" + classpath.size() + " src=" + sources.size()
+                    + " pp=" + (processorPath == null ? -1 : processorPath.size()) + " release=" + release
+                    + " javaHome=" + javaHome + " out=" + outputDir);
         }
         ctx.label(taskId + ": " + sources.size() + " sources");
         Path gen = generatedSourceDir != null

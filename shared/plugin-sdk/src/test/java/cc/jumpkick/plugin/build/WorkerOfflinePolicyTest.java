@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The job's network policy reaches the <em>body</em> of a step, a command and a packager — the
@@ -90,7 +91,9 @@ class WorkerOfflinePolicyTest {
         return end < 0 ? "" : replyLine.substring(at, end);
     }
 
-    private static Path spec(Path dir, String op, String name, Boolean offline) throws Exception {
+    private static Path spec(
+            Path dir, String op, @Nullable String name, @Nullable Boolean offline)
+            throws Exception {
         Path spec = dir.resolve(op + "-" + offline + ".spec");
         List<String> lines = new ArrayList<>(List.of(
                 "{\"t\":\"op\",\"op\":\"" + op + "\""

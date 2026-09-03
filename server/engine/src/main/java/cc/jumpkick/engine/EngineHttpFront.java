@@ -17,6 +17,7 @@ import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.runtime.BuildMetrics;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.wire.EnginePaths;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;

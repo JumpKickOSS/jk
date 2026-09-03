@@ -15,7 +15,7 @@ tasks.processTestResources {
 
 dependencies {
     implementation(project(":core"))  // repo/lock model; Hashing + codec now come from :host via the SDK
-    implementation(project(":io"))
+    implementation(project(":client-io"))
     implementation(project(":plugin-sdk"))  // SPI + :host codec/primitives (worker runtime classpath via POM)
     implementation(libs.bouncycastle.bcpg)
     implementation(libs.sigstore.java)
@@ -23,4 +23,12 @@ dependencies {
     // GpgTestFixture moved here from supply-chain-testkit (which is deleted)
     testImplementation(libs.bouncycastle.bcpg)
     testImplementation(testFixtures(project(":core")))
+}
+
+val stagedWorkerRepo = layout.buildDirectory.dir("worker-repo/repos/jk-local")
+
+tasks.named<Test>("test") {
+    dependsOn("stageWorkerRepo")
+    inputs.dir(stagedWorkerRepo).withPropertyName("stagedWorkerRepo")
+    systemProperty("jk.worker.repo", stagedWorkerRepo.get().asFile.absolutePath)
 }

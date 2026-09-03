@@ -26,12 +26,11 @@ import java.util.function.IntConsumer;
  * actually wants — another engine reading an action record, a second {@code jk} parsing a lockfile, an
  * IDE tailing a manifest.
  *
- * <p><strong>What it does not guarantee, despite what this comment used to say:</strong> crash
- * consistency. There is no {@code fsync} before the rename — and none anywhere in the product; the
- * only {@link java.nio.channels.FileChannel#force} in the tree is a disk benchmark. So on ext4
+ * <p><strong>What it does not guarantee:</strong> crash consistency. There is no {@code fsync}
+ * before the rename — and none anywhere in the product; the only
+ * {@link java.nio.channels.FileChannel#force} in the tree is a disk benchmark. On ext4
  * {@code data=ordered} or APFS, a power loss can make the rename durable while the data blocks are
- * not, leaving a zero-length or truncated target rather than the {@code .tmp} sibling the old wording
- * promised. Fifty call sites read that sentence and trusted it.
+ * not, leaving a zero-length or truncated target.
  *
  * <p>Use {@link #replaceDurably} for a file where a torn target is not recoverable by re-running.
  * There are four: {@code jk-lock.toml}, the engine install pointer, {@code aot.toml}, and

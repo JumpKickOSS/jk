@@ -2,10 +2,10 @@
 package cc.jumpkick.command.ide;
 
 import cc.jumpkick.cli.tui.RichText;
-import cc.jumpkick.engine.protocol.IdeWireModel;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.util.MinimalXml;
+import cc.jumpkick.wire.protocol.IdeWireModel;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;

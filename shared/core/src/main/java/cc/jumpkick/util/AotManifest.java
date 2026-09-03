@@ -49,7 +49,7 @@ public final class AotManifest {
      * One cache (or sticky failure marker). Required: {@link #file()}. Other fields are optional
      * and omitted from TOML when null/empty.
      */
-    @Builder(toBuilder = true, builderClassName = "Builder")
+    @Builder(toBuilder = true)
     public record Entry(
             String file,
             String tool,
@@ -75,16 +75,16 @@ public final class AotManifest {
             jvmFlags = jvmFlags == null ? List.of() : List.copyOf(jvmFlags);
         }
 
-        public static Builder builder(String file) {
-            return new Builder().file(file);
+        public static EntryBuilder builder(String file) {
+            return new EntryBuilder().file(file);
         }
 
-        public static class Builder {
+        public static class EntryBuilder {
             private List<String> classpath = List.of();
             private List<String> jvmFlags = List.of();
 
             /** Split a platform classpath string into entries. */
-            public Builder classpathString(String cp) {
+            public EntryBuilder classpathString(String cp) {
                 this.classpath =
                         Classpaths.split(cp).stream().map(Path::toString).toList();
                 return this;
@@ -108,7 +108,7 @@ public final class AotManifest {
             Entry prev = map.get(entry.file());
             Entry merged = entry;
             if (prev != null) {
-                Entry.Builder b = entry.toBuilder();
+                Entry.EntryBuilder b = entry.toBuilder();
                 if (blank(entry.created()) && !blank(prev.created())) b.created(prev.created());
                 if (blank(entry.tool()) && !blank(prev.tool())) b.tool(prev.tool());
                 if (blank(entry.key()) && !blank(prev.key())) b.key(prev.key());
@@ -247,7 +247,7 @@ public final class AotManifest {
                 if (name.endsWith(".aot") && Files.isRegularFile(p)) {
                     Entry prev = map.get(name);
                     String status = usableSize(p) > 0 ? "ready" : "empty";
-                    Entry.Builder b = (prev != null ? prev.toBuilder() : Entry.builder(name)).status(status);
+                    Entry.EntryBuilder b = (prev != null ? prev.toBuilder() : Entry.builder(name)).status(status);
                     if (prev == null || blank(prev.tool()) || blank(prev.key())) fillToolKey(b, name);
                     b.sizeBytes(usableSize(p));
                     if (prev == null || blank(prev.lastUsed())) {
@@ -281,7 +281,7 @@ public final class AotManifest {
      * flattening to a bare file name.
      */
     private static Entry noaotRow(Entry prev, String primary) {
-        Entry.Builder b = prev != null ? prev.toBuilder() : Entry.builder(primary);
+        Entry.EntryBuilder b = prev != null ? prev.toBuilder() : Entry.builder(primary);
         if (prev == null || blank(prev.tool()) || blank(prev.key())) fillToolKey(b, primary);
         return b.status("noaot").build();
     }
@@ -356,7 +356,7 @@ public final class AotManifest {
         Map<String, Entry> out = new LinkedHashMap<>();
         if (text == null || text.isBlank()) return out;
         String[] lines = text.split("\n", -1);
-        Entry.Builder cur = null;
+        Entry.EntryBuilder cur = null;
         boolean inTable = false;
         List<String[]> pendingScalars = new ArrayList<>();
         Map<String, List<String>> pendingArrays = new LinkedHashMap<>();
@@ -483,11 +483,11 @@ public final class AotManifest {
         return -1;
     }
 
-    private static void finishArray(Entry.Builder cur, String field, List<String> buf) {
+    private static void finishArray(Entry.EntryBuilder cur, String field, List<String> buf) {
         if (cur != null && field != null && buf != null) applyArray(cur, field, buf);
     }
 
-    private static void applyArray(Entry.Builder cur, String key, List<String> items) {
+    private static void applyArray(Entry.EntryBuilder cur, String key, List<String> items) {
         switch (key) {
             case "classpath" -> cur.classpath(items);
             case "jvm_flags" -> cur.jvmFlags(items);
@@ -497,7 +497,7 @@ public final class AotManifest {
         }
     }
 
-    private static void applyScalar(Entry.Builder cur, String key, String val) {
+    private static void applyScalar(Entry.EntryBuilder cur, String key, String val) {
         String s = val.startsWith("\"") ? unquote(val) : val;
         switch (key) {
             case "tool" -> cur.tool(s);
@@ -616,7 +616,7 @@ public final class AotManifest {
      */
     private static final List<String> WORKER_TOOLS = List.of("java-compiler", "kotlinc", "groovy", "plugin");
 
-    public static void fillToolKey(Entry.Builder b, String fileName) {
+    public static void fillToolKey(Entry.EntryBuilder b, String fileName) {
         if (fileName == null || !fileName.endsWith(".aot")) return;
         String stem = fileName.substring(0, fileName.length() - ".aot".length());
         if (stem.startsWith("engine-")) {

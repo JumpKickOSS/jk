@@ -8,10 +8,9 @@
 #   bash install.sh [/path/to/jk[.xz|.zip]]
 #
 # Environment variables:
-#   JK_ARCHIVE_URL   Override the archive URL to download. Supports .xz and
-#                    .zip (a plain uncompressed binary also works for local
-#                    files). Defaults to the latest release matching this
-#                    machine's OS/arch (.xz).
+#   JK_ARCHIVE_URL   Override the archive URL to download. JK_VERSION is required
+#                    with this override; verification evidence still comes from
+#                    JK_RELEASES_URL/<version>/. Supports .xz and .zip.
 #   JK_RELEASES_URL  Override the release site root (mirrors).
 #   JK_VERSION       Install a specific version instead of the latest.
 #   JK_HOME          jk's home directory. Default $HOME/.jk; everything jk
@@ -25,7 +24,7 @@ set -euo pipefail
 # directory JkDirs.binDirectory() resolves — which it is, by having one answer.
 JK_HOME_DIR="${JK_HOME:-${HOME}/.jk}"
 INSTALL_DIR="${JK_HOME_DIR}/bin"
-# One immutable directory per version (jk-<os>-<arch>[.xz] + jk-engine-<version>.jar
+# One immutable directory per version (jk-<os>-<arch>-<version>[.xz] + jk-engine-<version>.jar
 # + SHA256SUMS); `latest/VERSION` is the only mutable pointer. The version is
 # resolved ONCE and both artifacts come from the frozen directory, so a release
 # published mid-install can never hand out a binary and an engine jar that
@@ -80,6 +79,8 @@ run_jk() { "$JK_BIN" "$@" 0<"$TTY_IN"; }
 # ---- detect tools ----------------------------------------------------------
 
 have() { command -v "$1" >/dev/null 2>&1; }
+
+RELEASE_RSA_SPKI="MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEA62bXAMmyIpPgiFzT9lcuIPWvvXHmWfGDPbMJAG1lRlbSJ9EFRahqkie0LQaFtXn8W3l2BP/9D0DwdXztS/eVo8WqSNMOZo/srBKrViVJGEOFm0fDmhqrlA3bCZz43+DgFjj7SacI2nJVB4PRjV5jvRwBnZrIUwcvynIQmx2SoWoKgudoje7vNM7UkYmEnZExfmiPQaPmSYCKzXA4pP5KPWD+49bo7o3cLeiO5/Shc27OC0IvK+Vj8CUe4URSt5zHjHUpiE+h4SVTMrGoJg9rgWmRgMHdshsq3aoAkA3jC/YB5SzLwUJeObWGP8I9w7yj8uiSTNIt3KslbRfVtb4vbNoZ4zKPMkCaYhy5ar0sGOqxW97wobIWBiX5pT+knluZErrsJFWpx2dQtRtb2wPovihL7Z9Q18vZb371Gx+rzkNi7jdFvWaGYgsraf01l63Gg2bfy1bleSLhDKmh94yGMoHfszEcE1785xteYOdVSwawUPwWgx8iZ7a4lqOL0MrrAgMBAAE="
 
 # Pick a downloader (not needed when a local file is provided).
 if [ -z "$LOCAL_FILE" ]; then
@@ -160,15 +161,29 @@ if [ -n "$LOCAL_FILE" ]; then
   [ -f "$LOCAL_FILE" ] || die "local file not found: $LOCAL_FILE"
   infer_decompress "$LOCAL_FILE"
 elif [ -n "${JK_ARCHIVE_URL:-}" ]; then
+  [ -n "${JK_VERSION:-}" ] || die "JK_VERSION is required when JK_ARCHIVE_URL is set."
+  VERSION="$JK_VERSION"
   ARCHIVE_URL="$JK_ARCHIVE_URL"
-  infer_decompress "$ARCHIVE_URL"
+  infer_decompress "${ARCHIVE_URL%%\?*}"
 else
   TARGET="$(detect_target)"
   EXT="$(detect_ext)"
   VERSION="${JK_VERSION:-$(fetch_text "$RELEASES_URL/latest/VERSION" | tr -d '[:space:]')}"
   [ -n "$VERSION" ] || die "could not resolve the latest jk version from $RELEASES_URL/latest/VERSION"
-  ARCHIVE_URL="$RELEASES_URL/$VERSION/jk-$TARGET.$EXT"
+  ARCHIVE_URL="$RELEASES_URL/$VERSION/jk-$TARGET-$VERSION.$EXT"
   infer_decompress "$ARCHIVE_URL"
+fi
+
+if [ -z "$LOCAL_FILE" ]; then
+  case "$VERSION" in
+    ""|*[!A-Za-z0-9._-]*) die "invalid release version: $VERSION" ;;
+  esac
+  ARTIFACT_NAME="${ARCHIVE_URL%%\?*}"
+  ARTIFACT_NAME="${ARTIFACT_NAME##*/}"
+  case "$ARTIFACT_NAME" in
+    ""|*[!A-Za-z0-9._-]*) die "archive URL must end in a plain release artifact filename." ;;
+  esac
+  RELEASE_VERSION_URL="${RELEASES_URL%/}/$VERSION"
 fi
 
 # ---- download & install ----------------------------------------------------
@@ -183,6 +198,56 @@ else
   ARCHIVE_FILE="$TMPDIR_JK/jk.archive"
   download "$ARCHIVE_URL" "$ARCHIVE_FILE" \
     || die "failed to download $ARCHIVE_URL"
+  download "$RELEASE_VERSION_URL/SHA256SUMS" "$TMPDIR_JK/SHA256SUMS" \
+    || die "failed to download release checksum evidence."
+  download "$RELEASE_VERSION_URL/SHA256SUMS.sig" "$TMPDIR_JK/SHA256SUMS.sig" \
+    || die "failed to download release signature evidence."
+
+  have openssl || die "OpenSSL is required to authenticate remote JumpKick releases."
+  {
+    printf '%s\n' "-----BEGIN PUBLIC KEY-----"
+    printf '%s' "$RELEASE_RSA_SPKI" | fold -w 64
+    printf '\n'
+    printf '%s\n' "-----END PUBLIC KEY-----"
+  } >"$TMPDIR_JK/release-public.pem"
+
+  SIG_TEXT="$(tr -d '\r' <"$TMPDIR_JK/SHA256SUMS.sig")"
+  SIG_LINES="$(wc -l <"$TMPDIR_JK/SHA256SUMS.sig" | tr -d '[:space:]')"
+  if { [ "$SIG_LINES" != "0" ] && [ "$SIG_LINES" != "1" ]; } ||
+    [ "${#SIG_TEXT}" -ne 512 ] ||
+    ! printf '%s' "$SIG_TEXT" | LC_ALL=C grep -Eq '^[A-Za-z0-9+/]+={0,2}$'; then
+    die "release signature is malformed."
+  fi
+  printf '%s' "$SIG_TEXT" | openssl base64 -d -A >"$TMPDIR_JK/SHA256SUMS.sig.bin" 2>/dev/null \
+    || die "release signature is not valid base64."
+  [ "$(wc -c <"$TMPDIR_JK/SHA256SUMS.sig.bin" | tr -d '[:space:]')" = "384" ] \
+    || die "release signature has the wrong RSA-3072 length."
+  openssl dgst -sha256 -verify "$TMPDIR_JK/release-public.pem" \
+    -signature "$TMPDIR_JK/SHA256SUMS.sig.bin" "$TMPDIR_JK/SHA256SUMS" >/dev/null 2>&1 \
+    || die "release signature verification failed; refusing the download."
+
+  if ! EXPECTED_SHA="$(awk -v wanted="$ARTIFACT_NAME" '
+    {
+      hash = substr($0, 1, 64)
+      sep = substr($0, 65, 2)
+      name = substr($0, 67)
+      if (length(hash) != 64 || hash !~ /^[0-9A-Fa-f]+$/ || sep != "  " ||
+          name !~ /^[A-Za-z0-9][A-Za-z0-9._-]*$/ || seen[name]++) bad = 1
+      if (name == wanted) {
+        matches++
+        found = tolower(hash)
+      }
+    }
+    END {
+      if (bad || matches != 1) exit 1
+      print found
+    }
+  ' "$TMPDIR_JK/SHA256SUMS")"; then
+    die "release SHA256SUMS is malformed, duplicated, or has no exact entry for $ARTIFACT_NAME."
+  fi
+  ACTUAL_SHA="$(openssl dgst -sha256 "$ARCHIVE_FILE" | awk '{print tolower($NF)}')"
+  [ "$ACTUAL_SHA" = "$EXPECTED_SHA" ] \
+    || die "release archive checksum mismatch for $ARTIFACT_NAME; refusing the download."
 fi
 
 # Prefer a ~ display when the install dir lives under $HOME (uv-style).

@@ -3,6 +3,7 @@ package cc.jumpkick.model;
 
 import java.util.List;
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A declared dependency: short {@code library} handle, {@code module} ({@code group:artifact}),
@@ -19,11 +20,11 @@ public record Dependency(
         String library,
         String module,
         VersionSelector version,
-        GitSource gitSource,
-        String sha256,
+        @Nullable GitSource gitSource,
+        @Nullable String sha256,
         boolean pinned,
         boolean optional,
-        PathSource pathSource,
+        @Nullable PathSource pathSource,
         /** Feature names requested of a path/workspace/git library's {@code [features]} table. */
         List<String> requestedFeatures,
         /** When true, the library's {@code features.default} list is included. */
@@ -66,8 +67,8 @@ public record Dependency(
             String library,
             String module,
             VersionSelector version,
-            GitSource gitSource,
-            String sha256,
+            @Nullable GitSource gitSource,
+            @Nullable String sha256,
             boolean pinned,
             boolean optional) {
         this(
@@ -90,8 +91,8 @@ public record Dependency(
             String library,
             String module,
             VersionSelector version,
-            GitSource gitSource,
-            String sha256,
+            @Nullable GitSource gitSource,
+            @Nullable String sha256,
             boolean pinned) {
         this(
                 library,
@@ -113,11 +114,11 @@ public record Dependency(
             String library,
             String module,
             VersionSelector version,
-            GitSource gitSource,
-            String sha256,
+            @Nullable GitSource gitSource,
+            @Nullable String sha256,
             boolean pinned,
             boolean optional,
-            PathSource pathSource) {
+            @Nullable PathSource pathSource) {
         this(
                 library,
                 module,
@@ -297,15 +298,15 @@ public record Dependency(
         return isWorkspaceRef(module);
     }
 
-    public String workspaceName() {
+    public @Nullable String workspaceName() {
         return workspaceName(module);
     }
 
-    public static boolean isWorkspaceRef(String module) {
+    public static boolean isWorkspaceRef(@Nullable String module) {
         return module != null && module.startsWith(WORKSPACE_PREFIX);
     }
 
-    public static String workspaceName(String module) {
+    public static @Nullable String workspaceName(String module) {
         return isWorkspaceRef(module) ? module.substring(WORKSPACE_PREFIX.length()) : null;
     }
 
@@ -329,7 +330,10 @@ public record Dependency(
     }
 
     private static boolean derivePinned(
-            VersionSelector version, GitSource gitSource, String sha256, PathSource pathSource) {
+            VersionSelector version,
+            @Nullable GitSource gitSource,
+            @Nullable String sha256,
+            @Nullable PathSource pathSource) {
         if (gitSource != null || sha256 != null || pathSource != null) return true;
         return version instanceof VersionSelector.Exact;
     }

@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.wire.runtime.ExplainPlan;
+import cc.jumpkick.wire.runtime.TaskForecast;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -280,7 +282,7 @@ class BuildServiceEtaTest {
         List<EffortWeights.ModuleCost> costs = SessionContext.where(
                 Session.defaults(),
                 () -> BuildService.etaCostsFromExplainPlan(
-                        plan, Path.of("/tmp/jk-eta-cascade-test-cache"), 1, null, null, false, false));
+                        plan, Path.of("/tmp/jk-eta-cascade-test-cache"), 1, null, null, false, false, 0));
         EffortWeights.ModuleCost coreCost =
                 costs.stream().filter(c -> c.dir().equals(core)).findFirst().orElseThrow();
         EffortWeights.ModuleCost cascadeCost =

@@ -2,6 +2,7 @@
 package cc.jumpkick.model;
 
 import java.util.Locale;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Source layout: {@code simple} (Mill-like), {@code traditional} (Maven), or {@code auto}
@@ -23,7 +24,7 @@ public enum Layout {
     public static final String TOKEN_AUTO = "auto";
 
     /** Parse from a jk.toml string value; null or blank → AUTO. */
-    public static Layout parse(String raw) {
+    public static Layout parse(@Nullable String raw) {
         if (raw == null || raw.isBlank()) return AUTO;
         return switch (raw.trim().toLowerCase(Locale.ROOT)) {
             case TOKEN_SIMPLE -> SIMPLE;
@@ -43,7 +44,7 @@ public enum Layout {
     }
 
     /** The string written to jk.toml, or null for AUTO (omitted). */
-    public String tomlValue() {
+    public @Nullable String tomlValue() {
         return switch (this) {
             case SIMPLE -> TOKEN_SIMPLE;
             case TRADITIONAL -> TOKEN_TRADITIONAL;

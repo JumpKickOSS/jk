@@ -13,9 +13,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * The OCI tarball is a function of its base image and of the worker that built it. Both used to be
- * named rather than identified — a tag string and a compile-time artifact id — so a republished
- * base or a rebuilt worker left every token byte-identical and the cache served the old tarball.
+ * The OCI tarball is a function of its base image and of the worker that built it. Both are
+ * identified by content — a resolved digest and a worker-jar hash — so a republished base or a
+ * rebuilt worker cannot reuse a prior cache entry.
  */
 class ImageActionKeyTest {
 
@@ -39,9 +39,9 @@ class ImageActionKeyTest {
     }
 
     /**
-     * Two different resolved bases, everything else identical: the keys must differ. Before this,
-     * the only base in the key was {@code cfg:…base=eclipse-temurin:25-jre}, which is the same
-     * string on both sides of an upstream republish.
+     * Two different resolved bases, everything else identical: the keys must differ. A tag string
+     * such as {@code cfg:…base=eclipse-temurin:25-jre} is the same on both sides of an upstream
+     * republish; the resolved digest is not.
      */
     @Test
     void the_resolved_base_digest_is_in_the_key(@TempDir Path tmp) throws Exception {

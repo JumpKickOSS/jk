@@ -14,11 +14,13 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 import javax.tools.JavaCompiler;
 import javax.tools.JavaFileObject;
 import javax.tools.StandardJavaFileManager;
 import javax.tools.ToolProvider;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -78,7 +80,7 @@ class PublishedSdkConsumerTest {
 
     @Test
     void a_consumer_resolves_the_sdk_from_a_repository_and_compiles_against_it(@TempDir Path work) throws Exception {
-        String repoPath = System.getProperty(REPO_PROPERTY);
+        @Nullable String repoPath = System.getProperty(REPO_PROPERTY);
         // Gradle's :plugin-sdk:test always stages the repo and sets the property, so under the
         // gate this assumption cannot skip. The self-host tier (`jk test`) has no publish task to
         // stage it — there the honest report is SKIPPED, not a failure about a fixture the
@@ -87,9 +89,10 @@ class PublishedSdkConsumerTest {
                 repoPath != null,
                 "-D" + REPO_PROPERTY + " not set: no staged Maven repository in this harness"
                         + " (Gradle's :plugin-sdk:test stages it and always sets the property)");
-        Path repo = Path.of(repoPath);
+        Path repo = Path.of(Objects.requireNonNull(repoPath, REPO_PROPERTY));
 
-        String version = System.getProperty(VERSION_PROPERTY);
+        @Nullable String configuredVersion = System.getProperty(VERSION_PROPERTY);
+        String version = Objects.requireNonNull(configuredVersion, VERSION_PROPERTY);
         assertThat(version)
                 .as("-D%s must carry the version :plugin-sdk publishes under", VERSION_PROPERTY)
                 .isNotBlank();
@@ -115,7 +118,7 @@ class PublishedSdkConsumerTest {
 
         String classpath = jars.values().stream().map(Path::toString).collect(Collectors.joining(File.pathSeparator));
         StringWriter diagnostics = new StringWriter();
-        JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
+        JavaCompiler javac = Objects.requireNonNull(ToolProvider.getSystemJavaCompiler(), "system Java compiler");
         boolean compiled;
         try (StandardJavaFileManager files = javac.getStandardFileManager(null, null, StandardCharsets.UTF_8)) {
             Iterable<? extends JavaFileObject> units = files.getJavaFileObjects(source);
@@ -161,13 +164,13 @@ class PublishedSdkConsumerTest {
 
         Element dependencies = DomXml.childElement(DomXml.parse(pom).getDocumentElement(), "dependencies");
         for (Element dependency : DomXml.childElements(dependencies, "dependency")) {
-            String scope = DomXml.childText(dependency, "scope");
+            @Nullable String scope = DomXml.childText(dependency, "scope");
             if (scope != null && !scope.isBlank() && !"compile".equals(scope)) continue;
             collect(
                     repo,
-                    DomXml.childText(dependency, "groupId"),
-                    DomXml.childText(dependency, "artifactId"),
-                    DomXml.childText(dependency, "version"),
+                    Objects.requireNonNull(DomXml.childText(dependency, "groupId"), "dependency.groupId"),
+                    Objects.requireNonNull(DomXml.childText(dependency, "artifactId"), "dependency.artifactId"),
+                    Objects.requireNonNull(DomXml.childText(dependency, "version"), "dependency.version"),
                     jars,
                     unresolvable);
         }

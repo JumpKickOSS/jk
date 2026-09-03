@@ -58,14 +58,12 @@ class HostWarmupTest {
     }
 
     /**
-     * The off-switch covers the whole pass, not the tail of it. It used to be consulted between the
-     * second and third steps, so {@code auto-warmup = false} silenced worker AOT and calibration
-     * while the feed and template refresh still went to the network and still wrote to the store
-     * every 12 h cycle — with the class javadoc claiming otherwise.
+     * The off-switch covers the whole pass, not the tail of it. With {@code auto-warmup = false}
+     * none of feeds, templates, worker AOT, or calibration run.
      *
-     * <p>Driven through the composition seam rather than the live pass on purpose: the real
-     * {@code runIdle} would need a network to prove the negative, and a step that no-ops offline
-     * would let this pass with the fix reverted.
+     * <p>Driven through the composition seam rather than the live pass: the real {@code runIdle}
+     * would need a network to prove the negative, and a step that no-ops offline would not show
+     * whether the switch actually skipped the step.
      */
     @Test
     void the_off_switch_stops_every_step_not_just_the_last_two() {

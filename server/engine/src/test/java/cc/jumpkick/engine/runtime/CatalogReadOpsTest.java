@@ -3,7 +3,7 @@ package cc.jumpkick.engine.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.engine.protocol.CatalogReadAck;
+import cc.jumpkick.wire.protocol.CatalogReadAck;
 import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;

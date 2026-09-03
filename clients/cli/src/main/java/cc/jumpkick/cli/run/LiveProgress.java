@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.run;
 
-import cc.jumpkick.runtime.WorkspaceProgressTracker;
+import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
 
 /**
  * Workspace/plan aggregate progress snapshot for JSONL riders.
@@ -12,7 +12,7 @@ import cc.jumpkick.runtime.WorkspaceProgressTracker;
  * never raw numerator/denominator on the rider.
  *
  * <p>Materialize cadence constants live here; the TTY frame interval is {@link
- * cc.jumpkick.runtime.WorkspaceProgressTracker#TTY_FRAME_MS} (shared with the engine emit throttle).
+ * cc.jumpkick.wire.runtime.WorkspaceProgressTracker#TTY_FRAME_MS} (shared with the engine emit throttle).
  */
 public final class LiveProgress {
 
@@ -40,7 +40,7 @@ public final class LiveProgress {
 
     /**
      * Update from bar units. No-op when {@code denominator <= 0}. Percent is clamped to 0–100 and
-     * rounded to one decimal ({@link cc.jumpkick.runtime.WorkspaceProgressTracker#percentOf}).
+     * rounded to one decimal ({@link cc.jumpkick.wire.runtime.WorkspaceProgressTracker#percentOf}).
      */
     public void update(long numerator, long denominator) {
         double p = WorkspaceProgressTracker.percentOf(numerator, denominator);

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.plugin.HeapPlan;
 import cc.jumpkick.test.TestWorkers;
+import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -41,10 +42,10 @@ class WorkspaceRequestKnobsTest {
                 .withEphemeralActions(true);
 
         // The operator handed to the NATIVE/IMAGE/COMPILE terminal branches, over neutral inputs…
-        BuildPlanner.Inputs decorated = WorkspaceExecute.requestKnobs(req, dirs)
+        BuildPlanner.Inputs decorated = WorkspacePreparePhase.requestKnobs(req, dirs)
                 .apply(TaskForecaster.inputsFor(mod, req.cache(), 1, null, null, false, false, Set.of(), false));
         // …and the PACKAGE/INSTALL path.
-        BuildPlanner.Inputs packaged = WorkspaceExecute.moduleInputs(mod, req, dirs, false);
+        BuildPlanner.Inputs packaged = WorkspacePreparePhase.moduleInputs(mod, req, dirs, false);
 
         for (BuildPlanner.Inputs in : List.of(decorated, packaged)) {
             assertThat(in.workerCount()).isEqualTo(3);
@@ -73,9 +74,9 @@ class WorkspaceRequestKnobsTest {
         WorkspaceRequest req =
                 new WorkspaceRequest(tmp, tmp.resolve("cache"), null, 0, null, false, false, 0, null, true, true);
 
-        BuildPlanner.Inputs decorated = WorkspaceExecute.requestKnobs(req, dirs)
+        BuildPlanner.Inputs decorated = WorkspacePreparePhase.requestKnobs(req, dirs)
                 .apply(TaskForecaster.inputsFor(mod, req.cache(), 1, null, null, false, false, Set.of(), false));
-        BuildPlanner.Inputs packaged = WorkspaceExecute.moduleInputs(mod, req, dirs, false);
+        BuildPlanner.Inputs packaged = WorkspacePreparePhase.moduleInputs(mod, req, dirs, false);
 
         assertThat(decorated.workerCount()).isZero();
         assertThat(packaged.workerCount()).isZero();
@@ -83,7 +84,7 @@ class WorkspaceRequestKnobsTest {
         // An explicit -w1 is also carried verbatim, and still means serial downstream.
         WorkspaceRequest serial =
                 new WorkspaceRequest(tmp, tmp.resolve("cache"), null, 1, null, false, false, 0, null, true, true);
-        assertThat(WorkspaceExecute.moduleInputs(mod, serial, dirs, false).workerCount())
+        assertThat(WorkspacePreparePhase.moduleInputs(mod, serial, dirs, false).workerCount())
                 .isEqualTo(1);
         assertThat(TestWorkers.resolve(1, 40, 12)).isEqualTo(1);
     }
@@ -105,20 +106,44 @@ class WorkspaceRequestKnobsTest {
                 new WorkspaceRequest(tmp, tmp.resolve("cache"), null, 0, null, false, false, 0, null, true, true);
 
         // Wide dogfood-shaped graph on 24 threads: modules already fill the machine.
-        assertThat(WorkspaceExecute.resolveAutoWorkers(auto, 13, 24)).isEqualTo(1);
+        assertThat(WorkspaceResourcePhase.resolveAutoWorkers(auto, 13, 24)).isEqualTo(1);
         // One module selected: nothing else is running, so shard as wide as the machine.
-        assertThat(WorkspaceExecute.resolveAutoWorkers(auto, 1, 24)).isEqualTo(24);
+        assertThat(WorkspaceResourcePhase.resolveAutoWorkers(auto, 1, 24)).isEqualTo(24);
         // In between.
-        assertThat(WorkspaceExecute.resolveAutoWorkers(auto, 4, 24)).isEqualTo(6);
+        assertThat(WorkspaceResourcePhase.resolveAutoWorkers(auto, 4, 24)).isEqualTo(6);
         // Degenerate inputs must not produce 0 workers or divide by zero.
-        assertThat(WorkspaceExecute.resolveAutoWorkers(auto, 0, 0)).isEqualTo(1);
-        assertThat(WorkspaceExecute.resolveAutoWorkers(auto, 99, 24)).isEqualTo(1);
+        assertThat(WorkspaceResourcePhase.resolveAutoWorkers(auto, 0, 0)).isEqualTo(1);
+        assertThat(WorkspaceResourcePhase.resolveAutoWorkers(auto, 99, 24)).isEqualTo(1);
 
         // An explicit -w N is never rewritten, at any width.
         WorkspaceRequest pinned =
                 new WorkspaceRequest(tmp, tmp.resolve("cache"), null, 8, null, false, false, 0, null, true, true);
-        assertThat(WorkspaceExecute.resolveAutoWorkers(pinned, 13, 24)).isEqualTo(8);
-        assertThat(WorkspaceExecute.resolveAutoWorkers(pinned, 1, 24)).isEqualTo(8);
+        assertThat(WorkspaceResourcePhase.resolveAutoWorkers(pinned, 13, 24)).isEqualTo(8);
+        assertThat(WorkspaceResourcePhase.resolveAutoWorkers(pinned, 1, 24)).isEqualTo(8);
+    }
+
+    /**
+     * `jobs` is documented as the concurrent module/worker budget, so `-j 4` on a 24-thread host
+     * caps the whole build at four JVMs: width and per-module share come from the same number. The
+     * request carries the client-resolved budget as its module-concurrency cap; the ETA derives the
+     * share through the same function, so explain and the countdown cannot price different builds.
+     */
+    @Test
+    void the_jobs_budget_not_the_core_count_is_what_the_share_divides() {
+        WorkspaceRequest jobs4 =
+                new WorkspaceRequest(tmp, tmp.resolve("cache"), null, 0, null, false, false, 4, null, true, true);
+        int budget = TestWorkers.jobsBudget(jobs4.maxModuleConcurrency());
+        assertThat(budget).isEqualTo(4);
+        // One dirty module: four runners, not twenty-four.
+        assertThat(WorkspaceResourcePhase.resolveAutoWorkers(jobs4, 1, budget)).isEqualTo(4);
+        // Four independent dirty modules under -j 4: one runner each.
+        assertThat(WorkspaceResourcePhase.resolveAutoWorkers(jobs4, 4, budget)).isEqualTo(1);
+        // The ETA's derivation is the executor's.
+        assertThat(TestWorkers.autoShare(budget, 1)).isEqualTo(4);
+        assertThat(TestWorkers.autoShare(24, 4)).isEqualTo(6);
+        assertThat(TestWorkers.autoShare(0, 0)).isEqualTo(1);
+        // No cap on the request: the engine's own budget, which defaults to every core.
+        assertThat(TestWorkers.jobsBudget(0)).isEqualTo(TestWorkers.effectiveJobs());
     }
 
     /**
@@ -131,7 +156,7 @@ class WorkspaceRequestKnobsTest {
         WorkspaceRequest auto =
                 new WorkspaceRequest(tmp, tmp.resolve("cache"), null, 0, null, false, false, 0, null, true, true);
         for (int width : new int[] {1, 2, 4, 8, 13, 24, 30}) {
-            int w = WorkspaceExecute.resolveAutoWorkers(auto, width, 24);
+            int w = WorkspaceResourcePhase.resolveAutoWorkers(auto, width, 24);
             assertThat(HeapPlan.requestedJvms(width, w, true, 24))
                     .as("width %d x %d workers must stay within the cap", width, w)
                     .isLessThanOrEqualTo(24);

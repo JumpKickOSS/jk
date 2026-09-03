@@ -60,6 +60,13 @@ files gets the same treatment with its output attached: write to `outDir` and th
 replays it while the module's sources, `jk.toml` and `jk-lock.toml` are unchanged. Only a
 success is recorded, so a failing script re-runs rather than replaying its own red.
 
+**A script that must run every time says so.** A `//` comment line `jk: always` in the
+script's header (its first 40 lines) exempts it from both the verdict and the artifact
+cache: it runs whenever its anchor runs, and nothing is recorded. That is for work whose
+answer depends on state the cache key cannot see — a sweep that measures build output and
+reclaims it — where "same sources" says nothing about what the script would do now. Checks
+and generators do not want this; the key already describes their inputs.
+
 **A module with no sources still runs its build logic.** A workspace member needs a
 `jk.toml` and an entry in `[workspace] modules`, not a `src/` tree.
 

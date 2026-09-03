@@ -13,7 +13,9 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The parsed engine→plugin spec: one JSONL reader for every plugin, replacing the per-plugin
@@ -24,13 +26,13 @@ import java.util.Optional;
 public final class PluginSpec {
 
     private String op = "";
-    private String name; // step/command name from the op line
+    private @Nullable String name; // step/command name from the op line
     private String pluginId = "";
     private final Map<String, Object> config = new LinkedHashMap<>();
-    private ProjectFacts project;
+    private @Nullable ProjectFacts project;
     private final Map<String, String> manifest = new LinkedHashMap<>();
-    private Path classesDir, sourceOutput, moduleDir, scratch, workdir, snapshotDir;
-    private Path javaHome, artifactPath;
+    private @Nullable Path classesDir, sourceOutput, moduleDir, scratch, workdir, snapshotDir;
+    private @Nullable Path javaHome, artifactPath;
     private final List<Path> compileClasspath = new ArrayList<>();
     private final List<Path> compilerClasspath = new ArrayList<>();
     private final List<Path> processorClasspath = new ArrayList<>();
@@ -53,21 +55,23 @@ public final class PluginSpec {
 
     public static PluginSpec read(Path file) throws IOException {
         PluginSpec s = new PluginSpec();
-        String group = "", pname = "", version = "", mainClass = null;
+        String group = "", pname = "", version = "";
+        @Nullable String mainClass = null;
         int javaRelease = 0;
         boolean nativeDeclared = false, kotlin = false;
         for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
             if (line.isBlank()) continue;
             switch (String.valueOf(Jsonl.str(line, PluginProtocol.T))) {
                 case PluginProtocol.OP -> {
-                    s.op = String.valueOf(Jsonl.str(line, PluginProtocol.OP_NAME));
+                    s.op = requiredString(line, PluginProtocol.OP_NAME);
                     s.name = Jsonl.str(line, PluginProtocol.NAME);
-                    s.pluginId = String.valueOf(Jsonl.str(line, PluginProtocol.PLUGIN));
+                    s.pluginId = requiredString(line, PluginProtocol.PLUGIN);
                 }
                 case PluginProtocol.CONFIG -> {
-                    String key = Jsonl.str(line, PluginProtocol.KEY);
+                    String key = requiredString(line, PluginProtocol.KEY);
                     switch (String.valueOf(Jsonl.str(line, PluginProtocol.CONFIG_KIND))) {
-                        case PluginProtocol.KIND_STRING -> s.config.put(key, Jsonl.str(line, PluginProtocol.VALUE));
+                        case PluginProtocol.KIND_STRING ->
+                            s.config.put(key, requiredString(line, PluginProtocol.VALUE));
                         case PluginProtocol.KIND_BOOL ->
                             s.config.put(key, Jsonl.bool(line, PluginProtocol.VALUE, false));
                         case PluginProtocol.KIND_INT ->
@@ -79,16 +83,17 @@ public final class PluginSpec {
                     }
                 }
                 case PluginProtocol.PROJECT -> {
-                    group = String.valueOf(Jsonl.str(line, "group"));
-                    pname = String.valueOf(Jsonl.str(line, "name"));
-                    version = String.valueOf(Jsonl.str(line, "version"));
+                    group = requiredString(line, "group");
+                    pname = requiredString(line, "name");
+                    version = requiredString(line, "version");
                     javaRelease = Jsonl.intValue(line, "javaRelease", 0);
                     mainClass = Jsonl.str(line, "mainClass");
                     nativeDeclared = Jsonl.bool(line, "nativeDeclared", false);
                     kotlin = Jsonl.bool(line, "kotlin", false);
                 }
                 case PluginProtocol.MANIFEST_ATTR ->
-                    s.manifest.put(Jsonl.str(line, PluginProtocol.KEY), Jsonl.str(line, PluginProtocol.VALUE));
+                    s.manifest.put(
+                            requiredString(line, PluginProtocol.KEY), requiredString(line, PluginProtocol.VALUE));
                 case PluginProtocol.LAYOUT -> {
                     s.classesDir = path(Jsonl.str(line, "classesDir"));
                     s.sourceOutput = path(Jsonl.str(line, "sourceOutput"));
@@ -97,10 +102,10 @@ public final class PluginSpec {
                     s.workdir = path(Jsonl.str(line, "workdir"));
                     s.snapshotDir = path(Jsonl.str(line, "snapshotDir"));
                 }
-                case PluginProtocol.JAVA_HOME -> s.javaHome = path(Jsonl.str(line, PluginProtocol.PATH));
-                case PluginProtocol.ARTIFACT -> s.artifactPath = path(Jsonl.str(line, PluginProtocol.PATH));
+                case PluginProtocol.JAVA_HOME -> s.javaHome = requiredPath(line, PluginProtocol.PATH);
+                case PluginProtocol.ARTIFACT -> s.artifactPath = requiredPath(line, PluginProtocol.PATH);
                 case PluginProtocol.CP -> {
-                    Path p = path(Jsonl.str(line, PluginProtocol.PATH));
+                    Path p = requiredPath(line, PluginProtocol.PATH);
                     switch (String.valueOf(Jsonl.str(line, PluginProtocol.ROLE))) {
                         case PluginProtocol.ROLE_PROCESSOR -> s.processorClasspath.add(p);
                         case PluginProtocol.ROLE_FRIEND -> s.friendPaths.add(p);
@@ -110,13 +115,13 @@ public final class PluginSpec {
                     }
                 }
                 case PluginProtocol.ENTRY -> {
-                    String jar = Jsonl.str(line, PluginProtocol.PATH);
-                    String container = Jsonl.str(line, PluginProtocol.CONTAINER);
-                    String g = Jsonl.str(line, "group");
-                    String a = Jsonl.str(line, "artifact");
-                    String v = Jsonl.str(line, "version");
+                    @Nullable String jar = Jsonl.str(line, PluginProtocol.PATH);
+                    @Nullable String container = Jsonl.str(line, PluginProtocol.CONTAINER);
+                    @Nullable String g = Jsonl.str(line, "group");
+                    @Nullable String a = Jsonl.str(line, "artifact");
+                    @Nullable String v = Jsonl.str(line, "version");
                     s.entries.add(new PackageIo.RuntimeEntry(
-                            String.valueOf(Jsonl.str(line, PluginProtocol.FILE_NAME)),
+                            requiredString(line, PluginProtocol.FILE_NAME),
                             jar == null ? null : Path.of(jar),
                             Jsonl.bool(line, PluginProtocol.SNAPSHOT, false),
                             container == null ? null : Path.of(container),
@@ -124,25 +129,20 @@ public final class PluginSpec {
                             a == null ? "" : a,
                             v == null ? "" : v));
                 }
-                case PluginProtocol.SOURCE -> s.sources.add(path(Jsonl.str(line, PluginProtocol.PATH)));
-                case PluginProtocol.ARG -> s.args.add(Jsonl.str(line, PluginProtocol.VALUE));
+                case PluginProtocol.SOURCE -> s.sources.add(requiredPath(line, PluginProtocol.PATH));
+                case PluginProtocol.ARG -> s.args.add(requiredString(line, PluginProtocol.VALUE));
                 case PluginProtocol.COMPILER_PLUGIN ->
                     s.compilerPlugins.add(new CompilerPlugin(
-                            Jsonl.str(line, "id"),
-                            path(Jsonl.str(line, PluginProtocol.PATH)),
+                            requiredString(line, "id"),
+                            requiredPath(line, PluginProtocol.PATH),
                             Jsonl.strArray(line, "options")));
                 case PluginProtocol.STEP_OUTPUT ->
                     s.stepOutputs.put(
-                            String.valueOf(Jsonl.str(line, PluginProtocol.NAME)),
-                            path(Jsonl.str(line, PluginProtocol.DIR)));
+                            requiredString(line, PluginProtocol.NAME), requiredPath(line, PluginProtocol.DIR));
                 case PluginProtocol.EXTRA ->
-                    s.extras.put(
-                            String.valueOf(Jsonl.str(line, PluginProtocol.NAME)),
-                            path(Jsonl.str(line, PluginProtocol.PATH)));
+                    s.extras.put(requiredString(line, PluginProtocol.NAME), requiredPath(line, PluginProtocol.PATH));
                 case PluginProtocol.SECRET ->
-                    s.secrets.put(
-                            String.valueOf(Jsonl.str(line, PluginProtocol.KEY)),
-                            String.valueOf(Jsonl.str(line, PluginProtocol.VALUE)));
+                    s.secrets.put(requiredString(line, PluginProtocol.KEY), requiredString(line, PluginProtocol.VALUE));
                 case PluginProtocol.COMMAND_ARGS -> s.commandArgs.addAll(Jsonl.strArray(line, PluginProtocol.VALUES));
                 case PluginProtocol.OFFLINE -> s.offline = Jsonl.bool(line, PluginProtocol.VALUE, true);
                 default -> {
@@ -154,8 +154,16 @@ public final class PluginSpec {
         return s;
     }
 
-    private static Path path(String s) {
+    private static @Nullable Path path(@Nullable String s) {
         return s == null ? null : Path.of(s);
+    }
+
+    private static String requiredString(String line, String key) {
+        return Objects.requireNonNull(Jsonl.str(line, key), "spec line missing " + key);
+    }
+
+    private static Path requiredPath(String line, String key) {
+        return Path.of(requiredString(line, key));
     }
 
     public String op() {
@@ -175,10 +183,10 @@ public final class PluginSpec {
     }
 
     public ProjectFacts project() {
-        return project;
+        return Objects.requireNonNull(project, "spec project facts not initialized");
     }
 
-    public Path classesDir() {
+    public @Nullable Path classesDir() {
         return classesDir;
     }
 
@@ -192,37 +200,37 @@ public final class PluginSpec {
      */
     public String requireCompileInputs() {
         if (classesDir == null) throw new IllegalArgumentException("spec missing layout.classesDir (OUTPUT)");
-        String jvmTarget = config().stringOpt("jvmTarget").orElse(null);
+        @Nullable String jvmTarget = config().stringOpt("jvmTarget").orElse(null);
         if (jvmTarget == null) throw new IllegalArgumentException("spec missing config jvmTarget");
         if (sources.isEmpty()) throw new IllegalArgumentException("spec has no source entries");
         return jvmTarget;
     }
 
-    public Path sourceOutput() {
+    public @Nullable Path sourceOutput() {
         return sourceOutput;
     }
 
-    public Path moduleDir() {
+    public @Nullable Path moduleDir() {
         return moduleDir;
     }
 
-    public Path scratch() {
+    public @Nullable Path scratch() {
         return scratch;
     }
 
-    public Path workdir() {
+    public @Nullable Path workdir() {
         return workdir;
     }
 
-    public Path snapshotDir() {
+    public @Nullable Path snapshotDir() {
         return snapshotDir;
     }
 
-    public Path javaHome() {
+    public @Nullable Path javaHome() {
         return javaHome;
     }
 
-    public Path artifactPath() {
+    public @Nullable Path artifactPath() {
         return artifactPath;
     }
 

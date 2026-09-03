@@ -2,11 +2,11 @@
 package cc.jumpkick.cli.engine;
 
 import cc.jumpkick.cli.Jk;
-import cc.jumpkick.engine.EnginePaths;
-import cc.jumpkick.engine.EngineTransport;
-import cc.jumpkick.engine.protocol.EngineProtocol;
-import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.jsonl.BoundedLineReader;
+import cc.jumpkick.wire.EnginePaths;
+import cc.jumpkick.wire.EngineTransport;
+import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.protocol.ProtoLifecycle;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -142,7 +142,7 @@ public final class EngineWire {
 
     /**
      * Package-visible: {@link #stream} opens a fresh long-lived connection per request. On
-     * the loopback-TCP transport (Windows — see {@link cc.jumpkick.engine.EngineTransport}), {@code
+     * the loopback-TCP transport (Windows — see {@link cc.jumpkick.wire.EngineTransport}), {@code
      * socket} holds the port number (not a real socket path) and this also sends the required
      * {@link EngineProtocol#AUTH} line before returning, so every caller authenticates transparently
      * without needing its own knowledge of the transport.

@@ -83,7 +83,7 @@ class JkBuildParserJdkTest {
 
     @Test
     void accepts_unquoted_integer_jdk_as_bare_major() {
-        // Back-compat: the old integer form coerces to a bare-major string.
+        // Unquoted integer {@code jdk} coerces to a bare-major string.
         JkBuild parsed = JkBuildParser.parse("""
                 group    = "com.example"
                 name     = "widget"

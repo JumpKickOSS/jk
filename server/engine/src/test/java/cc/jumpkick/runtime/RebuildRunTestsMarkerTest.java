@@ -14,6 +14,7 @@ import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.wire.runtime.TaskForecast;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;

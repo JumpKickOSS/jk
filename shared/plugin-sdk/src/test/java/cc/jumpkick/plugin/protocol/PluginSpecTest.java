@@ -120,6 +120,34 @@ class PluginSpecTest {
                         .op(PluginProtocol.OP_PACKAGE, null, "jk-quarkus")
                         .lines(),
                 StandardCharsets.UTF_8);
-        assertThat(PluginSpec.read(spec).offline()).isTrue();
+        PluginSpec parsed = PluginSpec.read(spec);
+        assertThat(parsed.name()).isEmpty();
+        assertThat(parsed.classesDir()).isNull();
+        assertThat(parsed.javaHome()).isNull();
+        assertThat(parsed.artifactPath()).isNull();
+        assertThat(parsed.offline()).isTrue();
+    }
+
+    @Test
+    void container_only_runtime_entry_keeps_its_nullable_jar(@TempDir Path dir) throws Exception {
+        Path spec = dir.resolve("container.spec");
+        Files.write(
+                spec,
+                new SpecWriter()
+                        .op(PluginProtocol.OP_PACKAGE, null, "jk-android")
+                        .entry("android.aar", null, false, dir.resolve("android-aar"))
+                        .lines(),
+                StandardCharsets.UTF_8);
+
+        PackageIo.RuntimeEntry entry = PluginSpec.read(spec).entries().get(0);
+        assertThat(entry.jar()).isNull();
+        assertThat(entry.container()).isEqualTo(dir.resolve("android-aar").toAbsolutePath());
+    }
+
+    @Test
+    void reply_writer_omits_absent_optional_fields() {
+        assertThat(PluginReply.diagnostic("warning", null, 0, 0, "message"))
+                .doesNotContain("\"file\"", "\"line\"", "\"col\"");
+        assertThat(PluginReply.file("Main.java", "unchanged", null)).doesNotContain("\"msg\"");
     }
 }

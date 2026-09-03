@@ -3,9 +3,9 @@ package cc.jumpkick.engine.verbs;
 
 import cc.jumpkick.config.Redacted;
 import cc.jumpkick.engine.jobs.JobOutcome;
-import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.model.command.Exit;
-import cc.jumpkick.runtime.WorkspaceResult;
+import cc.jumpkick.wire.protocol.ProtoEvents;
+import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.io.BufferedWriter;
 import java.util.List;
 import org.jspecify.annotations.Nullable;

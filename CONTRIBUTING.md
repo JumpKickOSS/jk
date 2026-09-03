@@ -27,6 +27,16 @@ Build with **JDK 25+**. Native `dist` needs a GraalVM-capable JDK (GraalVM CE is
 Gradle comes from the wrapper (`gradle/wrapper/`). SDKMAN is optional; otherwise Gradle can
 provision a JDK via the foojay resolver on first use.
 
+Dashboard JS suites (`:web:test`, part of `checkFast`) need **Node** at the version in
+[`.nvmrc`](.nvmrc). `nvm`, `fnm`, and `mise` all read that file:
+
+```bash
+nvm install   # or: fnm install / mise install
+nvm use
+```
+
+A missing `node` fails the gate rather than skipping. Opt out only with `JK_WEB_JS_SKIP=1`.
+
 ## Build-family commands
 
 `jk build`, `jk test`, `jk native`, and workspace `jk image` share **one** engine
@@ -135,7 +145,7 @@ The client never embeds the engine. Spawning uses
 
 | Still Gradle | Why |
 |---|---|
-| `./gradlew test` (unit tier) / `integrationTest` / `checkAll` | CI: unit on every push/PR (`ci.yml`); integration on Linux nightly (`ci-nightly.yml`). Local pre-merge bar is still `checkAll` when you touch wire/engine/CLI — see [docs/contributors/test-suite-tiers.md](docs/contributors/test-suite-tiers.md) |
+| `./gradlew test` (unit tier) / `integrationTest` / `checkAll` | CI: `checkFast` on every push/PR (`ci.yml`); integration/slow/network/bench + coverage inventory + OS smoke on nightly (`ci-nightly.yml`). Local pre-merge bar is still `checkAll` when you touch wire/engine/CLI — see [docs/contributors/test-suite-tiers.md](docs/contributors/test-suite-tiers.md) |
 | `./gradlew dist` / `nativeCompile` | Bootstrap / ship layout (`build/dist/jk`); Gradle still for native release matrix |
 | `./gradlew installLocal` | Workers + **engine materialize/bounce**; or `jk install` after `jk build` for workers only |
 
@@ -152,18 +162,22 @@ Workers after a pure-jk build: `jk install`.
 
 | Lane | When | What |
 |---|---|---|
-| **Push / PR** (`ci.yml`) | Every push to `main` and every PR | Commit-authorship scan; `./gradlew test` (unit tier) on Linux |
-| **Nightly** (`ci-nightly.yml`) | Daily cron + manual `workflow_dispatch` | `./gradlew integrationTest` on Linux |
+| **Push / PR** (`ci.yml`) | Every push to `main` and every PR | Commit-authorship scan; `./gradlew checkFast` on Linux |
+| **Nightly** (`ci-nightly.yml`) | Daily cron + manual `workflow_dispatch` | Linux: `integrationTest`, `slowTest`, `networkTest`, `benchTest`, coverage inventory, heap guard, doc examples. macOS + Windows: product smoke (`scripts/ci-product-smoke.sh`). |
 
-Native multi-OS builds stay on the **release** matrix (`release.yml`), not CI. Windows/macOS
-test lanes are deferred to keep Actions minutes low.
+Native multi-OS **images** stay on the **release** matrix (`release.yml`). Coverage is an
+inventory (`./gradlew coverageReport -Pjk.coverage`); it never fails on a percentage. The
+JaCoCo agent stays off unless that property is set, so `checkFast` does not pay for it.
 
 **Reproduce locally**
 
 ```bash
-./gradlew test                 # same as push/PR CI
-./gradlew integrationTest      # same as nightly
-./gradlew checkAll             # unit + integration before merge when you touch heavy paths
+./gradlew checkFast                          # same as push/PR CI
+./gradlew integrationTest                    # nightly Linux integration
+./gradlew benchTest                          # nightly microbenchmarks
+./gradlew coverageReport -Pjk.coverage       # nightly coverage inventory
+./gradlew checkAll                           # unit + integration before merge when you touch heavy paths
+./scripts/ci-product-smoke.sh                # nightly macOS/Windows smoke (jk on PATH)
 ```
 
 #### Engine / CLI tests under self-host

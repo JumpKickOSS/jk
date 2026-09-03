@@ -3,7 +3,7 @@ package cc.jumpkick.cli.run;
 
 import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.cli.engine.EngineClient;
-import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.wire.EnginePaths;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;

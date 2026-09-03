@@ -65,7 +65,7 @@ val knownCatalogLockDrift = setOf(
 )
 
 // Guard G33.
-val checkCatalogLockParity by tasks.registering {
+val checkCatalogLockParity = registerGuard("checkCatalogLockParity") {
     group = "verification"
     description = "Fail the build when gradle/libs.versions.toml and jk-lock.toml disagree on a shared module"
     val catalogFile = rootProject.layout.projectDirectory.file("gradle/libs.versions.toml")
@@ -122,5 +122,3 @@ val checkCatalogLockParity by tasks.registering {
         stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
     }
 }
-tasks.named("check") { dependsOn(checkCatalogLockParity) }
-tasks.named("jar") { dependsOn(checkCatalogLockParity) }

@@ -2,7 +2,7 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.engine.EngineClient;
-import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.wire.EnginePaths;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;

@@ -52,7 +52,7 @@ User documentation (exclusive groups + custom internal repos): [repositories](..
 
 ```bash
 ./gradlew clean dist installLocal
-export JK_RELEASE_SIGNING_KEY=…   # optional for binary .sig
+export JK_RELEASE_RSA_SIGNING_KEY_FILE=/owner-only/path/release-key.pem
 scripts/assemble-release-dir.sh build/release/0.12.0
 # upload releases/
 gsutil -m rsync -r build/release/0.12.0/ gs://jumpkick/releases/0.12.0/

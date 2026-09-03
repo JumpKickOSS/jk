@@ -3,34 +3,34 @@ package cc.jumpkick.cli.engine;
 
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.config.TestSelection;
-import cc.jumpkick.engine.EnginePaths;
-import cc.jumpkick.engine.protocol.AffectedTestsReport;
-import cc.jumpkick.engine.protocol.CacheInventoryAck;
-import cc.jumpkick.engine.protocol.CatalogReadAck;
-import cc.jumpkick.engine.protocol.DenyReport;
-import cc.jumpkick.engine.protocol.EngineProtocol;
-import cc.jumpkick.engine.protocol.ExecPlan;
-import cc.jumpkick.engine.protocol.GeneratedFiles;
-import cc.jumpkick.engine.protocol.IdeWireModel;
-import cc.jumpkick.engine.protocol.ModuleGraphAck;
-import cc.jumpkick.engine.protocol.NewProjectAck;
-import cc.jumpkick.engine.protocol.OutdatedReport;
-import cc.jumpkick.engine.protocol.PluginCommandReport;
-import cc.jumpkick.engine.protocol.ProjectInfo;
-import cc.jumpkick.engine.protocol.ProtoLifecycle;
-import cc.jumpkick.engine.protocol.ProtoSession;
-import cc.jumpkick.engine.protocol.WhyReport;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TestSummary;
-import cc.jumpkick.runtime.BuildForecast;
-import cc.jumpkick.runtime.ExplainPlan;
-import cc.jumpkick.runtime.HostedEvents;
-import cc.jumpkick.runtime.WorkspaceBuildListener;
-import cc.jumpkick.runtime.WorkspaceRequest;
-import cc.jumpkick.runtime.WorkspaceResult;
+import cc.jumpkick.wire.EnginePaths;
+import cc.jumpkick.wire.protocol.AffectedTestsReport;
+import cc.jumpkick.wire.protocol.CacheInventoryAck;
+import cc.jumpkick.wire.protocol.CatalogReadAck;
+import cc.jumpkick.wire.protocol.DenyReport;
+import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.protocol.ExecPlan;
+import cc.jumpkick.wire.protocol.GeneratedFiles;
+import cc.jumpkick.wire.protocol.IdeWireModel;
+import cc.jumpkick.wire.protocol.ModuleGraphAck;
+import cc.jumpkick.wire.protocol.NewProjectAck;
+import cc.jumpkick.wire.protocol.OutdatedReport;
+import cc.jumpkick.wire.protocol.PluginCommandReport;
+import cc.jumpkick.wire.protocol.ProjectInfo;
+import cc.jumpkick.wire.protocol.ProtoLifecycle;
+import cc.jumpkick.wire.protocol.ProtoSession;
+import cc.jumpkick.wire.protocol.WhyReport;
+import cc.jumpkick.wire.runtime.BuildForecast;
+import cc.jumpkick.wire.runtime.ExplainPlan;
+import cc.jumpkick.wire.runtime.HostedEvents;
+import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
+import cc.jumpkick.wire.runtime.WorkspaceRequest;
+import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -877,7 +877,7 @@ public final class EngineClient {
 
     /**
      * Report declared dependencies with newer versions available against the engine ({@code jk
-     * outdated}) — one synchronous request, one {@link cc.jumpkick.engine.protocol.OutdatedReport}
+     * outdated}) — one synchronous request, one {@link cc.jumpkick.wire.protocol.OutdatedReport}
      * back. Read-only: the engine enumerates versions and writes nothing.
      */
     public static OutdatedReport runOutdated(EnginePaths.Paths paths, EngineRequests.OutdatedRequest req)

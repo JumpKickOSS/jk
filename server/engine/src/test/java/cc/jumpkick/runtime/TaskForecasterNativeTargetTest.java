@@ -11,6 +11,8 @@ import cc.jumpkick.lock.LockManifestDigest;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.wire.runtime.TaskForecast;
+import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;

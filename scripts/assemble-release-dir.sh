@@ -7,11 +7,13 @@
 # Env:
 # JK_VERSION override version (default: JkVersion / project version via git describe or file)
 # Layout written to out-dir (default: build/release/<version>/):
-# jk-<os>-<arch>.xz (every platform, including Windows — self-update)
-# jk-windows-x86_64.zip (Windows only — install.ps1 / jk.bat; no system xz)
+# jk-<os>-<arch>-<version>.xz (every platform, including Windows — self-update)
+# jk-windows-x86_64-<version>.zip (Windows only — install.ps1 / jk.bat; no system xz)
+# The version is part of every artifact name, so a signed manifest copied from another
+# release directory cannot name what an installer asks for.
 # jk-engine-<version>.jar
 # SHA256SUMS
-# SHA256SUMS.sig (if JK_RELEASE_SIGNING_KEY is set)
+# SHA256SUMS.sig (if JK_RELEASE_RSA_SIGNING_KEY or its file variant is set)
 # ../latest/VERSION pointer is the caller's job (CI).
 set -euo pipefail
 
@@ -49,10 +51,10 @@ case "$ARCH" in
 esac
 
 if [[ -f "$DIST/jk" ]]; then
-  name="jk-${os}-${arch}"
+  name="jk-${os}-${arch}-${VERSION}"
   src="$DIST/jk"
 elif [[ -f "$DIST/jk.exe" ]]; then
-  name="jk-windows-x86_64"
+  name="jk-windows-x86_64-${VERSION}"
   src="$DIST/jk.exe"
 else
   echo "assemble-release-dir: no native jk binary in $DIST" >&2
@@ -91,10 +93,10 @@ cp "$engine" "$OUT/jk-engine-${VERSION}.jar"
   fi
 )
 
-if [[ -n "${JK_RELEASE_SIGNING_KEY:-}" ]]; then
+if [[ -n "${JK_RELEASE_RSA_SIGNING_KEY:-}" || -n "${JK_RELEASE_RSA_SIGNING_KEY_FILE:-}" ]]; then
   bash "$ROOT/scripts/sign-release.sh" "$OUT/SHA256SUMS"
 else
-  echo "assemble-release-dir: JK_RELEASE_SIGNING_KEY unset — SHA256SUMS.sig not written" >&2
+  echo "assemble-release-dir: RSA signing key unset — SHA256SUMS.sig not written" >&2
 fi
 
 echo "assemble-release-dir: $OUT"

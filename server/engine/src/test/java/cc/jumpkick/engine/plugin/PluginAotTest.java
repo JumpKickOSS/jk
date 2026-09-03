@@ -115,8 +115,7 @@ class PluginAotTest {
                 "test", cache, (aotOutput, scratch) -> List.of("bash", "-c", "echo trained > '" + aotOutput + "'"));
         // The sweep runs inside runTrainer, between publishing the cache and dropping the claim —
         // so the claim's disappearance is the "trainer done, sweep included" signal. Waiting on
-        // Files.exists(cache) alone races the sweep, which is why this used to carry a bare
-        // Thread.sleep(100): a guess about this machine, and no assertion at all.
+        // Files.exists(cache) alone races the sweep.
         Path claim = cache.resolveSibling(cache.getFileName() + ".training");
         Await.until(Duration.ofSeconds(30), () -> Files.exists(cache) && !Files.exists(claim));
         for (Path p : runner) assertThat(p).exists();

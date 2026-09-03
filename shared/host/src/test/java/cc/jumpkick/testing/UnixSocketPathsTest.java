@@ -14,9 +14,8 @@ import org.junit.jupiter.api.condition.DisabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 
 /**
- * The budget, proven by binding. Four files used to quote a cap ({@code 104}, {@code "~104"},
- * {@code "~108"}, a bare {@code 60}) and none of them was ever executed against a socket, which is
- * why a 103-byte path — inside every one of those numbers — failed for a whole test tier.
+ * The budget, proven by binding. {@link UnixSocketPaths#MAX_PATH_LENGTH} is the longest path the
+ * JDK will accept; a 103-byte path fails even though it is inside the raw {@code sun_path} sizes.
  */
 @DisabledOnOs(OS.WINDOWS) // no Unix domain sockets to budget for
 class UnixSocketPathsTest {

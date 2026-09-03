@@ -2,6 +2,7 @@
 package cc.jumpkick.plugin.build;
 
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A plugin-declared command (build-plugins plan row 11 — rare by design): {@code jk <name>}
@@ -18,7 +19,7 @@ public final class PluginCommandSpec {
 
     private final String name;
     private String description = "";
-    private Body body;
+    private @Nullable Body body;
 
     private PluginCommandSpec(String name) {
         this.name = Objects.requireNonNull(name, "name");
@@ -28,7 +29,7 @@ public final class PluginCommandSpec {
         return new PluginCommandSpec(name);
     }
 
-    public PluginCommandSpec description(String description) {
+    public PluginCommandSpec description(@Nullable String description) {
         this.description = description == null ? "" : description;
         return this;
     }
@@ -46,7 +47,7 @@ public final class PluginCommandSpec {
         return description;
     }
 
-    public Body body() {
+    public @Nullable Body body() {
         return body;
     }
 }

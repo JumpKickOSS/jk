@@ -6,16 +6,16 @@ import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
-import cc.jumpkick.engine.protocol.EngineProtocol;
-import cc.jumpkick.engine.protocol.ProtoEvents;
-import cc.jumpkick.engine.protocol.ProtoJobs;
-import cc.jumpkick.engine.protocol.ProtoReads;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.runtime.ExplainPlan;
 import cc.jumpkick.runtime.ExplainReport;
-import cc.jumpkick.runtime.TaskForecast;
+import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.protocol.ProtoEvents;
+import cc.jumpkick.wire.protocol.ProtoJobs;
+import cc.jumpkick.wire.protocol.ProtoReads;
+import cc.jumpkick.wire.runtime.ExplainPlan;
+import cc.jumpkick.wire.runtime.TaskForecast;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 
@@ -70,7 +70,12 @@ public final class ExplainVerb implements HostedVerb {
                 Session session = Session.defaults()
                         .withConfig(config)
                         .withWorkingDir(entryDir)
-                        .withCacheDir(cache);
+                        .withCacheDir(cache)
+                        // The client's resolved test selection, exactly as WorkspaceBuildVerb
+                        // applies it. Without it this session carried TestSelection.DEFAULT, whose
+                        // empty exclude-tag list is itself a stamp input — so the forecast computed
+                        // a run-tests key no build had ever stored and called all 30 modules dirty.
+                        .withTestSelection(ProtoJobs.testSelectionOf(requestLine));
                 JkBuild entryBuild = JkBuildParser.parse(entryDir.resolve(ManifestPaths.MANIFEST));
                 String etaJdksDirStr = Jsonl.str(requestLine, ProtoJobs.JDKS_DIR);
                 int workers = Jsonl.intValue(requestLine, "workers", 0); // 0 = auto (bare jk build)

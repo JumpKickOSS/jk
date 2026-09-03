@@ -4,6 +4,7 @@ package cc.jumpkick.plugin.build;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 /**
  * One plugin task on the module BuildPlan: declared inputs → tool run → declared outputs. Ordering
@@ -27,13 +28,13 @@ public final class TaskSpec {
     private final List<String> contributesResources = new ArrayList<>();
     private final List<String> contributesSources = new ArrayList<>();
     private final List<String> contributesTestClasspath = new ArrayList<>();
-    private String transformsClasses;
+    private @Nullable String transformsClasses;
     /**
      * Optional product stage wire name ({@code generate}, {@code compile}, {@code test}, …). Null
      * means the engine infers from task name / contributions.
      */
-    private String stage;
-    private Body body;
+    private @Nullable String stage;
+    private @Nullable Body body;
 
     private TaskSpec(String name) {
         this.name = Objects.requireNonNull(name, "name");
@@ -49,7 +50,7 @@ public final class TaskSpec {
      */
     public TaskSpec requires(String... taskNames) {
         for (String t : taskNames) {
-            if (t != null && !t.isBlank()) requires.add(t);
+            if (!t.isBlank()) requires.add(t);
         }
         return this;
     }
@@ -93,7 +94,7 @@ public final class TaskSpec {
      * Product stage for UI fold / ETA ({@code generate}, {@code compile}, {@code test},
      * {@code package}, …). Matches {@code BuildStage#wireName()}. Omit to let the engine infer.
      */
-    public TaskSpec stage(String stageWire) {
+    public TaskSpec stage(@Nullable String stageWire) {
         this.stage = (stageWire == null || stageWire.isBlank()) ? null : stageWire.trim();
         return this;
     }
@@ -135,16 +136,16 @@ public final class TaskSpec {
         return List.copyOf(contributesTestClasspath);
     }
 
-    public String classesTransform() {
+    public @Nullable String classesTransform() {
         return transformsClasses;
     }
 
     /** Optional stage wire name, or null when unset. */
-    public String stage() {
+    public @Nullable String stage() {
         return stage;
     }
 
-    public Body body() {
+    public @Nullable Body body() {
         return body;
     }
 }

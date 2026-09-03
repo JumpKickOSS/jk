@@ -8,15 +8,15 @@ import cc.jumpkick.engine.jobs.JobSession;
 import cc.jumpkick.engine.jobs.JobSessions;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.listen.EventRedaction;
-import cc.jumpkick.engine.protocol.EngineProtocol;
-import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
 import cc.jumpkick.runtime.ProjectIds;
-import cc.jumpkick.runtime.RemainingWork;
-import cc.jumpkick.runtime.WorkspaceProgressTracker;
 import cc.jumpkick.task.IoLedger;
+import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.protocol.ProtoEvents;
+import cc.jumpkick.wire.runtime.RemainingWork;
+import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -568,7 +568,7 @@ public final class SsePublisher {
 
     /**
      * Fine-grained module plan ticks for the dashboard (step detail). Aggregate % on SSE/MCP:
-     * workspace builds use {@link cc.jumpkick.runtime.WorkspaceProgressTracker}; single-plan
+     * workspace builds use {@link cc.jumpkick.wire.runtime.WorkspaceProgressTracker}; single-plan
      * jobs (build/test/compile) have no tracker yet — the plan <em>is</em> the whole request, so
      * feed last-progress on the session from this view.
      */

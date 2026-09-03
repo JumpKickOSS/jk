@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
-import cc.jumpkick.engine.EnginePaths;
-import cc.jumpkick.engine.protocol.EngineProtocol;
-import cc.jumpkick.engine.protocol.ProtoReads;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.jsonl.Jsonl;
-import cc.jumpkick.runtime.ExplainPlan;
-import cc.jumpkick.runtime.TaskForecast;
+import cc.jumpkick.wire.EnginePaths;
+import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.protocol.ProtoReads;
+import cc.jumpkick.wire.runtime.ExplainPlan;
+import cc.jumpkick.wire.runtime.TaskForecast;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -54,7 +55,11 @@ final class EngineExplainDecoder {
                 req.parallelTests(),
                 req.verbose(),
                 req.rebuild(),
-                req.maxModuleConcurrency());
+                req.maxModuleConcurrency(),
+                // The session's resolved selection, same as jk build sends: it feeds every
+                // module's run-tests stamp key, and an explain that omits it forecasts a suite
+                // re-run for every module in the tree.
+                SessionContext.current().testSelection());
         return EngineWire.stream(paths, request, (reader, ch) -> {
             List<TaskForecast.Module> modules = new ArrayList<>();
             Map<String, List<TaskForecast.Task>> stepsByDir = new LinkedHashMap<>();

@@ -355,8 +355,14 @@ public final class JUnitLauncher {
             resolvedWorkers = TestWorkers.resolve(workers, Integer.MAX_VALUE, TestWorkers.effectiveJobs());
         }
 
+        // Tag every summary with the runner count that produced it, at the one place that count is
+        // authoritative. The inner paths cannot: `runSingle` returns from two places and the
+        // parallel pool merges per-worker aggregators built by a constructor that has no idea. Doing
+        // it per-path recorded the concurrency for 2 modules out of 29, which is worse than not at
+        // all — a forecast rescales the modules it has a count for and not the rest.
         if (resolvedWorkers <= 1) {
-            return runSingle(javaBinary, classpath, testClassesDir, listener, testResultsDir);
+            return runSingle(javaBinary, classpath, testClassesDir, listener, testResultsDir)
+                    .withWorkers(1);
         }
         // W>1 + Jupiter in-process parallel is a known double-parallelism footgun.
         List<Path> cpForDetect = new ArrayList<>();
@@ -366,7 +372,8 @@ public final class JUnitLauncher {
             listener.onWarning("jupiter-parallel", JupiterParallelDetect.stackWarning(resolvedWorkers));
         }
         return runParallel(
-                javaBinary, classpath, testClassesDir, resolvedWorkers, listener, testResultsDir, preDiscovered);
+                        javaBinary, classpath, testClassesDir, resolvedWorkers, listener, testResultsDir, preDiscovered)
+                .withWorkers(resolvedWorkers);
     }
 
     // -------- single-worker ---------------------------------------------
@@ -510,7 +517,10 @@ public final class JUnitLauncher {
                 a.skipped() + b.skipped(),
                 a.classes() + b.classes(),
                 failures,
-                walls);
+                walls,
+                // Sharded pool + serial-tag pool: the suite's concurrency is the wider of the two,
+                // since that is what shaped its wall.
+                Math.max(a.workers(), b.workers()));
     }
 
     /** One pull-queue pool over {@code classes}; report accumulation stays with the caller. */
@@ -617,7 +627,7 @@ public final class JUnitLauncher {
                         moduleLabel, "", cls, who, "", why, captures.get(i).text(), workerIdBase + i + 1));
             }
         }
-        return new TestSummary(total, succeeded, failed, skipped, classCount, allFailures, walls);
+        return new TestSummary(total, succeeded, failed, skipped, classCount, allFailures, walls, actualWorkers);
     }
 
     /**

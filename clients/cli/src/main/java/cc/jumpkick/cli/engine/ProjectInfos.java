@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
-import cc.jumpkick.engine.EnginePaths;
-import cc.jumpkick.engine.protocol.ProjectInfo;
+import cc.jumpkick.wire.EnginePaths;
+import cc.jumpkick.wire.protocol.ProjectInfo;
 import java.nio.file.Path;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.Nullable;

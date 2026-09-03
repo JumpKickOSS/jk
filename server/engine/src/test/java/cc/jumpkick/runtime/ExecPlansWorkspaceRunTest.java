@@ -3,7 +3,7 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.engine.protocol.ExecPlan;
+import cc.jumpkick.wire.protocol.ExecPlan;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;

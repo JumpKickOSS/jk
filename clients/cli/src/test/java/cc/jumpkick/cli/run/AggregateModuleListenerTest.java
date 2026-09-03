@@ -9,7 +9,7 @@ import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskStatus;
-import cc.jumpkick.runtime.WorkspaceProgressTracker;
+import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;

@@ -160,11 +160,7 @@ class InstallCommandTest {
         // The application-launcher shape: a classpath and a main class, not a tool env.
         assertThat(script).contains("com.example.Main");
         assertThat(script).contains("-cp ");
-        // It also has to say who wrote it. This used to assert the opposite — the absence of the
-        // line was standing in for "this is the app shape, not the tool shape" — but that made the
-        // app launcher indistinguishable from a hand-rolled shim of the same name, which is how
-        // `jk tool uninstall` came to delete binaries jk never wrote. Attribution is now
-        // required of every launcher jk puts on PATH; the two shapes are told apart above.
+        // Every launcher jk puts on PATH is attributed; app vs tool is told apart above.
         assertThat(script).contains(JkOwnership.GENERATED_BY);
     }
 

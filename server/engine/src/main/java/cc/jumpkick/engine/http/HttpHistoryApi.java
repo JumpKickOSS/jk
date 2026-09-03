@@ -69,11 +69,11 @@ final class HttpHistoryApi {
             return;
         }
         // Single pass, no parse, streamed out: the kind gate rides into the journal as a lexical
-        // filter, so exactly one page of survivors is read (this used to load 4x and discard),
-        // and the raw loader never builds a record graph — the "does this row even need
-        // enrichment" check is lexical too, so a finished, id-stamped record — the overwhelming
-        // majority — is written through verbatim; only in-flight or legacy rows pay MiniJson. The
-        // response is chunked straight to the socket instead of join-then-copy.
+        // filter so exactly one page of survivors is read, and the raw loader never builds a
+        // record graph. The "does this row even need enrichment" check is lexical too, so a
+        // finished, id-stamped record — the overwhelming majority — is written through verbatim;
+        // only in-flight or unstamped rows pay MiniJson. The response is chunked straight to the
+        // socket instead of join-then-copy.
         List<String> raw = journal.rawRecords(HISTORY_LIST_LIMIT, HttpHistoryApi::isBuildLikeHistoryJson);
         exchange.sendResponseHeaders(200, 0);
         Map<String, SecretRedactor> redactors = new HashMap<>();
@@ -92,15 +92,10 @@ final class HttpHistoryApi {
     }
 
     /**
-     * Defense in depth: records persisted before write-time redaction may
-     * carry {@code .env} secrets in message/stack, and this endpoint streams record bodies
-     * verbatim. Re-redact against each record's own dir; {@code cache} amortises the env lookup
-     * per distinct dir across one response (rows overwhelmingly share a dir).
-     */
-    /**
-     * Redact a batch of raw journal records with one per-dir redactor cache. The MCP journal
-     * suppliers ride this so {@code jk_history view=full} / {@code jk_diagnostics} never serve
-     * pre-redaction secrets — same defense-in-depth as the REST history stream.
+     * Redact a batch of raw journal records with one per-dir redactor cache. This endpoint
+     * streams record bodies verbatim, so {@code .env} secrets in message/stack are stripped here.
+     * MCP journal suppliers ride this so {@code jk_history view=full} / {@code jk_diagnostics}
+     * never serve those secrets.
      */
     static List<String> redactRecords(List<String> raw) {
         Map<String, SecretRedactor> cache = new HashMap<>();
@@ -137,7 +132,7 @@ final class HttpHistoryApi {
 
     /**
      * True when {@link #enrichHistoryJson} could change this row: it is in-flight
-     * ({@code "running": true}) or lacks a non-blank {@code projectId} (legacy stub). Lexical and
+     * ({@code "running": true}) or lacks a non-blank {@code projectId}. Lexical and
      * conservative — a false positive costs one parse, a finished stamped row costs zero.
      */
     private static boolean needsEnrichment(String raw) {
@@ -192,12 +187,11 @@ final class HttpHistoryApi {
             if (!(parsed instanceof Map<?, ?> m0)) return raw;
             @SuppressWarnings("unchecked")
             Map<String, Object> m = (Map<String, Object>) m0;
-            // Durable project id for dashboard routing. New rows are stamped at
-            // journal.begin; only legacy rows resolve here, through the process memo —
-            // a bare resolve is two TOML parses plus up to three git subprocesses per row.
-            // resolve() recovers an existing identity.toml id before hashing, so a
-            // dead checkout's rows route to its recorded project home instead of minting a
-            // fresh unknown:unknown id that 404s on the detail page.
+            // Durable project id for dashboard routing. Rows without projectId resolve through
+            // the process memo — a bare resolve is two TOML parses plus up to three git
+            // subprocesses per row. resolve() recovers an existing identity.toml id before
+            // hashing, so a dead checkout's rows route to its recorded project home instead of
+            // minting a fresh unknown:unknown id that 404s on the detail page.
             if (!(m.get("projectId") instanceof String pid) || pid.isBlank()) {
                 if (m.get("dir") instanceof String dir && !dir.isBlank()) {
                     String resolved = ProjectIds.idOf(dir);

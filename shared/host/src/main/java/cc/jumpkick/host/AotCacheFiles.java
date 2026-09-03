@@ -13,11 +13,8 @@ import java.util.regex.Pattern;
  *
  * <p>Five modules read these facts — the engine's worker trainer, the CLI's engine spawn, the
  * {@code --aot-cache} packager, the image plugin's container trainer and the {@code aot.toml}
- * index — and they share one directory, so a second spelling is not a style question. When the
- * marker was {@code <cache>.noaot} on one side and {@code <cache>.aot.noaot} on the other, each
- * sweep was blind to the other's markers; when the refusal test was {@code [error][aot]} on one
- * side and {@code [aot} on the other, the engine missed the padded error line the JVM actually
- * emits.
+ * index — and they share one directory, so the marker is always {@code <cache>.aot.noaot} and
+ * the refusal test matches the JVM's padded error line ({@code [error  ][aot]}).
  *
  * <p>Lives on the host leaf because the image plugin runs as a forked worker that links nothing
  * heavier, and because {@code :core}'s {@code AotManifest} is itself a caller.
@@ -32,12 +29,6 @@ public final class AotCacheFiles {
      * cache file name, so the marker for {@code kotlinc-0123456789abcdef.aot} is
      * {@code kotlinc-0123456789abcdef.aot.noaot} — the same rule the {@code .config} and
      * {@code .tmp-<pid>} sidecars follow, and reversible by plain suffix strip.
-     *
-     * <p>The engine used to strip {@code .aot} first, so markers written by an older jk are
-     * orphaned rather than migrated: a key that was once refused gets exactly one more training
-     * attempt, and the stray file is reclaimed by the next key change or engine upgrade. That is
-     * already the regime a marker lives under — the engine's own TTL expires them on purpose — and
-     * it costs one background train rather than a reader for a spelling that no longer exists.
      */
     public static final String MARKER = ".noaot";
 
@@ -88,7 +79,7 @@ public final class AotCacheFiles {
     /**
      * Does {@code cache}'s refusal marker still block training? The engine's spawn decision and
      * the worker trainer both decide here, so a refusal expires on one schedule
-     * ({@link #MARKER_TTL_MILLIS}) rather than on whichever file the read landed in.
+     * ({@link #MARKER_TTL_MILLIS}).
      *
      * <p>An expired marker is deleted here rather than merely ignored, so the answer and the disk
      * cannot drift apart, and a sweep that never runs cannot resurrect it. An unreadable marker

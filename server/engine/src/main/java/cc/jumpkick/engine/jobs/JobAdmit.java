@@ -5,9 +5,9 @@ import cc.jumpkick.engine.BuildHistoryKinds;
 import cc.jumpkick.engine.BuildJobFingerprint;
 import cc.jumpkick.engine.InFlightBuilds;
 import cc.jumpkick.engine.journal.BuildRecord;
-import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.runtime.BuildNumberAllocator;
 import cc.jumpkick.runtime.ProjectIds;
+import cc.jumpkick.wire.protocol.ProtoLifecycle;
 import java.nio.file.Path;
 
 /** Exclusive fingerprint + start-time journal stub for one job. */

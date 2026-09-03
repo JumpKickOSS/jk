@@ -5,12 +5,12 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
-import cc.jumpkick.engine.protocol.EngineProtocol;
-import cc.jumpkick.engine.protocol.PluginCommandReport;
-import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.runtime.PluginCommands;
+import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.protocol.PluginCommandReport;
+import cc.jumpkick.wire.protocol.ProtoSession;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 

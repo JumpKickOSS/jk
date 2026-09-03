@@ -218,10 +218,9 @@ public final class FreshnessStamp {
     }
 
     private static boolean newerThan(Path file, long stampMillis) throws IOException {
-        // One readAttributes answers all three questions this used to ask separately — present,
-        // directory, mtime — where exists + isDirectory + getLastModifiedTime each re-resolved the
-        // path (10.3, 10.3 and 10.6 us on NTFS against ~1.5 on ext4). Three ops per input, over
-        // ~1,300 sources, twice per isFresh.
+        // One readAttributes answers present, directory, and mtime together. exists +
+        // isDirectory + getLastModifiedTime each re-resolve the path (~10 µs on NTFS vs ~1.5
+        // on ext4) — three ops per input, over ~1,300 sources, twice per isFresh.
         Optional<BasicFileAttributes> stat = PathUtil.stat(file);
         if (stat.isEmpty()) return true; // disappearing input → treat as changed
         BasicFileAttributes attrs = stat.get();

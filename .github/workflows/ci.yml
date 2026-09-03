@@ -40,11 +40,23 @@ jobs:
           cache: gradle
 
       # The dashboard's JS suites run under `node --test` and are part of the unit tier.
-      # WebClientJsTest fails the build when node is missing, so pin the version here rather
-      # than inherit whatever the runner image happens to ship.
+      # WebClientJsTest fails the build when node is missing. The version is `.nvmrc`.
       - uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version-file: '.nvmrc'
 
       - name: Unit tests and structural guards
         run: ./gradlew checkFast --no-daemon
+
+      - name: Shell installer verification fixtures
+        run: bash scripts/test-installer-verification.sh
+
+  installer-windows:
+    name: PowerShell 5.1 installer verification
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run network-free verification fixtures
+        shell: powershell
+        run: .\scripts\test-installer-verification.ps1

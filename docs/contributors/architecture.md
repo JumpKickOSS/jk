@@ -45,6 +45,7 @@ How jk is structured today. For day-to-day usage see [user documentation](../use
   capped at 75% of engine heap; further jobs stream). Does **not** follow `CI=1`; extra
   heap is concurrency headroom, extra VFS is a huge-tree knob. See [vfs.md](vfs.md). Do not grow the non-CI engine default toward multi-GiB
   “just in case”; set `max-heap-mb` or run under CI for a higher default.
+  Full `[engine]` / `JK_ENGINE_*` inventory: [user/engine.md](../user/engine.md#configuration).
 - **Load-bearing** — if the engine cannot start, the command fails clearly (no silent
   in-process fallback for hosted work). That is how concurrent builds avoid RAM overcommit.
 - **Lifecycle** — lazy start on first need; stays resident until `jk engine stop` or

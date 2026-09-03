@@ -5,6 +5,7 @@ import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.Scope;
 import java.util.List;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Shared {@code pom.xml} primitives for {@code PublishablePom} and {@code PomExporter}: preamble,
@@ -28,7 +29,7 @@ public final class PomXml {
     }
 
     /** XML entity-escape for element text (also escapes quotes — harmless, and what both writers did). */
-    public static String escape(String s) {
+    public static String escape(@Nullable String s) {
         if (s == null) return "";
         StringBuilder sb = new StringBuilder(s.length());
         for (int i = 0; i < s.length(); i++) {
@@ -46,7 +47,7 @@ public final class PomXml {
     }
 
     /** jk {@link Scope} → Maven {@code <scope>} string, or {@code null} for compile / non-emitted. */
-    public static String mavenScope(Scope s) {
+    public static @Nullable String mavenScope(Scope s) {
         return switch (s) {
             case EXPORT, MAIN -> null; // compile scope (Maven default — transitive to consumers)
             case RUNTIME -> "runtime";
@@ -60,7 +61,7 @@ public final class PomXml {
 
     /** One {@code <dependency>} under {@code <dependencies>}; {@code mavenScope} null → no scope element. */
     public static void appendDependency(
-            StringBuilder sb, String group, String artifact, String version, String mavenScope) {
+            StringBuilder sb, String group, String artifact, String version, @Nullable String mavenScope) {
         appendDependency(sb, group, artifact, version, mavenScope, null, null);
     }
 
@@ -73,9 +74,9 @@ public final class PomXml {
             String group,
             String artifact,
             String version,
-            String mavenScope,
-            String type,
-            String classifier) {
+            @Nullable String mavenScope,
+            @Nullable String type,
+            @Nullable String classifier) {
         sb.append("    <dependency>\n");
         sb.append("      <groupId>").append(escape(group)).append("</groupId>\n");
         sb.append("      <artifactId>").append(escape(artifact)).append("</artifactId>\n");
@@ -93,7 +94,7 @@ public final class PomXml {
     }
 
     /** Emit type/classifier for a tests-kind edge (Maven test-jar). */
-    public static void appendDependency(StringBuilder sb, Dependency d, String version, String mavenScope) {
+    public static void appendDependency(StringBuilder sb, Dependency d, String version, @Nullable String mavenScope) {
         if (d.isTestsKind()) {
             appendDependency(sb, d.group(), d.name(), version, mavenScope, "test-jar", "tests");
         } else {

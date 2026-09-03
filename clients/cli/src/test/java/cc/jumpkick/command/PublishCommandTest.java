@@ -41,10 +41,7 @@ class PublishCommandTest {
                     received.put(path, exchange.getRequestBody().readAllBytes());
                     exchange.sendResponseHeaders(201, -1);
                 }
-                // A real repository serves what it stores. This used to answer 405 to every GET,
-                // which meant the metadata read always failed — publish swallowed that and wrote a
-                // single-version document, so the suite could not see the version list being
-                // truncated. Serving GET is what makes these tests exercise the merge.
+                // Serve stored bytes so metadata GET can merge the version list.
                 case "GET", "HEAD" -> {
                     if (metadataGetStatus != 0 && path.endsWith("maven-metadata.xml")) {
                         exchange.sendResponseHeaders(metadataGetStatus, -1);

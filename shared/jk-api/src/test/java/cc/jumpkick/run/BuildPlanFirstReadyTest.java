@@ -11,6 +11,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -240,7 +241,7 @@ class BuildPlanFirstReadyTest {
                         .build())
                 .addListener(new BuildPlanListener() {
                     @Override
-                    public void stepStart(String step, String group, int ticks) {
+                    public void stepStart(String step, @Nullable String group, int ticks) {
                         recorded.add(step);
                     }
                 })

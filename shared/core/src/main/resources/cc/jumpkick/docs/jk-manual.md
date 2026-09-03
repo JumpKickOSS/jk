@@ -281,7 +281,7 @@ Useful `<topic>` slugs: `getting-started`, `concepts`, `projects`, `workspaces`,
 `dependencies`, `lockfile`, `build`, `test`, `format`, `run`, `explain`, `jdk`, `tools`,
 `templates`, `frameworks`, `plugins`, `migration`, `mcp`, `agents`, `troubleshooting`,
 `machine-output`, `commands`, `cache`, `ci`, `config`, `engine`, `ide`, `packaging`, `native`,
-`images`, `publish`, `platforms`.
+`images`, `publish`, `platforms`, `security`.
 
 Index: `docs/user/README.md` on the same raw URL prefix.
 

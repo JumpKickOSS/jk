@@ -33,6 +33,7 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
+import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.LangCompile;
 import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.test.AffectedTestRun;
@@ -397,7 +398,11 @@ public final class PlannerTest {
                     String stampKey = TestStamp.computeKey(
                             testSrcs, ctx.require(MAIN_CLASSES), testResDirs, in.lockFile(), testRtCp, extras);
                     if (Perf.ENABLED) {
-                        System.err.println("[jk-perf] live-test-stamp " + in.dir() + " key=" + stampKey);
+                        System.err.println("[jk-perf] live-test-stamp " + in.dir() + " key=" + stampKey
+                                + " src=" + testSrcs.size() + " res=" + testResDirs.size()
+                                + " rt=" + testRtCp.size() + " extras=" + extras.size() + " X=" + extras
+                                + " cpFp=" + ClasspathFingerprint.of(testRtCp)
+                                + " mainFp=" + ClasspathFingerprint.entry(ctx.require(MAIN_CLASSES)));
                     }
                     String testTaskId = ActionKey.qualifiedTaskId(TaskNames.RUN_TESTS, testClassesForStamp);
                     // --force forces a real test run, matching the compile/package

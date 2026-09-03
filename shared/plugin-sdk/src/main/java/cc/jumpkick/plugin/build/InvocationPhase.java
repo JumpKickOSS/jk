@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.build;
 
+import org.jspecify.annotations.Nullable;
+
 /**
  * Coarse outer timeline of a whole <em>engine request</em> (one {@code jk build} / {@code jk lock}
  * / …). Orthogonal to the per-module task graph and to {@code cc.jumpkick.run.BuildStage}.
@@ -46,7 +48,7 @@ public enum InvocationPhase {
         return valueOf(name.toUpperCase(java.util.Locale.ROOT).replace('-', '_'));
     }
 
-    public static InvocationPhase fromWireOrNull(String name) {
+    public static @Nullable InvocationPhase fromWireOrNull(@Nullable String name) {
         return (name == null || name.isEmpty()) ? null : fromWire(name);
     }
 }

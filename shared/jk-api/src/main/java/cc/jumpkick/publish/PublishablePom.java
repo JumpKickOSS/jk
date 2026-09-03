@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Publish-grade {@code pom.xml}: coords, standard scopes, BOM import for PLATFORM; no
@@ -22,7 +23,12 @@ public final class PublishablePom {
     public record Pom(String xml) {}
 
     public record Metadata(
-            String name, String description, String url, List<License> licenses, List<Developer> developers, Scm scm) {
+            @Nullable String name,
+            @Nullable String description,
+            @Nullable String url,
+            List<License> licenses,
+            List<Developer> developers,
+            @Nullable Scm scm) {
         public Metadata {
             licenses = licenses == null ? List.of() : List.copyOf(licenses);
             developers = developers == null ? List.of() : List.copyOf(developers);
@@ -33,23 +39,27 @@ public final class PublishablePom {
         }
     }
 
-    public record License(String name, String url) {
+    public record License(String name, @Nullable String url) {
         public License {
             Objects.requireNonNull(name, "name");
         }
     }
 
-    public record Developer(String id, String name, String email) {
+    public record Developer(
+            String id, @Nullable String name, @Nullable String email) {
         public Developer {
             Objects.requireNonNull(id, "id");
         }
     }
 
-    public record Scm(String url, String connection, String developerConnection) {}
+    public record Scm(
+            @Nullable String url,
+            @Nullable String connection,
+            @Nullable String developerConnection) {}
 
     private PublishablePom() {}
 
-    public static Pom render(JkBuild jkBuild, Metadata meta) {
+    public static Pom render(JkBuild jkBuild, @Nullable Metadata meta) {
         return render(jkBuild, meta, Set.of());
     }
 
@@ -61,7 +71,7 @@ public final class PublishablePom {
      * are omitted; tests-kind edges to external coordinates are kept — their test-jars exist
      * upstream.
      */
-    public static Pom render(JkBuild jkBuild, Metadata meta, Set<String> workspaceSiblings) {
+    public static Pom render(JkBuild jkBuild, @Nullable Metadata meta, @Nullable Set<String> workspaceSiblings) {
         return render(jkBuild, meta, workspaceSiblings, Map.of());
     }
 
@@ -71,7 +81,10 @@ public final class PublishablePom {
      * POM can rebuild a runtime classpath without re-resolving ranges.
      */
     public static Pom render(
-            JkBuild jkBuild, Metadata meta, Set<String> workspaceSiblings, Map<String, String> locked) {
+            JkBuild jkBuild,
+            @Nullable Metadata meta,
+            @Nullable Set<String> workspaceSiblings,
+            @Nullable Map<String, String> locked) {
         Objects.requireNonNull(jkBuild, "jkBuild");
         if (meta == null) meta = Metadata.empty();
         if (workspaceSiblings == null) workspaceSiblings = Set.of();
@@ -141,7 +154,7 @@ public final class PublishablePom {
         sb.append("  </developers>\n");
     }
 
-    private static void appendScm(StringBuilder sb, Scm scm) {
+    private static void appendScm(StringBuilder sb, @Nullable Scm scm) {
         if (scm == null) return;
         sb.append("  <scm>\n");
         if (scm.url() != null)
@@ -181,7 +194,8 @@ public final class PublishablePom {
                 // stable reference for external consumers of the published artifact. `jk
                 // publish` rejects it up front; skip here as a safety net so a stray caller
                 // never emits a broken <version>=branch=...</version>.
-                if (d.isGit() && d.gitSource().ref() instanceof GitRefSpec.Branch) {
+                GitRefSpec ref = d.gitSource() == null ? null : d.gitSource().ref();
+                if (ref instanceof GitRefSpec.Branch) {
                     continue;
                 }
                 // A tests-kind sibling edge names the sibling's test-jar — an artifact jk never
@@ -195,7 +209,7 @@ public final class PublishablePom {
         sb.append("  </dependencies>\n");
     }
 
-    private static String versionOf(Dependency d, Map<String, String> locked) {
+    private static String versionOf(Dependency d, @Nullable Map<String, String> locked) {
         if (locked != null && !locked.isEmpty()) {
             String pin = locked.get(d.packageKey());
             if (pin == null || pin.isBlank()) pin = locked.get(d.module());

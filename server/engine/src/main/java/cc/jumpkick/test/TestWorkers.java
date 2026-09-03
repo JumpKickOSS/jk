@@ -63,4 +63,24 @@ public final class TestWorkers {
     public static int effectiveJobs() {
         return Jobs.resolve(JkEngineConfig.resolve());
     }
+
+    /**
+     * The jobs budget a build runs under: what the request carries ({@code -j} / {@code JK_JOBS} /
+     * {@code [engine] jobs}, resolved client-side and sent as the module-concurrency cap), else this
+     * engine's own. One source for the executor, the live countdown and {@code jk explain}.
+     */
+    public static int jobsBudget(int maxModuleConcurrency) {
+        return maxModuleConcurrency > 0 ? maxModuleConcurrency : effectiveJobs();
+    }
+
+    /**
+     * The {@code -w 0} share: the jobs budget divided by how many modules can run at once. The
+     * budget defaults to every core, so one dirty module on an idle machine still shards as wide as
+     * the machine, and a wide build lands at one runner per module; {@code -j 4} caps the whole
+     * build — modules and their test JVMs together — at four, which is what "concurrent
+     * module/worker budget" promises. Never below one.
+     */
+    public static int autoShare(int jobsBudget, int width) {
+        return Math.max(1, Math.max(1, jobsBudget) / Math.max(1, width));
+    }
 }

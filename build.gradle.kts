@@ -8,7 +8,7 @@
 apply<GateReportPlugin>()
 
 tasks.wrapper {
-    gradleVersion = "9.5.1"
+    gradleVersion = "9.7.0"
     distributionType = Wrapper.DistributionType.BIN
 }
 
@@ -38,27 +38,172 @@ tasks.register("networkTest") {
     dependsOn(subprojects.map { it.tasks.matching { t -> t.name == "networkTest" } })
 }
 
-// Also not reachable from checkAll, for the opposite reason: a microbench prints medians and
-// asserts nothing about deltas, so gating on it would gate on CI noise. It still has to run
-// somewhere, which it once did not — @Tag("bench") was excluded from both tiers.
+// Also not reachable from checkAll: a microbench prints medians and asserts nothing about
+// deltas, so gating on it would gate on CI noise. Nightly runs `benchTest`.
 tasks.register("benchTest") {
     group = "verification"
-    description = "Run @Tag(bench) microbenchmarks in every module (on demand, gates nothing)"
+    description = "Run @Tag(bench) microbenchmarks in every module (nightly, gates nothing)"
     dependsOn(subprojects.map { it.tasks.matching { t -> t.name == "benchTest" } })
+}
+
+// JaCoCo inventory. Not a gate: no percentage, and the agent stays off unless `-Pjk.coverage`.
+apply(plugin = "jacoco")
+tasks.register<org.gradle.testing.jacoco.tasks.JacocoReport>("coverageReport") {
+    group = "verification"
+    description = "Aggregate unit-test JaCoCo XML/HTML (inventory; never a gate)"
+    dependsOn(subprojects.map { it.tasks.matching { t -> t.name == "test" } })
+    executionData.from(fileTree(layout.projectDirectory) { include("**/build/jacoco/test.exec") })
+    subprojects.forEach { sub ->
+        sub.pluginManager.withPlugin("java") {
+            val main = sub.extensions.getByType<SourceSetContainer>().named("main")
+            sourceDirectories.from(main.map { it.allSource.sourceDirectories })
+            classDirectories.from(main.map { it.output.classesDirs })
+        }
+    }
+    reports {
+        xml.required.set(true)
+        xml.outputLocation.set(layout.buildDirectory.file("reports/jacoco/coverage.xml"))
+        html.required.set(true)
+        html.outputLocation.set(layout.buildDirectory.dir("reports/jacoco/html"))
+        csv.required.set(false)
+    }
+    doLast {
+        val xml = reports.xml.outputLocation.get().asFile
+        if (!xml.isFile || xml.length() < 200) {
+            throw GradleException(
+                "coverage inventory is empty — pass -Pjk.coverage so the JaCoCo agent runs")
+        }
+    }
+}
+
+// buildSrc's own tests (the guard catalog's invariants: letters total and unique, task names
+// unique, MODULE guards that scan tests off the jar hook, owners declared) are not run by the
+// root build — Gradle only compiles buildSrc — so they are run here as a nested invocation and
+// the branch gate depends on it. Named test*, not check*: checkGateCoverage treats every root
+// check* task as a lettered guard.
+val testBuildSrc = tasks.register<Exec>("testBuildSrc") {
+    group = "verification"
+    description = "Run buildSrc's own tests (guard catalog invariants)"
+    val windows = System.getProperty("os.name").lowercase().contains("win")
+    workingDir = projectDir
+    commandLine(if (windows) "gradlew.bat" else "./gradlew", "-p", "buildSrc", "test", "-q")
+    inputs.dir("buildSrc/src").withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.file("buildSrc/build.gradle.kts")
+    val marker = layout.buildDirectory.file("buildSrc-tests.ok")
+    outputs.file(marker)
+    doLast { marker.get().asFile.writeText("buildSrc tests passed\n") }
 }
 
 val nonGateChecks = setOf("checkFast", "checkAll")
 val rootBranchGuards = tasks.matching { it.name.startsWith("check") && it.name !in nonGateChecks }
 val checkFast = tasks.register("checkFast") {
     group = "verification"
-    description = "Run unit tests and every network-free structural guard"
-    dependsOn(subprojects.map { it.tasks.matching { task -> task.name == "check" } }, rootBranchGuards)
+    description = "Run unit tests, buildSrc's tests, and every network-free structural guard"
+    dependsOn(subprojects.map { it.tasks.matching { task -> task.name == "check" } }, rootBranchGuards, testBuildSrc)
 }
 
 tasks.register("checkAll") {
     group = "verification"
     description = "checkFast + integrationTest for the whole repo"
     dependsOn(checkFast, "integrationTest")
+}
+
+// Guard G53: every production package in the three enforced API boundary modules is @NullMarked.
+tasks.register("checkNullMarkedApiPackages") {
+    group = "verification"
+    description = "Fail when an enforced API boundary package lacks package-level @NullMarked"
+    val roots = listOf(
+        layout.projectDirectory.dir("shared/jk-api/src/main/java"),
+        layout.projectDirectory.dir("shared/wire/src/main/java"),
+        layout.projectDirectory.dir("shared/plugin-sdk/src/main/java"))
+    val sources = roots.map { root -> fileTree(root) { include("**/*.java") } }
+    inputs.files(sources)
+    val stamp = layout.buildDirectory.file("guards/null-marked-api-packages.ok")
+    outputs.file(stamp)
+    doLast {
+        val packagePattern = Regex("""(?m)^\s*package\s+([A-Za-z_][\w.]*)\s*;""")
+        val packages = sources.flatMap { it.files }
+            .filterNot { it.name == "package-info.java" }
+            .mapNotNull { packagePattern.find(it.readText())?.groupValues?.get(1) }
+            .toSortedSet()
+        if (packages.size != 14) {
+            throw GradleException(
+                "The null-marked API guard found ${packages.size} production packages; it was measured against 14."
+                    + " The source roots or package parser drifted, so do not trust a green result.")
+        }
+        val missing = packages.filter { pkg ->
+            val relative = pkg.replace('.', '/') + "/package-info.java"
+            val marker = roots.asSequence().map { it.file(relative).asFile }.firstOrNull(File::isFile)
+            marker == null
+                || !marker.readText().contains("@NullMarked")
+                || packagePattern.find(marker.readText())?.groupValues?.get(1) != pkg
+        }
+        if (missing.isNotEmpty()) {
+            throw GradleException(
+                "Production API packages must declare package-level @NullMarked:\n"
+                    + missing.joinToString("\n") { "  $it" })
+        }
+        stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
+    }
+}
+
+// Guard G54: first-party plugins compile against the SDK unless a current product invariant owns
+// the narrower exception. Server implementation modules may never enter a plugin runtime closure.
+tasks.register("checkPluginSdkBoundary") {
+    group = "verification"
+    description = "Reject unclassified plugin project dependencies and server runtime leaks"
+    val pluginBuilds = fileTree(layout.projectDirectory.dir("plugins")) {
+        include("*/build.gradle.kts")
+    }
+    inputs.files(pluginBuilds)
+    val stamp = layout.buildDirectory.file("guards/plugin-sdk-boundary.ok")
+    outputs.file(stamp)
+    doLast {
+        val allowed = mapOf(
+            "auditor|implementation|:core" to "lockfile and audit report model",
+            "publisher|implementation|:core" to "manifest, lockfile, and build-layout model",
+            "publisher|implementation|:client-io" to "repository upload transports",
+            "publisher|testImplementation|:core" to "session-boundary test fixtures",
+            "image-builder|implementation|:jk-api" to "image and repository credential model",
+            "image-builder|testImplementation|:host" to "repository-root test fixture",
+            "minified|implementation|:dynamic-surface" to "shared reachability and keep-rule model",
+            "grails|implementation|:spring-boot" to "Boot jar packaging composition")
+        val edgePattern = Regex(
+            """(?m)^\s*(implementation|api|compileOnly|runtimeOnly|testImplementation|testRuntimeOnly|bundledCodec)\s*\(\s*(?:testFixtures\s*\(\s*)?project\s*\(\s*"(:[^"]+)"""")
+        val seenExceptions = mutableSetOf<String>()
+        val violations = mutableListOf<String>()
+        val files = pluginBuilds.files.sorted()
+        if (files.size != 15) {
+            throw GradleException(
+                "The plugin SDK boundary guard found ${files.size} plugin builds; it was measured against 15.")
+        }
+        files.forEach { file ->
+            val plugin = file.parentFile.name
+            edgePattern.findAll(file.readText()).forEach { match ->
+                val configuration = match.groupValues[1]
+                val target = match.groupValues[2]
+                val key = "$plugin|$configuration|$target"
+                val baseline = target == ":plugin-sdk"
+                    || configuration == "bundledCodec" && target == ":host"
+                when {
+                    baseline -> Unit
+                    key in allowed -> seenExceptions.add(key)
+                    else -> violations.add("  $plugin $configuration -> $target")
+                }
+            }
+        }
+        val stale = allowed.keys - seenExceptions
+        if (stale.isNotEmpty()) {
+            violations.addAll(stale.sorted().map { "  stale allowlist entry: $it" })
+        }
+        if (violations.isNotEmpty()) {
+            throw GradleException(
+                "First-party plugin dependencies must stay behind plugin-sdk or a documented"
+                    + " current exception; server modules are never allowed at runtime:\n"
+                    + violations.sorted().joinToString("\n"))
+        }
+        stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
+    }
 }
 
 // Guard G52: the contributor tier table is rendered from TestTiers, never retyped.
@@ -94,6 +239,248 @@ tasks.register("checkTestTierDocs") {
             throw GradleException(
                 "test-suite-tiers.md differs from TestTiers; replace its marked table with:\n$expected")
         }
+    }
+}
+
+// Guard G55: engine configuration docs are rendered from EngineControls, never retyped.
+tasks.register("checkEngineConfigDocs") {
+    group = "verification"
+    description = "Fail when docs/user/engine.md differs from EngineControls"
+    val model = layout.projectDirectory.file(
+        "shared/core/src/main/java/cc/jumpkick/config/EngineControls.java")
+    val docs = layout.projectDirectory.file("docs/user/engine.md")
+    inputs.files(model, docs)
+    doLast {
+        val row = Regex("""control\(\s*"([^"]*)"\s*,\s*"([^"]*)"\s*,\s*"([^"]*)"\s*,\s*"([^"]*)"\s*\)""")
+        val rows = row.findAll(model.asFile.readText()).map {
+            listOf(it.groupValues[1], it.groupValues[2], it.groupValues[3], it.groupValues[4])
+        }.toList()
+        val table = rows.filter { it[0].isNotEmpty() }
+        val process = rows.filter { it[0].isEmpty() }
+        if (table.size < 5) {
+            throw GradleException("EngineControls TABLE parsed ${table.size} rows; expected at least 5")
+        }
+        if (process.size < 6) {
+            throw GradleException("EngineControls PROCESS parsed ${process.size} rows; expected at least 6")
+        }
+        fun block(id: String, header: String, rule: String, body: List<List<String>>, line: (List<String>) -> String): String {
+            val sb = StringBuilder()
+            sb.appendLine("<!-- $id:start -->")
+            sb.appendLine(header)
+            sb.appendLine(rule)
+            body.forEach { sb.appendLine(line(it)) }
+            sb.append("<!-- $id:end -->")
+            return sb.toString()
+        }
+        val expectedTable = block(
+            "engine-config",
+            "| Key | Env | Default | Meaning |",
+            "|---|---|---|---|",
+            table,
+        ) { "| `${it[0]}` | `${it[1]}` | ${it[2]} | ${it[3]} |" }
+        val expectedProcess = block(
+            "engine-process",
+            "| Env | Default | Meaning |",
+            "|---|---|---|",
+            process,
+        ) { "| `${it[1]}` | ${it[2]} | ${it[3]} |" }
+        val actual = docs.asFile.readText()
+        fun present(id: String): String =
+            Regex("""(?s)<!-- $id:start -->.*?<!-- $id:end -->""").find(actual)?.value
+                ?: throw GradleException("docs/user/engine.md is missing its $id table markers")
+        val drift = mutableListOf<String>()
+        if (present("engine-config") != expectedTable) {
+            drift.add("replace the engine-config table with:\n$expectedTable")
+        }
+        if (present("engine-process") != expectedProcess) {
+            drift.add("replace the engine-process table with:\n$expectedProcess")
+        }
+        if (drift.isNotEmpty()) {
+            throw GradleException("docs/user/engine.md differs from EngineControls:\n" + drift.joinToString("\n"))
+        }
+    }
+}
+
+// Guard G56: the wrapper task version and gradle-wrapper.properties must match, and every
+// setup-node step must read .nvmrc.
+tasks.register("checkBootstrapVersions") {
+    group = "verification"
+    description = "Fail when Gradle wrapper versions or the Node pin disagree"
+    val wrapperProps = layout.projectDirectory.file("gradle/wrapper/gradle-wrapper.properties")
+    val rootBuild = layout.projectDirectory.file("build.gradle.kts")
+    val nvmrc = layout.projectDirectory.file(".nvmrc")
+    val workflows = fileTree(layout.projectDirectory.dir(".github/workflows")) { include("*.yml") }
+    inputs.files(wrapperProps, rootBuild, nvmrc, workflows)
+    doLast {
+        val problems = mutableListOf<String>()
+        val fromProps = Regex("""gradle-(\d+\.\d+(?:\.\d+)?)""")
+            .find(wrapperProps.asFile.readText())?.groupValues?.get(1)
+        val fromTask = Regex("""gradleVersion\s*=\s*"([^"]+)"""")
+            .find(rootBuild.asFile.readText())?.groupValues?.get(1)
+        if (fromProps.isNullOrBlank()) {
+            problems.add("gradle-wrapper.properties has no gradle-N.N.N distribution")
+        }
+        if (fromTask.isNullOrBlank()) {
+            problems.add("tasks.wrapper in build.gradle.kts does not set gradleVersion")
+        }
+        if (!fromProps.isNullOrBlank() && !fromTask.isNullOrBlank() && fromProps != fromTask) {
+            problems.add("wrapper task is $fromTask but gradle-wrapper.properties is $fromProps")
+        }
+        val pin = if (nvmrc.asFile.isFile) nvmrc.asFile.readText().trim() else ""
+        if (!Regex("""^\d+(\.\d+)*$""").matches(pin)) {
+            problems.add(".nvmrc must be a Node version token (got ${pin.ifBlank { "missing" }})")
+        }
+        val setupNode = workflows.files.filter { it.readText().contains("actions/setup-node") }
+        if (setupNode.isEmpty()) {
+            problems.add("no workflow uses actions/setup-node — the dashboard JS gate would skip Node")
+        }
+        setupNode.forEach { wf ->
+            val body = wf.readText()
+            if (!Regex("""node-version-file:\s*['\"]\.nvmrc['\"]""").containsMatchIn(body)) {
+                problems.add("${wf.name}: setup-node must set node-version-file: '.nvmrc'")
+            }
+            if (Regex("""(?m)^\s+node-version:\s""").containsMatchIn(body)) {
+                problems.add("${wf.name}: setup-node must not also set node-version (the pin is .nvmrc)")
+            }
+        }
+        if (problems.isNotEmpty()) {
+            throw GradleException("Bootstrap versions disagree:\n  " + problems.joinToString("\n  "))
+        }
+    }
+}
+
+// Guard G57: nightly CI must keep running coverage, benches, and the macOS/Windows product smoke.
+tasks.register("checkCiCadence") {
+    group = "verification"
+    description = "Fail when nightly CI drops coverage, benches, or OS smoke"
+    val nightly = layout.projectDirectory.file(".github/workflows/ci-nightly.yml")
+    val branch = layout.projectDirectory.file(".github/workflows/ci.yml")
+    val smoke = layout.projectDirectory.file("scripts/ci-product-smoke.sh")
+    val rootBuild = layout.projectDirectory.file("build.gradle.kts")
+    inputs.files(nightly, branch, smoke, rootBuild)
+    doLast {
+        val problems = mutableListOf<String>()
+        val nightlyText = nightly.asFile.readText()
+        val branchText = branch.asFile.readText()
+        if (!smoke.asFile.isFile) {
+            problems.add("scripts/ci-product-smoke.sh is missing")
+        }
+        if (!nightlyText.contains("./gradlew benchTest")) {
+            problems.add("ci-nightly.yml must run ./gradlew benchTest")
+        }
+        if (!nightlyText.contains("coverageReport") || !nightlyText.contains("-Pjk.coverage")) {
+            problems.add("ci-nightly.yml must run coverageReport -Pjk.coverage")
+        }
+        if (!nightlyText.contains("macos-")) {
+            problems.add("ci-nightly.yml must have a macOS smoke runner")
+        }
+        if (!nightlyText.contains("windows-")) {
+            problems.add("ci-nightly.yml must have a Windows smoke runner")
+        }
+        if (!nightlyText.contains("ci-product-smoke.sh")) {
+            problems.add("ci-nightly.yml must run scripts/ci-product-smoke.sh")
+        }
+        if (branchText.contains("coverageReport")
+                || branchText.contains("-Pjk.coverage")
+                || branchText.contains("benchTest")) {
+            problems.add("ci.yml must not run coverage or benches (they are nightly, non-gating)")
+        }
+        if (!rootBuild.asFile.readText().contains("\"coverageReport\"")) {
+            problems.add("build.gradle.kts must register coverageReport")
+        }
+        if (problems.isNotEmpty()) {
+            throw GradleException("CI cadence is incomplete:\n  " + problems.joinToString("\n  "))
+        }
+    }
+}
+
+// Guard G58: GitHub SECURITY.md and docs/user/security.md stay the reporting path.
+tasks.register("checkSecurityDocs") {
+    group = "verification"
+    description = "Fail when security-reporting docs or the advisory URL drop"
+    val policy = layout.projectDirectory.file("SECURITY.md")
+    val page = layout.projectDirectory.file("docs/user/security.md")
+    val index = layout.projectDirectory.file("docs/user/README.md")
+    inputs.files(policy, page, index)
+    doLast {
+        val problems = mutableListOf<String>()
+        val advisory = "security/advisories"
+        if (!policy.asFile.isFile) {
+            problems.add("SECURITY.md is missing")
+        } else {
+            val body = policy.asFile.readText()
+            if (!body.contains("docs/user/security.md")) {
+                problems.add("SECURITY.md must point at docs/user/security.md")
+            }
+            if (!body.contains(advisory)) {
+                problems.add("SECURITY.md must name the GitHub security/advisories URL")
+            }
+        }
+        if (!page.asFile.isFile) {
+            problems.add("docs/user/security.md is missing")
+        } else if (!page.asFile.readText().contains(advisory)) {
+            problems.add("docs/user/security.md must name the GitHub security/advisories URL")
+        }
+        if (!index.asFile.readText().contains("](security.md)")) {
+            problems.add("docs/user/README.md must link security.md")
+        }
+        if (problems.isNotEmpty()) {
+            throw GradleException("Security docs are incomplete:\n  " + problems.joinToString("\n  "))
+        }
+    }
+}
+
+// Guard G59: comments and docs state the current type, not the previous design.
+tasks.register("checkNoHistoricalNarration") {
+    group = "verification"
+    description = "Fail when comments or docs narrate a previous design"
+    val scanned = fileTree(layout.projectDirectory) {
+        exclude("**/build/**", "**/target/**", ".git/**", "**/.gradle/**", ".firebase/**",
+                "**/node_modules/**", ".board/**")
+        exclude("**/*.png", "**/*.jpg", "**/*.jpeg", "**/*.gif", "**/*.webp", "**/*.ico",
+                "**/*.jar", "**/*.zip", "**/*.xz", "**/*.gz", "**/*.class", "**/*.aot",
+                "**/*.woff", "**/*.woff2", "**/*.ttf", "**/*.pdf")
+    }
+    inputs.files(scanned).withPropertyName("scanned")
+    val treeRoot = layout.projectDirectory.asFile
+    val exempt = mapOf(
+        "AGENTS.md" to "names the banned narration phrases as the policy",
+        "docs/contributors/comments.md" to "names the banned narration phrases as the policy",
+    )
+    val stamp = layout.buildDirectory.file("guards/no-historical-narration.ok")
+    outputs.file(stamp)
+    doLast {
+        val missing = exempt.keys.filterNot { treeRoot.resolve(it).isFile }
+        if (missing.isNotEmpty()) {
+            throw GradleException("checkNoHistoricalNarration exempts files that no longer exist: "
+                    + missing.sorted().joinToString(", "))
+        }
+        // Split so this file does not itself contain the banned phrases.
+        val u = "used " + "to"
+        val narration = Regex(
+            "(?i)(?:this $u|it $u|they $u|javadoc $u"
+                + "|$u (?:be|say|live|scan)"
+                + "|former" + "ly|back" + "-compat|for future " + "agents|kept for " + "migration|do not " + "revert"
+                + "|as they $u|as it $u)")
+        var candidates = 0
+        val hits = mutableListOf<String>()
+        scanned.files.sorted().forEach { f ->
+            candidates++
+            val rel = f.relativeTo(treeRoot).invariantSeparatorsPath
+            if (exempt.containsKey(rel)) return@forEach
+            val text = try { f.readText() } catch (_: Exception) { return@forEach }
+            val found = narration.findAll(text).map { it.value }.distinct().take(3).toList()
+            if (found.isNotEmpty()) hits.add("  $rel: ${found.joinToString(", ")}")
+        }
+        if (candidates == 0) {
+            throw GradleException("checkNoHistoricalNarration scanned zero files")
+        }
+        if (hits.isNotEmpty()) {
+            throw GradleException("historical narration in comments or docs:\n"
+                    + hits.sorted().joinToString("\n")
+                    + "\n  State the current invariant. History belongs in the commit body.")
+        }
+        stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
     }
 }
 
@@ -157,26 +544,18 @@ tasks.register("checkStageDocs") {
 tasks.register("checkGuardParity") {
     group = "verification"
     description = "Fail when a guard letter is enforced by one build and not the other"
-    val gradleScripts = fileTree(layout.projectDirectory) {
-        include("buildSrc/src/main/kotlin/*.kts", "**/*.gradle.kts")
-        exclude("**/build/**", "**/target/**")
-    }
+    val catalog = layout.projectDirectory.file("buildSrc/src/main/kotlin/Guards.kt")
     val jkGate = layout.projectDirectory.file(".jk/after-build.kts")
     val exceptions = layout.projectDirectory.file("guard-parity.txt")
-    inputs.files(gradleScripts).withPropertyName("gradleScripts")
+    inputs.file(catalog).withPropertyName("catalog")
     inputs.file(jkGate).withPropertyName("jkGate")
     inputs.file(exceptions).withPropertyName("exceptions")
     val stamp = layout.buildDirectory.file("guards/guard-parity.ok")
     outputs.file(stamp)
     doLast {
-        // Same four spellings checkGuardRegistry scans for, and for the same reason: a scan for
-        // any subset silently misses the rest.
-        val marker = Regex("""(?m)^\s*(?://|/\*)?\s*(?:Guard G(\d+)\b|G(\d+)\s*—)|guard\("G(\d+)"""")
-        fun lettersIn(text: String): Set<Int> = marker.findAll(text)
-            .map { m -> m.groupValues.drop(1).first { it.isNotEmpty() }.toInt() }
-            .toSortedSet()
-        val gradle = lettersIn(gradleScripts.files.sortedBy { it.path }.joinToString("\n") { it.readText() })
-        val jk = lettersIn(jkGate.asFile.readText())
+        val marker = Regex("""guard\("G(\d+)"""")
+        val gradle = Guards.gradleLetters
+        val jk = marker.findAll(jkGate.asFile.readText()).map { it.groupValues[1].toInt() }.toSortedSet()
         if (gradle.isEmpty() || jk.isEmpty()) {
             throw GradleException("checkGuardParity read no guard letters from one of the two sides"
                     + " (gradle=${gradle.size}, jk=${jk.size}) — the scan broke and the guard is"
@@ -200,7 +579,7 @@ tasks.register("checkGuardParity") {
         }
         if (jkOnly.isNotEmpty()) {
             problems.add("enforced by the jk gate only: " + jkOnly.joinToString(", ") { "G$it" }
-                    + " — add the twin to buildSrc, or give it a guard-parity.txt entry saying why"
+                    + " — add the twin to Guards, or give it a guard-parity.txt entry saying why"
                     + " it is self-hosted-only (G0 and G44 are)")
         }
         if (stale.isNotEmpty()) {
@@ -220,77 +599,22 @@ tasks.register("checkGuardParity") {
 
 tasks.register("checkGuardRegistry") {
     group = "verification"
-    description = "Fail when code-as-art.md's guard letters differ from the ones in buildSrc"
-    // Guards live in buildSrc's convention plugins, in module build scripts, in this file, and in
-    // `.jk/after-build.kts` — jk's self-hosted build logic. That last one was excluded once, on
-    // the reasoning that it mirrors buildSrc. It mostly does: 38 of its 40 letters have a Gradle
-    // twin. The two that do not are `checkCorpus` and the cross-build module-parity check, which
-    // only make sense in the self-hosted build — so the exclusion hid exactly the guards that
-    // motivated the file's existence, and left G44's row claiming the letter was never allocated.
-    val scripts = fileTree(layout.projectDirectory) {
-        include("buildSrc/src/main/kotlin/*.kts", "**/*.gradle.kts", ".jk/*.kts")
-        exclude("**/build/**", "**/target/**")
-    }
+    description = "Fail when code-as-art.md's guard table differs from Guards"
+    val catalog = layout.projectDirectory.file("buildSrc/src/main/kotlin/Guards.kt")
     val registry = layout.projectDirectory.file("docs/contributors/code-as-art.md")
-    inputs.files(scripts).withPropertyName("guardScripts")
+    inputs.file(catalog).withPropertyName("catalog")
     inputs.file(registry).withPropertyName("registry")
     val stamp = layout.buildDirectory.file("guards/guard-registry.ok")
     outputs.file(stamp)
     doLast {
-        // Four spellings of the letter exist in the tree — the comment forms `Guard G<n>:`,
-        // `Guard G<n>.` and `G<n> — …`, plus `guard("G<n>", "task")`, which is a call rather than a
-        // comment and is how the self-hosted build declares one. A scan for any subset silently
-        // misses the rest; that is how G0 and G44 stayed invisible to both a hand reconciliation
-        // and the first version of this task.
-        val marker = Regex(
-            """(?m)^\s*(?://|/\*)?\s*(?:Guard G(\d+)\b|G(\d+)\s*—)|guard\("G(\d+)"""")
-        val declared = marker
-            .findAll(scripts.files.sortedBy { it.path }.joinToString("\n") { it.readText() })
-            .map { m -> m.groupValues.drop(1).first { it.isNotEmpty() }.toInt() }
-            .toSortedSet()
-        val listed = Regex("""(?m)^\| G(\d+) \|""")
-            .findAll(registry.asFile.readText())
-            .map { it.groupValues[1].toInt() }.toList()
-        if (declared.isEmpty()) {
-            throw GradleException("checkGuardRegistry found no `Guard G<n>` in buildSrc — the scan"
-                    + " broke and the guard is passing vacuously. Fix the pattern.")
-        }
-        val duplicates = listed.groupingBy { it }.eachCount().filterValues { it > 1 }.keys.sorted()
-        if (duplicates.isNotEmpty()) {
-            throw GradleException("code-as-art.md lists these guard letters more than once: "
-                    + duplicates.joinToString(", ") { "G$it" }
-                    + ". A letter is allocated once; two rows means one of them is stale.")
-        }
-        val listedSet = listed.toSortedSet()
-        val unlisted = declared - listedSet
-        // A row with no code behind it is fine ONLY when it says so — retired and never-issued
-        // letters are the reason the doc can be ahead of the scan.
-        val rowSaysNone = Regex("""(?m)^\| G(\d+) \| (?:—|\*\(folded)""")
-            .findAll(registry.asFile.readText()).map { it.groupValues[1].toInt() }.toSet()
-        val phantom = listedSet - declared - rowSaysNone
-        // The row says "no guard behind this letter" and there is one. Worse than a missing row:
-        // it tells a reader the letter is free. G44's row claimed exactly this while
-        // `checkBothBuildsSeeEveryModule` was live in the self-hosted build.
-        val contradicted = rowSaysNone.filter { it in declared }.sorted()
-        val problems = mutableListOf<String>()
-        if (contradicted.isNotEmpty()) {
-            problems.add("marked retired or never-issued in the table, but declared in the build: "
-                    + contradicted.joinToString(", ") { "G$it" })
-        }
-        if (unlisted.isNotEmpty()) {
-            problems.add("in the build, missing from the table: "
-                    + unlisted.sorted().joinToString(", ") { "G$it" })
-        }
-        if (phantom.isNotEmpty()) {
-            problems.add("in the table with no guard behind them, and not marked retired: "
-                    + phantom.sorted().joinToString(", ") { "G$it" })
-        }
-        if (problems.isNotEmpty()) {
-            throw GradleException("the guard registry in docs/contributors/code-as-art.md and the"
-                    + " guards in buildSrc disagree —\n  " + problems.joinToString("\n  ")
-                    + "\n  Add the row (id, task, rule, form), or give a retired letter a `| G<n> | — |`"
-                    + " row saying it is not reusable. This table is where a contributor learns what"
-                    + " the build enforces; one that lags is worse than none.")
+        val expected = Guards.tableMarkdown()
+        val actual = registry.asFile.readText()
+        val block = Regex("""(?s)<!-- guards:start -->.*?<!-- guards:end -->""").find(actual)?.value
+            ?: throw GradleException(
+                "docs/contributors/code-as-art.md is missing its generated guard table markers")
+        if (block != expected) {
+            throw GradleException(
+                "docs/contributors/code-as-art.md differs from Guards; replace its marked table with:\n$expected")
         }
         stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
     }
@@ -315,7 +639,7 @@ tasks.register("checkNoTicketIds") {
     group = "verification"
     description = "Fail the build on a KanArtist ticket id anywhere in the tree"
     val scanned = fileTree(layout.projectDirectory) {
-        exclude("**/build/**", "**/target/**", ".git/**", ".gradle/**", ".firebase/**",
+        exclude("**/build/**", "**/target/**", ".git/**", "**/.gradle/**", ".firebase/**",
                 "**/node_modules/**", ".board/**")
         // Binaries: nothing to read, and decoding them as text is noise.
         exclude("**/*.png", "**/*.jpg", "**/*.jpeg", "**/*.gif", "**/*.webp", "**/*.ico",
@@ -559,20 +883,58 @@ tasks.register("checkGateCoverage") {
     group = "verification"
     description = "Fail when a structural guard is not reachable from checkFast"
     doLast {
-        val moduleGuards = subprojects.flatMap { p ->
-            p.tasks.filter { it.name.startsWith("check") && it.name !in nonGateChecks && it.name != "check" }
-        }
+        val lifecycle = setOf("check", "checkAll", "checkFast")
+        val registered = Guards.all.filter { it.registers }.map { it.task }.toSet()
         val scheduled = gradle.taskGraph.allTasks.toSet()
-        val missingModuleGuards = moduleGuards.filterNot(scheduled::contains).map { it.path }
-        val missingRootGuards = rootBranchGuards.filterNot(scheduled::contains).map { it.path }
-        if (missingModuleGuards.isNotEmpty() || missingRootGuards.isNotEmpty()) {
-            throw GradleException(buildString {
-                append("checkFast does not reach every structural guard")
-                if (missingModuleGuards.isNotEmpty()) append("; missing module guards: $missingModuleGuards")
-                if (missingRootGuards.isNotEmpty()) append("; missing root guards: $missingRootGuards")
-            })
+        fun Project.taskPath(name: String): String = if (path == ":") ":$name" else "$path:$name"
+        val expected =
+            allprojects.flatMap { p ->
+                p.tasks.names.filter { it in registered && Guards.named(it).inFastGate }.map { name ->
+                    p.tasks.getByName(name)
+                }
+            }
+        val missing = expected.filterNot(scheduled::contains).map { it.path }
+        val unregistered =
+            allprojects.flatMap { p ->
+                p.tasks.names.filter {
+                    it.startsWith("check") && it !in lifecycle && it !in registered
+                }.map { p.taskPath(it) }
+            }
+        val host = project(":host")
+        val missingOnHost =
+            Guards.all.filter {
+                it.home == GuardHome.MODULE &&
+                    it.inFastGate &&
+                    !it.mavenPublishOnly &&
+                    it.task !in host.tasks.names
+            }.map { it.task }
+        val auditor = project(":auditor")
+        val missingOnPlugin =
+            Guards.all.filter {
+                it.home == GuardHome.PLUGIN_MODULE && it.task !in auditor.tasks.names
+            }.map { it.task }
+        val missingOwned =
+            Guards.all.filter { it.home == GuardHome.MODULE_OWNED && it.inFastGate }.mapNotNull { spec ->
+                val owner = spec.ownerPath ?: return@mapNotNull spec.task
+                spec.task.takeIf { it !in project(owner).tasks.names }?.let { "$owner:$it" }
+            }
+        val missingRoot =
+            Guards.all.filter {
+                it.home == GuardHome.ROOT && it.inFastGate && it.task !in tasks.names
+            }.map { it.task }
+        val problems = mutableListOf<String>()
+        if (missing.isNotEmpty()) problems.add("not in the checkFast graph: $missing")
+        if (unregistered.isNotEmpty()) problems.add("check* tasks missing from Guards: $unregistered")
+        if (missingOnHost.isNotEmpty()) problems.add(":host is missing module guards: $missingOnHost")
+        if (missingOnPlugin.isNotEmpty()) problems.add(":auditor is missing plugin guards: $missingOnPlugin")
+        if (missingOwned.isNotEmpty()) problems.add("owned-module guards were not registered: $missingOwned")
+        if (missingRoot.isNotEmpty()) problems.add("root guards were not registered: $missingRoot")
+        if (problems.isNotEmpty()) {
+            throw GradleException("checkFast does not reach every structural guard —\n  "
+                    + problems.joinToString("\n  "))
         }
-        logger.lifecycle("checkFast reaches ${moduleGuards.size} module guards and ${rootBranchGuards.size} root guards")
+        logger.lifecycle(
+            "checkFast reaches ${expected.size} registered guards (${rootBranchGuards.size} root check* tasks)")
     }
 }
 

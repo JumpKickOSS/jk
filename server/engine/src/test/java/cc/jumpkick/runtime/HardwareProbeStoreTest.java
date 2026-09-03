@@ -21,18 +21,11 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * Host calibration must not invent a fourth Maven tree.
  *
- * <p>The optional JUnit Platform micro-benchmark needs seven pinned Jupiter jars. It used to look
- * for them under {@code <cache>/repos/} and, on a miss, HTTP-GET them into that same directory as
- * bare files with no {@code .jk} memo. Nothing reads that tree: {@code ArtifactLocator} resolves
- * the Maven local repository and then {@code <store>/repos/}, and {@code JkStores.cas} ignores the
- * cache root outright. So the jars were invisible to every resolve, counted against the user in
- * {@code jk status}'s "Size on Disk" (now the whole cache root), deleted by {@code jk cache nuke}
- * (now a genuine {@code rm -rf}) — and silently re-downloaded by the next calibrate.
- *
- * <p>These tests drive the real resolution route with the ambient roots redirected at a
- * {@link TempDir}, so what they pin is <em>which root the probe chose</em>, not merely where a
- * helper happened to write. The Central transport is injected rather than stubbed at the socket:
- * the fetch-and-publish path is the half that was wrong, and it has to run.
+ * <p>The optional JUnit Platform micro-benchmark needs seven pinned Jupiter jars.
+ * {@code ArtifactLocator} resolves the Maven local repository and then {@code <store>/repos/};
+ * {@code JkStores.cas} ignores the cache root. These tests drive that route with ambient roots
+ * redirected at a {@link TempDir}, pinning which root the probe chose. The Central transport is
+ * injected so the fetch-and-publish path runs.
  */
 class HardwareProbeStoreTest {
 

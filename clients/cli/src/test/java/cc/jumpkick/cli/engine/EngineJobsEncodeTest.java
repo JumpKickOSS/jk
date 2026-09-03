@@ -5,9 +5,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.TestSelection;
-import cc.jumpkick.engine.protocol.BuildRequest;
-import cc.jumpkick.engine.protocol.SingleBuildRequest;
-import cc.jumpkick.runtime.WorkspaceRequest;
+import cc.jumpkick.wire.protocol.BuildRequest;
+import cc.jumpkick.wire.protocol.SingleBuildRequest;
+import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;

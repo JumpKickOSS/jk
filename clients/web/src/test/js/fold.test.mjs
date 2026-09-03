@@ -1,69 +1,32 @@
 // SPDX-License-Identifier: Apache-2.0
-// Headless tests for the dashboard's event-folding layer (docs/contributors/webclient.md). Run by
-// WebClientJsTest via `node --test`, which stages the SPA's modules in a type:module dir (a bare
-// .js import would be CommonJS) and passes the directory in JK_APP_DIR.
+// Headless tests for the dashboard's event-folding layer (docs/contributors/webclient.md).
+// Run by WebClientJsTest via `node --test`. Bindings live in fold-harness.mjs.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { pathToFileURL } from 'node:url';
-import path from 'node:path';
-
-const spa = (name) => import(pathToFileURL(path.join(process.env.JK_APP_DIR, name)));
-
-const {
+import {
+  etaTotalMillis,
+  finish,
+  fmtBytes,
   foldEvent,
-  seedFromHistory,
-  historyCard,
-  startAnchor,
+  historyRecord,
   ioLines,
-  stepTimingLabel,
-  MAX_CARDS,
-  MAX_OUTPUT_LINES,
-  normalizeDiagnostic,
-} = await spa('fold.js');
-const { moduleSummary, orderedModules, outcomeOf, phaseChainOf } = await spa('outcome.js');
-const { fmtBytes, fmtDuration } = await spa('format.js');
-const {
-  detailForDisplay,
-  detailSegments,
-  liveStepDetail,
-  looksLikeJavaMember,
-  shortDisplayLabel,
-  shortTestLabel,
-  simpleTypeName,
-  simplifyMethodParams,
-} = await spa('label.js');
-const {
-  compilerFailureReports,
-  isCompilerDiag,
   isTestFailureDiag,
-  parseAssertJMessage,
-  parseCompilerBlock,
-  snippetWindow,
-  stackFrameLines,
+  liveStepDetail,
+  MAX_CARDS,
+  MAX_DIAGNOSTICS,
+  MAX_OUTPUT_LINES,
+  MAX_TEST_FAILURE_DIAGNOSTICS,
+  moduleSummary,
+  normalizeDiagnostic,
+  outcomeOf,
+  seedFromHistory,
+  start,
+  startAnchor,
+  stepTimingLabel,
   testFailureReport,
-} = await spa('failure.js');
-
-const historyRecord = (id, dir, extra = {}) => ({
-  id,
-  kind: 'build',
-  dir,
-  coord: 'g:a',
-  startedAt: 1000,
-  finishedAt: 2000,
-  millis: 1000,
-  cancelled: false,
-  success: true,
-  modules: [],
-  tasks: [],
-  diagnostics: [],
-  ...extra,
-});
-
-const start = (id, dir, extra = {}) => ({
-  type: 'request-start',
-  data: { jid: id, kind: 'build', dir, ...extra },
-});
-const finish = (id, data = {}) => ({ type: 'request-finish', data: { jid: id, ...data } });
+  weightDenominator,
+  weightNumerator,
+} from './fold-harness.mjs';
 
 test('request-start ignores format and lock (Activity is build-like only)', () => {
   const cards = [];
@@ -241,30 +204,6 @@ test('steps fold per module, each module keeping its own chain', () => {
   assert.deepEqual(byDir('/w/a').steps.map((p) => p.phase), ['compile', 'test']);
 });
 
-test('orderedModules puts running first (newest activity), finished last', () => {
-  const cards = [];
-  foldEvent(cards, start(1, '/w'));
-  // a starts first, finishes; b starts later and stays running; c fails.
-  foldEvent(cards, { type: 'module-start', data: { jid: 1, dir: '/w/a' }, at: 100 });
-  foldEvent(cards, { type: 'module-finish', data: { jid: 1, dir: '/w/a', success: true, millis: 10 }, at: 200 });
-  foldEvent(cards, { type: 'module-start', data: { jid: 1, dir: '/w/b' }, at: 300 });
-  foldEvent(cards, { type: 'task-start', data: { jid: 1, dir: '/w/b', task: 'compile', stage: 'compile' }, at: 400 });
-  foldEvent(cards, { type: 'module-start', data: { jid: 1, dir: '/w/c' }, at: 350 });
-  foldEvent(cards, { type: 'module-finish', data: { jid: 1, dir: '/w/c', success: false, millis: 5 }, at: 360 });
-  // Later tick on b → b is the most recently active runner.
-  foldEvent(cards, {
-    type: 'label',
-    data: { jid: 1, dir: '/w/b', task: 'compile', label: 'compiling' },
-    at: 500,
-  });
-
-  const ordered = orderedModules(cards[0].modules);
-  assert.deepEqual(
-    ordered.map((m) => m.dir + ':' + m.state),
-    ['/w/b:running', '/w/c:failed', '/w/a:success'],
-  );
-});
-
 test('single-plan step events (empty dir) become one module with a chain', () => {
   const cards = [];
   foldEvent(cards, start(1, '/proj'));
@@ -286,7 +225,6 @@ test('a step-start without a phase stores an empty phase', () => {
 });
 
 test('finished live cards reconcile by (dir, buildNumber) despite clock skew', async () => {
-  const { seedFromHistory } = await spa('fold.js');
   const cards = [];
   foldEvent(cards, { ...start(1, '/w', { buildNumber: 6 }), at: 100_000 });
   foldEvent(cards, { ...finish(1, { success: true, millis: 400 }), at: 100_400 });
@@ -300,7 +238,6 @@ test('finished live cards reconcile by (dir, buildNumber) despite clock skew', a
 });
 
 test('a stale running stub does not flip a finished live card back to running', async () => {
-  const { seedFromHistory } = await spa('fold.js');
   const cards = [];
   foldEvent(cards, { ...start(1, '/w', { buildNumber: 6 }), at: 100_000 });
   foldEvent(cards, { ...finish(1, { success: true, millis: 400 }), at: 100_400 });
@@ -316,7 +253,6 @@ test('a stale running stub does not flip a finished live card back to running', 
 });
 
 test('history backfill maps per-module steps; single-project synthesizes one module', async () => {
-  const { seedFromHistory } = await spa('fold.js');
   // workspace record: modules carry their own steps, and each diagnostic attaches to its module dir
   const ws = [];
   seedFromHistory(ws, [{
@@ -402,7 +338,6 @@ test('history seeding keeps a FAILED-step module failed inside a cancelled recor
   // cancelled → rec.cancelled=true. Live painted A failed; the reload seed graying A out to
   // 'cancelled' desynced the two and dropped A from the failure details. FAIL steps win, same
   // precedence as outcomeOf.
-  const { seedFromHistory } = await spa('fold.js');
   const cards = [];
   seedFromHistory(cards, [{
     id: 'c1', kind: 'build', dir: '/w', coord: 'g:w', finishedAt: 5000, success: false,
@@ -424,7 +359,6 @@ test('history seeding keeps a FAILED-step module failed inside a cancelled recor
 test('workspace history replay applies the per-kind diagnostic ceilings', async () => {
   // the single-project path was bounded but the workspace path streamed a
   // pathological record's diagnostics into the card unbounded.
-  const { seedFromHistory, MAX_TEST_FAILURE_DIAGNOSTICS, MAX_DIAGNOSTICS } = await spa('fold.js');
   const diagnostics = [];
   for (let i = 0; i < MAX_TEST_FAILURE_DIAGNOSTICS + 40; i++) {
     diagnostics.push({
@@ -461,7 +395,6 @@ test('output keeps a bounded tail and clears on finish', () => {
 });
 
 test('diagnostics attach to their module by dir, survive finish, and are capped per module', async () => {
-  const { MAX_DIAGNOSTICS } = await spa('fold.js');
   const cards = [];
   foldEvent(cards, start(1, '/w'));
   foldEvent(cards, {
@@ -503,7 +436,6 @@ test('diagnostics attach to their module by dir, survive finish, and are capped 
 });
 
 test('test-failure diagnostics are bounded by their own ceiling', async () => {
-  const { MAX_TEST_FAILURE_DIAGNOSTICS } = await spa('fold.js');
   const cards = [];
   foldEvent(cards, start(1, '/w'));
   for (let i = 0; i < MAX_TEST_FAILURE_DIAGNOSTICS + 40; i++) {
@@ -528,18 +460,6 @@ test('test-failure diagnostics are bounded by their own ceiling', async () => {
   // Other codes still get their slice under the flood.
   foldEvent(cards, { type: 'error', data: { jid: 1, dir: '/w/core', task: 'p', message: 'other' } });
   assert.equal(core.diagnostics.length, MAX_TEST_FAILURE_DIAGNOSTICS + 1);
-});
-
-test('module summary counts modules and failures', () => {
-  const cards = [];
-  foldEvent(cards, start(1, '/w'));
-  assert.equal(moduleSummary(cards[0]), '');
-  foldEvent(cards, { type: 'module-finish', data: { jid: 1, dir: '/w/a', success: true, millis: 5 } });
-  assert.equal(moduleSummary(cards[0]), 'built 1 module');
-  foldEvent(cards, { type: 'module-finish', data: { jid: 1, dir: '/w/b', success: true, millis: 5 } });
-  assert.equal(moduleSummary(cards[0]), 'built 2 modules');
-  foldEvent(cards, { type: 'module-finish', data: { jid: 1, dir: '/w/c', success: false, millis: 5 } });
-  assert.equal(moduleSummary(cards[0]), '3 modules · 1 failed');
 });
 
 test('seedFromHistory adds finished cards, newest first', () => {
@@ -1003,7 +923,6 @@ test('seedFromHistory respects MAX_CARDS', () => {
 });
 
 test('weight progress aggregates numerator/denominator across modules', async () => {
-  const { weightNumerator, weightDenominator } = await spa('fold.js');
   const cards = [];
   foldEvent(cards, start(1, '/w'));
   foldEvent(cards, { type: 'plan', data: { jid: 1, weight: 300 } });
@@ -1015,7 +934,6 @@ test('weight progress aggregates numerator/denominator across modules', async ()
 });
 
 test('weight denominator falls back to summed module dens when no plan (single build)', async () => {
-  const { weightDenominator } = await spa('fold.js');
   const cards = [];
   foldEvent(cards, start(1, '/w'));
   foldEvent(cards, { type: 'progress', data: { jid: 1, dir: '', numerator: 4, denominator: 12 } });
@@ -1023,7 +941,6 @@ test('weight denominator falls back to summed module dens when no plan (single b
 });
 
 test('plan-progress updates latest per dir (no double count on repeat)', async () => {
-  const { weightNumerator } = await spa('fold.js');
   const cards = [];
   foldEvent(cards, start(1, '/w'));
   foldEvent(cards, { type: 'progress', data: { jid: 1, dir: '/w/a', numerator: 10, denominator: 100 } });
@@ -1042,7 +959,6 @@ test('eta is captured and cleared on finish', () => {
 });
 
 test('etaTotalMillis anchors remaining work at the emission time, not request-start', async () => {
-  const { etaTotalMillis } = await spa('fold.js');
   const cards = [];
   foldEvent(cards, { ...start(1, '/w'), at: 1000 });
   // 10s into the run (slow lock/prepare), the engine projects 30s of REMAINING work.
@@ -1058,125 +974,6 @@ test('etaTotalMillis anchors remaining work at the emission time, not request-st
   assert.equal(etaTotalMillis({ etaMillis: 30_000, etaAt: null, startedAt: 1000 }), 30_000);
   assert.equal(etaTotalMillis({ etaMillis: null }), null);
   assert.equal(etaTotalMillis({ etaMillis: 0 }), null);
-});
-
-test('phaseChainOf collapses steps into coarse phase nodes in encounter order', () => {
-  const cards = [];
-  foldEvent(cards, start(1, '/proj'));
-  const step = (name, phase, status) => {
-    foldEvent(cards, { type: 'task-start', data: { jid: 1, dir: '', task: name, stage: phase } });
-    if (status) foldEvent(cards, { type: 'task-finish', data: { jid: 1, dir: '', task: name, stage: phase, status } });
-  };
-  step('resolve-deps', 'resolve', 'SUCCESS');
-  step('compile-java', 'compile', 'SUCCESS');
-  step('compile-kotlin', 'compile', 'SUCCESS');
-  step('run-tests', 'test', 'SUCCESS');
-  const chain = phaseChainOf(cards[0].modules[0]);
-  assert.deepEqual(chain.map((p) => p.label), ['Compile', 'Test']); // Resolve omitted when it succeeded
-  assert.deepEqual(chain.map((p) => p.state), ['success', 'success']);
-  assert.deepEqual(chain[0].steps.map((s) => s.name), ['compile-java', 'compile-kotlin']); // Compile collapses both
-});
-
-test('phaseChainOf keeps Resolve only when a resolve step failed', () => {
-  const ok = phaseChainOf({
-    steps: [
-      { name: 'resolve-deps', phase: 'resolve', state: 'success' },
-      { name: 'ksp', phase: 'generate', state: 'success' },
-      { name: 'compile-java', phase: 'compile', state: 'success' },
-    ],
-  });
-  assert.deepEqual(ok.map((p) => p.label), ['Generate', 'Compile']);
-
-  const failed = phaseChainOf({
-    steps: [
-      { name: 'resolve-deps', phase: 'resolve', state: 'failed' },
-      { name: 'compile-java', phase: 'compile', state: 'success' },
-    ],
-  });
-  assert.deepEqual(failed.map((p) => p.label), ['Resolve', 'Compile']);
-  assert.equal(failed[0].state, 'failed');
-
-  // a RUNNING resolve is the only live indicator during cold-cache resolution —
-  // it must stay visible; likewise a cancelled one explains where the run stopped.
-  const running = phaseChainOf({
-    steps: [{ name: 'resolve-deps', phase: 'resolve', state: 'running' }],
-  });
-  assert.deepEqual(running.map((p) => p.label), ['Resolve']);
-  assert.equal(running[0].state, 'running');
-
-  const cancelled = phaseChainOf({
-    steps: [{ name: 'resolve-deps', phase: 'resolve', state: 'cancelled' }],
-  });
-  assert.deepEqual(cancelled.map((p) => p.label), ['Resolve']);
-});
-
-test('phaseChainOf paints Compile skipped when compile-java is skipped and only copy-resources succeeded', () => {
-  // Build #110 jk-cli: compile-java SKIPPED@2ms, copy-resources SUCCESS@2ms — not a javac run.
-  const chain = phaseChainOf({
-    steps: [
-      { name: 'compile-java', phase: 'compile', state: 'skipped', millis: 2 },
-      { name: 'build-logic-after-compile', phase: 'compile', state: 'skipped', millis: 0 },
-      { name: 'write-stamp', phase: 'compile', state: 'skipped', millis: 0 },
-      { name: 'copy-resources', phase: 'compile', state: 'success', millis: 2 },
-    ],
-  });
-  assert.equal(chain.length, 1);
-  assert.equal(chain[0].label, 'Compile');
-  assert.equal(chain[0].state, 'skipped');
-});
-
-test('phaseChainOf paints skip when compile is SKIPPED and stamp is 0ms success', () => {
-  // Journal shape: compile-java SKIPPED + write-stamp SUCCESS@0ms must not be solid green.
-  const chain = phaseChainOf({
-    steps: [
-      { name: 'compile-java', phase: 'compile', state: 'skipped', millis: 0 },
-      { name: 'write-stamp', phase: 'compile', state: 'success', millis: 0 },
-      { name: 'build-logic-after-compile', phase: 'compile', state: 'success', millis: 0 },
-    ],
-  });
-  assert.equal(chain[0].state, 'skipped');
-});
-
-test('task-finish SUCCESS with 0ms paints as skipped', () => {
-  const cards = [];
-  foldEvent(cards, { type: 'request-start', data: { jid: 1, kind: 'build', dir: '/w' } });
-  foldEvent(cards, {
-    type: 'task-finish',
-    data: { jid: 1, dir: '', task: 'write-stamp', stage: 'compile', status: 'SUCCESS', millis: 0 },
-  });
-  assert.equal(cards[0].modules[0].steps[0].state, 'skipped');
-});
-
-test('task-finish stores engine millis on the step row', () => {
-  const cards = [];
-  foldEvent(cards, start(1, '/proj'));
-  foldEvent(cards, {
-    type: 'task-start',
-    data: { jid: 1, dir: '', task: 'ensure-jdk', stage: 'resolve' },
-    at: 1000,
-  });
-  foldEvent(cards, {
-    type: 'task-finish',
-    data: { jid: 1, dir: '', task: 'ensure-jdk', stage: 'resolve', status: 'SUCCESS', millis: 360 },
-    at: 1500,
-  });
-  assert.equal(cards[0].modules[0].steps[0].millis, 360);
-});
-
-test('task-finish falls back to receipt delta when millis is absent', () => {
-  const cards = [];
-  foldEvent(cards, start(1, '/proj'));
-  foldEvent(cards, {
-    type: 'task-start',
-    data: { jid: 1, dir: '', task: 'compile-tests', stage: 'compile' },
-    at: 1000,
-  });
-  foldEvent(cards, {
-    type: 'task-finish',
-    data: { jid: 1, dir: '', task: 'compile-tests', stage: 'compile', status: 'SUCCESS' },
-    at: 1212,
-  });
-  assert.equal(cards[0].modules[0].steps[0].millis, 212);
 });
 
 test('history seed preserves per-step millis for tooltips', () => {
@@ -1196,47 +993,6 @@ test('history seed preserves per-step millis for tooltips', () => {
   assert.equal(stepTimingLabel(steps[1]), 'resolve-deps (1.2s)');
 });
 
-test('the compact duration face is what the step chain shows', () => {
-  const compact = (ms) => fmtDuration(ms, { compact: true });
-  assert.equal(compact(null), '');
-  assert.equal(compact(0), '0ms');
-  assert.equal(compact(360), '360ms');
-  assert.equal(compact(1200), '1.2s');
-  assert.equal(compact(12_000), '12s');
-  assert.equal(compact(65_000), '1m 05s');
-  assert.equal(stepTimingLabel({ name: 'compile-tests', millis: 212 }), 'compile-tests (212ms)');
-  assert.equal(stepTimingLabel({ name: 'compile-tests', millis: null }), 'compile-tests');
-});
-
-test('phaseChainOf state precedence: failed > running > success', () => {
-  const running = phaseChainOf({ steps: [
-    { name: 'a', phase: 'compile', state: 'success' },
-    { name: 'b', phase: 'compile', state: 'running' },
-  ] });
-  assert.equal(running[0].state, 'running'); // running dominates a sibling success
-  const failed = phaseChainOf({ steps: [
-    { name: 'a', phase: 'test', state: 'running' },
-    { name: 'b', phase: 'test', state: 'failed' },
-  ] });
-  assert.equal(failed[0].state, 'failed'); // failed dominates running
-});
-
-test('phaseChainOf appends an unknown/plugin phase verbatim (dumb client)', () => {
-  const chain = phaseChainOf({ steps: [
-    { name: 'compile-java', phase: 'compile', state: 'success' },
-    { name: 'deploy-k8s', phase: 'deploy', state: 'running' }, // a phase the client has never heard of
-  ] });
-  assert.deepEqual(chain.map((p) => p.label), ['Compile', 'Deploy']); // no enum coupling — just capitalized
-});
-
-test('phaseChainOf keeps an unphased step as its own node, keyed by name', () => {
-  const chain = phaseChainOf({ steps: [{ name: 'lock', phase: '', state: 'success' }] });
-  assert.equal(chain.length, 1);
-  assert.equal(chain[0].phase, '');
-  assert.equal(chain[0].key, 'lock'); // last-resort: keyed by the step name so it is never dropped
-  assert.equal(chain[0].label, 'Lock');
-});
-
 test('label event stores live tick text on the running step', () => {
   const cards = [];
   foldEvent(cards, start(1, '/w'));
@@ -1251,55 +1007,6 @@ test('label event stores live tick text on the running step', () => {
   const step = cards[0].modules[0].steps[0];
   assert.equal(step.message, 'g:a :: FooTest.bar()  [w2]');
   assert.equal(liveStepDetail('g:a', cards[0].modules[0].steps), 'FooTest.bar()  [w2]');
-});
-
-test('detailForDisplay strips a leading module :: prefix', () => {
-  assert.equal(detailForDisplay('g:a', 'g:a :: FooTest.t()'), 'FooTest.t()');
-  assert.equal(detailForDisplay('g:a', 'shrinking jar'), 'shrinking jar');
-  assert.equal(detailForDisplay('g:a', ''), '');
-});
-
-test('looksLikeJavaMember detects Class.method form', () => {
-  assert.equal(looksLikeJavaMember('FooTest.bar(Path)'), true);
-  assert.equal(looksLikeJavaMember('FooTest'), true);
-  assert.equal(looksLikeJavaMember('shrinking jar'), false);
-});
-
-test('detailSegments syntax-highlights test members and mid-grays prose', () => {
-  const java = detailSegments('VariantSwitchTest.switching_variants(Path)');
-  assert.ok(java.some((s) => s.cls === 'det-type' && s.text === 'VariantSwitchTest'));
-  assert.ok(java.some((s) => s.cls === 'det-fn' && s.text === 'switching_variants'));
-  assert.ok(java.some((s) => s.cls === 'det-type' && s.text === 'Path'));
-
-  const prose = detailSegments('compiling 12 Groovy test sources');
-  assert.ok(prose.some((s) => s.cls === 'det-num' && s.text === '12'));
-  assert.ok(prose.some((s) => s.cls === 'det-mid' && s.text === 'compiling'));
-
-  const withWorker = detailSegments('FooTest.bar()  [w2]');
-  assert.ok(withWorker.some((s) => s.cls === 'det-mid' && s.text === '  [w2]'));
-});
-
-test('detailSegments paints ensure-jdk download and install labels', () => {
-  const down = detailSegments('downloading Temurin 25 ▰▰▰▰▰▱▱▱▱▱ 50%');
-  assert.ok(down.some((s) => s.cls === 'det-mid' && s.text === 'downloading'));
-  assert.ok(down.some((s) => s.cls === 'det-jdk' && s.text === 'Temurin 25'));
-  assert.ok(down.filter((s) => s.cls === 'det-bar-fill' && s.text === '▰').length === 5);
-  assert.ok(down.filter((s) => s.cls === 'det-bar-empty' && s.text === '▱').length === 5);
-  assert.ok(down.some((s) => s.cls === 'det-mid' && s.text === '50%'));
-
-  const inst = detailSegments('installing Temurin 25 ▰▰▰▰▰▰▰▰▰▰ 100%');
-  assert.ok(inst.some((s) => s.cls === 'det-mid' && s.text === 'installing'));
-  assert.ok(inst.some((s) => s.cls === 'det-jdk' && s.text === 'Temurin 25'));
-  assert.ok(inst.filter((s) => s.cls === 'det-bar-fill').length === 10);
-});
-
-test('detailSegments paints the bar-less unknown-size download label', () => {
-  // Feed rows without archiveSize emit "downloading Temurin 25" alone.
-  const bare = detailSegments('downloading Temurin 25');
-  assert.ok(bare.some((s) => s.cls === 'det-mid' && s.text === 'downloading'));
-  assert.ok(bare.some((s) => s.cls === 'det-jdk' && s.text === 'Temurin 25'));
-  assert.equal(bare.filter((s) => s.cls === 'det-bar-fill' || s.cls === 'det-bar-empty').length, 0);
-  assert.ok(!bare.some((s) => /%$/.test(s.text)));
 });
 
 test('request-finish folds the run\'s byte counters onto the card', () => {
@@ -1458,150 +1165,6 @@ test('normalizeDiagnostic keeps snippet / identity fields for test failures', ()
   assert.equal(d.module, 'cc.jumpkick:jk-engine');
 });
 
-test('isTestFailureDiag only matches structured per-test code', () => {
-  assert.equal(isTestFailureDiag({ code: 'test-failure' }), true);
-  assert.equal(isTestFailureDiag({ code: 'error' }), false);
-  assert.equal(isTestFailureDiag(null), false);
-});
-
-test('parseAssertJMessage reformats description + expected/but was', () => {
-  const a = parseAssertJMessage('[dogfood: hello]\nexpected: "42"\n but was: "41"');
-  assert.ok(a);
-  assert.equal(a.desc, 'dogfood: hello');
-  assert.equal(a.expected, '42');
-  assert.equal(a.actual, '41');
-  assert.equal(parseAssertJMessage('plain boom'), null);
-});
-
-test('shortTestLabel strips package and keeps method params simplified', () => {
-  assert.equal(simpleTypeName('org.opentest4j.AssertionFailedError'), 'AssertionFailedError');
-  assert.equal(
-    shortTestLabel({
-      className: 'cc.jumpkick.runtime.DogfoodFailureSnippetTest',
-      method: 'deliberately_fails_to_show_source_snippet()',
-    }),
-    'DogfoodFailureSnippetTest.deliberately_fails_to_show_source_snippet()',
-  );
-  assert.equal(
-    shortTestLabel({
-      className: 'cc.jumpkick.Foo',
-      method: 'bar(java.nio.file.Path)',
-    }),
-    'Foo.bar(Path)',
-  );
-  // Wire may send FQCN on the free-form method field alone.
-  assert.equal(
-    shortTestLabel({
-      method: 'cc.jumpkick.runtime.FooTest.freshen(java.nio.file.Path, java.lang.String)',
-    }),
-    'FooTest.freshen(Path, String)',
-  );
-  assert.equal(
-    shortTestLabel({
-      className: 'demo.FooTest',
-      method: 'bar(java.lang.String[])',
-    }),
-    'FooTest.bar(String[])',
-  );
-  assert.equal(
-    shortTestLabel({
-      className: 'demo.FooTest',
-      method: 'bar()',
-      worker: 2,
-    }),
-    'FooTest.bar()  [w2]',
-  );
-});
-
-test('shortDisplayLabel never leaves package FQCNs in client text', () => {
-  assert.equal(
-    shortDisplayLabel('cc.jumpkick.runtime.FooTest.bar(java.nio.file.Path)'),
-    'FooTest.bar(Path)',
-  );
-  assert.equal(simplifyMethodParams('m(java.lang.String[])'), 'm(String[])');
-  assert.equal(simplifyMethodParams('foo(java.lang.String)[#2]'), 'foo(String)[#2]');
-  assert.equal(shortDisplayLabel('FooTest.bar(Path)  [w2]'), 'FooTest.bar(Path)  [w2]');
-  // Live detail path shortens too.
-  assert.equal(
-    detailForDisplay('g:a', 'g:a :: cc.jumpkick.Foo.bar(java.util.List)'),
-    'Foo.bar(List)',
-  );
-  const segs = detailSegments('cc.jumpkick.Foo.bar(java.nio.file.Path)');
-  const text = segs.map((s) => s.text).join('');
-  assert.equal(text, 'Foo.bar(Path)');
-  assert.ok(!text.includes('java.nio'));
-  // Prose / versions / jars stay intact.
-  assert.equal(shortDisplayLabel('package jk-engine-0.12.0.jar'), 'package jk-engine-0.12.0.jar');
-  assert.equal(shortDisplayLabel('compiling 12 sources'), 'compiling 12 sources');
-  assert.equal(detailForDisplay('g:a', 'g:a :: shrinking jar'), 'shrinking jar');
-});
-
-test('testFailureReport builds CLI-shaped model with snippet rows and error line', () => {
-  const d = normalizeDiagnostic({
-    code: 'test-failure',
-    message: '[dogfood: hello]\nexpected: "42"\n but was: "41"',
-    module: 'cc.jumpkick:jk-engine',
-    testClass: 'cc.jumpkick.runtime.DogfoodFailureSnippetTest',
-    method: 'deliberately_fails_to_show_source_snippet()',
-    exceptionClass: 'org.opentest4j.AssertionFailedError',
-    file: 'src/test/java/cc/jumpkick/runtime/DogfoodFailureSnippetTest.java',
-    line: 23,
-    snippetStart: 20,
-    snippet: [
-      '        // comment',
-      '        assertThat(41)',
-      '                .isEqualTo(42);',
-      '    }',
-    ],
-  });
-  // Force error line into snippet range for the * marker
-  d.line = 22;
-  d.snippetStart = 20;
-  const rep = testFailureReport(d, { count: 1, showHeader: true });
-  assert.ok(rep);
-  assert.equal(rep.showHeader, true);
-  assert.equal(rep.count, 1);
-  assert.equal(rep.module, 'cc.jumpkick:jk-engine');
-  assert.equal(rep.label, 'DogfoodFailureSnippetTest.deliberately_fails_to_show_source_snippet()');
-  assert.ok(rep.assertj);
-  assert.equal(rep.assertj.desc, 'dogfood: hello');
-  assert.equal(rep.assertj.expected, '42');
-  assert.equal(rep.assertj.actual, '41');
-  assert.equal(rep.file, 'src/test/java/cc/jumpkick/runtime/DogfoodFailureSnippetTest.java');
-  assert.equal(rep.exceptionClass, 'AssertionFailedError');
-  assert.equal(rep.line, 22);
-  assert.equal(rep.rows.length, 4);
-  assert.equal(rep.rows[0].num, 20);
-  assert.deepEqual(rep.frames, []);
-  assert.equal(rep.rows[2].num, 22);
-  assert.equal(rep.rows[2].error, true);
-  assert.equal(rep.rows[0].error, false);
-  // subsequent failure suppresses the shared header
-  const second = testFailureReport(d, { count: 2, showHeader: false });
-  assert.equal(second.showHeader, false);
-  assert.equal(second.count, 2);
-});
-
-test('testFailureReport falls back to stack frames when snippet is missing', () => {
-  const d = normalizeDiagnostic({
-    code: 'test-failure',
-    message: 'boom',
-    testClass: 'pkg.FooTest',
-    method: 'bar()',
-    exceptionClass: 'java.lang.AssertionError',
-    stack: 'java.lang.AssertionError: boom\n\tat pkg.FooTest.bar(FooTest.java:4)\n\tat java.base/java.lang.Thread.run(Thread.java:1)\n',
-  });
-  const rep = testFailureReport(d, { count: 1 });
-  assert.ok(rep);
-  assert.equal(rep.file, '');
-  assert.equal(rep.exceptionClass, 'AssertionError');
-  assert.deepEqual(rep.frames, [
-    '\tat pkg.FooTest.bar(FooTest.java:4)',
-    '\tat java.base/java.lang.Thread.run(Thread.java:1)',
-  ]);
-  assert.deepEqual(stackFrameLines('not a stack'), []);
-});
-
 test('live diagnostic event folds snippet fields onto the module', () => {
   const cards = [];
   foldEvent(cards, start(42, '/w'));
@@ -1681,121 +1244,3 @@ test('history seed keeps test-failure snippet for Activity backfill', () => {
 });
 
 // ---- compiler-failure rich report (CLI CompilerDiagnostic parity) ----
-
-test('isCompilerDiag matches javac kotlinc groovyc', () => {
-  assert.equal(isCompilerDiag({ code: 'javac' }), true);
-  assert.equal(isCompilerDiag({ code: 'kotlinc' }), true);
-  assert.equal(isCompilerDiag({ code: 'groovyc' }), true);
-  assert.equal(isCompilerDiag({ code: 'test-failure' }), false);
-  assert.equal(isCompilerDiag({ code: 'error' }), false);
-  assert.equal(isCompilerDiag(null), false);
-});
-
-test('parseCompilerBlock parses real groovyc output (space + column trailer)', () => {
-  // groovyc's "path: 5: message @ line 5, column 1." never matched, so groovyc blobs
-  // always fell back to an unstructured "Compile failure" blob.
-  const units = parseCompilerBlock(
-    '/w/src/main/groovy/Foo.groovy: 5: unexpected token: } @ line 5, column 1.', 'error');
-  assert.equal(units.length, 1);
-  assert.equal(units[0].file, '/w/src/main/groovy/Foo.groovy');
-  assert.equal(units[0].line, 5);
-  assert.equal(units[0].col, 1);
-});
-
-test('parseCompilerBlock extracts error kv, caret column, and snippet line', () => {
-  const units = parseCompilerBlock(
-    '/ws/server/engine/src/main/java/cc/jumpkick/compile/AssemblyPackager.java:35: error: class, interface, enum, or record expected\n' +
-      'public final classaa AssemblyPackager {\n' +
-      '             ^\n',
-  );
-  assert.equal(units.length, 1);
-  assert.equal(units[0].file, '/ws/server/engine/src/main/java/cc/jumpkick/compile/AssemblyPackager.java');
-  assert.equal(units[0].line, 35);
-  assert.equal(units[0].col, 14);
-  assert.equal(units[0].kvs.length, 1);
-  assert.equal(units[0].kvs[0].key, 'error');
-  assert.equal(units[0].kvs[0].value, 'class, interface, enum, or record expected');
-  assert.equal(units[0].snippet, 'public final classaa AssemblyPackager {');
-});
-
-test('multi-unit blob keeps each unit under its own file despite a diag-level file', () => {
-  // file was not gated on i===0 like line/col, so unit 2 rendered as
-  // "<first file>:<unit2 line>" — wrong locus, deep link, and context-window fetch.
-  const d = {
-    code: 'javac',
-    file: '/w/A.java',
-    line: 3,
-    col: 1,
-    message: '/w/A.java:3: error: cannot find symbol\n/w/B.java:7: error: incompatible types',
-  };
-  const reps = compilerFailureReports(d, { showHeader: true, module: 'g:app' });
-  assert.equal(reps.length, 2);
-  assert.equal(reps[0].file, '/w/A.java');
-  assert.equal(reps[0].line, 3);
-  assert.equal(reps[1].file, '/w/B.java');
-  assert.equal(reps[1].line, 7);
-});
-
-test('compilerFailureReports builds CLI-shaped compile model', () => {
-  const d = normalizeDiagnostic({
-    task: 'compile-java',
-    code: 'javac',
-    message:
-      '/home/bsant/src/oss/jk/server/engine/src/main/java/cc/jumpkick/compile/AssemblyPackager.java:35: error: class, interface, enum, or record expected\n' +
-      'public final classaa AssemblyPackager {\n' +
-      '             ^\n',
-    file: '/home/bsant/src/oss/jk/server/engine/src/main/java/cc/jumpkick/compile/AssemblyPackager.java',
-    line: 35,
-    col: 14,
-  });
-  assert.equal(d.col, 14);
-  const reps = compilerFailureReports(d, { showHeader: true, module: 'cc.jumpkick:jk-engine' });
-  assert.equal(reps.length, 1);
-  const rep = reps[0];
-  assert.equal(rep.kind, 'compile');
-  assert.equal(rep.showHeader, true);
-  assert.equal(rep.headerLabel, 'Compile failure');
-  assert.equal(rep.module, 'cc.jumpkick:jk-engine');
-  assert.equal(rep.kvs[0].key, 'error');
-  assert.equal(rep.kvs[0].value, 'class, interface, enum, or record expected');
-  assert.equal(rep.line, 35);
-  assert.equal(rep.col, 14);
-  assert.equal(rep.rows.length, 1);
-  assert.equal(rep.rows[0].num, 35);
-  assert.equal(rep.rows[0].error, true);
-  assert.equal(rep.rows[0].code, 'public final classaa AssemblyPackager {');
-});
-
-test('snippetWindow paints two lines of context around the error', () => {
-  const lines = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
-  const rows = snippetWindow(lines, 4);
-  assert.deepEqual(
-    rows.map((r) => r.num),
-    [2, 3, 4, 5, 6],
-  );
-  assert.equal(rows[2].error, true);
-  assert.equal(rows[2].code, 'd');
-  assert.equal(rows.filter((r) => r.error).length, 1);
-});
-
-test('snippetWindow numbers a lone compiler line with the real error line', () => {
-  const rows = snippetWindow(['public final classaa AssemblyPackager {'], 35);
-  assert.equal(rows.length, 1);
-  assert.equal(rows[0].num, 35);
-  assert.equal(rows[0].error, true);
-});
-
-test('compilerFailureReports subsequent unit suppresses the shared header', () => {
-  const d = normalizeDiagnostic({
-    code: 'javac',
-    message:
-      '/w/Foo.java:2: error: compact source file should not have package declaration\n' +
-      'package x;\n' +
-      '^\n',
-    file: '/w/Foo.java',
-    line: 2,
-    col: 1,
-  });
-  const hidden = compilerFailureReports(d, { showHeader: false, module: 'g:a' });
-  assert.equal(hidden[0].showHeader, false);
-});

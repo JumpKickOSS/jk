@@ -5,6 +5,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A third-party plugin from {@code [plugins]}: either a Maven coordinate pin or a local path pin,
@@ -19,7 +20,7 @@ public record PluginDeclaration(
         String name,
         String version,
         /** Project-relative or absolute path to a jar; null for Maven pins. */
-        String path,
+        @Nullable String path,
         /** Required content pin — lowercase hex SHA-256 of the jar bytes (no {@code sha256:} prefix). */
         String sha256,
         Map<String, Object> config) {
@@ -72,7 +73,7 @@ public record PluginDeclaration(
     }
 
     /** Strip optional {@code sha256:} prefix and lowercase. */
-    public static String normalizeSha256(String raw) {
+    public static String normalizeSha256(@Nullable String raw) {
         if (raw == null) return "";
         String s = raw.trim();
         if (s.regionMatches(true, 0, "sha256:", 0, 7)) s = s.substring(7).trim();

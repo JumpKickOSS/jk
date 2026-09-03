@@ -16,14 +16,10 @@ import org.junit.jupiter.api.io.TempDirFactory;
  * {@link JkTempDirDeletionStrategy}. If the root has no inodes left (tmpfs), sweep stale
  * {@code jk-junit-*} / {@code junit-*} dirs we own and retry once.
  *
- * <p>This used to gate on the configured temp dir being longer than 60 characters, and the number
- * was about Unix-domain socket paths. That is no longer the reason: the tier that spawns engines
- * speaks loopback TCP, which has no path budget. The reason that remains is the one the length
- * gate was only ever approximating — a {@code @TempDir} fixture project must not sit
- * <em>inside the checkout</em>, because jk's own {@code jk.toml} is then its workspace root and
- * {@code WorkspaceLocator.findRoot} walks up into it. The shared convention points
- * {@code java.io.tmpdir} at {@code build/tmp} / {@code target/tmp}, both inside the checkout, so
- * this always re-roots rather than asking how long that path happens to be.
+ * <p>Always re-root rather than using {@code java.io.tmpdir}. The shared convention points that
+ * at {@code build/tmp} / {@code target/tmp} inside the checkout, and a {@code @TempDir} fixture
+ * must not sit there: jk's own {@code jk.toml} would become the workspace root as
+ * {@code WorkspaceLocator.findRoot} walks up.
  */
 public final class JkTempDirFactory implements TempDirFactory {
 

@@ -7,12 +7,12 @@ import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.Pill;
 import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.cli.tui.Tree;
-import cc.jumpkick.engine.EnginePaths;
-import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
+import cc.jumpkick.wire.EnginePaths;
+import cc.jumpkick.wire.protocol.EngineProtocol;
 import java.util.List;
 
 /**

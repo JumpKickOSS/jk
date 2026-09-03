@@ -72,7 +72,7 @@ listOf("testFixturesApiElements", "testFixturesRuntimeElements").forEach { name 
 // scripts, and it must find at least one real `testFixtures(` usage — a scan that sees no fixtures
 // at all would pass this guard while the whole mechanism had been deleted.
 // Guard G34.
-val checkTestFixturesStayOutOfProduction by tasks.registering {
+val checkTestFixturesStayOutOfProduction = registerGuard("checkTestFixturesStayOutOfProduction") {
     group = "verification"
     description = "Fail when a testFixtures variant reaches a publication, a POM or a production configuration"
     dependsOn(
@@ -166,7 +166,6 @@ val checkTestFixturesStayOutOfProduction by tasks.registering {
 // `check` only, not `jar`: arm 1 reads this module's own generated module metadata, which Gradle
 // derives from the jar, so hanging it off `jar` too is a genuine cycle. `checkAll` depends on every
 // module's `check`, so it runs in the gate either way.
-tasks.named("check") { dependsOn(checkTestFixturesStayOutOfProduction) }
 
 // Published, because `cc.jumpkick:jk-plugin-sdk` api-exposes these types. Without
 // coordinates here Gradle rendered the SDK's only dependency from its own defaults —
@@ -279,7 +278,7 @@ fun javaStringLiterals(src: String): List<String> {
     return out
 }
 
-val checkSingleAotMarkerSpelling by tasks.registering {
+val checkSingleAotMarkerSpelling = registerGuard("checkSingleAotMarkerSpelling") {
     group = "verification"
     description = "Fail the build on a .noaot marker suffix typed outside cc.jumpkick.host.AotCacheFiles"
     val treeRoot = rootProject.layout.projectDirectory.asFile
@@ -336,8 +335,6 @@ val checkSingleAotMarkerSpelling by tasks.registering {
         stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
     }
 }
-tasks.named("check") { dependsOn(checkSingleAotMarkerSpelling) }
-tasks.named("jar") { dependsOn(checkSingleAotMarkerSpelling) }
 
 // `ActionTreeTest` closes the action-index directory vocabulary over the WHOLE tree, so its result
 // depends on every module's production sources — none of which Gradle would otherwise treat as an
@@ -427,7 +424,7 @@ fun javaCodeOnly(src: String): String {
 }
 
 // Guard G30.
-val checkPropertiesStoreOwner by tasks.registering {
+val checkPropertiesStoreOwner = registerGuard("checkPropertiesStoreOwner") {
     group = "verification"
     description = "Fail the build on a Properties.store() call in main sources (use DeterministicProperties.render)"
     val treeRoot = rootProject.layout.projectDirectory.asFile
@@ -474,5 +471,3 @@ val checkPropertiesStoreOwner by tasks.registering {
         stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
     }
 }
-tasks.named("check") { dependsOn(checkPropertiesStoreOwner) }
-tasks.named("jar") { dependsOn(checkPropertiesStoreOwner) }

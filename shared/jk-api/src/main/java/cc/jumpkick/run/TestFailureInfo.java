@@ -2,6 +2,7 @@
 package cc.jumpkick.run;
 
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The one structured test failure — plan diagnostics, client wire, {@code details.jsonl} and
@@ -76,7 +77,7 @@ public record TestFailureInfo(
     /** The one {@code module :: test} separator — written by {@link #label}, undone by {@link #stripLabel}. */
     public static final String SEPARATOR = " :: ";
 
-    public static String label(String module, String test, int workerId) {
+    public static String label(@Nullable String module, @Nullable String test, int workerId) {
         StringBuilder sb = new StringBuilder();
         if (module != null && !module.isBlank()) {
             sb.append(module).append(SEPARATOR);
@@ -100,7 +101,7 @@ public record TestFailureInfo(
      * separator is stripped. Neither form touches the worker suffix, and a display string that
      * itself contains the separator keeps it (only the leading segment goes).
      */
-    public static String stripLabel(String module, String label) {
+    public static String stripLabel(@Nullable String module, @Nullable String label) {
         if (label == null || label.isBlank()) return "";
         String s = label.trim();
         if (module == null) {
@@ -114,7 +115,7 @@ public record TestFailureInfo(
         return s;
     }
 
-    private static String empty(String s) {
+    private static String empty(@Nullable String s) {
         return s == null ? "" : s;
     }
 }

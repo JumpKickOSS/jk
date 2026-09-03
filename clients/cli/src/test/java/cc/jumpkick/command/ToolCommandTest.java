@@ -120,6 +120,26 @@ class ToolCommandTest {
         }
     }
 
+    /** The product's own entries in bin/ are never a tool's to remove, whatever sits there. */
+    @Test
+    void uninstall_refuses_jk_own_names_and_leaves_the_client_intact(@TempDir Path tempDir) throws Exception {
+        Path bin = Files.createDirectories(tempDir.resolve("bin"));
+        Path jk = bin.resolve("jk");
+        Path jkx = bin.resolve("jkx");
+        Files.writeString(jk, "native-binary-bytes");
+        Files.writeString(jkx, "native-binary-bytes");
+        Files.writeString(bin.resolve("VERSION"), "0.12.0\n");
+
+        for (String own : List.of("jk", "jkx", "VERSION", "jk.old")) {
+            int exit = Jk.execute(
+                    "tool", "uninstall", own, "--state-dir", tempDir.toString(), "--bin-dir", bin.toString());
+            assertThat(exit).as(own).isEqualTo(Exit.USAGE);
+        }
+        assertThat(jk).hasContent("native-binary-bytes");
+        assertThat(jkx).hasContent("native-binary-bytes");
+        assertThat(bin.resolve("VERSION")).hasContent("0.12.0\n");
+    }
+
     /** What every launcher jk writes looks like: attribution on line two. */
     private static String jkLauncher() {
         return "#!/usr/bin/env bash\n# " + JkOwnership.GENERATED_BY

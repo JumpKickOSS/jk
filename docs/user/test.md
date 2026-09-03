@@ -106,6 +106,24 @@ exclude-tags = ["slow", "network", "bench"]
 `--exclude-tags ""` is the CLI form of a clear. Suites and tags are part of the test
 stamp: changing selection re-runs tests even if sources are unchanged.
 
+## Workspace scope: tag filters come from the root
+
+In a workspace, the tag filters are resolved **once, from the invocation root**, and apply to
+every member:
+
+- `[test] include-tags` / `exclude-tags`
+- `[test] gate-suites`
+- `[profiles.<name>] include-tags` / `exclude-tags`
+
+A member's own tags are used only when the root resolved none — the root wins outright rather
+than merging, so a workspace has one answer for "which tests". Running from inside a member
+directory makes no difference: the CLI rehomes to the workspace root first.
+
+Everything else under `[test]` is per-module and is never inherited, including `extra-src`,
+`workers` and `env`. This is not the `key.workspace = true` spelling that identity keys
+(`jdk`, `java`, `layout`, …) and dependency versions use — the tag filters describe the
+invocation, not the module.
+
 ## Module graph (`-j`)
 
 Same as [build](build.md#parallelism--j): default all effective cores.
@@ -116,18 +134,21 @@ Discover test classes, then fork N runners that **pull** classes until empty.
 
 | Value | Meaning |
 |-------|---------|
-| omit / `0` | **Auto:** this build's share of the machine — `cores / dirty-module width`, then `min(…, classCount)`, then heap-clamped |
+| omit / `0` | **Auto:** this build's share of the jobs budget — `jobs / dirty-module width`, then `min(…, classCount)`, then heap-clamped. `jobs` is `-j` / `JK_JOBS` / `[engine] jobs`, default all cores |
 | `1` | One test JVM (serial within the module) |
 | `N` | Cap at N runners (still ≤ class count; heap-clamped) |
 
 Auto is a **share**, not "as many as this module could use", because jk takes its
-parallelism from modules first and the two layers spend one machine:
+parallelism from modules first and the two layers spend one budget. `-j N` therefore caps
+the whole build: at most N modules at once and at most N test JVMs in total. `jk explain`
+prices suites on the same share the build hands out:
 
-| Build | Dirty width | Auto workers per module |
+| Build (default `jobs` = all cores) | Dirty width | Auto workers per module |
 |---|---|---|
 | touched one module | 1 | all cores |
 | a few modules | 4 | cores / 4 |
 | full 30-module rebuild | 13 | 1 — the modules already fill the machine |
+| one module, `-j 4` | 1 | 4 |
 
 That last row is the point. Sharding *every* module of a wide build as if it were alone
 costs more in JVM starts than it wins in overlap: on jk's own 30-module tree it moved the
@@ -158,8 +179,9 @@ jk test --serial-tests
 
 ## Per-module serial opt-out
 
-Modules that cannot share a JVM pin workers in `jk.toml`. The module pin **wins** over
-CLI auto / `-w N`.
+Modules that cannot share a JVM pin workers in `jk.toml`. A positive module pin **wins**
+over CLI auto / `-w N`. `workers = 0` is the same as no pin: the module takes this build's
+auto share (it does not get the whole machine).
 
 ```toml
 [test]

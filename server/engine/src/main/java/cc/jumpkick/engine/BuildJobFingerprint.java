@@ -12,14 +12,15 @@ import java.util.TreeSet;
  * Stable exclusivity key for concurrent build-like jobs.
  *
  * <p>Two admissions with the same fingerprint must not run at once on one engine. For every
- * {@linkplain BuildHistoryKinds build-history kind}, the key is <strong>project directory +
- * kind only</strong>: overlapping work that shares a {@code target/} tree must
- * not interleave, even when flags differ ({@code --rebuild}, {@code -m}, …). Non-build kinds
- * ({@code lock}, {@code format}, …) never take a slot.
+ * {@linkplain BuildHistoryKinds build-history kind}, the key is the <strong>project directory
+ * alone</strong>: overlapping work that shares a {@code target/} tree must not interleave, whatever
+ * the flags ({@code --rebuild}, {@code -m}, …) and whatever the kind — a {@code jk build} and a
+ * {@code jk test} on one workspace write the same compile outputs and the same test sandboxes, and
+ * the root {@code after-build} scripts reclaim disk under them. Non-build kinds ({@code lock},
+ * {@code format}, …) never take a slot.
  *
  * <p>Different worktrees (different real paths) yield different fingerprints and may run
- * concurrently. Different kinds on the same dir (e.g. {@code build} vs {@code test}) are separate
- * slots.
+ * concurrently.
  */
 public final class BuildJobFingerprint {
 
@@ -58,13 +59,14 @@ public final class BuildJobFingerprint {
     }
 
     /**
-     * Project-scoped exclusivity for build-like kinds: same canonical dir + kind cannot run two
-     * jobs at once.
+     * Project-scoped exclusivity for build-like kinds: one canonical dir, one job at a time, whatever
+     * the kind. {@code kind} is accepted so call sites read as what they are and is deliberately not
+     * part of the key.
      */
     public static String ofProject(String kind, String dir) {
         String canon = canonicalDir(dir);
         StringBuilder sb = new StringBuilder(128);
-        sb.append("kind=").append(kind == null ? "" : kind).append('\n');
+        sb.append("kind=build-like\n");
         sb.append("dir=").append(canon).append('\n');
         sb.append("scope=project\n");
         return Hashing.sha256Hex(sb.toString());

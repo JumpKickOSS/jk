@@ -61,6 +61,14 @@ public final class BuildLogicSupport {
         return run(projectDir, layout, actionCache, classesDir, anchor, label, new AtomicReference<>());
     }
 
+    /** One line per line, skipping a trailing blank so a script's final newline adds nothing. */
+    private static void emitLines(String captured, Consumer<String> output) {
+        if (captured == null || captured.isBlank() || output == null) return;
+        for (String line : captured.stripTrailing().split("\n", -1)) {
+            output.accept(line);
+        }
+    }
+
     /**
      * Reject a script whose anchor does not belong to the scope it was found in.
      *
@@ -155,6 +163,28 @@ public final class BuildLogicSupport {
             Consumer<String> label,
             AtomicReference<List<String>> inputTokensRef)
             throws IOException, InterruptedException {
+        return run(projectDir, layout, actionCache, classesDir, anchor, label, line -> {}, inputTokensRef);
+    }
+
+    /**
+     * As above with an {@code output} sink for whatever the scripts print.
+     *
+     * <p>Separate parameter rather than folded into {@code label}: a label is a one-line status the
+     * live view replaces in place, and script output is a transcript that belongs above the region
+     * with the compilers' and native-image's — buffered for the Ctrl-O peek ring, printed under
+     * {@code -v}. Passing one for the other either overwrites a status with a log or buries a log
+     * in a status.
+     */
+    public static boolean run(
+            Path projectDir,
+            BuildLayout layout,
+            ActionCache actionCache,
+            Path classesDir,
+            BuildLogicAnchor anchor,
+            Consumer<String> label,
+            Consumer<String> output,
+            AtomicReference<List<String>> inputTokensRef)
+            throws IOException, InterruptedException {
         Optional<Logic> cfg = BuildLogicToml.resolve(projectDir);
         if (cfg.isEmpty()) return false;
         Logic c = cfg.get();
@@ -172,7 +202,17 @@ public final class BuildLogicSupport {
         Map<BuildLogicAnchor, List<RegisteredTask>> byAnchor = emptyByAnchor();
         registerScripts(byAnchor, scripts);
         return runAnchor(
-                projectDir, layout, actionCache, classesDir, anchor, label, c, scripts, byAnchor, inputTokensRef);
+                projectDir,
+                layout,
+                actionCache,
+                classesDir,
+                anchor,
+                label,
+                output,
+                c,
+                scripts,
+                byAnchor,
+                inputTokensRef);
     }
 
     /** Run (or restore) every task registered at {@code anchor}. */
@@ -183,6 +223,7 @@ public final class BuildLogicSupport {
             Path classesDir,
             BuildLogicAnchor anchor,
             Consumer<String> label,
+            Consumer<String> output,
             Logic c,
             List<BuildLogicScripts.ScriptTask> scripts,
             Map<BuildLogicAnchor, List<RegisteredTask>> byAnchor,
@@ -232,7 +273,10 @@ public final class BuildLogicSupport {
             tokens.add("kind:" + task.kind());
             String key = ActionKey.forArtifact(taskId, BuildIdentity.cacheKeyVersion(), tokens);
 
-            boolean useCache = !SessionContext.current().config().forceOr(false)
+            // An `always` script judges state the key cannot see (build output it reclaims), so a
+            // hit on the same sources says nothing about what it would do now.
+            boolean useCache = !task.always()
+                    && !SessionContext.current().config().forceOr(false)
                     && !SessionContext.current().config().rebuildOr(false);
             Optional<ActionCache.ActionRecord> hit = useCache ? actionCache.lookup(key) : Optional.empty();
             if (hit.isPresent()) {
@@ -258,10 +302,15 @@ public final class BuildLogicSupport {
             deleteContents(outDir);
             Files.createDirectories(outDir);
             try {
-                task.run()
+                String captured = task.run()
                         .run(
                                 projectDir.toAbsolutePath().normalize(),
                                 outDir.toAbsolutePath().normalize());
+                // Whatever the script printed goes to the same sink native-image and the compilers
+                // use: buffered for the Ctrl-O peek ring, above the live region, printed under
+                // `-v`. Only the success path emits — a failure throws above with its output
+                // already attached to the message.
+                emitLines(captured, output);
             } catch (Exception e) {
                 if (e instanceof InterruptedException ie) throw ie;
                 if (e instanceof IOException ioe) throw ioe;
@@ -270,7 +319,9 @@ public final class BuildLogicSupport {
             // Only a success is recorded: the throw above leaves this line unreached, so a failing
             // script is re-run next build rather than replaying its own red.
             Map<String, String> inputs = Map.of(TaskNames.BUILD_LOGIC, key);
-            if (isEmptyDir(outDir)) {
+            if (task.always()) {
+                // Nothing to replay: the next build asks the question again.
+            } else if (isEmptyDir(outDir)) {
                 actionCache.storeVerdict(taskId, key, inputs);
             } else {
                 actionCache.store(taskId, key, inputs, outDir);
@@ -280,7 +331,7 @@ public final class BuildLogicSupport {
         return true;
     }
 
-    /** Back-compat: run {@link BuildLogicAnchor#AFTER_RESOURCES} only. */
+    /** Run {@link BuildLogicAnchor#AFTER_RESOURCES} only. */
     public static boolean run(
             Path projectDir, BuildLayout layout, ActionCache actionCache, Path classesDir, Consumer<String> label)
             throws IOException, InterruptedException {
@@ -289,10 +340,11 @@ public final class BuildLogicSupport {
 
     @FunctionalInterface
     private interface ScriptRun {
-        void run(Path projectDir, Path outDir) throws Exception;
+        /** @return the script's captured stdout/stderr, for the caller's output sink */
+        String run(Path projectDir, Path outDir) throws Exception;
     }
 
-    private record RegisteredTask(String name, String kind, ScriptRun run) {}
+    private record RegisteredTask(String name, String kind, ScriptRun run, boolean always) {}
 
     private static Map<BuildLogicAnchor, List<RegisteredTask>> emptyByAnchor() {
         Map<BuildLogicAnchor, List<RegisteredTask>> out = new EnumMap<>(BuildLogicAnchor.class);
@@ -309,11 +361,9 @@ public final class BuildLogicSupport {
             BuildLogicScripts.ScriptKind kind = s.kind();
             ScriptRun task = (projectDir, outDir) -> {
                 try {
-                    if (kind == BuildLogicScripts.ScriptKind.KTS) {
-                        BuildLogicKtsHost.evaluate(scriptFile, projectDir, outDir);
-                    } else {
-                        BuildLogicGroovyHost.evaluate(scriptFile, projectDir, outDir);
-                    }
+                    return kind == BuildLogicScripts.ScriptKind.KTS
+                            ? BuildLogicKtsHost.evaluate(scriptFile, projectDir, outDir)
+                            : BuildLogicGroovyHost.evaluate(scriptFile, projectDir, outDir);
                 } catch (Exception e) {
                     Throwable root = e;
                     while (root.getCause() != null && root.getCause() != root) {
@@ -325,7 +375,7 @@ public final class BuildLogicSupport {
                 }
             };
             String kindLabel = kind == BuildLogicScripts.ScriptKind.KTS ? "script-kts" : "script";
-            byAnchor.get(s.anchor()).add(new RegisteredTask(s.name(), kindLabel, task));
+            byAnchor.get(s.anchor()).add(new RegisteredTask(s.name(), kindLabel, task, s.always()));
         }
     }
 

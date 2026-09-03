@@ -3,7 +3,7 @@ package cc.jumpkick.cli.run;
 
 import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.run.BuildPlanResult;
-import cc.jumpkick.runtime.WorkspaceProgressTracker;
+import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
 import java.util.List;
 
 /**

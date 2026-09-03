@@ -123,9 +123,17 @@ class EffortWeightsTest {
             groovy = "5.0.4"
             """);
         Path src = Files.createDirectories(dir.resolve("src"));
-        // Enough sources that the static compile weight (ceil(n/10)) clears the TOKEN floor.
+        // Enough sources that the cold compile weight clears the TOKEN floor by a wide margin.
+        //
+        // This was 20, chosen against the uncalibrated static weight of ceil(n/10) = 2 — one single
+        // unit above TOKEN. That holds only on a host with no calibration, which is what Gradle's
+        // isolated JK_HOME gives it. On a real calibrated host the cold weight is derived from the
+        // measured groovy rate instead, and this machine reports exactly 2 for 20 sources: the same
+        // one-unit margin, now sitting on a number that drifts as the host re-calibrates. It landed
+        // on 1 during wide self-hosted builds and failed the assertion, while every isolated
+        // harness stayed green. 400 sources is far from the floor under either derivation.
         List<Path> sources = new ArrayList<>();
-        for (int i = 0; i < 20; i++) {
+        for (int i = 0; i < 400; i++) {
             Path f = src.resolve("Foo" + i + ".groovy");
             Files.writeString(f, "class Foo" + i + " {}");
             sources.add(f);

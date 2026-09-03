@@ -65,14 +65,14 @@ unrecognised terminal. Env
 
 Contributor TUI rules: [TUI](../contributors/tui.md).
 
-## Engine and HTTP
+## Engine
+
+Machine-scoped `[engine]` keys and `JK_ENGINE_*` process env: [Engine](engine.md#configuration).
+They are not project-overridable.
+
+## HTTP and MCP
 
 ```toml
-[engine]
-jobs = 0
-# vfs-max-mb = 32     # per-job input-tree retain; 0 = off. Does not follow CI=1.
-# auto-warmup = false
-
 [http]
 # enabled = false          # default is on (loopback, token-gated /api)
 
@@ -81,8 +81,7 @@ jobs = 0
 # max-event-streams = 16
 ```
 
-`JK_HTTP_ENABLED=false`, `JK_MCP_ENABLED=false`, `JK_AUTO_WARMUP=off`. Details:
-[Engine](engine.md), [MCP](mcp.md), [Web](web.md).
+`JK_HTTP_ENABLED=false`, `JK_MCP_ENABLED=false`. Details: [MCP](mcp.md), [Web](web.md).
 
 ## Other env
 

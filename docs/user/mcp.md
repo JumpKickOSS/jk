@@ -68,6 +68,8 @@ Bind once (`jk_bind`), then omit `dir` on later calls.
 
 Start with **`jk_results`** or **`jk_diagnostics`**. Do not dump full journal records.
 
+Token, loopback bind, and how to report a hole in that gate: [Security](security.md).
+
 ## Resources
 
 | URI | Contents |

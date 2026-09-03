@@ -3,12 +3,12 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.deny.PolicyChecker;
-import cc.jumpkick.engine.protocol.DenyReport;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.wire.protocol.DenyReport;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;

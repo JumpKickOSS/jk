@@ -8,7 +8,8 @@
 #   pwsh -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 path\to\jk.exe
 #
 # Environment variables:
-#   JK_ARCHIVE_URL   Override the archive URL to download (.zip preferred; plain .exe URL also works).
+#   JK_ARCHIVE_URL   Override the archive URL. JK_VERSION is required; signed evidence
+#                    still comes from JK_RELEASES_URL\<version>\.
 #   JK_RELEASES_URL  Override the release site root (mirrors).
 #   JK_VERSION       Install a specific version instead of the latest.
 #   JK_HOME          jk's home directory. Default %USERPROFILE%\.jk; everything jk owns lives
@@ -29,7 +30,13 @@ param(
     [string] $LocalPath = "",
 
     # Skip engine warm-up (CI / PATH-only install).
-    [switch] $SkipEngineWarm
+    [switch] $SkipEngineWarm,
+
+    # Network-free CI seam: authenticate files without installing or executing them.
+    [string] $VerifyOnlyDirectory = "",
+    [string] $VerifyOnlyArtifactName = "",
+    [string] $TestRsaModulus = "",
+    [string] $TestRsaExponent = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -81,6 +88,8 @@ $JkHome = if ($env:JK_HOME) { $env:JK_HOME } else { Join-Path $HOME ".jk" }
 $InstallDir = Join-Path $JkHome "bin"
 
 $ReleasesUrl = if ($env:JK_RELEASES_URL) { $env:JK_RELEASES_URL.TrimEnd("/") } else { "https://jumpkick.build/releases" }
+$ReleaseRsaModulus = "62bXAMmyIpPgiFzT9lcuIPWvvXHmWfGDPbMJAG1lRlbSJ9EFRahqkie0LQaFtXn8W3l2BP/9D0DwdXztS/eVo8WqSNMOZo/srBKrViVJGEOFm0fDmhqrlA3bCZz43+DgFjj7SacI2nJVB4PRjV5jvRwBnZrIUwcvynIQmx2SoWoKgudoje7vNM7UkYmEnZExfmiPQaPmSYCKzXA4pP5KPWD+49bo7o3cLeiO5/Shc27OC0IvK+Vj8CUe4URSt5zHjHUpiE+h4SVTMrGoJg9rgWmRgMHdshsq3aoAkA3jC/YB5SzLwUJeObWGP8I9w7yj8uiSTNIt3KslbRfVtb4vbNoZ4zKPMkCaYhy5ar0sGOqxW97wobIWBiX5pT+knluZErrsJFWpx2dQtRtb2wPovihL7Z9Q18vZb371Gx+rzkNi7jdFvWaGYgsraf01l63Gg2bfy1bleSLhDKmh94yGMoHfszEcE1785xteYOdVSwawUPwWgx8iZ7a4lqOL0Mrr"
+$ReleaseRsaExponent = "AQAB"
 
 # irm|iex cannot pass positional args; allow JK_LOCAL_PATH as the local-dist seam.
 if (-not $LocalPath -and $env:JK_LOCAL_PATH) {
@@ -121,6 +130,120 @@ function Get-TextUrl([string] $Url) {
 
 function Save-Url([string] $Url, [string] $OutFile) {
     Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $OutFile
+}
+
+function Get-StrictManifestHash {
+    param(
+        [Parameter(Mandatory = $true)][byte[]] $ManifestBytes,
+        [Parameter(Mandatory = $true)][string] $ArtifactName
+    )
+    try {
+        $utf8 = New-Object -TypeName System.Text.UTF8Encoding -ArgumentList @($false, $true)
+        $text = $utf8.GetString($ManifestBytes)
+    } catch {
+        throw "release SHA256SUMS is not valid UTF-8"
+    }
+    $lines = $text.Split([char]10)
+    $seen = @{}
+    $found = $null
+    $matchCount = 0
+    for ($i = 0; $i -lt $lines.Length; $i++) {
+        $line = $lines[$i]
+        if ($line.EndsWith("`r")) { $line = $line.Substring(0, $line.Length - 1) }
+        if ($line.Length -eq 0 -and $i -eq ($lines.Length - 1)) { continue }
+        if ($line -notmatch '^([0-9A-Fa-f]{64})  ([A-Za-z0-9][A-Za-z0-9._-]*)$') {
+            throw "release SHA256SUMS has a malformed entry"
+        }
+        $name = $Matches[2]
+        if ($seen.ContainsKey($name)) {
+            throw "release SHA256SUMS has a duplicate entry for $name"
+        }
+        $seen[$name] = $true
+        if ($name -ceq $ArtifactName) {
+            $matchCount++
+            $found = $Matches[1].ToLowerInvariant()
+        }
+    }
+    if ($matchCount -ne 1) {
+        throw "release SHA256SUMS has no unique exact entry for $ArtifactName"
+    }
+    return $found
+}
+
+function Test-ReleaseEvidence {
+    param(
+        [Parameter(Mandatory = $true)][string] $Artifact,
+        [Parameter(Mandatory = $true)][string] $ArtifactName,
+        [Parameter(Mandatory = $true)][string] $Manifest,
+        [Parameter(Mandatory = $true)][string] $Signature,
+        [Parameter(Mandatory = $true)][string] $Modulus,
+        [Parameter(Mandatory = $true)][string] $Exponent
+    )
+    $manifestBytes = [IO.File]::ReadAllBytes($Manifest)
+    $signatureBytes = [IO.File]::ReadAllBytes($Signature)
+    $signatureText = [Text.Encoding]::ASCII.GetString($signatureBytes)
+    if ($signatureText -notmatch '^[A-Za-z0-9+/]+={0,2}\r?\n?$') {
+        throw "release signature is malformed"
+    }
+    try {
+        $signatureValue = [Convert]::FromBase64String($signatureText.TrimEnd([char[]]"`r`n"))
+    } catch {
+        throw "release signature is not valid base64"
+    }
+    if ($signatureValue.Length -ne ([Convert]::FromBase64String($Modulus)).Length) {
+        throw "release signature has the wrong RSA length"
+    }
+
+    $parameters = New-Object System.Security.Cryptography.RSAParameters
+    $parameters.Modulus = [Convert]::FromBase64String($Modulus)
+    $parameters.Exponent = [Convert]::FromBase64String($Exponent)
+    $rsa = [Security.Cryptography.RSA]::Create()
+    try {
+        $rsa.ImportParameters($parameters)
+        $valid = $rsa.VerifyData(
+            $manifestBytes,
+            $signatureValue,
+            [Security.Cryptography.HashAlgorithmName]::SHA256,
+            [Security.Cryptography.RSASignaturePadding]::Pkcs1)
+    } finally {
+        $rsa.Dispose()
+    }
+    if (-not $valid) {
+        throw "release signature verification failed; refusing the download"
+    }
+
+    $expected = Get-StrictManifestHash -ManifestBytes $manifestBytes -ArtifactName $ArtifactName
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try {
+        $actualBytes = $sha.ComputeHash([IO.File]::ReadAllBytes($Artifact))
+    } finally {
+        $sha.Dispose()
+    }
+    $actual = ([BitConverter]::ToString($actualBytes)).Replace("-", "").ToLowerInvariant()
+    if ($actual -cne $expected) {
+        throw "release archive checksum mismatch for $ArtifactName; refusing the download"
+    }
+}
+
+if ($VerifyOnlyDirectory) {
+    if (-not $VerifyOnlyArtifactName -or $VerifyOnlyArtifactName -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$') {
+        Die "VerifyOnlyArtifactName must be a plain release filename."
+    }
+    $modulus = if ($TestRsaModulus) { $TestRsaModulus } else { $ReleaseRsaModulus }
+    $exponent = if ($TestRsaExponent) { $TestRsaExponent } else { $ReleaseRsaExponent }
+    try {
+        Test-ReleaseEvidence `
+            -Artifact (Join-Path $VerifyOnlyDirectory $VerifyOnlyArtifactName) `
+            -ArtifactName $VerifyOnlyArtifactName `
+            -Manifest (Join-Path $VerifyOnlyDirectory "SHA256SUMS") `
+            -Signature (Join-Path $VerifyOnlyDirectory "SHA256SUMS.sig") `
+            -Modulus $modulus `
+            -Exponent $exponent
+        Write-Info "Release evidence verified."
+        return
+    } catch {
+        Die $_.Exception.Message
+    }
 }
 
 function Park-IfPresent([string] $Path) {
@@ -263,6 +386,10 @@ if ($LocalPath) {
     }
     $ArchiveFile = (Resolve-Path -LiteralPath $LocalPath).Path
 } elseif ($env:JK_ARCHIVE_URL) {
+    if (-not $env:JK_VERSION) {
+        Die "JK_VERSION is required when JK_ARCHIVE_URL is set."
+    }
+    $version = $env:JK_VERSION
     $ArchiveUrl = $env:JK_ARCHIVE_URL
     $IsRemote = $true
 } else {
@@ -279,8 +406,27 @@ if ($LocalPath) {
         Die "could not resolve the latest jk version from $ReleasesUrl/latest/VERSION"
     }
     # Windows installer prefers .zip (no system xz). Self-update uses .xz via the engine.
-    $ArchiveUrl = "$ReleasesUrl/$version/jk-$target.zip"
+    $ArchiveUrl = "$ReleasesUrl/$version/jk-$target-$version.zip"
     $IsRemote = $true
+}
+
+if ($IsRemote) {
+    if ($version -notmatch '^[A-Za-z0-9._-]+$') {
+        Die "invalid release version: $version"
+    }
+    try {
+        $archiveUri = [Uri]$ArchiveUrl
+    } catch {
+        Die "JK_ARCHIVE_URL must be an absolute HTTPS URL."
+    }
+    if (-not $archiveUri.IsAbsoluteUri -or $archiveUri.Scheme -ne "https") {
+        Die "remote archive URL must use HTTPS."
+    }
+    $ArtifactName = [IO.Path]::GetFileName($archiveUri.AbsolutePath)
+    if ($ArtifactName -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$') {
+        Die "archive URL must end in a plain release artifact filename."
+    }
+    $ReleaseVersionUrl = "$ReleasesUrl/$version"
 }
 
 # ---- download & install ----------------------------------------------------
@@ -291,13 +437,28 @@ try {
     if ($IsRemote) {
         $ArchiveFile = Join-Path $tmpRoot "jk.archive"
         # Preserve a useful extension for decompress dispatch.
-        $urlExt = [IO.Path]::GetExtension(($ArchiveUrl -split "\?")[0])
+        $urlExt = [IO.Path]::GetExtension($ArtifactName)
         if ($urlExt) { $ArchiveFile = $ArchiveFile + $urlExt }
         Write-Info "Downloading $ArchiveUrl"
         try {
             Save-Url $ArchiveUrl $ArchiveFile
+            $manifestFile = Join-Path $tmpRoot "SHA256SUMS"
+            $signatureFile = Join-Path $tmpRoot "SHA256SUMS.sig"
+            Save-Url "$ReleaseVersionUrl/SHA256SUMS" $manifestFile
+            Save-Url "$ReleaseVersionUrl/SHA256SUMS.sig" $signatureFile
         } catch {
-            Die "failed to download $ArchiveUrl ($($_.Exception.Message))"
+            Die "failed to download release artifact or verification evidence ($($_.Exception.Message))"
+        }
+        try {
+            Test-ReleaseEvidence `
+                -Artifact $ArchiveFile `
+                -ArtifactName $ArtifactName `
+                -Manifest $manifestFile `
+                -Signature $signatureFile `
+                -Modulus $ReleaseRsaModulus `
+                -Exponent $ReleaseRsaExponent
+        } catch {
+            Die $_.Exception.Message
         }
     }
 

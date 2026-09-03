@@ -3,10 +3,12 @@ package cc.jumpkick.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.engine.protocol.EngineProtocol;
-import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.testing.ShortTempDirs;
 import cc.jumpkick.util.OwnerOnlyFiles;
+import cc.jumpkick.wire.EnginePaths;
+import cc.jumpkick.wire.EngineTransport;
+import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.protocol.ProtoLifecycle;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;

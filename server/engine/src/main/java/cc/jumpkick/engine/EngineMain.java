@@ -11,6 +11,7 @@ import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.util.AtomicWrites;
+import cc.jumpkick.wire.EnginePaths;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;

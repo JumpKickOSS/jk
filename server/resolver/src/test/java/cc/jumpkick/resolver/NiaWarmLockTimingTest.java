@@ -37,9 +37,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
  * Local-only NIA lock phase timing (developer store). Not for CI by default.
  *
  * <p>Point {@value #OVERLAY_ENV} at a {@code nowinandroid} overlay directory (the one holding
- * {@code jk.toml}) to run it. It used to hard-code one contributor's home directory, which meant
- * that on every other machine — including CI — the test reported PASS having skipped for a reason
- * nobody could act on. Unset, it still skips, but now says what to set.
+ * {@code jk.toml}) to run it. Unset, it skips and says what to set.
  */
 @Tag("network")
 @ExtendWith(SysProps.class)

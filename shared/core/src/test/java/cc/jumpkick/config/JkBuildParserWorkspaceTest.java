@@ -364,9 +364,8 @@ class JkBuildParserWorkspaceTest {
     }
 
     /**
-     * A manifest that exists and does not parse is an error. It used to be swallowed into
-     * {@code TestTomlTags.EMPTY}, which the planner reads as "this project filters no tags" — so a
-     * typo in {@code [test]} silently widened the suite instead of failing the command.
+     * A manifest that exists and does not parse is an error. {@code TestTomlTags.EMPTY} means
+     * "this project filters no tags"; a swallowed parse error would silently widen the suite.
      */
     @Test
     void parse_test_tags_refuses_a_malformed_manifest(@TempDir Path dir) throws Exception {

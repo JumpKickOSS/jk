@@ -17,9 +17,7 @@ public record PluginConfig(String id, Map<String, Object> values) {
 
     public PluginConfig {
         Objects.requireNonNull(id, "id");
-        values = values == null || values.isEmpty()
-                ? Map.of()
-                : Collections.unmodifiableMap(new LinkedHashMap<>(values));
+        values = values.isEmpty() ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(values));
     }
 
     /** A required-by-schema string — the schema guarantees presence, so absent is a bug. */

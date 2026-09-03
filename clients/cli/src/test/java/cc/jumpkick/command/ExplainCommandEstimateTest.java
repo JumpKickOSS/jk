@@ -6,7 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.RenderContext;
-import cc.jumpkick.runtime.TaskForecast;
+import cc.jumpkick.wire.runtime.TaskForecast;
 import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;

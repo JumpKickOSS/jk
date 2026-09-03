@@ -108,9 +108,8 @@ class NewJkBuildRendererTest {
     }
 
     /**
-     * Render → parse, unchanged. The renderer used to splice raw text between two {@code "}
-     * characters at eleven sites, so a group or main class carrying a quote or a backslash — a
-     * Windows-style class path in {@code main} — produced a starter manifest jk could not read.
+     * Render → parse, unchanged. Values are TOML-quoted, so a group or main class carrying a
+     * quote or a backslash — a Windows-style class path in {@code main} — still round-trips.
      */
     @Test
     void a_metacharacter_bearing_value_round_trips_through_the_renderer() {

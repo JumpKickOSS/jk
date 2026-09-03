@@ -20,15 +20,10 @@ import java.util.function.UnaryOperator;
  * <li>the engine's own environment, as a last resort
  * </ol>
  *
- * <p>Both halves used to be wrong in different places. {@code .env} was unreachable outside the few
- * sites that had been threaded an environment, and the caller's shell environment was invisible to
- * anything that called {@code System.getenv} inside the engine — a long-lived daemon started from
- * some earlier shell, so {@code FOO=x jk build} had no effect.
- *
- * <p>Both are fixed here rather than by adding a parameter to fifteen call sites, because the
- * request's environment is already on the ambient {@link Session} and every one of those sites
- * already knows its module directory. A helper keyed on the directory alone is therefore enough,
- * and — the point — a <em>new</em> call site gets it right without having to know it exists.
+ * <p>The request's environment is already on the ambient {@link Session} and every call site
+ * already knows its module directory, so a helper keyed on the directory is enough.
+ * {@code System.getenv} inside the engine answers from whichever shell started the daemon, not
+ * from {@code FOO=x jk build}.
  */
 public final class BuildEnv {
 

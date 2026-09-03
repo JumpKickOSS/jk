@@ -20,8 +20,8 @@ class PassthroughEnvTest {
         env.put("MAVEN_OPTS", "-Xmx2g");
         env.put("GRADLE_OPTS", "-Dorg.gradle.daemon=false");
         env.put("KOTLIN_HOME", "/opt/kotlin");
-        // JDK_HOME used to be stripped only by `jk shell`; the strip set is the union of what all
-        // three callers need gone, so an ambient JDK_HOME cannot out-vote the JDK jk just picked.
+        // JDK_HOME is in the strip set with the other toolchain overrides, so an ambient
+        // JDK_HOME cannot out-vote the JDK jk just picked.
         env.put("JDK_HOME", "/opt/some-other-jdk");
         env.put("PATH", "/usr/bin:/bin");
         env.put("HOME", "/home/alice");

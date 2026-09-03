@@ -98,6 +98,19 @@ class JkEngineConfigTest {
     }
 
     @Test
+    void auto_warmup_defaults_on_and_file_can_turn_it_off(@TempDir Path tempDir) throws IOException {
+        assertThat(JkEngineConfig.DEFAULTS.autoWarmup()).isTrue();
+        Path toml = tempDir.resolve("config.toml");
+        Files.writeString(toml, "[engine]\nauto-warmup = false\n");
+        assertThat(JkEngineConfig.fromToml(toml).autoWarmup()).isFalse();
+        JkEngineConfig envOff = JkEngineConfig.resolve(toml, Map.of("JK_AUTO_WARMUP", "off")::get);
+        assertThat(envOff.autoWarmup()).isFalse();
+        JkEngineConfig envOn =
+                JkEngineConfig.resolve(tempDir.resolve("none.toml"), Map.of("JK_AUTO_WARMUP", "on")::get);
+        assertThat(envOn.autoWarmup()).isTrue();
+    }
+
+    @Test
     void vfs_max_mb_env_overrides_file(@TempDir Path tempDir) throws IOException {
         Path toml = tempDir.resolve("config.toml");
         Files.writeString(toml, "[engine]\nvfs-max-mb = 64\n");

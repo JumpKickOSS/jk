@@ -21,11 +21,9 @@ import org.junit.jupiter.api.io.TempDir;
  * {@code [processor-dependencies]} must behave like every other scope in a
  * workspace.
  *
- * <p>The processor classpath used to be built from the lockfile alone, while main and test both
- * merged {@link WorkspaceClasspath} siblings. Since a workspace sibling is never a Maven artifact
- * it is never in the lock, so {@code foo = { workspace = true }} resolved to nothing: KSP never
- * ran and the build reported success having generated no code. Found while spiking Knest, whose
- * processors are workspace modules during development.
+ * <p>The processor classpath merges {@link WorkspaceClasspath} siblings, not the lockfile
+ * alone. A workspace sibling is never a Maven artifact, so it is never in the lock: without
+ * that merge {@code foo = { workspace = true }} would resolve to nothing.
  */
 class ProcessorClasspathTest {
 

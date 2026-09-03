@@ -96,6 +96,7 @@ Each line is a capability. Follow the link for the full topic (flags, config, li
 - **Run one-off tools** (`jk tool run` / `jkx`, JBang-compatible scripts) — [Tools](tools.md)
 - **IDE import** (IntelliJ, VS Code, BSP) — [IDE](ide.md)
 - **Web dashboard** (`jk web`) — [Web](web.md)
+- **Report a vulnerability**; trust boundaries — [Security](security.md)
 
 ### Frameworks (first-party plugins)
 

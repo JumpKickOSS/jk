@@ -13,7 +13,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** One monitor per lock dir — concurrent re-locks of one checkout serialize. */
+/**
+ * One monitor per lock dir. {@link LockFlow} remains the sole acquisition owner, and
+ * {@link WorkspaceLock} enters it rather than adding another workspace lifecycle lock.
+ */
 class LockGateTest {
 
     @Test

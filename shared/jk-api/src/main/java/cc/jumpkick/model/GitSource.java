@@ -2,6 +2,7 @@
 package cc.jumpkick.model;
 
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A git-sourced dependency. {@code canonicalUrl} is normalized; {@code originalUrl} is what the
@@ -13,7 +14,7 @@ public record GitSource(
         String canonicalUrl,
         String originalUrl,
         GitRefSpec ref,
-        String path,
+        @Nullable String path,
         boolean submodules,
         boolean verifySignature,
         boolean shallow) {
@@ -30,7 +31,7 @@ public record GitSource(
             String canonicalUrl,
             String originalUrl,
             GitRefSpec ref,
-            String path,
+            @Nullable String path,
             boolean submodules,
             boolean verifySignature) {
         this(canonicalUrl, originalUrl, ref, path, submodules, verifySignature, ref instanceof GitRefSpec.Tag);
@@ -41,7 +42,7 @@ public record GitSource(
         return new GitSource(canonicalUrl, originalUrl, ref, null, true, false);
     }
 
-    public GitSource withPath(String path) {
+    public GitSource withPath(@Nullable String path) {
         return new GitSource(canonicalUrl, originalUrl, ref, path, submodules, verifySignature, shallow);
     }
 

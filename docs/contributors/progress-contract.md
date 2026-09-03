@@ -121,7 +121,7 @@ When `parallelTests == false`: `max(scheduled, Σ testWeight)` as serial test fl
 
 ## Progress bar
 
-Shared strategies (`cc.jumpkick.runtime.progress` in `:wire`) — used by **engine
+Shared strategies (`cc.jumpkick.wire.runtime.progress` in `:wire`) — used by **engine
 workspace-progress**, **CLI header**, and **web dashboard**:
 
 | Mode | Strategy | When |

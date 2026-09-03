@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 plugins {
-    id("jk.java-conventions")
+    id("jk.nullmarked-conventions")
 }
 
 description = "jk-api: the stable front-end contract (IO/thread machinery lives in :core) — BuildPlan/Step scheduler SPI, " +

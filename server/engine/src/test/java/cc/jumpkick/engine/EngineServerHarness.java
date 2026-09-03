@@ -3,9 +3,11 @@ package cc.jumpkick.engine;
 
 import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.engine.plugin.JvmOptions;
-import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.testing.Await;
 import cc.jumpkick.testing.ShortTempDirs;
+import cc.jumpkick.wire.EnginePaths;
+import cc.jumpkick.wire.EngineTransport;
+import cc.jumpkick.wire.protocol.EngineProtocol;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;

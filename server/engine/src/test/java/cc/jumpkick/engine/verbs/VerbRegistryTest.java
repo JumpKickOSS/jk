@@ -4,12 +4,12 @@ package cc.jumpkick.engine.verbs;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.Session;
-import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
-import cc.jumpkick.runtime.WorkspaceBuildListener;
+import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 import java.util.function.Function;

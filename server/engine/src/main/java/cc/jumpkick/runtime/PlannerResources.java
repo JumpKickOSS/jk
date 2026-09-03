@@ -108,6 +108,7 @@ public final class PlannerResources {
                                 classes,
                                 BuildLogicAnchor.AFTER_RESOURCES,
                                 ctx::label,
+                                ctx::output,
                                 buildLogicInputTokensRef);
                         if (logicRan) ctx.label("build-logic applied");
                     } catch (InterruptedException e) {
@@ -185,6 +186,7 @@ public final class PlannerResources {
                                 classes,
                                 BuildLogicAnchor.BEFORE_COMPILE,
                                 ctx::label,
+                                ctx::output,
                                 buildLogicInputTokensRef);
                         if (ran) ctx.label("build-logic applied");
                         else ctx.cached(); // SKIPPED — no generate/before-compile logic this run
@@ -221,6 +223,7 @@ public final class PlannerResources {
                                 classes,
                                 BuildLogicAnchor.AFTER_COMPILE,
                                 ctx::label,
+                                ctx::output,
                                 buildLogicInputTokensRef);
                         if (ran) ctx.label("build-logic applied");
                         else ctx.cached(); // SKIPPED — no after-compile logic this run
@@ -256,6 +259,7 @@ public final class PlannerResources {
                                 classes,
                                 BuildLogicAnchor.BEFORE_PACKAGE,
                                 ctx::label,
+                                ctx::output,
                                 buildLogicInputTokensRef);
                         if (ran) ctx.label("build-logic applied");
                         else ctx.cached(); // SKIPPED — no before-package logic this run
@@ -298,6 +302,7 @@ public final class PlannerResources {
                                 /* classesDir */ null,
                                 BuildLogicAnchor.AFTER_BUILD,
                                 ctx::label,
+                                ctx::output,
                                 buildLogicInputTokensRef);
                         if (ran) ctx.label("build-logic applied");
                         else ctx.cached(); // SKIPPED — no workspace build logic this run
@@ -335,6 +340,7 @@ public final class PlannerResources {
                                 /* classesDir */ null,
                                 BuildLogicAnchor.GATE,
                                 ctx::label,
+                                ctx::output,
                                 buildLogicInputTokensRef);
                         if (ran) ctx.label("build-logic applied");
                         else ctx.cached();

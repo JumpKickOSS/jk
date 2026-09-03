@@ -9,6 +9,9 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.test.TestWorkers;
+import cc.jumpkick.wire.runtime.ExplainPlan;
+import cc.jumpkick.wire.runtime.ModuleWorkCost;
+import cc.jumpkick.wire.runtime.TaskForecast;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -83,8 +86,8 @@ public final class BuildEta {
             // Host calibration: cheap when present; bootstrap probe once when missing (network
             // unless --offline). Host scale then multiplies product baselines for cold steps.
             Calibration.ensure(jdksDir);
-            List<EffortWeights.ModuleCost> costs =
-                    etaCostsFromExplainPlan(plan, cache, workers, jdksDir, profile, skipTests, verbose);
+            List<EffortWeights.ModuleCost> costs = etaCostsFromExplainPlan(
+                    plan, cache, workers, jdksDir, profile, skipTests, verbose, maxModuleConcurrency);
             int concurrency = etaConcurrency(plan.maxReadyWidth(), workers, parallelTests, maxModuleConcurrency);
             boolean serialEta = concurrency <= 1;
             if (costs.isEmpty()) return new BuildService.EtaModel(0, costs, concurrency, serialEta);
@@ -114,7 +117,7 @@ public final class BuildEta {
                         + " final=" + seed.etaMs()
                         + " concurrency=" + concurrency
                         + " serial=" + serialEta
-                        + " bias=" + ScheduleBias.current(entryDir));
+                        + " bias=" + ScheduleBias.current(entryDir, costs.size()));
             }
             return new BuildService.EtaModel(seed.etaMs(), costs, concurrency, serialEta, seed.rawScheduleMs());
         } catch (RuntimeException e) {
@@ -145,8 +148,47 @@ public final class BuildEta {
     }
 
     /**
+     * Recorded wall of the invocation root's build-logic scripts, or {@code 0} when the project has
+     * none. Measured, never a static prior: a gate is arbitrary user script and a guessed duration
+     * would be fiction. See {@link BuildLogicEffort} for the discovery and will-it-run rules; the
+     * module-scoped anchors are priced into their own module, not here.
+     */
+    private static long rootBuildLogicMillis(Path entryDir) {
+        boolean gateRequested = SessionContext.current().testSelection().gate()
+                || SessionContext.current().testSelection().scriptsOnly();
+        return BuildLogicEffort.rootMillis(entryDir, BuildMetrics.load(BuildMetrics.defaultFile()), gateRequested);
+    }
+
+    /**
+     * Whether this module will really compete for the machine — the population the {@code -w} auto
+     * share is divided by.
+     *
+     * <p>Not the same question as {@link TaskForecast.Module#dirty()}. On an incremental build most
+     * of the tree is dirty in the bookkeeping sense and yet forks no JVM and compiles nothing: its
+     * steps are all cache hits, or the only material one is restoring outputs the CAS already holds.
+     * Dividing the machine by that count is how a one-file edit came to look twelve modules wide,
+     * which cut every suite's runner share from 24 to 2 and priced {@code server/engine}'s suite at
+     * 36 s against the 17 s it actually takes on 24 runners.
+     *
+     * <p>{@code BuildForecasting.isRestoreOnly} is the neighbouring predicate and does not answer
+     * this: it looks for a restore step, so a module with <em>no</em> material work at all — the
+     * common case here — comes back {@code false}.
+     */
+    static boolean competesForMachine(TaskForecast.Module m) {
+        if (!m.dirty()) return false;
+        for (TaskForecast.Task s : m.steps()) {
+            if (s.cached()) continue;
+            if (TaskForecast.Module.isBookkeepingStep(s.name())) continue;
+            if (!TaskForecast.Module.isMaterialWork(s.name())) continue;
+            if (TaskNames.RESTORE_OUTPUTS.equals(s.name())) continue;
+            return true;
+        }
+        return false;
+    }
+
+    /**
      * Module-concurrency budget for the ETA schedule — <b>must</b> match {@link
-     * #buildWorkspace}'s {@code concurrency} so explain and the live countdown clamp the same way.
+     * WorkspaceExecute}'s {@code concurrency} so explain and the live countdown clamp the same way.
      */
     static int etaConcurrency(int maxReadyWidth, int workers, boolean parallelTests, int maxModuleConcurrency) {
         int cores = Math.max(1, Runtime.getRuntime().availableProcessors());
@@ -195,7 +237,8 @@ public final class BuildEta {
             Path jdksDir,
             String profile,
             boolean skipTests,
-            boolean verbose) {
+            boolean verbose,
+            int maxModuleConcurrency) {
         Set<Path> projectModules = new HashSet<>();
         for (TaskForecast.Module m : plan.modules()) projectModules.add(m.dir());
         List<String> projectDirs = projectModules.stream().map(Path::toString).toList();
@@ -203,8 +246,29 @@ public final class BuildEta {
                 || SessionContext.current().config().rebuildOr(false);
         BuildMetrics metrics = BuildMetrics.load(BuildMetrics.defaultFile());
         StepTimings timings = StepTimings.load(cache);
-        // Same jobs budget the live runner uses for -w auto (not raw availableProcessors alone).
-        int jobsBudget = Math.max(1, TestWorkers.effectiveJobs());
+        // The runner share a module will really get, not the whole machine: `jk build` divides the
+        // jobs budget by how wide the build can get (WorkspaceResourcePhase.resolveAutoWorkers), so
+        // this asks the same question of the same population through the same function, or the two
+        // price different builds — see competesForMachine and BuildGraph.maxReadyWidth for the two
+        // ways this disagreed with the executor, both of which under-stated each suite's share.
+        Set<Path> dirtyDirs = new LinkedHashSet<>();
+        for (TaskForecast.Module m : plan.modules()) {
+            if (distrust || competesForMachine(m)) dirtyDirs.add(m.dir());
+        }
+        // Width is the widest simultaneously-ready wave, NOT the number of dirty modules — the same
+        // question BuildGraph.maxReadyWidth answers for the executor, asked the same way. Counting
+        // dirty modules instead over-states it whenever they are a dependency chain, which is the
+        // common incremental case, and under-states every suite's runner share by the same factor.
+        int dirtyWidth = BuildGraph.maxReadyWidth(dirtyDirs, plan.edges());
+        if (maxModuleConcurrency > 0) dirtyWidth = Math.min(Math.max(1, dirtyWidth), maxModuleConcurrency);
+        int jobsBudget = TestWorkers.jobsBudget(maxModuleConcurrency);
+        // The live countdown arrives with the share already resolved (workers > 0); explain
+        // resolves it here, through the executor's own function.
+        int share = workers > 0 ? workers : TestWorkers.autoShare(jobsBudget, dirtyWidth);
+        if (Perf.ENABLED) {
+            System.err.println("[jk-perf] eta-width dirtyModules=" + dirtyDirs.size() + " dirtyWidth=" + dirtyWidth
+                    + " jobs=" + jobsBudget + " share=" + share);
+        }
         List<EffortWeights.ModuleCost> costs = new ArrayList<>();
         for (TaskForecast.Module m : plan.modules()) {
             if (!distrust && !m.dirty()) continue;
@@ -216,9 +280,17 @@ public final class BuildEta {
             boolean testResourceDrift = hasTestResourceDriftWork(m);
             // Native/assembly in the forecast keeps run-tests full (cli ← engine test-dep) even
             // when native itself is cascade-discounted below.
-            boolean keepFullTests = localCompile
-                    || hasHeavyPackagingTail(m)
-                    || m.steps().stream().noneMatch(s -> (distrust || !s.cached()) && isCompileStepName(s.name()));
+            // Full suite price only when this module owns evidence of change: its own compile
+            // content, a heavy packaging tail, or other material work that is not the suite.
+            // A suite-only dirty step is a drifted run-tests stamp key, not work — price a
+            // recheck. Cascade-forced steps ("dependency changed", "main changed", "compile
+            // changed") are a sibling's consequence, not evidence here.
+            boolean otherMaterialWork = m.steps().stream()
+                    .anyMatch(s -> (distrust || !s.cached())
+                            && !TaskNames.RUN_TESTS.equals(s.name())
+                            && !TaskForecast.Module.isBookkeepingStep(s.name())
+                            && !isCascadeForcedStep(s));
+            boolean keepFullTests = localCompile || hasHeavyPackagingTail(m) || otherMaterialWork;
             List<String> running = new ArrayList<>();
             int cascadeRecheck = 0;
             for (TaskForecast.Task s : m.steps()) {
@@ -255,10 +327,17 @@ public final class BuildEta {
                 counts.put(TaskNames.COMPILE_TEST, m.sourceCount());
             }
             int classGuess = m.testCount() > 0 ? Math.max(1, m.testCount() / 3) : 0;
-            // workers: 0 = auto (same as bare jk build -w omit)
-            int testW = TestWorkers.resolve(workers, classGuess, jobsBudget);
+            // The share is a cap, not a demand: a suite with fewer classes than runners gets fewer.
+            int testW = TestWorkers.resolve(share, classGuess, share);
             EffortWeights.ModuleCost priced = EffortWeights.costFromRunningSteps(
                     mdir, prereqs, running, metrics, timings, projectDirs, counts, testW);
+            // This module's own `.jk/` scripts, for the anchors this build will actually reach.
+            // They are prefix work — before-compile/after-compile/before-package all land ahead of
+            // the suite-vs-tail split — so they go on `weight` and not on either branch.
+            long logicMs = BuildLogicEffort.moduleMillis(mdir, m, metrics);
+            if (logicMs > 0) {
+                priced = priced.withWeight(priced.weight() + EffortWeights.flatWeight(logicMs));
+            }
             if (cascadeRecheck > 0) {
                 // withWeight, not costOf: the four-argument form zeroes tailWeight, which reprices
                 // the module as the sum of its steps instead of its longer branch.
@@ -440,7 +519,8 @@ public final class BuildEta {
         // Always convert at MS_PER_WEIGHT. Costs are priced either as absolute step walls
         // (flatWeight(avgMs) round-trips with ×150) or residual/static units trained in that same
         // reference frame.
-        BuildMetrics.Stats okHist = okHistory(entryDir, hist);
+        HistoryMatch okMatch = okHistoryMatch(entryDir, hist);
+        BuildMetrics.Stats okHist = okMatch.stats();
         // Whole-build history floor only for true full rebuilds — not merely "many modules are
         // dirty." Require substantial scheduled weight breadth, or an explicit --force/--rebuild.
         boolean fullWork = isFullWorkShape(hist, costs);
@@ -456,13 +536,23 @@ public final class BuildEta {
         }
         long base =
                 EffortWeights.scheduleMillis(costs, etaConcurrency, serial, parallelTests, EffortWeights.MS_PER_WEIGHT);
+        // The root's build logic. `.jk/after-build.kts` runs once, after every module, so it belongs
+        // on the schedule as a serial tail rather than inside any module's wall. The forecast
+        // classifies build-logic steps as bookkeeping and never lists them, so this adds the
+        // measured gate cost the schedule would otherwise omit.
+        base += rootBuildLogicMillis(entryDir);
         long rawSchedule = base;
-        // Learned schedule-contention bias (actual/simulated EWMA from real runs): the ideal
-        // schedule composes measured step walls with perfect overlap; real workspaces pay JVM
-        // spawn queuing, PluginSlots gating, and IO contention the model cannot see. Applied
-        // only to multi-module schedules — the observation loop only learns from those.
+        // Learned schedule-contention bias (actual/simulated EWMA from real runs, keyed by build
+        // shape): the ideal schedule composes measured step walls with perfect overlap; real
+        // workspaces pay JVM spawn queuing, PluginSlots gating, and IO contention the model cannot
+        // see.
+        //
+        // The gate is inside the biased amount on purpose. It is not a constant that deserves to
+        // sit outside: the same gate measures 4.6 s on a two-module build and 12.3 s on a wider
+        // one, because it is a JVM walking the tree while test JVMs compete for the same machine.
+        // It contends like everything else here, so it scales like everything else here.
         if (costs.size() >= ScheduleBias.MIN_MODULES) {
-            base = Math.round(base * ScheduleBias.current(entryDir));
+            base = Math.round(base * ScheduleBias.current(entryDir, costs.size()));
         }
         if (coldFull && base > 0) {
             base = Math.round(base * 1.08);
@@ -497,7 +587,7 @@ public final class BuildEta {
         }
         // One-sided clamp for absurd over-estimates only (never pull incremental work up to history).
         // Then a tiny open-loop preference for mild over-estimate (finishing early feels worse than late).
-        return new Seed(preferSlightOverEstimate(applyHistoryPrior(base, okHist)), rawSchedule);
+        return new Seed(preferSlightOverEstimate(applyHistoryPrior(base, okMatch)), rawSchedule);
     }
 
     /**
@@ -616,6 +706,30 @@ public final class BuildEta {
     }
 
     /**
+     * As {@link #applyHistoryPrior(long, BuildMetrics.Stats)}, but declining to clamp when the
+     * samples did not come from this build's own kind.
+     *
+     * <p>Takes the {@link HistoryMatch} rather than a boolean on purpose: the existing overloads
+     * already carry an ignored {@code rebuildShape} flag in that position, and giving a second
+     * meaning to a boolean there is how a caller passing {@code false} silently changes behaviour.
+     *
+     * <p>A fallback sample is a fine prior for a cold estimate and a terrible bound for a warm one.
+     * Clamping across kinds capped a full-rebuild schedule accurate to 2.8% (75.6 s simulated,
+     * 73.6 s actual) down to 27.6 s, because a day of incremental builds had left a 13.8 s maximum
+     * in the bare-project bucket. The under-read read as a modelling error for a long time, because
+     * a clamp leaves no trace in the output.
+     */
+    static long applyHistoryPrior(long base, HistoryMatch match) {
+        if (match == null) return base;
+        if (!match.sameKind()) {
+            BuildMetrics.Stats st = match.stats();
+            // Cold seed still deserves a prior; a warm schedule does not deserve a foreign bound.
+            return base == 0 && st != null && st.count() > 0 ? st.avgMillis() : base;
+        }
+        return applyHistoryPrior(base, match.stats());
+    }
+
+    /**
      * Successful build invocation stats with shape-aware keys.
      *
      * <p>Lookup order: exact shaped key → bare project dir → host {@code dir=""} for that shape's
@@ -634,27 +748,52 @@ public final class BuildEta {
     }
 
     static BuildMetrics.Stats okHistory(Path entryDir, BuildService.HistoryShape shape) {
+        return okHistoryMatch(entryDir, shape).stats();
+    }
+
+    /**
+     * History samples plus whether they came from this build's own kind.
+     *
+     * <p>{@code kind} is {@code build} or {@code build:rebuild} so full-rebuild walls do not pollute
+     * incremental estimates and vice versa. The fallback chain walks off that kind (bare project
+     * dir, then host) when the shaped bucket is thin; {@code sameKind} lets a caller decline to
+     * treat a fallback as a bound. Fallbacks are still returned — a reasonable prior for a cold
+     * project — but they must not clamp a full-rebuild schedule against incremental history.
+     */
+    record HistoryMatch(BuildMetrics.Stats stats, boolean sameKind) {
+        static final HistoryMatch NONE = new HistoryMatch(BuildMetrics.Stats.EMPTY, false);
+    }
+
+    static HistoryMatch okHistoryMatch(Path entryDir, BuildService.HistoryShape shape) {
         BuildMetrics metrics = BuildMetrics.load(BuildMetrics.defaultFile());
         BuildService.HistoryShape s = shape == null ? new BuildService.HistoryShape(false, -1) : shape;
         String kind = s.kind();
         if (entryDir != null) {
             String shaped = s.dirKey(entryDir);
             var exact = metrics.invocation(kind, shaped).map(BuildMetrics.Entry::ok);
-            if (exact.isPresent() && exact.get().count() > 0) return exact.get();
+            if (exact.isPresent() && exact.get().count() > 0) return new HistoryMatch(exact.get(), true);
             // Same path, any dirty-count for this kind — the write side always shapes the
             // key (path#dN), so merge across shapes instead of an exact bare lookup that
-            // reads a never-written key.
+            // reads a never-written key. Still this kind, so still a match.
             BuildMetrics.Stats shapes = metrics.okAcrossShapes(kind, BuildMetrics.slashKey(entryDir.toString()));
-            if (shapes.count() > 0) return shapes;
-            // Fall back to plain "build" for the path when the shaped kind has no samples.
+            if (shapes.count() > 0) return new HistoryMatch(shapes, true);
+            // Fall back to plain "build" for the path when the shaped kind has no samples. This
+            // one crosses kinds: `build` walls are incremental, and this branch is only reached
+            // by `build:rebuild`.
             if (!"build".equals(kind)) {
                 var legacy = metrics.invocation("build", BuildMetrics.slashKey(entryDir.toString()))
                         .map(BuildMetrics.Entry::ok);
-                if (legacy.isPresent() && legacy.get().count() > 0) return legacy.get();
+                if (legacy.isPresent() && legacy.get().count() > 0) return new HistoryMatch(legacy.get(), false);
             }
         }
         var hostShaped = metrics.invocation(kind, "").map(BuildMetrics.Entry::ok);
-        if (hostShaped.isPresent() && hostShaped.get().count() > 0) return hostShaped.get();
-        return metrics.invocation("build", "").map(BuildMetrics.Entry::ok).orElse(BuildMetrics.Stats.EMPTY);
+        // Host-level samples are this kind but another project's tree — a prior, not a bound.
+        if (hostShaped.isPresent() && hostShaped.get().count() > 0) {
+            return new HistoryMatch(hostShaped.get(), false);
+        }
+        return metrics.invocation("build", "")
+                .map(BuildMetrics.Entry::ok)
+                .map(st -> new HistoryMatch(st, false))
+                .orElse(HistoryMatch.NONE);
     }
 }

@@ -138,9 +138,49 @@ public final class BuildMetrics {
     /** key = dir + SEP + step (dir "" = global). */
     private final Map<String, Entry> steps;
 
+    /**
+     * {@code <dir>|<step>} → the runner count a suite wall was produced at.
+     *
+     * <p>Kept beside {@link #steps} rather than folded into {@link Entry}: it applies to exactly one
+     * step name, and widening the record every consumer constructs would spread a test-only concern
+     * across the whole metrics surface.
+     */
+    private final Map<String, Integer> stepWorkers;
+
+    /** {@code <dir>|<step>} → that wall normalized to one runner. Same rationale as above. */
+    private final Map<String, Long> stepWall1;
+
+    /** Runners that produced {@code dir}'s {@code step} wall, or {@code 0} when not recorded. */
+    public int stepWorkers(String dir, String step) {
+        Integer n = stepWorkers.get(slashKey(dir) + SEP + step);
+        return n == null ? 0 : n;
+    }
+
+    /**
+     * {@code dir}'s {@code step} wall normalized to a single runner, or {@code 0} when not recorded.
+     *
+     * <p>This, not {@link #stepOkAvgMillisOwn}, is the re-usable form of a suite cost: it is
+     * averaged over runs that sharded the suite differently without mixing their shapes. See
+     * {@link TestSuiteScaling}.
+     */
+    public long stepWall1Millis(String dir, String step) {
+        Long n = stepWall1.get(slashKey(dir) + SEP + step);
+        return n == null ? 0 : n;
+    }
+
     private BuildMetrics(Map<String, Entry> invocations, Map<String, Entry> steps) {
+        this(invocations, steps, Map.of(), Map.of());
+    }
+
+    private BuildMetrics(
+            Map<String, Entry> invocations,
+            Map<String, Entry> steps,
+            Map<String, Integer> stepWorkers,
+            Map<String, Long> stepWall1) {
         this.invocations = invocations;
         this.steps = steps;
+        this.stepWorkers = stepWorkers == null ? Map.of() : Map.copyOf(stepWorkers);
+        this.stepWall1 = stepWall1 == null ? Map.of() : Map.copyOf(stepWall1);
     }
 
     /**
@@ -180,9 +220,11 @@ public final class BuildMetrics {
         Map<String, Entry> steps = new LinkedHashMap<>();
         long now = System.currentTimeMillis();
         // Project means first, then host means (fill host-tier gaps only).
-        foldAggregateEntries(agg.meanMap(), agg, inv, steps, now, false);
-        foldAggregateEntries(agg.hostMeanMap(), agg, inv, steps, now, true);
-        return new BuildMetrics(inv, steps);
+        Map<String, Integer> workers = new LinkedHashMap<>();
+        Map<String, Long> wall1 = new LinkedHashMap<>();
+        foldAggregateEntries(agg.meanMap(), agg, inv, steps, workers, wall1, now, false);
+        foldAggregateEntries(agg.hostMeanMap(), agg, inv, steps, workers, wall1, now, true);
+        return new BuildMetrics(inv, steps, workers, wall1);
     }
 
     /**
@@ -248,6 +290,8 @@ public final class BuildMetrics {
             AggregatedMetrics agg,
             Map<String, Entry> inv,
             Map<String, Entry> steps,
+            Map<String, Integer> workers,
+            Map<String, Long> wall1,
             long now,
             boolean hostOnly) {
         if (source == null || source.isEmpty()) return;
@@ -275,6 +319,34 @@ public final class BuildMetrics {
             } else if (key.equals("workspace.wall-ms")) {
                 inv.putIfAbsent(
                         "build" + SEP + "", new Entry("build", "", null, null, ok, Stats.EMPTY, Stats.EMPTY, now));
+            } else if (key.startsWith("module.") && key.contains(".task.") && key.endsWith(".workers")) {
+                // module.<dir>.task.<name>.workers — the concurrency the wall beside it was measured
+                // at, so a forecast can re-schedule that wall instead of re-using it verbatim.
+                String wb = key.substring("module.".length(), key.length() - ".workers".length());
+                int wat = wb.indexOf(".task.");
+                if (wat > 0) {
+                    String wdir = slashKey(wb.substring(0, wat));
+                    String wtask = wb.substring(wat + ".task.".length());
+                    int runners = (int) Math.max(0, Math.round(ms));
+                    if (!wtask.isEmpty() && runners > 0) {
+                        if (hostOnly) workers.putIfAbsent(wdir + SEP + wtask, runners);
+                        else workers.put(wdir + SEP + wtask, runners);
+                    }
+                }
+            } else if (key.startsWith("module.") && key.contains(".task.") && key.endsWith(".wall1-ms")) {
+                // module.<dir>.task.<name>.wall1-ms — the wall normalized to one runner, which is
+                // the only form of a suite cost that survives being averaged across build shapes.
+                String nb = key.substring("module.".length(), key.length() - ".wall1-ms".length());
+                int nat = nb.indexOf(".task.");
+                if (nat > 0) {
+                    String ndir = slashKey(nb.substring(0, nat));
+                    String ntask = nb.substring(nat + ".task.".length());
+                    long norm = Math.max(0, Math.round(ms));
+                    if (!ntask.isEmpty() && norm > 0) {
+                        if (hostOnly) wall1.putIfAbsent(ndir + SEP + ntask, norm);
+                        else wall1.put(ndir + SEP + ntask, norm);
+                    }
+                }
             } else if (key.startsWith("module.") && key.contains(".task.") && key.endsWith(".wall-ms")) {
                 // module.<dir>.task.<name>.wall-ms
                 putModuleTask(steps, key, "task", ok, now, hostOnly);

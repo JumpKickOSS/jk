@@ -8,9 +8,6 @@ import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.discovery.ProbeSupport;
-import cc.jumpkick.engine.EnginePaths;
-import cc.jumpkick.engine.protocol.EngineProtocol;
-import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.host.AotCacheFiles;
 import cc.jumpkick.host.EngineJvmFlags;
 import cc.jumpkick.host.Hashing;
@@ -26,6 +23,9 @@ import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.util.AotManifest;
 import cc.jumpkick.util.AotSettings;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.wire.EnginePaths;
+import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.protocol.ProtoLifecycle;
 import java.io.IOException;
 import java.nio.channels.SocketChannel;
 import java.nio.file.Files;
@@ -658,7 +658,7 @@ public final class EngineSpawn {
      * <p>A daemon does not inherit the client's environment, so anything set only in the caller's shell
      * is invisible to it. That is why {@code JK_STORE_DIR} did nothing beforethe engine
      * resolved its own {@code ~/.jk/store} regardless. Paired with the store being part of the engine
-     * identity ({@link cc.jumpkick.engine.EnginePaths}), a different store now both spawns its own
+     * identity ({@link cc.jumpkick.wire.EnginePaths}), a different store now both spawns its own
      * engine and reaches it.
      */
     private static void forwardResolveEnv(Map<String, String> env) {

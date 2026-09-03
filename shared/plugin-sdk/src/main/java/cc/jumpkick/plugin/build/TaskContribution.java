@@ -2,6 +2,7 @@
 package cc.jumpkick.plugin.build;
 
 import cc.jumpkick.plugin.PluginConfig;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Contribution surface for resolve/build/test plugin capabilities. Fronts a single <em>implicit
@@ -30,7 +31,7 @@ public interface TaskContribution {
      * Product stage wire name ({@code generate}, {@code compile}, {@code test}, …). Matches
      * BuildStage; omit to let the engine infer from contributions / name.
      */
-    TaskContribution stage(String stageWire);
+    TaskContribution stage(@Nullable String stageWire);
 
     /** Declare the implicit task's inputs (fingerprinted into its action key). */
     TaskContribution inputs(In... ins);

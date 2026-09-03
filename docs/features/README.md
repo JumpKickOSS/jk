@@ -1,6 +1,6 @@
-# Moved
+# Features
 
-User-facing topics that used to live as “feature PRDs” are now product pages:
+User-facing product pages:
 
 - [Packaging](../user/packaging.md)
 - [Templates](../user/templates.md)

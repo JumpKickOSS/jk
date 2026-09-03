@@ -52,11 +52,11 @@ class LinkingTest {
     /**
      * The link-capability question is answered once per volume pair, not once per file.
      *
-     * <p>On a mount that refuses hard links every file used to pay a failed {@code createLink} —
-     * 79.6 µs on Windows, 17x Linux — before the 305 µs copy. Only *negatives* are cached: a pair
-     * that linked once may still fail later (permissions, a full volume), and re-trying costs a failed
-     * createLink rather than a wrong answer, whereas caching a positive and being wrong would turn a
-     * copy into a link.
+     * <p>On a mount that refuses hard links, a failed {@code createLink} is 79.6 µs on Windows
+     * (17x Linux) before the 305 µs copy. Only *negatives* are cached: a pair that linked once may
+     * still fail later (permissions, a full volume), and re-trying costs a failed createLink rather
+     * than a wrong answer, whereas caching a positive and being wrong would turn a copy into a
+     * link.
      */
     @Test
     void repeated_materialisation_still_produces_the_bytes(@TempDir Path dir) throws IOException {

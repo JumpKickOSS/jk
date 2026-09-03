@@ -103,6 +103,9 @@ class TestEnvTest {
         assertThat(env.get("JK_HTTP_ENABLED")).isEqualTo("false");
         // The default the module didn't mention survives.
         assertThat(env.get("JK_M2_LOCAL")).endsWith("test-m2");
+        assertThat(Path.of(env.get("JK_M2_LOCAL")))
+                .as("a standalone project has no workspace to share with, so the cache is its own")
+                .isEqualTo(tmp.resolve("target/test-m2").toAbsolutePath());
     }
 
     @Test

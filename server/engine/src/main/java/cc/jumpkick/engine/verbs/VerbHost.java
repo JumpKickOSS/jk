@@ -8,12 +8,12 @@ import cc.jumpkick.engine.InFlightBuilds;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.listen.EventRedaction;
-import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
-import cc.jumpkick.runtime.WorkspaceBuildListener;
+import cc.jumpkick.wire.protocol.ProtoLifecycle;
+import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -78,7 +78,7 @@ public interface VerbHost {
 
     /**
      * The workspace terminal's error rows, masked, in the only shape
-     * {@link cc.jumpkick.engine.protocol.ProtoEvents#workspaceFinish} accepts.
+     * {@link cc.jumpkick.wire.protocol.ProtoEvents#workspaceFinish} accepts.
      *
      * <p>The second rule a journaled verb lives by, next to {@link #sendQuiet}: worker error text
      * is raw process output, {@code .env} values are secret by source, and the terminal reaches

@@ -17,11 +17,11 @@ import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
-import cc.jumpkick.runtime.ModuleOutcome;
-import cc.jumpkick.runtime.ModulePlan;
-import cc.jumpkick.runtime.WorkspaceBuildListener;
-import cc.jumpkick.runtime.WorkspaceProgressTracker;
-import cc.jumpkick.runtime.WorkspaceResult;
+import cc.jumpkick.wire.runtime.ModuleOutcome;
+import cc.jumpkick.wire.runtime.ModulePlan;
+import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
+import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
+import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -151,10 +151,8 @@ final class WorkspaceRunView {
             public void onPreflight(String stage, int done, int totalUnits, String label) {
                 // Labels only — aggregate % arrives via onWorkspaceProgress (engine tracker).
                 agg.preflight(stage, done, totalUnits, label);
-                // …and durably, because the label carries the dirty-module count: the one fact that
-                // says how much work this build decided to do. It used to reach the bar and nowhere
-                // else, so `jk explain` disagreeing with `jk build` about the size of a build left
-                // no trace either side of the run.
+                // The label carries the dirty-module count; mirror it so journal and explain see
+                // the same work size as the bar.
                 mirror(JsonlShape.preflight(stage, done, totalUnits, label));
             }
 

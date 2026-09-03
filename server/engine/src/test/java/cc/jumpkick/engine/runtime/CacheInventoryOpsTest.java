@@ -3,8 +3,8 @@ package cc.jumpkick.engine.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.engine.protocol.CacheInventoryAck;
 import cc.jumpkick.repo.ArtifactMemo;
+import cc.jumpkick.wire.protocol.CacheInventoryAck;
 import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.Path;

@@ -14,6 +14,7 @@ import cc.jumpkick.repo.PomRuntimeClasspath;
 import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.wire.PluginJarNotFoundException;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpResponse;

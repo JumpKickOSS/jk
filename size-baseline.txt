@@ -1,9 +1,6 @@
 # size-baseline.txt — the ratchet behind `checkFileSizeCaps`.
 #
-# A shipped number is a floor, not a fact. `EngineServer` hit 1,064 lines at the end of its peel and
-# was back to 1,240 eleven days later; the `JkManager` triad went 2,467 -> 3,414 in ten days, past
-# the 2,204-line god class it replaced, before a later pass took it back to 2,380. A cap that is not
-# re-checked is not a cap.
+# A listed count is a ceiling that only shrinks. A cap that is not re-checked is not a cap.
 #
 # The caps (docs/contributors/code-as-art.md, "House rules -> Size") are per language:
 #
@@ -25,114 +22,27 @@
 #      deleting the invariant that justified the old one and writing one that justifies the new
 #      one — in the same diff, right here.
 #
-# The band is not a second ceiling, and this file does not pretend otherwise: a handful of entries
-# below sit ABOVE the exception band. They are named debt with peel tickets,
-# not a band that moved. The ratchet is what holds them — each can only shrink from here.
+# The band is not a second ceiling. A listed file above the exception band is named debt, not a
+# moved band. The ratchet is what holds it — each listed file can only shrink from here.
 #
 # The count is code lines, not `wc -l`. Comments (including Javadoc), blank lines, and `package` /
 # `import` lines do not count. A statement with a trailing comment still counts. String and
 # text-block contents count — a fixture is data. That is the point: the cap is on behaviour in
 # one file, not on the envelope `jk format` writes or the comments a type needs. Recount by
 # running `./gradlew checkFileSizeCaps`; a listed file that shrank prints the tightened line.
+# Imports and Javadoc cannot grow a file past the cap.
 #
-# The unit replaced `wc -l` so an import `jk format` adds cannot grow a file past the cap, and a
-# Javadoc block cannot force a split. Sixteen entries left this list because they were under the
-# hard cap in code lines without splitting: EngineClient, EngineSpawn, TestFailureHighlight,
-# JkManager, Wizard, EngineServer, HttpEngineServer, Calibration, EffortWeights, PlannerSupport,
-# PluginBuild, TaskForecaster, WorkspaceExecute, JUnitLauncher, MavenPackageSource, ProtoEvents.
-# Four remain.
+# This file currently has no entries — no file claims the exception band.
 #
 # UPDATING AFTER A SHRINK. Shrinking a listed file passes — the ratchet never blocks progress. The
 # guard then prints the tightened line, e.g.
 #
 #     size-baseline.txt is loose (these files shrank — tighten it in this commit):
-#        810  shared/wire/src/main/java/cc/jumpkick/engine/protocol/ProtoEvents.java   (was 884)
+#        810  shared/wire/src/main/java/cc/jumpkick/wire/protocol/ProtoEvents.java   (was 884)
 #
 # Paste that number over the old one, keep or rewrite the comment, and it lands in the same commit
 # as the shrink. A listed file that falls under the hard cap leaves this file entirely.
-#
-# A peel DELETED two entries rather than re-baselining them. `BuildCommand` 1,206 -> 676 and
-# `NewCommand` 1,121 -> 742 are both under the 800 hard cap, so neither is claiming the exception
-# band any more and neither belongs in this file. Both of the invariants they used to carry were
-# false when checked: BuildCommand's claimed the lock/sync/compile/test/package order lived in the
-# file (the engine owns that order — `BuildService.buildWorkspace`; the file was a renderer plus a
-# process-wide ProjectInfo memo), and NewCommand's claimed a template rollback lived there (there
-# is no rollback in the client at all). An invariant nobody re-derives is how a file stays big.
-#
-# A peel DELETED three entries rather than re-baselining them. app.js (2,786), code.js (1,966) and
-# fold.js (1,734) are now 601, 775 and 971, under the 1,200 hard cap and off this list entirely. The
-# invariants that justified them cited a cost that does not exist: `clients/web` has no bundler, but
-# it has had a module system since before this file did. index.html loads exactly one script,
-# `<script src="/app.js" type="module">`, and every other file is reached through a static `import`,
-# so the browser orders the graph and a bad specifier is a link error. A JS split there costs an
-# import line, the same as Java. What it does cost is checked by clients/web/src/test/js/
-# shell.test.mjs: one entry point, no orphan module, and no name the in-DOM template calls that the
-# root component has stopped providing.
-#
-# A peel DELETED three engine entries rather than re-baselining them. BuildPlanner (1,251 -> 777),
-# BuildJournal (837 -> 776) and ImagePlans (809 -> 797) are all under the 800 hard cap and off this
-# list. None of the three shrank by splitting: BuildPlanner lost a 425-line facade — 83 members under
-# 74 names, every one of them a single statement forwarding its own parameters, in their own order, to
-# PlannerTails / PlannerKsp / PlannerNative / PlannerPlugin / PlannerCompile / PlannerPackage /
-# PlannerLang / PlannerResources / PlannerSupport — plus the middle rung of a three-deep Inputs
-# constructor chain that no caller used. Thirty-one of the 83 had no caller through the facade at all;
-# the rest now name their owner in an `import static`, which is the point: a wildcard
-# `import static BuildPlanner.*` in twelve collaborators let any of them reach any other's helper
-# through a file that owned none of it. BuildJournal lost `appendHostSamples` (no
-# caller anywhere, and the sole writer of the `host.` keys MetricsHarvest still reads) together with
-# the METRICS_LOCKS map whose only reason to exist was that method racing `complete()`; ImagePlans
-# stopped re-deriving `Lockfile.Artifact.checksumHex()` by hand in two places.
 
 # FORMAT. One entry per line: `<code-lines>  <path from the repo root>`. The comment lines
 # immediately above an entry, with no blank line between, are that entry's invariant. A blank line
 # separates entries. Sorted by path.
-
-# Named debt, found BY the change that extended checkFileSizeCaps over test sources. The
-# dashboard's event-folding tests are 97 `node --test` cases against one module graph: they open by
-# awaiting nine dynamic `spa(...)` imports (fold.js, outcome.js, format.js, detail.js …) staged into
-# a `type:module` dir by WebClientJsTest, and every case reads that one binding set. A split would
-# either repeat the whole staged-import preamble per file or add an ES module whose only purpose is
-# to re-export it — a second place for the SPA's export list to drift from fold.js. The peel belongs
-# with the `clients/web` JS work (the app.js/code.js/fold.js line), not with a test-cap sweep, so
-# this is recorded to make it visible and ratcheted rather than left in the hole the guard had.
-1614  clients/web/src/test/js/fold.test.mjs
-
-# T58: one plan per verb, with the shared step bodies next to the plans that compose them.
-# A peel examined it and took nothing, which is a weaker result than a withdrawal and is recorded as
-# such: every member here has a caller, the only repeated block is internal (the two
-# `projectJavaHome` reaches), and none of the shared/host owners spells anything it derives. The
-# available peel is the one the invariant above already names as deliberate, so taking it needs an
-# argument this ticket did not have.
-# +2 for the envRefs union: a workspace root's own manifest declares almost nothing, so resolving
-# only it meant a member's `[test] env` never reached the client and `FOO=x jk build` did nothing.
-# The module builds were already loaded here for their names — collecting them costs a list and one
-# add. Two statements, no new logic.
-870  server/engine/src/main/java/cc/jumpkick/runtime/ExecPlans.java
-
-# T59: the three scope solves (main / test / processor) must stay independent of each
-# other and produce one lockfile — a shared mutable universe between them is how a test-only
-# version leaks into the main classpath, and splitting the solves apart to save lines is how that
-# universe gets shared. `attachSources` rebuilt the whole `Lockfile` record by hand to swap its
-# artifact rows, so every field the schema gained had to be threaded through it.
-# `Lockfile.withArtifacts` owns that copy now. The three-solve invariant is unchanged.
-871  server/resolver/src/main/java/cc/jumpkick/resolver/LockOrchestrator.java
-
-# T51 / T59: same pairing as ProtoEvents, for the job verbs — and the place the
-# job verbs' shared field names are declared. `jdksDir` was typed by hand in sixteen places (seven
-# writers here and in ProtoReads, nine readers in server/engine/verbs) and a typo on either side
-# would have dropped the JDK override silently, against an engine that answered normally. The
-# constant plus the paragraph explaining which vocabulary it belongs to is the +10; splitting it
-# out would put the name in a third file and re-open the gap the pairing exists to close.
-# A peel took three lines back: `provisionRequest` lost `cache`, which existed only so the engine
-# could locate a worker jar that no longer exists.
-# A later change spent +9: `auditRequest` and `publishRequest` were the two job verbs whose request
-# carried no `offline` field, so `jk audit --offline` and `jk publish --offline` could not tell the
-# engine — and a publish uploaded. The field belongs on the request for the same reason `jdksDir`
-# does: the alternative is a verb reconstructing a session from something other than what the
-# client sent, and the two halves then disagree about one job.
-# A peel withdrew here for the same reason recorded under ProtoEvents (generation, not a split):
-# `buildCancel()` (the 3-line encoder for `build-cancel`) has no caller in the tree, while the
-# engine still handles the message — `JobEnvelope` matches `EngineProtocol.BUILD_CANCEL` and the
-# whole SIGINT design in `TerminalSignals` names it. That is a live receiver with no in-tree
-# sender, which is a question about the cancel protocol and not a line to reclaim, so it was left
-# alone deliberately.

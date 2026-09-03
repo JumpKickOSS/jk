@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 class BuildPlanTest {
@@ -543,7 +544,7 @@ class BuildPlanTest {
         final List<Integer> scopeUpdates = new ArrayList<>();
         final List<String> warnings = new ArrayList<>();
         final List<String> errors = new ArrayList<>();
-        volatile BuildPlanResult finalResult;
+        volatile @Nullable BuildPlanResult finalResult;
 
         @Override
         public void tickUpdate(String step, int delta, BuildPlanView view) {

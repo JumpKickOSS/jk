@@ -2,6 +2,7 @@
 package cc.jumpkick.run;
 
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Step → BuildPlan handle. Thread-safe for worker threads. Report {@link #progress}, grow
@@ -24,13 +25,13 @@ public interface TaskContext {
     }
 
     /** Current sub-task label for the TUI; null/empty clears. */
-    void label(String description);
+    void label(@Nullable String description);
 
     /**
      * Durable free-form output for the view (not a transient status). Prefer this over writing
      * {@code System.out}/{@code System.err} directly.
      */
-    void output(String line);
+    void output(@Nullable String line);
 
     /** Mark outputs already up-to-date/cached; recorded as {@link TaskStatus#SKIPPED}. Idempotent. */
     default void cached() {}
@@ -50,7 +51,7 @@ public interface TaskContext {
     }
 
     /** Structured test failure (module / engine / class / method / stack). */
-    default void error(String code, String message, TestFailureInfo failure) {
+    default void error(String code, String message, @Nullable TestFailureInfo failure) {
         if (failure == null) {
             error(code, message);
             return;

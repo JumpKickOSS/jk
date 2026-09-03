@@ -14,23 +14,15 @@ import org.jspecify.annotations.Nullable;
  * CAS/ActionCache materialization: hard-link when possible, else copy. Deletes any existing
  * {@code target} first.
  *
- * <p><strong>A hard link is only safe for a consumer that never writes through it.</strong> This
- * javadoc used to say linking was safe "because writers use create/truncate or temp-and-rename (they
- * break the link, not mutate the shared file)" — and half of that is wrong.
+ * <p><strong>A hard link is only safe for a consumer that never writes through it.</strong>
  * {@code open(O_TRUNC)} does <em>not</em> break a hard link: it truncates the shared inode, so every
  * other name for that file sees it. Only temp-and-rename breaks the link.
  *
- * <p>Nothing is broken today — every current caller links immutable jars — which is exactly why the
- * sentence was dangerous. It told a future reader that a create/truncate writer was safe to link, and
- * acting on that would let a compiler truncate a CAS blob in place, corrupting every action record
- * that references that content hash. {@code ActionCache} says the opposite in its own comments, and
- * {@code ActionCache} is right: it copies compile outputs rather than linking them, because compilers
- * rewrite class files in place.
- *
- * <p>So the rule is: <strong>link out of the CAS only for a consumer that reads</strong> (a classpath
- * entry, a launcher's lib dir). A consumer that may rewrite the file gets a copy. Linking <em>into</em>
- * the CAS is safe in the other direction, because a blob's name is its content hash and nothing
- * rewrites one in place.
+ * <p>Link out of the CAS only for a consumer that reads (a classpath entry, a launcher's lib dir).
+ * A consumer that may rewrite the file gets a copy. {@code ActionCache} copies compile outputs
+ * rather than linking them, because compilers rewrite class files in place. Linking <em>into</em>
+ * the CAS is safe in the other direction: a blob's name is its content hash and nothing rewrites
+ * one in place.
  *
  * <p>Portable across Linux, macOS, and Windows: {@link Files#createLink} is a real hard link
  * ({@code link(2)} / {@code CreateHardLinkW} on NTFS). No admin rights required on Windows
@@ -56,9 +48,8 @@ public final class Linking {
                 return;
             } catch (UnsupportedOperationException | FileSystemException notLinkable) {
                 // Remember it for this volume pair rather than rediscovering it per file. On a mount
-                // that refuses links, every file used to pay a failed createLink (79.6 us on Windows,
-                // 17x Linux) before the 305 us copy — the capability question answered once per file
-                // instead of once per pair.
+                // that refuses links, a failed createLink is 79.6 us on Windows (17x Linux) before
+                // the 305 us copy — answer the capability question once per pair, not once per file.
                 if (pair != null) LINKABLE.put(pair, Boolean.FALSE);
             }
         }

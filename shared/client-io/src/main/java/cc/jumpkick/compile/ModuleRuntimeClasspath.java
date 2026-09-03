@@ -5,6 +5,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.config.WorkspaceLocator;
+import cc.jumpkick.config.WorkspaceModules;
 import cc.jumpkick.layout.Languages;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
@@ -103,7 +104,8 @@ public final class ModuleRuntimeClasspath {
             if (!rootManifest.isWorkspaceRoot()) return List.of();
         }
         List<JkBuild> out = new ArrayList<>();
-        for (String moduleName : rootManifest.workspace().modules()) {
+        for (String moduleName :
+                WorkspaceModules.expand(root, rootManifest.workspace().modules())) {
             Path unitDir = root.resolve(moduleName);
             Path manifest = unitDir.resolve(ManifestPaths.MANIFEST);
             if (!Files.isRegularFile(manifest)) continue;

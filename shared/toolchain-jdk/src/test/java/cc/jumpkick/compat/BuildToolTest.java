@@ -6,12 +6,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@code binaryName()} picks a launcher by host, and it used to pick it with
- * {@code os.name.contains("win")} — which is true of {@code Darwin}. A JVM reporting the kernel
- * name instead of {@code Mac OS X} therefore got {@code mvn.cmd} handed to {@code jk mvn}, and the
- * passthrough failed with "no such file" on a machine that had Maven installed. Spoofing the
- * property is the only way to reach the branch: {@link BuildTool} reads it live, through
- * {@code cc.jumpkick.host.Os}, for exactly that reason.
+ * {@code binaryName()} picks a launcher by host OS. Darwin must get the POSIX names ({@code mvn},
+ * {@code gradle}, {@code kotlinc}), not the Windows ones: {@code os.name.contains("win")} is true
+ * of {@code Darwin}. Spoofing the property is the only way to reach the branch — {@link BuildTool}
+ * reads it live through {@code cc.jumpkick.host.Os}.
  */
 class BuildToolTest {
 

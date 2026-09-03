@@ -418,7 +418,7 @@ val variantsOwner =
 val variantApplyOwner = rootProject.layout.projectDirectory.file(
         "shared/core/src/main/java/cc/jumpkick/plugin/manifest/VariantApply.java")
 
-val checkPluginFamily by tasks.registering {
+val checkPluginFamily = registerGuard("checkPluginFamily") {
     group = "verification"
     description = "Fail the build when this module's family (SPI plugin vs forked worker) disagrees with its wiring"
     val moduleName = project.name
@@ -563,8 +563,6 @@ val checkPluginFamily by tasks.registering {
         stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
     }
 }
-tasks.named("check") { dependsOn(checkPluginFamily) }
-tasks.named("jar") { dependsOn(checkPluginFamily) }
 
 // ---------------------------------------------------------------------------
 // Guard G26: a plugin does not roll its own fork.
@@ -597,7 +595,7 @@ val pluginForkExemptions = mapOf(
         // executable head — so expressing these needs a PATH-search owner first.
         "src/main/java/cc/jumpkick/plugin/image/AotCacheTrainer.java" to 3)
 
-val checkPluginForkOwner by tasks.registering {
+val checkPluginForkOwner = registerGuard("checkPluginForkOwner") {
     group = "verification"
     description = "Fail the build when a plugin hand-rolls a process fork instead of TaskExec.ToolRun"
     val moduleName = project.name
@@ -647,5 +645,3 @@ val checkPluginForkOwner by tasks.registering {
         stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
     }
 }
-tasks.named("check") { dependsOn(checkPluginForkOwner) }
-tasks.named("jar") { dependsOn(checkPluginForkOwner) }

@@ -2,16 +2,19 @@
 package cc.jumpkick.layout;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.task.IoLedger;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -286,6 +289,27 @@ class InputTreesTest {
             assertThat(InputTrees.of(extra).overflow()).isFalse();
             assertThat(InputTrees.poolUsedBytes()).isPositive();
         });
+    }
+
+    /** The real shape of an unlistable tree: a subdirectory this process cannot open. */
+    @Test
+    void an_unopenable_subdirectory_streams_instead_of_covering_a_hole(@TempDir Path dir) throws Exception {
+        assumeTrue(!Os.isWindows(), "POSIX permissions");
+        Path src = Files.createDirectories(dir.resolve("src"));
+        Path locked = Files.createDirectories(src.resolve("main/java"));
+        Files.writeString(locked.resolve("A.java"), "class A {}");
+        Files.setPosixFilePermissions(locked, PosixFilePermissions.fromString("---------"));
+        assumeTrue(!Files.isReadable(locked), "not running as root");
+        try {
+            inRequest(() -> {
+                var snap = InputTrees.of(src);
+                assertThat(snap.overflow())
+                        .as("unknown, not an empty authoritative listing")
+                        .isTrue();
+            });
+        } finally {
+            Files.setPosixFilePermissions(locked, PosixFilePermissions.fromString("rwxr-xr-x"));
+        }
     }
 
     @Test

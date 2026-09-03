@@ -13,7 +13,9 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The worker-side driver every build plugin delegates its {@code Plugin.run} to: reads the
@@ -105,14 +107,15 @@ public final class BuildPluginHarness {
         switch (spec.op()) {
             case "describe" -> describe(recorder, out);
             case "run-step" -> {
-                TaskSpec step = recorder.step(spec.stepName());
-                if (step == null || step.body() == null) {
+                @Nullable TaskSpec step = recorder.step(spec.stepName());
+                TaskSpec.@Nullable Body body = step == null ? null : step.body();
+                if (body == null) {
                     out.emit("{\"t\":\"error\",\"code\":\"unknown-step\",\"message\":"
                             + Jsonl.quote("no registered step named " + spec.stepName()) + "}");
                     return 65;
                 }
                 try {
-                    step.body().run(new SpecTaskExec(spec, out));
+                    body.run(new SpecTaskExec(spec, out));
                 } catch (Exception e) {
                     out.emit("{\"t\":\"error\",\"code\":\"step-failed\",\"message\":"
                             + Jsonl.quote(String.valueOf(e.getMessage())) + "}");
@@ -120,15 +123,17 @@ public final class BuildPluginHarness {
                 }
             }
             case "command" -> {
-                PluginCommandSpec command = recorder.command(spec.stepName());
-                if (command == null || command.body() == null) {
+                @Nullable PluginCommandSpec command = recorder.command(spec.stepName());
+                PluginCommandSpec.@Nullable Body body =
+                        command == null ? null : command.body();
+                if (body == null) {
                     out.emit("{\"t\":\"error\",\"code\":\"unknown-command\",\"message\":"
                             + Jsonl.quote("no registered command named " + spec.stepName()) + "}");
                     return 65;
                 }
                 try {
-                    int exit = command.body().run(new SpecCommandExec(spec, out));
-                            return exit;
+                    int exit = body.run(new SpecCommandExec(spec, out));
+                    return exit;
                 } catch (Exception e) {
                     out.emit("{\"t\":\"error\",\"code\":\"command-failed\",\"message\":"
                             + Jsonl.quote(String.valueOf(e.getMessage())) + "}");
@@ -136,14 +141,16 @@ public final class BuildPluginHarness {
                 }
             }
             case "package" -> {
-                PackagerSpec packager = recorder.packager();
-                if (packager == null || packager.body() == null) {
+                @Nullable PackagerSpec packager = recorder.packager();
+                PackagerSpec.@Nullable Body body =
+                        packager == null ? null : packager.body();
+                if (body == null) {
                     out.emit("{\"t\":\"error\",\"code\":\"no-packager\",\"message\":"
                             + Jsonl.quote("plugin registered no packager") + "}");
                     return 65;
                 }
                 try {
-                    packager.body().produce(new SpecPackageIo(spec, out));
+                    body.produce(new SpecPackageIo(spec, out));
                 } catch (Exception e) {
                     out.emit("{\"t\":\"error\",\"code\":\"package-failed\",\"message\":"
                             + Jsonl.quote(String.valueOf(e.getMessage())) + "}");
@@ -160,6 +167,8 @@ public final class BuildPluginHarness {
 
     private static void describe(Recorder recorder, ProtocolWriter out) {
         for (TaskSpec step : recorder.steps()) {
+            @Nullable String classesTransform = step.classesTransform();
+            @Nullable String stage = step.stage();
             StringBuilder b = new StringBuilder("{\"t\":\"task\",\"name\":")
                     .append(Jsonl.quote(step.name()))
                     .append(",\"requires\":")
@@ -177,13 +186,13 @@ public final class BuildPluginHarness {
                     .append(",\"contributesTestClasspath\":")
                     .append(quoteArray(step.testClasspathContributions()))
                     .append(",\"transformsClasses\":")
-                    .append(Jsonl.quote(step.classesTransform() == null ? "" : step.classesTransform()))
+                    .append(Jsonl.quote(classesTransform == null ? "" : classesTransform))
                     .append(",\"stage\":")
-                    .append(Jsonl.quote(step.stage() == null ? "" : step.stage()))
+                    .append(Jsonl.quote(stage == null ? "" : stage))
                     .append('}');
             out.emit(b.toString());
         }
-        PackagerSpec packager = recorder.packager();
+        @Nullable PackagerSpec packager = recorder.packager();
         if (packager != null) {
             out.emit("{\"t\":\"packager\",\"name\":" + Jsonl.quote(packager.name()) + ",\"inputs\":"
                     + quoteArray(packager.declaredInputs().stream().map(In::wireName).toList()) + "}");
@@ -210,7 +219,7 @@ public final class BuildPluginHarness {
         private final ProjectFacts project;
         private final List<TaskSpec> steps = new ArrayList<>();
         private final List<PluginCommandSpec> commands = new ArrayList<>();
-        private PackagerSpec packager;
+        private @Nullable PackagerSpec packager;
 
         Recorder(PluginConfig config, ProjectFacts project) {
             this.config = config;
@@ -245,12 +254,12 @@ public final class BuildPluginHarness {
             return steps;
         }
 
-        TaskSpec step(String name) {
+        @Nullable TaskSpec step(@Nullable String name) {
             for (TaskSpec s : steps) if (s.name().equals(name)) return s;
             return null;
         }
 
-        PackagerSpec packager() {
+        @Nullable PackagerSpec packager() {
             return packager;
         }
 
@@ -263,7 +272,7 @@ public final class BuildPluginHarness {
             return commands;
         }
 
-        PluginCommandSpec command(String name) {
+        @Nullable PluginCommandSpec command(@Nullable String name) {
             for (PluginCommandSpec v : commands) if (v.name().equals(name)) return v;
             return null;
         }
@@ -273,14 +282,14 @@ public final class BuildPluginHarness {
 
     record Spec(
             String op,
-            String stepName,
+            @Nullable String stepName,
             PluginConfig config,
             ProjectFacts project,
-            Path classesDir,
-            Path moduleDir,
-            Path scratch,
-            Path javaHome,
-            Path artifactPath,
+            @Nullable Path classesDir,
+            @Nullable Path moduleDir,
+            @Nullable Path scratch,
+            @Nullable Path javaHome,
+            @Nullable Path artifactPath,
             List<Path> classpath,
             List<PackageIo.RuntimeEntry> entries,
             Map<String, Path> stepOutputs,
@@ -291,22 +300,22 @@ public final class BuildPluginHarness {
 
         static Spec read(Path file) throws IOException {
             String op = "";
-            String stepName = null;
+            @Nullable String stepName = null;
             String pluginId = "";
             Map<String, Object> configValues = new LinkedHashMap<>();
             String group = "";
             String name = "";
             String version = "";
             int javaRelease = 0;
-            String mainClass = null;
+            @Nullable String mainClass = null;
             boolean nativeDeclared = false;
             boolean kotlin = false;
             Map<String, String> manifest = new LinkedHashMap<>();
-            Path classesDir = null;
-            Path moduleDir = null;
-            Path scratch = null;
-            Path javaHome = null;
-            Path artifactPath = null;
+            @Nullable Path classesDir = null;
+            @Nullable Path moduleDir = null;
+            @Nullable Path scratch = null;
+            @Nullable Path javaHome = null;
+            @Nullable Path artifactPath = null;
             List<Path> classpath = new ArrayList<>();
             List<PackageIo.RuntimeEntry> entries = new ArrayList<>();
             Map<String, Path> stepOutputs = new LinkedHashMap<>();
@@ -320,14 +329,15 @@ public final class BuildPluginHarness {
                 if (line.isBlank()) continue;
                 switch (String.valueOf(Jsonl.str(line, "t"))) {
                     case "op" -> {
-                        op = String.valueOf(Jsonl.str(line, "op"));
+                        op = required(Jsonl.str(line, "op"), "op.op");
                         stepName = Jsonl.str(line, PluginProtocol.NAME);
-                        pluginId = String.valueOf(Jsonl.str(line, "plugin"));
+                        pluginId = required(Jsonl.str(line, "plugin"), "op.plugin");
                     }
                     case "config" -> {
-                        String key = Jsonl.str(line, "key");
+                        String key = required(Jsonl.str(line, "key"), "config.key");
                         switch (String.valueOf(Jsonl.str(line, "kind"))) {
-                            case "string" -> configValues.put(key, Jsonl.str(line, "value"));
+                            case "string" ->
+                                configValues.put(key, required(Jsonl.str(line, "value"), "config.value"));
                             case "bool" -> configValues.put(key, Jsonl.bool(line, "value", false));
                             case "int" -> configValues.put(key, Jsonl.longValue(line, "value", 0));
                             case "list" -> configValues.put(key, Jsonl.strArray(line, "values"));
@@ -337,34 +347,39 @@ public final class BuildPluginHarness {
                         }
                     }
                     case "project" -> {
-                        group = String.valueOf(Jsonl.str(line, "group"));
-                        name = String.valueOf(Jsonl.str(line, "name"));
-                        version = String.valueOf(Jsonl.str(line, "version"));
+                        group = required(Jsonl.str(line, "group"), "project.group");
+                        name = required(Jsonl.str(line, "name"), "project.name");
+                        version = required(Jsonl.str(line, "version"), "project.version");
                         javaRelease = Jsonl.intValue(line, "javaRelease", 0);
                         mainClass = Jsonl.str(line, "mainClass");
                         nativeDeclared = Jsonl.bool(line, "nativeDeclared", false);
                         kotlin = Jsonl.bool(line, "kotlin", false);
                     }
-                    case "manifest-attr" -> manifest.put(Jsonl.str(line, "key"), Jsonl.str(line, "value"));
+                    case "manifest-attr" ->
+                        manifest.put(
+                                required(Jsonl.str(line, "key"), "manifest-attr.key"),
+                                required(Jsonl.str(line, "value"), "manifest-attr.value"));
                     case "layout" -> {
-                        String classes = Jsonl.str(line, "classesDir");
+                        @Nullable String classes = Jsonl.str(line, "classesDir");
                         if (classes != null) classesDir = Path.of(classes);
-                        String module = Jsonl.str(line, "moduleDir");
+                        @Nullable String module = Jsonl.str(line, "moduleDir");
                         if (module != null) moduleDir = Path.of(module);
-                        String scratchDir = Jsonl.str(line, "scratch");
+                        @Nullable String scratchDir = Jsonl.str(line, "scratch");
                         if (scratchDir != null) scratch = Path.of(scratchDir);
                     }
-                    case "java-home" -> javaHome = Path.of(String.valueOf(Jsonl.str(line, "path")));
-                    case "artifact" -> artifactPath = Path.of(String.valueOf(Jsonl.str(line, "path")));
-                    case "cp" -> classpath.add(Path.of(String.valueOf(Jsonl.str(line, "path"))));
+                    case "java-home" ->
+                        javaHome = Path.of(required(Jsonl.str(line, "path"), "java-home.path"));
+                    case "artifact" ->
+                        artifactPath = Path.of(required(Jsonl.str(line, "path"), "artifact.path"));
+                    case "cp" -> classpath.add(Path.of(required(Jsonl.str(line, "path"), "cp.path")));
                     case "entry" -> {
-                        String jarPath = Jsonl.str(line, "path");
-                        String container = Jsonl.str(line, "container");
-                        String g = Jsonl.str(line, "group");
-                        String a = Jsonl.str(line, "artifact");
-                        String v = Jsonl.str(line, "version");
+                        @Nullable String jarPath = Jsonl.str(line, "path");
+                        @Nullable String container = Jsonl.str(line, "container");
+                        @Nullable String g = Jsonl.str(line, "group");
+                        @Nullable String a = Jsonl.str(line, "artifact");
+                        @Nullable String v = Jsonl.str(line, "version");
                         entries.add(new PackageIo.RuntimeEntry(
-                                String.valueOf(Jsonl.str(line, "file")),
+                                required(Jsonl.str(line, "file"), "entry.file"),
                                 jarPath == null ? null : Path.of(jarPath),
                                 Jsonl.bool(line, "snapshot", false),
                                 container == null ? null : Path.of(container),
@@ -374,17 +389,17 @@ public final class BuildPluginHarness {
                     }
                     case "step-output" ->
                         stepOutputs.put(
-                                String.valueOf(Jsonl.str(line, "name")),
-                                Path.of(String.valueOf(Jsonl.str(line, "dir"))));
+                                required(Jsonl.str(line, "name"), "step-output.name"),
+                                Path.of(required(Jsonl.str(line, "dir"), "step-output.dir")));
                     case "command-args" -> commandArgs.addAll(Jsonl.strArray(line, "values"));
                     case "extra" ->
                         extras.put(
-                                String.valueOf(Jsonl.str(line, "name")),
-                                Path.of(String.valueOf(Jsonl.str(line, "path"))));
+                                required(Jsonl.str(line, "name"), "extra.name"),
+                                Path.of(required(Jsonl.str(line, "path"), "extra.path")));
                     case "secret" ->
                         secrets.put(
-                                String.valueOf(Jsonl.str(line, "key")),
-                                String.valueOf(Jsonl.str(line, "value")));
+                                required(Jsonl.str(line, "key"), "secret.key"),
+                                required(Jsonl.str(line, "value"), "secret.value"));
                     case PluginProtocol.OFFLINE -> offline = Jsonl.bool(line, PluginProtocol.VALUE, true);
                     default -> {
                         // unknown line — forward compatibility
@@ -405,7 +420,7 @@ public final class BuildPluginHarness {
     private record SpecTaskExec(Spec spec, ProtocolWriter out) implements TaskExec {
         @Override
         public Path classesDir() {
-            return spec.classesDir();
+            return required(spec.classesDir(), "layout.classesDir");
         }
 
         @Override
@@ -430,17 +445,17 @@ public final class BuildPluginHarness {
 
         @Override
         public Path moduleDir() {
-            return spec.moduleDir();
+            return required(spec.moduleDir(), "layout.moduleDir");
         }
 
         @Override
         public Path scratch() {
-            return spec.scratch();
+            return required(spec.scratch(), "layout.scratch");
         }
 
         @Override
         public Path javaHome() {
-            return spec.javaHome();
+            return required(spec.javaHome(), "java-home.path");
         }
 
         @Override
@@ -482,7 +497,7 @@ public final class BuildPluginHarness {
 
         @Override
         public Path moduleDir() {
-            return spec.moduleDir();
+            return required(spec.moduleDir(), "layout.moduleDir");
         }
 
         @Override
@@ -532,12 +547,12 @@ public final class BuildPluginHarness {
     private record SpecPackageIo(Spec spec, ProtocolWriter out) implements PackageIo {
         @Override
         public Path classesDir() {
-            return spec.classesDir();
+            return required(spec.classesDir(), "layout.classesDir");
         }
 
         @Override
         public Path moduleDir() {
-            return spec.moduleDir();
+            return required(spec.moduleDir(), "layout.moduleDir");
         }
 
         @Override
@@ -567,7 +582,7 @@ public final class BuildPluginHarness {
 
         @Override
         public Path artifactPath() {
-            return spec.artifactPath();
+            return required(spec.artifactPath(), "artifact.path");
         }
 
         @Override
@@ -577,7 +592,7 @@ public final class BuildPluginHarness {
 
         @Override
         public Path javaHome() {
-            return spec.javaHome();
+            return required(spec.javaHome(), "java-home.path");
         }
 
         @Override
@@ -595,5 +610,9 @@ public final class BuildPluginHarness {
             out.emit("{\"t\":\"produced\",\"path\":"
                     + Jsonl.quote(path.toAbsolutePath().normalize().toString()) + "}");
         }
+    }
+
+    private static <T> T required(@Nullable T value, String field) {
+        return Objects.requireNonNull(value, "spec missing " + field);
     }
 }

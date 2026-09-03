@@ -3,19 +3,19 @@ package cc.jumpkick.cli.engine;
 
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.config.TestSelection;
-import cc.jumpkick.engine.EnginePaths;
-import cc.jumpkick.engine.protocol.AffectedTestsReport;
-import cc.jumpkick.engine.protocol.EngineProtocol;
-import cc.jumpkick.engine.protocol.EngineWireException;
-import cc.jumpkick.engine.protocol.LockRequest;
-import cc.jumpkick.engine.protocol.OutdatedReport;
-import cc.jumpkick.engine.protocol.ProtoReads;
-import cc.jumpkick.engine.protocol.SyncRequest;
-import cc.jumpkick.engine.protocol.UpdateRequest;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.Task;
+import cc.jumpkick.wire.EnginePaths;
+import cc.jumpkick.wire.protocol.AffectedTestsReport;
+import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.protocol.EngineWireException;
+import cc.jumpkick.wire.protocol.LockRequest;
+import cc.jumpkick.wire.protocol.OutdatedReport;
+import cc.jumpkick.wire.protocol.ProtoReads;
+import cc.jumpkick.wire.protocol.SyncRequest;
+import cc.jumpkick.wire.protocol.UpdateRequest;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -55,7 +55,7 @@ final class EngineResolveAdapter {
 
     /**
      * Run {@code jk outdated} against the engine: one synchronous request, one {@code outdated-ack}
-     * carrying the {@link cc.jumpkick.engine.protocol.OutdatedReport} back. Read-only — no cascade,
+     * carrying the {@link cc.jumpkick.wire.protocol.OutdatedReport} back. Read-only — no cascade,
      * no plan stream.
      */
     static OutdatedReport runOutdated(EnginePaths.Paths paths, EngineRequests.OutdatedRequest req) throws IOException {

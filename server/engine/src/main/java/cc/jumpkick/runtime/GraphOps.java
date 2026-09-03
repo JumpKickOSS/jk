@@ -2,7 +2,6 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.engine.protocol.WhyReport;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
@@ -14,6 +13,7 @@ import cc.jumpkick.resolver.DependencyTree;
 import cc.jumpkick.resolver.DependencyTreeStyle;
 import cc.jumpkick.resolver.LockGraph;
 import cc.jumpkick.resolver.Provenance;
+import cc.jumpkick.wire.protocol.WhyReport;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;

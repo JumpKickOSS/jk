@@ -14,9 +14,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * The worker half of the format cache key. The host owns the whole configuration and sends one
- * digest ({@code FormatKey}); the worker derives nothing of its own — the second, independently
- * hand-maintained derivation that used to live here is exactly how the ktfmt width and the
- * remove-unused-imports google-java-format version came to key neither store.
+ * digest ({@code FormatKey}); the worker derives nothing of its own, so ktfmt width and the
+ * google-java-format version key the store through that digest.
  */
 class CodeFormatterStampKeyTest {
 
@@ -115,7 +114,7 @@ class CodeFormatterStampKeyTest {
         assertThat(new FormatStampCache(root, "config-digest").size()).isEqualTo(500);
     }
 
-    /** The old sharded layout cleans itself up on load, so no `jk cache nuke` is needed. */
+    /** Residue that is not an index file is swept on load, so no {@code jk cache nuke} is needed. */
     @Test
     void loading_sweeps_the_old_sharded_layout(@TempDir Path tmp) throws Exception {
         Path root = tmp.resolve("format-stamps");

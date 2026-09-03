@@ -53,11 +53,9 @@ public final class JkBuildParser {
      * grow without bound. Stores the <em>local</em> manifest only; workspace inheritance is applied
      * by {@link #parse(Path)} on top so it always sees a fresh root.
      *
-     * <p><strong>The stamp used to be the file's bytes</strong>, which meant the memo could save the
-     * tomlj parse but never the read — {@code Files.readString} ran before every lookup, hit or miss.
-     * That is most of why a read-only {@code jk status} on a 31-module workspace read <b>379 MB</b>
-     * in 260,971 read syscalls against 30 KB of manifest on disk: {@code parse} fans out over every
-     * sibling, so the same handful of files were re-read thousands of times.
+     * <p>The stamp is {@code (size, mtime)} except inside the settle window, so a hit does not
+     * re-read the file. {@code parse} fans out over every sibling; without that, a read-only
+     * {@code jk status} would re-read the same handful of manifests thousands of times.
      */
     private static final StampedMemo<Path, ManifestStamp, JkBuild> PARSE_CACHE = StampedMemo.create();
 
@@ -74,12 +72,11 @@ public final class JkBuildParser {
      * Two-tier staleness stamp for a manifest: {@code (size, mtime)} normally, plus the file's bytes
      * while its mtime is too fresh to trust.
      *
-     * <p>The bytes are not gratuitous. A same-length edit landing inside one filesystem mtime tick is
-     * invisible to {@code (size, mtime)}, and on Windows the tick is coarse enough that an editor
-     * save followed immediately by a build hits it — that hazard is why this memo was stamped on
-     * bytes in the first place. But it only exists for a file written moments ago, so the read only
-     * has to happen for one. Outside {@link #SETTLE_MS} the stamp is one {@code readAttributes} and
-     * the read is skipped entirely.
+     * <p>A same-length edit landing inside one filesystem mtime tick is invisible to
+     * {@code (size, mtime)}, and on Windows the tick is coarse enough that an editor save followed
+     * immediately by a build hits it. Bytes are included only while the mtime is fresh, so the extra
+     * read happens for one file. Outside {@link #SETTLE_MS} the stamp is one {@code readAttributes}
+     * and the read is skipped entirely.
      *
      * <p>Crossing the window changes the stamp shape for the same file, so the first lookup after a
      * manifest settles recomputes once. That is one extra parse, in the safe direction: the rule can
@@ -199,13 +196,12 @@ public final class JkBuildParser {
 
     /**
      * <strong>The</strong> read of a {@code jk.toml}: bytes → tomlj → one syntax-error message →
-     * one {@link Interpolation#guard}, memoized on the file's bytes.
+     * one {@link Interpolation#guard}, memoized on {@link ManifestStamp}.
      *
      * <p>Every table in the file comes through here — the full {@link JkBuild} parse and each
-     * single-table entry point alike. That is what makes them agree: before this existed, five
-     * readers each opened the file, and only the full parse ran the interpolation guard, so
-     * {@code jk deny} / {@code jk train} / {@code jk image} / the test-tag baseline / the
-     * {@code [jvm]} overlay all read manifests the build itself would have rejected.
+     * single-table entry point alike. {@code jk deny} / {@code jk train} / {@code jk image} / the
+     * test-tag baseline / the {@code [jvm]} overlay therefore reject the same invalid manifests
+     * the build would.
      */
     static TomlParseResult document(Path file) throws IOException {
         Objects.requireNonNull(file, "file");
@@ -546,9 +542,8 @@ public final class JkBuildParser {
      * {@code [test] include-tags} / {@code exclude-tags} — the baseline tag filters when no profile
      * or CLI override applies. Empty when the file or the table is absent.
      *
-     * <p>A manifest that exists and does not parse throws. It used to be swallowed into
-     * {@link TestTomlTags#EMPTY}, which reads as "this project filters no tags" — so a typo in
-     * {@code [test]} silently widened the suite instead of failing the command.
+     * <p>A manifest that exists and does not parse throws. {@link TestTomlTags#EMPTY} means "this
+     * project filters no tags"; swallowing a parse error into that would silently widen the suite.
      */
     public static TestTomlTags parseTestTags(Path buildFile) {
         TomlParseResult root = documentIfPresent(buildFile);

@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Parsed contents of a project's {@code jk.toml}: one nested record per block, plus the derived
@@ -25,7 +26,7 @@ public record JkBuild(
         List<RepositorySpec> repositories,
         Profiles profiles,
         Features features,
-        Workspace workspace,
+        @Nullable Workspace workspace,
         Map<String, String> manifest,
         List<PluginDeclaration> plugins,
         Optional<Application> application,
@@ -75,15 +76,15 @@ public record JkBuild(
                 Profiles.empty(),
                 Features.empty(),
                 null,
-                null,
+                Map.of(),
                 List.of(),
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null);
+                Optional.empty(),
+                Optional.empty(),
+                Map.of(),
+                Build.EMPTY,
+                FormatConfig.EMPTY,
+                Variants.EMPTY,
+                Optional.empty());
     }
 
     /** Project + deps + repos; anything richer uses {@link #builder(Project)}. */
@@ -95,19 +96,19 @@ public record JkBuild(
                 Profiles.empty(),
                 Features.empty(),
                 null,
-                null,
+                Map.of(),
                 List.of(),
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null);
+                Optional.empty(),
+                Optional.empty(),
+                Map.of(),
+                Build.EMPTY,
+                FormatConfig.EMPTY,
+                Variants.EMPTY,
+                Optional.empty());
     }
 
     /** {@code [application].main}, or {@code null} when {@code [application]} is absent or unset. */
-    public String mainClass() {
+    public @Nullable String mainClass() {
         return application.map(Application::main).orElse(null);
     }
 
@@ -285,7 +286,7 @@ public record JkBuild(
     }
 
     /** {@code [native].graal} — the GraalVM spec {@code jk native} uses, or {@code null} if unset. */
-    public String graal() {
+    public @Nullable String graal() {
         return nativeConfig.map(NativeConfig::graal).orElse(nativeMode() != NativeMode.DISABLED ? "graalvm" : null);
     }
 
@@ -360,15 +361,15 @@ public record JkBuild(
         private List<RepositorySpec> repositories = List.of();
         private Profiles profiles = Profiles.empty();
         private Features features = Features.empty();
-        private Workspace workspace;
+        private @Nullable Workspace workspace;
         private Map<String, String> manifest = Map.of();
         private List<PluginDeclaration> plugins = List.of();
         private Optional<Application> application = Optional.empty();
         private Optional<NativeConfig> nativeConfig = Optional.empty();
         private final Map<String, PluginConfig> pluginConfigs = new LinkedHashMap<>();
-        private Build build;
-        private FormatConfig format;
-        private Variants variants;
+        private Build build = Build.EMPTY;
+        private FormatConfig format = FormatConfig.EMPTY;
+        private Variants variants = Variants.EMPTY;
         private Optional<Install> install = Optional.empty();
 
         private Builder(Project project) {
@@ -395,7 +396,7 @@ public record JkBuild(
             return this;
         }
 
-        public Builder workspace(Workspace workspace) {
+        public Builder workspace(@Nullable Workspace workspace) {
             this.workspace = workspace;
             return this;
         }
@@ -410,17 +411,17 @@ public record JkBuild(
             return this;
         }
 
-        public Builder application(Application application) {
+        public Builder application(@Nullable Application application) {
             this.application = Optional.ofNullable(application);
             return this;
         }
 
-        public Builder nativeConfig(NativeConfig nativeConfig) {
+        public Builder nativeConfig(@Nullable NativeConfig nativeConfig) {
             this.nativeConfig = Optional.ofNullable(nativeConfig);
             return this;
         }
 
-        public Builder pluginConfig(PluginConfig config) {
+        public Builder pluginConfig(@Nullable PluginConfig config) {
             if (config != null) this.pluginConfigs.put(config.id(), config);
             return this;
         }
@@ -527,7 +528,12 @@ public record JkBuild(
      * @param config optional module-relative template copied to
      *     {@code <home>/config/<bin>/config.toml} on {@code jk install}
      */
-    public record Application(String main, boolean assembly, boolean minified, boolean nativeImage, String config) {
+    public record Application(
+            @Nullable String main,
+            boolean assembly,
+            boolean minified,
+            boolean nativeImage,
+            @Nullable String config) {
 
         public Application {
             if (main != null && main.isBlank()) main = null;
@@ -563,10 +569,10 @@ public record JkBuild(
      * it does for a floating dependency. See {@link JkBuild#nativeMode}.
      */
     public record NativeConfig(
-            String mainClass,
-            String name,
+            @Nullable String mainClass,
+            @Nullable String name,
             List<String> args,
-            String graal,
+            @Nullable String graal,
             NativeMode enabled,
             VersionSelector metadataRepository,
             ToolchainSpec graalSpec) {
@@ -589,10 +595,10 @@ public record JkBuild(
          * whether the author pinned it, so the spec reads as undeclared.
          */
         public NativeConfig(
-                String mainClass,
-                String name,
+                @Nullable String mainClass,
+                @Nullable String name,
                 List<String> args,
-                String graal,
+                @Nullable String graal,
                 NativeMode enabled,
                 VersionSelector metadataRepository) {
             this(mainClass, name, args, graal, enabled, metadataRepository, ToolchainSpec.NONE);
@@ -602,7 +608,7 @@ public record JkBuild(
          * Logical native-image basename: {@code jk} and {@code jk.exe} are the same name. A
          * trailing {@code .exe} is Windows on-disk decoration, not part of {@code [native].name}.
          */
-        public static String executableBasename(String name) {
+        public static @Nullable String executableBasename(@Nullable String name) {
             if (name == null || name.isBlank()) return null;
             if (name.length() > 4 && name.regionMatches(true, name.length() - 4, ".exe", 0, 4)) {
                 String stripped = name.substring(0, name.length() - 4);
@@ -631,7 +637,7 @@ public record JkBuild(
      * <p>Nothing else in the tree sets it, and nothing else should need to: a project that installs
      * into a user's product layout is jk installing jk.
      */
-    public record Install(String productLib) {
+    public record Install(@Nullable String productLib) {
         public Install {
             if (productLib != null && productLib.isBlank()) productLib = null;
         }
@@ -660,9 +666,9 @@ public record JkBuild(
              * {@code compile-test-fixtures} into a directory that is never an artifact. {@code null}
              * means none. Boolean {@code true} in the manifest stores {@link #DEFAULT_FIXTURES}.
              */
-            String fixtures,
+            @Nullable String fixtures,
             /** {@code [build] test-workers}: {@code null} = inherit CLI/auto; {@code 0} = auto; {@code 1} = serial. */
-            Integer testWorkers,
+            @Nullable Integer testWorkers,
             /**
              * {@code [test] serial-tags}: class-level JUnit tags whose classes never share the
              * sharded worker pool — they run in a single trailing worker while untagged classes
@@ -769,11 +775,14 @@ public record JkBuild(
         }
 
         /**
-         * Effective test-worker request for this module: module pin wins when set (hermetic
-         * opt-out); otherwise the CLI/global value ({@code 0} = auto).
+         * Effective test-worker request for this module: a positive module pin wins (hermetic
+         * opt-out); otherwise the request's value — the build's resolved auto share, or {@code 0}
+         * for a single-project build's own auto. A pin of {@code 0} is the same as no pin: it says
+         * "auto", and auto is the share, not the whole machine — a module must not escape the
+         * budget the rest of the build is sharing by spelling the default out loud.
          */
         public int effectiveTestWorkers(int cliOrGlobal) {
-            if (testWorkers != null) return testWorkers;
+            if (testWorkers != null && testWorkers > 0) return testWorkers;
             return Math.max(0, cliOrGlobal);
         }
 
@@ -832,12 +841,12 @@ public record JkBuild(
      * toggles. Boolean fields are tri-state ({@code null} = use the built-in default).
      */
     public record FormatConfig(
-            String style,
-            String java,
-            String kotlin,
-            Boolean optimizeImports,
-            Boolean importOrder,
-            Boolean removeUnusedImports) {
+            @Nullable String style,
+            @Nullable String java,
+            @Nullable String kotlin,
+            @Nullable Boolean optimizeImports,
+            @Nullable Boolean importOrder,
+            @Nullable Boolean removeUnusedImports) {
 
         public static final FormatConfig EMPTY = new FormatConfig(null, null, null, null, null, null);
 

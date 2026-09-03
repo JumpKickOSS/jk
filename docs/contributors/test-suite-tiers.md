@@ -50,13 +50,16 @@ Gradle's up-to-date check sees a task's declared inputs and nothing else. A test
 outcome is invisible, so upgrading it **replays a cached green produced by a different runtime**
 (same family as missing worker-jar inputs or missing JS sources on a test task).
 
-Declare it once, in the table at the top of `buildSrc/src/main/kotlin/jk.java-conventions.gradle.kts`:
+Declare it once, in `buildSrc/src/main/kotlin/ExternalTestRuntimes.kt`:
 
 ```kotlin
-val externalTestRuntimes: Map<String, List<Pair<String, String?>>> = mapOf(
-        ":web:test" to listOf("node" to null),
-        ":engine:test" to listOf("git" to "JK_GIT"),   // second element: the product's override var
-        ":engine:integrationTest" to listOf("git" to "JK_GIT"))
+object ExternalTestRuntimes {
+    val table: Map<String, List<Pair<String, String?>>> =
+        mapOf(
+            ":web:test" to listOf("node" to null),
+            ":engine:test" to listOf("git" to "JK_GIT"),   // second element: the product's override var
+            ":engine:integrationTest" to listOf("git" to "JK_GIT"))
+}
 ```
 
 Adding `protoc` or `bundletool` is a line there, not a new pattern in a module script. What lands on
@@ -91,12 +94,15 @@ Measured profiling of a full `integrationTest` is expensive; use this as a **man
 ## CI
 
 - **PR / push (`ci.yml`):** `./gradlew checkFast` (unit tier + every structural guard) and the
-  commit-authorship scan.
-- **Nightly (`ci-nightly.yml`):** `./gradlew integrationTest` **and** `./gradlew networkTest` on Linux  
+  commit-authorship scan. No coverage, no benches.
+- **Nightly (`ci-nightly.yml`):** Linux `integrationTest`, `slowTest`, `networkTest`, `benchTest`,
+  and `coverageReport -Pjk.coverage`. macOS and Windows run `scripts/ci-product-smoke.sh`.
 - Local branch gate: `./gradlew checkFast`.
 - Local pre-merge when you touch wire/engine/CLI: `./gradlew checkAll` (`checkFast` plus
-  `integrationTest`). Never `networkTest` or `benchTest`.
-- `./gradlew benchTest` is manual; it gates nothing.
+  `integrationTest`). Never `networkTest` or `benchTest` as a merge gate.
+- `./gradlew benchTest` runs nightly; it still gates nothing on deltas.
+- `./gradlew coverageReport -Pjk.coverage` is the coverage inventory; it is not part of
+  `checkFast` or `checkAll`.
 
 ## Measuring integration wall time
 

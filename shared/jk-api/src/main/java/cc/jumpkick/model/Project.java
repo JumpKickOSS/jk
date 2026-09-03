@@ -5,6 +5,7 @@ import java.util.EnumSet;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The {@code [project]} block of a {@code jk.toml}: who this module is and which toolchains build
@@ -19,13 +20,13 @@ public record Project(
         String group,
         String name,
         String version,
-        String jdk,
+        @Nullable String jdk,
         int java,
-        VersionSelector kotlin,
-        VersionSelector groovy,
-        VersionSelector scala,
+        @Nullable VersionSelector kotlin,
+        @Nullable VersionSelector groovy,
+        @Nullable VersionSelector scala,
         SourcesMode sourcesMode,
-        String description,
+        @Nullable String description,
         boolean m2integration,
         boolean m2install,
         Layout layout,
@@ -65,13 +66,13 @@ public record Project(
             String group,
             String name,
             String version,
-            String jdk,
+            @Nullable String jdk,
             int java,
-            VersionSelector kotlin,
-            VersionSelector groovy,
-            VersionSelector scala,
+            @Nullable VersionSelector kotlin,
+            @Nullable VersionSelector groovy,
+            @Nullable VersionSelector scala,
             SourcesMode sourcesMode,
-            String description,
+            @Nullable String description,
             boolean m2integration,
             boolean m2install,
             Layout layout,
@@ -99,12 +100,12 @@ public record Project(
             String group,
             String name,
             String version,
-            String jdk,
+            @Nullable String jdk,
             int java,
-            VersionSelector kotlin,
-            VersionSelector groovy,
+            @Nullable VersionSelector kotlin,
+            @Nullable VersionSelector groovy,
             SourcesMode sourcesMode,
-            String description,
+            @Nullable String description,
             boolean m2integration,
             Layout layout,
             Set<ProjectInherit> workspaceInherits) {
@@ -130,12 +131,12 @@ public record Project(
             String group,
             String name,
             String version,
-            String jdk,
+            @Nullable String jdk,
             int java,
-            VersionSelector kotlin,
-            VersionSelector groovy,
+            @Nullable VersionSelector kotlin,
+            @Nullable VersionSelector groovy,
             SourcesMode sourcesMode,
-            String description,
+            @Nullable String description,
             boolean m2integration,
             Layout layout) {
         this(
@@ -160,12 +161,12 @@ public record Project(
             String group,
             String name,
             String version,
-            String jdk,
+            @Nullable String jdk,
             int java,
-            VersionSelector kotlin,
-            VersionSelector groovy,
+            @Nullable VersionSelector kotlin,
+            @Nullable VersionSelector groovy,
             SourcesMode sourcesMode,
-            String description,
+            @Nullable String description,
             boolean m2integration) {
         this(
                 group,
@@ -320,7 +321,7 @@ public record Project(
                 null,
                 null,
                 null,
-                null,
+                SourcesMode.DISABLED,
                 null,
                 true,
                 true,
@@ -329,7 +330,7 @@ public record Project(
     }
 
     /** A bare-major int as a jdk spec string ({@code 25} → {@code "25"}); 0/negative → unset. */
-    private static String majorSpec(int major) {
+    private static @Nullable String majorSpec(int major) {
         return major > 0 ? Integer.toString(major) : null;
     }
 
@@ -343,14 +344,14 @@ public record Project(
         private final String group;
         private final String name;
         private final String version;
-        private String jdk;
+        private @Nullable String jdk;
         private ToolchainSpec jdkSpec = ToolchainSpec.NONE;
         private int java;
-        private VersionSelector kotlin;
-        private VersionSelector groovy;
-        private VersionSelector scala;
+        private @Nullable VersionSelector kotlin;
+        private @Nullable VersionSelector groovy;
+        private @Nullable VersionSelector scala;
         private SourcesMode sourcesMode = SourcesMode.DISABLED;
-        private String description;
+        private @Nullable String description;
         private boolean m2integration = true;
         private boolean m2install = true;
         private Layout layout = Layout.AUTO;
@@ -362,7 +363,7 @@ public record Project(
         }
 
         /** Toolchain JDK spec, e.g. {@code "temurin-25"} or {@code "25"}. */
-        public Builder jdk(String jdk) {
+        public Builder jdk(@Nullable String jdk) {
             this.jdk = jdk;
             return this;
         }
@@ -379,17 +380,17 @@ public record Project(
             return this;
         }
 
-        public Builder kotlin(VersionSelector kotlin) {
+        public Builder kotlin(@Nullable VersionSelector kotlin) {
             this.kotlin = kotlin;
             return this;
         }
 
-        public Builder groovy(VersionSelector groovy) {
+        public Builder groovy(@Nullable VersionSelector groovy) {
             this.groovy = groovy;
             return this;
         }
 
-        public Builder scala(VersionSelector scala) {
+        public Builder scala(@Nullable VersionSelector scala) {
             this.scala = scala;
             return this;
         }
@@ -399,7 +400,7 @@ public record Project(
             return this;
         }
 
-        public Builder description(String description) {
+        public Builder description(@Nullable String description) {
             this.description = description;
             return this;
         }
@@ -471,7 +472,7 @@ public record Project(
     }
 
     /** First numeric-leading token in a JDK spec (before {@code .}); 0 if none. */
-    public static int majorOf(String spec) {
+    public static int majorOf(@Nullable String spec) {
         if (spec == null) return 0;
         for (String tok : spec.toLowerCase(Locale.ROOT).split("[-_]")) {
             if (tok.isEmpty() || !Character.isDigit(tok.charAt(0))) continue;
@@ -486,7 +487,7 @@ public record Project(
     }
 
     /** True when the spec pins a point release (e.g. {@code "25.0.3"}); jk rejects these. */
-    public static boolean hasPointRelease(String spec) {
+    public static boolean hasPointRelease(@Nullable String spec) {
         if (spec == null) return false;
         for (String tok : spec.toLowerCase(Locale.ROOT).split("[-_]")) {
             if (!tok.isEmpty() && Character.isDigit(tok.charAt(0)) && tok.indexOf('.') >= 0) {

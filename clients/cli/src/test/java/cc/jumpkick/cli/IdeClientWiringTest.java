@@ -154,7 +154,7 @@ class IdeClientWiringTest {
                 .as("JkWireModel reads no recognised wire field — the parse shape moved and this arm is blind")
                 .isNotEmpty();
 
-        String emitted = read("shared/wire/src/main/java/cc/jumpkick/engine/protocol/IdeWireModel.java");
+        String emitted = read("shared/wire/src/main/java/cc/jumpkick/wire/protocol/IdeWireModel.java");
         List<String> missing = read.stream()
                 .filter(field -> !emitted.contains("\\\"" + field + "\\\":"))
                 .toList();

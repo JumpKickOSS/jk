@@ -355,6 +355,7 @@ Product docs (will be published at [jumpkick.build/documentation](https://jumpki
 | [**User documentation**](docs/user/README.md) | People and coding agents *using* JumpKick |
 | [**Manual**](docs/user/manual.md) | `jk manual` playbook + website map into every topic |
 | [**Agents**](docs/user/agents.md) / [**MCP**](docs/user/mcp.md) | How agents should talk to `jk` |
+| [**Security**](docs/user/security.md) | Report a vulnerability; trust boundaries |
 | [**Contributor documentation**](docs/contributors/README.md) | People changing JumpKick |
 | [**Contributing**](CONTRIBUTING.md) | Building this repository |
 

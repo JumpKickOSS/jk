@@ -440,17 +440,9 @@ class EffectivePomBuilderTest {
      * Wait for {@code f} to fail, keeping "the cycle was not detected" and "this machine was busy"
      * apart.
      *
-     * <p>These two used to be one assertion —
-     * {@code assertThatThrownBy(() -> f.get(20, SECONDS)).isInstanceOf(ExecutionException.class)} —
-     * and under a loaded {@code checkAll --rerun-tasks} (337 guard tasks and 59 test tasks in
-     * parallel) it reported <em>"Expecting actual throwable to be an instance of
-     * ExecutionException but was TimeoutException"</em>. That message names neither cause: the walk
-     * had not finished for want of CPU, and the assertion could not tell that from cycle detection
-     * being broken. Correct in intent, unsound in mechanism.
-     *
-     * <p>So the deadline here is a <em>liveness</em> check and says so when it fires; the
-     * correctness claim — that the failure is a {@code PomParseException} naming a cycle — is
-     * asserted by the caller on the exception this returns.
+     * <p>The deadline is a <em>liveness</em> check and says so when it fires; the correctness
+     * claim — that the failure is a {@code PomParseException} naming a cycle — is asserted by the
+     * caller on the exception this returns.
      */
     private static ExecutionException awaitFailure(Future<EffectivePom> f) throws InterruptedException {
         try {

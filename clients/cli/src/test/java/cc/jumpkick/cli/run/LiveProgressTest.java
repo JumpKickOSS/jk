@@ -3,7 +3,7 @@ package cc.jumpkick.cli.run;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.runtime.WorkspaceProgressTracker;
+import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 

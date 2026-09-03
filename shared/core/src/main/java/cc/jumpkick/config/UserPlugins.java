@@ -21,10 +21,10 @@ public final class UserPlugins {
 
     /**
      * Process-lifetime memo, keyed by path, with the staleness rule {@link StampedMemo} owns — the
-     * same one {@code GlobalConfig} applies to this very file, which is the point: the two used to
-     * stamp {@code ~/.jk/config.toml} at two different resolutions. {@code fromConfig} sits
-     * on every jk.toml parse (527 call sites, per-module hot paths); without this the resident
-     * engine re-ran a full tomlj parse of the user config hundreds of times per build.
+     * same one {@code GlobalConfig} applies to this file, at the same path resolution.
+     * {@code fromConfig} sits on every jk.toml parse (per-module hot paths); without this the
+     * resident engine would re-run a full tomlj parse of the user config hundreds of times per
+     * build.
      */
     private static final StampedMemo<Path, StampedMemo.FileStamp, List<PluginDeclaration>> CACHE = StampedMemo.create();
 
@@ -38,7 +38,7 @@ public final class UserPlugins {
         Path abs = file.toAbsolutePath().normalize();
         StampedMemo.FileStamp stamp = StampedMemo.FileStamp.of(abs);
         if (stamp == null) {
-            CACHE.forget(abs); // the file went away — do not keep serving what it used to say
+            CACHE.forget(abs); // missing file: drop the memo so a later recreate is not served stale
             return List.of();
         }
         return CACHE.get(abs, stamp, () -> parse(abs));

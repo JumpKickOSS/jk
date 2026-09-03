@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
-import cc.jumpkick.engine.protocol.EngineProtocol;
-import cc.jumpkick.engine.protocol.EngineWireException;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
@@ -12,11 +10,13 @@ import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
-import cc.jumpkick.runtime.ModuleOutcome;
-import cc.jumpkick.runtime.ModulePlan;
-import cc.jumpkick.runtime.WorkspaceBuildListener;
-import cc.jumpkick.runtime.WorkspaceProgressTracker;
-import cc.jumpkick.runtime.WorkspaceResult;
+import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.protocol.EngineWireException;
+import cc.jumpkick.wire.runtime.ModuleOutcome;
+import cc.jumpkick.wire.runtime.ModulePlan;
+import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
+import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
+import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.channels.SocketChannel;

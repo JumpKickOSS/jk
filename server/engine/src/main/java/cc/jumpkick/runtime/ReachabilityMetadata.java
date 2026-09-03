@@ -28,18 +28,15 @@ import java.util.zip.ZipInputStream;
  * <h2>Store, not cache</h2>
  *
  * The extracted tree lives under the <strong>artifact store</strong> ({@code JK_STORE_DIR}), beside
- * {@code repos/} and the artifact CAS, because it is the same kind of thing: a downloaded,
- * version-addressed Maven artifact, not a rebuildable action output. It was a cache tier, and that
- * was wrong in the direction that costs the user money — {@code jk cache nuke} took 27 MB that only
- * Maven Central can give back, and Sonatype's per-IP quota is sticky. Nothing under the cache root
- * may be something a nuke makes you re-download.
+ * {@code repos/} and the artifact CAS: a downloaded, version-addressed Maven artifact, not a
+ * rebuildable action output. Nothing under the cache root may be something a nuke makes you
+ * re-download.
  *
  * <h2>Version, not constant</h2>
  *
  * Which release is extracted comes from {@code jk-lock.toml}'s {@code [native]} pin, resolved from
- * {@code [native] metadata-repository} by {@code jk lock}. It used to be a {@code static final
- * String} here, which meant the repository release was decided by whichever jk binary happened to
- * run — an input to {@code native-image} that no lock recorded and no user could choose.
+ * {@code [native] metadata-repository} by {@code jk lock} — an input to {@code native-image} the
+ * lock records and the user can choose.
  */
 public final class ReachabilityMetadata {
 
@@ -69,8 +66,8 @@ public final class ReachabilityMetadata {
     /**
      * Matched config directories for {@code artifacts} (the RUNTIME lock entries), extracting the
      * locked repository release on first use. Logs matches through {@code log}; returns an empty
-     * list when {@code pin} is null (the lock predates the pin, or no module declares
-     * {@code [native]}), when the repository is unavailable (offline), or when nothing matches.
+     * list when {@code pin} is null (no module declares {@code [native]}, or the lock has no pin),
+     * when the repository is unavailable (offline), or when nothing matches.
      */
     static List<Path> configDirs(
             Path storeRoot,

@@ -16,6 +16,15 @@ The installer puts **`jk`** and **`jkx`** on your PATH. JumpKick requires **JDK 
 run and will install one if needed. After that, prefer `java = N` in `jk.toml` for
 language level — [Concepts](concepts.md).
 
+Remote installs authenticate the exact `SHA256SUMS` bytes with the built-in RSA-3072 key,
+require one exact checksum entry, and hash the archive before replacing or executing anything.
+Unix needs stock-compatible OpenSSL; Windows uses .NET RSA in PowerShell 5.1. Positional local
+file installs remain available for development and do not require release evidence.
+
+`JK_ARCHIVE_URL` is an advanced remote override and requires `JK_VERSION`; checksum and signature
+evidence comes from `JK_RELEASES_URL/<version>/`, so an arbitrary archive URL cannot choose its
+own trust metadata.
+
 Windows PATH install dir: `%USERPROFILE%\.jk\bin` — the same `bin/` every other platform
 uses. `install.ps1` prepends it to your **User PATH** (visible from cmd and PowerShell) and
 runs `jk activate --yes` for profile hooks.
@@ -37,7 +46,8 @@ Local dogfood from this repository:
 `jk` does not keep launching the blocked PE. See [Contributing](../../CONTRIBUTING.md).
 
 Self-update of an installed binary: `jk self update` (verifies the release). Release
-layout and signing: [contributor releases](../contributors/releases.md).
+layout and signing: [contributor releases](../contributors/releases.md). Reporting a
+signature or install defect: [Security](security.md).
 
 ## On-disk layout
 

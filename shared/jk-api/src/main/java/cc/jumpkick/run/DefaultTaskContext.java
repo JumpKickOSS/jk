@@ -4,6 +4,7 @@ package cc.jumpkick.run;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Internal {@link TaskContext}: wires progress/diagnostics into the plan and tracks ticks for
@@ -169,13 +170,13 @@ final class DefaultTaskContext implements TaskContext {
     }
 
     @Override
-    public void label(String description) {
+    public void label(@Nullable String description) {
         String d = description == null ? "" : description;
         plan.emit(l -> l.label(step, d));
     }
 
     @Override
-    public void output(String line) {
+    public void output(@Nullable String line) {
         String s = line == null ? "" : line;
         plan.emit(l -> l.output(step, s));
     }
@@ -199,7 +200,7 @@ final class DefaultTaskContext implements TaskContext {
     }
 
     @Override
-    public void error(String code, String message, TestFailureInfo failure) {
+    public void error(String code, String message, @Nullable TestFailureInfo failure) {
         plan.errorsRef().add(new BuildPlanResult.Diagnostic(step, code, message, failure));
         plan.emit(l -> l.error(step, code, message, failure));
     }

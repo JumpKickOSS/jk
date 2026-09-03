@@ -4,6 +4,9 @@ package cc.jumpkick.engine.journal;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.builds.ProjectBuilds;
+import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.runtime.TestSuiteRunners;
+import cc.jumpkick.runtime.TestSuiteScaling;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
@@ -49,6 +52,53 @@ class BuildJournalTest {
                 false,
                 null,
                 0L);
+    }
+
+    /** The journal writes {@code trigger}, never a {@code synthetic} key: both loaders derive it. */
+    @Test
+    void fixture_runs_are_hidden_from_the_raw_path_exactly_as_from_the_parsed_one() {
+        BuildJournal j = new BuildJournal(dir);
+        j.append(record(1_700_000_001_000L, true, "g:a"), new BuildJournal.Snapshot(null, null, null));
+        j.append(
+                withTrigger(record(1_700_000_002_000L, true, "g:a"), "calibrate"),
+                new BuildJournal.Snapshot(null, null, null));
+        j.append(
+                withTrigger(record(1_700_000_003_000L, true, "g:a"), "optimize"),
+                new BuildJournal.Snapshot(null, null, null));
+
+        assertThat(j.list()).hasSize(1);
+        List<String> raw = j.rawRecords(9);
+        assertThat(raw).hasSize(1);
+        assertThat(raw.getFirst()).doesNotContain("calibrate").doesNotContain("optimize");
+        assertThat(BuildJournal.scanString(raw.getFirst(), "trigger")).isEqualTo("cli");
+    }
+
+    private static BuildRecord withTrigger(BuildRecord base, String trigger) {
+        return new BuildRecord(
+                base.id(),
+                base.buildNumber(),
+                BuildRecord.SCHEMA,
+                base.kind(),
+                base.dir(),
+                base.coord(),
+                null /* projectId */,
+                base.startedAt(),
+                base.finishedAt(),
+                base.millis(),
+                base.success(),
+                base.cancelled(),
+                base.exitCode(),
+                base.jkVersion(),
+                base.tests(),
+                base.modules(),
+                base.steps(),
+                base.diagnostics(),
+                trigger,
+                base.commit(),
+                base.benefit(),
+                base.running(),
+                base.io(),
+                base.requestId());
     }
 
     @Test
@@ -505,6 +555,86 @@ class BuildJournalTest {
         j.begin(BuildRecord.running(8, "build", "/projA", "g:a", null, 1_700_000_000_000L, "9.9", "cli"));
         assertThat(j.delete("8", "g:b", "/projB")).isFalse();
         assertThat(j.runDir("g:a", "/projA", 8)).isPresent();
+    }
+
+    /** {@code base} with its module list replaced. Same shape as {@link #withTasks}. */
+    private static BuildRecord withModules(BuildRecord base, List<BuildRecord.Module> modules) {
+        return new BuildRecord(
+                base.id(),
+                base.buildNumber(),
+                BuildRecord.SCHEMA,
+                base.kind(),
+                base.dir(),
+                base.coord(),
+                null /* projectId */,
+                base.startedAt(),
+                base.finishedAt(),
+                base.millis(),
+                base.success(),
+                base.cancelled(),
+                base.exitCode(),
+                base.jkVersion(),
+                base.tests(),
+                modules,
+                base.steps(),
+                base.diagnostics(),
+                base.trigger(),
+                base.commit(),
+                base.benefit(),
+                base.running(),
+                base.io(),
+                base.requestId());
+    }
+
+    /**
+     * A suite wall is only re-usable if the record also says how many runners produced it, and the
+     * re-usable <em>form</em> is the wall normalized to one runner ({@code TestSuiteScaling}): a
+     * mean of raw walls across runs that sharded the suite differently describes no build that ever
+     * ran. The forecast reads {@code wall1-ms}, so this is the write side of that contract.
+     */
+    @Test
+    void a_suite_wall_is_journalled_with_its_runner_count_and_normalized() throws Exception {
+        BuildJournal j = new BuildJournal(dir);
+        Path mod = dir.resolve("server/engine");
+        TestSuiteRunners.put(mod.toString(), 8);
+        var modules = List.of(new BuildRecord.Module(
+                "g:engine",
+                mod.toString(),
+                true,
+                0,
+                20_000,
+                List.of(new BuildRecord.Task(TaskNames.RUN_TESTS, "test", "SUCCESS", 17_384))));
+        String locator =
+                j.append(withModules(record(1_700_000_000_000L, true, "g:a"), modules), BuildJournal.Snapshot.NONE);
+        String toml = Files.readString(j.runDir(locator).orElseThrow().resolve("metrics.toml"));
+
+        assertThat(toml).contains(".task.run-tests.wall-ms = 17384");
+        assertThat(toml).contains(".task.run-tests.workers = 8");
+        assertThat(toml)
+                .as("17384 x 8^(1/3), the single-runner-equivalent cost")
+                .contains(".task.run-tests.wall1-ms = " + TestSuiteScaling.normalize(17_384, 8));
+    }
+
+    /** No recorded runner count → no runner keys at all, rather than a guessed 1. */
+    @Test
+    void a_suite_wall_with_no_recorded_concurrency_writes_no_runner_keys() throws Exception {
+        BuildJournal j = new BuildJournal(dir);
+        Path mod = dir.resolve("shared/host");
+        TestSuiteRunners.take(mod.toString()); // drain anything a sibling test left
+        var modules = List.of(new BuildRecord.Module(
+                "g:host",
+                mod.toString(),
+                true,
+                0,
+                2_000,
+                List.of(new BuildRecord.Task(TaskNames.RUN_TESTS, "test", "SUCCESS", 1_500))));
+        String locator =
+                j.append(withModules(record(1_700_000_000_000L, true, "g:a"), modules), BuildJournal.Snapshot.NONE);
+        String toml = Files.readString(j.runDir(locator).orElseThrow().resolve("metrics.toml"));
+
+        assertThat(toml).contains(".task.run-tests.wall-ms = 1500");
+        assertThat(toml).doesNotContain(".task.run-tests.workers");
+        assertThat(toml).doesNotContain(".task.run-tests.wall1-ms");
     }
 
     /** {@code base} with its task list replaced — the record is wide and all-positional. */

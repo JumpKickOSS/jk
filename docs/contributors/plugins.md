@@ -33,6 +33,29 @@ Compile against the in-tree **`plugin-sdk`** module (`shared/plugin-sdk`, artifa
 `jk-plugin-sdk` when published later). Keep the worker at a JDK floor compatible with user
 projects (first-party workers target `--release 17` where they ride the user’s JVM).
 
+### Dependency boundary
+
+`plugin-sdk` is the default and only unclassified first-party dependency. Compiler and test
+workers may vendor `host` as their JSONL/host primitive implementation; this is packaging, not an
+engine dependency. No module under `server/` may enter a plugin runtime.
+
+The guarded exceptions each carry a current product invariant:
+
+- `auditor → core`: the auditor reads the canonical lockfile and emits the shared audit report.
+- `publisher → core`: publishing reads the canonical manifest, lockfile, and build layout.
+- `publisher → client-io`: repository uploads use the client-safe HTTP/file/object-store
+  transports. The transport surface lives there specifically so the worker does not depend on
+  server I/O.
+- `image-builder → jk-api`: image configuration and repository credentials are public model
+  types.
+- `minified → dynamic-surface`: R8 keep rules and native reachability share one model.
+- `grails → spring-boot`: a Grails package is a Boot jar, so the plugin composes the Boot
+  packager.
+
+Publisher may use `core` test fixtures, and image-builder may use `host` test fixtures. These
+test-only edges do not enter worker publication or runtime classpaths.
+`checkPluginSdkBoundary` rejects every other project edge and stale exception row.
+
 ## Manifest essentials
 
 ### Identity and schema

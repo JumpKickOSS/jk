@@ -3,7 +3,7 @@ package cc.jumpkick.command.ide;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.engine.protocol.IdeWireModel;
+import cc.jumpkick.wire.protocol.IdeWireModel;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;

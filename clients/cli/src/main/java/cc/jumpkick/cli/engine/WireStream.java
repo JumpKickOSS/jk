@@ -2,8 +2,8 @@
 package cc.jumpkick.cli.engine;
 
 import cc.jumpkick.config.SessionContext;
-import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.wire.protocol.EngineProtocol;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.channels.SocketChannel;

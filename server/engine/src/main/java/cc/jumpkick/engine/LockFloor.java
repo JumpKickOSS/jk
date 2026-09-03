@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
-import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.resolver.Versions;
+import cc.jumpkick.wire.protocol.EngineProtocol;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;

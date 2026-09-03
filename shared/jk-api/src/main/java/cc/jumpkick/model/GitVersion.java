@@ -6,6 +6,7 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Derives a Maven/SemVer version from a git ref. Tag → coerced SemVer; branch →
@@ -39,7 +40,7 @@ public final class GitVersion {
     }
 
     /** Coerce a tag to {@code major.minor.patch[-prerelease][+build]}, or null if not version-like. */
-    static String coerce(String tag) {
+    static @Nullable String coerce(@Nullable String tag) {
         if (tag == null) return null;
         String s = tag.strip();
         int firstDigit = -1;

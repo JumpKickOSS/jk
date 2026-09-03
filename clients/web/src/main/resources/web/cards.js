@@ -26,7 +26,7 @@ export const cardMethods = {
   riseDelay(i) {
     return Math.min(i, 8) * 0.04 + 's';
   },
-  // Human label for a build's trigger. Older (pre-capture) records have none → em dash.
+  // Human label for a build's trigger. Missing trigger → em dash.
   triggerLabel(trigger) {
     return { web: 'Web build', cli: 'CLI build' }[trigger] || '—';
   },
@@ -177,7 +177,7 @@ export const cardMethods = {
     const over = this.etaOverrunSeconds(card);
     return over > 0 ? '+' + fmtClockSeconds(over) : '0s';
   },
-  // Back-compat alias used by older snapshots/tests: bare countdown string (no "ETA " label).
+  // Bare countdown string (no "ETA " label).
   eta(card) {
     return this.etaCountdown(card);
   },
@@ -307,8 +307,7 @@ export const cardMethods = {
   // ---- formatting helpers (templates keep zero logic beyond these) ----
   coordParts(card) {
     // "group:name" → colored segments; fall back to the dir's last path segment.
-    // Guard null/undefined dir — projectMeta can land before a journal row has a path, and a
-    // files-pane open with only projectId used to throw on .split (README Preview flicker).
+    // Guard null/undefined dir — projectMeta can land before a journal row has a path.
     const c = card || {};
     if (c.coord && String(c.coord).includes(':')) {
       const i = String(c.coord).indexOf(':');

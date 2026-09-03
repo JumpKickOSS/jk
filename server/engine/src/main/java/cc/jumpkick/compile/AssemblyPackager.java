@@ -195,7 +195,7 @@ public final class AssemblyPackager {
             extraEntries = extraEntries == null ? Map.of() : Map.copyOf(extraEntries);
         }
 
-        /** Back-compat constructor: no generated (non-filesystem) entries. */
+        /** No generated (non-filesystem) entries. */
         public AssemblyRequest(
                 Path classesDir,
                 List<Path> dependencyJars,

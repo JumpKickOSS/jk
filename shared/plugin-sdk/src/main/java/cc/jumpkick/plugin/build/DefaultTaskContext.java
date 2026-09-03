@@ -4,6 +4,7 @@ package cc.jumpkick.plugin.build;
 import cc.jumpkick.plugin.PluginConfig;
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Harness-supplied implementation of resolve/build/test contribution contexts. Accumulates the
@@ -20,8 +21,8 @@ final class DefaultTaskContext implements BuildContext, ResolveContext, TestCont
     private final List<String> contributesClasses = new ArrayList<>();
     private final List<String> contributesResources = new ArrayList<>();
     private final List<String> contributesTestClasspath = new ArrayList<>();
-    private String transformsClasses;
-    private String stage;
+    private @Nullable String transformsClasses;
+    private @Nullable String stage;
     private boolean bodyRun;
 
     DefaultTaskContext(BuildPluginContext ctx, String defaultName) {
@@ -48,13 +49,13 @@ final class DefaultTaskContext implements BuildContext, ResolveContext, TestCont
     @Override
     public TaskContribution requires(String... taskNames) {
         for (String t : taskNames) {
-            if (t != null && !t.isBlank()) requires.add(t);
+            if (!t.isBlank()) requires.add(t);
         }
         return this;
     }
 
     @Override
-    public TaskContribution stage(String stageWire) {
+    public TaskContribution stage(@Nullable String stageWire) {
         this.stage = (stageWire == null || stageWire.isBlank()) ? null : stageWire.trim();
         return this;
     }

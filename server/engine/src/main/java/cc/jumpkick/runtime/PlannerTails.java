@@ -98,9 +98,9 @@ public final class PlannerTails {
                 b.addTask(sourcesStep(in.cache(), !in.ephemeralActions()));
                 leaves.add(TaskNames.PACKAGE_SOURCES);
             }
-            // run-tests is a LEAF, not a gate: packaging no longer requires it, so
-            // without joining it here the terminal's requires-closure would prune the suite
-            // out of `jk build` entirely. Joining keeps tests scheduled — concurrently with
+            // run-tests is a LEAF, not a gate: packaging does not require it, so without
+            // joining it here the terminal's requires-closure would prune the suite out of
+            // `jk build` entirely. Joining keeps tests scheduled — concurrently with
             // packaging — while a failure still fails the plan.
             List<String> joined = new ArrayList<>(leaves.isEmpty() ? List.of(TaskNames.PACKAGE_JAR) : leaves);
             if (!PlannerResources.skipJUnit(in)) {
@@ -212,10 +212,8 @@ public final class PlannerTails {
                     Path assemblyJar = layout.assemblyJar();
                     // Module-scoped runtime closure (not the whole workspace lock).
                     List<Path> depJars = assemblyDependencyJars(layout.moduleRoot(), project, lockFile, cache);
-                    // Packaging cache: the fat jar's key comes from PackagingKeys, the one body
-                    // the forecast also calls — the `main:` token used to be derived from a
-                    // different source on each side, so a worker module could never forecast
-                    // up-to-date.
+                    // Packaging cache: the fat jar's key comes from PackagingKeys, the same body
+                    // the forecast calls, so a worker module can forecast up-to-date.
                     PackagingKeys.Keyed keyed = PackagingKeys.assembly(
                             assemblyJar,
                             layout.moduleRoot(),

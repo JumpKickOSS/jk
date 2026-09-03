@@ -10,6 +10,7 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockManifestDigest;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.FreshnessStamp;
+import cc.jumpkick.wire.runtime.TaskForecast;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;

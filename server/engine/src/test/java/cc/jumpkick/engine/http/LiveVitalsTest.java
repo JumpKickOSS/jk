@@ -186,19 +186,15 @@ class LiveVitalsTest {
     }
 
     /**
-     * "Hydrate did not walk the store" is a <em>negative</em>, and it used to be inferred from the
-     * clock: the capture supplier slept 1s and the test asserted the hydrate returned in under
-     * 900ms. 100ms of headroom on a machine running 59 test tasks in parallel is not a measurement,
-     * and a sleep that is "long enough" here is how a fake green hides.
-     *
-     * <p>This trips instead of timing. The supplier counts down a latch when it is <em>entered</em>,
-     * so the test observes the walk itself rather than its duration; re-arming the latch after the
-     * seed gives the negative assertion a positive control — the same latch is proved to fire on the
-     * seed walk, so "it never fired" cannot mean "the latch was never wired up".
+     * "Hydrate did not walk the store" is a <em>negative</em>. The supplier counts down a latch
+     * when it is <em>entered</em>, so the test observes the walk itself rather than its duration.
+     * Re-arming the latch after the seed gives the negative assertion a positive control — the
+     * same latch is proved to fire on the seed walk, so "it never fired" cannot mean "the latch
+     * was never wired up".
      *
      * <p>Reading the count immediately after {@code hydrateFor} returns is sound because
-     * {@code hydrateFor} is synchronous and, by its own contract, schedules nothing: any walk it was
-     * going to start has started by the time the frames are readable.
+     * {@code hydrateFor} is synchronous and, by its own contract, schedules nothing: any walk it
+     * was going to start has started by the time the frames are readable.
      */
     private record WalkProbe(Supplier<CacheSnapshot> capture, AtomicReference<CountDownLatch> started) {
         static WalkProbe returning(CacheSnapshot snapshot) {

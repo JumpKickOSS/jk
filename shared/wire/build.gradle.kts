@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 plugins {
-    id("jk.java-conventions")
+    id("jk.nullmarked-conventions")
 }
 
 description = "jk engine API: the client<->engine wire contract — protocol codec, engine paths/" +
@@ -67,7 +67,7 @@ fun readsTheKey(body: String, name: String): Boolean {
 }
 
 // Guard G28.
-val checkNoRetiredWireSpelling by tasks.registering {
+val checkNoRetiredWireSpelling = registerGuard("checkNoRetiredWireSpelling") {
     group = "verification"
     description = "Fail the build on a retired wire-key spelling typed as a field key in production source"
     val treeRoot = rootProject.layout.projectDirectory.asFile
@@ -125,8 +125,6 @@ val checkNoRetiredWireSpelling by tasks.registering {
         stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
     }
 }
-tasks.named("check") { dependsOn(checkNoRetiredWireSpelling) }
-tasks.named("jar") { dependsOn(checkNoRetiredWireSpelling) }
 
 // `WireKeyClosureTest` closes the JSON key read/write vocabulary over the WHOLE tree, so its result
 // depends on every module's production sources — none of which Gradle would otherwise treat as an

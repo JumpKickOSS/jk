@@ -27,6 +27,9 @@ class EffectiveUserConfigTest {
         assertThat(find(rows, "http.host").effectiveValue()).isEqualTo("127.0.0.1");
         assertThat(find(rows, "cache.max-cache-size-gb").defaultValue()).isEqualTo("4");
         assertThat(find(rows, "engine.jobs").effectiveValue()).isEqualTo("auto");
+        assertThat(find(rows, "engine.continue").effectiveValue()).isEqualTo("false");
+        assertThat(find(rows, "engine.vfs-max-mb").effectiveValue()).isEqualTo("32");
+        assertThat(find(rows, "engine.auto-warmup").effectiveValue()).isEqualTo("true");
     }
 
     @Test

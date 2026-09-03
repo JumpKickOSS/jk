@@ -18,13 +18,10 @@ import org.jspecify.annotations.Nullable;
  * Every surface that deletes under the cache tier — wire verb, MCP tool, or the engine's own
  * idle-boundary prune — goes through here.
  *
- * <p>Taking a lock is not a write, so nothing here creates the cache tree. It used to: the file
- * lock needs somewhere to put {@code .prune.lock}, and an unconditional {@code createDirectories}
- * gave it one. That put the root back after {@code jk cache nuke} — a command whose whole contract
- * is {@code rm -rf} on that path and which deliberately leaves the engine running — on
- * the next pass any surface made, including passes about the artifact store that only borrow this
- * lock. An absent root has no contents to protect and no concurrent pruner to exclude, so the body
- * runs under the engine gate alone and the writers create what they need, when they need it.
+ * <p>Taking a lock is not a write, so nothing here creates the cache tree. An absent root has no
+ * contents to protect and no concurrent pruner to exclude: the body runs under the engine gate
+ * alone and writers create what they need. Creating {@code .prune.lock}'s parent would restore a
+ * nuked cache while the engine is still running.
  */
 public final class CacheMaintenanceLocks {
 
@@ -76,7 +73,7 @@ public final class CacheMaintenanceLocks {
     private static boolean withPruneFileLock(Path cache, @Nullable Runnable onWaitCross, boolean block, Body body)
             throws Exception {
         // No root, no lock: there is nothing under it to guard and no other pruner to shut out.
-        // See the class note — creating it here is what undid `jk cache nuke`.
+        // Do not createDirectories here — that would restore a nuked cache.
         if (!Files.isDirectory(cache)) {
             body.run();
             return true;

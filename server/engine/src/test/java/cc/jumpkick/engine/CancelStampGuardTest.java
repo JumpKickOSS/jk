@@ -6,7 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.model.command.Exit;
-import cc.jumpkick.runtime.ModuleOutcome;
+import cc.jumpkick.wire.runtime.ModuleOutcome;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 

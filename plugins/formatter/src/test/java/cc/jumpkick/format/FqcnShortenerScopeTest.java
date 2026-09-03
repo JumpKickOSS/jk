@@ -423,10 +423,10 @@ class FqcnShortenerScopeTest {
     }
 
     /**
-     * The inserted block goes immediately after the last real import, on its own line. It used to be
-     * placed after the class javadoc — because the blanked copy turns a javadoc into a rectangle of
-     * spaces and the pattern's trailing {@code \\s*} ran the match end straight through it — which
-     * palantir-java-format rejects outright as "Imports not contiguous".
+     * The inserted block goes immediately after the last real import, on its own line. A match
+     * that lands after the class javadoc is rejected by palantir-java-format as "Imports not
+     * contiguous", so the blanked copy must not let trailing {@code \\s*} run through a javadoc
+     * rectangle of spaces.
      */
     @Test
     void the_import_block_lands_directly_after_the_last_import(@TempDir Path tmp) throws Exception {

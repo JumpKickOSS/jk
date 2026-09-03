@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
-import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.wire.EnginePaths;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -19,10 +19,9 @@ import java.util.Set;
  *
  * <p>There can be several. The engine identity is a hash of the state directory <em>and</em> the
  * artifact store, so one machine holds one engine per {@code (state dir, store)} pair — which is what
- * makes {@code JK_STORE_DIR} work, and also what let a throwaway store leave a daemon behind. Before
- * this existed, {@code jk engine status} and {@code jk engine stop} each addressed exactly one
- * identity, so the rest were invisible and unstoppable: eighteen were once found alive with no
- * supported way to clear them.
+ * makes {@code JK_STORE_DIR} work, and also what lets a throwaway store leave a daemon behind.
+ * {@code jk engine status} and {@code jk engine stop} list and stop every identity, not just the
+ * current one.
  *
  * <p>Stopping has to be reliable without the user reaching for {@code kill}. On Windows that means
  * hunting a JVM in Task Manager, which is not a reasonable thing to expect of anyone. So every stop
@@ -49,11 +48,9 @@ public final class EngineFleet {
     /**
      * One running engine. {@code current} marks the one this directory's commands would reach.
      *
-     * <p>{@code status} is null for an engine that is alive but not answering. That case is the whole
-     * reason this is nullable rather than an {@code Optional<Status>} of convenience: a wedged engine
-     * one that still holds its socket but cannot reply — used to be invisible, because discovery went
-     * through a status probe. {@code status} would come back empty, the engine would be skipped, and
-     * {@code stop --pid} would answer "no running engine with pid N" about a process that was very much
+     * <p>{@code status} is null for an engine that is alive but not answering. A wedged engine —
+     * one that still holds its socket but cannot reply — must still appear in the list, or
+     * {@code stop --pid} would answer "no running engine with pid N" about a process that is
      * running. Verified against a SIGSTOP'd engine.
      */
     public record Member(EnginePaths.Paths paths, Path socket, EngineClient.Status status, long pid, boolean current) {

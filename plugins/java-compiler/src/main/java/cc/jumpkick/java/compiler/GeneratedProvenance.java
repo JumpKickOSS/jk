@@ -4,6 +4,7 @@ package cc.jumpkick.java.compiler;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -145,14 +146,33 @@ final class GeneratedProvenance {
         Map<Path, Set<Path>> out = new LinkedHashMap<>();
         if (!Files.isRegularFile(file)) return out;
         for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
-            if (line.isBlank()) continue;
+            if (line.isBlank() || isPreEscaping(line)) continue;
             String[] parts = line.split("\t");
             if (parts.length < 2) continue;
-            Set<Path> origins = new HashSet<>();
-            for (int i = 1; i < parts.length; i++) origins.add(canonical(Path.of(unescape(parts[i]))));
-            out.put(canonical(Path.of(unescape(parts[0]))), origins);
+            try {
+                Set<Path> origins = new HashSet<>();
+                for (int i = 1; i < parts.length; i++) origins.add(canonical(Path.of(unescape(parts[i]))));
+                out.put(canonical(Path.of(unescape(parts[0]))), origins);
+            } catch (InvalidPathException malformed) {
+                // A row this jk cannot read is a row it cannot prune for; the next write drops it.
+            }
         }
         return out;
+    }
+
+    /**
+     * A row written before paths were escaped. {@link #escape} doubles every backslash, so a
+     * backslash followed by anything other than {@code \\ t n r} cannot occur in a row this class
+     * wrote — it is a raw Windows separator, and unescaping it would turn {@code \target} into a
+     * tab. Such a row is skipped rather than decoded into a path that never existed.
+     */
+    static boolean isPreEscaping(String line) {
+        for (int i = 0; i + 1 < line.length(); i++) {
+            if (line.charAt(i) != '\\') continue;
+            char next = line.charAt(++i);
+            if (next != '\\' && next != 't' && next != 'n' && next != 'r') return true;
+        }
+        return false;
     }
 
     private void write(Map<Path, Set<Path>> prov) throws IOException {
@@ -200,7 +220,7 @@ final class GeneratedProvenance {
                 case 't' -> out.append('\t');
                 case 'n' -> out.append('\n');
                 case 'r' -> out.append('\r');
-                default -> out.append(c).append(next); // pre-escaping rows pass through untouched
+                default -> out.append(c).append(next); // unreachable for rows this class wrote
             }
         }
         return out.toString();

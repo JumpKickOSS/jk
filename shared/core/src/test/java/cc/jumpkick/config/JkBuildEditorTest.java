@@ -326,6 +326,22 @@ class JkBuildEditorTest {
         assertThat(result).isEqualTo(WS);
     }
 
+    /** A module already covered by a glob is not appended a second time as a literal. */
+    @Test
+    void add_module_covered_by_a_glob_is_a_noop() {
+        String start = """
+                group    = "cc.jumpkick"
+                name     = "jk"
+                version  = "0.1.0"
+
+                [workspace]
+                modules = ["libs/*"]
+                """;
+        assertThat(JkBuildEditor.addWorkspaceModule(start, "libs/core")).isEqualTo(start);
+        assertThat(JkBuildEditor.addWorkspaceModule(start, "apps/web"))
+                .contains("modules = [\"libs/*\", \"apps/web\"]");
+    }
+
     @Test
     void add_module_to_empty_inline_array() {
         String start = """

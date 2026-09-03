@@ -4,13 +4,13 @@ package cc.jumpkick.cli.tui;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
-import cc.jumpkick.engine.EnginePaths;
-import cc.jumpkick.engine.EngineTransport;
-import cc.jumpkick.engine.protocol.EngineProtocol;
-import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.testing.ShortTempDirs;
+import cc.jumpkick.wire.EnginePaths;
+import cc.jumpkick.wire.EngineTransport;
+import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.protocol.ProtoLifecycle;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;

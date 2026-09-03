@@ -122,8 +122,8 @@ class AotCacheTrainerTest {
     /**
      * Where the image's JVM is looked for. The extracted tree is 50–200 MB and is shared by every
      * module built on the same base, so it belongs under jk's cache root — the only place {@code
-     * CacheTree.BASE_JRE}'s bound reaches. It used to be written under the module's build output,
-     * where nothing reclaims it and the next {@code jk clean} deletes it.
+     * CacheTree.BASE_JRE}'s bound reaches. Under the module's build output nothing reclaims it
+     * and the next {@code jk clean} deletes it.
      *
      * <p>Proven by the {@code .extracted} marker, which {@link BaseJre} touches on use: only a
      * lookup rooted at the cache root can find this one. The reference is digest-pinned and the

@@ -131,6 +131,11 @@ public final class StepTimingsRecorder implements BuildPlanListener {
         if (sum != null && !sum.classWallMs().isEmpty()) {
             TestClassWalls.put(moduleKey, sum.classWallMs());
         }
+        // The concurrency this wall was produced at, same hand-off. Without it the wall recorded
+        // above is not a prediction of anything: it is one runner count's outcome.
+        if (sum != null && sum.workers() > 0) {
+            TestSuiteRunners.put(moduleKey, sum.workers());
+        }
     }
 
     private void emitHostCompileOrPackage(String step, long wallMs, int count) {

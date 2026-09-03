@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The {@code profiles} block of a {@code jk.toml}. Holds the raw {@link Profile}s by name and
@@ -44,7 +45,7 @@ public record Profiles(Map<String, Profile> byName) {
         if (!visiting.add(name)) {
             throw new IllegalStateException("cycle in profile inheritance at `" + name + "` (chain: " + visiting + ")");
         }
-        Profile current = byName.get(name);
+        Profile current = Objects.requireNonNull(byName.get(name));
         if (current.inherits() == null) {
             return current;
         }
@@ -61,7 +62,7 @@ public record Profiles(Map<String, Profile> byName) {
     }
 
     /** Picks the auto-selected profile name based on env, or {@code null}. */
-    public static String autoSelect(Map<String, String> env) {
+    public static @Nullable String autoSelect(Map<String, String> env) {
         return EnvValues.isCi(env::get) || env.containsKey("GITHUB_ACTIONS") || env.containsKey("GITLAB_CI")
                 ? "ci"
                 : null;

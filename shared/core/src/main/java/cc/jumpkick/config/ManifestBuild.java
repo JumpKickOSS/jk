@@ -390,7 +390,8 @@ public final class ManifestBuild {
                     extraSrc.add(s);
                 }
             }
-            // [build] test-workers — pin within-module test JVMs (1 = serial; 0 = auto; omit = CLI).
+            // [build] test-workers — pin within-module test JVMs (1 = serial; 0 = same as omitting: the
+            // build's auto share).
             // [build] test-parallel = false is an alias for test-workers = 1 (Mill testParallelism=false).
             if (build.contains("test-workers")) {
                 Long n = build.getLong("test-workers");

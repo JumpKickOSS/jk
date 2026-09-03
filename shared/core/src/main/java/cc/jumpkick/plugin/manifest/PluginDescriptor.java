@@ -242,7 +242,7 @@ public record PluginDescriptor(
             ksp = ksp == null ? List.of() : List.copyOf(ksp);
         }
 
-        /** Back-compat constructor: no groovy lane. */
+        /** No groovy lane. */
         public CompilerArgs(List<String> javac, List<String> kotlin, List<String> ksp, Condition when) {
             this(javac, kotlin, List.of(), ksp, when);
         }

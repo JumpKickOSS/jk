@@ -61,7 +61,7 @@ sourceSets.test { java.srcDir(intellijParserSrc.map { it.destinationDir }) }
 // and JUnit, which they compile against — are one wrong configuration keyword away from the native
 // image. That mistake would not fail anything else: the image would just get bigger and start
 // reaching reflective JUnit machinery that GraalVM cannot see. This is the arm that notices.
-val checkCliRuntimeClasspath by tasks.registering {
+val checkCliRuntimeClasspath = registerGuard("checkCliRuntimeClasspath") {
     val runtime = configurations.named("runtimeClasspath")
     inputs.files(runtime)
     doLast {
@@ -106,7 +106,7 @@ val checkCliRuntimeClasspath by tasks.registering {
 // Measured 2026-08-24 across 274 files under clients/cli/src/main/java: 0 violations for all
 // fourteen entries. `TomlScan` and `MinimalToml` are deliberately absent from the list — they are
 // the line scanner and the scalar codec the native image is *supposed* to reach.
-val checkCliNoParseTypes by tasks.registering {
+val checkCliNoParseTypes = registerGuard("checkCliNoParseTypes") {
     val main = layout.projectDirectory.dir("src/main/java")
     inputs.dir(main)
     doLast {
@@ -134,8 +134,6 @@ val checkCliNoParseTypes by tasks.registering {
         }
     }
 }
-tasks.named("check") { dependsOn(checkCliRuntimeClasspath); dependsOn(checkCliNoParseTypes) }
-tasks.named("jar") { dependsOn(checkCliRuntimeClasspath); dependsOn(checkCliNoParseTypes) }
 
 // ---------------------------------------------------------------------------
 // A test that names the ambient state root must declare it throwaway.
@@ -157,7 +155,7 @@ tasks.named("jar") { dependsOn(checkCliRuntimeClasspath); dependsOn(checkCliNoPa
 // that root needs those declared first, so this guard does not pretend to cover it.
 // ---------------------------------------------------------------------------
 // Guard G31.
-val checkTestRootsDeclared by tasks.registering {
+val checkTestRootsDeclared = registerGuard("checkTestRootsDeclared") {
     group = "verification"
     description = "Fail when a :cli test reads the ambient state root without @IsolatedState"
     val testJava = fileTree(layout.projectDirectory.dir("src/test/java")) { include("**/*.java") }
@@ -180,8 +178,6 @@ val checkTestRootsDeclared by tasks.registering {
         stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
     }
 }
-tasks.named("check") { dependsOn(checkTestRootsDeclared) }
-tasks.named("test") { dependsOn(checkTestRootsDeclared) }
 
 // ---------------------------------------------------------------------------
 // G22 — the IDE clients are wired to jk by string, and nothing checked the strings.
@@ -223,7 +219,7 @@ tasks.named("test") { dependsOn(checkTestRootsDeclared) }
 // back empty (or, for the verb owner, implausibly small), so a shape change cannot quietly turn
 // an arm into a green no-op.
 // ---------------------------------------------------------------------------
-val checkIdeClientWiring by tasks.registering {
+val checkIdeClientWiring = registerGuard("checkIdeClientWiring") {
     group = "verification"
     description = "Fail when clients/intellij or clients/vscode names a jk verb, command id, class or wire field that does not exist"
     val vscodeManifest = rootProject.file("clients/vscode/package.json")
@@ -231,7 +227,7 @@ val checkIdeClientWiring by tasks.registering {
     val ideaPluginXml = rootProject.file("clients/intellij/src/main/resources/META-INF/plugin.xml")
     val ideaBuildScript = rootProject.file("clients/intellij/build.gradle.kts")
     val ideaJava = rootProject.file("clients/intellij/src/main/java")
-    val wireModel = rootProject.file("shared/wire/src/main/java/cc/jumpkick/engine/protocol/IdeWireModel.java")
+    val wireModel = rootProject.file("shared/wire/src/main/java/cc/jumpkick/wire/protocol/IdeWireModel.java")
     val cliCommands = fileTree(layout.projectDirectory.dir("src/main/java/cc/jumpkick/command")) {
         include("**/*Command.java")
     }
@@ -348,7 +344,6 @@ val checkIdeClientWiring by tasks.registering {
         stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
     }
 }
-tasks.named("check") { dependsOn(checkIdeClientWiring) }
 
 // Thin JVM client (installDist) — no engine on the classpath. Spawns jk-engine.jar via EngineInstall
 // / JK_ENGINE_EXE. Preferred production dist is the native image; this path is the supported
@@ -633,7 +628,7 @@ fun handoffGuardCode(src: String): String {
     return out.toString()
 }
 
-val checkOneTerminalHandoff by tasks.registering {
+val checkOneTerminalHandoff = registerGuard("checkOneTerminalHandoff") {
     group = "verification"
     description = "Fail when a CLI command inherits stdio outside CliOutput.handOffTerminal"
     val mainJava = fileTree(layout.projectDirectory.dir("src/main/java")) { include("**/*.java") }
@@ -666,5 +661,3 @@ val checkOneTerminalHandoff by tasks.registering {
         stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
     }
 }
-tasks.named("check") { dependsOn(checkOneTerminalHandoff) }
-tasks.named("jar") { dependsOn(checkOneTerminalHandoff) }

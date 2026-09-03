@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.build;
 
+import org.jspecify.annotations.Nullable;
+
 /**
  * A child process for {@link ToolRunForkTest}: echoes its args, then one environment variable, then
  * optionally whether {@code PATH} survived. Exits 7 when handed {@code --fail}, so a drain that
@@ -25,10 +27,10 @@ public final class EnvEchoMain {
                 System.out.println("arg=" + arg);
             }
         }
-        String probe = System.getenv(VAR);
+        @Nullable String probe = System.getenv(VAR);
         System.out.println("env=" + (probe == null ? "<unset>" : probe));
         if (path) {
-            String p = System.getenv("PATH");
+            @Nullable String p = System.getenv("PATH");
             System.out.println("path=" + (p == null || p.isEmpty() ? "<unset>" : "present"));
         }
         if (fail) System.exit(7);

@@ -4,6 +4,8 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
+import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -108,6 +110,7 @@ class WorkspaceSchedulerTest {
         // (bounded) for in-flight tasks to settle before run() returns.
         AtomicBoolean cancelled = new AtomicBoolean();
         AtomicBoolean slowFinished = new AtomicBoolean();
+        List<String> lifecycle = Collections.synchronizedList(new ArrayList<>());
         // Determinism: "fast" only flips cancel once "slow" is genuinely in flight — a
         // not-yet-started "slow" would be (correctly) no-op'd by the admission gate instead.
         CountDownLatch slowStarted = new CountDownLatch(1);
@@ -135,6 +138,7 @@ class WorkspaceSchedulerTest {
                         Thread.currentThread().interrupt();
                     }
                     slowFinished.set(true);
+                    lifecycle.add("module-finish:slow");
                     return unit;
                 },
                 (justCompleted, results, remaining) -> null,
@@ -145,6 +149,15 @@ class WorkspaceSchedulerTest {
                 .as("the fixture must cancel while \"slow\" is in flight, else nothing is drained")
                 .isTrue();
         assertThat(slowFinished).isTrue();
+        WorkspaceExecute.finish(
+                new WorkspaceBuildListener() {
+                    @Override
+                    public void onWorkspaceFinish(WorkspaceResult result) {
+                        lifecycle.add("workspace-finish");
+                    }
+                },
+                new WorkspaceResult(false, 1, List.of(), List.of(), true));
+        assertThat(lifecycle).containsExactly("module-finish:slow", "workspace-finish");
     }
 
     /** Assert every unit ran only after its prereqs finished (positional check on completion order). */

@@ -37,6 +37,8 @@ import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.task.JavaCompile;
+import cc.jumpkick.wire.runtime.TaskForecast;
+import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -86,7 +88,7 @@ public final class TaskForecaster {
     /**
      * As {@link #of(BuildGraph.Result, Cas, ActionCache, Path, boolean, WorkspaceTarget)} with the
      * resolved terminal module set: the dirs that will receive the target's terminal step
-     * (native-image / write-image), mirroring {@code WorkspaceExecute.assemblePlan} eligibility.
+     * (native-image / write-image), mirroring {@code WorkspacePreparePhase.assemblePlan} eligibility.
      * The forecast must consume the same set the plan assembly uses — re-deriving eligibility
      * here (e.g. from {@code [native]} tables) skips fallback modules and prices unselected ones.
      */
@@ -646,6 +648,13 @@ public final class TaskForecaster {
                             workerJar,
                             layout.generatedSourcesDir("annotations", "test"));
                     Perf.end("  predict-compile-test", tt);
+                    if (Perf.ENABLED) {
+                        System.err.println("[jk-perf] forecast-compile-test " + dir
+                                + " key=" + pred.actionKey() + " outcome=" + pred.outcome() + " reason=" + pred.reason()
+                                + " cp=" + baseCp.size() + " src=" + testSrc.size()
+                                + " pp=" + processorCp.size() + " release=" + release
+                                + " javaHome=" + javaHome + " out=" + testOut);
+                    }
                     TaskForecast.Task p = compileStep(TaskNames.COMPILE_TEST, pred, false);
                     steps.add(p);
                     if (!p.cached()) testDirty = true;

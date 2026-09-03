@@ -13,7 +13,8 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Loads each {@code workspace.modules} entry's {@code jk.toml} (literal paths only). Missing
+ * Loads each {@code workspace.modules} entry's {@code jk.toml} (globs expanded by
+ * {@link WorkspaceModules}). Missing
  * modules raise {@link JkBuildParseException}. Resolves Cargo-style {@code <field>.workspace
  * = true} against the workspace root before returning.
  */
@@ -32,7 +33,8 @@ public final class WorkspaceLoader {
 
         Map<Path, JkBuild> modules = new LinkedHashMap<>();
         List<String> bad = new ArrayList<>();
-        for (String module : root.workspace().modules()) {
+        for (String module :
+                WorkspaceModules.expand(workspaceRoot, root.workspace().modules())) {
             Path moduleDir = workspaceRoot.resolve(module).normalize();
             Path moduleJkToml = moduleDir.resolve(ManifestPaths.MANIFEST);
             if (!Files.exists(moduleJkToml)) {

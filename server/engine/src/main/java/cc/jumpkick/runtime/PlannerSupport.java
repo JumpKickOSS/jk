@@ -308,12 +308,8 @@ public final class PlannerSupport {
     /**
      * Merge {@code resourceDir} into {@code classesDir}, leaving whatever is already correct alone.
      *
-     * <p>This is the hot one. It copies main resources, and it merges the Kotlin and Groovy compilers'
-     * output into {@code classes} on every incremental compile — so a one-file edit used to re-copy
-     * the whole tree, at 305&nbsp;µs per file on Windows, with a {@code createDirectories} per file on
-     * top. Worse, {@code PlannerSupport.mainStampClasspath} puts those merged class directories into
-     * the compile stamp's inputs and {@code FreshnessStamp} compares them by mtime, so the churn was
-     * also invalidating the stamp it fed. The owner's identity skip is what fixes both.
+     * <p>{@link PathUtil#copyTree} skips byte-identical files so mtimes stay put: {@code
+     * mainStampClasspath} feeds those dirs to {@code FreshnessStamp}, which compares by mtime.
      */
     static void copyResources(Path resourceDir, Path classesDir) throws IOException {
         PathUtil.copyTree(resourceDir, classesDir);
@@ -574,8 +570,8 @@ public final class PlannerSupport {
     }
 
     /**
-     * Isolated {@code JK_HOME} + short {@code JK_STATE_DIR} under {@code /tmp} (UDS path length) for
-     * nested-engine CLI tests. Keeps the host engine's socket alone.
+     * Isolated {@code JK_HOME} + {@code JK_STATE_DIR} under this module's {@code target/} for
+     * nested-engine CLI tests. Keeps the host engine's socket, cache, and store alone.
      *
      * <p>{@code JK_HOME} relocates cache and store together. Nested destructive tests must never
      * receive the host's {@code JK_CACHE_DIR} or {@code JK_STORE_DIR}.
@@ -588,17 +584,9 @@ public final class PlannerSupport {
         Files.createDirectories(jkHome);
         String runId = Long.toString(System.currentTimeMillis(), 36) + "-"
                 + Integer.toHexString(System.identityHashCode(moduleDir) & 0xffff);
-        // Under the module's own target/, not /tmp. This used to be a fresh /tmp/jk-cli-<runId>
-        // with no counterpart anywhere — no finalizer, no shutdown hook — so every `jk test` of a
-        // nested-engine module left one behind permanently. Here it is inside the build output
-        // `jk clean` already owns, it cannot be shared with another checkout, and the name no
-        // longer collides with Gradle's own sandbox (which used the same `jk-cli-` prefix under
-        // the same root, making a leaked directory unattributable).
-        //
-        // It is not a Unix-socket path budget any more: the only module that takes this path is
-        // jk-cli (see needsNestedEngineIsolation), and it declares JK_ENGINE_TRANSPORT=tcp in
-        // both builds, so the depth of target/ costs nothing. A module that wanted
-        // nested engines on the Unix transport would need a short root again.
+        // Under this module's target/, which `jk clean` already owns — not /tmp, and not a
+        // name that collides with Gradle's sandbox. Nested engines here use TCP
+        // (JK_ENGINE_TRANSPORT=tcp), so UDS path length does not constrain depth.
         Path stateDir = jkHome.resolve("engine-state").resolve(runId);
         Files.createDirectories(stateDir);
         Map<String, String> env = new LinkedHashMap<>();
@@ -744,15 +732,38 @@ public final class PlannerSupport {
         stampSrcs.addAll(TestSuites.collectJavaSources(dir, compact, suites));
         stampSrcs.addAll(TestSuites.collectKotlinSources(dir, compact, suites));
         stampSrcs.addAll(TestSuites.collectGroovySources(dir, compact, suites));
+        // `[test] extra-src` belongs to the test tier but to no suite, so a suite-based collection
+        // cannot see it — and the live stamp keys off TEST_SOURCES, which the compile step filled
+        // with these included. compile-test's forecast already adds them (that is what
+        // forecastTestExtraSources is for); the run-tests stamp did not, so a module declaring
+        // extra-src forecast a phantom suite re-run forever. `clients/cli` declares one, and its
+        // 1,602-test suite was priced on every settled build.
+        for (Path extra : TestSupport.forecastTestExtraSources(project, dir)) {
+            if (!stampSrcs.contains(extra)) stampSrcs.add(extra);
+        }
         BuildLayout layout = BuildLayout.of(dir, project);
-        return TestStamp.computeKey(
-                stampSrcs,
-                mainClasses,
-                mainClassesFingerprint,
-                ModuleLayout.suiteResourceDirs(dir, compact, suites),
-                lockFile,
-                PlannerFixtures.withOwnFixtures(project, layout, testRuntimeCp),
-                testStampExtras(dir, project));
+        List<Path> stampRt = PlannerFixtures.withOwnFixtures(project, layout, testRuntimeCp);
+        List<String> stampExtras = testStampExtras(dir, project);
+        List<Path> stampRes = ModuleLayout.suiteResourceDirs(dir, compact, suites);
+        String key = TestStamp.computeKey(
+                stampSrcs, mainClasses, mainClassesFingerprint, stampRes, lockFile, stampRt, stampExtras);
+        if (Perf.ENABLED) {
+            // The key itself, not just its inputs: when this disagrees with `live-test-stamp` for
+            // the same module, the forecast is predicting a suite re-run the build will skip. That
+            // is how `jk explain`'s missing test selection was found — every input printed here
+            // matched and only the key differed, which narrowed it to the one input not printed.
+            System.err.println("[jk-perf] fstamp " + dir
+                    + " key=" + key
+                    + " src=" + stampSrcs.size() + " res=" + stampRes.size()
+                    + " rt=" + stampRt.size() + " extras=" + stampExtras.size()
+                    + " X=" + stampExtras + " suites=" + suites
+                    + " cpFp=" + ClasspathFingerprint.of(stampRt)
+                    + " mainFp="
+                    + (mainClassesFingerprint != null
+                            ? mainClassesFingerprint
+                            : ClasspathFingerprint.entry(mainClasses)));
+        }
+        return key;
     }
 
     /**

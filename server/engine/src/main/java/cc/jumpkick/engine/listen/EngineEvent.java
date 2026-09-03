@@ -2,7 +2,7 @@
 package cc.jumpkick.engine.listen;
 
 import cc.jumpkick.run.TestFailureInfo;
-import cc.jumpkick.runtime.ModuleOutcome;
+import cc.jumpkick.wire.runtime.ModuleOutcome;
 import org.jspecify.annotations.Nullable;
 
 /**

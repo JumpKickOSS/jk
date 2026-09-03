@@ -1,5 +1,5 @@
 name = "jk-client-io"
-description = "Client-side I/O: HTTP, forge auth, credentials, and CAS"
+description = "Client-side HTTP, repository transports, forge auth, credentials, and CAS"
 
 [dependencies]
 jk-core.workspace = true

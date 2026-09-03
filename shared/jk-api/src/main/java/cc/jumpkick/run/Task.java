@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.IntSupplier;
+import org.jspecify.annotations.Nullable;
 
 /**
  * One unit of work inside a {@link BuildPlan}. Tasks declare dependencies by name and run when
@@ -22,7 +23,7 @@ public final class Task {
     private final TaskKind kind;
     private final List<String> requires;
     private final IntSupplier ticks;
-    private final IntSupplier weight; // null → weight tracks ticks
+    private final @Nullable IntSupplier weight; // null → weight tracks ticks
     private final boolean interpolated;
     /** Product taxonomy bucket; never null (defaults via {@link BuildStage#ofTaskName}). */
     private final BuildStage stage;
@@ -31,13 +32,13 @@ public final class Task {
 
     Task(
             String name,
-            String label,
+            @Nullable String label,
             TaskKind kind,
             List<String> requires,
             IntSupplier ticks,
-            IntSupplier weight,
+            @Nullable IntSupplier weight,
             boolean interpolated,
-            BuildStage stage,
+            @Nullable BuildStage stage,
             Body body) {
         this.name = Objects.requireNonNull(name);
         this.label = label != null ? label : name;
@@ -121,13 +122,13 @@ public final class Task {
 
     public static final class Builder {
         private final String name;
-        private String label;
+        private @Nullable String label;
         private TaskKind kind = TaskKind.SYNC;
         private final List<String> requires = new ArrayList<>();
         private IntSupplier ticks = () -> 1;
-        private IntSupplier weight = null;
+        private @Nullable IntSupplier weight = null;
         private boolean interpolated = false;
-        private BuildStage stage = null;
+        private @Nullable BuildStage stage = null;
         private boolean stageExplicit = false;
         private Body body = ctx -> {};
 
@@ -135,7 +136,7 @@ public final class Task {
             this.name = Objects.requireNonNull(name);
         }
 
-        public Builder label(String label) {
+        public Builder label(@Nullable String label) {
             this.label = label;
             return this;
         }
@@ -194,7 +195,7 @@ public final class Task {
          * says so with {@code stage(BuildStage.OTHER)}. The lenient parse stays on
          * {@link BuildStage#fromWire} for UI fold keys.
          */
-        public Builder group(String group) {
+        public Builder group(@Nullable String group) {
             if (group == null || group.isBlank()) {
                 this.stage = null;
                 this.stageExplicit = false;
@@ -212,7 +213,7 @@ public final class Task {
          * Same as {@link #group(String)}; retained so existing call sites and wire adapters keep
          * compiling while the vocabulary settles on stage/group.
          */
-        public Builder phase(String group) {
+        public Builder phase(@Nullable String group) {
             return group(group);
         }
 

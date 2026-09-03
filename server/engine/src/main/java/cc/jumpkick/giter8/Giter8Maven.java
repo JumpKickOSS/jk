@@ -22,19 +22,20 @@ public final class Giter8Maven {
     private static final URI CENTRAL = RepositorySpec.MAVEN_CENTRAL.url();
 
     /**
-     * One shared transport, and it is jk's. A private {@link java.net.http.HttpClient} here reached
+     * One shared transport, and it is jk's. A private {@link java.net.http.HttpClient} would reach
      * Central without the mirror, without the per-host cooldown, and without opening the rate-limit
      * window — so a scaffold could spend a 429 that the rest of the build never learned about.
-     * {@link Http} also carries the deadline this lookup used to be missing (an unresponsive
-     * Central once hung {@code jk new} forever) and the retry ladder.
+     * {@link Http} also carries the request deadline and the retry ladder, so an unresponsive
+     * Central cannot hang {@code jk new} forever.
      */
     private static final class Client {
         static final Http SHARED = new Http();
     }
 
     /**
-     * Metadata memo per (group, artifact): every maven() property was a separate fetch. Short TTL
-     * — the engine is resident, and a scaffold a day later must see newly released versions.
+     * Metadata memo per (group, artifact): every maven() property of the same coordinate shares
+     * one fetch. Short TTL — the engine is resident, and a scaffold a day later must see newly
+     * released versions.
      */
     private static final ConcurrentHashMap<String, CachedMetadata> METADATA_CACHE = new ConcurrentHashMap<>();
 

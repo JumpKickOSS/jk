@@ -4,7 +4,7 @@ package cc.jumpkick.command;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.CommandDispatch;
-import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.wire.EnginePaths;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;

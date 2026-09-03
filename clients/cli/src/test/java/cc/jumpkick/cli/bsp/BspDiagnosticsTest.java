@@ -11,10 +11,9 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@code publishDiagnostics} placement. The server used to carry a private javac-only header
- * pattern; every multi-line javac block, groovyc's spaced header, and any Windows path silently
- * landed at project root line 0 — a diagnostic surface that lies about location. Parsing is
- * {@code CompilerLocus}, the one header vocabulary the CLI, MCP, journal and engine share.
+ * {@code publishDiagnostics} placement. Parsing is {@code CompilerLocus}, the one header
+ * vocabulary the CLI, MCP, journal and engine share: multi-line javac blocks, groovyc's spaced
+ * header, and Windows paths publish at the header file/line, not project root line 0.
  */
 class BspDiagnosticsTest {
 

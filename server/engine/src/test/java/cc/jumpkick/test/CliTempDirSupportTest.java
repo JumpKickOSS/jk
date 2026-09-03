@@ -18,8 +18,8 @@ import org.junit.jupiter.api.io.TempDir;
  * no-op: JUnit logs a stack trace per {@code @TempDir} and falls back to the default deletion
  * strategy, which is the soft-fail delete the flag exists to install.
  *
- * <p>The gate used to be "this module declares a {@code [test] env}", which server/engine also
- * does — one run of its suite logged roughly five hundred {@code ClassNotFoundException}s.
+ * <p>The gate is whether the factory class is on the test classpath, not whether the module
+ * declares a {@code [test] env}.
  */
 class CliTempDirSupportTest {
 

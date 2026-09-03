@@ -5,11 +5,11 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
-import cc.jumpkick.engine.protocol.EngineProtocol;
-import cc.jumpkick.engine.protocol.ProjectInfo;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.jsonl.Jsonl;
-import cc.jumpkick.runtime.ExecPlans;
+import cc.jumpkick.runtime.ProjectInfoPlans;
+import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.protocol.ProjectInfo;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 
@@ -52,7 +52,7 @@ public final class ProjectInfoVerb implements HostedVerb {
                 Session session = host.resolveSession(requestLine, cancelToken, false);
                 info = SessionContext.where(
                         session,
-                        () -> ExecPlans.projectInfo(
+                        () -> ProjectInfoPlans.projectInfo(
                                 Path.of(Jsonl.str(requestLine, "dir")),
                                 Jsonl.str(requestLine, "modules"),
                                 Jsonl.str(requestLine, "affectedSince"),

@@ -28,9 +28,6 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.config.WorkspaceScan;
-import cc.jumpkick.engine.EnginePaths;
-import cc.jumpkick.engine.protocol.AffectedTestsReport;
-import cc.jumpkick.engine.protocol.ProjectInfo;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Profiles;
@@ -40,9 +37,12 @@ import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
-import cc.jumpkick.runtime.WorkspaceRequest;
-import cc.jumpkick.runtime.WorkspaceResult;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.wire.EnginePaths;
+import cc.jumpkick.wire.protocol.AffectedTestsReport;
+import cc.jumpkick.wire.protocol.ProjectInfo;
+import cc.jumpkick.wire.runtime.WorkspaceRequest;
+import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -558,15 +558,17 @@ public final class TestCommand implements CliCommand {
             throw new IllegalArgumentException("--all and --gate cannot be combined");
         }
         Path wd = GlobalOptions.from(in).workingDir();
-        if (scriptsOnly) {
-            Path root = WorkspaceScan.isWorkspaceRoot(wd)
-                    ? wd
-                    : WorkspaceScan.findRoot(wd).orElse(wd);
-            if (!BuildLogicToml.hasStem(root, "gate")) {
-                throw new IllegalArgumentException(BuildLogicToml.NO_GATE_SCRIPTS);
-            }
+        // Tags, gate suites and profiles are workspace facts: from a member directory the root's
+        // manifest is the baseline layer, exactly as when invoked at the root. Reading the
+        // member's own manifest here made the member's (usually empty) tags the baseline and
+        // dropped the root's, so a root exclude-tags = ["slow"] ran slow tests from inside a member.
+        Path root = WorkspaceScan.isWorkspaceRoot(wd)
+                ? wd
+                : WorkspaceScan.findRoot(wd).orElse(wd);
+        if (scriptsOnly && !BuildLogicToml.hasStem(root, "gate")) {
+            throw new IllegalArgumentException(BuildLogicToml.NO_GATE_SCRIPTS);
         }
-        Path toml = wd.resolve(ManifestPaths.MANIFEST);
+        Path toml = root.resolve(ManifestPaths.MANIFEST);
         String explicit = in.value("profile").orElse(null);
         boolean explicitProfile = explicit != null && !explicit.isBlank();
         String profileName = explicitProfile ? explicit : Profiles.autoSelect(System.getenv());

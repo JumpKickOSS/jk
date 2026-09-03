@@ -24,18 +24,15 @@ import org.junit.jupiter.api.Test;
  * The shape of jk's config records: {@code Optional} is a return type, and single-field copies are
  * generated rather than written out.
  *
- * <p>The second half is the one that used to be wrong in a way no unit test could see. {@link
- * Session} and {@link JkConfig} carried 26 hand-written copy methods between them, each restating a
- * 12- or 14-argument positional constructor whose adjacent components are the same type — three
- * adjacent {@code Path}s on {@code Session}, ten adjacent {@code Boolean}s on {@code JkConfig}. A
- * transposition in any one of them compiles, and shows up as one setting quietly taking another's
- * value. So the test is not "does {@code withQuiet} set quiet"; it is <em>"does every wither leave
- * every other component alone"</em>, checked reflectively so a wither added later is covered the day
- * it lands.
+ * <p>Withers restating a 12- or 14-argument positional constructor whose adjacent components are
+ * the same type (three {@code Path}s on {@link Session}, ten {@code Boolean}s on {@link JkConfig})
+ * compile even when transposed, and then one setting quietly takes another's value. This test is
+ * not "does {@code withQuiet} set quiet"; it is <em>"does every wither leave every other
+ * component alone"</em>, checked reflectively so a new wither is covered the day it lands.
  */
 class ConfigShapeTest {
 
-    /** Every config-shape record this ticket owns, including the nested ones. */
+    /** Config-shape records under this test, including nested ones. */
     private static List<Class<?>> configShapes() {
         return List.of(
                 JkConfig.class,

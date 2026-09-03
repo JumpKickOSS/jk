@@ -49,7 +49,8 @@ final class BuildLogicGroovyHost {
 
     private BuildLogicGroovyHost() {}
 
-    static void evaluate(Path script, Path projectDir, Path outDir) throws Exception {
+    /** Run one script, returning its captured stdout/stderr. See {@link BuildLogicKtsHost#evaluate}. */
+    static String evaluate(Path script, Path projectDir, Path outDir) throws Exception {
         Path[] jars = ensureJars();
         Path wrapper = Files.createTempFile("jk-logic-", ".groovy");
         try {
@@ -76,6 +77,7 @@ final class BuildLogicGroovyHost {
                 throw new IllegalStateException(
                         detail.isEmpty() ? "groovy exited " + exit + " with no output" : detail);
             }
+            return log == null ? "" : log;
         } finally {
             Files.deleteIfExists(wrapper);
         }

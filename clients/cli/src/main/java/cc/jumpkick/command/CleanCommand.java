@@ -15,7 +15,6 @@ import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.Spinner;
 import cc.jumpkick.config.WorkspaceScan;
-import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
@@ -23,6 +22,7 @@ import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
+import cc.jumpkick.wire.EnginePaths;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -104,8 +104,8 @@ public final class CleanCommand implements CliCommand {
     /**
      * Delete each project's output tree (or, with {@code keepArtifacts}, only its intermediates).
      * Outputs live at the layout-resolved target dir — {@code <workspace>/target/<rel>/} for a
-     * member, not {@code <member>/target/}. The member-local {@code target/} is still
-     * swept for trees built before the layout change.
+     * member, not {@code <member>/target/}. A distinct member-local {@code target/} is also
+     * swept when present.
      */
     static void cleanTargets(Path workspaceRoot, List<Path> projectDirs, boolean keepArtifacts, long[] stats)
             throws IOException {
@@ -205,12 +205,8 @@ public final class CleanCommand implements CliCommand {
     /**
      * Delete {@code root} depth-first, folding what went into {@code stats}. One shared
      * implementation ({@link cc.jumpkick.host.PathUtil#deleteRecursivelyOrThrow(Path,
-     * cc.jumpkick.host.PathUtil.Removed)}) rather than a clean-local copy: this used to retry the
-     * walk on {@link
-     * java.nio.file.DirectoryNotEmptyException}, papering over an engine that was still writing
-     * {@code target/.jk/preflight} and {@code target/jk-results.md} after telling the client the
-     * build was over. The client now waits for {@code job-finish} before returning, so there is no
-     * writer left to race and a not-empty directory is a real failure again.
+     * cc.jumpkick.host.PathUtil.Removed)}). The client waits for {@code job-finish} before
+     * returning, so a not-empty directory is a real failure — there is no writer left to race.
      */
     static void deleteRecursively(Path root, long[] stats) throws IOException {
         var tally = new PathUtil.Removed();

@@ -4,11 +4,13 @@ package cc.jumpkick.engine;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkEngineConfig;
-import cc.jumpkick.engine.protocol.EngineProtocol;
-import cc.jumpkick.engine.protocol.ProtoLifecycle;
-import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.runtime.BuildMetrics;
+import cc.jumpkick.wire.EnginePaths;
+import cc.jumpkick.wire.EngineTransport;
+import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.protocol.ProtoLifecycle;
+import cc.jumpkick.wire.protocol.ProtoSession;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;

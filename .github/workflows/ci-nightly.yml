@@ -69,6 +69,52 @@ jobs:
       - name: Network test
         run: ./gradlew networkTest --no-daemon
 
+  # Microbenchmarks print medians and assert nothing about deltas, so they stay off the merge
+  # gate. They still have to run somewhere or they rot.
+  bench:
+    name: Microbenchmarks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: gradle
+
+      - name: Microbenchmarks
+        run: ./gradlew benchTest --no-daemon
+
+  # Unit-test coverage inventory. Not a gate: no percentage, and the JaCoCo agent stays off
+  # unless -Pjk.coverage so checkFast does not pay for it.
+  coverage:
+    name: Coverage inventory
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: gradle
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Aggregate JaCoCo report
+        run: ./gradlew coverageReport -Pjk.coverage --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: jacoco-coverage
+          path: build/reports/jacoco/
+          if-no-files-found: error
+          retention-days: 14
+
   lombok-scope-guard:
     name: Lombok scope guard
     runs-on: ubuntu-latest
@@ -96,7 +142,13 @@ jobs:
           CLIENT_BIN="$PWD/clients/cli/build/install/jk/bin/jk"
           ENGINE_JAR=$(ls "$PWD/server/engine/build/libs/jk-engine-"*.jar | head -1)
           "$CLIENT_BIN" self materialize "$CLIENT_BIN" "$ENGINE_JAR"
-          echo "$PWD/clients/cli/build/install/jk/bin" >> "$GITHUB_PATH"
+          # The smoke script takes the client from JK_BIN, so the MSYS-vs-Windows spelling of a
+          # PATH entry cannot decide whether `jk` resolves. PATH still gets the bin dir, in the
+          # spelling the host's PATH actually uses.
+          echo "JK_BIN=$CLIENT_BIN" >> "$GITHUB_ENV"
+          BIN_DIR="$PWD/clients/cli/build/install/jk/bin"
+          if command -v cygpath >/dev/null 2>&1; then BIN_DIR="$(cygpath -w "$BIN_DIR")"; fi
+          echo "$BIN_DIR" >> "$GITHUB_PATH"
 
       - name: Build synthetic monorepo and gate committed-after-idle
         run: |
@@ -134,7 +186,13 @@ jobs:
           CLIENT_BIN="$PWD/clients/cli/build/install/jk/bin/jk"
           ENGINE_JAR=$(ls "$PWD/server/engine/build/libs/jk-engine-"*.jar | head -1)
           "$CLIENT_BIN" self materialize "$CLIENT_BIN" "$ENGINE_JAR"
-          echo "$PWD/clients/cli/build/install/jk/bin" >> "$GITHUB_PATH"
+          # The smoke script takes the client from JK_BIN, so the MSYS-vs-Windows spelling of a
+          # PATH entry cannot decide whether `jk` resolves. PATH still gets the bin dir, in the
+          # spelling the host's PATH actually uses.
+          echo "JK_BIN=$CLIENT_BIN" >> "$GITHUB_ENV"
+          BIN_DIR="$PWD/clients/cli/build/install/jk/bin"
+          if command -v cygpath >/dev/null 2>&1; then BIN_DIR="$(cygpath -w "$BIN_DIR")"; fi
+          echo "$BIN_DIR" >> "$GITHUB_PATH"
 
       - name: Build and test every sample
         run: |
@@ -153,3 +211,40 @@ jobs:
 
       - name: A sample build must not rewrite its committed lockfile
         run: git diff --exit-code -- 'docs/user/examples/**/jk-lock.toml'
+
+  # Thin-client product smoke on the OSes the PR gate does not run. Native images stay on
+  # release.yml. Network is required (first lock/build of a fresh project).
+  os-smoke:
+    name: Product smoke (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: gradle
+
+      - name: Bootstrap thin client + engine jar + workers
+        shell: bash
+        run: |
+          ./gradlew :cli:installDist :engine:shadowJar installLocal --no-daemon
+          CLIENT_BIN="$PWD/clients/cli/build/install/jk/bin/jk"
+          ENGINE_JAR=$(ls "$PWD/server/engine/build/libs/jk-engine-"*.jar | head -1)
+          "$CLIENT_BIN" self materialize "$CLIENT_BIN" "$ENGINE_JAR"
+          # The smoke script takes the client from JK_BIN, so the MSYS-vs-Windows spelling of a
+          # PATH entry cannot decide whether `jk` resolves. PATH still gets the bin dir, in the
+          # spelling the host's PATH actually uses.
+          echo "JK_BIN=$CLIENT_BIN" >> "$GITHUB_ENV"
+          BIN_DIR="$PWD/clients/cli/build/install/jk/bin"
+          if command -v cygpath >/dev/null 2>&1; then BIN_DIR="$(cygpath -w "$BIN_DIR")"; fi
+          echo "$BIN_DIR" >> "$GITHUB_PATH"
+
+      - name: Product smoke
+        shell: bash
+        run: ./scripts/ci-product-smoke.sh

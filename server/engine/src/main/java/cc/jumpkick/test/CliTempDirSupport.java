@@ -14,12 +14,11 @@ import java.util.jar.JarFile;
  * <p>{@link JUnitLauncher} names them to the forked JVM with {@code
  * -Djunit.jupiter.tempdir.factory.default}. Naming them for a module that cannot load them is not
  * a no-op: JUnit logs a stack trace per {@code @TempDir} and falls back to the default deletion
- * strategy, which is the soft-fail delete the flag exists to install. The gate used to be "this
- * module declares a {@code [test] env}", which server/engine also does — one run of its suite
- * logged roughly five hundred {@code ClassNotFoundException}s.
+ * strategy, which is the soft-fail delete the flag exists to install.
  *
- * <p>Asked of the composed classpath rather than of the module's name: the module that owns those
- * classes is free to move, and a name check would keep answering the old one.
+ * <p>The gate is the composed classpath, not a {@code [test] env} declaration or the module's
+ * name: only a classpath that actually carries the factory can load it, and the module that owns
+ * those classes is free to move.
  */
 final class CliTempDirSupport {
 

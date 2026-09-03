@@ -36,6 +36,31 @@ class BuildLogicSupportTest {
         runTwice(project, dir.resolve("cache"));
     }
 
+    /**
+     * `jk: always` exempts a script from the verdict cache: it judges state the key cannot see, so
+     * identical sources are not a reason to skip it.
+     */
+    @Test
+    void an_always_script_runs_on_identical_inputs_and_never_cache_hits(@TempDir Path dir) throws Exception {
+        Path project = scaffold(dir);
+        Files.createDirectories(project.resolve(".jk"));
+        Path runs = project.resolve("sweep-runs.txt");
+        Files.writeString(project.resolve(".jk/after-resources.groovy"), """
+                // jk: always
+                new File(projectDir.toFile(), 'sweep-runs.txt') << 'ran\\n'
+                """);
+        ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
+        BuildLayout layout = BuildLayout.of(project, JkBuildParser.parse(project.resolve("jk.toml")));
+        Path classes = Files.createDirectories(layout.classesDir());
+        StringBuilder labels = new StringBuilder();
+        for (int i = 0; i < 2; i++) {
+            assertTrue(BuildLogicSupport.run(
+                    project, layout, ac, classes, s -> labels.append(s).append(';')));
+        }
+        assertFalse(labels.toString().contains("cache hit"), labels.toString());
+        assertEquals(2, Files.readAllLines(runs).size(), "ran on both builds");
+    }
+
     @Test
     void visible_jk_dir_runs_and_cache_hits(@TempDir Path dir) throws Exception {
         Path project = scaffold(dir);

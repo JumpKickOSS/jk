@@ -3,10 +3,10 @@ package cc.jumpkick.cli.engine;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.EngineInstall;
-import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.wire.EnginePaths;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;

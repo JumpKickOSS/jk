@@ -5,6 +5,13 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
+import cc.jumpkick.wire.runtime.ExplainPlan;
+import cc.jumpkick.wire.runtime.ModuleWorkCost;
+import cc.jumpkick.wire.runtime.TaskForecast;
+import cc.jumpkick.wire.runtime.WorkModel;
+import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
+import cc.jumpkick.wire.runtime.WorkspaceRequest;
+import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -74,7 +81,7 @@ public final class BuildService {
      * link name is prefixed with the module's group. Pure — {@link #linkModuleArtifacts} applies it.
      */
     public static Map<Path, Path> computeWorkspaceLinks(Iterable<Path> moduleDirs, Path workspaceRoot) {
-        return WorkspaceExecute.computeWorkspaceLinks(moduleDirs, workspaceRoot);
+        return WorkspaceArtifacts.computeLinks(moduleDirs, workspaceRoot);
     }
 
     /**
@@ -293,8 +300,10 @@ public final class BuildService {
             Path jdksDir,
             String profile,
             boolean skipTests,
-            boolean verbose) {
-        return BuildEta.etaCostsFromExplainPlan(plan, cache, workers, jdksDir, profile, skipTests, verbose);
+            boolean verbose,
+            int maxModuleConcurrency) {
+        return BuildEta.etaCostsFromExplainPlan(
+                plan, cache, workers, jdksDir, profile, skipTests, verbose, maxModuleConcurrency);
     }
 
     /**
@@ -523,6 +532,6 @@ public final class BuildService {
 
     /** Apply the subset of {@code workspaceLinks} whose sources live under {@code moduleDir} (best-effort). */
     public static void linkModuleArtifacts(Path moduleDir, Map<Path, Path> workspaceLinks) {
-        WorkspaceExecute.linkModuleArtifacts(moduleDir, workspaceLinks);
+        WorkspaceArtifacts.linkModule(moduleDir, workspaceLinks);
     }
 }

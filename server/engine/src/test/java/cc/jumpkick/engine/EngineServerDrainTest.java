@@ -5,10 +5,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.engine.plugin.JvmOptions;
-import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.testing.Await;
 import cc.jumpkick.testing.ShortTempDirs;
 import cc.jumpkick.util.AotSettings;
+import cc.jumpkick.wire.EnginePaths;
+import cc.jumpkick.wire.protocol.ProtoLifecycle;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.StringWriter;

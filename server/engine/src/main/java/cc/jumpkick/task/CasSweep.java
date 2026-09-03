@@ -41,9 +41,7 @@ public final class CasSweep {
         record Victim(Path file, String hex, long size) {}
         ArrayList<Victim> victims = new ArrayList<>();
         Set<String> deletedShas = new HashSet<>();
-        // One walk, and the attributes come with each entry: mtime and size used to be two more
-        // stats per blob on top of the isRegularFile the walk had already answered — four where one
-        // serves, over every object in the CAS.
+        // One walk: each entry already carries mtime and size, so the sweep does not re-stat.
         int[] keptCount = {0};
         PathUtil.forEachRegularFile(shaRoot, (file, attrs) -> {
             // Skip atomic-write tempfiles (covered by step 1 of prune).

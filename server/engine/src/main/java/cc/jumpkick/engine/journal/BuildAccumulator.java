@@ -11,10 +11,10 @@ import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.CacheBenefit;
 import cc.jumpkick.runtime.ChromeTimeline;
-import cc.jumpkick.runtime.ModuleOutcome;
 import cc.jumpkick.runtime.ProjectIds;
 import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.test.AffectedTests;
+import cc.jumpkick.wire.runtime.ModuleOutcome;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -31,7 +31,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Thread-safe collector of one build's outcome, folded from {@link
- * cc.jumpkick.runtime.WorkspaceBuildListener}/{@link cc.jumpkick.run.BuildPlanListener} callbacks
+ * cc.jumpkick.wire.runtime.WorkspaceBuildListener}/{@link cc.jumpkick.run.BuildPlanListener} callbacks
  * that fire on scheduler/worker threads, then frozen into a {@link BuildRecord} at request-finish.
  * Success is the body's own verdict when it ruled ({@link #stamp}); otherwise it is derived from
  * the rows the run left behind — no failed module or plan, not cancelled, and at least one row.

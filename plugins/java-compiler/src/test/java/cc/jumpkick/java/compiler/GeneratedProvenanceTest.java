@@ -32,6 +32,50 @@ class GeneratedProvenanceTest {
     }
 
     @Test
+    void a_pre_escaping_windows_row_is_recognised_and_skipped() {
+        // Raw separators: `\t` here is a directory named target, not a tab.
+        assertThat(GeneratedProvenance.isPreEscaping("C:\\Users\\b\\target\\Gen.java\tC:\\Users\\b\\src\\A.java"))
+                .isTrue();
+        assertThat(GeneratedProvenance.isPreEscaping("D:\\tools\\thing.java\tD:\\tmp\\x.java"))
+                .isTrue();
+        // Rows this class wrote: every backslash is doubled or introduces a delimiter escape.
+        assertThat(GeneratedProvenance.isPreEscaping(GeneratedProvenance.escape("C:\\Users\\b\\target\\Gen.java")))
+                .isFalse();
+        assertThat(GeneratedProvenance.isPreEscaping(GeneratedProvenance.escape("/tmp/we\tird/Gen.java")))
+                .isFalse();
+        assertThat(GeneratedProvenance.isPreEscaping("/tmp/plain/Gen.java\t/tmp/plain/A.java"))
+                .isFalse();
+    }
+
+    @Test
+    void a_pre_escaping_row_is_dropped_and_the_file_is_rewritten_clean(@TempDir Path tmp) throws Exception {
+        Path workdir = Files.createDirectories(tmp.resolve("work"));
+        Path sourceOutput = Files.createDirectories(tmp.resolve("gen"));
+        Path classOutput = Files.createDirectories(tmp.resolve("classes"));
+        Path origin = Files.createDirectories(tmp.resolve("src")).resolve("A.java");
+        Files.writeString(origin, "class A {}");
+        Path generated = sourceOutput.resolve("AGen.java");
+        Files.writeString(generated, "class AGen {}");
+
+        // One row from a jk that did not escape (raw Windows separators), one healthy row.
+        Files.writeString(
+                workdir.resolve("provenance.tsv"),
+                "C:\\old\\target\\Gone.java\tC:\\old\\src\\Gone.java\n"
+                        + GeneratedProvenance.escape(generated.toString())
+                        + "\t"
+                        + GeneratedProvenance.escape(origin.toString())
+                        + "\n");
+
+        GeneratedProvenance.of(workdir)
+                .reconcile(sourceOutput, classOutput, List.of(origin), Map.of(generated, Set.of(origin)));
+
+        String rewritten = Files.readString(workdir.resolve("provenance.tsv"));
+        assertThat(rewritten).doesNotContain("Gone.java");
+        assertThat(rewritten).contains("AGen.java");
+        assertThat(generated).exists();
+    }
+
+    @Test
     void a_tab_in_a_path_survives_the_tsv_and_the_stale_output_is_still_pruned(@TempDir Path tmp) throws Exception {
         Path srcOut = Files.createDirectories(tmp.resolve("gen-src"));
         Path classOut = Files.createDirectories(tmp.resolve("classes"));

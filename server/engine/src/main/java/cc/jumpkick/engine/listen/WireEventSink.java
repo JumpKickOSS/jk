@@ -2,8 +2,8 @@
 package cc.jumpkick.engine.listen;
 
 import cc.jumpkick.engine.WireWriter;
-import cc.jumpkick.engine.protocol.EngineProtocol;
-import cc.jumpkick.engine.protocol.ProtoEvents;
+import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.protocol.ProtoEvents;
 import java.io.BufferedWriter;
 import org.jspecify.annotations.Nullable;
 

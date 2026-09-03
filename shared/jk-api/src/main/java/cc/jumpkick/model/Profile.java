@@ -3,6 +3,7 @@ package cc.jumpkick.model;
 
 import java.util.List;
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Build profile: javac/JVM args, optional test tag filters, and optional {@code inherits}
@@ -14,7 +15,7 @@ import java.util.Objects;
  */
 public record Profile(
         String name,
-        String inherits,
+        @Nullable String inherits,
         List<String> javacArgs,
         List<String> jvmArgs,
         /** JUnit tags to include when this profile is active (meaningful when {@link #includeTagsSet}). */
@@ -35,7 +36,7 @@ public record Profile(
     }
 
     /** No tag keys set (profile does not override {@code [test]} tag filters). */
-    public Profile(String name, String inherits, List<String> javacArgs, List<String> jvmArgs) {
+    public Profile(String name, @Nullable String inherits, List<String> javacArgs, List<String> jvmArgs) {
         this(name, inherits, javacArgs, jvmArgs, List.of(), List.of(), false, false);
     }
 
@@ -45,7 +46,7 @@ public record Profile(
      */
     public Profile(
             String name,
-            String inherits,
+            @Nullable String inherits,
             List<String> javacArgs,
             List<String> jvmArgs,
             List<String> includeTags,

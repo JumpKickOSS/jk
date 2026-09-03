@@ -162,8 +162,7 @@ public final class WorkerCompileDriver {
             jvmFlags.add("--enable-native-access=ALL-UNNAMED");
             Path javaExe = JdkFingerprint.java(hostJavaHome);
             // One worker argv assembly for the whole engine (PluginLoader.command); JvmOptions
-            // re-heads it with the java binary plus this job's memory flags. This used to be a
-            // third open-coded copy of the same six elements, with its own WORKER_MAIN constant.
+            // re-heads it with the java binary plus this job's memory flags.
             List<String> assembled = PluginLoader.command(
                     javaExe,
                     fork.classpath(),

@@ -267,6 +267,29 @@ class JkBuildParserProjectTest {
                 .isEqualTo(1);
     }
 
+    /**
+     * A pin of 0 is "auto", and auto is the build's share: the request arrives with the share
+     * already resolved, and a module spelling the default out loud must not escape it and shard
+     * across the whole machine while the ETA prices it on the share.
+     */
+    @Test
+    void a_zero_pin_takes_the_builds_share_and_a_positive_pin_wins() {
+        JkBuild.Build zero = JkBuildParser.parse(PROJECT + """
+
+                [test]
+                workers = 0
+                """).build();
+        assertThat(zero.effectiveTestWorkers(6)).isEqualTo(6);
+        assertThat(zero.effectiveTestWorkers(0)).isEqualTo(0);
+        JkBuild.Build pinned = JkBuildParser.parse(PROJECT + """
+
+                [test]
+                workers = 3
+                """).build();
+        assertThat(pinned.effectiveTestWorkers(6)).isEqualTo(3);
+        assertThat(JkBuildParser.parse(PROJECT).build().effectiveTestWorkers(6)).isEqualTo(6);
+    }
+
     @Test
     void parses_test_fixtures_true_as_the_default_root() {
         assertThat(JkBuildParser.parse(PROJECT).build().hasFixtures()).isFalse();

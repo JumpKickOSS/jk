@@ -15,6 +15,14 @@ public final class LauncherName {
     private static final Pattern WINDOWS_NUMBERED_DEVICE = Pattern.compile("(?:COM|LPT)[1-9]");
     private static final Set<String> WINDOWS_DEVICES = Set.of("CON", "PRN", "AUX", "NUL");
 
+    /**
+     * Stems of the files jk itself keeps in {@code <home>/bin}: the {@code jk} and {@code jkx}
+     * clients in every platform spelling ({@code .exe}, {@code .bat}, {@code .cmd}) and their parked
+     * {@code .old} copies, and the wrapper's {@code VERSION} floor file. A tool launcher under one
+     * of these names would truncate or delete the product.
+     */
+    private static final Set<String> JK_OWN_STEMS = Set.of("JK", "JKX", "VERSION");
+
     private LauncherName() {}
 
     /** Return why {@code name} is invalid, or empty when it is a portable leaf name. */
@@ -32,6 +40,9 @@ public final class LauncherName {
         if (WINDOWS_DEVICES.contains(stem)
                 || WINDOWS_NUMBERED_DEVICE.matcher(stem).matches()) {
             return Optional.of("launcher name " + Jsonl.quote(name) + " is reserved on Windows");
+        }
+        if (JK_OWN_STEMS.contains(stem)) {
+            return Optional.of("launcher name " + Jsonl.quote(name) + " is jk's own file under bin/");
         }
         return Optional.empty();
     }

@@ -143,7 +143,7 @@ public final class GlobalConfig {
         return stringFromGlobal(file, "toolchain", "jdk");
     }
 
-    /** {@code [release] trusted-keys}: base64 Ed25519 SPKI keys (extends baked-in trust). */
+    /** {@code [release] trusted-keys}: base64 RSA SPKI keys extending built-in release trust. */
     public static List<String> releaseTrustedKeys() {
         return stringFromGlobal(JkDirs.userConfigFile(), "release", "trusted-keys")
                 .map(v -> Arrays.stream(v.split(","))

@@ -4,6 +4,7 @@ package cc.jumpkick.model;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.Objects;
 import org.junit.jupiter.api.Test;
 
 class DependencyTest {
@@ -14,7 +15,7 @@ class DependencyTest {
         assertThat(d.isPath()).isTrue();
         assertThat(d.isGit()).isFalse();
         assertThat(d.isFile()).isFalse();
-        assertThat(d.pathSource().rawPath()).isEqualTo("../shared");
+        assertThat(Objects.requireNonNull(d.pathSource()).rawPath()).isEqualTo("../shared");
         assertThat(d.module()).isEqualTo("path:shared");
         assertThat(d.pinned()).isTrue();
     }

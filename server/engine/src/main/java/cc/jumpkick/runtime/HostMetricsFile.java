@@ -25,7 +25,7 @@ final class HostMetricsFile {
 
     private HostMetricsFile() {}
 
-    /** Host metrics file (probe + continuous means). Formerly {@code calibration.toml}. */
+    /** Host metrics file (probe + continuous means): {@code host-metrics.toml}. */
     static Path file() {
         return JkDirs.builds().resolve("host-metrics.toml");
     }

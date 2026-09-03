@@ -7,6 +7,7 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ClasspathFingerprint;
+import cc.jumpkick.wire.runtime.ExplainPlan;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;

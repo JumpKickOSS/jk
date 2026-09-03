@@ -50,10 +50,7 @@ final class EngineJarFetcher {
         return fetch(releasesBase, version, cas, install, ReleaseVerifier.current(GlobalConfig.releaseTrustedKeys()));
     }
 
-    /**
-     * Fully injected variant for tests: pass {@link cc.jumpkick.repo.ReleaseVerifier#of} with no
-     * keys to exercise the checksum-only path without the baked-in release key.
-     */
+    /** Fully injected variant for tests. Release evidence is mandatory on every remote fetch. */
     static Path fetch(URI releasesBase, String version, Cas cas, EngineInstall install, ReleaseVerifier verifier)
             throws IOException {
         String jarName = "jk-engine-" + version + ".jar";
@@ -61,13 +58,8 @@ final class EngineJarFetcher {
         Http http = new Http();
 
         byte[] sumsBytes = get(http, versionDir.resolve("SHA256SUMS"), "release checksums");
-        // Authenticity gate: when this host trusts any release key, the sums MUST carry a valid
-        // signature (signature-then-hash) before any byte is used. Hosts with no keys proceed on
-        // checksums alone.
-        if (verifier != null && verifier.available()) {
-            byte[] sig = get(http, versionDir.resolve("SHA256SUMS.sig"), "release signature");
-            verifier.verify(sumsBytes, new String(sig, StandardCharsets.UTF_8));
-        }
+        byte[] sig = get(http, versionDir.resolve("SHA256SUMS.sig"), "release signature");
+        verifier.verify(sumsBytes, new String(sig, StandardCharsets.UTF_8));
         String expectedSha = shaFor(sumsBytes, jarName);
         byte[] jar = get(http, versionDir.resolve(jarName), "engine jar");
         String actualSha = Hashing.sha256Hex(jar);
@@ -101,14 +93,8 @@ final class EngineJarFetcher {
         return response.body();
     }
 
-    /** Parse coreutils-style {@code SHA256SUMS} lines ({@code <hex>  <name>}) for {@code jarName}. */
+    /** Parse the strict signed checksum manifest for {@code jarName}. */
     private static String shaFor(byte[] sumsBody, String jarName) throws IOException {
-        String sums = new String(sumsBody, StandardCharsets.UTF_8);
-        for (String line : sums.split("\n")) {
-            String[] parts = line.trim().split("\\s+");
-            if (parts.length == 2 && parts[1].equals(jarName)) return parts[0];
-        }
-        throw new IOException("release SHA256SUMS carries no entry for " + jarName
-                + " — refusing to install an unverifiable engine jar");
+        return ReleaseVerifier.sha256For(sumsBody, jarName);
     }
 }

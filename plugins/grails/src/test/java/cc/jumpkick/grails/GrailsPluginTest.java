@@ -15,9 +15,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * The grails-jar packager body, driven over a fake {@link PackageIo} and asserted by reading the
- * jar it wrote. Grails ships a Boot-launcher jar, so it must record the Boot line it was built
- * against; it used to record the literal {@code 4} — the {@code boot-version} schema default,
- * copied straight out of the config table — on every Grails jar ever produced.
+ * jar it wrote. Grails ships a Boot-launcher jar, so it must record the resolved Boot line it
+ * was built against, never the {@code boot-version} schema selector.
  */
 class GrailsPluginTest {
 

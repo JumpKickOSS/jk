@@ -130,7 +130,7 @@ public final class PreflightMemo {
             restoreNeeded = restoreNeeded == null ? Set.of() : Set.copyOf(restoreNeeded);
         }
 
-        /** Back-compat: input-dirty only (restoreNeeded empty). */
+        /** Input-dirty only ({@code restoreNeeded} empty). */
         public DirtyMemo(Set<Path> dirty, Map<Path, String> fingerprints) {
             this(dirty, fingerprints, Set.of());
         }

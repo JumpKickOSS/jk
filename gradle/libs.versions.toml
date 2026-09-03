@@ -5,7 +5,7 @@
 [versions]
 # apksig follows jk-lock.toml's pin — the self-host manifest floats on "latest" and the lock is
 # the pin, so bump this alongside a re-lock (checkCatalogLockParity in plugins/android gates it).
-apksig = "9.3.2"
+apksig = "9.4.0"
 assertj = "3.27.7"
 # Matches what jk-lock.toml already resolves for org.jetbrains:annotations; the two
 # builds compile the same JkWireModel.java, so they must agree on it.
@@ -21,7 +21,7 @@ jline = "4.1.2"
 jib-core = "0.28.1"
 groovy = "5.0.4"
 jspecify = "1.0.1"
-lombok = "1.18.46"
+lombok = "1.18.48"
 junit = "6.1.0"
 kotlin-bta = "2.4.10"
 maven-artifact = "3.9.16"
@@ -71,6 +71,7 @@ jib-core               = { module = "com.google.cloud.tools:jib-core",          
 
 # Kotlin compile worker (Build Tools API — compile-time only; impl resolved at runtime)
 kotlin-build-tools-api = { module = "org.jetbrains.kotlin:kotlin-build-tools-api",  version.ref = "kotlin-bta" }
+kotlin-compiler-embeddable = { module = "org.jetbrains.kotlin:kotlin-compiler-embeddable", version.ref = "kotlin-bta" }
 # Compile-time only: lets javac resolve the kotlin.DeprecationLevel enum referenced by
 # the BTA's @Deprecated annotations. Not bundled, not on the worker's runtime closure.
 kotlin-stdlib          = { module = "org.jetbrains.kotlin:kotlin-stdlib",           version.ref = "kotlin-bta" }

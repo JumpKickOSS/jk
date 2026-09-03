@@ -140,7 +140,7 @@ public final class ImageBuilder {
             // null = classic jar-on-classpath layout.
         }
 
-        /** Back-compat constructor: classic layout (main jar + one dependency layer). */
+        /** Classic layout: main jar + one dependency layer. */
         public Plan(
                 ImageConfig config,
                 String artifact,

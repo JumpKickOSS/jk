@@ -69,8 +69,9 @@ class WebClientJsTest {
         }
         if (!nodeAvailable()) {
             throw new AssertionError("`node` is not on PATH, and the dashboard's JS suites are part of "
-                    + "the gate. Install Node (CI uses actions/setup-node), or skip this tier "
-                    + "deliberately with " + SKIP_ENV + "=1.");
+                    + "the gate. Install Node " + requiredNodeVersion()
+                    + " (see .nvmrc / CONTRIBUTING.md), or skip this tier deliberately with "
+                    + SKIP_ENV + "=1.");
         }
 
         Path assets = moduleRoot().resolve(WEB_ASSETS);
@@ -133,6 +134,14 @@ class WebClientJsTest {
      * template, where Vue resolves an unknown field to undefined and the column silently shows an
      * em dash forever.
      */
+    @Test
+    void required_node_version_is_the_nvmrc_pin() throws Exception {
+        String pin = Files.readString(RepoRoot.find(WebClientJsTest.class).resolve(".nvmrc"))
+                .trim();
+        assertThat(pin).matches("\\d+(\\.\\d+)*");
+        assertThat(requiredNodeVersion()).isEqualTo(pin);
+    }
+
     @Test
     void the_history_table_reads_the_nested_test_counts() throws Exception {
         String html = Files.readString(moduleRoot().resolve(WEB_ASSETS).resolve("index.html"));
@@ -216,17 +225,18 @@ class WebClientJsTest {
         }
     }
 
-    /**
-     * Module root containing {@code src/main/resources/web/fold.js}. Prefers cwd when already in
-     * the module; otherwise {@code clients/web} under a workspace root; else maps classpath output
-     * under {@code target/<module-rel>/} back to the source module, then walks ancestors.
-     */
-    /**
-     * The {@code clients/web} module directory. Named from the checkout root because that is
-     * the one anchor both builds agree on — see {@link RepoRoot}. This used to hunt for the
-     * module directory itself, which needed fifty lines of layout guessing: jk may put the
-     * classes at {@code <root>/target/clients/web/} where the module is not an ancestor.
-     */
+    /** Version token from {@code .nvmrc}, the same pin CI installs. */
+    static String requiredNodeVersion() {
+        try {
+            String v = Files.readString(RepoRoot.find(WebClientJsTest.class).resolve(".nvmrc"))
+                    .trim();
+            if (!v.isEmpty()) return v;
+        } catch (IOException ignored) {
+        }
+        return "the version in .nvmrc";
+    }
+
+    /** The {@code clients/web} module directory, named from the checkout root. See {@link RepoRoot}. */
     static Path moduleRoot() {
         return RepoRoot.dir(WebClientJsTest.class, "clients/web");
     }

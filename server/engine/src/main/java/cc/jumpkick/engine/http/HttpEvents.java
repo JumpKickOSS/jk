@@ -2,8 +2,8 @@
 package cc.jumpkick.engine.http;
 
 import cc.jumpkick.engine.JsonOut;
-import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.wire.protocol.EngineProtocol;
 import java.util.ArrayDeque;
 import java.util.Iterator;
 import java.util.List;

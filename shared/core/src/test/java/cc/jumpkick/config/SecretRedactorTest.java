@@ -32,9 +32,8 @@ class SecretRedactorTest {
         assertThat(r.redact("Authorization: Bearer s3cret-from-file"))
                 .isEqualTo("Authorization: Bearer " + SecretRedactor.MASK);
         // MODE is declared and shadowed. Its EFFECTIVE value is the shell's, and that is the one
-        // that reaches output — so that is the one masked. This used to be the other way round,
-        // which meant a `.env`-declared token overridden by CI (the normal shape) was the single
-        // value the redactor never touched.
+        // that reaches output — so that is the one masked. A `.env`-declared name overridden by
+        // CI is still a secret name.
         assertThat(r.redact("mode=from-shell")).isEqualTo("mode=" + SecretRedactor.MASK);
         // The losing file value is not masked: nothing resolves to it, so nothing prints it.
         assertThat(r.redact("mode=file-value")).isEqualTo("mode=file-value");

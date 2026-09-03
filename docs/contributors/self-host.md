@@ -117,7 +117,7 @@ jk test                          # fast tier, untagged only
 jk test --profile integration    # the pre-merge bar
 jk test --profile slow           # framework / language e2e (nightly)
 jk test --profile network        # talks to a real remote (nightly)
-jk test --profile bench          # microbenchmarks (on demand)
+jk test --profile bench          # microbenchmarks (nightly)
 jk test --all                    # everything, no tag filter
 ```
 

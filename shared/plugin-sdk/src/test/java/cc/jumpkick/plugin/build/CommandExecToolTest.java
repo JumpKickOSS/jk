@@ -14,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Objects;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -56,7 +57,7 @@ class CommandExecToolTest {
                 "keytool=" + JdkFingerprint.tool(pinned, "keytool"),
                 "java=" + JdkFingerprint.tool(pinned, "java"));
         // The half that a silent fallback would pass: nothing resolved against the JVM we run on.
-        Path running = Path.of(System.getProperty("java.home"));
+        Path running = Path.of(Objects.requireNonNull(System.getProperty("java.home"), "java.home"));
         assertThat(payloads).noneMatch(l -> l.contains(running.toString()));
     }
 
@@ -106,7 +107,8 @@ class CommandExecToolTest {
     private static List<String> commandOuts(Captured out) {
         return out.lines().stream()
                 .filter(l -> l.contains("\"t\":\"command-out\""))
-                .map(l -> Jsonl.str(l.substring(l.indexOf('{')), "line"))
+                .map(l -> Objects.requireNonNull(
+                        Jsonl.str(l.substring(l.indexOf('{')), "line"), "command-out.line"))
                 .toList();
     }
 

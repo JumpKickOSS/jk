@@ -16,6 +16,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The engine's side of a build plugin, faked over one temp directory: real files, no engine, no
@@ -117,7 +118,7 @@ public final class FakeBuildIo implements PackageIo, TaskExec {
      * The four project facts a packager actually reads. Keeps the defaults for the capability flags
      * and the manifest table; use {@link #project(ProjectFacts)} when those matter.
      */
-    public FakeBuildIo project(String group, String name, String version, String mainClass) {
+    public FakeBuildIo project(String group, String name, String version, @Nullable String mainClass) {
         this.project = new ProjectFacts(group, name, version, 25, mainClass, false, false, Map.of());
         return this;
     }
@@ -155,7 +156,7 @@ public final class FakeBuildIo implements PackageIo, TaskExec {
 
     /** A chained step's output root, created on first use — {@code In.stepOutput(name)}'s value. */
     public Path step(String name) throws IOException {
-        Path dir = steps.get(name);
+        @Nullable Path dir = steps.get(name);
         if (dir == null) {
             dir = Files.createDirectories(root.resolve("steps").resolve(name));
             steps.put(name, dir);
@@ -261,7 +262,12 @@ public final class FakeBuildIo implements PackageIo, TaskExec {
 
     @Override
     public List<Path> runtimeClasspath() {
-        return entries.stream().map(RuntimeEntry::jar).filter(Objects::nonNull).toList();
+        List<Path> paths = new ArrayList<>();
+        for (RuntimeEntry entry : entries) {
+            @Nullable Path jar = entry.jar();
+            if (jar != null) paths.add(jar);
+        }
+        return List.copyOf(paths);
     }
 
     @Override
@@ -301,7 +307,7 @@ public final class FakeBuildIo implements PackageIo, TaskExec {
 
     @Override
     public Path javaHome() {
-        return Path.of(System.getProperty("java.home"));
+        return Path.of(Objects.requireNonNull(System.getProperty("java.home"), "java.home"));
     }
 
     @Override

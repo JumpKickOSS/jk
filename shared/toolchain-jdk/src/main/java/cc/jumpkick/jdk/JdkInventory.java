@@ -65,14 +65,12 @@ public final class JdkInventory {
     /**
      * One inventory per JDK root for the life of the process.
      *
-     * <p>{@link #snapshot()} memoizes on {@code (size, mtime)} in <em>instance</em> fields, and this
-     * factory built a fresh instance on every call — so the memo never survived, exactly the shape
-     * fixed for {@code JdkRegistry}. {@code jk hook-env} runs on every shell prompt and asks
-     * for defaultId, graalId, defaultHome and graalHome; a per-call instance re-read and re-parsed the
-     * file for each.
+     * <p>{@link #snapshot()} memoizes on {@code (size, mtime)} in <em>instance</em> fields.
+     * {@code jk hook-env} runs on every shell prompt and asks for defaultId, graalId, defaultHome
+     * and graalHome; a shared instance lets one snapshot serve all four.
      *
-     * <p>Correctness is unchanged: the snapshot still re-stats on every read and re-parses when the
-     * file moves, so sharing the instance shares the memo, not a stale answer.
+     * <p>The snapshot still re-stats on every read and re-parses when the file moves, so sharing
+     * the instance shares the memo, not a stale answer.
      */
     private static final ConcurrentMap<Path, JdkInventory> SHARED = new ConcurrentHashMap<>();
 
@@ -112,7 +110,7 @@ public final class JdkInventory {
 
     /**
      * JAVA_HOME of the default JDK when the tree is still a compiler install. Empty when unset or
-     * the recorded id no longer resolves.
+     * the recorded id does not resolve.
      */
     public Optional<Path> defaultHome() {
         return defaultId().flatMap(this::homeOf);
@@ -242,7 +240,7 @@ public final class JdkInventory {
         if (id == null || id.isBlank()) return Optional.empty();
         // The row's recorded home is WHICH install the user chose — an external install can
         // share a basename with a tree under the jdks root, and probing the root first would
-        // silently resolve to the wrong one (the invariant the old home-keyed scheme kept).
+        // silently resolve to the wrong one.
         Row row = snapshot().row(id);
         if (row != null && row.home != null) {
             Path home = IntellijJdkDir.javaHome(row.home);
@@ -356,8 +354,8 @@ public final class JdkInventory {
 
     /**
      * Read-path snapshot, memoized on (size, mtime): {@code jk hook-env} runs on every shell
-     * prompt and used to re-read and re-parse this file up to six times per invocation — one stat
-     * plus at most one parse now serves defaultId/graalId/defaultHome/graalHome together.
+     * prompt; one stat plus at most one parse serves defaultId/graalId/defaultHome/graalHome
+     * together.
      */
     private synchronized Snapshot snapshot() {
         ensureMigrated();
@@ -426,9 +424,8 @@ public final class JdkInventory {
             if (asId != null && rows.containsKey(asId.getFileName().toString())) {
                 return asId.getFileName().toString();
             }
-            // The old scheme recorded the home precisely because a default can live outside the
-            // owned trees (sdkman, system, IntelliJ). If it still works, synthesize the row
-            // setDefault would have written instead of stranding an id nothing resolves.
+            // A default can live outside the owned trees (sdkman, system, IntelliJ). If it still
+            // works, synthesize the row setDefault would write so the id still resolves.
             if (hasJavac(recorded)) {
                 Path dir = installDirOfHome(recorded);
                 String rid;
@@ -477,8 +474,7 @@ public final class JdkInventory {
 
     /**
      * Drop the four legacy default keys, and ONLY them: this can run from the shell hook on any
-     * machine, so an untouched config must round-trip byte-for-byte (the old whole-file blank-line
-     * collapse rewrote configs that had no legacy keys at all). Atomic replace — a concurrent
+     * machine, so an untouched config must round-trip byte-for-byte. Atomic replace — a concurrent
      * config writer must never observe a torn file.
      */
     private static void stripLegacyKeys(Path configFile) throws IOException {

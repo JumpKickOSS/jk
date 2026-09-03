@@ -3,7 +3,7 @@
 # Trigger: push tag v0.12.0 (or any vX.Y.Z matching JkVersion without the v).
 #
 # Secrets:
-#   JK_RELEASE_SIGNING_KEY     — PKCS#8 base64 Ed25519 private key (required for .sig)
+#   JK_RELEASE_RSA_SIGNING_KEY — base64 PKCS#8 DER RSA-3072 private key (required for .sig)
 #   JK_RELEASE_GCS_BUCKET      — GCS bucket name (no gs://), e.g. jumpkick
 #   JK_RELEASE_GCS_SA_JSON     — GCP service-account JSON (storage.objectAdmin on the bucket)
 #
@@ -77,7 +77,7 @@ jobs:
       - name: Assemble + sign release dir
         shell: bash
         env:
-          JK_RELEASE_SIGNING_KEY: ${{ secrets.JK_RELEASE_SIGNING_KEY }}
+          JK_RELEASE_RSA_SIGNING_KEY: ${{ secrets.JK_RELEASE_RSA_SIGNING_KEY }}
         run: |
           set -euo pipefail
           chmod +x scripts/sign-release.sh scripts/assemble-release-dir.sh
@@ -147,11 +147,11 @@ jobs:
       - name: Re-sign combined SHA256SUMS
         shell: bash
         env:
-          JK_RELEASE_SIGNING_KEY: ${{ secrets.JK_RELEASE_SIGNING_KEY }}
+          JK_RELEASE_RSA_SIGNING_KEY: ${{ secrets.JK_RELEASE_RSA_SIGNING_KEY }}
         run: |
           set -euo pipefail
-          if [[ -z "${JK_RELEASE_SIGNING_KEY:-}" ]]; then
-            echo "JK_RELEASE_SIGNING_KEY missing — combined sums unsigned"
+          if [[ -z "${JK_RELEASE_RSA_SIGNING_KEY:-}" ]]; then
+            echo "JK_RELEASE_RSA_SIGNING_KEY missing — combined sums unsigned"
             exit 1
           fi
           chmod +x scripts/sign-release.sh

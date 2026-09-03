@@ -15,10 +15,9 @@ import org.jspecify.annotations.NullMarked;
  * is that a re-anchor which <em>raises</em> the target after a zero was committed repaints at once —
  * holding the 0s would manufacture a 0s → Ns bounce.
  *
- * <p>This type exists because that invariant used to be spread over two files: {@link JkManager}
- * declared the anchors and the two jitter-buffer fields, and {@link JkManagerView#planHeader} was the
- * only writer of them. Anchoring and sampling are one rule, and a reader of either half could not see
- * it. Everything here is called under the live region's lock; it takes none of its own.
+ * <p>Anchoring and sampling are one rule, owned here rather than split across {@link JkManager}
+ * and {@link JkManagerView#planHeader}. Everything here is called under the live region's lock;
+ * it takes none of its own.
  */
 @NullMarked
 final class Countdown {
@@ -51,7 +50,7 @@ final class Countdown {
     private long etaEstimateMs;
 
     /**
-     * True once execute has begun — the explain seed path no longer replaces {@code R0}. Residual
+     * True once execute has begun — the explain seed path does not replace {@code R0}. Residual
      * re-anchors for display still apply.
      */
     private boolean seedLocked;
@@ -109,9 +108,9 @@ final class Countdown {
      * falls back to {@code R0 − elapsed}). Returns true when a positive residual was stored.
      *
      * <p>An identical re-emit carries no new information and is dropped, so the promised open-loop
-     * decay between samples actually happens: preflight force-emitting an unchanged R0 every ~500 ms
-     * used to re-anchor each time, freeze the face at R0 for the whole prepare window, and silently
-     * push the real finish out to {@code executeStart + R0}.
+     * decay between samples actually happens. Re-anchoring on an unchanged R0 every ~500 ms would
+     * freeze the face at R0 for the whole prepare window and push the real finish out to
+     * {@code executeStart + R0}.
      */
     boolean residual(long residualMillis, long elapsedMillis) {
         if (residualMillis < 0) {

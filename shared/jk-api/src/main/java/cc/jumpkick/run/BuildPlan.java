@@ -30,6 +30,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Consumer;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Named DAG of {@link Task}s for one invocation: first-ready scheduling, progress, diagnostics,
@@ -217,7 +218,7 @@ public final class BuildPlan {
                             // at a time, exactly as the wave executor ran it. Admission stalls for
                             // its duration, which is why SYNC is reserved for near-zero steps
                             // (parse-build, write-stamp, joins) and every heavy step is IO/CPU.
-                            TaskStatus s = startStep(p, initialTicks, weights, null, null);
+                            TaskStatus s = Objects.requireNonNull(startStep(p, initialTicks, weights, null, null));
                             if (isOk(s)) {
                                 completedOk.add(p.name());
                                 admittedInline = true;
@@ -311,7 +312,7 @@ public final class BuildPlan {
      * null} when no step opts into interpolation (so the common case spins up no thread). The caller
      * shuts it down when the run finishes.
      */
-    private ScheduledExecutorService startInterpolationTimer() {
+    private @Nullable ScheduledExecutorService startInterpolationTimer() {
         if (steps.stream().noneMatch(Task::interpolated)) return null;
         ScheduledExecutorService interpTimer = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "jk-progress-interp");
@@ -343,12 +344,12 @@ public final class BuildPlan {
      * the kind's pool otherwise. Returns the terminal status for SYNC and {@code null} for async
      * (whose result arrives on {@code events}).
      */
-    private TaskStatus startStep(
+    private @Nullable TaskStatus startStep(
             Task p,
             Map<String, Integer> initialTicks,
             Map<String, Integer> weights,
-            BlockingQueue<Done> events,
-            Set<CompletableFuture<TaskStatus>> outstanding) {
+            @Nullable BlockingQueue<Done> events,
+            @Nullable Set<CompletableFuture<TaskStatus>> outstanding) {
         int ticks = initialTicks.getOrDefault(p.name(), 0);
         int weight = weights.getOrDefault(p.name(), ticks);
         statuses.put(p.name(), TaskStatus.RUNNING);
@@ -360,11 +361,13 @@ public final class BuildPlan {
         }
         CompletableFuture<TaskStatus> f =
                 CompletableFuture.supplyAsync(() -> runOneStep(p, ticks, weight), executorFor(p.kind()));
-        outstanding.add(f);
+        Set<CompletableFuture<TaskStatus>> asyncOutstanding = Objects.requireNonNull(outstanding);
+        BlockingQueue<Done> asyncEvents = Objects.requireNonNull(events);
+        asyncOutstanding.add(f);
         // whenComplete fires exactly once per future, including when we cancel it, which is what
         // lets the drain loop count events down to zero. The derived future is deliberately dropped
         // — `f` is the one we keep so it stays cancellable.
-        f.whenComplete((s, ex) -> events.add(new Done(p, s, f)));
+        f.whenComplete((s, ex) -> asyncEvents.add(new Done(p, s, f)));
         return null;
     }
 
@@ -679,7 +682,9 @@ public final class BuildPlan {
             for (Task t : out) left.remove(t.name());
             StringBuilder detail = new StringBuilder("step DAG has a cycle; remaining=");
             for (String n : left) {
-                detail.append(n).append(byName.get(n).requires()).append(' ');
+                detail.append(n)
+                        .append(Objects.requireNonNull(byName.get(n)).requires())
+                        .append(' ');
             }
             throw new IllegalArgumentException(detail.toString());
         }
@@ -698,7 +703,7 @@ public final class BuildPlan {
         private final List<Task> steps = new ArrayList<>();
         private final List<BuildPlanListener> listeners = new ArrayList<>();
         private final List<BuildPlanKey<?>> stateKeys = new ArrayList<>();
-        private String terminal;
+        private @Nullable String terminal;
 
         Builder(String name) {
             this.name = Objects.requireNonNull(name);
@@ -765,7 +770,7 @@ public final class BuildPlan {
          * closure, so a new terminal that does not require the old one silently prunes it and
          * everything it re-rooted.
          */
-        public String currentTerminal() {
+        public @Nullable String currentTerminal() {
             return terminal;
         }
 

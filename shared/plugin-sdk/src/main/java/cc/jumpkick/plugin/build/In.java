@@ -2,6 +2,7 @@
 package cc.jumpkick.plugin.build;
 
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A declared step/packager input (build-plugins plan §3.2). Declaring inputs is the whole caching
@@ -12,7 +13,7 @@ import java.util.Objects;
  * @param step the producing step's name ({@link Kind#STEP_OUTPUT}) or the module-relative path
  *     ({@link Kind#PROJECT_FILES}) — null for every other kind
  */
-public record In(Kind kind, String step) {
+public record In(Kind kind, @Nullable String step) {
 
     public enum Kind {
         /** The module's compiled classes dir (resources already copied in). */

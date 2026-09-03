@@ -58,7 +58,49 @@ val literalCache = HashMap<Path, Set<String>>()
  * a set lookup, where asking each literal "which files contain you" is 160 passes over the tree.
  */
 fun quotedLiteralsOf(p: Path): Set<String> = literalCache.getOrPut(p) {
-    Regex(""""((?:\\.|[^"\\])*)"""").findAll(guardTextOf(p)).map { it.groupValues[1] }.toSet()
+    // Lexed by hand, not by regex. The obvious pattern for a Java string literal is
+    // `"((?:\\.|[^"\\])*)"`, and it worked until it didn't: an alternation inside a star makes
+    // java.util.regex recurse once per repetition, so a long literal — a text block of embedded
+    // TOML, a wide expected-output fixture — overflows the stack instead of matching. That surfaced
+    // as `G12 checkNoBareTaskName: java.lang.StackOverflowError` on an incremental build, a gate
+    // that crashed rather than judged, and it was intermittent because how much stack is left
+    // depends on which thread the script ran on. One forward pass has no such cliff.
+    val src = guardTextOf(p)
+    val out = HashSet<String>()
+    var i = 0
+    while (i < src.length) {
+        if (src[i] != '"') {
+            i++
+            continue
+        }
+        val body = StringBuilder()
+        val opened = i++
+        var closed = false
+        while (i < src.length) {
+            val c = src[i]
+            when {
+                // Escapes are kept verbatim: callers match against the source spelling.
+                c == '\\' && i + 1 < src.length -> {
+                    body.append(c).append(src[i + 1])
+                    i += 2
+                }
+                c == '\\' -> i++
+                c == '"' -> {
+                    closed = true
+                    i++
+                }
+                else -> {
+                    body.append(c)
+                    i++
+                }
+            }
+            if (closed) break
+        }
+        // An unterminated quote is a `'"'` char literal, not a string; resume just past it rather
+        // than swallowing the rest of the file as one enormous literal.
+        if (closed) out.add(body.toString()) else i = opened + 1
+    }
+    out
 }
 
 fun rel(p: Path): String = root.relativize(p).toString().replace('\\', '/')
@@ -115,9 +157,18 @@ val treeFiles: List<Path> by lazy {
         ".class", ".aot", ".woff", ".woff2", ".ttf", ".pdf", ".so", ".dylib", ".exe")
     val out = mutableListOf<Path>()
     Files.walkFileTree(root, object : SimpleFileVisitor<Path>() {
+        // `build` and `target` name build output at a module root and a java package underneath a
+        // source root, and pruning on the name alone loses the second: `cc.jumpkick.plugin.build`
+        // is the plugin SPI, so every guard reading this walker was silently scanning one package
+        // less of the tree than it claimed. G53 is the one that noticed — it counted 14 API
+        // packages against the 15 that are there — and a corpus floor catching it is exactly what
+        // corpus floors are for. Anything under a `src/` directory is source, whatever it is called.
         override fun preVisitDirectory(d: Path, a: BasicFileAttributes): FileVisitResult =
-            if (d != root && d.fileName.toString() in skipDirs) FileVisitResult.SKIP_SUBTREE
-            else FileVisitResult.CONTINUE
+            if (d != root && d.fileName.toString() in skipDirs && !rel(d).contains("/src/")) {
+                FileVisitResult.SKIP_SUBTREE
+            } else {
+                FileVisitResult.CONTINUE
+            }
 
         override fun visitFile(f: Path, a: BasicFileAttributes): FileVisitResult {
             val name = f.fileName.toString()
@@ -133,7 +184,12 @@ fun javaIn(sourceSet: String): List<Path> =
 
 val mainJava: List<Path> = javaIn("main")
 val testJava: List<Path> = javaIn("test")
-val fixtureJava: List<Path> = javaIn("testFixtures")
+val fixtureJava: List<Path> = javaIn("fixtures")
+
+// The fixture set is a third corpus for G48 and the size caps, scanned by the Gradle gate under
+// the same path. When it renamed once (testFixtures → fixtures) this scan kept its old name and
+// passed every rule over nothing while G51 letter parity saw two identical guard sets.
+if (fixtureJava.isEmpty()) error("gate scanned zero fixture sources under src/fixtures/java — the scope has moved.")
 
 val pluginModules: List<Path> = children(at("plugins"))
 
@@ -1076,7 +1132,7 @@ guard("G15", "checkNoBareTierName") {
 }
 
 guard("G17", "checkNoBareWireType") {
-    val ownerPath = "shared/wire/src/main/java/cc/jumpkick/engine/protocol/EngineProtocol.java"
+    val ownerPath = "shared/wire/src/main/java/cc/jumpkick/wire/protocol/EngineProtocol.java"
     val named = namedConstants(owner(ownerPath)).filterKeys { it.contains('-') }
     if (named.isEmpty()) {
         error("EngineProtocol no longer declares any hyphenated token, so this guard has lost the"
@@ -2711,6 +2767,197 @@ guard("G52", "checkTestTierDocs") {
     }
 }
 
+guard("G55", "checkEngineConfigDocs") {
+    val model = text(at("shared/core/src/main/java/cc/jumpkick/config/EngineControls.java"))
+    val row = Regex("""control\(\s*"([^"]*)"\s*,\s*"([^"]*)"\s*,\s*"([^"]*)"\s*,\s*"([^"]*)"\s*\)""")
+    val rows = row.findAll(model).map {
+        listOf(it.groupValues[1], it.groupValues[2], it.groupValues[3], it.groupValues[4])
+    }.toList()
+    val table = rows.filter { it[0].isNotEmpty() }
+    val process = rows.filter { it[0].isEmpty() }
+    if (table.size < 5) error("EngineControls TABLE parsed ${table.size} rows; expected at least 5")
+    if (process.size < 6) error("EngineControls PROCESS parsed ${process.size} rows; expected at least 6")
+    fun block(id: String, header: String, rule: String, body: List<List<String>>, line: (List<String>) -> String): String {
+        val sb = StringBuilder()
+        sb.appendLine("<!-- $id:start -->")
+        sb.appendLine(header)
+        sb.appendLine(rule)
+        body.forEach { sb.appendLine(line(it)) }
+        sb.append("<!-- $id:end -->")
+        return sb.toString()
+    }
+    val expectedTable = block(
+        "engine-config",
+        "| Key | Env | Default | Meaning |",
+        "|---|---|---|---|",
+        table,
+    ) { "| `${it[0]}` | `${it[1]}` | ${it[2]} | ${it[3]} |" }
+    val expectedProcess = block(
+        "engine-process",
+        "| Env | Default | Meaning |",
+        "|---|---|---|",
+        process,
+    ) { "| `${it[1]}` | ${it[2]} | ${it[3]} |" }
+    val docs = text(at("docs/user/engine.md"))
+    fun present(id: String): String =
+        Regex("""(?s)<!-- $id:start -->.*?<!-- $id:end -->""").find(docs)?.value
+            ?: error("docs/user/engine.md is missing its $id table markers")
+    val drift = mutableListOf<String>()
+    if (present("engine-config") != expectedTable) {
+        drift.add("replace the engine-config table with:\n$expectedTable")
+    }
+    if (present("engine-process") != expectedProcess) {
+        drift.add("replace the engine-process table with:\n$expectedProcess")
+    }
+    if (drift.isNotEmpty()) {
+        error("docs/user/engine.md differs from EngineControls:\n" + drift.joinToString("\n"))
+    }
+}
+
+guard("G56", "checkBootstrapVersions") {
+    val problems = mutableListOf<String>()
+    val fromProps = Regex("""gradle-(\d+\.\d+(?:\.\d+)?)""")
+        .find(text(at("gradle/wrapper/gradle-wrapper.properties")))?.groupValues?.get(1)
+    val fromTask = Regex("""gradleVersion\s*=\s*"([^"]+)"""")
+        .find(text(at("build.gradle.kts")))?.groupValues?.get(1)
+    if (fromProps.isNullOrBlank()) {
+        problems.add("gradle-wrapper.properties has no gradle-N.N.N distribution")
+    }
+    if (fromTask.isNullOrBlank()) {
+        problems.add("tasks.wrapper in build.gradle.kts does not set gradleVersion")
+    }
+    if (!fromProps.isNullOrBlank() && !fromTask.isNullOrBlank() && fromProps != fromTask) {
+        problems.add("wrapper task is $fromTask but gradle-wrapper.properties is $fromProps")
+    }
+    val nvmrcFile = at(".nvmrc")
+    val pin = if (Files.isRegularFile(nvmrcFile)) text(nvmrcFile).trim() else ""
+    if (!Regex("""^\d+(\.\d+)*$""").matches(pin)) {
+        problems.add(".nvmrc must be a Node version token (got ${pin.ifBlank { "missing" }})")
+    }
+    val workflows = treeFiles.filter {
+        val here = rel(it)
+        here.startsWith(".github/workflows/") && here.endsWith(".yml")
+    }
+    val setupNode = workflows.filter { text(it).contains("actions/setup-node") }
+    if (setupNode.isEmpty()) {
+        problems.add("no workflow uses actions/setup-node — the dashboard JS gate would skip Node")
+    }
+    setupNode.forEach { wf ->
+        val body = text(wf)
+        if (!Regex("""node-version-file:\s*['\"]\.nvmrc['\"]""").containsMatchIn(body)) {
+            problems.add("${wf.fileName}: setup-node must set node-version-file: '.nvmrc'")
+        }
+        if (Regex("""(?m)^\s+node-version:\s""").containsMatchIn(body)) {
+            problems.add("${wf.fileName}: setup-node must not also set node-version (the pin is .nvmrc)")
+        }
+    }
+    if (problems.isNotEmpty()) {
+        error("Bootstrap versions disagree:\n" + bullets(problems))
+    }
+}
+
+guard("G57", "checkCiCadence") {
+    val problems = mutableListOf<String>()
+    val nightly = text(at(".github/workflows/ci-nightly.yml"))
+    val branch = text(at(".github/workflows/ci.yml"))
+    if (!Files.isRegularFile(at("scripts/ci-product-smoke.sh"))) {
+        problems.add("scripts/ci-product-smoke.sh is missing")
+    }
+    if (!nightly.contains("./gradlew benchTest")) {
+        problems.add("ci-nightly.yml must run ./gradlew benchTest")
+    }
+    if (!nightly.contains("coverageReport") || !nightly.contains("-Pjk.coverage")) {
+        problems.add("ci-nightly.yml must run coverageReport -Pjk.coverage")
+    }
+    if (!nightly.contains("macos-")) {
+        problems.add("ci-nightly.yml must have a macOS smoke runner")
+    }
+    if (!nightly.contains("windows-")) {
+        problems.add("ci-nightly.yml must have a Windows smoke runner")
+    }
+    if (!nightly.contains("ci-product-smoke.sh")) {
+        problems.add("ci-nightly.yml must run scripts/ci-product-smoke.sh")
+    }
+    if (branch.contains("coverageReport")
+            || branch.contains("-Pjk.coverage")
+            || branch.contains("benchTest")) {
+        problems.add("ci.yml must not run coverage or benches (they are nightly, non-gating)")
+    }
+    if (!text(at("build.gradle.kts")).contains("\"coverageReport\"")) {
+        problems.add("build.gradle.kts must register coverageReport")
+    }
+    if (problems.isNotEmpty()) {
+        error("CI cadence is incomplete:\n" + bullets(problems))
+    }
+}
+
+guard("G58", "checkSecurityDocs") {
+    val problems = mutableListOf<String>()
+    val advisory = "security/advisories"
+    val policy = at("SECURITY.md")
+    val page = at("docs/user/security.md")
+    if (!Files.isRegularFile(policy)) {
+        problems.add("SECURITY.md is missing")
+    } else {
+        val body = text(policy)
+        if (!body.contains("docs/user/security.md")) {
+            problems.add("SECURITY.md must point at docs/user/security.md")
+        }
+        if (!body.contains(advisory)) {
+            problems.add("SECURITY.md must name the GitHub security/advisories URL")
+        }
+    }
+    if (!Files.isRegularFile(page)) {
+        problems.add("docs/user/security.md is missing")
+    } else if (!text(page).contains(advisory)) {
+        problems.add("docs/user/security.md must name the GitHub security/advisories URL")
+    }
+    if (!text(at("docs/user/README.md")).contains("](security.md)")) {
+        problems.add("docs/user/README.md must link security.md")
+    }
+    if (problems.isNotEmpty()) {
+        error("Security docs are incomplete:\n" + bullets(problems))
+    }
+}
+
+guard("G59", "checkNoHistoricalNarration") {
+    val exempt = mapOf(
+        "AGENTS.md" to "names the banned narration phrases as the policy",
+        "docs/contributors/comments.md" to "names the banned narration phrases as the policy")
+    val missing = exempt.keys.filterNot { Files.isRegularFile(at(it)) }
+    if (missing.isNotEmpty()) {
+        error("The allowlist exempts files that no longer exist: "
+            + missing.sorted().joinToString(", "))
+    }
+    val u = "used " + "to"
+    val narration = Regex(
+        "(?i)(?:this $u|it $u|they $u|javadoc $u"
+            + "|$u (?:be|say|live|scan)"
+            + "|former" + "ly|back" + "-compat|for future " + "agents|kept for " + "migration|do not " + "revert"
+            + "|as they $u|as it $u)")
+    var candidates = 0
+    val hits = mutableListOf<String>()
+    treeFiles.forEach { f ->
+        candidates++
+        val here = rel(f)
+        if (here in exempt) return@forEach
+        val found = try {
+            narration.findAll(text(f)).map { it.value }.distinct().take(3).toList()
+        } catch (e: Exception) {
+            return@forEach
+        }
+        if (found.isNotEmpty()) hits.add("$here: ${found.joinToString(", ")}")
+    }
+    if (candidates == 0) {
+        error("Scanned zero files — the tree walk broke and this guard is passing vacuously.")
+    }
+    if (hits.isNotEmpty()) {
+        error("historical narration in comments or docs:\n"
+            + bullets(hits.sorted())
+            + "\n  State the current invariant. History belongs in the commit body.")
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Guard G51: both builds enforce the same house rules.
 //
@@ -2775,6 +3022,85 @@ guard("G51", "checkGuardParity") {
             + "\n  A contributor runs `jk build`; a gate that enforces less than it claims is worse"
             + " than no gate. Port the rule, or record in guard-parity.txt why the letter cannot"
             + " live in both.")
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Guard G53: every production package in the enforced API boundaries is @NullMarked.
+// ---------------------------------------------------------------------------
+
+guard("G53", "checkNullMarkedApiPackages") {
+    val roots = listOf(
+        "shared/jk-api/src/main/java/",
+        "shared/wire/src/main/java/",
+        "shared/plugin-sdk/src/main/java/")
+    val packagePattern = Regex("""(?m)^\s*package\s+([A-Za-z_][\w.]*)\s*;""")
+    val sources = treeFiles.filter { file ->
+        val path = rel(file)
+        roots.any(path::startsWith) && path.endsWith(".java")
+    }
+    val packages = sources.asSequence()
+        .filterNot { it.fileName.toString() == "package-info.java" }
+        .mapNotNull { packagePattern.find(text(it))?.groupValues?.get(1) }
+        .toSortedSet()
+    if (packages.size != 14) {
+        error("Found ${packages.size} production API packages; measured against 14. The source"
+            + " roots or package parser drifted, so this guard cannot report green.")
+    }
+    val markers = sources.filter { it.fileName.toString() == "package-info.java" }.associateBy { file ->
+        packagePattern.find(text(file))?.groupValues?.get(1)
+    }
+    val missing = packages.filter { pkg ->
+        val marker = markers[pkg]
+        marker == null || !text(marker).contains("@NullMarked")
+    }
+    if (missing.isNotEmpty()) {
+        error("Production API packages must declare package-level @NullMarked:\n"
+            + bullets(missing))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Guard G54: first-party plugin dependencies stay behind the SDK boundary.
+// ---------------------------------------------------------------------------
+
+guard("G54", "checkPluginSdkBoundary") {
+    val allowed = mapOf(
+        "auditor|implementation|:core" to "lockfile and audit report model",
+        "publisher|implementation|:core" to "manifest, lockfile, and build-layout model",
+        "publisher|implementation|:client-io" to "repository upload transports",
+        "publisher|testImplementation|:core" to "session-boundary test fixtures",
+        "image-builder|implementation|:jk-api" to "image and repository credential model",
+        "image-builder|testImplementation|:host" to "repository-root test fixture",
+        "minified|implementation|:dynamic-surface" to "shared reachability and keep-rule model",
+        "grails|implementation|:spring-boot" to "Boot jar packaging composition")
+    val edgePattern = Regex(
+        """(?m)^\s*(implementation|api|compileOnly|runtimeOnly|testImplementation|testRuntimeOnly|bundledCodec)\s*\(\s*(?:testFixtures\s*\(\s*)?project\s*\(\s*"(:[^"]+)"""")
+    val builds = treeFiles.filter { rel(it).matches(Regex("""plugins/[^/]+/build\.gradle\.kts""")) }
+    if (builds.size != 15) {
+        error("Found ${builds.size} plugin builds; measured against 15, so the boundary scan drifted.")
+    }
+    val seenExceptions = mutableSetOf<String>()
+    val violations = mutableListOf<String>()
+    builds.sorted().forEach { file ->
+        val plugin = file.parent.fileName.toString()
+        edgePattern.findAll(text(file)).forEach { match ->
+            val configuration = match.groupValues[1]
+            val target = match.groupValues[2]
+            val key = "$plugin|$configuration|$target"
+            val baseline = target == ":plugin-sdk"
+                || configuration == "bundledCodec" && target == ":host"
+            when {
+                baseline -> Unit
+                key in allowed -> seenExceptions.add(key)
+                else -> violations.add("$plugin $configuration -> $target")
+            }
+        }
+    }
+    violations.addAll((allowed.keys - seenExceptions).sorted().map { "stale allowlist entry: $it" })
+    if (violations.isNotEmpty()) {
+        error("First-party plugin dependencies must stay behind plugin-sdk or a documented"
+            + " current exception:\n" + bullets(violations.sorted()))
     }
 }
 

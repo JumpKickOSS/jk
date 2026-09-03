@@ -5,6 +5,7 @@ import cc.jumpkick.model.command.Exit;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The compiler-worker half of the plugin wire: a typed view over {@link ProtocolWriter} plus the
@@ -46,7 +47,7 @@ public final class CompilerProtocol {
     }
 
     /** A located compiler diagnostic; {@code file} may be null, {@code line}/{@code col} 0 when unknown. */
-    public void diagnostic(String severity, String file, int line, int col, String message) {
+    public void diagnostic(String severity, @Nullable String file, int line, int col, String message) {
         out.emit(PluginReply.diagnostic(severity, file, line, col, message));
     }
 

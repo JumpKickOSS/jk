@@ -5,6 +5,7 @@ import cc.jumpkick.jsonl.Jsonl;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Builds {@link PluginProtocol} reply lines (plugin→engine) as JSONL strings. A plugin emits them
@@ -27,7 +28,7 @@ public final class PluginReply {
     }
 
     /** A structured compiler/format diagnostic; {@code file} may be null, {@code line}/{@code col} 0 when unknown. */
-    public static String diagnostic(String sev, String file, int line, int col, String msg) {
+    public static String diagnostic(String sev, @Nullable String file, int line, int col, String msg) {
         StringBuilder b = new StringBuilder("{\"t\":\"diagnostic\",\"sev\":").append(Jsonl.quote(sev));
         if (file != null) b.append(",\"file\":").append(Jsonl.quote(file));
         if (line > 0) b.append(",\"line\":").append(line);
@@ -51,7 +52,7 @@ public final class PluginReply {
     }
 
     /** A formatter per-file outcome. */
-    public static String file(String path, String status, String msg) {
+    public static String file(String path, String status, @Nullable String msg) {
         StringBuilder b = new StringBuilder("{\"t\":\"file\",\"path\":")
                 .append(Jsonl.quote(path))
                 .append(",\"status\":")

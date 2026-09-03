@@ -2,12 +2,12 @@
 package cc.jumpkick.engine.http;
 
 import cc.jumpkick.config.JkHttpConfig;
-import cc.jumpkick.engine.EngineTransport;
 import cc.jumpkick.engine.JsonOut;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.runtime.BuildMetrics;
 import cc.jumpkick.runtime.ProjectCard;
+import cc.jumpkick.wire.EngineTransport;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;

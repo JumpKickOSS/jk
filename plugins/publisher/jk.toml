@@ -3,7 +3,7 @@ description = "JumpKick's Maven publish plugin"
 
 [dependencies]
 jk-core.workspace = true
-jk-io.workspace = true
+jk-client-io.workspace = true
 jk-plugin-sdk.workspace = true
 bcpg-jdk18on = "latest"
 sigstore-java = "latest"

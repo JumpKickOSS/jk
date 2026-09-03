@@ -4,13 +4,13 @@ package cc.jumpkick.engine.verbs;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
-import cc.jumpkick.engine.protocol.CacheInventoryAck;
-import cc.jumpkick.engine.protocol.EngineProtocol;
-import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.engine.runtime.CacheInventoryOps;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.wire.protocol.CacheInventoryAck;
+import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.protocol.ProtoSession;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 

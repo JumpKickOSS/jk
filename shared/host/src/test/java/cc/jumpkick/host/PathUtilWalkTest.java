@@ -2,10 +2,13 @@
 package cc.jumpkick.host;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -20,6 +23,33 @@ import org.junit.jupiter.api.io.TempDir;
  * walk, it was discarding what it returned and re-resolving the path to ask again.
  */
 class PathUtilWalkTest {
+
+    /**
+     * walkFileTree routes a directory it cannot open to visitFileFailed and carries on; a walk that
+     * swallowed that would return a complete-looking listing missing the whole subtree.
+     */
+    @Test
+    void a_subdirectory_that_cannot_be_opened_fails_the_walk_instead_of_vanishing(@TempDir Path tmp)
+            throws IOException {
+        assumeTrue(!Os.isWindows(), "POSIX permissions");
+        Path root = Files.createDirectories(tmp.resolve("root"));
+        Files.writeString(root.resolve("top.txt"), "x");
+        Path locked = Files.createDirectories(root.resolve("locked"));
+        Files.writeString(locked.resolve("hidden.txt"), "y");
+        Files.setPosixFilePermissions(locked, PosixFilePermissions.fromString("---------"));
+        assumeTrue(!Files.isReadable(locked), "not running as root");
+        try {
+            assertThatThrownBy(() -> PathUtil.forEachRegularFile(root, d -> false, (f, a) -> {}))
+                    .isInstanceOf(IOException.class);
+            assertThatThrownBy(() -> PathUtil.forEachEntry(root, d -> false, (f, a) -> true))
+                    .isInstanceOf(IOException.class);
+        } finally {
+            Files.setPosixFilePermissions(locked, PosixFilePermissions.fromString("rwxr-xr-x"));
+        }
+        List<Path> seen = new ArrayList<>();
+        PathUtil.forEachRegularFile(root, d -> false, (f, a) -> seen.add(f));
+        assertThat(seen).containsExactlyInAnyOrder(root.resolve("top.txt"), locked.resolve("hidden.txt"));
+    }
 
     @Test
     void it_visits_every_regular_file_with_its_attributes(@TempDir Path tmp) throws IOException {

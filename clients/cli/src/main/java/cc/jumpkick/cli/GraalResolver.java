@@ -153,12 +153,10 @@ public final class GraalResolver {
      * The GraalVM home that OWNS {@code launcher} — {@code NativePlans.nativeStep} wants the home,
      * and {@link NativeImageDriver#resolve} found the launcher.
      *
-     * <p>This used to be a parent-of-parent at the call site, which is right for {@code
-     * <home>/bin/native-image} and wrong for {@code <home>/lib/svm/bin/native-image.exe} — a path the
-     * driver can and does return on Windows, and which the fixed depth turned into {@code
-     * <home>/lib/svm}, a directory that is not a home. {@link GraalLauncher#homeOf} is the declared
-     * inverse of the search that produced the path, so it knows both layouts and neither call site
-     * has to.
+     * <p>{@link GraalLauncher#homeOf} is the inverse of the search that produced the path: it
+     * handles both {@code <home>/bin/native-image} and {@code <home>/lib/svm/bin/native-image.exe}
+     * (Windows). A parent-of-parent walk would turn the latter into {@code <home>/lib/svm}, which
+     * is not a home.
      *
      * <p>{@code fallback} — the pinned JDK — is used when the launcher sits somewhere {@code
      * GraalLauncher} does not recognise, e.g. a bare {@code $PATH} directory that is not a GraalVM

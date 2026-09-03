@@ -51,6 +51,25 @@ class WorkspaceLocatorTest {
     }
 
     @Test
+    void finds_root_for_a_module_listed_through_a_glob(@TempDir Path tmp) throws IOException {
+        write(tmp.resolve("jk.toml"), """
+                group = "com.example"
+                name = "root"
+                version = "0.1.0"
+
+                [workspace]
+                modules = ["libs/*"]
+                """);
+        Path core = tmp.resolve("libs/core");
+        write(core.resolve("jk.toml"), "name = \"core\"\n");
+        assertThat(WorkspaceLocator.findRoot(core))
+                .contains(tmp.toAbsolutePath().normalize());
+        Path stray = tmp.resolve("apps/stray");
+        write(stray.resolve("jk.toml"), "name = \"stray\"\n");
+        assertThat(WorkspaceLocator.findRoot(stray)).isEmpty();
+    }
+
+    @Test
     void finds_enclosing_workspace_for_unlisted_module(@TempDir Path tmp) throws IOException {
         write(tmp.resolve("jk.toml"), ROOT);
         // `app` is NOT in modules yet — findEnclosingWorkspace must still find the root.

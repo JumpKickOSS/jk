@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -61,10 +62,10 @@ class ToolRunForkTest {
 
     /** {@code java -cp <test classpath> EnvEchoMain} on the JVM running the test. */
     private static TaskExec.ToolRun probe() {
-        Path javaHome = Path.of(System.getProperty("java.home"));
+        Path javaHome = Path.of(Objects.requireNonNull(System.getProperty("java.home"), "java.home"));
         return new TaskExec.ToolRun(JdkFingerprint.tool(javaHome, "java"))
                 .arg("-cp")
-                .arg(System.getProperty("java.class.path"))
+                .arg(Objects.requireNonNull(System.getProperty("java.class.path"), "java.class.path"))
                 .arg(EnvEchoMain.class.getName());
     }
 }

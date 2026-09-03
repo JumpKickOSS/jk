@@ -2,6 +2,7 @@
 package cc.jumpkick.run;
 
 import java.util.function.BooleanSupplier;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Seam so steps can observe session-level cancel without a {@code jk-api → core} edge. Engine
@@ -14,7 +15,7 @@ public final class SessionCancel {
     private SessionCancel() {}
 
     /** Install the session-cancel probe. Idempotent; the last binding wins. A {@code null} disables it. */
-    public static void bind(BooleanSupplier p) {
+    public static void bind(@Nullable BooleanSupplier p) {
         probe = (p == null) ? () -> false : p;
     }
 

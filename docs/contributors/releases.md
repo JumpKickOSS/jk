@@ -46,19 +46,22 @@ releases/
   latest/
     VERSION                 # single line, e.g. 0.12.0  (Cache-Control: no-cache)
   0.12.0/
-    jk-linux-x86_64.xz
-    jk-linux-aarch64.xz
-    jk-macos-x86_64.xz
-    jk-macos-aarch64.xz
-    jk-windows-x86_64.xz    # self-update (engine inflates; no system xz needed)
-    jk-windows-x86_64.zip   # install.ps1 / jk.bat only
+    jk-linux-x86_64-0.12.0.xz
+    jk-linux-aarch64-0.12.0.xz
+    jk-macos-x86_64-0.12.0.xz
+    jk-macos-aarch64-0.12.0.xz
+    jk-windows-x86_64-0.12.0.xz    # self-update (engine inflates; no system xz needed)
+    jk-windows-x86_64-0.12.0.zip   # install.ps1 / jk.bat only
     jk-engine-0.12.0.jar
     SHA256SUMS              # coreutils: <hex>  <filename>
-    SHA256SUMS.sig          # base64 Ed25519 signature over SHA256SUMS bytes
+    SHA256SUMS.sig          # base64 RSA/SHA-256 signature over exact SHA256SUMS bytes
 ```
 
-`install.sh` and the Unix `jk` wrapper fetch `jk-<os>-<arch>.xz`. `jk.bat` /
-`install.ps1` fetch the Windows `.zip`. `jk self update` prefers `.xz` on every OS
+`install.sh` and the Unix `jk` wrapper fetch `jk-<os>-<arch>-<version>.xz`. `jk.bat` /
+`install.ps1` fetch the Windows `.zip`. Every artifact name carries the version: the
+manifest is signed but not bound to its directory, so a valid manifest copied from an older
+release into a newer version's directory names only the older artifacts and satisfies no
+request for the newer one. `jk self update` prefers `.xz` on every OS
 (the engine jar inflates; the native CLI does not link tukaani) and falls back to
 `.zip` on Windows when the sums have no xz entry. All three read `latest/VERSION`,
 then fetch **only** from that version directory so a mid-install publish cannot mix
@@ -70,14 +73,17 @@ to Cloud Storage — either is fine as long as the URL layout above is public HT
 
 ## Signing
 
-- Algorithm: **Ed25519** over the raw `SHA256SUMS` file bytes.
-- Public key: baked into `ReleaseVerifier.BUILT_IN_KEY` (base64 X.509/SPKI).
-- Private key: GitHub Actions secret **`JK_RELEASE_SIGNING_KEY`** (PKCS#8 DER, base64).
-- Local sign: `JK_RELEASE_SIGNING_KEY=… scripts/sign-release.sh path/to/SHA256SUMS`
+- Algorithm: **SHA256withRSA**, RSA-3072, PKCS#1 v1.5, over the exact `SHA256SUMS` bytes.
+- Public key: baked into `ReleaseVerifier.BUILT_IN_KEY` (base64 X.509/SPKI), with the same
+  modulus/exponent embedded in the stock PowerShell verifier.
+- Private key: GitHub Actions secret **`JK_RELEASE_RSA_SIGNING_KEY`** (base64 PKCS#8 DER).
+- Local sign: `scripts/sign-release.sh path/to/SHA256SUMS /owner-only/path/release-key.pem`
 - Additional host keys: `[release] trusted-keys` in `~/.jk/config.toml`.
 
-Verification is **fail-closed** for release installs/self-update when a signature is present
-or required. Do not ship releases without `.sig` once the baked-in key is non-empty.
+Remote installers, wrappers, self-update, and engine materialization all require the signature.
+They verify the manifest signature first, require one strict exact artifact entry, then verify the
+artifact hash before extracting, parking an existing binary, writing, or executing downloaded
+bytes. Local file installs remain an explicit unsigned development path.
 
 ## CI release (tag-triggered)
 
@@ -93,7 +99,7 @@ Workflow: [`.github/workflows/release.yml`](../../.github/workflows/release.yml)
 
 | Secret | Role |
 |--------|------|
-| `JK_RELEASE_SIGNING_KEY` | PKCS#8 base64 Ed25519 private key (signing) |
+| `JK_RELEASE_RSA_SIGNING_KEY` | Base64 PKCS#8 DER RSA-3072 private key (signing) |
 | `JK_RELEASE_GCS_BUCKET` | GCS bucket name only (no `gs://`), e.g. `jumpkick` |
 | `JK_RELEASE_GCS_SA_JSON` | Service account JSON with object create/overwrite on that bucket |
 
@@ -113,14 +119,15 @@ echo 0.12.0 | gsutil -h "Cache-Control:no-cache,max-age=0" cp - \
 
 ```bash
 ./gradlew clean dist
-export JK_RELEASE_SIGNING_KEY='…'   # optional for .sig
+export JK_RELEASE_RSA_SIGNING_KEY_FILE=/owner-only/path/release-key.pem
 scripts/assemble-release-dir.sh
 # inspect build/release/0.12.0/
 ```
 
 ## Rotation
 
-1. Generate a new Ed25519 keypair.
-2. Add the new public key to `ReleaseVerifier` (support both keys during transition if needed).
-3. Store the new private key as the Actions secret; retire the old secret after all supported
-   clients carry the new public key.
+1. Generate a new RSA-3072 keypair in owner-only credential storage.
+2. Replace the Java SPKI and installer SPKI/modulus/exponent together.
+3. Run the public-key consistency and installer verification fixtures.
+4. Replace the Actions secret only after the clients and public installers carrying the new key
+   are ready to publish atomically.

@@ -9,6 +9,8 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.TaskPhases;
 import cc.jumpkick.runtime.TestClassWalls;
+import cc.jumpkick.runtime.TestSuiteRunners;
+import cc.jumpkick.runtime.TestSuiteScaling;
 import cc.jumpkick.util.DirKeys;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
@@ -366,11 +368,8 @@ public final class BuildJournal {
         // Cache-restore / token hits can land as SUCCESS with absurdly short walls (e.g. native-image
         // 32ms). Those poison ETA means — never teach heavy steps below a floor.
         if (isImplausibleHeavyWall(task, s.millis())) return;
-        // The record already carries the stage the plan declared (wire `stage`). Re-deriving it
-        // from the task name put the metrics rollup on a different taxonomy than the UI fold —
-        // plugin-android-res reported `generate` on the wire and landed in `phase.compile` here,
-        // and every stage(RESOLVE) task in ScriptPlans landed in `other`. Name inference
-        // stays as the fallback for records that carry no stage.
+        // Prefer the stage the plan declared (wire `stage`) so metrics rollup and the UI fold
+        // share one taxonomy. Name inference is only for records that carry none.
         String declared = s.stage();
         String phase = sanitize(declared != null && !declared.isBlank() ? declared : TaskPhases.of(s.name()));
         sb.append("task.").append(task).append(".wall-ms = ").append(s.millis()).append('\n');
@@ -384,6 +383,27 @@ public final class BuildJournal {
                     .append(".wall-ms = ")
                     .append(s.millis())
                     .append('\n');
+            // A suite wall is only re-usable next time if we also say how many runners produced it,
+            // and the re-usable form is the *normalized* one — see TestSuiteScaling.
+            if (TaskNames.RUN_TESTS.equals(task)) {
+                int runners = TestSuiteRunners.take(moduleDir);
+                if (runners > 0) {
+                    sb.append("module.")
+                            .append(mod)
+                            .append(".task.")
+                            .append(task)
+                            .append(".workers = ")
+                            .append(runners)
+                            .append('\n');
+                    sb.append("module.")
+                            .append(mod)
+                            .append(".task.")
+                            .append(task)
+                            .append(".wall1-ms = ")
+                            .append(TestSuiteScaling.normalize(s.millis(), runners))
+                            .append('\n');
+                }
+            }
             // No input-bytes field here: nothing ever read it, and its value was wrong anyway —
             // BuildService's success fold takes (removes) the recorded bytes before the journal
             // write runs, so this always fell back to a fresh disk walk that could differ from
@@ -568,10 +588,9 @@ public final class BuildJournal {
 
     /**
      * The raw-only twin of {@link #loadNewest}: the synthetic filter and the newest-first sort
-     * are lexical scans, so a raw-history consumer never pays a full {@code Json.read} per row —
-     * complete record graphs, diagnostics and snippets included, were being built only to read
-     * two fields and be discarded. Rows are journal-authored, so the same first-occurrence
-     * lexical posture as {@code HttpHistoryApi}'s scans holds.
+     * are lexical scans, so a raw-history consumer never pays a full {@code Json.read} per row.
+     * Rows are journal-authored, so the same first-occurrence lexical posture as
+     * {@code HttpHistoryApi}'s scans holds.
      */
     private List<RawLoaded> loadNewestRaw(int limit, @Nullable Predicate<String> filter) {
         List<RawLoaded> out = new ArrayList<>();
@@ -585,10 +604,9 @@ public final class BuildJournal {
             } catch (IOException e) {
                 continue;
             }
-            // A torn or non-object file must never ride verbatim into a JSON array response —
-            // the full parse used to be the (accidental) gate for that.
+            // A torn or non-object file must never ride verbatim into a JSON array response.
             if (json.isEmpty() || json.charAt(0) != '{' || json.charAt(json.length() - 1) != '}') continue;
-            if (scanTrue(json, "synthetic")) continue;
+            if (BuildRecord.isSyntheticTrigger(scanString(json, "trigger"))) continue;
             if (filter != null && !filter.test(json)) continue;
             long sort = scanLong(json, "finishedAt");
             if (sort <= 0) sort = scanLong(json, "startedAt");
@@ -610,6 +628,23 @@ public final class BuildJournal {
         } catch (NumberFormatException e) {
             return 0;
         }
+    }
+
+    /**
+     * First {@code "name": "<value>"} occurrence, lexically; null when absent or not a string. The
+     * value is returned as written (escapes intact) — callers compare short enum-like words.
+     */
+    static @Nullable String scanString(String json, String name) {
+        int start = scanValueStart(json, name);
+        if (start < 0 || start >= json.length() || json.charAt(start) != '"') return null;
+        int end = start + 1;
+        while (end < json.length()) {
+            char c = json.charAt(end);
+            if (c == '\\') end += 2;
+            else if (c == '"') return json.substring(start + 1, end);
+            else end++;
+        }
+        return null;
     }
 
     /** True when {@code "name": true} occurs, lexically. */

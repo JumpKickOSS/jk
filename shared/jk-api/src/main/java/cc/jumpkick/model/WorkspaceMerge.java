@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -256,7 +257,7 @@ public final class WorkspaceMerge {
                         .withKind(d.kind())
                         .withFixtures(d.fixtures());
             }
-            return Dependency.of(name, ws.module(), ws.version())
+            return Dependency.of(name, ws.module(), Objects.requireNonNull(ws.version()))
                     .withKind(d.kind())
                     .withFixtures(d.fixtures());
         }

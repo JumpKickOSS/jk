@@ -2,12 +2,17 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.BuildEnv;
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.TestEnvValues;
+import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * The environment handed to a forked test JVM: the caller's machine env ({@link BuildEnv#MACHINE}),
@@ -77,6 +82,38 @@ public final class TestEnv {
      *
      * <p>A module that sets {@code JK_HOME} itself wins — the sandbox is a default, not an override.
      */
+    /**
+     * The sandbox local-m2 root: one per <em>workspace</em>, not one per module.
+     *
+     * <p>Unlike the product home beside it, a local m2 is a content-addressed artifact cache with
+     * nothing module-specific in it, so a copy per module buys nothing and costs twice: the same
+     * dependency is fetched once per module that needs it, and stored once per module that has it.
+     * Measured on this repo before centralizing — 467 MB across nine copies, the two largest being
+     * near-identical. jk's Gradle build has the same shape for the same reason (464 MB across five
+     * {@code <module>/build/test-m2} directories) and needs a size cap to hold it down.
+     *
+     * <p>{@code JK_HOME} deliberately stays per module: it holds state, locks, learned rates and a
+     * calibration, and concurrent suites writing one copy would race on all four.
+     *
+     * <p>Not part of the run-tests action key — the key hashes the module's declared
+     * {@code [test] env}, not the sandbox underneath it — so moving it re-runs nothing.
+     */
+    private static Path sandboxM2(Path moduleDir, Path moduleTarget) {
+        try {
+            Optional<Path> root = WorkspaceScan.findRoot(moduleDir);
+            if (root.isPresent()) {
+                Path rootDir = root.get();
+                BuildLayout rootLayout =
+                        BuildLayout.of(rootDir, JkBuildParser.parse(rootDir.resolve(ManifestPaths.MANIFEST)));
+                return rootLayout.moduleTargetDir().resolve("test-m2").toAbsolutePath();
+            }
+        } catch (IOException | RuntimeException e) {
+            // A workspace root that will not read or parse is the build's error to report, not this
+            // one's: fall back to the module-local cache so a test JVM still gets a sandbox.
+        }
+        return moduleTarget.resolve("test-m2").toAbsolutePath();
+    }
+
     public static Map<String, String> forModule(JkBuild project, Path moduleDir, BuildLayout layout) {
         Path target = layout.moduleTargetDir();
         Map<String, String> out = new LinkedHashMap<>();
@@ -86,7 +123,7 @@ public final class TestEnv {
         Path sandboxHome = target.resolve("test-jk-home").toAbsolutePath();
         out.put(JK_HOME, sandboxHome.toString());
         out.put(JK_JDKS_DIR, sandboxHome.resolve("jdks").toString());
-        out.put(JK_M2_LOCAL, target.resolve("test-m2").toAbsolutePath().toString());
+        out.put(JK_M2_LOCAL, sandboxM2(moduleDir, target).toString());
         // Created at launch, not here: this method answers what the environment is, and the
         // directory has to exist before a worker starts. JUnitLauncher makes it.
         String testTmp = target.resolve("tmp").toAbsolutePath().toString();

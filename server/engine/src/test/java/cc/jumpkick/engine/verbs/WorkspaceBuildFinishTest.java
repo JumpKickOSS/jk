@@ -10,14 +10,14 @@ import cc.jumpkick.engine.WireWriter;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.journal.BuildRecord;
-import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
-import cc.jumpkick.runtime.WorkspaceBuildListener;
-import cc.jumpkick.runtime.WorkspaceResult;
+import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
+import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.Writer;
@@ -41,6 +41,9 @@ import org.junit.jupiter.api.io.TempDir;
  * {@link WorkspaceTerminal}, so masking the rows once here masks them for all four. That the
  * masking cannot be skipped is proved separately, by compiling code, in
  * {@code WorkspaceFinishRedactionTest}.
+ *
+ * <p>{@code WorkspaceExecute} returns its settled result to the verb; this test owns the remaining
+ * {@link WorkspaceTerminal} wire and journal handoff without moving journal state into runtime.
  */
 class WorkspaceBuildFinishTest {
 
@@ -142,7 +145,7 @@ class WorkspaceBuildFinishTest {
 
     // ---: the terminal's error rows are worker output, and.env values are secret -------
 
-    private static final String SECRET = "jk-2387-must-not-leak-s3cret-token";
+    private static final String SECRET = "must-not-leak-s3cret-token";
 
     @Test
     void a_dotenv_value_in_worker_error_text_never_reaches_the_wire(@TempDir Path project) throws Exception {

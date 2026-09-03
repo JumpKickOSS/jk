@@ -3,7 +3,7 @@ package cc.jumpkick.web;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.wire.protocol.EngineProtocol;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;

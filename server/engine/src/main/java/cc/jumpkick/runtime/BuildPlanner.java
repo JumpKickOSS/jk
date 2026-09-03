@@ -174,9 +174,9 @@ public final class BuildPlanner {
             boolean ephemeralActions) {
 
         /**
-         * Back-compat: the pre-variant canonical shape. The variant selection defaults from the
-         * SESSION — a command that installs a selection there (jk run/test/image/native/publish)
-         * parameterizes every plan factory without each one threading it explicitly.
+         * Variant and client env from the session; durable action cache. Commands that install a
+         * selection on the session ({@code jk run}, {@code test}, {@code image}, {@code native},
+         * {@code publish}) parameterize every plan factory without each one threading those fields.
          */
         public Inputs(
                 Path dir,

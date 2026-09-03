@@ -3,7 +3,7 @@ package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.theme.Theme;
-import cc.jumpkick.engine.protocol.ProjectInfo;
+import cc.jumpkick.wire.protocol.ProjectInfo;
 import java.util.ArrayList;
 import java.util.List;
 

@@ -14,6 +14,7 @@ import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.wire.runtime.TaskForecast;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
@@ -40,7 +41,7 @@ class BuildCleanRestoreTest {
             central = "https://repo.maven.apache.org/maven2/"
             """;
 
-    // No tests: the exact shape that used to forecast fully-CACHED after clean and skip.
+    // No tests: after jk clean this shape still forecasts dirty so target/ restores.
     private static final String NO_TEST_MANIFEST = """
             name    = "cleanlib"
             group   = "com.example"

@@ -4,6 +4,7 @@ package cc.jumpkick.plugin.build;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A packager that replaces the module's main artifact (build-plugins plan §3.3). jk keys the
@@ -21,7 +22,7 @@ public final class PackagerSpec {
 
     private final String name;
     private final List<In> inputs = new ArrayList<>();
-    private Body body;
+    private @Nullable Body body;
 
     private PackagerSpec(String name) {
         this.name = Objects.requireNonNull(name, "name");
@@ -50,7 +51,7 @@ public final class PackagerSpec {
         return List.copyOf(inputs);
     }
 
-    public Body body() {
+    public @Nullable Body body() {
         return body;
     }
 }

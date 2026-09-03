@@ -6,9 +6,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
-import cc.jumpkick.engine.protocol.EngineProtocol;
-import cc.jumpkick.engine.protocol.ProtoEvents;
-import cc.jumpkick.engine.protocol.ProtoLifecycle;
+import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.protocol.ProtoEvents;
+import cc.jumpkick.wire.protocol.ProtoLifecycle;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.StringReader;

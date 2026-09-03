@@ -6,6 +6,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.ForkJoinWorkerThread;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Shared lazy CLI executors: {@link #cpu()} (bounded FJP, max(8, cores)) and {@link #io()} (virtual threads),
@@ -25,11 +26,11 @@ public final class JkThreads {
     public static final int CPU_THREADS = Math.max(Runtime.getRuntime().availableProcessors(), 8);
 
     /** The real pools; {@link #cpu}/{@link #io} hold their context-propagating wrappers. */
-    private static volatile ExecutorService cpuReal;
+    private static volatile @Nullable ExecutorService cpuReal;
 
-    private static volatile ExecutorService ioReal;
-    private static volatile ExecutorService cpu;
-    private static volatile ExecutorService io;
+    private static volatile @Nullable ExecutorService ioReal;
+    private static volatile @Nullable ExecutorService cpu;
+    private static volatile @Nullable ExecutorService io;
     private static final Object LOCK = new Object();
 
     private JkThreads() {}

@@ -47,8 +47,7 @@ public final class PluginTemplates {
     }
 
     private static List<TemplateSpec> scanJarCached(String pluginId, Path jar) {
-        // One readAttributes via FileStamp, not size-then-mtime: the pair used to be two syscalls per
-        // plugin jar on every picker and resolve call.
+        // One readAttributes via FileStamp (size and mtime together), not size-then-mtime.
         StampedMemo.FileStamp stamp = StampedMemo.FileStamp.of(jar);
         if (stamp == null) return scanJar(pluginId, jar); // unstatable — scan without memoizing
         List<TemplateSpec> hit = SCAN_CACHE.get(jar.toAbsolutePath().normalize(), stamp, () -> scanJar(pluginId, jar));

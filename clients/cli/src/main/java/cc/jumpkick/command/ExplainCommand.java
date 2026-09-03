@@ -24,17 +24,19 @@ import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.cli.tui.Spinner;
 import cc.jumpkick.cli.tui.Table;
 import cc.jumpkick.cli.tui.Tree;
-import cc.jumpkick.engine.EnginePaths;
-import cc.jumpkick.engine.protocol.ModuleGraphAck;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.run.BuildStage;
-import cc.jumpkick.runtime.ExplainPlan;
-import cc.jumpkick.runtime.TaskForecast;
 import cc.jumpkick.util.HostCalibrationStatus;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.wire.EnginePaths;
+import cc.jumpkick.wire.protocol.ModuleGraphAck;
+import cc.jumpkick.wire.runtime.ExplainPlan;
+import cc.jumpkick.wire.runtime.TaskForecast;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -80,6 +82,21 @@ public final class ExplainCommand implements CliCommand {
         opts.add(Opt.value("<name>", "Forecast with a build profile", "--profile"));
         opts.add(Opt.value("<N>", "Test JVMs per module (0=auto)", "-w", "--workers"));
         opts.add(CommonOpts.skipTests());
+        // Suite/tag widening, the same vocabulary and the same resolver `jk build` uses. Explain
+        // has to accept these because the resolved selection is an input to every module's
+        // run-tests stamp key: an explain that could not express the selection forecast against
+        // keys the build never computes, and reported every module in the tree as dirty.
+        opts.add(Opt.value("<name>", "Test suite directory (repeatable)", "-s", "--suite")
+                .repeat());
+        opts.add(Opt.flag("Run every test suite (tags included)", "--all"));
+        opts.add(Opt.flag("Share-the-commit: unit + integration", "--gate", "--pre-merge"));
+        opts.add(Opt.flag("Gate scripts, no JUnit", "--scripts-only"));
+        opts.add(Opt.flag("Skip gate scripts", "--no-scripts"));
+        opts.add(Opt.value("<tags>", "JUnit tags to include (CSV)", "--include-tags")
+                .splitOn(","));
+        opts.add(Opt.value("<tags>", "JUnit tags to exclude (CSV)", "--exclude-tags")
+                .splitOn(","));
+        opts.add(Opt.flag("Skip profile tag filters", "--no-profile"));
         // -r/--redo is a global flag (same as `jk build --redo`); see GlobalOptions.
         opts.add(CommonOpts.jdksDir());
         opts.add(CommonOpts.cacheDir());
@@ -136,6 +153,20 @@ public final class ExplainCommand implements CliCommand {
         if (in.isSet("run")) {
             return new BuildCommand().run(in); // forwards --cache-dir; build options default
         }
+
+        // Resolve the test selection through the same resolver `jk build` uses and put it on the
+        // session, which is what the engine request carries it from. The baseline `exclude-tags`
+        // live in the root manifest, so a session left at TestSelection.DEFAULT stamps every
+        // module's run-tests with an empty tag list — a key no build ever stores. That is how a
+        // two-module incremental came to be reported as "30 modules are dirty".
+        TestSelection testSelection;
+        try {
+            testSelection = TestCommand.resolveTestSelection(in);
+        } catch (IllegalArgumentException e) {
+            CommandWedge.printFail("Explain", e.getMessage());
+            return Exit.CONFIG;
+        }
+        SessionContext.install(SessionContext.current().withTestSelection(testSelection));
 
         // Module DAG export is engine-hosted. Honor --modules / --affected-since.
         // On single-project layouts, selectors only validate; the graph is one node.

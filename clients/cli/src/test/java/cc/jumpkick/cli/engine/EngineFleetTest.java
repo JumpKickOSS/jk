@@ -219,8 +219,7 @@ class EngineFleetTest {
         // The command-line predicate is a substring match, so a shell that ran `jk`, a grep over
         // this tree, or an editor with EngineMain.java open all say yes to it. They are not
         // engines, and `stop --all` hard-kills whatever the fleet claims — this is the guard
-        // between the fleet and the user's own terminal. (It is also the shape this file's
-        // `list_includes_a_live_generation_pid…` fixture used to have.)
+        // between the fleet and the user's own terminal.
         Process shell = new ProcessBuilder("sh", "-c", "sleep 30; :", "cc.jumpkick.engine.EngineMain").start();
         try {
             WindowsCommandLines.resetForTests();
@@ -252,9 +251,9 @@ class EngineFleetTest {
     @Test
     void list_includes_a_live_generation_pid_that_the_endpoint_does_not_name(@TempDir Path state) throws Exception {
         // A JVM carrying the engine main class as a trailing (ignored) argument, so the dummy
-        // matches the resident-engine command-line predicate on every platform. This used to be
-        // `sh -c 'sleep 30' cc.jumpkick.engine.EngineMain` — the $0 trick, which only reads back
-        // out of /proc: on Windows the predicate saw `sh.exe` and the pid was never listed.
+        // matches the resident-engine command-line predicate on every platform. A shell $0 trick
+        // only reads back out of /proc: on Windows the predicate would see `sh.exe` and the pid
+        // would never be listed.
         Process dummy = SleepMain.spawn(30_000, "cc.jumpkick.engine.EngineMain");
         try {
             // The Windows command-line snapshot is taken at most once per TTL; this process table

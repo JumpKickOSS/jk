@@ -8,6 +8,7 @@ import cc.jumpkick.model.JkBuild;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -317,6 +318,70 @@ class JkBuildWorkspaceTest {
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("artifact collision")
                 .hasMessageContaining("dup-1.0.0");
+    }
+
+    /** `libs/*` is what the docs open with: one glob, every module under it, sorted, no root edit. */
+    @Test
+    void workspace_loader_expands_single_segment_globs(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("jk.toml"), """
+                group    = "com.example"
+                name     = "root"
+                version  = "0.1.0"
+
+                [workspace]
+                modules = ["apps/web", "libs/*", "libs/core"]
+                """);
+        for (String rel : List.of("libs/core", "libs/beta", "apps/web")) {
+            Path dir = Files.createDirectories(tempDir.resolve(rel));
+            Files.writeString(dir.resolve("jk.toml"), "name = \"" + rel.replace('/', '-') + "\"\n");
+        }
+        Files.createDirectories(tempDir.resolve("libs/not-a-module")); // no jk.toml: skipped
+        Files.createDirectories(tempDir.resolve("libs/.hidden"));
+        Files.writeString(tempDir.resolve("libs/.hidden/jk.toml"), "name = \"hidden\"\n");
+
+        JkBuild root = JkBuildParser.parse(tempDir.resolve("jk.toml"));
+        assertThat(WorkspaceModules.expand(tempDir, root.workspace().modules()))
+                .as("declared order for literals, sorted within a glob, duplicate collapsed")
+                .containsExactly("apps/web", "libs/beta", "libs/core");
+        Map<Path, JkBuild> modules = WorkspaceLoader.loadModules(tempDir, root);
+        assertThat(modules.keySet())
+                .containsExactly(
+                        tempDir.resolve("apps/web").normalize(),
+                        tempDir.resolve("libs/beta").normalize(),
+                        tempDir.resolve("libs/core").normalize());
+    }
+
+    @Test
+    void workspace_loader_refuses_a_glob_that_selects_nothing_and_double_star(@TempDir Path tempDir)
+            throws IOException {
+        Files.writeString(tempDir.resolve("jk.toml"), """
+                group    = "com.example"
+                name     = "root"
+                version  = "0.1.0"
+
+                [workspace]
+                modules = ["libs/*"]
+                """);
+        Files.createDirectories(tempDir.resolve("libs"));
+        JkBuild root = JkBuildParser.parse(tempDir.resolve("jk.toml"));
+        assertThatThrownBy(() -> WorkspaceLoader.loadModules(tempDir, root))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("libs/*")
+                .hasMessageContaining("matches no directory");
+        assertThatThrownBy(() -> WorkspaceModules.expand(tempDir, List.of("**/core")))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("**");
+    }
+
+    @Test
+    void module_membership_through_a_glob_is_lexical() {
+        List<String> entries = List.of("apps/web", "libs/*", "tools/?-cli");
+        assertThat(WorkspaceModules.lists(entries, "libs/core")).isTrue();
+        assertThat(WorkspaceModules.lists(entries, "libs/core/deep")).isFalse();
+        assertThat(WorkspaceModules.lists(entries, "apps/web")).isTrue();
+        assertThat(WorkspaceModules.lists(entries, "apps/api")).isFalse();
+        assertThat(WorkspaceModules.lists(entries, "tools/a-cli")).isTrue();
+        assertThat(WorkspaceModules.lists(entries, "tools/ab-cli")).isFalse();
     }
 
     @Test

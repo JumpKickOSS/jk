@@ -29,7 +29,17 @@ public record TestSummary(
         long skipped,
         long classes,
         List<TestFailureInfo> failures,
-        Map<String, Long> classWallMs) {
+        Map<String, Long> classWallMs,
+        /**
+         * How many runner JVMs executed this suite, or {@code 0} when unknown.
+         *
+         * <p>Recorded because a suite WALL without it cannot be re-used as a prediction. The same
+         * suite is ~40 s on one runner and roughly a third of that sharded, so a forecast that
+         * reads a stored wall alone predicts whichever shape happened to be measured last — which
+         * is why the build ETA over-read an incremental build ~3x. With the count the wall becomes
+         * work that can be re-scheduled for the runners the next build will hand out.
+         */
+        int workers) {
 
     /**
      * The one wire field name for test counts. It is an object, not four flat scalars: a flat
@@ -45,15 +55,32 @@ public record TestSummary(
         classWallMs = classWallMs == null || classWallMs.isEmpty() ? Map.of() : Map.copyOf(classWallMs);
     }
 
-    /** Classes unknown; no class walls. */
+    /** Classes unknown; no class walls; concurrency unknown. */
     public TestSummary(long total, long succeeded, long failed, long skipped, List<TestFailureInfo> failures) {
-        this(total, succeeded, failed, skipped, 0, failures, Map.of());
+        this(total, succeeded, failed, skipped, 0, failures, Map.of(), 0);
     }
 
-    /** Class count known; no class walls. */
+    /** Class count known; no class walls; concurrency unknown. */
     public TestSummary(
             long total, long succeeded, long failed, long skipped, long classes, List<TestFailureInfo> failures) {
-        this(total, succeeded, failed, skipped, classes, failures, Map.of());
+        this(total, succeeded, failed, skipped, classes, failures, Map.of(), 0);
+    }
+
+    /** Concurrency unknown — for every producer that did not run the suite itself. */
+    public TestSummary(
+            long total,
+            long succeeded,
+            long failed,
+            long skipped,
+            long classes,
+            List<TestFailureInfo> failures,
+            Map<String, Long> classWallMs) {
+        this(total, succeeded, failed, skipped, classes, failures, classWallMs, 0);
+    }
+
+    /** Same summary, tagged with the runner count that produced its wall. */
+    public TestSummary withWorkers(int runners) {
+        return new TestSummary(total, succeeded, failed, skipped, classes, failures, classWallMs, Math.max(0, runners));
     }
 
     public boolean allPassed() {

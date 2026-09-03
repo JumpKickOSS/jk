@@ -69,6 +69,30 @@ public final class TestSuites {
      * Suite names that exist on disk for this module (always includes {@link #DEFAULT} when that
      * suite has sources; always lists {@link #DEFAULT} first when present).
      */
+    /**
+     * The test-fixtures source set, which is NOT a test suite.
+     *
+     * <p>Fixtures are their own source set with their own step ({@code compile-test-fixtures}) and
+     * their own output, consumed by siblings through {@code fixtures = true}. Discovery listed
+     * {@code src/} and excluded only {@code main} and {@code test}, so {@code src/fixtures/java}
+     * came back as a suite named "fixtures" and its sources were folded into {@code compile-test}.
+     *
+     * <p>That cost the build ETA badly, because it is the forecast that collects sources by suite
+     * while the live compile takes one source root. {@code shared/host} forecast 32 test sources
+     * against the live 23 — the 9 fixtures — so the two computed different {@code compile-test}
+     * action keys, the forecast's key always missed, Zinc reported every test source invalidated,
+     * and {@code run-tests} was forecast to re-run for a module the build finished in 23 ms. On
+     * this tree that priced a phantom 25 s suite for {@code shared/core} and made it the estimate's
+     * long pole: 31.2 s predicted against 17.5 s actual. The same mismatch also broke the
+     * run-tests stamp key, which is built from the same suite-based collection.
+     *
+     * <p>Matched by the directory name under {@code src/}, which is the level discovery works at.
+     * A module that points {@code [test] fixtures} somewhere else is not covered here — the
+     * manifest is not in scope at this call — but {@code JkBuild.Build.DEFAULT_FIXTURES} is the
+     * spelling {@code fixtures = true} stores, and the only one in this tree.
+     */
+    static final String FIXTURES_DIR = "fixtures";
+
     public static List<String> discover(Path projectDir, boolean compact) {
         LinkedHashSet<String> names = new LinkedHashSet<>();
         if (hasSources(
@@ -84,6 +108,7 @@ public final class TestSuites {
                         .map(p -> p.getFileName().toString())
                         .filter(n -> !n.startsWith("."))
                         .filter(n -> !SIMPLE_RESERVED.contains(n.toLowerCase(Locale.ROOT)))
+                        .filter(n -> !FIXTURES_DIR.equals(n))
                         .filter(n -> isSuiteName(n))
                         .sorted()
                         .forEach(n -> {
@@ -105,6 +130,7 @@ public final class TestSuites {
                     stream.filter(Files::isDirectory)
                             .map(p -> p.getFileName().toString())
                             .filter(n -> !"main".equals(n) && !"test".equals(n))
+                            .filter(n -> !FIXTURES_DIR.equals(n))
                             .filter(TestSuites::isSuiteName)
                             .sorted()
                             .forEach(n -> {

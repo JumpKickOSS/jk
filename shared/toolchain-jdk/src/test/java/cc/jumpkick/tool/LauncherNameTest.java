@@ -38,6 +38,29 @@ class LauncherNameTest {
     }
 
     @Test
+    void rejects_the_names_jk_itself_keeps_in_bin() {
+        assertThat(List.of(
+                        "jk",
+                        "JK",
+                        "jkx",
+                        "jk.exe",
+                        "jkx.exe",
+                        "jk.bat",
+                        "jk.cmd",
+                        "jk.old",
+                        "jkx.old.exe",
+                        "jk.exe.old",
+                        "VERSION",
+                        "version"))
+                .allMatch(name -> LauncherName.validationError(name)
+                        .filter(message -> message.contains("jk's own"))
+                        .isPresent());
+        // Near misses stay valid: only the exact stems are jk's.
+        assertThat(List.of("jk2", "jkx-foo", "jkbuild", "my-jk", "versions"))
+                .allMatch(name -> LauncherName.validationError(name).isEmpty());
+    }
+
+    @Test
     void resolve_child_never_returns_a_parent_or_sibling(@TempDir Path tmp) {
         Path root = tmp.resolve("bin");
         assertThat(LauncherName.resolveChild(root, "tool")).isEqualTo(root.resolve("tool"));

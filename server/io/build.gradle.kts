@@ -4,7 +4,7 @@ plugins {
     id("jk.java-conventions")
 }
 
-description = "jk I/O: http, cache, git, repo"
+description = "jk server-side POM walking and dependency fetch pipelines"
 
 dependencies {
     // The thin client slice (http, forge auth, credential files, Cas read/link surface) — carved

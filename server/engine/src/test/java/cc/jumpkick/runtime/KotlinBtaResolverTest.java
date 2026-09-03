@@ -31,9 +31,8 @@ class KotlinBtaResolverTest {
     }
 
     /**
-     * A pre-release of the floor sorts below it. {@code 2.4.0-RC2} used to be accepted by a
-     * major/minor-only guard, and it carries exactly the @file:Import bug the floor exists to
-     * exclude — so the patch-level comparison has to reject it.
+     * A pre-release of the floor sorts below it. {@code 2.4.0-RC2} carries the {@code @file:Import}
+     * bug the floor exists to exclude, so the patch-level comparison must reject it.
      */
     @Test
     void rejects_a_pre_release_of_the_broken_floor() {

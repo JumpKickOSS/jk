@@ -8,10 +8,7 @@ import java.nio.file.Path;
  * Locates the CLI module's {@code src/main/java} for the guards that scan source text rather than
  * behaviour (a rule like "only dispatch begins an envelope" has no runtime seam to assert on).
  *
- * <p>This used to return an {@code Optional} so a run that could not find the tree skipped the
- * scan instead of failing it. Nothing in this repo runs these tests from outside the checkout, so
- * the only thing that hatch ever covered was a broken search — three guards silently passing.
- * {@link RepoRoot} throws instead.
+ * <p>{@link RepoRoot} throws if the tree is missing — these tests only run from a checkout.
  */
 public final class MainSources {
     private MainSources() {}

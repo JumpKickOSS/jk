@@ -76,14 +76,8 @@ public final class ActionCache {
     /**
      * Resolve every blob in {@code outputs} once, with its size.
      *
-     * <p>The presence check, {@link #meter} and the copy each used to call {@link #resolveBlob}
-     * independently, and {@code hasBlob} then re-stat'ed the path {@code resolveBlob} had just
-     * stat'ed — six metadata calls per blob where two serve. On a 10,000-file restore that is tens of
-     * thousands of stats before a byte moves, a third of them only to feed a dashboard byte counter
-     *.
-     *
-     * <p>Empty when any blob is missing: a restore cannot proceed without all of them, so the caller
-     * treats that exactly as the old per-sha presence loop did.
+     * <p>Presence, {@link #meter}, and the copy share this map so each blob is {@code readAttributes}
+     * once. Empty when any blob is missing: a restore cannot proceed without all of them.
      */
     private Optional<Map<String, Blob>> resolveAll(Map<String, String> outputs) {
         Map<String, Blob> blobs = new HashMap<>();
@@ -101,8 +95,7 @@ public final class ActionCache {
 
     /**
      * {@code sha}'s blob in the cache CAS, else the store CAS (promoted Class-C), else {@code null}.
-     * One {@code readAttributes} per candidate — it answers existence, regular-file-ness and size
-     * together, where the three predicates it replaces each re-resolved the path.
+     * One {@code readAttributes} per candidate answers existence, regular-file-ness, and size.
      */
     private @Nullable Blob blob(String sha) {
         Blob hit = statBlob(cas.pathFor(sha));
@@ -399,18 +392,11 @@ public final class ActionCache {
         Optional<Map<String, Blob>> resolved = resolveAll(record.outputs());
         if (resolved.isEmpty()) return false;
         Map<String, Blob> blobs = resolved.get();
-        // Build-host compile freshness stamps (.jstamp/.kstamp) live inside the
-        // classes tree but are NOT part of the cached compiled output — they're
-        // written by a *later* step (write-stamp) of the previous build. Preserve
-        // them across the clear+restore so a compile cache-hit/incremental restore
-        // doesn't wipe the stamp a later step relies on. (The test result is a CAS
-        // marker now, not a file here — see TestStamp.)
-        // Prune rather than wipe, the rule restoreArtifacts already uses. Deleting the tree
-        // guarantees every byte-identical check below misses and re-copies with a fresh mtime — and
-        // FreshnessStamp compares classpath entries by mtime, so a full re-copy of an unchanged
-        // classes tree invalidated every downstream stamp on every cache hit. The stamps this used to
-        // read out and write back are simply *owned* now, so they survive without being rewritten
-        // .
+        // Build-host compile freshness stamps (.jstamp/.kstamp) live inside the classes tree
+        // but are not cached compiled output — write-stamp writes them after compile. They are
+        // owned here so prune keeps them. Prune rather than wipe: FreshnessStamp compares
+        // classpath entries by mtime, so re-copying an unchanged classes tree would invalidate
+        // every downstream stamp on a cache hit.
         Set<Path> owned = new HashSet<>();
         for (String rel : record.outputs().keySet()) {
             owned.add(outputDir.resolve(rel).normalize());
@@ -682,9 +668,8 @@ public final class ActionCache {
             Map<String, List<String>> units,
             /**
              * Output rel-paths that were executable when stored. CAS blobs carry no mode, so
-             * without this a restored binary comes back 0644 and the artifact is unrunnable from
-             * the second build onwards. Empty for records written before this was recorded, which
-             * restore exactly as they used to.
+             * without this a restored binary comes back 0644 and is unrunnable. Empty means no
+             * extra execute bits (default 0644 on restore).
              */
             Set<String> executables) {
 
@@ -695,7 +680,7 @@ public final class ActionCache {
             outputs = Map.copyOf(outputs);
             executables = executables == null ? Set.of() : Set.copyOf(executables);
             // units: source-abs-path → output relPaths it produced. Populated by
-            // an incremental compiler; empty for full rebuilds / legacy records.
+            // an incremental compiler; empty for full rebuilds.
             Map<String, List<String>> u = new LinkedHashMap<>();
             if (units != null) units.forEach((k, v) -> u.put(k, List.copyOf(v)));
             units = Map.copyOf(u);
@@ -769,7 +754,7 @@ public final class ActionCache {
             } else if (line.startsWith("EXEC ")) {
                 executables.add(line.substring("EXEC ".length()).trim());
             } else if (line.startsWith("UNIT ")) {
-                // UNIT <relPath> <sourceAbsPath> — absent in legacy records.
+                // UNIT <relPath> <sourceAbsPath> — omitted when the compiler recorded no per-source units.
                 String body = line.substring("UNIT ".length());
                 int sp = body.indexOf(' ');
                 String rel = body.substring(0, sp);

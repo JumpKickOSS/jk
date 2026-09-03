@@ -4,6 +4,7 @@ package cc.jumpkick.model;
 import cc.jumpkick.host.Hashing;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Running jk identity for cache keys and engine election. Releases key by {@link JkVersion#VERSION}
@@ -21,7 +22,7 @@ public final class BuildIdentity {
      */
     static final int CACHE_KEY_SALT = 1;
 
-    private static volatile String cachedBuildId;
+    private static volatile @Nullable String cachedBuildId;
 
     private BuildIdentity() {}
 

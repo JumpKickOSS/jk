@@ -247,7 +247,7 @@ EngineServer                       elect, accept, drain, close, 4-arm dispatch
   engine.http.*                    dashboard / MCP (shrink, do not grow)
 cc.jumpkick.runtime.*              BuildService, *Plans
 cc.jumpkick.task.*                 CAS / action cache
-shared/wire                        protocol codec — improve it if it is ugly
+cc.jumpkick.wire.*                 protocol codec, paths, transport, DTOs
 ```
 
 `plugins/` holds **two** architectures, not sixteen styles:
@@ -464,10 +464,9 @@ both `check` and `jar`. Three rules:
    and writing one that justifies the new one, in the same diff.
 
 The baseline is the ratchet, and it is deliberately *not* a second
-ceiling: a handful of entries sit above the exception band because they
-are named debt tracked in KanArtist, not because the band moved. A shrink
-passes and prints the tightened line to paste back, so the ratchet never
-blocks progress.
+ceiling. A listed file above the exception band is named debt, not a
+moved band. A shrink passes and prints the tightened line to paste back,
+so the ratchet never blocks progress.
 
 A commit is progress only if a number goes down: lines in the god file,
 map count, overload count, boolean flags, duplicated envelopes, or FQCN
@@ -545,7 +544,9 @@ Zero-runtime. Safe on the Graal CLI. Dogfoods `jk init`.
    `@NonNull`.
 3. No JetBrains / JSR-305 / Lombok nullness in engine or shared.
    IntelliJ keeps JetBrains because the platform API uses it.
-4. Mark new packages first, residue last. NullAway is later work.
+4. The public API boundaries (`shared/jk-api`, `shared/wire`, and `shared/plugin-sdk`) compile with
+   Error Prone + NullAway in `OnlyNullMarked` JSpecify mode at error severity. Every production
+   package in those modules is marked; `checkNullMarkedApiPackages` prevents unmarked additions.
 5. Three-state `Boolean success` on the accumulator is correct (unset /
    ok / fail). Mark `@Nullable`; do not “fix” it to `boolean`.
 
@@ -693,8 +694,8 @@ homes are not symmetrical.
 
 | | Gradle | jk |
 |---|---|---|
-| Home | `buildSrc/src/main/kotlin/jk.java-conventions.gradle.kts`, plus a module's own `build.gradle.kts` | `.jk/after-build.kts` at the workspace root |
-| Unit | one `tasks.registering` task per guard, wired to `check` **and** `jar` | one `guard(id, name) { … }` block per guard |
+| Home | `Guards` in buildSrc, applied by `jk.verification` / `jk.plugin-conventions` / a module script / the root build | `.jk/after-build.kts` at the workspace root |
+| Unit | one Gradle task per guard, wired from `Guards` to `check` and `jar` | one `guard(id, name) { … }` block per guard |
 | Scope | per module, `inputs.files(...)` declared | the whole tree, walked once |
 | Re-runs | when a declared input changes | when any file in the checkout changes |
 | Reports | the first task to fail | every broken rule, in one message |
@@ -830,6 +831,7 @@ is where the mistake is actually typed — runs in both.
 
 Letters are allocated when a guard lands and are never reused.
 
+<!-- guards:start -->
 | id | task | rule | form |
 |---|---|---|---|
 | G0 | `checkCorpus` (`.jk/after-build.kts`) | the gate's own corpus shrinking below the population every scan below it was measured against — module dirs, `src/main/java`, `src/test/java`, `plugins/*`. Not a rule about the code: a floor under the *other* guards, so a broken file tree reports green instead of scanning nothing | ban, self-hosted build only |
@@ -880,11 +882,19 @@ Letters are allocated when a guard lands and are never reused.
 | G45 | `checkBlindWalkRatchet` | a module gaining a blind `Files.walk` / `walkFileTree` / `newDirectoryStream` / `list` in `src/main/java` (prefer `PathUtil.forEachRegularFile`, which hands the walk's attributes to the visitor) | ratchet against `walk-baseline.txt`; a module may only shrink |
 | G46 | `checkJdkRemovalConfined` | JDK removal reachable from anything but an explicit `jk jdk` verb — an ordinary build deleted the JDK it was running on, twice in one afternoon, taking four installs including both GraalVMs | ban + self-fail on `JdkGarbage` still carrying the members it reads |
 | G47 | `checkCaseConversionLocale` | a `toLowerCase()` / `toUpperCase()` in `src/main` without `Locale.ROOT` — under tr_TR/az `'i' ⇄ 'I'` do not round-trip, so an identifier parser is wrong for an entire locale family; one silently rewrote an MCP client's `runtime` scope into `main` | ban + a self-fail arm on scanning zero files |
-| G48 | `checkNoGluedInlineTag` | `{@code`/`link`/`value` glued to its payload (`{@code.asc}`) — renders as literal garbage, and blocks FQCN shortening for the whole file | ban, no allowlist |
-| G50 | `checkNoTicketIds` (root project) | a KanArtist ticket id anywhere in the tree — extension-blind, because every scope this rule was given by extension is where it was missed next: `*.kts` held 153 after the first sweep reported clean, the web client's CSS/JS held ~50 after the second, and a Giter8 template wrote one into a user's own new project | ban, two exemptions (`AGENTS.md`'s board protocol, this page's ban examples) + a self-fail on an empty candidate set |
+| G48 | `checkNoGluedInlineTag` | an inline Javadoc tag glued to its payload (`{@code.asc}`) — renders as literal garbage, and blocks FQCN shortening for the whole file | ban, no allowlist |
 | G49 | `checkSingleHomeRoot` (root project) | a path spelling from the pre-`~/.jk` layout, or a retired per-role `JK_*_DIR`, anywhere a reader can see it — sources, tests, docs and installers, deliberately **not** comment-blind, since comments are the surface being protected; two self-fail arms (stale allowlist entry, empty candidate set) | ban; nine-file allowlist, each entry carrying the reason it reads another program's layout |
+| G50 | `checkNoTicketIds` (root project) | a KanArtist ticket id anywhere in the tree — extension-blind, because every scope this rule was given by extension is where it was missed next: `*.kts` held 153 after the first sweep reported clean, the web client's CSS/JS held ~50 after the second, and a Giter8 template wrote one into a user's own new project | ban, two exemptions (`AGENTS.md`'s board protocol, this page's ban examples) + a self-fail on an empty candidate set |
 | G51 | `checkGuardParity` (root project) + `.jk/after-build.kts` | a guard letter enforced by one build and not the other — G46 through G50 lived on the Gradle side only, so `jk build` printed "house rules clean" while enforcing 36 of the 41 it claimed, and neither gate's count was wrong about itself. Deliberately implemented twice: a parity check only one build runs has the shape of the problem it prevents. The exception list is single-owner (`guard-parity.txt`), so a letter cannot be excused on one side and demanded on the other | ban; exceptions carry the reason parity is impossible, and "not ported yet" is not one |
 | G52 | `checkTestTierDocs` (root project) + `.jk/after-build.kts` | the contributor tier table differs from `TestTiers` task names, include/exclude tags, order, or `checkAll` membership | exact generated-block comparison in both builds |
+| G53 | `checkNullMarkedApiPackages` (root project) + `.jk/after-build.kts` | a production package in `shared/jk-api`, `shared/wire`, or `shared/plugin-sdk` lacks package-level `@NullMarked`, or the measured 14-package corpus shrinks | ban, no allowlist |
+| G54 | `checkPluginSdkBoundary` (root project) + `.jk/after-build.kts` | a first-party plugin adds an unclassified project dependency, or an exception disappears without removing its allowlist row | SDK/host baseline plus the current invariant table in `docs/contributors/plugins.md`; server dependencies are banned |
+| G55 | `checkEngineConfigDocs` (root project) + `.jk/after-build.kts` | the published engine-config tables differ from `EngineControls` keys, env names, defaults, or meaning | exact generated-block comparison in both builds |
+| G56 | `checkBootstrapVersions` (root project) + `.jk/after-build.kts` | the wrapper task version disagrees with `gradle-wrapper.properties`, or a `setup-node` step does not read `.nvmrc` | exact version comparison in both builds |
+| G57 | `checkCiCadence` (root project) + `.jk/after-build.kts` | nightly CI no longer runs `benchTest`, `coverageReport`, or the macOS/Windows product smoke | workflow text scan in both builds |
+| G58 | `checkSecurityDocs` (root project) + `.jk/after-build.kts` | the security-reporting page, the GitHub `SECURITY.md` pointer, or the advisory URL is missing | file and pointer scan in both builds |
+| G59 | `checkNoHistoricalNarration` (root project) + `.jk/after-build.kts` | a comment or doc narrates a previous design instead of the current invariant | phrase scan in both builds; AGENTS.md and comments.md exempt because they name the ban |
+<!-- guards:end -->
 
 `checkCliRuntimeClasspath` and `checkCliNoParseTypes` predate the letters.
 Both read only `clients/cli`, so both are now arms of `CliSourceRulesTest`
@@ -900,35 +910,21 @@ the same defect as a baseline that lags the tree, and it has the same fix:
 reconcile by listing both sides and diffing them.
 
 Twice by hand is the argument for the third time not being by hand.
-`checkGuardRegistry` (root project) now reads the letters out of every
-`*.gradle.kts` in the tree and out of this table, and fails when the two sets
-differ or when a letter appears twice here — the same shape `checkStageDocs`
-uses to hold `BuildStage` against three doc pages. Retired and never-issued
-letters keep a row saying so, because the set has to be total for the diff to
-mean anything.
+`Guards` in buildSrc is the typed catalog: letters, task names, descriptions,
+attach set, and fast-gate membership. `checkGuardRegistry` diffs this table
+against `Guards.tableMarkdown()`. Add a row by adding a `GuardSpec`; the
+marked table is generated, not edited. Retired and never-issued letters keep
+a row saying so, because the set has to be total for the diff to mean
+anything.
 
-Reconciling for it also found two **contradicting** pairs: G25 and G26 each had
-two rows, and the stale G26 named `checkNoUnownedSpawn`, a task that does not
-exist. That is the failure mode a lagging registry actually has — not a missing
-row, which a reader notices, but a row that answers confidently and wrong.
-
-Two spellings of the letter comment exist — `// Guard G20:` and
-`// G22 — …:` — and a scan for the first form silently misses the
-second. That is the campaign's own lesson landing on its own registry: a
-probe's answer is bounded by what the probe can see. Match on the letter,
-not on the word.
-
-    guards in gradle:   grep -h 'val check.* by tasks.registering' \
-                          buildSrc/src/main/kotlin/*.kts */*/build.gradle.kts
+    guards in gradle:   `Guards` in `buildSrc/src/main/kotlin/Guards.kt`
     guards in the gate: grep -o 'guard("[A-Z0-9]*", "check[A-Za-z]*"' \
                           .jk/after-build.kts
     rules as tests:     ls */*/src/test/java/**/*RulesTest.java \
                           */*/src/test/java/**/{ForecastKeyParity,IdeClientWiring,SpikeCacheTempDir}Test.java
-    guards in registry: grep -o '`check[A-Za-z]*`' code-as-art.md
 
-Run all four before adding a row — every home is another place to drift,
-and a rule enforced by one of them is enforced part of the time.
-Thirty-three to twenty-nine was the gap the first time this was checked.
+A new Gradle `check*` task that is not in `Guards` fails `checkGateCoverage`.
+Wire it with `registerGuard("checkFoo") { … }`.
 
 A guard does not have to live in `buildSrc`. G19, G22 and G24 sit in the
 `build.gradle.kts` of the module that owns the fact — which is the right
@@ -1274,8 +1270,8 @@ commit that pastes that number into `size-baseline.txt` updates **Today**
 here. Re-baselining upward requires deleting the invariant comment that
 justified the old number and writing one that justifies the new one.
 
-The rows still over the exception band are named debt tracked in KanArtist,
-not a moved band.
+No listed file remains over a hard cap. A new exception is a reviewable
+`size-baseline.txt` entry plus the invariant that must not be split.
 
 ---
 

@@ -18,17 +18,17 @@ import cc.jumpkick.cli.tui.Coord;
 import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.cli.tui.ModuleScopeHint;
 import cc.jumpkick.config.SessionContext;
-import cc.jumpkick.engine.EnginePaths;
-import cc.jumpkick.engine.protocol.ExecPlan;
-import cc.jumpkick.engine.protocol.PluginCommandReport;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
-import cc.jumpkick.runtime.WorkspaceRequest;
-import cc.jumpkick.runtime.WorkspaceResult;
 import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.wire.EnginePaths;
+import cc.jumpkick.wire.protocol.ExecPlan;
+import cc.jumpkick.wire.protocol.PluginCommandReport;
+import cc.jumpkick.wire.runtime.WorkspaceRequest;
+import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -279,7 +279,7 @@ public final class RunCommand {
     /**
      * The build succeeded but the engine's main-class scan couldn't name an entry point — {@code
      * issue} is {@code "missing"} (nothing found) or {@code "ambiguous"} (several found), per
-     * {@link cc.jumpkick.engine.protocol.ExecPlan#mainIssue}.
+     * {@link cc.jumpkick.wire.protocol.ExecPlan#mainIssue}.
      */
     private static final class EntryPointUnresolvedException extends IOException {
         private final String issue;
@@ -312,7 +312,7 @@ public final class RunCommand {
     /**
      * Tail of the settled Run CommandWedge: {@code Executing [yellow]`java -cp … Main`[/]} or
      * {@code Executing [yellow]`java -jar path`[/]} (from {@link
-     * cc.jumpkick.engine.protocol.ExecPlan#display}), or a native binary path in the same shape.
+     * cc.jumpkick.wire.protocol.ExecPlan#display}), or a native binary path in the same shape.
      */
     private static String execTail(Path projectDir, ExecPlan plan) {
         Theme t = Theme.active();

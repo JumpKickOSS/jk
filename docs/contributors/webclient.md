@@ -259,10 +259,12 @@ server-side so unchanged free RAM does not repaint noise.
 ## Testing
 
 `fold.js` is browser-free on purpose — pure functions of `(cards, event)` — and is tested
-headlessly with `node --test`. One JUnit wrapper, `WebClientJsTest`, runs every
+headlessly with `node --test`. Fold-layer suites share `fold-harness.mjs` for the staged SPA
+bindings so the export list has one owner. One JUnit wrapper, `WebClientJsTest`, runs every
 `src/test/js/*.test.mjs`: it stages the SPA's modules in a `type:module` temp dir and hands each
-one to Node as `JK_<NAME>_MJS` (plus `JK_APP_DIR`). Node is required — a missing `node` fails the
-build rather than skipping; opt out deliberately with `JK_WEB_JS_SKIP=1`:
+one to Node as `JK_<NAME>_MJS` (plus `JK_APP_DIR`). Node is required at the version in
+[`.nvmrc`](../../.nvmrc) — a missing `node` fails the build rather than skipping; opt out
+deliberately with `JK_WEB_JS_SKIP=1`. See [CONTRIBUTING.md](../../CONTRIBUTING.md).
 
 ```bash
 ./gradlew :web:test

@@ -3,7 +3,7 @@
 #
 # Bootstraps CURRENT jk, never a historical one: uses the locally installed jk that
 # satisfies the lock's optional `jk-min` floor, else fetches the latest published release
-# (verified against the release's SHA256SUMS) and execs it. The lock pins inputs, not the
+# (verified against the signed release SHA256SUMS) and execs it. The lock pins inputs, not the
 # operator — there is no version pin here and none in jk-lock.toml.
 set -eu
 
@@ -13,6 +13,7 @@ set -eu
 # forever, so `jk self update` (which replaces the bin-dir binary) never reached its users.
 BIN_DIR="${JK_HOME:-$HOME/.jk}/bin"
 RELEASES="${JK_RELEASES_URL:-https://jumpkick.build/releases}"
+RELEASE_RSA_SPKI="MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEA62bXAMmyIpPgiFzT9lcuIPWvvXHmWfGDPbMJAG1lRlbSJ9EFRahqkie0LQaFtXn8W3l2BP/9D0DwdXztS/eVo8WqSNMOZo/srBKrViVJGEOFm0fDmhqrlA3bCZz43+DgFjj7SacI2nJVB4PRjV5jvRwBnZrIUwcvynIQmx2SoWoKgudoje7vNM7UkYmEnZExfmiPQaPmSYCKzXA4pP5KPWD+49bo7o3cLeiO5/Shc27OC0IvK+Vj8CUe4URSt5zHjHUpiE+h4SVTMrGoJg9rgWmRgMHdshsq3aoAkA3jC/YB5SzLwUJeObWGP8I9w7yj8uiSTNIt3KslbRfVtb4vbNoZ4zKPMkCaYhy5ar0sGOqxW97wobIWBiX5pT+knluZErrsJFWpx2dQtRtb2wPovihL7Z9Q18vZb371Gx+rzkNi7jdFvWaGYgsraf01l63Gg2bfy1bleSLhDKmh94yGMoHfszEcE1785xteYOdVSwawUPwWgx8iZ7a4lqOL0MrrAgMBAAE="
 case "$0" in */*) DIR="${0%/*}" ;; *) DIR="." ;; esac
 
 # The lock's optional floor: minimum jk able to run this checkout.
@@ -74,19 +75,55 @@ OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
 case "$OS" in darwin) OS=macos ;; esac
 ARCH="$(uname -m)"
 case "$ARCH" in amd64) ARCH=x86_64 ;; arm64) ARCH=aarch64 ;; esac
-FILE="jk-$OS-$ARCH.xz"
+FILE="jk-$OS-$ARCH-$VERSION.xz"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 echo "jk wrapper: fetching jk $VERSION ..." >&2
 curl -fsSL -o "$TMP/$FILE" "$RELEASES/$VERSION/$FILE"
-# Verify against the release's own checksum manifest (coreutils format).
 curl -fsSL -o "$TMP/SHA256SUMS" "$RELEASES/$VERSION/SHA256SUMS"
-WANT="$(awk -v f="$FILE" '$2 == f { print $1 }' "$TMP/SHA256SUMS")"
-if [ -z "$WANT" ]; then
-  echo "jk wrapper: release SHA256SUMS has no entry for $FILE — refusing." >&2
+curl -fsSL -o "$TMP/SHA256SUMS.sig" "$RELEASES/$VERSION/SHA256SUMS.sig"
+if ! command -v openssl >/dev/null 2>&1; then
+  echo "jk wrapper: OpenSSL is required to authenticate the release." >&2
   exit 1
 fi
-GOT="$( (sha256sum "$TMP/$FILE" 2>/dev/null || shasum -a 256 "$TMP/$FILE") | awk '{print $1}')"
+{
+  printf '%s\n' "-----BEGIN PUBLIC KEY-----"
+  printf '%s' "$RELEASE_RSA_SPKI" | fold -w 64
+  printf '\n'
+  printf '%s\n' "-----END PUBLIC KEY-----"
+} >"$TMP/release-public.pem"
+SIG_TEXT="$(tr -d '\r' <"$TMP/SHA256SUMS.sig")"
+SIG_LINES="$(wc -l <"$TMP/SHA256SUMS.sig" | tr -d '[:space:]')"
+if { [ "$SIG_LINES" != "0" ] && [ "$SIG_LINES" != "1" ]; } ||
+  [ "${#SIG_TEXT}" -ne 512 ] ||
+  ! printf '%s' "$SIG_TEXT" | LC_ALL=C grep -Eq '^[A-Za-z0-9+/]+={0,2}$'; then
+  echo "jk wrapper: release signature is malformed — refusing." >&2
+  exit 1
+fi
+printf '%s' "$SIG_TEXT" | openssl base64 -d -A >"$TMP/SHA256SUMS.sig.bin" 2>/dev/null || {
+  echo "jk wrapper: release signature is not valid base64 — refusing." >&2
+  exit 1
+}
+openssl dgst -sha256 -verify "$TMP/release-public.pem" -signature "$TMP/SHA256SUMS.sig.bin" \
+  "$TMP/SHA256SUMS" >/dev/null 2>&1 || {
+  echo "jk wrapper: release signature verification failed — refusing." >&2
+  exit 1
+}
+WANT="$(awk -v wanted="$FILE" '
+  {
+    hash = substr($0, 1, 64)
+    sep = substr($0, 65, 2)
+    name = substr($0, 67)
+    if (length(hash) != 64 || hash !~ /^[0-9A-Fa-f]+$/ || sep != "  " ||
+        name !~ /^[A-Za-z0-9][A-Za-z0-9._-]*$/ || seen[name]++) bad = 1
+    if (name == wanted) { matches++; found = tolower(hash) }
+  }
+  END { if (bad || matches != 1) exit 1; print found }
+' "$TMP/SHA256SUMS")" || {
+  echo "jk wrapper: release SHA256SUMS is malformed or lacks one exact $FILE entry — refusing." >&2
+  exit 1
+}
+GOT="$(openssl dgst -sha256 "$TMP/$FILE" | awk '{print tolower($NF)}')"
 if [ "$GOT" != "$WANT" ]; then
   echo "jk wrapper: sha256 mismatch for $FILE — refusing (expected $WANT, got $GOT)." >&2
   exit 1

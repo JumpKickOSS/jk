@@ -2,11 +2,11 @@
 package cc.jumpkick.engine.runtime;
 
 import cc.jumpkick.cache.JkStores;
-import cc.jumpkick.engine.protocol.CatalogReadAck;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.resolver.Versions;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.wire.protocol.CatalogReadAck;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;

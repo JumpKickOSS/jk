@@ -33,6 +33,7 @@ class JkManualTest {
         assertThat(md).contains("jk test --gate");
         assertThat(md).contains("raw.githubusercontent.com/JumpKickOSS/jk");
         assertThat(md).contains("jumpkick.build/documentation");
+        assertThat(md).contains("`security`");
     }
 
     @Test

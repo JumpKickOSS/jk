@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 plugins {
-    id("jk.java-conventions")
+    id("jk.nullmarked-conventions")
     `java-test-fixtures`
     `maven-publish`
 }
@@ -36,6 +36,8 @@ tasks.compileJava {
 // :host publishes as `cc.jumpkick:jk-host` — see shared/host/build.gradle.kts.
 dependencies {
     api(project(":host"))
+    testImplementation(libs.kotlin.compiler.embeddable)
+    testRuntimeOnly(libs.jspecify)
     // The SPI's own fake (`FakeBuildIo`) lives in `testFixtures`, so the four plugin modules that
     // drive a packager or a step body share one implementation of these interfaces instead of four.
     // It is here rather than in :host's testFixtures because it names PackageIo/TaskExec, and :host
@@ -173,7 +175,7 @@ fun blankJavaComments(src: String): String {
 // legitimately build specs both ways. Measured 2026-08-25: 0 violations over 119 files
 // (70 plugin, 49 plugin-sdk).
 // Guard G29.
-val checkWorkerOfflineFromSpec by tasks.registering {
+val checkWorkerOfflineFromSpec = registerGuard("checkWorkerOfflineFromSpec") {
     group = "verification"
     description = "Fail the build on a JK_OFFLINE / offline-property read in worker sources (use TaskExec.offline())"
     val treeRoot = rootProject.layout.projectDirectory.asFile
@@ -241,5 +243,3 @@ val checkWorkerOfflineFromSpec by tasks.registering {
         stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
     }
 }
-tasks.named("check") { dependsOn(checkWorkerOfflineFromSpec) }
-tasks.named("jar") { dependsOn(checkWorkerOfflineFromSpec) }

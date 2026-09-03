@@ -3,11 +3,11 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.engine.protocol.EngineProtocol;
-import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.Task;
+import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.protocol.ProtoEvents;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -17,15 +17,11 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * The sixth fake-green mechanism, closed: a {@code jk format} worker that dies mid-run used to be
- * reported as a successful, complete format. Nothing failed the task on a worker death, so {@code
- * BuildPlanResult.success()} was {@code true} — and that one boolean is the verdict the journal, the
- * dashboard and the terminal wedge all read. A worker that SIGSEGV'd at file 500 of 2,063 changed
- * almost nothing and reported no errors, so the wedge printed "Already formatted" while the CLI
- * returned 139 to the shell on the very next line.
+ * A {@code jk format} worker that dies mid-run fails the plan.
  *
- * <p>These run a <em>real fork</em> ({@link FormatWorkerStub}) through the real {@code PluginClient}
- * dispatch, so what is under test is the production route, not a re-derivation of the arithmetic.
+ * <p>{@code BuildPlanResult.success()} is the verdict the journal, dashboard and terminal wedge
+ * all read, so a SIGSEGV after a partial visit cannot report as a complete format. These run a
+ * <em>real fork</em> ({@link FormatWorkerStub}) through the real {@code PluginClient} dispatch.
  * {@link FormatReconcileTest} covers the arithmetic itself.
  */
 @Tag("integration")
@@ -100,9 +96,8 @@ class FormatWorkerCompletenessTest {
     }
 
     /**
-     * The headline. Eight files planned, three reported, then the worker dies with a SIGSEGV's 139.
-     * The assertion that matters is on the plan verdict, not the exit code — the exit code was
-     * always right, which is precisely why this shipped.
+     * Eight files planned, three reported, then the worker dies with a SIGSEGV's 139.
+     * The assertion that matters is on the plan verdict, not the exit code.
      */
     @Test
     void a_worker_that_dies_mid_run_fails_the_plan(@TempDir Path tmp) throws Exception {

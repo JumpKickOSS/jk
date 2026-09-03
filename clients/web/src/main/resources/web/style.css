@@ -49,8 +49,7 @@
   --mu-rgb: 144, 164, 174;
   --dim-rgb: 92, 109, 120;   /* muted terminal (cancelled) — pairs with --dim */
 
-  /* Named chrome/state values that used to be inlined as raw hex — centralised so the palette has
-   * one home (color still means state, never decoration). */
+  /* Named chrome/state values — one home for the palette (color means state, never decoration). */
   --header-bg: #0a0d11;             /* sticky nav: a touch darker than the page */
   --header-bd: #1c2833;
   --run-line: #5ab0ff;              /* running step-node border — brighter than --run on --runc fill */

@@ -155,7 +155,6 @@
     3  server/engine/src/test/java/cc/jumpkick/runtime/NativePlansTest.java
     1  server/engine/src/test/java/cc/jumpkick/runtime/PinnedWorkerJarTest.java
     1  server/engine/src/test/java/cc/jumpkick/runtime/RobolectricUnitTest.java
-    2  server/engine/src/test/java/cc/jumpkick/runtime/ScheduleBiasTest.java
     1  server/engine/src/test/java/cc/jumpkick/runtime/TestEffortTest.java
     1  server/engine/src/test/java/cc/jumpkick/runtime/TestEnvTest.java
     1  server/engine/src/test/java/cc/jumpkick/runtime/WorkspaceExecuteSelectionTest.java

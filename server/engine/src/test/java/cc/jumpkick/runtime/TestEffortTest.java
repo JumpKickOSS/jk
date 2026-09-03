@@ -37,6 +37,28 @@ class TestEffortTest {
     }
 
     /**
+     * The cold arm of the ladder — no suite wall, no class walls, no learned rate — is methods x
+     * the calibration method-ms, divided across runners, plus one startup. Pinned against the
+     * baseline constant with a 2x band for host scaling, so the multiplier cannot drift by an
+     * order of magnitude again without a test going red (a 19 s build was once priced in minutes).
+     */
+    @Test
+    void cold_ladder_is_methods_times_calibration_method_ms_over_runners() {
+        int methods = 1000;
+        long startup = TestEffort.suiteStartupMs();
+        long serial = TestEffort.wallMillis("/cold", Map.of(), List.of(), methods, null, List.of(), null, 1);
+        double perMethod = (serial - startup) / (double) methods;
+        assertThat(perMethod)
+                .as("effective cold ms/method vs the calibration baseline")
+                .isBetween(Calibration.BASELINE_METHOD_MS / 2.0, Calibration.BASELINE_METHOD_MS * 2.0);
+
+        long sharded = TestEffort.wallMillis("/cold", Map.of(), List.of(), methods, null, List.of(), null, 4);
+        assertThat(sharded - startup)
+                .as("runners divide the cold body")
+                .isBetween((serial - startup) / 5, (serial - startup) / 3);
+    }
+
+    /**
      * Regression: the documented specificity ladder is module residual → project
      * median → host absolute. Sibling-module rates must win over a host-wide average that may
      * have been trained by unrelated projects.

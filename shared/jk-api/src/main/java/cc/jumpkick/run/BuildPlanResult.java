@@ -4,6 +4,7 @@ package cc.jumpkick.run;
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Terminal result of a {@link BuildPlan#run}. Lists every step that ran (with status + duration) plus
@@ -70,15 +71,15 @@ public record BuildPlanResult(
     public record Diagnostic(
             String step,
             String code,
-            String message,
-            String test,
-            String exceptionClass,
-            String module,
-            String engine,
-            String className,
-            String method,
-            String stack,
-            String file,
+            @Nullable String message,
+            @Nullable String test,
+            @Nullable String exceptionClass,
+            @Nullable String module,
+            @Nullable String engine,
+            @Nullable String className,
+            @Nullable String method,
+            @Nullable String stack,
+            @Nullable String file,
             int line,
             int snippetStart,
             List<String> snippet,
@@ -90,7 +91,12 @@ public record BuildPlanResult(
         }
 
         /** Legacy two-field test failure (display label + exception class). */
-        public Diagnostic(String step, String code, String message, String test, String exceptionClass) {
+        public Diagnostic(
+                String step,
+                String code,
+                @Nullable String message,
+                @Nullable String test,
+                @Nullable String exceptionClass) {
             this(
                     step,
                     code,
@@ -110,7 +116,7 @@ public record BuildPlanResult(
         }
 
         /** Full structured test failure (incl. optional source snippet). */
-        public Diagnostic(String step, String code, String message, TestFailureInfo failure) {
+        public Diagnostic(String step, String code, @Nullable String message, @Nullable TestFailureInfo failure) {
             this(
                     step,
                     code,
@@ -132,10 +138,9 @@ public record BuildPlanResult(
         public Diagnostic {
             if (snippet == null) snippet = List.of();
             else snippet = List.copyOf(snippet);
-            if (file == null) file = "";
         }
 
-        public TestFailureInfo testFailure() {
+        public @Nullable TestFailureInfo testFailure() {
             if ((module == null || module.isEmpty())
                     && (className == null || className.isEmpty())
                     && (method == null || method.isEmpty())
@@ -146,18 +151,22 @@ public record BuildPlanResult(
                 return null;
             }
             return new TestFailureInfo(
-                    module,
-                    engine,
-                    className,
-                    method,
-                    exceptionClass,
-                    message,
-                    stack,
+                    empty(module),
+                    empty(engine),
+                    empty(className),
+                    empty(method),
+                    empty(exceptionClass),
+                    empty(message),
+                    empty(stack),
                     worker,
-                    file,
+                    empty(file),
                     line,
                     snippetStart,
                     snippet);
+        }
+
+        private static String empty(@Nullable String value) {
+            return value == null ? "" : value;
         }
     }
 }

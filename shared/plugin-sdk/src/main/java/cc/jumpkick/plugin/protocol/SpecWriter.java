@@ -11,6 +11,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Builds a {@link PluginProtocol} spec (engine→plugin) as JSONL lines — one writer for every
@@ -21,7 +22,7 @@ public final class SpecWriter {
 
     private final List<String> lines = new ArrayList<>();
 
-    public SpecWriter op(String op, String name, String pluginId) {
+    public SpecWriter op(String op, @Nullable String name, String pluginId) {
         StringBuilder b = new StringBuilder("{\"t\":")
                 .append(Jsonl.quote(PluginProtocol.OP))
                 .append(",\"op\":")
@@ -65,7 +66,6 @@ public final class SpecWriter {
     }
 
     public SpecWriter configString(String key, String value) {
-        if (value == null) return this;
         lines.add("{\"t\":\"config\",\"key\":" + Jsonl.quote(key) + ",\"kind\":\"string\",\"value\":"
                 + Jsonl.quote(value) + "}");
         return this;
@@ -100,8 +100,9 @@ public final class SpecWriter {
                 .append(p.nativeDeclared())
                 .append(",\"kotlin\":")
                 .append(p.kotlin());
-        if (p.mainClass() != null && !p.mainClass().isBlank()) {
-            b.append(",\"mainClass\":").append(Jsonl.quote(p.mainClass()));
+        @Nullable String mainClass = p.mainClass();
+        if (mainClass != null && !mainClass.isBlank()) {
+            b.append(",\"mainClass\":").append(Jsonl.quote(mainClass));
         }
         b.append('}');
         lines.add(b.toString());
@@ -115,12 +116,10 @@ public final class SpecWriter {
     public SpecWriter layout(Map<String, Path> dirs) {
         StringBuilder b = new StringBuilder("{\"t\":\"layout\"");
         for (Map.Entry<String, Path> e : dirs.entrySet()) {
-            if (e.getValue() != null) {
-                b.append(',')
-                        .append(Jsonl.quote(e.getKey()))
-                        .append(':')
-                        .append(Jsonl.quote(e.getValue().toAbsolutePath().toString()));
-            }
+            b.append(',')
+                    .append(Jsonl.quote(e.getKey()))
+                    .append(':')
+                    .append(Jsonl.quote(e.getValue().toAbsolutePath().toString()));
         }
         b.append('}');
         lines.add(b.toString());
@@ -159,21 +158,21 @@ public final class SpecWriter {
         return this;
     }
 
-    public SpecWriter entry(String fileName, Path jar, boolean snapshot, Path container) {
+    public SpecWriter entry(String fileName, @Nullable Path jar, boolean snapshot, @Nullable Path container) {
         return entry(fileName, jar, snapshot, container, "", "", "");
     }
 
     /** As above with the entry's Maven identity (runtime-closure provenance for packagers). */
     public SpecWriter entry(
             String fileName,
-            Path jar,
+            @Nullable Path jar,
             boolean snapshot,
-            Path container,
+            @Nullable Path container,
             String group,
             String artifact,
             String version) {
         StringBuilder b = new StringBuilder("{\"t\":\"entry\",\"file\":").append(Jsonl.quote(fileName));
-        if (group != null && !group.isEmpty()) {
+        if (!group.isEmpty()) {
             b.append(",\"group\":")
                     .append(Jsonl.quote(group))
                     .append(",\"artifact\":")

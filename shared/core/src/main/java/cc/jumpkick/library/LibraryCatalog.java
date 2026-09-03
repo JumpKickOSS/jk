@@ -161,8 +161,8 @@ public final class LibraryCatalog {
     /**
      * Does {@code jkToml} declare a non-empty {@code [workspace] modules} array? Scanned rather
      * than parsed, because catalog loading runs <em>inside</em> a full parse and re-entering it
-     * would recurse. {@link cc.jumpkick.config.WorkspaceScan} is the owner of that scan — this used to be a private
-     * copy of it, and the copy could not see the dotted {@code workspace.modules = [...]} form.
+     * would recurse. {@link cc.jumpkick.config.WorkspaceScan} owns that scan and covers both the
+     * table form and the dotted {@code workspace.modules = [...]} form.
      */
     static boolean declaresWorkspaceModules(Path jkToml) {
         return !workspaceModulePaths(jkToml).isEmpty();

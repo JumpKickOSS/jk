@@ -47,7 +47,7 @@ object TestTiers {
 
     /**
      * Microbenchmarks. Not part of any gate — they print medians and assert nothing about deltas, so gating on them
-     * would gate on CI noise. They still have to *run* somewhere or they rot (`./gradlew bench` / nightly).
+     * would gate on CI noise. They still have to *run* somewhere or they rot (`./gradlew benchTest` / nightly).
      */
     const val BENCH = "benchTest"
 

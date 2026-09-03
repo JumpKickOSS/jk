@@ -12,6 +12,9 @@ import cc.jumpkick.lock.LockManifestDigest;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.wire.runtime.WorkspaceRequest;
+import cc.jumpkick.wire.runtime.WorkspaceSpec;
+import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -116,27 +119,29 @@ class TaskForecasterImageTargetTest {
         WorkspaceRequest base = new WorkspaceRequest(root, cache, null, 0, null, false, false, 0, null, true, true);
 
         // PACKAGE: no terminal dirs.
-        assertThat(WorkspaceExecute.terminalTargetDirs(units, base)).isEmpty();
+        assertThat(WorkspacePreflightPhase.terminalTargetDirs(units, base)).isEmpty();
 
         // IMAGE, selected: the module.
         WorkspaceRequest image = base.withSpec(WorkspaceSpec.image(Set.of(app), null, null, null, null, null));
-        assertThat(WorkspaceExecute.terminalTargetDirs(units, image)).containsExactly(app);
+        assertThat(WorkspacePreflightPhase.terminalTargetDirs(units, image)).containsExactly(app);
 
         // IMAGE, empty selection: whole graph.
         WorkspaceRequest imageAll = base.withSpec(WorkspaceSpec.of(WorkspaceTarget.IMAGE));
-        assertThat(WorkspaceExecute.terminalTargetDirs(units, imageAll)).containsExactly(app);
+        assertThat(WorkspacePreflightPhase.terminalTargetDirs(units, imageAll)).containsExactly(app);
 
         // NATIVE needs a resolvable Graal home; without one the module is not a terminal.
         WorkspaceRequest nat = base.withSpec(WorkspaceSpec.nativeImage(Set.of(app), Map.of(), null, List.of()));
-        assertThat(WorkspaceExecute.terminalTargetDirs(units, nat)).isEmpty();
+        assertThat(WorkspacePreflightPhase.terminalTargetDirs(units, nat)).isEmpty();
         WorkspaceRequest natWithHome = base.withSpec(
                 WorkspaceSpec.nativeImage(Set.of(app), Map.of(app, root.resolve("graal")), null, List.of()));
-        assertThat(WorkspaceExecute.terminalTargetDirs(units, natWithHome)).containsExactly(app);
+        assertThat(WorkspacePreflightPhase.terminalTargetDirs(units, natWithHome))
+                .containsExactly(app);
 
         // INSTALL: every cone module is a cache-install terminal (prereqs included).
         WorkspaceRequest inst = base.withSpec(WorkspaceSpec.install(Set.of(), Map.of(), null));
-        assertThat(WorkspaceExecute.terminalTargetDirs(units, inst)).containsExactly(app);
+        assertThat(WorkspacePreflightPhase.terminalTargetDirs(units, inst)).containsExactly(app);
         WorkspaceRequest instSelected = base.withSpec(WorkspaceSpec.install(Set.of(app), Map.of(), null));
-        assertThat(WorkspaceExecute.terminalTargetDirs(units, instSelected)).containsExactly(app);
+        assertThat(WorkspacePreflightPhase.terminalTargetDirs(units, instSelected))
+                .containsExactly(app);
     }
 }

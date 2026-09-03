@@ -274,10 +274,7 @@ listOf("integrationTest", "networkTest", "slowTest").forEach { tier ->
 // Guard G14: a forecast key must hash the same facts as the build key.
 //
 // `jk explain` re-derives every cache key the build computes. When the two derivations disagree the
-// forecast either reports a phantom rebuild (the visible symptom) or blesses a stale artifact (the
-// dangerous one). Six such drifts were live at once. The two tests that claimed to guard this
-// asserted two hand-typed `List.of(...)` literals in the *test file* against each other instead of
-// reading the real bags, which is exactly why they stayed green through all six.
+// forecast either reports a phantom rebuild or blesses a stale artifact.
 //
 // Three arms, all plain text scans over this module's `src/main/java`:
 //
@@ -288,29 +285,20 @@ listOf("integrationTest", "networkTest", "slowTest").forEach { tier ->
 //                               run at different times over different inputs); the set of
 //                               `"<prefix>:"` literals may not, because a prefix on one side only
 //                               means one side hashes a fact the other ignores.
-//        - `forArtifactShared`  ONE body, called by the build and by the forecast. A prefix set
-//                               cannot see a value drift behind an agreed prefix — one such drift was
-//                               exactly that, two sites both emitting `main:` from different
-//                               sources — and extending the scan to values is not possible, since
-//                               values legitimately differ per module. So the durable answer is one
-//                               owner, and what the guard checks is that the owner really has both
-//                               callers. A "shared" key with one caller is an unpaired key wearing
-//                               the word.
+//        - `forArtifactShared`  ONE body, called by the build and by the forecast. Prefix-set
+//                               equality cannot see a value drift behind an agreed prefix, and
+//                               values legitimately differ per module, so the guard checks that the
+//                               owner really has both callers. A "shared" key with one caller is
+//                               an unpaired key wearing the word.
 //        - `forArtifactUnpaired` no forecast key, with the reason — AND whether the forecast emits a
-//                               *step* for that task at all. Those are different claims, and the
-//                               difference is where the forecast bug lived: `PlannerPlugin|pkgKey` was
-//                               exempted as "plugin packager: not forecast", which was true of the
-//                               key and false of the step. explain emitted `package-jar` for every
-//                               Boot/Grails/Quarkus/minified module and priced it against the plain
-//                               jar's key, which those builds never compute. An exemption that is
-//                               accurate about today is how a gap hides, so the flag is now checked
-//                               against what TaskForecaster actually constructs.
+//                               *step* for that task at all. Those are different claims. The flag
+//                               is checked against what TaskForecaster actually constructs.
 //
 //   B. `CompileRequest` builder chains, restricted to the fields `ActionKey.forJavac` actually
-//      reads — now including `javaHome`, which it hashes. The scan follows the WHOLE
-//      chain: the fluent primary chain plus every later statement on the same builder variable, up
-//      to its `build()`. It used to stop at the first `;`, which hid the conditional Scala
-//      continuation both keyed build sites carry and the forecast set on neither.
+//      reads — including `javaHome`, which it hashes. The scan follows the WHOLE chain: the fluent
+//      primary chain plus every later statement on the same builder variable, up to its `build()`.
+//      Both keyed build sites carry a conditional Scala continuation; the forecast must hash those
+//      fields too.
 //
 //   C. `compileRequestShared` — the compile-main request has one body (`PlannerCompile
 //      .mainCompileRequest`) that the build step and the forecast both call, for the same reason
@@ -334,8 +322,8 @@ val forArtifactShared = mapOf(
                 "TaskForecaster.java|PackagingKeys.pluginPackagerStep(")))
 
 // forArtifact sites with no forecast twin. Triple(task name, does the forecast emit a step for that
-// task, why there is nothing to compare). The boolean is checked against TaskForecaster: claiming
-// "not forecast" for a task the forecast does step is what hid the drift for a whole release.
+// task, why there is nothing to compare). The boolean is checked against TaskForecaster so an
+// unpaired key cannot claim "not forecast" for a task the forecast does step.
 val forArtifactUnpaired = mapOf(
         "PlannerTails.java|key" to Triple(
                 "package-sources", false, "explain does not forecast the sources jar at all"),
@@ -382,7 +370,7 @@ val compileRequestSites = mapOf(
         "LocalProjectBuilder.java" to 1, // unkeyed: source-dependency build calls JavacRunner directly
         "ScriptPlans.java" to 1) // unkeyed: jk run <script> calls JavacRunner directly
 
-val checkForecastKeyParity by tasks.registering {
+val checkForecastKeyParity = registerGuard("checkForecastKeyParity") {
     group = "verification"
     description = "Fail the build when a forecast key hashes a different fact set than the build key"
     val mainJava = fileTree(layout.projectDirectory.dir("src/main/java")) { include("**/*.java") }
@@ -821,8 +809,6 @@ val checkForecastKeyParity by tasks.registering {
         stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
     }
 }
-tasks.named("check") { dependsOn(checkForecastKeyParity) }
-tasks.named("jar") { dependsOn(checkForecastKeyParity) }
 
 // ---------------------------------------------------------------------------
 // Guard (letter assigned at landing): a spike-cache test roots its project in a @TempDir.
@@ -842,7 +828,7 @@ tasks.named("jar") { dependsOn(checkForecastKeyParity) }
 // the strong check.
 // ---------------------------------------------------------------------------
 // Guard G32.
-val checkSpikeCacheTempDir by tasks.registering {
+val checkSpikeCacheTempDir = registerGuard("checkSpikeCacheTempDir") {
     group = "verification"
     description = "Fail the build when a spike-cache test does not root its project in a @TempDir"
     val testJava = fileTree(layout.projectDirectory.dir("src/test/java")) { include("**/*.java") }
@@ -874,8 +860,6 @@ val checkSpikeCacheTempDir by tasks.registering {
         stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
     }
 }
-tasks.named("check") { dependsOn(checkSpikeCacheTempDir) }
-tasks.named("jar") { dependsOn(checkSpikeCacheTempDir) }
 
 // `McpDocParityTest` diffs docs/user/mcp.md's tool/resource/prompt tables against the MCP
 // registries, and the doc is not otherwise an input of `:engine:test` — without this a doc-only

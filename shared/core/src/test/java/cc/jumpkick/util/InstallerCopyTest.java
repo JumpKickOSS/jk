@@ -7,6 +7,12 @@ import cc.jumpkick.testing.RepoRoot;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.KeyFactory;
+import java.security.interfaces.RSAPublicKey;
+import java.security.spec.X509EncodedKeySpec;
+import java.util.Arrays;
+import java.util.Base64;
+import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -44,6 +50,41 @@ class InstallerCopyTest {
         }
     }
 
+    @Test
+    void remote_verification_precedes_every_installation_mutation() throws IOException {
+        Path repo = findRepoRoot();
+        String shell = Files.readString(repo.resolve("install.sh"));
+        String powershell = Files.readString(repo.resolve("install.ps1"));
+
+        assertThat(shell.indexOf("openssl dgst -sha256 -verify"))
+                .isLessThan(shell.indexOf("park_if_present \"$JK_BIN\""));
+        assertThat(powershell.lastIndexOf("Test-ReleaseEvidence"))
+                .isLessThan(powershell.indexOf("Park-IfPresent $script:JkBin"));
+    }
+
+    @Test
+    void java_and_installer_public_key_representations_match() throws Exception {
+        Path repo = findRepoRoot();
+        String java =
+                Files.readString(repo.resolve("shared/client-io/src/main/java/cc/jumpkick/repo/ReleaseVerifier.java"));
+        String shell = Files.readString(repo.resolve("install.sh"));
+        String powershell = Files.readString(repo.resolve("install.ps1"));
+
+        String spki = capture(java, "BUILT_IN_KEY\\s*=\\s*\"([^\"]+)\"");
+        String modulus = capture(java, "BUILT_IN_RSA_MODULUS\\s*=\\s*\"([^\"]+)\"");
+        String exponent = capture(java, "BUILT_IN_RSA_EXPONENT\\s*=\\s*\"([^\"]+)\"");
+        assertThat(capture(shell, "RELEASE_RSA_SPKI=\"([^\"]+)\"")).isEqualTo(spki);
+        assertThat(capture(powershell, "\\$ReleaseRsaModulus = \"([^\"]+)\"")).isEqualTo(modulus);
+        assertThat(capture(powershell, "\\$ReleaseRsaExponent = \"([^\"]+)\"")).isEqualTo(exponent);
+
+        var key = (RSAPublicKey) KeyFactory.getInstance("RSA")
+                .generatePublic(new X509EncodedKeySpec(Base64.getDecoder().decode(spki)));
+        assertThat(unsigned(key.getModulus().toByteArray()))
+                .isEqualTo(Base64.getDecoder().decode(modulus));
+        assertThat(unsigned(key.getPublicExponent().toByteArray()))
+                .isEqualTo(Base64.getDecoder().decode(exponent));
+    }
+
     /**
      * {@code scripts/install.ps1} predates the repo-root entrypoint and was once a full duplicate
      * — a third copy to keep in step. It must stay a forwarder.
@@ -59,5 +100,15 @@ class InstallerCopyTest {
 
     private static Path findRepoRoot() {
         return RepoRoot.find(InstallerCopyTest.class);
+    }
+
+    private static String capture(String text, String regex) {
+        var matcher = Pattern.compile(regex, Pattern.DOTALL).matcher(text);
+        assertThat(matcher.find()).as("pattern %s", regex).isTrue();
+        return matcher.group(1);
+    }
+
+    private static byte[] unsigned(byte[] bytes) {
+        return bytes.length > 1 && bytes[0] == 0 ? Arrays.copyOfRange(bytes, 1, bytes.length) : bytes;
     }
 }

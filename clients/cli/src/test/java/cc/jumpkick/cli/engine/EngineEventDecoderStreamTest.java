@@ -3,18 +3,18 @@ package cc.jumpkick.cli.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.engine.protocol.ProtoEvents;
-import cc.jumpkick.engine.protocol.ProtoLifecycle;
-import cc.jumpkick.engine.protocol.TimelineEvent;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
-import cc.jumpkick.runtime.ModulePlan;
-import cc.jumpkick.runtime.WorkspaceBuildListener;
-import cc.jumpkick.runtime.WorkspaceResult;
+import cc.jumpkick.wire.protocol.ProtoEvents;
+import cc.jumpkick.wire.protocol.ProtoLifecycle;
+import cc.jumpkick.wire.protocol.TimelineEvent;
+import cc.jumpkick.wire.runtime.ModulePlan;
+import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
+import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.StringReader;

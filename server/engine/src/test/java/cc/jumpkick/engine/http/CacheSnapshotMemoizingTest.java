@@ -33,9 +33,8 @@ class CacheSnapshotMemoizingTest {
                         // Coalescing is only exercised while the walk is in flight, so hold it until
                         // every caller is provably contending. "Reached get()" is not that: a caller
                         // counts down and is then briefly RUNNABLE before it parks on the memo's
-                        // lock, and this used to cover that gap with a bare Thread.sleep(50) — a
-                        // guess about scheduling on this machine. Thread state IS
-                        // observable, so wait for the followers to be off the CPU instead.
+                        // lock. Thread state is observable, so wait for the followers to be off
+                        // the CPU instead.
                         assertThat(callersArrived.await(30, TimeUnit.SECONDS))
                                 .as("all callers reach get() before the walk returns")
                                 .isTrue();

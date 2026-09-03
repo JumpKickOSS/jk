@@ -4,7 +4,7 @@ package cc.jumpkick.cli.ide;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.engine.EngineTestSupport;
-import cc.jumpkick.engine.protocol.ProjectInfo;
+import cc.jumpkick.wire.protocol.ProjectInfo;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;

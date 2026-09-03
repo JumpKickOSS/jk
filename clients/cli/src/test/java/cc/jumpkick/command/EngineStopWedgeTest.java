@@ -4,11 +4,11 @@ package cc.jumpkick.command;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.engine.SleepMain;
-import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.testing.Await;
 import cc.jumpkick.testing.ShortTempDirs;
+import cc.jumpkick.wire.EnginePaths;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;

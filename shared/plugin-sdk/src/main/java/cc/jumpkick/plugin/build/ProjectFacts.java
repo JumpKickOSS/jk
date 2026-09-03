@@ -4,6 +4,7 @@ package cc.jumpkick.plugin.build;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The read-only project view a plugin sees (build-plugins plan §3.1 {@code ProjectView}): display
@@ -20,13 +21,13 @@ public record ProjectFacts(
         String name,
         String version,
         int javaRelease,
-        String mainClass,
+        @Nullable String mainClass,
         boolean nativeDeclared,
         boolean kotlin,
         Map<String, String> manifest) {
 
     public ProjectFacts {
-        manifest = manifest == null || manifest.isEmpty()
+        manifest = manifest.isEmpty()
                 ? Map.of()
                 : Collections.unmodifiableMap(new LinkedHashMap<>(manifest));
     }

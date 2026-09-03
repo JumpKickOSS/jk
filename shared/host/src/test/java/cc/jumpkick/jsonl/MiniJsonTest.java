@@ -170,7 +170,7 @@ class MiniJsonTest {
 
     @Test
     void rejects_malformed_unicode_escapes() {
-        // Integer.parseInt accepts a leading sign, so this used to decode silently to U+0123
+        // Integer.parseInt accepts a leading sign; a leading '+' is not a JSON unicode escape.
         assertThatThrownBy(() -> MiniJson.parse("\"\\u+123\""))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("offset 1");

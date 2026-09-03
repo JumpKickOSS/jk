@@ -5,6 +5,7 @@ import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.wire.runtime.ExplainPlan;
 import java.nio.file.Path;
 import org.jspecify.annotations.Nullable;
 

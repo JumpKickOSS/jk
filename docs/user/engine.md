@@ -40,13 +40,50 @@ without killing the dashboard.
 A resident engine **does not idle out**. It exits on `jk engine stop`, version-skew
 replacement, or (if displaced/orphaned) after draining. Details of lifetime and auth:
 [contributor HTTP](../contributors/http.md). User-facing dashboard: [Web](web.md).
-MCP: [MCP](mcp.md).
+MCP: [MCP](mcp.md). Token, bind, and reporting: [Security](security.md).
 
-## Warmup / AOT
+## Configuration
+
+`[engine]` in `~/.jk/config.toml` is machine-scoped: not project-overridable, read once
+at engine start. Precedence is **env > file > default**. `jobs` also has CLI `-j` /
+`--jobs`, which wins over env.
+
+`CI=1` / `true` raises the *unset* heap default 256 → 512 and the *unset* `continue`
+default fail-fast → keep-going. An explicit file or env value still wins. `vfs-max-mb`
+and `auto-warmup` do not follow CI.
+
+<!-- engine-config:start -->
+| Key | Env | Default | Meaning |
+|---|---|---|---|
+| `max-heap-mb` | `JK_ENGINE_MAX_HEAP_MB` | 256; 512 when CI is set | Engine process heap ceiling (-Xmx). 0 = uncapped. |
+| `jobs` | `JK_JOBS` | cores (0 = all cores) | Concurrent module/worker budget. CLI -j wins. Alias JK_ENGINE_JOBS. |
+| `continue` | `JK_CONTINUE` | false; true when CI is set | Keep going after a failed module. Does not change the verdict. |
+| `vfs-max-mb` | `JK_ENGINE_VFS_MAX_MB` | 32 | Per-job input-tree retain in MiB. 0 = off. CI does not bump this. |
+| `auto-warmup` | `JK_AUTO_WARMUP` | true | Idle AOT train and host calibration. false skips the whole pass. |
+<!-- engine-config:end -->
 
 Short-lived CI engines should set `JK_AOT_TRAIN=off` (skip train-on-miss; still use
-existing `.aot` caches). Worker AOT is HotSpot 25+ only. Knobs:
-[Config](config.md), [contributor warmup](../contributors/install-optimize.md).
+existing `.aot` caches). Worker AOT is HotSpot 25+ only. Warmup details:
+[contributor warmup](../contributors/install-optimize.md). Heap vs VFS:
+[per-job VFS](../contributors/vfs.md).
+
+### Process environment
+
+These are not `[engine]` keys. They configure how the engine process is spawned or how
+jobs run inside it.
+
+<!-- engine-process:start -->
+| Env | Default | Meaning |
+|---|---|---|
+| `JK_ENGINE_EXE` | unset | Override engine binary instead of the product-lib jar. |
+| `JK_ENGINE_JDK` | unset | JDK the engine JVM runs on. Same pin as [toolchain].jdk. |
+| `JK_ENGINE_TRANSPORT` | unix; tcp on Windows | Force tcp or unix for the client-engine wire. |
+| `JK_ENGINE_HEARTBEAT_MS` | 30000 | Heartbeat while async jobs run. 0 disables. |
+| `JK_ENGINE_JOB_DEADLINE_MS` | 0 | Job wall deadline in ms. 0 = off. |
+| `JK_ENGINE_JOB_DEADLINE_GRACE_MS` | 30000 | Join grace after a deadline cancel, in ms. |
+<!-- engine-process:end -->
+
+HTTP / MCP knobs are `[http]` / `[mcp]`: [Config](config.md), [Web](web.md), [MCP](mcp.md).
 
 ## Related
 

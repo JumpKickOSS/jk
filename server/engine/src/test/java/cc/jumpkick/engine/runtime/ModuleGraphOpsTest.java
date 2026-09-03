@@ -3,7 +3,7 @@ package cc.jumpkick.engine.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.engine.protocol.ModuleGraphAck;
+import cc.jumpkick.wire.protocol.ModuleGraphAck;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;

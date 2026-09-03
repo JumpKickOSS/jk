@@ -9,6 +9,8 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.wire.runtime.WorkspaceRequest;
+import cc.jumpkick.wire.runtime.WorkspaceSpec;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -58,7 +60,7 @@ class WorkspaceInstallCoordinatorRootTest {
         Path lib = member("lib");
         Path root = coordinatorRoot("lib");
 
-        Set<Path> terminals = WorkspaceExecute.terminalTargetDirs(
+        Set<Path> terminals = WorkspacePreflightPhase.terminalTargetDirs(
                 List.of(unit(root, "ex:ws"), unit(lib, "ex:lib")), installRequest());
         assertThat(terminals)
                 .as("the forecast must expect a terminal exactly where assemblePlan plans one")
@@ -66,9 +68,9 @@ class WorkspaceInstallCoordinatorRootTest {
     }
 
     private BuildPlan assertThatInstallPlanBuilds(BuildGraph.BuildUnit u, Set<Path> moduleDirs) {
-        assertThatCode(() -> WorkspaceExecute.assemblePlan(u, installRequest(), moduleDirs, false))
+        assertThatCode(() -> WorkspacePreparePhase.assemblePlan(u, installRequest(), moduleDirs, false))
                 .doesNotThrowAnyException();
-        return WorkspaceExecute.assemblePlan(u, installRequest(), moduleDirs, false);
+        return WorkspacePreparePhase.assemblePlan(u, installRequest(), moduleDirs, false);
     }
 
     private WorkspaceRequest installRequest() {

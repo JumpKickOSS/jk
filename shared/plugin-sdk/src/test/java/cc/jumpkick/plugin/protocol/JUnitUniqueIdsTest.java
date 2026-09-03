@@ -54,6 +54,10 @@ class JUnitUniqueIdsTest {
         assertEquals("", JUnitUniqueIds.engineOf("not a unique id"));
         assertEquals("", JUnitUniqueIds.methodOf("not a unique id"));
         assertEquals("", JUnitUniqueIds.classOf("[class:Unterminated"));
+        assertEquals("", JUnitUniqueIds.classOf(null));
+        assertEquals("", JUnitUniqueIds.engineOf(null));
+        assertEquals("", JUnitUniqueIds.methodOf(null));
+        assertEquals("", JUnitUniqueIds.percentDecode(null));
     }
 
     @Test

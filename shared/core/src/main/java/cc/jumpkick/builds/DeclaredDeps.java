@@ -3,6 +3,7 @@ package cc.jumpkick.builds;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.TomlScan;
+import cc.jumpkick.config.WorkspaceModules;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Dependency;
@@ -101,10 +102,21 @@ public final class DeclaredDeps {
             if (!scanned.isEmpty()) rels = scanned;
         }
         List<Path> dirs = new ArrayList<>(rels.size());
-        for (String rel : rels) {
+        for (String rel : expandQuietly(root, rels)) {
             if (rel == null || rel.isBlank()) continue;
             dirs.add(root.resolve(rel).normalize());
         }
         return dirs;
+    }
+
+    /** Globs expanded; a pattern that matches nothing maps no changes rather than failing a scan. */
+    private static List<String> expandQuietly(Path root, List<String> rels) {
+        try {
+            return WorkspaceModules.expand(root, rels);
+        } catch (RuntimeException e) {
+            return rels.stream()
+                    .filter(r -> r != null && !WorkspaceModules.isGlob(r))
+                    .toList();
+        }
     }
 }

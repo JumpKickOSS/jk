@@ -3,7 +3,7 @@ package cc.jumpkick.engine.listen;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.wire.protocol.EngineProtocol;
 import java.io.BufferedWriter;
 import java.io.StringWriter;
 import java.util.ArrayList;

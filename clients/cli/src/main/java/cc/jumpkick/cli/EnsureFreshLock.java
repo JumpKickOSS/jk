@@ -8,13 +8,13 @@ import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Spinner;
-import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.wire.EnginePaths;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -160,7 +160,7 @@ public final class EnsureFreshLock {
     }
 
     /**
-     * Engine-side staleness: {@link cc.jumpkick.engine.protocol.ProjectInfo#lockStale()} plus a
+     * Engine-side staleness: {@link cc.jumpkick.wire.protocol.ProjectInfo#lockStale()} plus a
      * missing lock file. A down/errored info is treated as stale so we still try to freshen.
      */
     public static boolean needsRefresh(Path projectDir) {

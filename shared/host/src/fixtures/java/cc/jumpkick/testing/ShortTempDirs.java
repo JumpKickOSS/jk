@@ -18,9 +18,9 @@ import org.junit.jupiter.api.extension.ExtensionContext;
  * {@code <root>/engine/<key>.genN.sock}, and on macOS the default {@code TMPDIR} is already
  * {@code /var/folders/xx/yy…/T/}; JUnit's own random suffix pushes the total past what the JDK
  * will bind, so {@code bind} fails with a message about the *path* rather than about the test.
- * The budget is {@link UnixSocketPaths#MAX_PATH_LENGTH} — one number, proven by binding, instead
- * of the four different caps this comment used to be one of. {@link #root()} is the root that fits
- * it: {@code /tmp} on POSIX, {@code %USERPROFILE%\Temp} on Windows.
+ * The budget is {@link UnixSocketPaths#MAX_PATH_LENGTH} — one number, proven by binding.
+ * {@link #root()} is the root that fits it: {@code /tmp} on POSIX, {@code %USERPROFILE%\Temp} on
+ * Windows.
  *
  * <p>Register it and ask for as many roots as the test needs; every one is deleted after the test:
  *
@@ -35,10 +35,7 @@ import org.junit.jupiter.api.extension.ExtensionContext;
  * hold a socket open, and losing a temp directory is not the defect the test is looking for. That
  * daemon is also why the delete has to tolerate an entry disappearing <em>mid-walk</em> — a lazy
  * {@code Files.walk} surfaces that as an {@code UncheckedIOException}, not an {@code IOException}.
- * {@link PathUtil#deleteRecursively} owns both halves of that catch; the hand-rolled cleanups this
- * replaced each carried their own {@code catch (IOException | UncheckedIOException)} and a comment
- * saying why, and dropping the unchecked half turns another process's normal teardown into an
- * intermittent failure in ours.
+ * {@link PathUtil#deleteRecursively} owns both halves of that catch.
  */
 public final class ShortTempDirs implements AfterEachCallback {
 

@@ -4,25 +4,26 @@ package cc.jumpkick.image;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Resolved {@code [image]} config for {@code jk image}. {@code base} is non-null by the time this
  * reaches the image worker (CLI supplies a default when undeclared).
  */
 public record ImageConfig(
-        String base,
-        String user,
+        @Nullable String base,
+        @Nullable String user,
         List<Integer> ports,
         Map<String, String> env,
         Map<String, String> labels,
-        String registry,
-        String tag,
+        @Nullable String registry,
+        @Nullable String tag,
         List<String> platforms,
-        String main,
+        @Nullable String main,
         /** Docker/Podman executable; null → auto-detect. */
-        String dockerExecutable,
+        @Nullable String dockerExecutable,
         /** Relative Dockerfile path; non-null → {@code docker build}, else Jib. */
-        String dockerFile,
+        @Nullable String dockerFile,
         /**
          * Train a JVM AOT cache for the image. Off by default: it costs a container run at build
          * time and tens of MiB of image, and it only pays off for start-up-sensitive workloads.
@@ -31,17 +32,17 @@ public record ImageConfig(
 
     /** Without an AOT cache — the shape every existing caller builds. */
     public ImageConfig(
-            String base,
-            String user,
+            @Nullable String base,
+            @Nullable String user,
             List<Integer> ports,
             Map<String, String> env,
             Map<String, String> labels,
-            String registry,
-            String tag,
+            @Nullable String registry,
+            @Nullable String tag,
             List<String> platforms,
-            String main,
-            String dockerExecutable,
-            String dockerFile) {
+            @Nullable String main,
+            @Nullable String dockerExecutable,
+            @Nullable String dockerFile) {
         this(base, user, ports, env, labels, registry, tag, platforms, main, dockerExecutable, dockerFile, false);
     }
 

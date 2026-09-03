@@ -45,9 +45,8 @@ public final class WorkspaceScan {
             Path rootJkToml = parent.resolve(ManifestPaths.MANIFEST);
             if (Files.exists(rootJkToml)) {
                 String relative = parent.relativize(normalized).toString().replace('\\', '/');
-                if (TomlScan.scan(rootJkToml, "workspace.modules")
-                        .stringArray("workspace.modules")
-                        .contains(relative)) {
+                if (WorkspaceModules.lists(
+                        TomlScan.scan(rootJkToml, "workspace.modules").stringArray("workspace.modules"), relative)) {
                     return Optional.of(parent);
                 }
             }

@@ -19,7 +19,7 @@ Agent protocol for work in this repo: [../../AGENTS.md](../../AGENTS.md).
 | [CLI terminal](../cli-terminal.md) | `:cli-terminal` TTY session, Style, Width, keys (no JLine) |
 | [HTTP server](http.md) | Engine HTTP lifetime, auth, REST, SSE |
 | [Web client](webclient.md) | Dashboard SPA (thin renderer over HTTP) |
-| [Releases](releases.md) | Versioning, install layout, Ed25519 signing |
+| [Releases](releases.md) | Versioning, install layout, RSA/SHA-256 signing |
 | [Official Maven repo](maven-repo.md) | `jumpkick.build/repo/`, exclusive groups, publish script |
 | [Engine warmup](install-optimize.md) | Worker AOT, host calibration |
 | [Self-host](self-host.md) | Dogfooding this monorepo with `jk` |

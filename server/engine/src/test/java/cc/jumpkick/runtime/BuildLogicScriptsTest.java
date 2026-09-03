@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.groups.Tuple.tuple;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -80,6 +81,27 @@ class BuildLogicScriptsTest {
         } finally {
             RunNotices.clear();
         }
+    }
+
+    /** The pragma is a header comment, spelled the same in both languages, and only there. */
+    @Test
+    void an_always_pragma_in_the_header_is_recognised(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("after-build-sweep.kts"), "// SPDX\n// jk: always\nprintln(1)\n");
+        Files.writeString(dir.resolve("after-build.groovy"), "//  JK: ALWAYS \nprintln 1\n");
+        Files.writeString(dir.resolve("before-compile.kts"), "// a check\n// says jk: always in prose\n");
+        StringBuilder deep = new StringBuilder();
+        for (int i = 0; i < 60; i++) deep.append("// filler ").append(i).append('\n');
+        deep.append("// jk: always\n");
+        Files.writeString(dir.resolve("after-compile.kts"), deep.toString());
+
+        List<BuildLogicScripts.ScriptTask> tasks = BuildLogicScripts.discover(dir);
+        assertThat(tasks)
+                .extracting(BuildLogicScripts.ScriptTask::name, BuildLogicScripts.ScriptTask::always)
+                .containsExactly(
+                        tuple("after-build", true),
+                        tuple("after-build-sweep", true),
+                        tuple("after-compile", false),
+                        tuple("before-compile", false));
     }
 
     @Test

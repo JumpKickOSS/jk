@@ -122,12 +122,22 @@ public final class PathUtil {
             }
 
             @Override
-            public FileVisitResult visitFileFailed(Path file, IOException failure) {
-                // A file that vanished mid-walk, or one this process cannot stat, is not a reason to
-                // abandon the tree — the callers this replaces all used Files.walk, which skips.
-                return FileVisitResult.CONTINUE;
+            public FileVisitResult visitFileFailed(Path file, IOException failure) throws IOException {
+                return unopenedDirectory(file, failure);
             }
         });
+    }
+
+    /**
+     * The one failure a walk may not paper over: a directory that still exists but could not be
+     * opened. {@code walkFileTree} reports it here and continues, so a caller that swallowed it
+     * would finish with a complete-looking listing missing the whole subtree — no sources, a stable
+     * fingerprint of nothing, a build skipped as fresh. A file that vanished mid-walk, or one this
+     * process cannot stat, is skipped: it is not a hole in the tree.
+     */
+    private static FileVisitResult unopenedDirectory(Path file, IOException failure) throws IOException {
+        if (Files.isDirectory(file, LinkOption.NOFOLLOW_LINKS)) throw failure;
+        return FileVisitResult.CONTINUE;
     }
 
     /** What {@link #forEachRegularFile} hands each file: the path, and the attributes already read. */
@@ -159,8 +169,8 @@ public final class PathUtil {
             }
 
             @Override
-            public FileVisitResult visitFileFailed(Path file, IOException failure) {
-                return FileVisitResult.CONTINUE;
+            public FileVisitResult visitFileFailed(Path file, IOException failure) throws IOException {
+                return unopenedDirectory(file, failure);
             }
         });
     }

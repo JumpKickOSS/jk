@@ -36,7 +36,7 @@ public final class AuditPlans {
 
     /**
      * Build the audit plan for {@code lockPath}. Locates the plugin jar eagerly, so a missing plugin
-     * fails here (with {@link cc.jumpkick.engine.plugin.PluginJarNotFoundException}'s side-load
+     * fails here (with {@link cc.jumpkick.wire.PluginJarNotFoundException}'s side-load
      * instructions) rather than mid-plan. {@code thresholdLabel} only feeds the evaluate step's
      * label; {@code osvBatchUrl}/{@code osvVulnsUrl} are the hidden test overrides ({@code null} =
      * the real OSV endpoints).

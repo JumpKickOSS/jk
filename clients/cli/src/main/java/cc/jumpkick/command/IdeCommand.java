@@ -135,7 +135,7 @@ public final class IdeCommand implements CliCommand {
     }
 
     /**
-     * Dump {@link cc.jumpkick.engine.protocol.IdeWireModel} JSON for IDE hosts. Reuses lock + sync
+     * Dump {@link cc.jumpkick.wire.protocol.IdeWireModel} JSON for IDE hosts. Reuses lock + sync
      * + engine model (same as file generators) but skips disk writes.
      */
     private static int printModel(Invocation in) throws Exception {

@@ -7,9 +7,8 @@ import static org.assertj.core.api.Assertions.tuple;
 import org.junit.jupiter.api.Test;
 
 /**
- * a successful KSP round's processor diagnostics must reach the user. They used to be
- * dropped on the floor unless the build failed, so non-fatal processor guidance only ever appeared
- * once something was already broken.
+ * A successful KSP round's processor diagnostics must reach the user, including non-fatal
+ * processor guidance on a green build.
  */
 class KspDiagnosticsTest {
 

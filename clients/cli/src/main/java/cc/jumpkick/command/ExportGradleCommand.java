@@ -2,11 +2,11 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.GlobalOptions;
-import cc.jumpkick.engine.protocol.GeneratedFiles;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
+import cc.jumpkick.wire.protocol.GeneratedFiles;
 import java.io.IOException;
 import java.util.List;
 

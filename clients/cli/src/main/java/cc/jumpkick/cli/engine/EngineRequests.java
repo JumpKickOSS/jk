@@ -28,7 +28,7 @@ public final class EngineRequests {
             boolean force,
             boolean parallelTests,
             TestSelection testSelection) {
-        /** Backward-compatible ctor: serial cross-module gate, default suite. */
+        /** Serial cross-module gate, default suite. */
         public TestRequest(
                 Path entryDir,
                 Path cache,
@@ -79,7 +79,7 @@ public final class EngineRequests {
             String variant,
             Map<String, String> clientEnv) {
 
-        /** Back-compat: default variant, no client env. */
+        /** Default variant, no client env. */
         public SingleBuildRequest(
                 Path entryDir,
                 Path cache,
@@ -106,7 +106,7 @@ public final class EngineRequests {
             boolean verbose,
             boolean rebuild,
             int maxModuleConcurrency) {
-        /** Backward-compatible ctor (rebuild=false, maxModuleConcurrency from serial). */
+        /** No rebuild; {@code maxModuleConcurrency} follows {@code serial}. */
         public ExplainRequest(
                 Path entryDir,
                 Path cache,
@@ -131,7 +131,7 @@ public final class EngineRequests {
                     serial ? 1 : 0);
         }
 
-        /** Backward-compatible ctor with rebuild, no jobs clamp beyond serial. */
+        /** Rebuild allowed; no jobs clamp beyond {@code serial}. */
         public ExplainRequest(
                 Path entryDir,
                 Path cache,
@@ -176,7 +176,7 @@ public final class EngineRequests {
             boolean force,
             boolean verbose,
             boolean conservative) {
-        /** Back-compat: explicit lock semantics (latest versions). */
+        /** Latest versions — not a conservative freshen. */
         public LockRequest(
                 Path entryDir,
                 Path cache,
@@ -202,7 +202,7 @@ public final class EngineRequests {
             boolean force,
             boolean verbose,
             String platform) {
-        /** Back-compat without platform override. */
+        /** No platform override. */
         public UpdateRequest(
                 Path entryDir,
                 Path cache,
@@ -360,7 +360,7 @@ public final class EngineRequests {
             boolean verbose,
             List<String> modules) {
 
-        /** Back-compat: no module selection (entry dir / whole graph). */
+        /** No module selection (entry dir / whole graph). */
         public CompileRequest(
                 Path entryDir, Path cache, String profile, boolean offline, boolean force, boolean verbose) {
             this(entryDir, cache, profile, offline, force, verbose, List.of());

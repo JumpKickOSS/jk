@@ -81,17 +81,9 @@ public final class WorkspaceClasspath {
         Map<String, JkBuild> siblingManifestByCoord = new HashMap<>();
         Map<String, String> siblingCoordByName = new HashMap<>(); // name → full coord
         // One load for the whole workspace, not one parse per sibling.
-        //
-        // This loop used to call JkBuildParser.parse per unit, and parse runs applyWorkspace, which
-        // walks for the root, re-parses it, and loads *every* member — so resolving one module's
-        // classpath was O(N) work per sibling over N siblings, and the forecast calls resolve up to
-        // four times per module. On a 31-module workspace that is ~3,800 whole-workspace resolutions
-        // for one command. loadModules already returns every member with root inheritance applied,
-        // which is exactly what the index below needs.
-        //
-        // It cannot change the missing-member behaviour: loadModules throws for a member with no
-        // manifest, but parse on the *consumer* already went through applyWorkspace and rethrew for
-        // any module carrying workspace deps, so a caller never reaches here with a broken workspace.
+        // loadModules returns every member with root inheritance applied — the index below. It
+        // throws for a member with no manifest; applyWorkspace already rethrows for any module
+        // carrying workspace deps, so a caller never reaches here with a broken workspace.
         // WorkspaceClasspathTest pins that from both sides.
         Map<Path, JkBuild> members = WorkspaceLoader.loadModules(root, rootManifest);
         Map<Path, JkBuild> units = new LinkedHashMap<>(members);
@@ -255,14 +247,14 @@ public final class WorkspaceClasspath {
         }
 
         /**
-         * Back-compat constructor for callers that don't distinguish the declared closure from the
-         * built jars (build/run): the closure defaults to {@code jars}.
+         * Callers that do not distinguish the declared closure from the built jars (build/run):
+         * the closure defaults to {@code jars}.
          */
         public Result(List<Path> jars, List<String> missingSiblingJars, List<Path> siblingLockfiles) {
             this(jars, missingSiblingJars, siblingLockfiles, jars, List.of());
         }
 
-        /** Back-compat constructor for callers that don't use sibling lockfiles. */
+        /** No sibling lockfiles; the closure defaults to {@code jars}. */
         public Result(List<Path> jars, List<String> missingSiblingJars) {
             this(jars, missingSiblingJars, List.of(), jars, List.of());
         }

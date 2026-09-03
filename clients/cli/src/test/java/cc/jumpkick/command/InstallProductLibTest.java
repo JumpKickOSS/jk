@@ -3,7 +3,7 @@ package cc.jumpkick.command;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.engine.protocol.ProjectInfo;
+import cc.jumpkick.wire.protocol.ProjectInfo;
 import org.junit.jupiter.api.Test;
 
 /**

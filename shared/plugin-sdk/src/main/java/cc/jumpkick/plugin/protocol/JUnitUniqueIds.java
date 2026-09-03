@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.protocol;
 
+import org.jspecify.annotations.Nullable;
+
 /**
  * Dependency-free string walk over a JUnit Platform {@code UniqueId}
  * ({@code [engine:…]/[class:…]/[method:…]}) — the fallback grammar both sides of the test fork
@@ -19,7 +21,7 @@ public final class JUnitUniqueIds {
     private JUnitUniqueIds() {}
 
     /** Engine id from {@code [engine:junit-jupiter]}, or empty. */
-    public static String engineOf(String id) {
+    public static String engineOf(@Nullable String id) {
         return segment(id, "engine");
     }
 
@@ -27,7 +29,8 @@ public final class JUnitUniqueIds {
      * Binary class name: {@code [class:Outer]/[nested-class:Inner]} → {@code Outer$Inner}.
      * Empty when the id carries no {@code [class:…]} segment.
      */
-    public static String classOf(String id) {
+    public static String classOf(@Nullable String id) {
+        if (id == null) return "";
         String outer = segment(id, "class");
         if (outer.isEmpty()) return "";
         StringBuilder sb = new StringBuilder(outer);
@@ -50,7 +53,8 @@ public final class JUnitUniqueIds {
      * {@code @TestTemplate} / {@code @TestFactory} template with its invocation path appended
      * ({@code m()[#1/#2]}). Empty when the id names no method-ish segment.
      */
-    public static String methodOf(String id) {
+    public static String methodOf(@Nullable String id) {
+        if (id == null) return "";
         String method = segment(id, "method");
         if (!method.isEmpty()) return method;
         String template = segment(id, "test-template");
@@ -89,7 +93,7 @@ public final class JUnitUniqueIds {
     }
 
     /** Value of the first {@code [key:value]} segment, percent-decoded, or empty. */
-    public static String segment(String id, String key) {
+    public static String segment(@Nullable String id, String key) {
         if (id == null) return "";
         String needle = "[" + key + ":";
         int i = id.indexOf(needle);
@@ -105,7 +109,7 @@ public final class JUnitUniqueIds {
      * ({@code int[]} → {@code int%5B%5D}). Malformed escapes are left intact so a truncated id
      * still yields a usable label.
      */
-    public static String percentDecode(String raw) {
+    public static String percentDecode(@Nullable String raw) {
         if (raw == null || raw.isEmpty() || raw.indexOf('%') < 0) return raw == null ? "" : raw;
         StringBuilder out = new StringBuilder(raw.length());
         for (int i = 0; i < raw.length(); i++) {

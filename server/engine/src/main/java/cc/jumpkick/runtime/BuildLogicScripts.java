@@ -72,7 +72,29 @@ final class BuildLogicScripts {
         KTS
     }
 
-    record ScriptTask(String name, BuildLogicAnchor anchor, Path file, ScriptKind kind) {}
+    /**
+     * @param always the script carries the {@code jk: always} pragma: it runs whenever its anchor
+     *     runs and records neither an artifact nor a verdict — for work that judges state outside
+     *     the tree (a sweep of build output), where "same inputs" says nothing about the answer
+     */
+    record ScriptTask(String name, BuildLogicAnchor anchor, Path file, ScriptKind kind, boolean always) {}
+
+    /** Lines of a script inspected for the {@code jk: always} pragma; a header, not the body. */
+    private static final int PRAGMA_WINDOW = 40;
+
+    /**
+     * True when a {@code //} comment in the script's first lines says {@code jk: always}. A comment,
+     * so both script languages spell it the same way and no build-logic API surface is needed for
+     * one bit of scheduling.
+     */
+    static boolean declaresAlways(Path script) throws IOException {
+        try (var lines = Files.lines(script)) {
+            return lines.limit(PRAGMA_WINDOW)
+                    .map(String::strip)
+                    .filter(l -> l.startsWith("//"))
+                    .anyMatch(l -> l.substring(2).strip().equalsIgnoreCase("jk: always"));
+        }
+    }
 
     private BuildLogicScripts() {}
 
@@ -112,7 +134,7 @@ final class BuildLogicScripts {
                     continue;
                 }
                 String name = normalizeName(stem);
-                ScriptTask next = new ScriptTask(name, anchor.get(), p, kind);
+                ScriptTask next = new ScriptTask(name, anchor.get(), p, kind, declaresAlways(p));
                 ScriptTask prev = byName.get(name);
                 if (prev == null) {
                     byName.put(name, next);

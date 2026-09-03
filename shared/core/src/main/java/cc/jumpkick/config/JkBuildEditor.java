@@ -15,9 +15,8 @@ import org.tomlj.TomlParseResult;
  * The writer for {@code jk.toml}: surgical line edits that preserve formatting and comments, with
  * every result run back through {@link Toml#parse} by {@link #validated} before it is returned.
  *
- * <p>Scalars are quoted by {@link MinimalToml}, the one TOML encoder. This class used to carry its
- * own escaper that left control characters raw, which {@code validated} then rejected as invalid
- * TOML — a correct refusal reported as an internal error.
+ * <p>Scalars are quoted by {@link MinimalToml}, the one TOML encoder, so control characters are
+ * escaped rather than rejected by {@code validated} as invalid TOML.
  */
 public final class JkBuildEditor {
 
@@ -253,14 +252,15 @@ public final class JkBuildEditor {
             throw new IllegalStateException("malformed modules array in [workspace]");
         }
 
-        // Idempotency: collect existing elements across the array's lines.
+        // Idempotency: collect existing elements across the array's lines. A glob that already
+        // covers the new module counts — appending the literal beside `libs/*` would list it twice.
         StringBuilder arrayText = new StringBuilder();
         for (int i = modulesLine; i <= closeLine; i++)
             arrayText.append(lines.get(i)).append('\n');
         Matcher q = QUOTED.matcher(arrayText);
-        while (q.find()) {
-            if (decoded(q).equals(path)) return content; // already a module
-        }
+        List<String> existing = new ArrayList<>();
+        while (q.find()) existing.add(decoded(q));
+        if (WorkspaceModules.lists(existing, path)) return content; // already a module
 
         if (modulesLine == closeLine) {
             insertInlineModule(lines, closeLine, path);

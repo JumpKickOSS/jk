@@ -13,11 +13,9 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * An {@code [application]} key written at the top level is a misplacement, and must say so.
  *
- * <p>It used to be silent for {@code assembly}: the manifest parsed, the fat jar was never built,
- * and {@code jk install}'s ladder — native, minified, fat, thin — then installed a thin-jar
- * launcher because no fat jar existed. Every step honest, the whole outcome wrong, and nothing
- * printed. {@code minified} did stop the build, but reported a type problem for what is
- * a wrong-table problem.
+ * <p>A silent ignore of {@code assembly} would parse, skip the fat jar, and let {@code jk
+ * install}'s ladder — native, minified, fat, thin — install a thin-jar launcher because no fat
+ * jar existed. {@code minified} must be the same wrong-table error, not a type problem.
  */
 class ManifestFlattenedApplicationKeyTest {
 

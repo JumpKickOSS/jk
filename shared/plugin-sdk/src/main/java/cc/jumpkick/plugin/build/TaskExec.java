@@ -14,6 +14,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+import org.jspecify.annotations.Nullable;
 
 /**
  * What a {@link TaskSpec.Body} gets to work with, inside the plugin's worker JVM: the resolved
@@ -115,23 +116,17 @@ public interface TaskExec {
      * surface to ask — an owner a caller cannot reach is not an owner.
      */
     final class ToolRun {
-        private final Path javaHome;
-        private final String bin;
-        private final Path executable;
+        private final String executable;
         private final List<String> args = new ArrayList<>();
         private final Map<String, String> env = new LinkedHashMap<>();
-        private Path cwd;
+        private @Nullable Path cwd;
 
         public ToolRun(Path javaHome, String bin) {
-            this.javaHome = javaHome;
-            this.bin = bin;
-            this.executable = null;
+            this.executable = JdkFingerprint.tool(javaHome, bin).toString();
         }
 
         public ToolRun(Path executable) {
-            this.javaHome = null;
-            this.bin = null;
-            this.executable = executable;
+            this.executable = executable.toAbsolutePath().toString();
         }
 
         public ToolRun classpath(List<Path> entries) {
@@ -180,10 +175,7 @@ public interface TaskExec {
          */
         public List<String> command() {
             List<String> command = new ArrayList<>();
-            command.add(
-                    executable != null
-                            ? executable.toAbsolutePath().toString()
-                            : JdkFingerprint.tool(javaHome, bin).toString());
+            command.add(executable);
             command.addAll(args);
             return command;
         }
@@ -218,7 +210,7 @@ public interface TaskExec {
             Process process = start();
             try (BufferedReader reader =
                     new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-                String line;
+                @Nullable String line;
                 while ((line = reader.readLine()) != null) sink.accept(line);
             }
             return process.waitFor();

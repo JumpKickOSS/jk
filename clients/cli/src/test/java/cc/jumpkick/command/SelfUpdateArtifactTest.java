@@ -13,28 +13,43 @@ import org.junit.jupiter.api.io.TempDir;
 
 class SelfUpdateArtifactTest {
 
+    private static final String HASH = "a".repeat(64);
+
+    private static final String V = "0.12.0";
+
     @Test
     void prefers_xz_on_every_os() throws Exception {
-        String sums = """
-                aaa  jk-engine-0.12.0.jar
-                bbb  jk-linux-x86_64.xz
-                ccc  jk-windows-x86_64.xz
-                ddd  jk-windows-x86_64.zip
-                eee  jk-macos-aarch64.xz
-                """;
-        assertThat(SelfCommand.UpdateSub.pickClientArtifact(sums, "linux", "x86_64"))
-                .isEqualTo("jk-linux-x86_64.xz");
-        assertThat(SelfCommand.UpdateSub.pickClientArtifact(sums, "windows", "x86_64"))
-                .isEqualTo("jk-windows-x86_64.xz");
-        assertThat(SelfCommand.UpdateSub.pickClientArtifact(sums, "macos", "aarch64"))
-                .isEqualTo("jk-macos-aarch64.xz");
+        String sums = HASH + "  jk-engine-0.12.0.jar\n"
+                + HASH + "  jk-linux-x86_64-0.12.0.xz\n"
+                + HASH + "  jk-windows-x86_64-0.12.0.xz\n"
+                + HASH + "  jk-windows-x86_64-0.12.0.zip\n"
+                + HASH + "  jk-macos-aarch64-0.12.0.xz\n";
+        assertThat(SelfCommand.UpdateSub.pickClientArtifact(sums, "linux", "x86_64", V))
+                .isEqualTo("jk-linux-x86_64-0.12.0.xz");
+        assertThat(SelfCommand.UpdateSub.pickClientArtifact(sums, "windows", "x86_64", V))
+                .isEqualTo("jk-windows-x86_64-0.12.0.xz");
+        assertThat(SelfCommand.UpdateSub.pickClientArtifact(sums, "macos", "aarch64", V))
+                .isEqualTo("jk-macos-aarch64-0.12.0.xz");
     }
 
     @Test
     void windows_falls_back_to_zip_when_sums_have_no_xz() throws Exception {
-        String sums = "aaa  jk-engine-0.12.0.jar\nbbb  jk-windows-x86_64.zip\n";
-        assertThat(SelfCommand.UpdateSub.pickClientArtifact(sums, "windows", "x86_64"))
-                .isEqualTo("jk-windows-x86_64.zip");
+        String sums = HASH + "  jk-engine-0.12.0.jar\n" + HASH + "  jk-windows-x86_64-0.12.0.zip\n";
+        assertThat(SelfCommand.UpdateSub.pickClientArtifact(sums, "windows", "x86_64", V))
+                .isEqualTo("jk-windows-x86_64-0.12.0.zip");
+    }
+
+    /**
+     * The rollback shape: a valid, signed manifest from an older release served under a newer
+     * version's directory. Its artifact names carry the older version, so a request for the newer
+     * one finds nothing to verify against and refuses.
+     */
+    @Test
+    void a_manifest_from_another_release_satisfies_no_request_for_this_one() {
+        String older = HASH + "  jk-engine-0.12.0.jar\n" + HASH + "  jk-linux-x86_64-0.12.0.xz\n";
+        assertThatThrownBy(() -> SelfCommand.UpdateSub.pickClientArtifact(older, "linux", "x86_64", "0.13.0"))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("jk-linux-x86_64-0.13.0.xz");
     }
 
     @Test
@@ -51,9 +66,9 @@ class SelfUpdateArtifactTest {
 
     @Test
     void unix_does_not_fall_back_to_zip() {
-        String sums = "aaa  jk-linux-x86_64.zip\n";
-        assertThatThrownBy(() -> SelfCommand.UpdateSub.pickClientArtifact(sums, "linux", "x86_64"))
+        String sums = HASH + "  jk-linux-x86_64-0.12.0.zip\n";
+        assertThatThrownBy(() -> SelfCommand.UpdateSub.pickClientArtifact(sums, "linux", "x86_64", V))
                 .isInstanceOf(IOException.class)
-                .hasMessageContaining("jk-linux-x86_64.xz");
+                .hasMessageContaining("jk-linux-x86_64-0.12.0.xz");
     }
 }

@@ -4,8 +4,8 @@ package cc.jumpkick.engine;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.Session;
-import cc.jumpkick.engine.protocol.ProtoReads;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.wire.protocol.ProtoReads;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 

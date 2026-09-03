@@ -2,6 +2,7 @@
 package cc.jumpkick.model;
 
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Maven coordinate: {@code groupId:artifactId:version[:classifier][!type]}. Type defaults to
@@ -9,7 +10,12 @@ import java.util.Objects;
  * for JumpKick version selectors ({@code g:a@1.2} / {@code g:a@~1.2}); {@code ~} stays a version-range
  * prefix.
  */
-public record Coordinate(String group, String artifact, String version, String classifier, String type) {
+public record Coordinate(
+        String group,
+        String artifact,
+        String version,
+        @Nullable String classifier,
+        String type) {
 
     public Coordinate {
         Objects.requireNonNull(group, "group");

@@ -199,9 +199,7 @@ public final class KotlinCompiler implements Plugin {
      */
     private static Path jarSuffixed(Path jar) throws IOException {
         if (jar.getFileName().toString().endsWith(".jar")) return jar;
-        // A unique name without creating a file first. This used to createTempFile and immediately
-        // delete it purely to reserve the name, so every aliased plugin jar paid a file creation and
-        // an unlink for nothing — 160.7 us plus an unlink on Windows.
+        // Unique directory name without creating a file first.
         Path dir = Files.createTempDirectory("jk-kotlin-plugin-");
         dir.toFile().deleteOnExit();
         Path suffixed = dir.resolve(jar.getFileName() + ".jar");

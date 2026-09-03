@@ -4,11 +4,11 @@ package cc.jumpkick.engine.verbs;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
-import cc.jumpkick.engine.protocol.EngineProtocol;
-import cc.jumpkick.engine.protocol.ProtoEvents;
-import cc.jumpkick.engine.protocol.ProvisionRequest;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.runtime.CompatPlans;
+import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.protocol.ProtoEvents;
+import cc.jumpkick.wire.protocol.ProvisionRequest;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 

@@ -22,6 +22,11 @@ name = "core"
 # group, version, java, jdk, … inherit from the workspace root
 ```
 
+A `modules` entry is a path or a glob. `*` (also `?`, `[...]`) matches one path segment
+and expands, sorted, to every matching directory that holds a `jk.toml`; `libs/*` picks up
+a new module without a root edit. A glob that matches nothing is an error, and `**` is not
+accepted. Literal entries keep their declared order; a module named twice counts once.
+
 **`name` is always required** on a module. Other identity fields may be omitted and
 resolve from the root. **`description` does not auto-inherit.** Override with a concrete
 value (`java = 17`) or `version.workspace = true`. The root must keep concrete values for

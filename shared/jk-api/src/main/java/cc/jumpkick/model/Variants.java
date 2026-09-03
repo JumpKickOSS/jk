@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The {@code [variants]} block: product dimensions (axes) with named values, each an overlay
@@ -34,7 +35,7 @@ public record Variants(List<Dimension> dimensions) {
      * {@code "release|contentType=demo"} (bare token = build type; {@code dim=value} for customs).
      * Unknown dimensions are ignored per module.
      */
-    public record Selection(String buildType, Map<String, String> values) {
+    public record Selection(@Nullable String buildType, Map<String, String> values) {
 
         public static final Selection DEFAULTS = new Selection(null, Map.of());
 
@@ -44,7 +45,7 @@ public record Variants(List<Dimension> dimensions) {
                     : Collections.unmodifiableMap(new LinkedHashMap<>(values));
         }
 
-        public static Selection parse(String raw) {
+        public static Selection parse(@Nullable String raw) {
             if (raw == null || raw.isBlank()) return DEFAULTS;
             String buildType = null;
             Map<String, String> values = new LinkedHashMap<>();
@@ -140,7 +141,7 @@ public record Variants(List<Dimension> dimensions) {
     }
 
     /** One axis: values (name → overlay) and optional default. No default → selection mandatory. */
-    public record Dimension(String name, String defaultValue, Map<String, Value> values) {
+    public record Dimension(String name, @Nullable String defaultValue, Map<String, Value> values) {
 
         public Dimension {
             Objects.requireNonNull(name, "name");

@@ -34,10 +34,15 @@ final class BuildLogicKtsHost {
     private BuildLogicKtsHost() {}
 
     /**
-     * Run one script. Its stdout/stderr is captured and returned; a failure throws with that output
-     * attached, which is how the forked host behaved — a build stays quiet until something breaks.
+     * Run one script, returning its captured stdout/stderr; a failure throws with that output
+     * attached.
+     *
+     * <p>The caller hands the return value to the same output sink native-image and the compilers
+     * use: buffered for the Ctrl-O peek ring, printed under {@code -v}. Discarding it here would
+     * leave {@code error()} as the only way a script can reach the user, since a failure is the one
+     * path that carries its output along.
      */
-    static void evaluate(Path script, Path projectDir, Path outDir) throws IOException, InterruptedException {
-        KtsSession.run(script, projectDir, outDir);
+    static String evaluate(Path script, Path projectDir, Path outDir) throws IOException, InterruptedException {
+        return KtsSession.run(script, projectDir, outDir);
     }
 }

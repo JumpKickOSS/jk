@@ -3,7 +3,7 @@ package cc.jumpkick.engine;
 
 import cc.jumpkick.compile.WorkerAotBootstrap;
 import cc.jumpkick.config.EnvValues;
-import cc.jumpkick.config.TomlScan;
+import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.engine.plugin.PluginAot;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
@@ -29,12 +29,9 @@ import java.util.function.Function;
  *
  * <p>Not a user-facing command. Queued on the idle-boundary worker after first start and each
  * wall-clock 12 h maintenance cycle ({@link EngineMaintenance}). Disable with {@code [engine]
- * auto-warmup = false} or {@code JK_AUTO_WARMUP=off} — and that now means the whole pass. It
- * used to mean two of the four steps: the feed and template refresh ran <em>before</em> the switch
- * was consulted, so an engine told not to warm up still went to the network and still wrote to the
- * store every cycle, while this javadoc said it did not. Nothing is lost by moving the gate:
- * {@link EngineMaintenance#runMaintenanceCycle} does feeds and templates itself, immediately
- * before the hook that reaches this pass.
+ * auto-warmup = false} or {@code JK_AUTO_WARMUP=off} — that skips the whole pass.
+ * {@link EngineMaintenance#runMaintenanceCycle} still does feeds and templates on its own
+ * cadence.
  *
  * <h2>What a warmup writes, and what it therefore cannot undo</h2>
  *
@@ -74,16 +71,7 @@ public final class HostWarmup {
     static boolean enabled(Path userConfig, Function<String, String> env, BooleanSupplier aot) {
         Optional<Boolean> fromEnv = env != null ? EnvValues.bool(env, "JK_AUTO_WARMUP") : Optional.empty();
         if (fromEnv.isPresent()) return fromEnv.get();
-        // [engine] auto-warmup = false
-        try {
-            var scan = TomlScan.scan(userConfig, "engine.auto-warmup");
-            if (EnvValues.parseBool(scan.get("engine.auto-warmup"))
-                    .filter(on -> !on)
-                    .isPresent()) {
-                return false;
-            }
-        } catch (RuntimeException ignored) {
-        }
+        if (!JkEngineConfig.fromToml(userConfig).autoWarmup()) return false;
         // Kill-switch also covers worker train (mapping of existing caches still OK elsewhere).
         return aot.getAsBoolean();
     }

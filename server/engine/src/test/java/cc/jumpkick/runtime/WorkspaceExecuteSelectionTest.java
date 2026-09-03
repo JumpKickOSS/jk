@@ -9,6 +9,8 @@ import cc.jumpkick.config.WorkspaceCone;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.wire.runtime.WorkspaceRequest;
+import cc.jumpkick.wire.runtime.WorkspaceSpec;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -78,8 +80,8 @@ class WorkspaceExecuteSelectionTest {
                         tmp, tmp.resolve("cache"), null, 0, null, true, false, 0, null, true, true)
                 .withSpec(WorkspaceSpec.nativeImage(Set.of(app), Map.of(app, graal), null, List.of()));
 
-        var libPlan = WorkspaceExecute.assemblePlan(libUnit, req, Set.of(lib, app), false);
-        var appPlan = WorkspaceExecute.assemblePlan(appUnit, req, Set.of(lib, app), false);
+        var libPlan = WorkspacePreparePhase.assemblePlan(libUnit, req, Set.of(lib, app), false);
+        var appPlan = WorkspacePreparePhase.assemblePlan(appUnit, req, Set.of(lib, app), false);
         Set<String> libNames = libPlan.steps().stream().map(s -> s.name()).collect(Collectors.toSet());
         Set<String> appNames = appPlan.steps().stream().map(s -> s.name()).collect(Collectors.toSet());
         assertThat(libNames).contains(TaskNames.PACKAGE_JAR);
@@ -106,8 +108,8 @@ class WorkspaceExecuteSelectionTest {
                 .withTestOnly(true);
 
         Set<Path> jarConsumed = Set.of(BuildGraph.canonicalPath(lib));
-        var libPlan = WorkspaceExecute.assemblePlan(libUnit, req, Set.of(lib, app), false, jarConsumed);
-        var appPlan = WorkspaceExecute.assemblePlan(appUnit, req, Set.of(lib, app), false, jarConsumed);
+        var libPlan = WorkspacePreparePhase.assemblePlan(libUnit, req, Set.of(lib, app), false, jarConsumed);
+        var appPlan = WorkspacePreparePhase.assemblePlan(appUnit, req, Set.of(lib, app), false, jarConsumed);
         Set<String> libNames = libPlan.steps().stream().map(s -> s.name()).collect(Collectors.toSet());
         Set<String> appNames = appPlan.steps().stream().map(s -> s.name()).collect(Collectors.toSet());
         assertThat(libNames)

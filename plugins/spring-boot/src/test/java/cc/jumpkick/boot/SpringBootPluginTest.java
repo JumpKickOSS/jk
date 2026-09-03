@@ -17,10 +17,9 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * The boot-jar packager body, driven end to end over a fake {@link PackageIo} and asserted by
- * reading the jar it wrote. {@code [spring-boot] version} is a <em>selector</em> — the plugin's own
- * scaffolds all write {@code latest} — and it used to be copied verbatim into the manifest, so
- * {@code jk new -t spring-boot/hello && jk build} published a jar saying
- * {@code Spring-Boot-Version: latest}.
+ * reading the jar it wrote. {@code [spring-boot] version} is a <em>selector</em> — the plugin's
+ * own scaffolds all write {@code latest} — so the manifest records the resolved Boot version,
+ * never the declared selector.
  */
 class SpringBootPluginTest {
 

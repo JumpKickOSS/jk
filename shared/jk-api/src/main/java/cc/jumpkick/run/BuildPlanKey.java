@@ -4,6 +4,7 @@ package cc.jumpkick.run;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Typed key for a value in a BuildPlan's shared state.
@@ -19,9 +20,9 @@ public final class BuildPlanKey<T> {
     private final String name;
     private final Shape shape;
     private final Class<?> firstType;
-    private final Class<?> secondType;
+    private final @Nullable Class<?> secondType;
 
-    private BuildPlanKey(String name, Shape shape, Class<?> firstType, Class<?> secondType) {
+    private BuildPlanKey(String name, Shape shape, Class<?> firstType, @Nullable Class<?> secondType) {
         this.name = Objects.requireNonNull(name, "name");
         this.shape = Objects.requireNonNull(shape, "shape");
         this.firstType = Objects.requireNonNull(firstType, "firstType");
@@ -48,7 +49,9 @@ public final class BuildPlanKey<T> {
         return switch (shape) {
             case SCALAR -> firstType.getTypeName();
             case LIST -> "list<" + firstType.getTypeName() + ">";
-            case MAP -> "map<" + firstType.getTypeName() + ", " + secondType.getTypeName() + ">";
+            case MAP ->
+                "map<" + firstType.getTypeName() + ", "
+                        + Objects.requireNonNull(secondType).getTypeName() + ">";
         };
     }
 
@@ -85,7 +88,10 @@ public final class BuildPlanKey<T> {
                 for (Map.Entry<?, ?> entry : map.entrySet()) {
                     requireInstance(slotName, "map key", firstType, entry.getKey());
                     requireInstance(
-                            slotName, "map value for key '" + entry.getKey() + "'", secondType, entry.getValue());
+                            slotName,
+                            "map value for key '" + entry.getKey() + "'",
+                            Objects.requireNonNull(secondType),
+                            entry.getValue());
                 }
             }
         }
@@ -109,7 +115,7 @@ public final class BuildPlanKey<T> {
                 "plan state '" + slotName + "' expected " + expected + " but was " + actual);
     }
 
-    private static String actualType(Object value) {
+    private static String actualType(@Nullable Object value) {
         return value == null ? "null" : value.getClass().getTypeName();
     }
 
@@ -119,7 +125,7 @@ public final class BuildPlanKey<T> {
     }
 
     @Override
-    public boolean equals(Object other) {
+    public boolean equals(@Nullable Object other) {
         return other instanceof BuildPlanKey<?> key && name.equals(key.name) && sameType(key);
     }
 

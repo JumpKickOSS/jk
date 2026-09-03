@@ -95,20 +95,36 @@ public final class BuildGraph {
      * explain} agree.
      */
     public static int maxReadyWidth(List<BuildUnit> units, Map<Path, Set<Path>> edges) {
-        Set<Path> unitDirs = new HashSet<>();
+        Set<Path> unitDirs = new LinkedHashSet<>();
         for (BuildUnit u : units) unitDirs.add(u.dir());
+        return maxReadyWidth(unitDirs, edges);
+    }
+
+    /**
+     * {@link #maxReadyWidth(List, Map)} over bare dirs, for callers that hold a forecast rather than
+     * a unit list.
+     *
+     * <p>The forecast and the executor have to agree on this number or they are describing different
+     * builds: it is what divides the machine into each module's {@code -w} auto share, so a
+     * disagreement is a suite priced for the wrong runner count. They disagreed — the executor asked
+     * this, the ETA counted dirty modules instead — and a one-file edit that really ran engine's
+     * suite on 24 runners was forecast on 1, for a 91 s estimate against a 21 s build. Dependent
+     * modules never widen a build: engine and cli are both dirty after a spine edit, but cli waits
+     * for engine, so the width is 1 and each gets the whole machine in turn.
+     */
+    public static int maxReadyWidth(Set<Path> dirs, Map<Path, Set<Path>> edges) {
         Set<Path> done = new HashSet<>();
-        List<BuildUnit> remaining = new ArrayList<>(units);
+        List<Path> remaining = new ArrayList<>(dirs);
         int max = 1;
         while (!remaining.isEmpty()) {
-            List<BuildUnit> ready = remaining.stream()
-                    .filter(u -> edges.getOrDefault(u.dir(), Set.of()).stream()
-                            .filter(unitDirs::contains)
+            List<Path> ready = remaining.stream()
+                    .filter(d -> edges.getOrDefault(d, Set.of()).stream()
+                            .filter(dirs::contains)
                             .allMatch(done::contains))
                     .toList();
             if (ready.isEmpty()) break; // defensive: a cycle would otherwise spin
             max = Math.max(max, ready.size());
-            for (BuildUnit u : ready) done.add(u.dir());
+            done.addAll(ready);
             remaining.removeAll(ready);
         }
         return max;

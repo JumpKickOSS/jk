@@ -664,7 +664,7 @@ public final class PluginAot {
         Path aotDir = cache.getParent();
         if (aotDir == null) return;
         String now = AotManifest.nowIso();
-        AotManifest.Entry.Builder b = AotManifest.Entry.builder(
+        AotManifest.Entry.EntryBuilder b = AotManifest.Entry.builder(
                         cache.getFileName().toString())
                 .tool(meta.tool())
                 .key(meta.key())
@@ -689,7 +689,7 @@ public final class PluginAot {
         if (aotDir == null) return;
         String name = cache.getFileName().toString();
         String now = AotManifest.nowIso();
-        AotManifest.Entry.Builder b = AotManifest.Entry.builder(name)
+        AotManifest.Entry.EntryBuilder b = AotManifest.Entry.builder(name)
                 .status("ready")
                 .sizeBytes(AotManifest.sizeOf(cache))
                 .created(now)
@@ -703,7 +703,7 @@ public final class PluginAot {
         Path aotDir = cache.getParent();
         if (aotDir == null) return;
         String name = cache.getFileName().toString();
-        AotManifest.Entry.Builder b = AotManifest.Entry.builder(name).status("noaot");
+        AotManifest.Entry.EntryBuilder b = AotManifest.Entry.builder(name).status("noaot");
         if (meta != null) {
             b.tool(meta.tool())
                     .key(meta.key())

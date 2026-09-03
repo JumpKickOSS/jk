@@ -5,8 +5,7 @@ import cc.jumpkick.cli.Jk;
 
 /**
  * In-process CLI entry point for tests. Static-import {@link #run} so command tests read as
- * {@code run("lock", "-C", ...)} — one shared definition instead of the private copy every test
- * class used to carry.
+ * {@code run("lock", "-C", ...)}.
  */
 public final class JkRun {
     private JkRun() {}

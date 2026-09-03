@@ -2,6 +2,7 @@
 package cc.jumpkick.run;
 
 import java.time.Duration;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Callbacks the BuildPlan scheduler emits as tasks progress. Every method has a no-op default —
@@ -23,7 +24,7 @@ public interface BuildPlanListener {
      * A task began. {@code group} is an optional free-form UI label (e.g. {@code compile}); null when
      * unset. Not a lifecycle slot.
      */
-    default void stepStart(String step, String group, int ticks) {}
+    default void stepStart(String step, @Nullable String group, int ticks) {}
 
     default void progress(String step, int delta, BuildPlanView view) {}
 
@@ -43,7 +44,7 @@ public interface BuildPlanListener {
     }
 
     /** Structured test failure (module / engine / class / method / stack). */
-    default void error(String step, String code, String message, TestFailureInfo failure) {
+    default void error(String step, String code, String message, @Nullable TestFailureInfo failure) {
         if (failure == null) {
             error(step, code, message);
             return;
@@ -56,7 +57,7 @@ public interface BuildPlanListener {
                 failure.exceptionClass());
     }
 
-    default void stepFinish(String step, String group, TaskStatus status, Duration duration) {}
+    default void stepFinish(String step, @Nullable String group, TaskStatus status, Duration duration) {}
 
     default void planFinish(BuildPlanResult result) {}
 }

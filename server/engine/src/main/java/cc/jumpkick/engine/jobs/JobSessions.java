@@ -2,9 +2,9 @@
 package cc.jumpkick.engine.jobs;
 
 import cc.jumpkick.engine.journal.BuildAccumulator;
-import cc.jumpkick.runtime.RemainingWork;
-import cc.jumpkick.runtime.WorkspaceProgressTracker;
-import cc.jumpkick.runtime.progress.ProgressBarMode;
+import cc.jumpkick.wire.runtime.RemainingWork;
+import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
+import cc.jumpkick.wire.runtime.progress.ProgressBarMode;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.LongSupplier;
 import org.jspecify.annotations.Nullable;

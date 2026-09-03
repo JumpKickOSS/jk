@@ -68,7 +68,7 @@ public final class CommonOpts {
     /**
      * The canonical name of {@code --jdks-dir} — the key {@link Invocation} files its value under,
      * and the one spelling of the flag. Wire-side it is {@code jdksDir}
-     * ({@code cc.jumpkick.engine.protocol.ProtoJobs.JDKS_DIR}); the two are different vocabularies
+     * ({@code cc.jumpkick.wire.protocol.ProtoJobs.JDKS_DIR}); the two are different vocabularies
      * (a CLI flag and a JSON field) and each has exactly one owner.
      */
     public static final String JDKS_DIR = "jdks-dir";

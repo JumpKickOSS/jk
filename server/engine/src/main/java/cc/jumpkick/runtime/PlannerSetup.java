@@ -313,8 +313,13 @@ public final class PlannerSetup {
         WorkspaceClasspath.Result testSiblings = WorkspaceClasspath.resolve(
                 in.dir(), project, Set.of(Scope.EXPORT, Scope.MAIN, Scope.TEST, Scope.TEST_DEV));
         // Without this guard the written diagnostic (a tests kind whose test classes are not on
-        // disk) was dropped and the user got compile-test's `cannot find symbol` instead.
-        requireSiblingsBuilt(ctx, testSiblings, "test sibling not built — ");
+        // disk) was dropped and the user got compile-test's `cannot find symbol` instead. Only
+        // when compile-test is planned: under --skip-tests a sibling's fixtures and tests-kind
+        // output are never produced and nothing consumes the test classpath, so their absence is
+        // the cone working, not a broken setup.
+        if (!PlannerResources.skipJUnit(in)) {
+            requireSiblingsBuilt(ctx, testSiblings, "test sibling not built — ");
+        }
         List<Path> compileTestCp = new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.COMPILE_TEST, true));
         compileTestCp.addAll(testSiblings.jars());
         List<Path> testRuntimeCp = new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.TEST, true));

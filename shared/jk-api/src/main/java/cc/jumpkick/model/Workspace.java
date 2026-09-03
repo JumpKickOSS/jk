@@ -5,6 +5,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The {@code [workspace]} block of a root {@code jk.toml}: the literal module paths plus the
@@ -30,7 +31,11 @@ public record Workspace(List<String> modules, Map<String, WorkspaceDependency> d
     }
 
     /** Shared external dep in {@code [workspace.dependencies]} (version or git; not a sibling). */
-    public record WorkspaceDependency(String group, String artifact, VersionSelector version, GitSource gitSource) {
+    public record WorkspaceDependency(
+            String group,
+            String artifact,
+            @Nullable VersionSelector version,
+            @Nullable GitSource gitSource) {
 
         public WorkspaceDependency {
             Objects.requireNonNull(group, "group");

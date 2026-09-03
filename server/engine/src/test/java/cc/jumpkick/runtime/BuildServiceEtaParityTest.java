@@ -8,6 +8,8 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.Task;
+import cc.jumpkick.wire.runtime.ExplainPlan;
+import cc.jumpkick.wire.runtime.TaskForecast;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -55,7 +57,7 @@ class BuildServiceEtaParityTest {
                 .withCacheDir(tmp.resolve("cache"));
         List<EffortWeights.ModuleCost> costs = SessionContext.where(
                 forced,
-                () -> BuildService.etaCostsFromExplainPlan(plan, tmp.resolve("cache"), 1, null, null, false, false));
+                () -> BuildService.etaCostsFromExplainPlan(plan, tmp.resolve("cache"), 1, null, null, false, false, 0));
         assertThat(costs).hasSize(1);
         assertThat(costs.get(0).weight()).isGreaterThan(0);
     }

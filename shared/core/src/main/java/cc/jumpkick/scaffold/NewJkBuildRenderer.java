@@ -10,10 +10,9 @@ import java.util.Map;
 /**
  * Renders a starter {@code jk.toml} from {@link NewInputs} (name-as-key dependency tables).
  *
- * <p>Every string value goes through {@link MinimalToml#quote}. It used to splice raw text between
- * two {@code "} characters at eleven sites, so a project name, group or main class containing a
- * quote or a backslash — a Windows path in {@code main}, say — produced a {@code jk.toml} that jk
- * itself could not parse.
+ * <p>Every string value goes through {@link MinimalToml#quote}, so a project name, group or main
+ * class containing a quote or a backslash — a Windows path in {@code main}, say — still produces
+ * parseable TOML.
  */
 public final class NewJkBuildRenderer {
 

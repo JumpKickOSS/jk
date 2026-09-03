@@ -14,6 +14,10 @@ import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.security.Signature;
+import java.util.Base64;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -37,18 +41,37 @@ class EngineJarFetcherTest {
     private HttpServer server;
     private URI base;
     private volatile byte[] sumsBody;
+    private volatile byte[] signatureBody;
     private volatile byte[] jarBody;
     private volatile int sumsStatus = 200;
+    private volatile int signatureStatus = 200;
     private volatile int jarStatus = 200;
+    private KeyPair signingKey;
+    private ReleaseVerifier verifier;
 
     @BeforeEach
     void start() throws IOException {
         jarBody = JAR;
         sumsBody = (Hashing.sha256Hex(JAR) + "  jk-engine-" + VERSION + ".jar\n").getBytes(StandardCharsets.UTF_8);
+        try {
+            KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
+            generator.initialize(3072);
+            signingKey = generator.generateKeyPair();
+            verifier = ReleaseVerifier.of(List.of(
+                    Base64.getEncoder().encodeToString(signingKey.getPublic().getEncoded())));
+            signSums();
+        } catch (Exception e) {
+            throw new IOException("could not create test release key", e);
+        }
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/releases/" + VERSION + "/SHA256SUMS", exchange -> {
             exchange.sendResponseHeaders(sumsStatus, sumsStatus == 200 ? sumsBody.length : -1);
             if (sumsStatus == 200) exchange.getResponseBody().write(sumsBody);
+            exchange.close();
+        });
+        server.createContext("/releases/" + VERSION + "/SHA256SUMS.sig", exchange -> {
+            exchange.sendResponseHeaders(signatureStatus, signatureStatus == 200 ? signatureBody.length : -1);
+            if (signatureStatus == 200) exchange.getResponseBody().write(signatureBody);
             exchange.close();
         });
         server.createContext("/releases/" + VERSION + "/jk-engine-" + VERSION + ".jar", exchange -> {
@@ -73,23 +96,22 @@ class EngineJarFetcherTest {
         return new EngineInstall(root.resolve("lib"));
     }
 
-    /**
-     * Checksum-only verifier (no trusted keys). Production uses the baked-in release key; these
-     * unit tests exercise CAS materialize + SHA256SUMS parsing without signing fixtures.
-     */
-    private static ReleaseVerifier noSig() {
-        return ReleaseVerifier.of(List.of());
+    private void signSums() throws Exception {
+        Signature signature = Signature.getInstance("SHA256withRSA");
+        signature.initSign(signingKey.getPrivate());
+        signature.update(sumsBody);
+        signatureBody = (Base64.getEncoder().encodeToString(signature.sign()) + "\n").getBytes(StandardCharsets.UTF_8);
     }
 
     private Path fetch(Path root) throws IOException {
-        return EngineJarFetcher.fetch(base, VERSION, cas(root), engineInstall(root), noSig());
+        return EngineJarFetcher.fetch(base, VERSION, cas(root), engineInstall(root), verifier);
     }
 
     @Test
     void fetch_verifies_and_materializes_cas_first(@TempDir Path root) throws Exception {
         var cas = cas(root);
         var install = engineInstall(root);
-        Path installed = EngineJarFetcher.fetch(base, VERSION, cas, install, noSig());
+        Path installed = EngineJarFetcher.fetch(base, VERSION, cas, install, verifier);
 
         var m = install.resolve(VERSION).orElseThrow();
         assertThat(installed).isEqualTo(m.engineJar());
@@ -118,11 +140,27 @@ class EngineJarFetcherTest {
 
     @Test
     void checksums_without_an_entry_for_the_jar_refuses_to_install(@TempDir Path root) {
-        sumsBody = "abc123  jk-linux-x86_64.xz\n".getBytes(StandardCharsets.UTF_8);
+        sumsBody = ("a".repeat(64) + "  jk-linux-x86_64.xz\n").getBytes(StandardCharsets.UTF_8);
+        try {
+            signSums();
+        } catch (Exception e) {
+            throw new AssertionError(e);
+        }
 
         assertThatThrownBy(() -> fetch(root))
                 .isInstanceOf(IOException.class)
-                .hasMessageContaining("no entry for jk-engine-1.2.3.jar");
+                .hasMessageContaining("no unique exact entry");
+    }
+
+    @Test
+    void missing_signature_refuses_to_install(@TempDir Path root) {
+        signatureStatus = 404;
+
+        assertThatThrownBy(() -> fetch(root))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("release signature")
+                .hasMessageContaining("HTTP 404");
+        assertThat(engineInstall(root).resolve(VERSION)).isEmpty();
     }
 
     @Test
