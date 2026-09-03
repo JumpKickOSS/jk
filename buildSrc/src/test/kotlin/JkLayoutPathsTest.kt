@@ -9,9 +9,9 @@ import org.junit.jupiter.api.condition.OS
 import org.junit.jupiter.api.io.TempDir
 
 /**
- * The client `:engine:installLocal` materializes through. The case that matters is a stale
- * `build/dist/jk` from an earlier version sitting beside a freshly built one: it is runnable, so
- * position alone would pick it, and the engine it would then be handed is not its own.
+ * The client `:engine:installLocal` materializes through. The case that matters is a stale `build/dist/jk` from an
+ * earlier version sitting beside a freshly built one: it is runnable, so position alone would pick it, and the engine
+ * it would then be handed is not its own.
  */
 @EnabledOnOs(OS.LINUX, OS.MAC)
 class JkLayoutPathsTest {
@@ -23,9 +23,8 @@ class JkLayoutPathsTest {
 
         val probes = JkLayoutPaths.probeClients(root.toFile())
 
-        assertThat(probes).containsExactly(
-            JkLayoutPaths.ClientProbe(fresh, "0.13.0"),
-            JkLayoutPaths.ClientProbe(stale, "0.12.0"))
+        assertThat(probes)
+            .containsExactly(JkLayoutPaths.ClientProbe(fresh, "0.13.0"), JkLayoutPaths.ClientProbe(stale, "0.12.0"))
         assertThat(JkLayoutPaths.pickClient(probes, "0.13.0")).isEqualTo(fresh)
         assertThat(JkLayoutPaths.pickClient(probes, "0.12.0")).isEqualTo(stale)
     }
@@ -49,8 +48,8 @@ class JkLayoutPathsTest {
 
         val probes = JkLayoutPaths.probeClients(root.toFile())
 
-        assertThat(probes).containsExactly(
-            JkLayoutPaths.ClientProbe(broken, null), JkLayoutPaths.ClientProbe(mute, null))
+        assertThat(probes)
+            .containsExactly(JkLayoutPaths.ClientProbe(broken, null), JkLayoutPaths.ClientProbe(mute, null))
         assertThat(JkLayoutPaths.pickClient(probes, "0.13.0")).isNull()
         assertThat(JkLayoutPaths.describeProbes(probes)).contains("no version")
     }

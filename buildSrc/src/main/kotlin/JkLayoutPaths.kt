@@ -41,9 +41,9 @@ object JkLayoutPaths {
      * (`jk.bat` / `jk`) is a supported Windows path (Smart App Control blocks unsigned `jk.exe`); the ship-layout
      * `build/dist/jk[.exe]` trails as a last resort for a tree that has one but no `nativeCompile` output.
      *
-     * None of these is trusted on position alone — [probeClients] asks each one its version, because a `build/dist`
-     * (or `nativeCompile`) left over from an older day is a *runnable* client of the wrong version, and handing it
-     * today's engine jar is exactly the silent mis-install this ordering cannot prevent on its own.
+     * None of these is trusted on position alone — [probeClients] asks each one its version, because a `build/dist` (or
+     * `nativeCompile`) left over from an older day is a *runnable* client of the wrong version, and handing it today's
+     * engine jar is exactly the silent mis-install this ordering cannot prevent on its own.
      *
      * Callers that may run alongside `dist` / `nativeCompile` must order after those tasks so the preferred path is not
      * still open for writing (Linux ETXTBSY).
@@ -89,10 +89,11 @@ object JkLayoutPaths {
         if (!isRunnableClient(client)) return null
         val log = File.createTempFile("jk-client-version", ".txt")
         try {
-            val proc = ProcessBuilder(launchCommand(client.absolutePath, "--version"))
-                .redirectErrorStream(true)
-                .redirectOutput(log)
-                .start()
+            val proc =
+                ProcessBuilder(launchCommand(client.absolutePath, "--version"))
+                    .redirectErrorStream(true)
+                    .redirectOutput(log)
+                    .start()
             if (!proc.waitFor(60, TimeUnit.SECONDS)) {
                 proc.destroyForcibly()
                 return null

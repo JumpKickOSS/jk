@@ -210,8 +210,8 @@ public final class SelfCommand extends GroupCommand {
             if (jarVersion == null) {
                 CommandWedge.printFail(
                         "Self",
-                        "not a jk-engine jar name: " + engineJar.getFileName()
-                                + " (expected jk-engine-" + Jk.VERSION + ".jar)");
+                        "not a jk-engine jar name: " + engineJar.getFileName() + " (expected jk-engine-" + Jk.VERSION
+                                + ".jar)");
                 return Exit.SOFTWARE;
             }
             if (!jarVersion.equals(Jk.VERSION)) {
