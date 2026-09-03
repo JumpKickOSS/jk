@@ -99,9 +99,11 @@ class NerdFontDetectTest {
     // ── T3: identified terminals ────────────────────────────────────────────
 
     @Test
-    void apple_terminal_is_pinned_to_the_wedge() {
+    void apple_terminal_is_pinned_off() {
+        // Not WEDGE_ONLY: a fresh macOS install renders U+E0B0 as tofu in Terminal.app, and its
+        // font is a blob we do not decode, so there is nothing to upgrade from.
         var r = detect(env("TERM_PROGRAM", "Apple_Terminal"));
-        assertThat(r.caps()).isEqualTo(NerdFontCaps.WEDGE_ONLY);
+        assertThat(r.caps()).isEqualTo(NerdFontCaps.NONE);
         assertThat(r.source()).isEqualTo("apple-terminal");
     }
 
@@ -132,8 +134,8 @@ class NerdFontDetectTest {
     @Test
     void alacritty_floors_at_the_wedge_it_draws_itself() {
         // Alacritty renders the classic Powerline set out of its own tables, so the triangles are
-        // safe whatever the font says — same floor as Terminal.app. A plain font, an unreadable
-        // alacritty.toml, and a Powerline patch all land there.
+        // safe whatever the font says. A plain font, an unreadable alacritty.toml, and a Powerline
+        // patch all land on that floor.
         assertThat(alacritty("JetBrains Mono")).isEqualTo(NerdFontCaps.WEDGE_ONLY);
         assertThat(alacritty("Cascadia Mono PL")).isEqualTo(NerdFontCaps.WEDGE_ONLY);
         assertThat(detect(env("ALACRITTY_LOG", "x")).caps()).isEqualTo(NerdFontCaps.WEDGE_ONLY);

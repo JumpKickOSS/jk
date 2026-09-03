@@ -82,11 +82,14 @@ public final class NerdFontDetect {
             return new Result(NerdFontCaps.NONE, "remote-session", "SSH session — client font is unknown");
         }
 
-        // T3 — identified terminal whose font we can look up.
+        // T3 — identified terminal, resolved from its configured font where we can read one.
         if (termProgram.equals("apple_terminal")) {
-            // Pinned to the wedge. Terminal.app stores its font as an NSKeyedArchiver blob, which
-            // we deliberately do not decode; the triangles are the safe subset.
-            return new Result(NerdFontCaps.WEDGE_ONLY, "apple-terminal", "Terminal.app — wedge glyphs only");
+            // Pinned off, not to the wedge: Terminal.app draws no powerline glyph itself, and a
+            // fresh macOS install carries no Powerline-patched font, so even U+E0B0 is tofu out of
+            // the box. Its font is an NSKeyedArchiver blob we deliberately do not decode, so we
+            // cannot see when that stops being true — someone who patches their font pins
+            // `nerd-font` by hand.
+            return new Result(NerdFontCaps.NONE, "apple-terminal", "Terminal.app — no bundled powerline glyphs");
         }
         if (termProgram.equals("iterm.app")) {
             return fromFont(safe(fonts::itermFont), "iterm2", "iTerm2");
@@ -95,8 +98,8 @@ public final class NerdFontDetect {
                 || notBlank(env.apply("ALACRITTY_WINDOW_ID"))
                 || notBlank(env.apply("ALACRITTY_SOCKET"))) {
             // Alacritty draws the classic Powerline set itself, so the triangles land whatever the
-            // configured font is — the same floor as Terminal.app. It does not cover Powerline
-            // Extra, so the semi-circles still have to be earned from the font.
+            // configured font is. It does not cover Powerline Extra, so the semi-circles still have
+            // to be earned from the font.
             return fromFont(safe(fonts::alacrittyFont), "alacritty", "Alacritty", NerdFontCaps.WEDGE_ONLY);
         }
         if (termProgram.equals("vscode")) {
