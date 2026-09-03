@@ -166,6 +166,12 @@ public final class SelfCommand extends GroupCommand {
      * local dist's engine jar into the CAS and install under {@code <home>/lib/jk-engine/}.
      * install.sh calls this through the freshly-installed client. The client-bin argument is the
      * PATH binary already written by the installer (not copied into the product lib).
+     *
+     * <p>The jar must be this client's own version. A client only ever spawns {@code
+     * jk-engine-<own version>.jar}, so materializing someone else's engine publishes bytes nothing
+     * will load — and, because the install is keyed by the client's version, it lands under a name
+     * that lies about what it contains. Refuse instead: {@code jk self update} is the seam that
+     * crosses versions.
      */
     static final class MaterializeSub implements CliCommand {
 
@@ -196,6 +202,24 @@ public final class SelfCommand extends GroupCommand {
             Path engineJar = Path.of(in.positionals().get(1));
             if (!Files.isRegularFile(engineJar)) {
                 CommandWedge.printFail("Self", "engine jar not found: " + engineJar);
+                return Exit.SOFTWARE;
+            }
+            String jarVersion = EngineInstall.versionFromJarName(
+                            engineJar.getFileName().toString())
+                    .orElse(null);
+            if (jarVersion == null) {
+                CommandWedge.printFail(
+                        "Self",
+                        "not a jk-engine jar name: " + engineJar.getFileName()
+                                + " (expected jk-engine-" + Jk.VERSION + ".jar)");
+                return Exit.SOFTWARE;
+            }
+            if (!jarVersion.equals(Jk.VERSION)) {
+                CommandWedge.printFail(
+                        "Self",
+                        "engine jar is " + jarVersion + ", this client is " + Jk.VERSION + " — refusing to"
+                                + " materialize " + engineJar + " (build the matching engine, or run"
+                                + " `jk self update " + jarVersion + "` to move the whole install)");
                 return Exit.SOFTWARE;
             }
             EngineInstall install = EngineInstall.current();

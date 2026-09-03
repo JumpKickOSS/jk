@@ -27,7 +27,10 @@ jk engine status
 
 The native client is preferred (self-heal, sub-50 ms). **Windows also supports the thin JVM
 client** (`:cli:installDist` → `jk.bat`): Smart App Control blocks unsigned `jk.exe`.
-`:engine:installLocal` uses native when `dist` already built one, otherwise the thin launcher.
+`:engine:installLocal` runs the materialize through a client that reports the engine jar's own
+version — the `:cli:nativeCompile` binary first, then the thin launcher, then `build/dist/jk` —
+and fails, listing what it found, when none does. A `build/dist` left over from an older version
+is skipped rather than handed a new engine (`jk self materialize` refuses that too).
 The thin client cannot self-heal a missing engine — materialize from this checkout.
 
 Once a release is published this section shrinks to one line: install with

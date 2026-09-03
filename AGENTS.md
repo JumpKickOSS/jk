@@ -127,7 +127,7 @@ After code changes, reinstall the **local** JumpKick so dogfood uses the build y
 |---|---|
 | `clean dist` | Fresh `build/dist/jk` (native CLI) + `build/dist/lib/jk-engine-*.jar` |
 | `:cli:installDist` | Thin JVM client (`jk` / `jk.bat`) — the Windows SAC-safe path |
-| `installLocal` | Side-loads plugin/worker jars **and** materializes the engine jar + bounces the daemon (`:engine:installLocal`). Uses native `jk` when `dist` already built one; otherwise the thin client. |
+| `installLocal` | Side-loads plugin/worker jars **and** materializes the engine jar + bounces the daemon (`:engine:installLocal`). Runs through a client that reports the engine jar's own version — `:cli:nativeCompile` output, then the thin client, then `build/dist/jk` — and fails, listing what it found, when none does. |
 | `./install.sh` / `.\install.cmd` | Installs that client into `~/.jk/bin` and materializes the engine jar |
 
 On Windows, `jk` may be `jk.bat`. Do not insist on `jk.exe`. A leftover unsigned `jk.exe` is parked when the thin client is installed so PATHEXT does not keep launching the blocked PE.

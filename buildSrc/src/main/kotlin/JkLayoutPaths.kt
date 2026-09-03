@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import java.io.File
+import java.util.concurrent.TimeUnit
 
 /**
  * Gradle-side mirror of [cc.jumpkick.util.JkDirs] (buildSrc cannot depend on :core). Keep in sync when layout
@@ -34,30 +35,86 @@ object JkLayoutPaths {
     fun binDir(): File = homeRoot().resolve("bin")
 
     /**
-     * Client for dogfood tasks (`installLocal` materialize). Native image from `./gradlew dist` first when present; the
-     * thin JVM `:cli:installDist` launcher (`jk.bat` / `jk`) is a supported Windows path (Smart App Control blocks
-     * unsigned `jk.exe`).
+     * Clients for dogfood tasks (`installLocal` materialize), best first. `:cli:nativeCompile` output leads: it is the
+     * binary this build produced, and `build/dist` is only ever a `Sync` copy of it, so the two are identical when both
+     * are current and `build/dist` is stale residue when they are not. The thin JVM `:cli:installDist` launcher
+     * (`jk.bat` / `jk`) is a supported Windows path (Smart App Control blocks unsigned `jk.exe`); the ship-layout
+     * `build/dist/jk[.exe]` trails as a last resort for a tree that has one but no `nativeCompile` output.
      *
-     * Order: ship-layout `build/dist/jk[.exe]`, `:cli:nativeCompile` output, then installDist. Callers that may run
-     * alongside `dist` / `nativeCompile` must order after those tasks so the preferred path is not still open for
-     * writing (Linux ETXTBSY).
+     * None of these is trusted on position alone — [probeClients] asks each one its version, because a `build/dist`
+     * (or `nativeCompile`) left over from an older day is a *runnable* client of the wrong version, and handing it
+     * today's engine jar is exactly the silent mis-install this ordering cannot prevent on its own.
+     *
+     * Callers that may run alongside `dist` / `nativeCompile` must order after those tasks so the preferred path is not
+     * still open for writing (Linux ETXTBSY).
      */
     fun clientCandidates(rootProjectDir: File): List<File> {
         val list = mutableListOf<File>()
-        list.add(File(rootProjectDir, "build/dist/jk.exe"))
-        list.add(File(rootProjectDir, "build/dist/jk"))
         list.add(File(rootProjectDir, "clients/cli/build/native/nativeCompile/jk.exe"))
         list.add(File(rootProjectDir, "clients/cli/build/native/nativeCompile/jk"))
         list.add(File(rootProjectDir, "clients/cli/build/install/jk/bin/jk.bat"))
         list.add(File(rootProjectDir, "clients/cli/build/install/jk/bin/jk"))
+        list.add(File(rootProjectDir, "build/dist/jk.exe"))
+        list.add(File(rootProjectDir, "build/dist/jk"))
         return list.distinct()
     }
 
-    fun resolveClient(rootProjectDir: File): String? {
-        for (c in clientCandidates(rootProjectDir)) {
-            if (isRunnableClient(c)) return c.absolutePath
+    /** A runnable client and the version it reported, or `null` when it would not say. */
+    data class ClientProbe(val path: File, val version: String?)
+
+    /** `jk --version` prints exactly `jk <version>` (cc.jumpkick.cli.Jk). */
+    private val VERSION_LINE = Regex("^jk (\\S+)\\s*$", RegexOption.MULTILINE)
+
+    /** Every runnable candidate in [clientCandidates] order, each asked its version. */
+    fun probeClients(rootProjectDir: File): List<ClientProbe> =
+        clientCandidates(rootProjectDir).filter { isRunnableClient(it) }.map { ClientProbe(it, clientVersion(it)) }
+
+    /** The first probe reporting [version] — the only client allowed to install that version's engine jar. */
+    fun pickClient(probes: List<ClientProbe>, version: String): File? =
+        probes.firstOrNull { it.version == version }?.path
+
+    /** One line per probe for a task's failure message: what was found and what each one claims to be. */
+    fun describeProbes(probes: List<ClientProbe>): String =
+        if (probes.isEmpty()) {
+            "  (no runnable client found)"
+        } else {
+            probes.joinToString("\n") { "  ${it.path} -> ${it.version ?: "no version"}" }
         }
-        return null
+
+    /**
+     * What [client] answers to `--version`, or `null` when it cannot be started, exits non-zero, or prints something
+     * that is not a version line. A candidate that will not identify itself is never picked.
+     */
+    fun clientVersion(client: File): String? {
+        if (!isRunnableClient(client)) return null
+        val log = File.createTempFile("jk-client-version", ".txt")
+        try {
+            val proc = ProcessBuilder(launchCommand(client.absolutePath, "--version"))
+                .redirectErrorStream(true)
+                .redirectOutput(log)
+                .start()
+            if (!proc.waitFor(60, TimeUnit.SECONDS)) {
+                proc.destroyForcibly()
+                return null
+            }
+            if (proc.exitValue() != 0) return null
+            return VERSION_LINE.find(log.readText())?.groupValues?.get(1)
+        } catch (_: Exception) {
+            return null
+        } finally {
+            log.delete()
+        }
+    }
+
+    /**
+     * The version in an engine jar's file name, `jk-engine-<version>.jar`. Gradle-side mirror of
+     * `cc.jumpkick.cache.EngineInstall.versionFromJarName` minus the `.<epoch>` suffix, which only the installed copy
+     * ever carries — `shadowJar` always writes the canonical name.
+     */
+    fun engineJarVersion(engineJar: File): String? {
+        val name = engineJar.name
+        if (!name.startsWith("jk-engine-") || !name.endsWith(".jar")) return null
+        return nonBlank(name.substring("jk-engine-".length, name.length - ".jar".length))
     }
 
     /**

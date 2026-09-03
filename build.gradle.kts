@@ -1040,8 +1040,9 @@ val dist by tasks.registering(Sync::class) {
 
 /**
  * Local dogfood refresh: all worker `installLocal` tasks, then `:engine:installLocal`.
- * Engine materialize prefers the native client from `./gradlew dist` (`build/dist/jk[.exe]`)
- * when that file exists; otherwise the thin `:cli:installDist` launcher. `:engine:installLocal`
+ * Engine materialize runs through a client that reports the engine jar's own version —
+ * `:cli:nativeCompile` output first, then the thin `:cli:installDist` launcher, then a
+ * ship-layout `build/dist/jk[.exe]` — and fails when none does. `:engine:installLocal`
  * mustRunAfter `dist` / `:cli:nativeCompile` so `./gradlew dist installLocal` does not exec a
  * binary still open for writing (Linux ETXTBSY).
  */

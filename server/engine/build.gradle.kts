@@ -92,18 +92,20 @@ tasks.shadowJar {
  * ({@code ~/.jk/lib/…}), and bounce the resident daemon so local dogfood
  * picks up engine-side first-party plugin tables without a hand copy.
  *
- * Native client at {@code build/dist/jk} ({@code jk.exe} on Windows) when {@code dist} already
- * built one; otherwise the thin JVM {@code :cli:installDist} launcher ({@code jk.bat} / {@code
- * jk}). Windows Smart App Control blocks unsigned {@code jk.exe}, so the thin client is a
- * supported dogfood path there.
+ * Runs through a client that reports the fat jar's own version — {@code :cli:nativeCompile} output
+ * first, then the thin JVM {@code :cli:installDist} launcher ({@code jk.bat} / {@code jk}), then a
+ * ship-layout {@code build/dist/jk[.exe]}. Windows Smart App Control blocks unsigned {@code
+ * jk.exe}, so the thin client is a supported dogfood path there. Fails when none matches, rather
+ * than handing a new engine to an old client (which refuses it, quietly, from the installer's
+ * point of view).
  */
 tasks.register("installLocal") {
     group = "distribution"
     description = "Materialize shadowJar into the product lib and restart the engine"
     dependsOn(tasks.named("shadowJar"))
-    // Thin launcher is always cheap. Native {@code dist} is optional: use it when present.
+    // Thin launcher is always cheap, and is the one client this task can guarantee is current.
     dependsOn(":cli:installDist")
-    // Prefer build/dist/jk when present, but do not race a concurrent Sync/native-image write
+    // Do not probe/exec a native binary a concurrent Sync/native-image write still has open
     // (ETXTBSY / "Text file busy" on Linux). Order only — do not dependsOn, so plain
     // installLocal stays cheap when dist is not requested.
     mustRunAfter(rootProject.tasks.named("dist"))
@@ -113,12 +115,22 @@ tasks.register("installLocal") {
             tasks.named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJar").get().archiveFile
                 .get()
                 .asFile
+        // The client materializes under its own version, and refuses a jar that is not it, so the
+        // one that matches this jar is the only one that can install it. Position is not enough:
+        // a build/dist (or nativeCompile output) from an older day is runnable and wrong.
+        val engineVersion =
+            JkLayoutPaths.engineJarVersion(engineJar)
+                ?: throw GradleException("not a jk-engine-<version>.jar: $engineJar")
+        val probes = JkLayoutPaths.probeClients(rootProject.projectDir)
         val client =
-            JkLayoutPaths.resolveClient(rootProject.projectDir)
-                ?: throw GradleException(
-                    "cannot find a jk client (native build/dist/jk[.exe] or thin " +
-                        "clients/cli/build/install/jk/bin/jk[.bat]). " +
-                        "Build one: ./gradlew dist  or  ./gradlew :cli:installDist")
+            (JkLayoutPaths.pickClient(probes, engineVersion)
+                    ?: throw GradleException(
+                        "no jk client reports version $engineVersion, so ${engineJar.name} cannot be " +
+                            "materialized. Clients found:\n" +
+                            JkLayoutPaths.describeProbes(probes) +
+                            "\nBuild a matching one: ./gradlew :cli:nativeCompile  or  " +
+                            "./gradlew :cli:installDist  (an older build/dist is ignored, not used)"))
+                .absolutePath
         fun runJk(vararg args: String) {
             val cmd = JkLayoutPaths.launchCommand(client, *args)
             val pb = ProcessBuilder(cmd)
