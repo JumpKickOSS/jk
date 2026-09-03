@@ -1048,7 +1048,25 @@ tasks.register("checkGateCoverage") {
     doLast {
         val lifecycle = setOf("check", "checkAll", "checkFast")
         val registered = Guards.all.filter { it.registers }.map { it.task }.toSet()
-        val scheduled = gradle.taskGraph.allTasks.toSet()
+        // Reachability from checkFast is a property of how the build is wired, not of whatever a
+        // given invocation happens to schedule. Reading gradle.taskGraph.allTasks conflated the
+        // two: inside `./gradlew checkFast` the graph is the closure and the verdict was right,
+        // but run by name on its own — which its verification group and description both invite —
+        // the graph held only this task, and it reported ~900 correctly-wired guards as
+        // unreachable. A guard whose answer depends on how it was reached teaches everyone to
+        // distrust it, and this one is the guard that guards the others.
+        //
+        // One level, not a closure, because one level is the whole of the wiring: checkFast takes
+        // every subproject `check` and every root check* task, and a guard joins the gate by
+        // hanging off one of those. Walking transitively instead reaches `check` -> `test` ->
+        // `jar` and resolves a configuration at execution time, which Gradle refuses without an
+        // exclusive lock — a build failure where a verdict was asked for.
+        val reachable = mutableSetOf<Task>()
+        rootBranchGuards.forEach(reachable::add)
+        allprojects.forEach { p ->
+            val lifecycleCheck = p.tasks.findByName("check") ?: return@forEach
+            reachable.addAll(lifecycleCheck.taskDependencies.getDependencies(lifecycleCheck))
+        }
         fun Project.taskPath(name: String): String = if (path == ":") ":$name" else "$path:$name"
         val expected =
             allprojects.flatMap { p ->
@@ -1056,7 +1074,7 @@ tasks.register("checkGateCoverage") {
                     p.tasks.getByName(name)
                 }
             }
-        val missing = expected.filterNot(scheduled::contains).map { it.path }
+        val missing = expected.filterNot(reachable::contains).map { it.path }
         val unregistered =
             allprojects.flatMap { p ->
                 p.tasks.names.filter {
