@@ -320,6 +320,16 @@ if [ -n "$LOCAL_FILE" ]; then
   if [ -n "$ENGINE_JAR" ]; then
     run_jk self materialize "$JK_BIN" "$ENGINE_JAR" >/dev/null 2>&1 \
       || note "engine materialization skipped (jk self materialize failed; the client re-fetches on demand)"
+  else
+    # Loud, because the quiet version of this is worse than a failure. A local install with no
+    # engine jar beside it leaves the client to self-fetch the RELEASED engine on first spawn:
+    # the binary you just built, paired with an engine you did not, and nothing on screen saying
+    # so. Whoever is installing a local build is installing it to run local changes.
+    die "no jk-engine-*.jar in $SRC_LIB — a local install needs the engine built beside the" \
+        "client (the ship layout: <dir>/jk and <dir>/lib/jk-engine-<version>.jar)." \
+        "Build one with 'jk build' (writes target/dist/) or './gradlew dist', and install from" \
+        "that directory. Installing the client alone would silently pair it with the released" \
+        "engine."
   fi
   # Seed root-level nerd-font = "auto"; detection then runs per launch. Never fail install.
   run_jk self setup-terminal >/dev/null 2>&1 \
