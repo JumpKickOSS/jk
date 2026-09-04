@@ -15,10 +15,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * A clean preflight verdict has to mean "the artifacts here are the ones these inputs produce", not
- * "some artifacts are here". It used to mean the second: outputs were only ever tested for
- * existence, so a module could be skipped with a jar built from other sources while the build
- * reported {@code all modules up to date}.
+ * A clean preflight verdict means "the artifacts here are the ones these inputs produce", never
+ * merely "some artifacts are here". Existence alone cannot carry that: a jar built from other
+ * sources exists too, and a module skipped on that basis leaves a stale artifact behind a green
+ * build. The provenance record is what separates the two, so these pin both directions of it.
  */
 class ModuleInputProvenanceTest {
 

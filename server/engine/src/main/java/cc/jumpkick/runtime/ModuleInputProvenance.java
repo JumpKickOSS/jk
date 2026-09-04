@@ -12,20 +12,19 @@ import java.util.Map;
 /**
  * Which inputs the outputs sitting in a module's target dir were built from.
  *
- * <p>Preflight asks two different questions and used to answer both with one: "are this module's
- * inputs unchanged?" (the fingerprint memo) and "are its outputs current?" — the second answered by
- * {@link ModuleOutputRestore#packageOutputsMissing}, which tests only that the files <em>exist</em>.
- * A jar built from other sources exists, so a module could be skipped with a stale artifact on disk
- * and the build would report {@code all modules up to date}.
+ * <p>Preflight asks two separate questions: "are this module's inputs unchanged?", answered by the
+ * fingerprint memo, and "are its outputs current?". The second cannot be answered by
+ * {@link ModuleOutputRestore#packageOutputsMissing} alone, which tests only that the files
+ * <em>exist</em> — a jar built from other sources exists, and a module skipped on that basis keeps
+ * a stale artifact behind a build that reports {@code all modules up to date}.
  *
- * <p>That is reachable whenever content returns to a state the action cache has already seen: the
- * forecast finds every step cached (the cache genuinely holds those outputs), nothing is missing so
- * nothing is restored, and the outputs actually on disk are the previous run's. Editing a file back
- * and forth — a revert, a rebase, a stash pop, a branch switch — is enough.
+ * <p>The gap opens whenever content returns to a state the action cache already holds: every step
+ * is a cache hit, nothing is missing so nothing is restored, and the outputs on disk are the
+ * previous run's. A revert, a rebase, a stash pop and a branch switch all produce that shape.
  *
- * <p>So the fact is recorded where the outputs are: one line under the module's target dir naming
- * the input fingerprint that produced them, written only after a build that succeeded. Preflight
- * then requires it to match before it may call a module clean.
+ * <p>So the fact lives where the outputs are: one line under the module's target dir naming the
+ * input fingerprint that produced them, written only after a build that succeeded. Preflight
+ * requires it to match before it may call a module clean.
  *
  * <p>A missing record reads as clean, not dirty. It means "built by a jk that did not write one" —
  * true of every existing target dir the first time this runs — and treating that as a rebuild would
