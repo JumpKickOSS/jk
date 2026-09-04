@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
-import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.config.JkHttpConfig;
-import cc.jumpkick.config.Jobs;
 import cc.jumpkick.engine.http.HttpEngineServer;
 import cc.jumpkick.engine.http.HttpEvents;
 import cc.jumpkick.engine.http.StatusSnapshot;
@@ -13,15 +11,12 @@ import cc.jumpkick.engine.jobs.JobEnvelope;
 import cc.jumpkick.engine.jobs.JobSessions;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.JournalWriter;
-import cc.jumpkick.engine.plugin.HeapPlan;
-import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.PluginAot;
 import cc.jumpkick.engine.verbs.VerbRegistry;
 import cc.jumpkick.engine.verbs.VerbShape;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.runtime.BuildMetrics;
-import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.EngineTransport;
 import cc.jumpkick.wire.protocol.EngineProtocol;
@@ -409,53 +404,10 @@ public final class EngineServer implements AutoCloseable {
 
         connectionExecutor = Executors.newThreadPerTaskExecutor(
                 Thread.ofVirtual().name("jk-engine-conn-", 0).factory());
-        planSharedWorkerMemoryOnce();
-
-        log.accept("jk engine: listening on " + won.active().socket() + " (pid " + pid + ")");
-
-        // Order matters: tell the predecessor to drain FIRST — that is what
-        // makes it suppress training and kill its trainer sidecar. Wiping before that signal
-        // leaves a window in which its in-flight trainer can atomically rename a fresh cache into
-        // the directory we just swept, which is exactly the refill this was meant to prevent.
-        // Our own trainer starts last, after the sweep, so it never sweeps its own output.
-        election.askPredecessorToYield(won.displaced());
-        // Drop other product versions' AOT (engine + workers); keep ours (named *-<version>-*).
-        try {
-            int wiped = EngineInstall.wipeAotDirectory(JkDirs.state().resolve("aot"), version);
-            if (wiped > 0) {
-                log.accept("jk engine: retired " + wiped + " AOT cache(s) from other versions");
-            }
-        } catch (RuntimeException ignored) {
-            // best-effort
-        }
-        try {
-            var gc = EngineInstall.current().gc();
-            if (!gc.isEmpty()) {
-                log.accept("jk engine: removed " + gc.size() + " displaced install file(s)");
-            }
-        } catch (RuntimeException ignored) {
-            // a predecessor may still have the previous jar mapped — retry on the next cycle
-        }
-        aot.startIfConfigured();
-        // HTTP binds only after the predecessor has yielded (askPredecessorToYield waits for bye,
-        // which is sent after HTTP/UDS unbind). Binding earlier lost the handoff race and stuck
-        // "Address already in use" in `jk engine status` for the engine's life.
-        http.start();
-        // leftover running=true journal rows from a killed engine cannot still be live.
-        int abandoned = journal.abandonStaleRunning(version);
-        if (abandoned > 0) {
-            log.accept("jk engine: abandoned " + abandoned + " stale in-flight journal entries");
-        }
-        // Store feeds are revalidated by HostWarmup / EngineMaintenance (not a 12 h process sleep).
-        storeFeedRefresh = new StoreFeedRefresh(log, null);
-        // 1-minute loop: config.toml mtime reload + wall-clock 12 h maintenance (feeds, templates,
-        // cache prune, AOT/cal). Laptop suspend-safe — due work runs on the next minute tick after resume.
-        engineMaintenance = new EngineMaintenance(log, storeFeedRefresh, idle::enqueueScheduledCachePrune);
-        engineMaintenance.start();
-        // First-start self-heal: feeds → templates → AOT/cal on the idle worker (does not block accept).
-        idle.scheduleHostWarmup(false);
-        // Touch resolve/PubGrub classes so the first real lock does not pay classload on the critical path.
-        idle.scheduleResolveClassWarmup();
+        EngineStartup.Started started =
+                new EngineStartup(version, pid, election, aot, http, journal, idle, log).run(won);
+        storeFeedRefresh = started.feeds();
+        engineMaintenance = started.maintenance();
         startDisplacementWatchdog();
         acceptLoop();
         awaitDrainComplete();
@@ -763,15 +715,6 @@ public final class EngineServer implements AutoCloseable {
 
     /** Grace for a trainer to die with its engine; short — the engine is already on its way out. */
     private static final long TRAINER_SHUTDOWN_MILLIS = 5_000;
-
-    /**
-     * Size the shared worker-JVM memory plan once for the process (core-count concurrency). Hosted
-     * builds pass {@code applyMemoryPlan=false} so concurrent requests do not overwrite it.
-     */
-    private void planSharedWorkerMemoryOnce() {
-        int cap = Jobs.resolve(JkEngineConfig.resolve());
-        JvmOptions.planAndApply(HeapPlan.requestedJvms(cap, 1, false, cap));
-    }
 
     private static void closeQuietly(SocketChannel ch) {
         try {
