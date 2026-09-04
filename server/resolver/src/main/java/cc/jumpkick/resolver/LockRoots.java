@@ -34,7 +34,8 @@ final class LockRoots {
             Scope.DEV,
             Scope.TEST_DEV);
 
-    private enum GraphGroup {
+    /** The three solver graphs. */
+    enum GraphGroup {
         MAIN,
         TEST,
         PROCESSOR
@@ -85,6 +86,15 @@ final class LockRoots {
 
     /** The three solver root lists and the file dependencies, in declaration order. */
     record Roots(List<Dependency> main, List<Dependency> test, List<Dependency> processor, List<Dependency> fileDeps) {
+
+        /** This graph's roots. */
+        List<Dependency> of(GraphGroup graph) {
+            return switch (graph) {
+                case MAIN -> main;
+                case TEST -> test;
+                case PROCESSOR -> processor;
+            };
+        }
 
         /** Every root plus every file dependency — the progress budget's seed. */
         int declaredCount() {

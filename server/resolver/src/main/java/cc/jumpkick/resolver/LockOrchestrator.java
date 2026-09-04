@@ -27,7 +27,6 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -121,14 +120,6 @@ public final class LockOrchestrator {
     public LockOrchestrator withJvmEnvironment(String env) {
         if (env != null && !env.isBlank()) this.jvmEnvironment = env;
         return this;
-    }
-
-    private PubGrubResolver buildResolver(
-            RepoGroup repos,
-            Map<String, String> bomConstraints,
-            Map<String, String> lockedVersionPrefs,
-            KmpRedirects kmp) {
-        return new PubGrubResolver(repos, bomConstraints, lockedVersionPrefs, kmp, platformPolicy, unmappedPolicy);
     }
 
     /** Lock with the project's default feature selection. */
@@ -234,9 +225,6 @@ public final class LockOrchestrator {
 
         LockRoots.Roots roots = constraints.apply(declared.split(), injected);
         List<Dependency> fileDeps = roots.fileDeps();
-        List<Dependency> mainRoots = roots.main();
-        List<Dependency> testRoots = roots.test();
-        List<Dependency> processorRoots = roots.processor();
 
         KmpRedirects kmp = new KmpRedirects(repos, jvmEnvironment);
         // Shared package source across main/test/processor so version/deps caches survive scope splits.
@@ -246,20 +234,11 @@ public final class LockOrchestrator {
                         repos, pomBuilder, bomConstraints, lockedVersionPrefs, kmp, platformPolicy, unmappedPolicy);
 
         progress.graphPhase(roots.declaredCount());
-        Resolution mainResolution =
-                resolveGroup(mainRoots, bomConstraints, lockedVersionPrefs, kmp, sharedSource, pomBuilder, progress);
-        progress.noteGraph(mainResolution);
-        Map<String, String> testPrefs = new HashMap<>(lockedVersionPrefs);
-        putVersions(testPrefs, mainResolution);
-        Resolution testResolution =
-                resolveGroup(testRoots, bomConstraints, testPrefs, kmp, sharedSource, pomBuilder, progress);
-        progress.noteGraph(testResolution);
-        Map<String, String> processorPrefs = new HashMap<>(lockedVersionPrefs);
-        putVersions(processorPrefs, mainResolution);
-        putVersions(processorPrefs, testResolution);
-        Resolution processorResolution =
-                resolveGroup(processorRoots, bomConstraints, processorPrefs, kmp, sharedSource, pomBuilder, progress);
-        progress.noteGraph(processorResolution);
+        ScopeSolves.Solved solved = new ScopeSolves(resolverOverride, sharedSource, pomBuilder, kmp)
+                .solve(roots, lockedVersionPrefs, progress);
+        Resolution mainResolution = solved.main();
+        Resolution testResolution = solved.test();
+        Resolution processorResolution = solved.processor();
 
         progress.materializePhase(progress.graphPackages() + fileDeps.size());
 
@@ -309,38 +288,6 @@ public final class LockOrchestrator {
         }
         progress.finished(packages.size());
         return new Lockfile(Lockfile.CURRENT_VERSION, "jk " + jkVersion, Lockfile.RESOLUTION_ALGORITHM, packages);
-    }
-
-    private static void putVersions(Map<String, String> prefs, Resolution resolution) {
-        for (var e : resolution.modules().entrySet()) {
-            prefs.putIfAbsent(e.getKey(), e.getValue().version());
-        }
-    }
-
-    private Resolution resolveGroup(
-            List<Dependency> roots,
-            Map<String, String> bomConstraints,
-            Map<String, String> prefs,
-            KmpRedirects kmp,
-            MavenPackageSource sharedSource,
-            EffectivePomBuilder sharedPomBuilder,
-            LockProgress progress)
-            throws IOException, InterruptedException {
-        if (roots.isEmpty()) return new Resolution(Map.of());
-        if (resolverOverride != null) return resolverOverride.resolve(roots);
-        if (sharedSource != null && sharedPomBuilder != null) {
-            sharedSource.setLockedVersionPrefs(prefs);
-            sharedSource.setSnapshotPackages(snapshotModules(roots));
-            // exclusion state is per-graph; main's clean paths must not bleed into
-            // the test/processor solves.
-            sharedSource.resetSolveScopedState();
-            return new PubGrubResolver(sharedSource, sharedPomBuilder, kmp)
-                    .withOnDecision(progress::graphPackage)
-                    .resolve(roots);
-        }
-        return buildResolver(repos, bomConstraints, prefs, kmp)
-                .withOnDecision(progress::graphPackage)
-                .resolve(roots);
     }
 
     /**
@@ -526,18 +473,6 @@ public final class LockOrchestrator {
                 + " (tried: "
                 + reposTried
                 + ") — the POM resolved but the artifact is missing; check the coordinate and repositories");
-    }
-
-    /**
-     * The {@code group:artifact} keys among {@code roots} that were declared {@code snapshot} — the
-     * only selector that opts into pre-releases.
-     */
-    private static Set<String> snapshotModules(List<Dependency> roots) {
-        Set<String> out = new LinkedHashSet<>();
-        for (Dependency d : roots) {
-            if (d.version() instanceof VersionSelector.Snapshot) out.add(d.module());
-        }
-        return out;
     }
 
     /**
