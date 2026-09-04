@@ -2878,6 +2878,39 @@ guard("G57", "checkCiCadence") {
     if (!text(at("build.gradle.kts")).contains("\"coverageReport\"")) {
         problems.add("build.gradle.kts must register coverageReport")
     }
+    // Gradle is the bootstrap oracle, so the only evidence that jk can still build jk is a job
+    // that does it. Deleting the job leaves the self-host claim in the docs with nothing behind
+    // it, and nothing else goes red.
+    if (!branch.contains("self-host:")) {
+        problems.add("ci.yml must keep the self-host job — a pull request has to prove jk still"
+            + " builds and tests this checkout")
+    }
+    if (!branch.contains("JK_HOME:")) {
+        problems.add("the self-host job must run against an isolated JK_HOME, or it can pass on"
+            + " state the pull request did not produce")
+    }
+    listOf("jk build", "jk test").forEach { verb ->
+        if (!branch.contains(verb)) {
+            problems.add("ci.yml's self-host job must run `$verb`")
+        }
+    }
+    if (!Files.isRegularFile(at("scripts/dogfood-wall-measure.sh"))) {
+        problems.add("scripts/dogfood-wall-measure.sh is missing")
+    }
+    val wall = at(".github/workflows/wall-measure.yml")
+    if (!Files.isRegularFile(wall)) {
+        problems.add(".github/workflows/wall-measure.yml is missing — the Gradle/jk wall"
+            + " comparison is scheduled, not something a contributor has to remember")
+    } else {
+        val wallText = text(wall)
+        listOf("schedule:", "dogfood-wall-measure.sh", "upload-artifact", "row.jsonl")
+            .filterNot(wallText::contains)
+            .forEach { missing ->
+                problems.add("wall-measure.yml must keep '$missing': a measurement nobody"
+                    + " schedules, or whose machine-readable result nobody keeps, is not a"
+                    + " baseline")
+            }
+    }
     if (problems.isNotEmpty()) {
         error("CI cadence is incomplete:\n" + bullets(problems))
     }

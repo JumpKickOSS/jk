@@ -396,7 +396,9 @@ tasks.register("checkCiCadence") {
     val branch = layout.projectDirectory.file(".github/workflows/ci.yml")
     val smoke = layout.projectDirectory.file("scripts/ci-product-smoke.sh")
     val rootBuild = layout.projectDirectory.file("build.gradle.kts")
-    inputs.files(nightly, branch, smoke, rootBuild)
+    val wall = layout.projectDirectory.file(".github/workflows/wall-measure.yml")
+    val wallScript = layout.projectDirectory.file("scripts/dogfood-wall-measure.sh")
+    inputs.files(nightly, branch, smoke, rootBuild, wall, wallScript)
     doLast {
         val problems = mutableListOf<String>()
         val nightlyText = nightly.asFile.readText()
@@ -426,6 +428,38 @@ tasks.register("checkCiCadence") {
         }
         if (!rootBuild.asFile.readText().contains("\"coverageReport\"")) {
             problems.add("build.gradle.kts must register coverageReport")
+        }
+        // Gradle is the bootstrap oracle, so the only evidence that jk can still build jk is a
+        // job that does it. Deleting the job leaves the self-host claim in the docs with nothing
+        // behind it, and nothing else goes red.
+        if (!branchText.contains("self-host:")) {
+            problems.add("ci.yml must keep the self-host job — a pull request has to prove jk"
+                    + " still builds and tests this checkout")
+        }
+        if (!branchText.contains("JK_HOME:")) {
+            problems.add("the self-host job must run against an isolated JK_HOME, or it can pass"
+                    + " on state the pull request did not produce")
+        }
+        listOf("jk build", "jk test").forEach { verb ->
+            if (!branchText.contains(verb)) {
+                problems.add("ci.yml's self-host job must run `$verb`")
+            }
+        }
+        if (!wallScript.asFile.isFile) {
+            problems.add("scripts/dogfood-wall-measure.sh is missing")
+        }
+        if (!wall.asFile.isFile) {
+            problems.add(".github/workflows/wall-measure.yml is missing — the Gradle/jk wall"
+                    + " comparison is scheduled, not something a contributor has to remember")
+        } else {
+            val wallText = wall.asFile.readText()
+            listOf("schedule:", "dogfood-wall-measure.sh", "upload-artifact", "row.jsonl")
+                .filterNot(wallText::contains)
+                .forEach { missing ->
+                    problems.add("wall-measure.yml must keep '$missing': a measurement nobody"
+                            + " schedules, or whose machine-readable result nobody keeps, is not a"
+                            + " baseline")
+                }
         }
         if (problems.isNotEmpty()) {
             throw GradleException("CI cadence is incomplete:\n  " + problems.joinToString("\n  "))

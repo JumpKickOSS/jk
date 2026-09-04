@@ -571,12 +571,13 @@ object Guards {
             spec(
                 57,
                 "checkCiCadence",
-                "nightly CI no longer runs `benchTest`, `coverageReport`, or the macOS/Windows product smoke",
+                "nightly CI no longer runs `benchTest`, `coverageReport`, or the macOS/Windows product smoke; the branch gate loses the self-host job or its isolated `JK_HOME`; or the scheduled Gradle-vs-jk wall measurement stops running or stops keeping a machine-readable result",
                 "workflow text scan in both builds",
                 GuardHome.ROOT,
                 tableTask = "`checkCiCadence` (root project) + `.jk/after-build.kts`",
                 attach = emptySet(),
-                description = "Fail when nightly CI drops coverage, benches, or OS smoke",
+                description =
+                    "Fail when CI drops coverage, benches, OS smoke, the self-host job, or the wall measurement",
             ),
             spec(
                 58,
