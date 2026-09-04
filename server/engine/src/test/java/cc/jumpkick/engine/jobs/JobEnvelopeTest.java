@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.jobs;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.config.JobLimits;
@@ -36,6 +37,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.LongSupplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -154,7 +157,7 @@ class JobEnvelopeTest {
                 new JobTransport.FireAndForget());
         assertThat(started.await(30, TimeUnit.SECONDS)).isTrue();
         try {
-            org.assertj.core.api.Assertions.assertThatThrownBy(() -> env.submit(
+            assertThatThrownBy(() -> env.submit(
                             line,
                             JobRequest.workspace("build", "jk-test-", (l, tok, w) -> JobOutcome.declined()),
                             new JobTransport.FireAndForget()))
@@ -484,6 +487,153 @@ class JobEnvelopeTest {
         assertThat(record.exitCode()).isZero();
     }
 
+    /**
+     * The order one successful plan job's observable effects leave the envelope in. The plan slot is
+     * released before request-finish so the event carries the post-finish plan count; the journal is
+     * written before clearProgress retires the session; the idle boundary comes last.
+     */
+    @Test
+    void a_successful_job_emits_its_effects_in_one_order_with_the_slot_released_first() {
+        FakeHost host = new FakeHost();
+        host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "cli");
+        // Detached: a socket whose reader is already at EOF reads as a client disconnect, which
+        // would race the body's own verdict. The wire terminal is pinned by the journal test below.
+        new JobEnvelope(host, JobLimits.DEFAULTS)
+                .submit(
+                        "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
+                        JobRequest.plan("build", "jk-test-", (line, tok, w) -> JobOutcome.ok()),
+                        new JobTransport.FireAndForget());
+        awaitTail(host);
+
+        assertThat(host.sequence)
+                .containsExactly(
+                        "request-start",
+                        "progress-pinned:100.0",
+                        "plan-slot-released",
+                        "request-finish",
+                        "writeJournal",
+                        "clearProgress",
+                        "idle-boundary");
+        String finish = requestFinish(host);
+        assertThat(keysOf(finish))
+                .containsExactly(
+                        "schema",
+                        "type",
+                        "jid",
+                        "kind",
+                        "dir",
+                        "projectId",
+                        "success",
+                        "cancelled",
+                        "millis",
+                        "activeBuildPlans");
+        assertThat(Jsonl.intValue(finish, "activeBuildPlans", -1))
+                .as("the count after the release, so the dashboard settles in the same frame")
+                .isZero();
+        assertThat(Jsonl.intValue(finish, "schema", -1)).isEqualTo(1);
+    }
+
+    /** A failed and a thrown body share the success path's order and never pin the bar at 100%. */
+    @Test
+    void a_failed_and_a_thrown_job_emit_the_same_order_without_the_progress_pin() {
+        for (JobBody body : List.<JobBody>of((line, tok, w) -> JobOutcome.failed(Exit.SOFTWARE), (line, tok, w) -> {
+            throw new IllegalStateException("boom");
+        })) {
+            FakeHost host = new FakeHost();
+            host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "cli");
+            new JobEnvelope(host, JobLimits.DEFAULTS)
+                    .submit(
+                            "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
+                            JobRequest.plan("build", "jk-test-", body),
+                            new JobTransport.FireAndForget());
+            awaitTail(host);
+            assertThat(host.sequence)
+                    .containsExactly(
+                            "request-start",
+                            "plan-slot-released",
+                            "request-finish",
+                            "writeJournal",
+                            "clearProgress",
+                            "idle-boundary");
+            String finish = requestFinish(host);
+            assertThat(Jsonl.bool(finish, "success", true)).isFalse();
+            assertThat(Jsonl.has(finish, "cancelReason")).isFalse();
+        }
+    }
+
+    /** A cancelled job adds exactly one key, cancelReason, and still ends on the same tail. */
+    @Test
+    void a_cancelled_job_adds_cancel_reason_and_nothing_else() {
+        FakeHost host = new FakeHost();
+        host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "cli");
+        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
+        env.submit(
+                "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
+                JobRequest.plan("build", "jk-test-", (line, tok, w) -> {
+                    env.beginUserCancel(1L, tok, null, 0L, true);
+                    return JobOutcome.declined();
+                }),
+                new JobTransport.FireAndForget());
+        awaitTail(host);
+
+        String finish = requestFinish(host);
+        assertThat(Jsonl.bool(finish, "cancelled", false)).isTrue();
+        assertThat(keysOf(finish)).endsWith("activeBuildPlans", "cancelReason");
+        assertThat(Jsonl.str(finish, "cancelReason")).contains("cancelled by the user");
+        assertThat(host.sequence)
+                .endsWith("plan-slot-released", "request-finish", "writeJournal", "clearProgress", "idle-boundary");
+    }
+
+    /** job-finish is written in a finally, so a throwing journal cannot strand the client on EOF. */
+    @Test
+    void a_throwing_journal_still_delivers_job_finish() {
+        FakeHost host = new FakeHost();
+        host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "cli");
+        host.journalThrows = true;
+        StringWriter out = new StringWriter();
+        assertThatThrownBy(() -> new JobEnvelope(host, JobLimits.DEFAULTS)
+                        .submit(
+                                "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
+                                JobRequest.plan("build", "jk-test-", (line, tok, w) -> JobOutcome.ok()),
+                                new JobTransport.SocketWatch(
+                                        new BufferedReader(new StringReader("")), new BufferedWriter(out))))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("journal disk full");
+        assertThat(out.toString().lines().map(EngineProtocol::typeOf))
+                .as("the client reads its terminal, not EOF")
+                .contains(EngineProtocol.JOB_FINISH);
+        assertThat(host.sequence).containsSubsequence("request-finish", "writeJournal");
+    }
+
+    /** The detached tail runs on its own thread; the idle boundary is its last effect. */
+    private static void awaitTail(FakeHost host) {
+        long deadline = System.currentTimeMillis() + 30_000;
+        while (!host.sequence.contains("idle-boundary") && System.currentTimeMillis() < deadline) {
+            try {
+                Thread.sleep(5);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+        }
+    }
+
+    private static String requestFinish(FakeHost host) {
+        return host.events.stream()
+                .filter(e -> e.startsWith("request-finish:"))
+                .map(e -> e.substring("request-finish:".length()))
+                .findFirst()
+                .orElseThrow();
+    }
+
+    /** Top-level keys of a flat JSON object, in document order. */
+    private static List<String> keysOf(String json) {
+        List<String> keys = new ArrayList<>();
+        Matcher m = Pattern.compile("\"(\\w+)\":").matcher(json);
+        while (m.find()) keys.add(m.group(1));
+        return keys;
+    }
+
     private static final class FakeHost implements JobEnvelope.Host {
         boolean tryStart = true;
         volatile int abandoned;
@@ -498,6 +648,7 @@ class JobEnvelopeTest {
 
         @Override
         public boolean tryStartBuildPlan() {
+            if (tryStart) activePlans++;
             return tryStart;
         }
 
@@ -509,7 +660,14 @@ class JobEnvelopeTest {
         @Override
         public void noteBuildPlanFinished() {
             finished++;
+            activePlans--;
+            sequence.add("plan-slot-released");
         }
+
+        /** Every host call the envelope makes that the wire or the dashboard can observe, in order. */
+        final List<String> sequence = Collections.synchronizedList(new ArrayList<>());
+
+        volatile int activePlans;
 
         @Override
         public boolean draining() {
@@ -533,7 +691,9 @@ class JobEnvelopeTest {
         public void putMode(long id, ProgressBarMode mode) {}
 
         @Override
-        public void publishRequestStart(long id, String kind, String dir, long buildNumber) {}
+        public void publishRequestStart(long id, String kind, String dir, long buildNumber) {
+            sequence.add("request-start");
+        }
 
         Boolean lastNoTimeline;
 
@@ -579,11 +739,13 @@ class JobEnvelopeTest {
         }
 
         @Override
-        public void putLastProgress(long id, double percent) {}
+        public void putLastProgress(long id, double percent) {
+            sequence.add("progress-pinned:" + percent);
+        }
 
         @Override
         public int activeBuildPlans() {
-            return 0;
+            return activePlans;
         }
 
         @Override
@@ -599,11 +761,13 @@ class JobEnvelopeTest {
         @Override
         public void publishEvent(String type, JsonOut payload) {
             events.add(type + ":" + payload);
+            sequence.add(type);
         }
 
         @Override
         public void clearProgress(long id) {
             teardownOrder.add("clearProgress");
+            sequence.add("clearProgress");
             cleared.add(id);
         }
 
@@ -611,12 +775,16 @@ class JobEnvelopeTest {
         volatile boolean journalCancelled;
         volatile long journalMillis;
 
+        volatile boolean journalThrows;
+
         @Override
         public void writeJournal(long id, boolean cancelled, long millis, BufferedWriter writer) {
             teardownOrder.add("writeJournal");
+            sequence.add("writeJournal");
             journalCancelled = cancelled;
             journalMillis = millis;
             journalWritten = true;
+            if (journalThrows) throw new IllegalStateException("journal disk full");
         }
 
         /** The row JournalWriter would persist for this run, built the same way it builds it. */
@@ -626,10 +794,14 @@ class JobEnvelopeTest {
         }
 
         @Override
-        public void maybeIdleBoundary() {}
+        public void maybeIdleBoundary() {
+            sequence.add("idle-boundary");
+        }
 
         @Override
-        public void maybeIdleGc() {}
+        public void maybeIdleGc() {
+            sequence.add("idle-gc");
+        }
 
         final List<String> logs = Collections.synchronizedList(new ArrayList<>());
 
