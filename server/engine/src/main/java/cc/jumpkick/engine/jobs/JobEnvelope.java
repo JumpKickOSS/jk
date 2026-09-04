@@ -31,8 +31,6 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.nio.channels.SocketChannel;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.jspecify.annotations.Nullable;
@@ -243,7 +241,7 @@ public final class JobEnvelope {
         // wake is Thread.interrupt, which on a thread blocked in an InterruptibleChannel read also
         // CLOSES the channel — so only interrupt while actually parked on the read;
         // an interrupt landing after the loop exits would poison teardown I/O instead.
-        AtomicBoolean parkedOnRead = new AtomicBoolean(false);
+        ConnectionWatch watch = new ConnectionWatch(host::nowMillis, host::log);
         Thread connectionThread = Thread.currentThread();
         live.registerLiveJob(
                 eventRequestId,
@@ -321,93 +319,31 @@ public final class JobEnvelope {
                 // after the read loop poisons teardown I/O instead (a stray interrupt once killed
                 // journal completion with ClosedByInterruptException, leaving a permanent
                 // "running" job in jk jobs).
-                if (!detached && parkedOnRead.get()) wakeOffClientRead(channel, connectionThread);
+                if (!detached) watch.wakeIfParked(channel, connectionThread);
             }
         });
         runnerRef.set(started);
         started.start(); // register live job + runnerRef before start
-        // The join budgets below share the watchdog's limits: deadline plus grace, or a short
-        // cancel grace, so a wedged runner can never hang the connection.
-        long deadlineMs = limits.deadlineMs();
-        long graceMs = limits.deadlineGraceMs();
         long cancelGraceMs = JobWorkers.cancelGraceMs();
         final Thread watchdog = watchdogs.start(eventRequestId, cancelToken, runnerRef, done, writer);
         Runnable finish = () -> {
             try {
-                try {
-                    // Stay responsive after remote cancel: the client never writes on this socket, so a
-                    // pure blocking readLine would park forever even after the runner finished. Cancel
-                    // (and runner teardown) interrupt this thread so we can join and run the finally
-                    // safety-net terminal.
-                    while (reader != null && done.getCount() > 0) {
-                        try {
-                            parkedOnRead.set(true);
-                            String line = reader.readLine();
-                            parkedOnRead.set(false);
-                            if (line == null) {
-                                // EOF / client gone mid-job — same bounded cancel path (not explicit:
-                                // an EOF after a reported failure is the terminal-read race).
-                                live.beginUserCancel(eventRequestId, cancelToken, runnerRef, cancelGraceMs, false);
-                                break;
-                            }
-                            // Any in-band line while a job runs is noise: cancellation arrives
-                            // out-of-band as CANCEL_REQUEST on its own connection, or as EOF here.
-                        } catch (IOException e) {
-                            parkedOnRead.set(false);
-                            // Interrupt during read (ClosedByInterruptException, etc.) or a real error.
-                            if (done.getCount() == 0 || Thread.currentThread().isInterrupted()) {
-                                break; // runner done / cancel wake — join below
-                            }
-                            live.beginUserCancel(eventRequestId, cancelToken, runnerRef, cancelGraceMs, false);
-                            break;
-                        }
-                    }
-                    parkedOnRead.set(false);
-                } catch (RuntimeException ignored) {
-                    if (done.getCount() > 0) {
-                        live.beginUserCancel(eventRequestId, cancelToken, runnerRef, cancelGraceMs, false);
-                    }
-                }
-                // Clear interrupt so await/join below is not spuriously skipped.
-                Thread.interrupted();
-                try {
-                    // Bound the join so a wedged runner cannot hang the connection forever.
-                    if (deadlineMs > 0) {
-                        long elapsed = host.nowMillis() - eventStartMillis;
-                        long budget = Math.max(1L, deadlineMs + graceMs - elapsed);
-                        if (!done.await(budget, TimeUnit.MILLISECONDS)) {
-                            watchdogs.enforceDeadline(eventRequestId, cancelToken, runnerRef.get(), writer);
-                            // Last chance for the runner to unwind after worker kill / interrupt.
-                            // Cap hard so UX never waits the full 30s grace when the job is deadlocked.
-                            long lastChance = Math.min(graceMs, Math.max(cancelGraceMs + 200L, 1_000L));
-                            if (!done.await(lastChance, TimeUnit.MILLISECONDS)) {
-                                host.log("jk engine: job "
-                                        + eventRequestId
-                                        + " still running after deadline+"
-                                        + lastChance
-                                        + "ms grace — abandoned; workers killed");
-                            }
-                        }
-                    } else if (cancelToken.cancelled() && done.getCount() > 0) {
-                        // User cancel without wall deadline: join only for cancelGrace + small buffer.
-                        long joinBudget = cancelGraceMs + 500L;
-                        if (!done.await(joinBudget, TimeUnit.MILLISECONDS)) {
+                watch.watchForEof(
+                        reader,
+                        done,
+                        () -> live.beginUserCancel(eventRequestId, cancelToken, runnerRef, cancelGraceMs, false));
+                watch.awaitRunner(
+                        eventRequestId,
+                        done,
+                        limits,
+                        cancelGraceMs,
+                        eventStartMillis,
+                        cancelToken.cancelled(),
+                        () -> watchdogs.enforceDeadline(eventRequestId, cancelToken, runnerRef.get(), writer),
+                        () -> {
                             JobWorkers.shutdownForRequest(eventRequestId, 0L);
                             LiveJobRegistry.interruptRunner(runnerRef.get());
-                            if (!done.await(200L, TimeUnit.MILLISECONDS)) {
-                                host.log("jk engine: job "
-                                        + eventRequestId
-                                        + " still running after cancel+"
-                                        + joinBudget
-                                        + "ms — abandoned; workers force-killed");
-                            }
-                        }
-                    } else {
-                        done.await();
-                    }
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
+                        });
             } finally {
                 // A late runner/cancel interrupt may have landed after the joins: clear it before any
                 // teardown I/O, or journal completion dies on ClosedByInterruptException and jk jobs
@@ -504,33 +440,6 @@ public final class JobEnvelope {
                         .put("step", "")
                         .put("code", "notice")
                         .put("message", safe));
-    }
-
-    /**
-     * Wake the connection thread off client-readLine so it can run the finish tail.
-     *
-     * <p>Half-closing the read direction is the gentle wake: the blocked read sees EOF while the
-     * write direction stays usable, so the tail can still deliver {@code job-finish} — the line the
-     * client waits for before it may delete {@code target/}. {@link Thread#interrupt} is
-     * the fallback, and it is blunt: on a thread blocked in an InterruptibleChannel read it closes
-     * the whole channel, so the client learns the job ended one journal-write too early. A platform
-     * whose half-close does not wake a blocked read is still covered — the client half-closes its
-     * own end once it has the terminal, which delivers the same EOF.
-     */
-    static void wakeOffClientRead(@Nullable SocketChannel channel, Thread connectionThread) {
-        if (channel != null) {
-            try {
-                channel.shutdownInput();
-                return;
-            } catch (IOException | UnsupportedOperationException ignored) {
-                // Not a half-closable transport (or already gone) — fall through to the blunt wake.
-            }
-        }
-        try {
-            connectionThread.interrupt();
-        } catch (RuntimeException ignored) {
-            // best-effort wake
-        }
     }
 
     /**

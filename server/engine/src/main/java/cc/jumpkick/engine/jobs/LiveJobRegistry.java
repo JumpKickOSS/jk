@@ -111,7 +111,8 @@ public final class LiveJobRegistry {
         // stays open for the job-finish the client blocks on.
         Thread.ofVirtual().name("jk-cancel-settle-" + jid).start(() -> {
             pushCancelledTerminal(job);
-            if (job.connectionThread() != null) JobEnvelope.wakeOffClientRead(job.channel(), job.connectionThread());
+            if (job.connectionThread() != null)
+                ConnectionWatch.wakeOffClientRead(job.channel(), job.connectionThread());
         });
         return true;
     }
