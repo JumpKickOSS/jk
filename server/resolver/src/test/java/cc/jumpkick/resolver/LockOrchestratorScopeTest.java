@@ -14,8 +14,8 @@ import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.testing.LoopbackHttp;
+import cc.jumpkick.testing.MavenStub;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.EnumMap;
 import java.util.List;
@@ -34,11 +34,13 @@ class LockOrchestratorScopeTest {
     @RegisterExtension
     final LoopbackHttp http = new LoopbackHttp();
 
+    private final MavenStub upstream = new MavenStub(http);
+
     @BeforeEach
     void start() throws IOException {
         // junit defaults
-        serveLeaf("org.junit.jupiter", "junit-jupiter", "6.1.0");
-        serveLeaf("org.junit.platform", "junit-platform-launcher", "6.1.0");
+        upstream.leaf("org.junit.jupiter", "junit-jupiter", "6.1.0");
+        upstream.leaf("org.junit.platform", "junit-platform-launcher", "6.1.0");
     }
 
     @Test
@@ -47,10 +49,10 @@ class LockOrchestratorScopeTest {
         // Actually: main depends on lib-main which needs shared >= 1.0 (picks highest 2.0)
         // Processor depends on lib-proc which needs shared = 1.0 exactly
         // Unified solve would force shared=1.0 on main. Per-scope: main keeps 2.0, processor dual-rows 1.0.
-        serveMetadata("/com/foo/lib-main/maven-metadata.xml", "com.foo", "lib-main", List.of("1.0"));
-        serveMetadata("/com/foo/lib-proc/maven-metadata.xml", "com.foo", "lib-proc", List.of("1.0"));
-        serveMetadata("/com/foo/shared/maven-metadata.xml", "com.foo", "shared", List.of("1.0", "2.0"));
-        servePom("com.foo", "lib-main", "1.0", """
+        upstream.metadata("com.foo", "lib-main", "1.0");
+        upstream.metadata("com.foo", "lib-proc", "1.0");
+        upstream.metadata("com.foo", "shared", "1.0", "2.0");
+        upstream.pom("com.foo", "lib-main", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>lib-main</artifactId><version>1.0</version>
                   <dependencies>
@@ -60,7 +62,7 @@ class LockOrchestratorScopeTest {
                   </dependencies>
                 </project>
                 """);
-        servePom("com.foo", "lib-proc", "1.0", """
+        upstream.pom("com.foo", "lib-proc", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>lib-proc</artifactId><version>1.0</version>
                   <dependencies>
@@ -70,8 +72,8 @@ class LockOrchestratorScopeTest {
                   </dependencies>
                 </project>
                 """);
-        servePom("com.foo", "shared", "1.0", emptyPom("com.foo", "shared", "1.0"));
-        servePom("com.foo", "shared", "2.0", emptyPom("com.foo", "shared", "2.0"));
+        upstream.pom("com.foo", "shared", "1.0", MavenStub.emptyPom("com.foo", "shared", "1.0"));
+        upstream.pom("com.foo", "shared", "2.0", MavenStub.emptyPom("com.foo", "shared", "2.0"));
 
         JkBuild project = jkBuild(Map.of(
                 Scope.MAIN, List.of(new Dependency("com.foo:lib-main", VersionSelector.parse("=1.0"))),
@@ -103,9 +105,9 @@ class LockOrchestratorScopeTest {
 
     @Test
     void same_version_in_both_graphs_is_single_row_with_both_scopes(@TempDir Path tempDir) throws Exception {
-        serveMetadata("/com/foo/lib/maven-metadata.xml", "com.foo", "lib", List.of("1.0"));
-        serveMetadata("/com/foo/shared/maven-metadata.xml", "com.foo", "shared", List.of("1.0"));
-        servePom("com.foo", "lib", "1.0", """
+        upstream.metadata("com.foo", "lib", "1.0");
+        upstream.metadata("com.foo", "shared", "1.0");
+        upstream.pom("com.foo", "lib", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>lib</artifactId><version>1.0</version>
                   <dependencies>
@@ -115,7 +117,7 @@ class LockOrchestratorScopeTest {
                   </dependencies>
                 </project>
                 """);
-        servePom("com.foo", "shared", "1.0", emptyPom("com.foo", "shared", "1.0"));
+        upstream.pom("com.foo", "shared", "1.0", MavenStub.emptyPom("com.foo", "shared", "1.0"));
 
         // Same lib on main and processor → shared once with both scopes.
         JkBuild project = jkBuild(Map.of(
@@ -133,10 +135,10 @@ class LockOrchestratorScopeTest {
     @Test
     void test_cannot_force_main_version_of_shared_module(@TempDir Path tempDir) throws Exception {
         // Main wants shared highest (>=1.0 → 2.0); test wants exact 1.0. Separate graphs.
-        serveMetadata("/com/foo/lib-main/maven-metadata.xml", "com.foo", "lib-main", List.of("1.0"));
-        serveMetadata("/com/foo/lib-test/maven-metadata.xml", "com.foo", "lib-test", List.of("1.0"));
-        serveMetadata("/com/foo/shared/maven-metadata.xml", "com.foo", "shared", List.of("1.0", "2.0"));
-        servePom("com.foo", "lib-main", "1.0", """
+        upstream.metadata("com.foo", "lib-main", "1.0");
+        upstream.metadata("com.foo", "lib-test", "1.0");
+        upstream.metadata("com.foo", "shared", "1.0", "2.0");
+        upstream.pom("com.foo", "lib-main", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>lib-main</artifactId><version>1.0</version>
                   <dependencies>
@@ -146,7 +148,7 @@ class LockOrchestratorScopeTest {
                   </dependencies>
                 </project>
                 """);
-        servePom("com.foo", "lib-test", "1.0", """
+        upstream.pom("com.foo", "lib-test", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>lib-test</artifactId><version>1.0</version>
                   <dependencies>
@@ -156,8 +158,8 @@ class LockOrchestratorScopeTest {
                   </dependencies>
                 </project>
                 """);
-        servePom("com.foo", "shared", "1.0", emptyPom("com.foo", "shared", "1.0"));
-        servePom("com.foo", "shared", "2.0", emptyPom("com.foo", "shared", "2.0"));
+        upstream.pom("com.foo", "shared", "1.0", MavenStub.emptyPom("com.foo", "shared", "1.0"));
+        upstream.pom("com.foo", "shared", "2.0", MavenStub.emptyPom("com.foo", "shared", "2.0"));
 
         JkBuild project = jkBuild(Map.of(
                 Scope.MAIN, List.of(new Dependency("com.foo:lib-main", VersionSelector.parse("=1.0"))),
@@ -173,8 +175,8 @@ class LockOrchestratorScopeTest {
 
     @Test
     void processor_only_module_tagged_processor(@TempDir Path tempDir) throws Exception {
-        serveMetadata("/com/foo/proc/maven-metadata.xml", "com.foo", "proc", List.of("1.0"));
-        servePom("com.foo", "proc", "1.0", emptyPom("com.foo", "proc", "1.0"));
+        upstream.metadata("com.foo", "proc", "1.0");
+        upstream.pom("com.foo", "proc", "1.0", MavenStub.emptyPom("com.foo", "proc", "1.0"));
 
         JkBuild project = jkBuild(
                 Map.of(Scope.PROCESSOR, List.of(new Dependency("com.foo:proc", VersionSelector.parseFloating("1.0")))));
@@ -196,66 +198,5 @@ class LockOrchestratorScopeTest {
 
     private RepoGroup repoGroup(Path tempDir) {
         return RepoGroup.of(new MavenRepo("local", http.base(), new Http(), new Cas(tempDir.resolve("cache"))));
-    }
-
-    private void serveLeaf(String group, String artifact, String version) {
-        serveMetadata(
-                "/" + group.replace('.', '/') + "/" + artifact + "/maven-metadata.xml",
-                group,
-                artifact,
-                List.of(version));
-        servePom(group, artifact, version, emptyPom(group, artifact, version));
-        // Empty EOCD zip so lock materialize pins a checksum.
-        String jarPath = "/"
-                + group.replace('.', '/')
-                + "/"
-                + artifact
-                + "/"
-                + version
-                + "/"
-                + artifact
-                + "-"
-                + version
-                + ".jar";
-        http.served()
-                .put(jarPath, new byte[] {0x50, 0x4b, 0x05, 0x06, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-                });
-    }
-
-    private void servePath(String path, String body) {
-        http.served().put(path, body.getBytes(StandardCharsets.UTF_8));
-    }
-
-    private void servePom(String group, String artifact, String version, String body) {
-        String stem = "/" + group.replace('.', '/') + "/" + artifact + "/" + version + "/" + artifact + "-" + version;
-        servePath(stem + ".pom", body);
-        // lock materialize requires the artifact for non-pom packaging.
-        if (!body.contains("<packaging>pom</packaging>")) {
-            http.served().put(stem + ".jar", new byte[] {
-                0x50, 0x4b, 0x05, 0x06, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-            });
-        }
-    }
-
-    private void serveMetadata(String path, String group, String artifact, List<String> versions) {
-        StringBuilder body = new StringBuilder();
-        body.append("<metadata><groupId>")
-                .append(group)
-                .append("</groupId><artifactId>")
-                .append(artifact)
-                .append("</artifactId><versioning><versions>");
-        for (String v : versions) body.append("<version>").append(v).append("</version>");
-        body.append("</versions></versioning></metadata>");
-        servePath(path, body.toString());
-    }
-
-    private static String emptyPom(String group, String artifact, String version) {
-        return """
-                <project>
-                  <groupId>%s</groupId>
-                  <artifactId>%s</artifactId>
-                  <version>%s</version>
-                </project>
-                """.formatted(group, artifact, version);
     }
 }

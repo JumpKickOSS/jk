@@ -11,7 +11,7 @@ import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.testing.LoopbackHttp;
-import java.nio.charset.StandardCharsets;
+import cc.jumpkick.testing.MavenStub;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
@@ -28,14 +28,16 @@ class MavenPackageSourceExclusionTest {
     @RegisterExtension
     final LoopbackHttp http = new LoopbackHttp();
 
+    private final MavenStub upstream = new MavenStub(http);
+
     @Test
     void exclusion_drops_module_when_only_path(@TempDir Path tempDir) throws Exception {
         // root → parent@1.0 → child@1.0, but parent excludes leaf; parent→child→leaf would pull leaf
         // without exclusion. parent excludes com.foo:leaf.
-        serveMetadata("/com/foo/parent/maven-metadata.xml", "com.foo", "parent", List.of("1.0"));
-        serveMetadata("/com/foo/child/maven-metadata.xml", "com.foo", "child", List.of("1.0"));
-        serveMetadata("/com/foo/leaf/maven-metadata.xml", "com.foo", "leaf", List.of("1.0"));
-        servePom("com.foo", "parent", "1.0", """
+        upstream.metadata("com.foo", "parent", "1.0");
+        upstream.metadata("com.foo", "child", "1.0");
+        upstream.metadata("com.foo", "leaf", "1.0");
+        upstream.pomOnly("com.foo", "parent", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>parent</artifactId><version>1.0</version>
                   <dependencies>
@@ -50,7 +52,7 @@ class MavenPackageSourceExclusionTest {
                   </dependencies>
                 </project>
                 """);
-        servePom("com.foo", "child", "1.0", """
+        upstream.pomOnly("com.foo", "child", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>child</artifactId><version>1.0</version>
                   <dependencies>
@@ -60,7 +62,7 @@ class MavenPackageSourceExclusionTest {
                   </dependencies>
                 </project>
                 """);
-        servePom("com.foo", "leaf", "1.0", emptyPom("com.foo", "leaf", "1.0"));
+        upstream.pomOnly("com.foo", "leaf", "1.0", MavenStub.emptyPom("com.foo", "leaf", "1.0"));
 
         PubGrubResolver resolver = new PubGrubResolver(repoGroup(tempDir));
         Resolution result = resolver.resolve(List.of(new Dependency("com.foo:parent", VersionSelector.parse("=1.0"))));
@@ -72,11 +74,11 @@ class MavenPackageSourceExclusionTest {
     @Test
     void other_parent_can_still_pull_excluded_module(@TempDir Path tempDir) throws Exception {
         // root → parent (excludes leaf via child) + other → leaf directly.
-        serveMetadata("/com/foo/parent/maven-metadata.xml", "com.foo", "parent", List.of("1.0"));
-        serveMetadata("/com/foo/child/maven-metadata.xml", "com.foo", "child", List.of("1.0"));
-        serveMetadata("/com/foo/other/maven-metadata.xml", "com.foo", "other", List.of("1.0"));
-        serveMetadata("/com/foo/leaf/maven-metadata.xml", "com.foo", "leaf", List.of("1.0"));
-        servePom("com.foo", "parent", "1.0", """
+        upstream.metadata("com.foo", "parent", "1.0");
+        upstream.metadata("com.foo", "child", "1.0");
+        upstream.metadata("com.foo", "other", "1.0");
+        upstream.metadata("com.foo", "leaf", "1.0");
+        upstream.pomOnly("com.foo", "parent", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>parent</artifactId><version>1.0</version>
                   <dependencies>
@@ -91,7 +93,7 @@ class MavenPackageSourceExclusionTest {
                   </dependencies>
                 </project>
                 """);
-        servePom("com.foo", "child", "1.0", """
+        upstream.pomOnly("com.foo", "child", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>child</artifactId><version>1.0</version>
                   <dependencies>
@@ -101,7 +103,7 @@ class MavenPackageSourceExclusionTest {
                   </dependencies>
                 </project>
                 """);
-        servePom("com.foo", "other", "1.0", """
+        upstream.pomOnly("com.foo", "other", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>other</artifactId><version>1.0</version>
                   <dependencies>
@@ -111,7 +113,7 @@ class MavenPackageSourceExclusionTest {
                   </dependencies>
                 </project>
                 """);
-        servePom("com.foo", "leaf", "1.0", emptyPom("com.foo", "leaf", "1.0"));
+        upstream.pomOnly("com.foo", "leaf", "1.0", MavenStub.emptyPom("com.foo", "leaf", "1.0"));
 
         PubGrubResolver resolver = new PubGrubResolver(repoGroup(tempDir));
         Resolution result = resolver.resolve(List.of(
@@ -133,11 +135,11 @@ class MavenPackageSourceExclusionTest {
      */
     @Test
     void an_unexcluded_path_wins_over_an_excluded_one_regardless_of_order(@TempDir Path tempDir) throws Exception {
-        serveMetadata("/com/foo/app/maven-metadata.xml", "com.foo", "app", List.of("1.0"));
-        serveMetadata("/com/foo/mid/maven-metadata.xml", "com.foo", "mid", List.of("1.0"));
-        serveMetadata("/com/foo/target/maven-metadata.xml", "com.foo", "target", List.of("1.0"));
-        serveMetadata("/com/foo/leaf/maven-metadata.xml", "com.foo", "leaf", List.of("1.0"));
-        servePom("com.foo", "app", "1.0", """
+        upstream.metadata("com.foo", "app", "1.0");
+        upstream.metadata("com.foo", "mid", "1.0");
+        upstream.metadata("com.foo", "target", "1.0");
+        upstream.metadata("com.foo", "leaf", "1.0");
+        upstream.pomOnly("com.foo", "app", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>app</artifactId><version>1.0</version>
                   <dependencies>
@@ -155,7 +157,7 @@ class MavenPackageSourceExclusionTest {
                   </dependencies>
                 </project>
                 """);
-        servePom("com.foo", "mid", "1.0", """
+        upstream.pomOnly("com.foo", "mid", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>mid</artifactId><version>1.0</version>
                   <dependencies>
@@ -165,7 +167,7 @@ class MavenPackageSourceExclusionTest {
                   </dependencies>
                 </project>
                 """);
-        servePom("com.foo", "target", "1.0", """
+        upstream.pomOnly("com.foo", "target", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>target</artifactId><version>1.0</version>
                   <dependencies>
@@ -175,7 +177,7 @@ class MavenPackageSourceExclusionTest {
                   </dependencies>
                 </project>
                 """);
-        servePom("com.foo", "leaf", "1.0", emptyPom("com.foo", "leaf", "1.0"));
+        upstream.pomOnly("com.foo", "leaf", "1.0", MavenStub.emptyPom("com.foo", "leaf", "1.0"));
 
         Resolution result = new PubGrubResolver(repoGroup(tempDir))
                 .resolve(List.of(new Dependency("com.foo:app", VersionSelector.parse("=1.0"))));
@@ -192,9 +194,9 @@ class MavenPackageSourceExclusionTest {
     @Test
     void a_clean_path_found_later_still_restores_the_module(@TempDir Path tempDir) throws Exception {
         for (String a : List.of("a", "b", "mid", "target", "leaf")) {
-            serveMetadata("/com/foo/" + a + "/maven-metadata.xml", "com.foo", a, List.of("1.0"));
+            upstream.metadata("com.foo", a, "1.0");
         }
-        servePom("com.foo", "a", "1.0", """
+        upstream.pomOnly("com.foo", "a", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>a</artifactId><version>1.0</version>
                   <dependencies>
@@ -207,7 +209,7 @@ class MavenPackageSourceExclusionTest {
                   </dependencies>
                 </project>
                 """);
-        servePom("com.foo", "b", "1.0", """
+        upstream.pomOnly("com.foo", "b", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>b</artifactId><version>1.0</version>
                   <dependencies>
@@ -217,7 +219,7 @@ class MavenPackageSourceExclusionTest {
                   </dependencies>
                 </project>
                 """);
-        servePom("com.foo", "mid", "1.0", """
+        upstream.pomOnly("com.foo", "mid", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>mid</artifactId><version>1.0</version>
                   <dependencies>
@@ -227,7 +229,7 @@ class MavenPackageSourceExclusionTest {
                   </dependencies>
                 </project>
                 """);
-        servePom("com.foo", "target", "1.0", """
+        upstream.pomOnly("com.foo", "target", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>target</artifactId><version>1.0</version>
                   <dependencies>
@@ -237,7 +239,7 @@ class MavenPackageSourceExclusionTest {
                   </dependencies>
                 </project>
                 """);
-        servePom("com.foo", "leaf", "1.0", emptyPom("com.foo", "leaf", "1.0"));
+        upstream.pomOnly("com.foo", "leaf", "1.0", MavenStub.emptyPom("com.foo", "leaf", "1.0"));
 
         Resolution result = new PubGrubResolver(repoGroup(tempDir))
                 .resolve(List.of(
@@ -257,9 +259,9 @@ class MavenPackageSourceExclusionTest {
     @Test
     void a_clean_path_found_deeper_still_restores_the_module(@TempDir Path tempDir) throws Exception {
         for (String a : List.of("app", "a", "c", "d", "e", "mid", "target", "leaf")) {
-            serveMetadata("/com/foo/" + a + "/maven-metadata.xml", "com.foo", a, List.of("1.0"));
+            upstream.metadata("com.foo", a, "1.0");
         }
-        servePom("com.foo", "app", "1.0", """
+        upstream.pomOnly("com.foo", "app", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>app</artifactId><version>1.0</version>
                   <dependencies>
@@ -272,7 +274,7 @@ class MavenPackageSourceExclusionTest {
                   </dependencies>
                 </project>
                 """);
-        servePom("com.foo", "a", "1.0", """
+        upstream.pomOnly("com.foo", "a", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>a</artifactId><version>1.0</version>
                   <dependencies>
@@ -285,7 +287,7 @@ class MavenPackageSourceExclusionTest {
                   </dependencies>
                 </project>
                 """);
-        servePom("com.foo", "c", "1.0", """
+        upstream.pomOnly("com.foo", "c", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>c</artifactId><version>1.0</version>
                   <dependencies>
@@ -295,7 +297,7 @@ class MavenPackageSourceExclusionTest {
                   </dependencies>
                 </project>
                 """);
-        servePom("com.foo", "d", "1.0", """
+        upstream.pomOnly("com.foo", "d", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>d</artifactId><version>1.0</version>
                   <dependencies>
@@ -305,7 +307,7 @@ class MavenPackageSourceExclusionTest {
                   </dependencies>
                 </project>
                 """);
-        servePom("com.foo", "e", "1.0", """
+        upstream.pomOnly("com.foo", "e", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>e</artifactId><version>1.0</version>
                   <dependencies>
@@ -315,7 +317,7 @@ class MavenPackageSourceExclusionTest {
                   </dependencies>
                 </project>
                 """);
-        servePom("com.foo", "mid", "1.0", """
+        upstream.pomOnly("com.foo", "mid", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>mid</artifactId><version>1.0</version>
                   <dependencies>
@@ -325,7 +327,7 @@ class MavenPackageSourceExclusionTest {
                   </dependencies>
                 </project>
                 """);
-        servePom("com.foo", "target", "1.0", """
+        upstream.pomOnly("com.foo", "target", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>target</artifactId><version>1.0</version>
                   <dependencies>
@@ -335,7 +337,7 @@ class MavenPackageSourceExclusionTest {
                   </dependencies>
                 </project>
                 """);
-        servePom("com.foo", "leaf", "1.0", emptyPom("com.foo", "leaf", "1.0"));
+        upstream.pomOnly("com.foo", "leaf", "1.0", MavenStub.emptyPom("com.foo", "leaf", "1.0"));
 
         Resolution result = new PubGrubResolver(repoGroup(tempDir))
                 .resolve(List.of(new Dependency("com.foo:app", VersionSelector.parse("=1.0"))));
@@ -346,11 +348,11 @@ class MavenPackageSourceExclusionTest {
 
     @Test
     void an_exclusion_on_every_path_still_drops_the_module(@TempDir Path tempDir) throws Exception {
-        serveMetadata("/com/foo/app/maven-metadata.xml", "com.foo", "app", List.of("1.0"));
-        serveMetadata("/com/foo/mid/maven-metadata.xml", "com.foo", "mid", List.of("1.0"));
-        serveMetadata("/com/foo/target/maven-metadata.xml", "com.foo", "target", List.of("1.0"));
-        serveMetadata("/com/foo/leaf/maven-metadata.xml", "com.foo", "leaf", List.of("1.0"));
-        servePom("com.foo", "app", "1.0", """
+        upstream.metadata("com.foo", "app", "1.0");
+        upstream.metadata("com.foo", "mid", "1.0");
+        upstream.metadata("com.foo", "target", "1.0");
+        upstream.metadata("com.foo", "leaf", "1.0");
+        upstream.pomOnly("com.foo", "app", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>app</artifactId><version>1.0</version>
                   <dependencies>
@@ -369,7 +371,7 @@ class MavenPackageSourceExclusionTest {
                   </dependencies>
                 </project>
                 """);
-        servePom("com.foo", "mid", "1.0", """
+        upstream.pomOnly("com.foo", "mid", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>mid</artifactId><version>1.0</version>
                   <dependencies>
@@ -379,7 +381,7 @@ class MavenPackageSourceExclusionTest {
                   </dependencies>
                 </project>
                 """);
-        servePom("com.foo", "target", "1.0", """
+        upstream.pomOnly("com.foo", "target", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>target</artifactId><version>1.0</version>
                   <dependencies>
@@ -389,7 +391,7 @@ class MavenPackageSourceExclusionTest {
                   </dependencies>
                 </project>
                 """);
-        servePom("com.foo", "leaf", "1.0", emptyPom("com.foo", "leaf", "1.0"));
+        upstream.pomOnly("com.foo", "leaf", "1.0", MavenStub.emptyPom("com.foo", "leaf", "1.0"));
 
         Resolution result = new PubGrubResolver(repoGroup(tempDir))
                 .resolve(List.of(new Dependency("com.foo:app", VersionSelector.parse("=1.0"))));
@@ -432,9 +434,9 @@ class MavenPackageSourceExclusionTest {
     @Test
     void a_later_scope_solve_honors_its_own_exclusions_after_a_clean_main_path(@TempDir Path tempDir) throws Exception {
         for (String a : List.of("clean", "excluder", "target", "leaf")) {
-            serveMetadata("/com/foo/" + a + "/maven-metadata.xml", "com.foo", a, List.of("1.0"));
+            upstream.metadata("com.foo", a, "1.0");
         }
-        servePom("com.foo", "clean", "1.0", """
+        upstream.pomOnly("com.foo", "clean", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>clean</artifactId><version>1.0</version>
                   <dependencies>
@@ -444,7 +446,7 @@ class MavenPackageSourceExclusionTest {
                   </dependencies>
                 </project>
                 """);
-        servePom("com.foo", "excluder", "1.0", """
+        upstream.pomOnly("com.foo", "excluder", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>excluder</artifactId><version>1.0</version>
                   <dependencies>
@@ -457,7 +459,7 @@ class MavenPackageSourceExclusionTest {
                   </dependencies>
                 </project>
                 """);
-        servePom("com.foo", "target", "1.0", """
+        upstream.pomOnly("com.foo", "target", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>target</artifactId><version>1.0</version>
                   <dependencies>
@@ -467,7 +469,7 @@ class MavenPackageSourceExclusionTest {
                   </dependencies>
                 </project>
                 """);
-        servePom("com.foo", "leaf", "1.0", emptyPom("com.foo", "leaf", "1.0"));
+        upstream.pomOnly("com.foo", "leaf", "1.0", MavenStub.emptyPom("com.foo", "leaf", "1.0"));
 
         RepoGroup repos = repoGroup(tempDir);
         EffectivePomBuilder pomBuilder = new EffectivePomBuilder(repos);
@@ -498,9 +500,9 @@ class MavenPackageSourceExclusionTest {
     @Test
     void a_relocation_resolves_the_target_and_its_tree(@TempDir Path tempDir) throws Exception {
         for (String a : List.of("old", "new", "leaf")) {
-            serveMetadata("/com/foo/" + a + "/maven-metadata.xml", "com.foo", a, List.of("1.0"));
+            upstream.metadata("com.foo", a, "1.0");
         }
-        servePom("com.foo", "old", "1.0", """
+        upstream.pomOnly("com.foo", "old", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>old</artifactId><version>1.0</version>
                   <distributionManagement>
@@ -513,7 +515,7 @@ class MavenPackageSourceExclusionTest {
                   </distributionManagement>
                 </project>
                 """);
-        servePom("com.foo", "new", "1.0", """
+        upstream.pomOnly("com.foo", "new", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>new</artifactId><version>1.0</version>
                   <dependencies>
@@ -523,7 +525,7 @@ class MavenPackageSourceExclusionTest {
                   </dependencies>
                 </project>
                 """);
-        servePom("com.foo", "leaf", "1.0", emptyPom("com.foo", "leaf", "1.0"));
+        upstream.pomOnly("com.foo", "leaf", "1.0", MavenStub.emptyPom("com.foo", "leaf", "1.0"));
 
         Resolution result = new PubGrubResolver(repoGroup(tempDir))
                 .resolve(List.of(new Dependency("com.foo:old", VersionSelector.parse("=1.0"))));
@@ -537,9 +539,9 @@ class MavenPackageSourceExclusionTest {
     /** A relocation with no {@code <version>} keeps the requesting version, as Maven does. */
     @Test
     void a_relocation_without_a_version_keeps_the_requested_one(@TempDir Path tempDir) throws Exception {
-        serveMetadata("/com/foo/old/maven-metadata.xml", "com.foo", "old", List.of("2.5"));
-        serveMetadata("/com/foo/new/maven-metadata.xml", "com.foo", "new", List.of("2.5", "9.9"));
-        servePom("com.foo", "old", "2.5", """
+        upstream.metadata("com.foo", "old", "2.5");
+        upstream.metadata("com.foo", "new", "2.5", "9.9");
+        upstream.pomOnly("com.foo", "old", "2.5", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>old</artifactId><version>2.5</version>
                   <distributionManagement>
@@ -549,8 +551,8 @@ class MavenPackageSourceExclusionTest {
                   </distributionManagement>
                 </project>
                 """);
-        servePom("com.foo", "new", "2.5", emptyPom("com.foo", "new", "2.5"));
-        servePom("com.foo", "new", "9.9", emptyPom("com.foo", "new", "9.9"));
+        upstream.pomOnly("com.foo", "new", "2.5", MavenStub.emptyPom("com.foo", "new", "2.5"));
+        upstream.pomOnly("com.foo", "new", "9.9", MavenStub.emptyPom("com.foo", "new", "9.9"));
 
         Resolution result = new PubGrubResolver(repoGroup(tempDir))
                 .resolve(List.of(new Dependency("com.foo:old", VersionSelector.parse("=2.5"))));
@@ -562,9 +564,9 @@ class MavenPackageSourceExclusionTest {
     @Test
     void a_relocation_chain_follows_to_the_end(@TempDir Path tempDir) throws Exception {
         for (String a : List.of("a", "b", "c")) {
-            serveMetadata("/com/foo/" + a + "/maven-metadata.xml", "com.foo", a, List.of("1.0"));
+            upstream.metadata("com.foo", a, "1.0");
         }
-        servePom("com.foo", "a", "1.0", """
+        upstream.pomOnly("com.foo", "a", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>a</artifactId><version>1.0</version>
                   <distributionManagement>
@@ -572,7 +574,7 @@ class MavenPackageSourceExclusionTest {
                   </distributionManagement>
                 </project>
                 """);
-        servePom("com.foo", "b", "1.0", """
+        upstream.pomOnly("com.foo", "b", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>b</artifactId><version>1.0</version>
                   <distributionManagement>
@@ -580,7 +582,7 @@ class MavenPackageSourceExclusionTest {
                   </distributionManagement>
                 </project>
                 """);
-        servePom("com.foo", "c", "1.0", emptyPom("com.foo", "c", "1.0"));
+        upstream.pomOnly("com.foo", "c", "1.0", MavenStub.emptyPom("com.foo", "c", "1.0"));
 
         Resolution result = new PubGrubResolver(repoGroup(tempDir))
                 .resolve(List.of(new Dependency("com.foo:a", VersionSelector.parse("=1.0"))));
@@ -593,9 +595,9 @@ class MavenPackageSourceExclusionTest {
     @Test
     void a_relocation_cycle_terminates(@TempDir Path tempDir) throws Exception {
         for (String a : List.of("x", "y")) {
-            serveMetadata("/com/foo/" + a + "/maven-metadata.xml", "com.foo", a, List.of("1.0"));
+            upstream.metadata("com.foo", a, "1.0");
         }
-        servePom("com.foo", "x", "1.0", """
+        upstream.pomOnly("com.foo", "x", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>x</artifactId><version>1.0</version>
                   <distributionManagement>
@@ -603,7 +605,7 @@ class MavenPackageSourceExclusionTest {
                   </distributionManagement>
                 </project>
                 """);
-        servePom("com.foo", "y", "1.0", """
+        upstream.pomOnly("com.foo", "y", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>y</artifactId><version>1.0</version>
                   <distributionManagement>
@@ -634,9 +636,9 @@ class MavenPackageSourceExclusionTest {
     @Test
     void pom_range_constraint_limits_candidates(@TempDir Path tempDir) throws Exception {
         // middle depends on leaf with Maven range [1.0,2.0) — must not pick 2.0.
-        serveMetadata("/com/foo/middle/maven-metadata.xml", "com.foo", "middle", List.of("1.0"));
-        serveMetadata("/com/foo/leaf/maven-metadata.xml", "com.foo", "leaf", List.of("1.0", "1.5", "2.0"));
-        servePom("com.foo", "middle", "1.0", """
+        upstream.metadata("com.foo", "middle", "1.0");
+        upstream.metadata("com.foo", "leaf", "1.0", "1.5", "2.0");
+        upstream.pomOnly("com.foo", "middle", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>middle</artifactId><version>1.0</version>
                   <dependencies>
@@ -647,9 +649,9 @@ class MavenPackageSourceExclusionTest {
                   </dependencies>
                 </project>
                 """);
-        servePom("com.foo", "leaf", "1.0", emptyPom("com.foo", "leaf", "1.0"));
-        servePom("com.foo", "leaf", "1.5", emptyPom("com.foo", "leaf", "1.5"));
-        servePom("com.foo", "leaf", "2.0", emptyPom("com.foo", "leaf", "2.0"));
+        upstream.pomOnly("com.foo", "leaf", "1.0", MavenStub.emptyPom("com.foo", "leaf", "1.0"));
+        upstream.pomOnly("com.foo", "leaf", "1.5", MavenStub.emptyPom("com.foo", "leaf", "1.5"));
+        upstream.pomOnly("com.foo", "leaf", "2.0", MavenStub.emptyPom("com.foo", "leaf", "2.0"));
 
         Resolution result = new PubGrubResolver(repoGroup(tempDir))
                 .resolve(List.of(new Dependency("com.foo:middle", VersionSelector.parse("=1.0"))));
@@ -660,46 +662,5 @@ class MavenPackageSourceExclusionTest {
     private RepoGroup repoGroup(Path tempDir) {
         Cas cas = new Cas(tempDir.resolve("cache"));
         return RepoGroup.of(new MavenRepo("local", http.base(), new Http(), cas));
-    }
-
-    private void servePath(String path, String body) {
-        http.served().put(path, body.getBytes(StandardCharsets.UTF_8));
-    }
-
-    private void servePom(String group, String artifact, String version, String body) {
-        String path = "/"
-                + group.replace('.', '/')
-                + "/"
-                + artifact
-                + "/"
-                + version
-                + "/"
-                + artifact
-                + "-"
-                + version
-                + ".pom";
-        servePath(path, body);
-    }
-
-    private void serveMetadata(String path, String group, String artifact, List<String> versions) {
-        StringBuilder body = new StringBuilder();
-        body.append("<metadata><groupId>")
-                .append(group)
-                .append("</groupId><artifactId>")
-                .append(artifact)
-                .append("</artifactId><versioning><versions>");
-        for (String v : versions) body.append("<version>").append(v).append("</version>");
-        body.append("</versions></versioning></metadata>");
-        servePath(path, body.toString());
-    }
-
-    private static String emptyPom(String group, String artifact, String version) {
-        return """
-                <project>
-                  <groupId>%s</groupId>
-                  <artifactId>%s</artifactId>
-                  <version>%s</version>
-                </project>
-                """.formatted(group, artifact, version);
     }
 }

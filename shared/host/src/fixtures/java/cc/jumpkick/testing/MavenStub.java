@@ -3,6 +3,7 @@ package cc.jumpkick.testing;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 
 /**
  * A stub Maven repository laid over a {@link LoopbackHttp}: metadata, POMs, empty jars and sources
@@ -15,10 +16,15 @@ public final class MavenStub {
     public static final byte[] EMPTY_JAR = {0x50, 0x4b, 0x05, 0x06, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
     };
 
-    private final LoopbackHttp http;
+    private final Map<String, byte[]> served;
 
     public MavenStub(LoopbackHttp http) {
-        this.http = http;
+        this(http.served());
+    }
+
+    /** Over any path-to-body map a stub server reads from. */
+    public MavenStub(Map<String, byte[]> served) {
+        this.served = served;
     }
 
     /** Metadata listing exactly {@code version}, an empty POM, and an empty jar. */
@@ -48,7 +54,12 @@ public final class MavenStub {
 
     /** The POM only; a lock that needs the jar then fails to fetch it. */
     public MavenStub pomWithoutJar(String group, String artifact, String version) {
-        return text(path(group, artifact, version, ".pom"), emptyPom(group, artifact, version));
+        return pomOnly(group, artifact, version, emptyPom(group, artifact, version));
+    }
+
+    /** The POM as given and nothing else — for solver tests that never materialize. */
+    public MavenStub pomOnly(String group, String artifact, String version, String body) {
+        return text(path(group, artifact, version, ".pom"), body);
     }
 
     public MavenStub jar(String group, String artifact, String version) {
@@ -64,7 +75,7 @@ public final class MavenStub {
     }
 
     public MavenStub bytes(String path, byte[] body) {
-        http.served().put(path, body);
+        served.put(path, body);
         return this;
     }
 

@@ -9,9 +9,8 @@ import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.testing.LoopbackHttp;
-import java.nio.charset.StandardCharsets;
+import cc.jumpkick.testing.MavenStub;
 import java.nio.file.Path;
-import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
@@ -27,6 +26,8 @@ class PluginToolCoordinateTest {
     @RegisterExtension
     final LoopbackHttp http = new LoopbackHttp();
 
+    private final MavenStub upstream = new MavenStub(http);
+
     /** Version-list reads, counted off the server's own request log rather than a side counter. */
     private long metadataRequests() {
         return http.requested().stream()
@@ -36,7 +37,7 @@ class PluginToolCoordinateTest {
 
     @Test
     void a_bare_version_is_exact_and_costs_no_metadata_fetch(@TempDir Path tmp) throws Exception {
-        serveMetadata("com.android.tools", "r8", List.of("8.5.35", "8.9.35", "8.13.19"));
+        upstream.metadata("com.android.tools", "r8", "8.5.35", "8.9.35", "8.13.19");
 
         Coordinate coord = PluginBuild.resolveCoordinate(repos(tmp), "com.android.tools:r8:8.5.35");
 
@@ -48,8 +49,7 @@ class PluginToolCoordinateTest {
 
     @Test
     void an_explicit_caret_floats_to_the_highest_stable_in_the_line(@TempDir Path tmp) throws Exception {
-        serveMetadata(
-                "org.springframework.boot", "spring-boot-loader", List.of("4.0.0", "4.1.0", "4.2.0-RC1", "5.0.0"));
+        upstream.metadata("org.springframework.boot", "spring-boot-loader", "4.0.0", "4.1.0", "4.2.0-RC1", "5.0.0");
 
         Coordinate coord = PluginBuild.resolveCoordinate(repos(tmp), "org.springframework.boot:spring-boot-loader:^4");
 
@@ -59,7 +59,7 @@ class PluginToolCoordinateTest {
 
     @Test
     void a_float_keeps_the_classifier_and_type(@TempDir Path tmp) throws Exception {
-        serveMetadata("com.google.protobuf", "protoc", List.of("4.33.1", "4.34.0"));
+        upstream.metadata("com.google.protobuf", "protoc", "4.33.1", "4.34.0");
 
         Coordinate coord =
                 PluginBuild.resolveCoordinate(repos(tmp), "com.google.protobuf:protoc:^4.33.1:linux-x86_64!exe");
@@ -81,7 +81,7 @@ class PluginToolCoordinateTest {
 
     @Test
     void an_equals_prefix_pins_exactly_and_is_stripped(@TempDir Path tmp) throws Exception {
-        serveMetadata("io.micronaut.aot", "micronaut-aot-cli", List.of("3.1.0", "3.9.0"));
+        upstream.metadata("io.micronaut.aot", "micronaut-aot-cli", "3.1.0", "3.9.0");
 
         Coordinate coord = PluginBuild.resolveCoordinate(repos(tmp), "io.micronaut.aot:micronaut-aot-cli:=3.1.0");
 
@@ -91,7 +91,7 @@ class PluginToolCoordinateTest {
 
     @Test
     void packager_tool_versions_follow_the_same_rule(@TempDir Path tmp) throws Exception {
-        serveMetadata("com.android.tools", "r8", List.of("8.13.19", "8.20.0"));
+        upstream.metadata("com.android.tools", "r8", "8.13.19", "8.20.0");
         RepoGroup repos = repos(tmp);
 
         assertThat(PluginBuild.resolveToolVersion(repos, "com.android.tools:r8", "8.13.19"))
@@ -105,19 +105,5 @@ class PluginToolCoordinateTest {
 
     private RepoGroup repos(Path tmp) {
         return RepoGroup.of(new MavenRepo("local", http.base(), new Http(), new Cas(tmp.resolve("cas"))));
-    }
-
-    private void serveMetadata(String group, String artifact, List<String> versions) {
-        StringBuilder xml = new StringBuilder("<metadata><groupId>")
-                .append(group)
-                .append("</groupId><artifactId>")
-                .append(artifact)
-                .append("</artifactId><versioning><versions>");
-        for (String v : versions) xml.append("<version>").append(v).append("</version>");
-        xml.append("</versions></versioning></metadata>");
-        http.served()
-                .put(
-                        "/" + group.replace('.', '/') + "/" + artifact + "/maven-metadata.xml",
-                        xml.toString().getBytes(StandardCharsets.UTF_8));
     }
 }

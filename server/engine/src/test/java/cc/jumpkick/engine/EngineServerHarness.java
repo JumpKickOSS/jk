@@ -4,6 +4,7 @@ package cc.jumpkick.engine;
 import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.testing.Await;
+import cc.jumpkick.testing.MavenStub;
 import cc.jumpkick.testing.ShortTempDirs;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.EngineTransport;
@@ -140,20 +141,7 @@ abstract class EngineServerHarness {
 
     /** Minimal metadata + dependency-free POM + stub jar for one coordinate on the mock repo. */
     static void seedArtifact(Map<String, byte[]> served, String group, String artifact, String version) {
-        String base = "/" + group.replace('.', '/') + "/" + artifact;
-        served.put(
-                base + "/maven-metadata.xml",
-                ("<metadata><groupId>" + group + "</groupId><artifactId>" + artifact
-                                + "</artifactId><versioning><versions><version>" + version
-                                + "</version></versions></versioning></metadata>")
-                        .getBytes(StandardCharsets.UTF_8));
-        String dir = base + "/" + version + "/" + artifact + "-" + version;
-        served.put(
-                dir + ".pom",
-                ("<project><groupId>" + group + "</groupId><artifactId>" + artifact + "</artifactId><version>" + version
-                                + "</version></project>")
-                        .getBytes(StandardCharsets.UTF_8));
-        served.put(dir + ".jar", (artifact + "-stub").getBytes(StandardCharsets.UTF_8));
+        new MavenStub(served).leaf(group, artifact, version);
     }
 
     static JkHttpConfig httpOnEphemeralPort(Path webRoot) {

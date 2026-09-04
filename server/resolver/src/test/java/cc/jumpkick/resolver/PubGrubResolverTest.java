@@ -13,7 +13,7 @@ import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.testing.LoopbackHttp;
-import java.nio.charset.StandardCharsets;
+import cc.jumpkick.testing.MavenStub;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -31,12 +31,14 @@ class PubGrubResolverTest {
     @RegisterExtension
     final LoopbackHttp http = new LoopbackHttp();
 
+    private final MavenStub upstream = new MavenStub(http);
+
     @Test
     void bom_pin_overrides_lower_bare_on_transitive_edge(@TempDir Path tempDir) throws Exception {
         // root → middle@1.0 → leaf@1.0 bare; BOM pins leaf = 1.5 → enforced 1.5 (not soft lift).
-        serveMetadata("/com/foo/middle/maven-metadata.xml", "com.foo", "middle", List.of("1.0"));
-        serveMetadata("/com/foo/leaf/maven-metadata.xml", "com.foo", "leaf", List.of("1.0", "1.5", "2.0"));
-        servePom("com.foo", "middle", "1.0", """
+        upstream.metadata("com.foo", "middle", "1.0");
+        upstream.metadata("com.foo", "leaf", "1.0", "1.5", "2.0");
+        upstream.pomOnly("com.foo", "middle", "1.0", """
                 <project>
                   <groupId>com.foo</groupId>
                   <artifactId>middle</artifactId>
@@ -48,9 +50,9 @@ class PubGrubResolverTest {
                   </dependencies>
                 </project>
                 """);
-        servePom("com.foo", "leaf", "1.0", emptyPom("com.foo", "leaf", "1.0"));
-        servePom("com.foo", "leaf", "1.5", emptyPom("com.foo", "leaf", "1.5"));
-        servePom("com.foo", "leaf", "2.0", emptyPom("com.foo", "leaf", "2.0"));
+        upstream.pomOnly("com.foo", "leaf", "1.0", MavenStub.emptyPom("com.foo", "leaf", "1.0"));
+        upstream.pomOnly("com.foo", "leaf", "1.5", MavenStub.emptyPom("com.foo", "leaf", "1.5"));
+        upstream.pomOnly("com.foo", "leaf", "2.0", MavenStub.emptyPom("com.foo", "leaf", "2.0"));
 
         RepoGroup repos = repoGroup(tempDir);
         Map<String, String> bom = Map.of("com.foo:leaf", "1.5");
@@ -67,9 +69,9 @@ class PubGrubResolverTest {
         // platform map has an unrelated pin (project still "has a BOM"). middle →
         // leaf@1.0 bare; metadata offers 2.0. Default mediates highest-wins → leaf=2.0
         // (Maven/Gradle parity); [resolve] unmapped = "strict" restores the exact fill.
-        serveMetadata("/com/foo/middle/maven-metadata.xml", "com.foo", "middle", List.of("1.0"));
-        serveMetadata("/com/foo/leaf/maven-metadata.xml", "com.foo", "leaf", List.of("1.0", "1.5", "2.0"));
-        servePom("com.foo", "middle", "1.0", """
+        upstream.metadata("com.foo", "middle", "1.0");
+        upstream.metadata("com.foo", "leaf", "1.0", "1.5", "2.0");
+        upstream.pomOnly("com.foo", "middle", "1.0", """
                 <project>
                   <groupId>com.foo</groupId>
                   <artifactId>middle</artifactId>
@@ -81,9 +83,9 @@ class PubGrubResolverTest {
                   </dependencies>
                 </project>
                 """);
-        servePom("com.foo", "leaf", "1.0", emptyPom("com.foo", "leaf", "1.0"));
-        servePom("com.foo", "leaf", "1.5", emptyPom("com.foo", "leaf", "1.5"));
-        servePom("com.foo", "leaf", "2.0", emptyPom("com.foo", "leaf", "2.0"));
+        upstream.pomOnly("com.foo", "leaf", "1.0", MavenStub.emptyPom("com.foo", "leaf", "1.0"));
+        upstream.pomOnly("com.foo", "leaf", "1.5", MavenStub.emptyPom("com.foo", "leaf", "1.5"));
+        upstream.pomOnly("com.foo", "leaf", "2.0", MavenStub.emptyPom("com.foo", "leaf", "2.0"));
 
         RepoGroup repos = repoGroup(tempDir);
         Map<String, String> bom = Map.of("com.foo:unrelated", "0.1");
@@ -102,9 +104,9 @@ class PubGrubResolverTest {
     void bom_managed_pin_is_enforced_on_transitive_edges(@TempDir Path tempDir) throws Exception {
         // When a GA is in the platform map, the pin is enforced on POM edges (not lifted by a
         // higher bare version on middle→leaf).
-        serveMetadata("/com/foo/middle/maven-metadata.xml", "com.foo", "middle", List.of("1.0"));
-        serveMetadata("/com/foo/leaf/maven-metadata.xml", "com.foo", "leaf", List.of("1.0", "1.5", "2.0"));
-        servePom("com.foo", "middle", "1.0", """
+        upstream.metadata("com.foo", "middle", "1.0");
+        upstream.metadata("com.foo", "leaf", "1.0", "1.5", "2.0");
+        upstream.pomOnly("com.foo", "middle", "1.0", """
                 <project>
                   <groupId>com.foo</groupId>
                   <artifactId>middle</artifactId>
@@ -116,9 +118,9 @@ class PubGrubResolverTest {
                   </dependencies>
                 </project>
                 """);
-        servePom("com.foo", "leaf", "1.0", emptyPom("com.foo", "leaf", "1.0"));
-        servePom("com.foo", "leaf", "1.5", emptyPom("com.foo", "leaf", "1.5"));
-        servePom("com.foo", "leaf", "2.0", emptyPom("com.foo", "leaf", "2.0"));
+        upstream.pomOnly("com.foo", "leaf", "1.0", MavenStub.emptyPom("com.foo", "leaf", "1.0"));
+        upstream.pomOnly("com.foo", "leaf", "1.5", MavenStub.emptyPom("com.foo", "leaf", "1.5"));
+        upstream.pomOnly("com.foo", "leaf", "2.0", MavenStub.emptyPom("com.foo", "leaf", "2.0"));
 
         RepoGroup repos = repoGroup(tempDir);
         Map<String, String> bom = Map.of("com.foo:leaf", "1.0");
@@ -134,10 +136,10 @@ class PubGrubResolverTest {
         // BOM soft-prefers 1.5; root exact-pins 1.0. LockOrchestrator removes the BOM prefer for
         // exact roots, but even if the prefer remains, Exact forces 1.0. Here we pass bom to the
         // resolver directly with an exact root on the same coord — Exact beats prefer.
-        serveMetadata("/com/foo/leaf/maven-metadata.xml", "com.foo", "leaf", List.of("1.0", "1.5", "2.0"));
-        servePom("com.foo", "leaf", "1.0", emptyPom("com.foo", "leaf", "1.0"));
-        servePom("com.foo", "leaf", "1.5", emptyPom("com.foo", "leaf", "1.5"));
-        servePom("com.foo", "leaf", "2.0", emptyPom("com.foo", "leaf", "2.0"));
+        upstream.metadata("com.foo", "leaf", "1.0", "1.5", "2.0");
+        upstream.pomOnly("com.foo", "leaf", "1.0", MavenStub.emptyPom("com.foo", "leaf", "1.0"));
+        upstream.pomOnly("com.foo", "leaf", "1.5", MavenStub.emptyPom("com.foo", "leaf", "1.5"));
+        upstream.pomOnly("com.foo", "leaf", "2.0", MavenStub.emptyPom("com.foo", "leaf", "2.0"));
 
         RepoGroup repos = repoGroup(tempDir);
         Map<String, String> bom = Map.of("com.foo:leaf", "1.5");
@@ -153,8 +155,8 @@ class PubGrubResolverTest {
         // A direct dep with a caret selector should pick the highest
         // satisfying version. With no BOM constraint on `com.foo:other`,
         // resolution proceeds as usual.
-        serveMetadata("/com/foo/other/maven-metadata.xml", "com.foo", "other", List.of("1.0", "1.5", "2.0"));
-        servePom("com.foo", "other", "1.5", emptyPom("com.foo", "other", "1.5"));
+        upstream.metadata("com.foo", "other", "1.0", "1.5", "2.0");
+        upstream.pomOnly("com.foo", "other", "1.5", MavenStub.emptyPom("com.foo", "other", "1.5"));
 
         RepoGroup repos = repoGroup(tempDir);
         // BOM constrains a *different* coord — should not interfere.
@@ -177,11 +179,11 @@ class PubGrubResolverTest {
         // app → classic → core, and app → other → core (no exclusion). `classic` excludes `core`
         // on nobody's behalf here; the exclusion sits on app → classic, the shape that used to
         // cascade down and strip classic → core.
-        serveMetadata("/com/foo/app/maven-metadata.xml", "com.foo", "app", List.of("1.0"));
-        serveMetadata("/com/foo/classic/maven-metadata.xml", "com.foo", "classic", List.of("1.0"));
-        serveMetadata("/com/foo/other/maven-metadata.xml", "com.foo", "other", List.of("1.0"));
-        serveMetadata("/com/foo/core/maven-metadata.xml", "com.foo", "core", List.of("1.0"));
-        servePom("com.foo", "app", "1.0", """
+        upstream.metadata("com.foo", "app", "1.0");
+        upstream.metadata("com.foo", "classic", "1.0");
+        upstream.metadata("com.foo", "other", "1.0");
+        upstream.metadata("com.foo", "core", "1.0");
+        upstream.pomOnly("com.foo", "app", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>app</artifactId><version>1.0</version>
                   <dependencies>
@@ -197,9 +199,9 @@ class PubGrubResolverTest {
                   </dependencies>
                 </project>
                 """);
-        servePom("com.foo", "classic", "1.0", dependsOnCore("classic"));
-        servePom("com.foo", "other", "1.0", dependsOnCore("other"));
-        servePom("com.foo", "core", "1.0", emptyPom("com.foo", "core", "1.0"));
+        upstream.pomOnly("com.foo", "classic", "1.0", dependsOnCore("classic"));
+        upstream.pomOnly("com.foo", "other", "1.0", dependsOnCore("other"));
+        upstream.pomOnly("com.foo", "core", "1.0", MavenStub.emptyPom("com.foo", "core", "1.0"));
 
         Resolution result = new PubGrubResolver(repoGroup(tempDir), Map.of())
                 .resolve(List.of(new Dependency("com.foo:app", VersionSelector.parse("=1.0"))));
@@ -214,10 +216,10 @@ class PubGrubResolverTest {
     void an_exclusion_that_keeps_a_package_out_entirely_leaves_no_edge(@TempDir Path tempDir) throws Exception {
         // The other half of the rule: with `core` on nobody else's path, the exclusion keeps it
         // out of the resolution and the edge goes with it.
-        serveMetadata("/com/foo/app/maven-metadata.xml", "com.foo", "app", List.of("1.0"));
-        serveMetadata("/com/foo/classic/maven-metadata.xml", "com.foo", "classic", List.of("1.0"));
-        serveMetadata("/com/foo/core/maven-metadata.xml", "com.foo", "core", List.of("1.0"));
-        servePom("com.foo", "app", "1.0", """
+        upstream.metadata("com.foo", "app", "1.0");
+        upstream.metadata("com.foo", "classic", "1.0");
+        upstream.metadata("com.foo", "core", "1.0");
+        upstream.pomOnly("com.foo", "app", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>app</artifactId><version>1.0</version>
                   <dependencies>
@@ -230,8 +232,8 @@ class PubGrubResolverTest {
                   </dependencies>
                 </project>
                 """);
-        servePom("com.foo", "classic", "1.0", dependsOnCore("classic"));
-        servePom("com.foo", "core", "1.0", emptyPom("com.foo", "core", "1.0"));
+        upstream.pomOnly("com.foo", "classic", "1.0", dependsOnCore("classic"));
+        upstream.pomOnly("com.foo", "core", "1.0", MavenStub.emptyPom("com.foo", "core", "1.0"));
 
         Resolution result = new PubGrubResolver(repoGroup(tempDir), Map.of())
                 .resolve(List.of(new Dependency("com.foo:app", VersionSelector.parse("=1.0"))));
@@ -263,48 +265,5 @@ class PubGrubResolverTest {
         Cas cas = new Cas(tempDir.resolve("cache"));
         MavenRepo repo = new MavenRepo("local", http.base(), new Http(), cas);
         return new MavenPackageSource(repo, new EffectivePomBuilder(repo));
-    }
-
-    private void servePath(String path, String body) {
-        http.served().put(path, body.getBytes(StandardCharsets.UTF_8));
-    }
-
-    private void servePom(String group, String artifact, String version, String body) {
-        String path = "/"
-                + group.replace('.', '/')
-                + "/"
-                + artifact
-                + "/"
-                + version
-                + "/"
-                + artifact
-                + "-"
-                + version
-                + ".pom";
-        servePath(path, body);
-    }
-
-    private void serveMetadata(String path, String group, String artifact, List<String> versions) {
-        StringBuilder body = new StringBuilder();
-        body.append("<metadata><groupId>")
-                .append(group)
-                .append("</groupId>")
-                .append("<artifactId>")
-                .append(artifact)
-                .append("</artifactId>")
-                .append("<versioning><versions>");
-        for (String v : versions) body.append("<version>").append(v).append("</version>");
-        body.append("</versions></versioning></metadata>");
-        servePath(path, body.toString());
-    }
-
-    private static String emptyPom(String group, String artifact, String version) {
-        return """
-                <project>
-                  <groupId>%s</groupId>
-                  <artifactId>%s</artifactId>
-                  <version>%s</version>
-                </project>
-                """.formatted(group, artifact, version);
     }
 }

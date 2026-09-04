@@ -17,8 +17,8 @@ import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.testing.LoopbackHttp;
+import cc.jumpkick.testing.MavenStub;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.EnumMap;
 import java.util.List;
@@ -45,6 +45,8 @@ class LockOrchestratorBomTest {
     @RegisterExtension
     final LoopbackHttp http = new LoopbackHttp();
 
+    private final MavenStub upstream = new MavenStub(http);
+
     @BeforeEach
     void start() throws IOException {
         serveJUnitDefaults();
@@ -55,51 +57,14 @@ class LockOrchestratorBomTest {
      * resolvable version of those coords for any lock.
      */
     private void serveJUnitDefaults() {
-        serveLeaf("org.junit.jupiter", "junit-jupiter", "6.1.0");
-        serveLeaf("org.junit.platform", "junit-platform-launcher", "6.1.0");
-    }
-
-    private void serveLeaf(String group, String artifact, String version) {
-        serveMetadata(
-                "/" + group.replace('.', '/') + "/" + artifact + "/maven-metadata.xml",
-                group,
-                artifact,
-                List.of(version));
-        servePom(
-                group,
-                artifact,
-                version,
-                "<project><groupId>"
-                        + group
-                        + "</groupId><artifactId>"
-                        + artifact
-                        + "</artifactId><version>"
-                        + version
-                        + "</version></project>");
-        serveJar(group, artifact, version);
-    }
-
-    /** Minimal empty jar so lock materialize can pin a checksum. */
-    private void serveJar(String group, String artifact, String version) {
-        String path = "/"
-                + group.replace('.', '/')
-                + "/"
-                + artifact
-                + "/"
-                + version
-                + "/"
-                + artifact
-                + "-"
-                + version
-                + ".jar";
-        http.served()
-                .put(path, new byte[] {0x50, 0x4b, 0x05, 0x06, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
+        upstream.leaf("org.junit.jupiter", "junit-jupiter", "6.1.0");
+        upstream.leaf("org.junit.platform", "junit-platform-launcher", "6.1.0");
     }
 
     @Test
     void conflicting_platform_boms_surface_diagnostic(@TempDir Path tempDir) throws Exception {
         // Two BOMs that both constrain `com.foo:widget` to different versions.
-        servePom("org.example", "bom-a", "1.0", """
+        upstream.pom("org.example", "bom-a", "1.0", """
                 <project>
                   <groupId>org.example</groupId>
                   <artifactId>bom-a</artifactId>
@@ -116,7 +81,7 @@ class LockOrchestratorBomTest {
                   </dependencyManagement>
                 </project>
                 """);
-        servePom("org.example", "bom-b", "1.0", """
+        upstream.pom("org.example", "bom-b", "1.0", """
                 <project>
                   <groupId>org.example</groupId>
                   <artifactId>bom-b</artifactId>
@@ -150,7 +115,7 @@ class LockOrchestratorBomTest {
 
     @Test
     void platform_bom_pins_lockfile_package(@TempDir Path tempDir) throws Exception {
-        servePom("org.example", "the-bom", "1.0", """
+        upstream.pom("org.example", "the-bom", "1.0", """
                 <project>
                   <groupId>org.example</groupId>
                   <artifactId>the-bom</artifactId>
@@ -168,15 +133,15 @@ class LockOrchestratorBomTest {
                 </project>
                 """);
         // widget metadata advertises higher versions, but BOM pins 1.0.
-        serveMetadata("/com/foo/widget/maven-metadata.xml", "com.foo", "widget", List.of("1.0", "2.0"));
-        servePom("com.foo", "widget", "1.0", """
+        upstream.metadata("com.foo", "widget", "1.0", "2.0");
+        upstream.pom("com.foo", "widget", "1.0", """
                 <project>
                   <groupId>com.foo</groupId>
                   <artifactId>widget</artifactId>
                   <version>1.0</version>
                 </project>
                 """);
-        serveJar("com.foo", "widget", "1.0");
+        upstream.jar("com.foo", "widget", "1.0");
 
         JkBuild project = jkBuildWithDeps(Map.of(
                 Scope.PLATFORM, List.of(Dependency.of("the-bom", "org.example:the-bom", VersionSelector.parse("=1.0"))),
@@ -200,7 +165,7 @@ class LockOrchestratorBomTest {
     void platform_bom_enforces_managed_pin_on_transitive_edges(@TempDir Path tempDir) throws Exception {
         // GAs in the platform map use the BOM pin on POM edges (enforced), not a lift to the
         // highest metadata release. Unmapped bare edges are also exact under a platform.
-        servePom("org.example", "the-bom", "1.0", """
+        upstream.pom("org.example", "the-bom", "1.0", """
                 <project>
                   <groupId>org.example</groupId>
                   <artifactId>the-bom</artifactId>
@@ -217,9 +182,9 @@ class LockOrchestratorBomTest {
                   </dependencyManagement>
                 </project>
                 """);
-        serveMetadata("/com/foo/middle/maven-metadata.xml", "com.foo", "middle", List.of("1.0"));
-        serveMetadata("/com/foo/leaf/maven-metadata.xml", "com.foo", "leaf", List.of("1.0", "1.5", "2.0"));
-        servePom("com.foo", "middle", "1.0", """
+        upstream.metadata("com.foo", "middle", "1.0");
+        upstream.metadata("com.foo", "leaf", "1.0", "1.5", "2.0");
+        upstream.pom("com.foo", "middle", "1.0", """
                 <project>
                   <groupId>com.foo</groupId>
                   <artifactId>middle</artifactId>
@@ -231,13 +196,13 @@ class LockOrchestratorBomTest {
                   </dependencies>
                 </project>
                 """);
-        serveJar("com.foo", "middle", "1.0");
-        servePom("com.foo", "leaf", "1.0", leafVersioned("leaf", "1.0"));
-        serveJar("com.foo", "leaf", "1.0");
-        servePom("com.foo", "leaf", "1.5", leafVersioned("leaf", "1.5"));
-        serveJar("com.foo", "leaf", "1.5");
-        servePom("com.foo", "leaf", "2.0", leafVersioned("leaf", "2.0"));
-        serveJar("com.foo", "leaf", "2.0");
+        upstream.jar("com.foo", "middle", "1.0");
+        upstream.pom("com.foo", "leaf", "1.0", leafVersioned("leaf", "1.0"));
+        upstream.jar("com.foo", "leaf", "1.0");
+        upstream.pom("com.foo", "leaf", "1.5", leafVersioned("leaf", "1.5"));
+        upstream.jar("com.foo", "leaf", "1.5");
+        upstream.pom("com.foo", "leaf", "2.0", leafVersioned("leaf", "2.0"));
+        upstream.jar("com.foo", "leaf", "2.0");
 
         JkBuild project = jkBuildWithDeps(Map.of(
                 Scope.PLATFORM, List.of(Dependency.of("the-bom", "org.example:the-bom", VersionSelector.parse("=1.0"))),
@@ -255,7 +220,7 @@ class LockOrchestratorBomTest {
     void platform_managed_versionless_root_resolves_through_the_bom(@TempDir Path tempDir) throws Exception {
         // The Spring Boot flow: import spring-boot-dependencies, declare starters with
         // NO version at all (spring-boot plan §3.1) — the BOM supplies the pin.
-        servePom("org.example", "the-bom", "1.0", """
+        upstream.pom("org.example", "the-bom", "1.0", """
                 <project>
                   <groupId>org.example</groupId>
                   <artifactId>the-bom</artifactId>
@@ -272,14 +237,14 @@ class LockOrchestratorBomTest {
                   </dependencyManagement>
                 </project>
                 """);
-        servePom("com.foo", "widget", "1.0", """
+        upstream.pom("com.foo", "widget", "1.0", """
                 <project>
                   <groupId>com.foo</groupId>
                   <artifactId>widget</artifactId>
                   <version>1.0</version>
                 </project>
                 """);
-        serveJar("com.foo", "widget", "1.0");
+        upstream.jar("com.foo", "widget", "1.0");
 
         JkBuild project = jkBuildWithDeps(Map.of(
                 Scope.PLATFORM, List.of(Dependency.of("the-bom", "org.example:the-bom", VersionSelector.parse("=1.0"))),
@@ -304,15 +269,15 @@ class LockOrchestratorBomTest {
 
     @Test
     void processor_scope_dependency_is_resolved_and_tagged_processor(@TempDir Path tempDir) throws Exception {
-        serveMetadata("/com/foo/proc/maven-metadata.xml", "com.foo", "proc", List.of("1.0"));
-        servePom("com.foo", "proc", "1.0", """
+        upstream.metadata("com.foo", "proc", "1.0");
+        upstream.pom("com.foo", "proc", "1.0", """
                 <project>
                   <groupId>com.foo</groupId>
                   <artifactId>proc</artifactId>
                   <version>1.0</version>
                 </project>
                 """);
-        serveJar("com.foo", "proc", "1.0");
+        upstream.jar("com.foo", "proc", "1.0");
 
         JkBuild project = jkBuildWithDeps(
                 Map.of(Scope.PROCESSOR, List.of(new Dependency("com.foo:proc", VersionSelector.parseFloating("1.0")))));
@@ -329,12 +294,12 @@ class LockOrchestratorBomTest {
 
     @Test
     void optional_dep_is_withheld_until_a_feature_activates_it(@TempDir Path tempDir) throws Exception {
-        serveMetadata("/com/foo/core/maven-metadata.xml", "com.foo", "core", List.of("1.0"));
-        servePom("com.foo", "core", "1.0", leaf("core"));
-        serveJar("com.foo", "core", "1.0");
-        serveMetadata("/com/foo/extra/maven-metadata.xml", "com.foo", "extra", List.of("1.0"));
-        servePom("com.foo", "extra", "1.0", leaf("extra"));
-        serveJar("com.foo", "extra", "1.0");
+        upstream.metadata("com.foo", "core", "1.0");
+        upstream.pom("com.foo", "core", "1.0", leaf("core"));
+        upstream.jar("com.foo", "core", "1.0");
+        upstream.metadata("com.foo", "extra", "1.0");
+        upstream.pom("com.foo", "extra", "1.0", leaf("extra"));
+        upstream.jar("com.foo", "extra", "1.0");
 
         // `extra` is optional; the `with-extra` feature (a default) names it.
         Dependency core = new Dependency("com.foo:core", VersionSelector.parseFloating("1.0"));
@@ -386,8 +351,8 @@ class LockOrchestratorBomTest {
     void declared_dep_with_pom_but_no_jar_fails_lock(@TempDir Path tempDir) {
         // POM resolves, jar 404s → lock must fail (not write a checksum-less row).
         // servePath only (not servePom) so no auto-jar is registered.
-        serveMetadata("/com/foo/ghost/maven-metadata.xml", "com.foo", "ghost", List.of("1.0"));
-        servePath("/com/foo/ghost/1.0/ghost-1.0.pom", """
+        upstream.metadata("com.foo", "ghost", "1.0");
+        upstream.text("/com/foo/ghost/1.0/ghost-1.0.pom", """
                 <project>
                   <groupId>com.foo</groupId>
                   <artifactId>ghost</artifactId>
@@ -409,8 +374,8 @@ class LockOrchestratorBomTest {
     @Test
     void packaging_pom_declared_dep_locks_without_artifact(@TempDir Path tempDir) throws Exception {
         // packaging=pom aggregators / BOM-shaped modules legitimately have no jar.
-        serveMetadata("/com/foo/aggregator/maven-metadata.xml", "com.foo", "aggregator", List.of("1.0"));
-        servePom("com.foo", "aggregator", "1.0", """
+        upstream.metadata("com.foo", "aggregator", "1.0");
+        upstream.pom("com.foo", "aggregator", "1.0", """
                 <project>
                   <groupId>com.foo</groupId>
                   <artifactId>aggregator</artifactId>
@@ -433,8 +398,8 @@ class LockOrchestratorBomTest {
     @Test
     void caret_platform_bom_loads_management_from_highest_matching_release(@TempDir Path tempDir) throws Exception {
         // version = "1.0" (caret) must use 1.5's dependencyManagement, not the 1.0 anchor.
-        serveMetadata("/org/example/the-bom/maven-metadata.xml", "org.example", "the-bom", List.of("1.0", "1.5"));
-        servePom("org.example", "the-bom", "1.0", """
+        upstream.metadata("org.example", "the-bom", "1.0", "1.5");
+        upstream.pom("org.example", "the-bom", "1.0", """
                 <project>
                   <groupId>org.example</groupId>
                   <artifactId>the-bom</artifactId>
@@ -451,7 +416,7 @@ class LockOrchestratorBomTest {
                   </dependencyManagement>
                 </project>
                 """);
-        servePom("org.example", "the-bom", "1.5", """
+        upstream.pom("org.example", "the-bom", "1.5", """
                 <project>
                   <groupId>org.example</groupId>
                   <artifactId>the-bom</artifactId>
@@ -468,9 +433,9 @@ class LockOrchestratorBomTest {
                   </dependencyManagement>
                 </project>
                 """);
-        serveMetadata("/com/foo/widget/maven-metadata.xml", "com.foo", "widget", List.of("1.0", "1.5"));
-        servePom("com.foo", "widget", "1.0", leafVersioned("widget", "1.0"));
-        servePom("com.foo", "widget", "1.5", leafVersioned("widget", "1.5"));
+        upstream.metadata("com.foo", "widget", "1.0", "1.5");
+        upstream.pom("com.foo", "widget", "1.0", leafVersioned("widget", "1.0"));
+        upstream.pom("com.foo", "widget", "1.5", leafVersioned("widget", "1.5"));
 
         JkBuild project = jkBuildWithDeps(Map.of(
                 Scope.PLATFORM,
@@ -506,18 +471,14 @@ class LockOrchestratorBomTest {
     @Test
     void user_declared_junit_version_wins_over_default(@TempDir Path tempDir) throws Exception {
         // The user pins an older JUnit; the default must not override it.
-        serveMetadata(
-                "/org/junit/jupiter/junit-jupiter/maven-metadata.xml",
-                "org.junit.jupiter",
-                "junit-jupiter",
-                List.of("5.10.0", "6.1.0"));
-        servePom(
+        upstream.metadata("org.junit.jupiter", "junit-jupiter", "5.10.0", "6.1.0");
+        upstream.pom(
                 "org.junit.jupiter",
                 "junit-jupiter",
                 "5.10.0",
                 "<project><groupId>org.junit.jupiter</groupId>"
                         + "<artifactId>junit-jupiter</artifactId><version>5.10.0</version></project>");
-        serveJar("org.junit.jupiter", "junit-jupiter", "5.10.0");
+        upstream.jar("org.junit.jupiter", "junit-jupiter", "5.10.0");
 
         JkBuild project = jkBuildWithDeps(Map.of(
                 Scope.TEST,
@@ -557,43 +518,5 @@ class LockOrchestratorBomTest {
         copy.putAll(byScope);
         JkBuild.Dependencies deps = new JkBuild.Dependencies(copy);
         return new JkBuild(new Project("com.example", "test", "0.1.0", 25), deps);
-    }
-
-    private void servePath(String path, String body) {
-        http.served().put(path, body.getBytes(StandardCharsets.UTF_8));
-    }
-
-    private void servePom(String group, String artifact, String version, String body) {
-        String path = "/"
-                + group.replace('.', '/')
-                + "/"
-                + artifact
-                + "/"
-                + version
-                + "/"
-                + artifact
-                + "-"
-                + version
-                + ".pom";
-        servePath(path, body);
-        // Non-pom packaging needs a jar for lock materialize. packaging=pom rows
-        // legitimately have no artifact — leave them jar-less so the lock path stays honest.
-        if (!body.contains("<packaging>pom</packaging>")) {
-            serveJar(group, artifact, version);
-        }
-    }
-
-    private void serveMetadata(String path, String group, String artifact, List<String> versions) {
-        StringBuilder body = new StringBuilder();
-        body.append("<metadata><groupId>")
-                .append(group)
-                .append("</groupId>")
-                .append("<artifactId>")
-                .append(artifact)
-                .append("</artifactId>")
-                .append("<versioning><versions>");
-        for (String v : versions) body.append("<version>").append(v).append("</version>");
-        body.append("</versions></versioning></metadata>");
-        servePath(path, body.toString());
     }
 }

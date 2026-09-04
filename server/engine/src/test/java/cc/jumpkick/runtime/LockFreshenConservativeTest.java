@@ -11,6 +11,7 @@ import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.resolve.ResolveProcessCacheControl;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.testing.LoopbackHttp;
+import cc.jumpkick.testing.MavenStub;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.URI;
@@ -37,6 +38,8 @@ class LockFreshenConservativeTest {
     @RegisterExtension
     final LoopbackHttp http = new LoopbackHttp();
 
+    private final MavenStub upstream = new MavenStub(http);
+
     @TempDir
     Path isolatedStore;
 
@@ -48,8 +51,8 @@ class LockFreshenConservativeTest {
         System.setProperty("jk.env.JK_STORE_DIR", isolatedStore.resolve("store").toString());
         restartServer();
         // Injected test-framework defaults must resolve like in the resolver test harness.
-        serveLeaf("org.junit.jupiter", "junit-jupiter", "6.1.0");
-        serveLeaf("org.junit.platform", "junit-platform-launcher", "6.1.0");
+        upstream.leaf("org.junit.jupiter", "junit-jupiter", "6.1.0");
+        upstream.leaf("org.junit.platform", "junit-platform-launcher", "6.1.0");
     }
 
     @AfterEach
@@ -179,7 +182,7 @@ class LockFreshenConservativeTest {
         // lock content must not depend on which path freshened. The pre-build guard
         // used noDefaultFeatures=true and silently dropped feature-gated deps from the lock.
         serveLib("1.0");
-        serveLeaf("com.foo", "extra", "1.0");
+        upstream.leaf("com.foo", "extra", "1.0");
         Files.writeString(tmp.resolve("jk.toml"), """
                 group = "com.example"
                 name  = "demo"
@@ -215,7 +218,7 @@ class LockFreshenConservativeTest {
         // LockFlow (first-run/workspace freshen path) writes the kotlin pin like
         // lockBuildPlan does.
         serveLib("1.0");
-        serveLeaf("org.jetbrains.kotlin", "kotlin-compiler-embeddable", "2.1.0");
+        upstream.leaf("org.jetbrains.kotlin", "kotlin-compiler-embeddable", "2.1.0");
         Files.writeString(tmp.resolve("jk.toml"), """
                 group = "com.example"
                 name  = "demo"
@@ -263,26 +266,6 @@ class LockFreshenConservativeTest {
                 .map(Lockfile.Artifact::version)
                 .findFirst()
                 .orElseThrow();
-    }
-
-    private void serveLeaf(String group, String artifact, String version) {
-        String prefix = "/" + group.replace('.', '/') + "/" + artifact;
-        String metadata = "<metadata><groupId>" + group + "</groupId><artifactId>" + artifact
-                + "</artifactId><versioning><versions><version>" + version
-                + "</version></versions></versioning></metadata>";
-        http.served().put(prefix + "/maven-metadata.xml", metadata.getBytes(StandardCharsets.UTF_8));
-        String pom = """
-                <project>
-                  <groupId>%s</groupId>
-                  <artifactId>%s</artifactId>
-                  <version>%s</version>
-                </project>
-                """.formatted(group, artifact, version);
-        http.served()
-                .put(
-                        prefix + "/" + version + "/" + artifact + "-" + version + ".pom",
-                        pom.getBytes(StandardCharsets.UTF_8));
-        http.served().put(prefix + "/" + version + "/" + artifact + "-" + version + ".jar", emptyJar());
     }
 
     private void serveLib(String... versions) {

@@ -10,7 +10,7 @@ import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolver.pubgrub.Term;
 import cc.jumpkick.testing.LoopbackHttp;
-import java.nio.charset.StandardCharsets;
+import cc.jumpkick.testing.MavenStub;
 import java.nio.file.Path;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -22,9 +22,11 @@ class MavenPackageSourceTest {
     @RegisterExtension
     final LoopbackHttp http = new LoopbackHttp();
 
+    private final MavenStub upstream = new MavenStub(http);
+
     @Test
     void versions_returns_highest_first(@TempDir Path tempDir) throws Exception {
-        servePath("/com/foo/widget/maven-metadata.xml", """
+        upstream.text("/com/foo/widget/maven-metadata.xml", """
                 <metadata>
                   <groupId>com.foo</groupId>
                   <artifactId>widget</artifactId>
@@ -43,7 +45,7 @@ class MavenPackageSourceTest {
 
     @Test
     void dependencies_filters_to_compile_and_runtime(@TempDir Path tempDir) throws Exception {
-        servePom("com.foo", "widget", "1.0", """
+        upstream.pomOnly("com.foo", "widget", "1.0", """
                 <project>
                   <groupId>com.foo</groupId>
                   <artifactId>widget</artifactId>
@@ -91,24 +93,5 @@ class MavenPackageSourceTest {
         Cas cas = new Cas(tempDir.resolve("cache"));
         MavenRepo repo = new MavenRepo("local", http.base(), new Http(), cas);
         return new MavenPackageSource(repo, new EffectivePomBuilder(repo));
-    }
-
-    private void servePath(String path, String body) {
-        http.served().put(path, body.getBytes(StandardCharsets.UTF_8));
-    }
-
-    private void servePom(String group, String artifact, String version, String body) {
-        String path = "/"
-                + group.replace('.', '/')
-                + "/"
-                + artifact
-                + "/"
-                + version
-                + "/"
-                + artifact
-                + "-"
-                + version
-                + ".pom";
-        servePath(path, body);
     }
 }

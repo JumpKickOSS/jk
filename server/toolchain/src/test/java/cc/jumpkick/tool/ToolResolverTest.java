@@ -13,6 +13,7 @@ import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.testing.LoopbackHttp;
+import cc.jumpkick.testing.MavenStub;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -31,6 +32,8 @@ class ToolResolverTest {
 
     @RegisterExtension
     final LoopbackHttp http = new LoopbackHttp();
+
+    private final MavenStub upstream = new MavenStub(http);
 
     @BeforeEach
     void start() throws IOException {
@@ -109,7 +112,7 @@ class ToolResolverTest {
 
     @Test
     void floating_latest_picks_the_highest_stable_version(@TempDir Path tempDir) throws Exception {
-        serveMetadata("com.example", "widget-cli", "1.0.0", "1.1.0", "2.0.0-rc1", "1.2.0-SNAPSHOT");
+        upstream.metadata("com.example", "widget-cli", "1.0.0", "1.1.0", "2.0.0-rc1", "1.2.0-SNAPSHOT");
         servePomAndJar("com.example", "widget-cli", "1.1.0", "com.example.Main");
 
         ToolResolver resolver = resolver(tempDir);
@@ -121,7 +124,7 @@ class ToolResolverTest {
 
     @Test
     void floating_selector_picks_the_highest_match(@TempDir Path tempDir) throws Exception {
-        serveMetadata("com.example", "widget-cli", "1.0.0", "1.4.2", "2.1.0");
+        upstream.metadata("com.example", "widget-cli", "1.0.0", "1.4.2", "2.1.0");
         servePomAndJar("com.example", "widget-cli", "1.4.2", "com.example.Main");
 
         ToolResolver resolver = resolver(tempDir);
@@ -133,7 +136,7 @@ class ToolResolverTest {
 
     @Test
     void unmatched_selector_reports_the_available_versions(@TempDir Path tempDir) {
-        serveMetadata("com.example", "widget-cli", "1.0.0", "1.1.0");
+        upstream.metadata("com.example", "widget-cli", "1.0.0", "1.1.0");
         ToolResolver resolver = resolver(tempDir);
         assertThatThrownBy(() ->
                         resolver.resolve(ToolCoordSpec.parse("com.example:widget-cli@^3.0"), "widget", null, List.of()))
@@ -197,23 +200,6 @@ class ToolResolverTest {
             throw new RuntimeException(e);
         }
         return new ToolResolver(RepoGroup.of(new MavenRepo("central", http.base(), new Http(), cas)));
-    }
-
-    private void serveMetadata(String group, String artifact, String... versions) {
-        StringBuilder vs = new StringBuilder();
-        for (String v : versions) vs.append("      <version>").append(v).append("</version>\n");
-        String xml = """
-                <?xml version="1.0" encoding="UTF-8"?>
-                <metadata>
-                  <groupId>%s</groupId>
-                  <artifactId>%s</artifactId>
-                  <versioning>
-                    <versions>
-                %s    </versions>
-                  </versioning>
-                </metadata>
-                """.formatted(group, artifact, vs.toString());
-        http.served().put("/" + group.replace('.', '/') + "/" + artifact + "/maven-metadata.xml", xml.getBytes());
     }
 
     private void servePomAndJar(String group, String artifact, String version, String mainClass) throws IOException {
