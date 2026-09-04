@@ -3,12 +3,11 @@ package cc.jumpkick.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.engine.jobs.JobEnvelope;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
 import org.junit.jupiter.api.Test;
 
-/** Heartbeat protocol and env defaults. */
+/** Heartbeat and deadline wire shapes. */
 class JobWatchdogConfigTest {
 
     @Test
@@ -24,13 +23,5 @@ class JobWatchdogConfigTest {
         String line = ProtoLifecycle.error(EngineProtocol.ERR_DEADLINE, "too long");
         assertThat(line).contains("\"code\":\"deadline\"");
         assertThat(EngineProtocol.typeOf(line)).isEqualTo(EngineProtocol.ERROR);
-    }
-
-    @Test
-    void defaults_without_env() {
-        // Defaults when env vars unset (test JVM typically has none).
-        assertThat(JobEnvelope.jobHeartbeatMs()).isEqualTo(30_000L);
-        assertThat(JobEnvelope.jobDeadlineMs()).isEqualTo(0L);
-        assertThat(JobEnvelope.jobDeadlineGraceMs()).isEqualTo(30_000L);
     }
 }

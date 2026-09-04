@@ -3,6 +3,7 @@ package cc.jumpkick.engine.jobs;
 
 import cc.jumpkick.compile.JavaCompilerHost;
 import cc.jumpkick.config.JkHistoryConfig;
+import cc.jumpkick.config.JobLimits;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.BuildJobFingerprint;
 import cc.jumpkick.engine.InFlightBuilds;
@@ -40,8 +41,8 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.jspecify.annotations.Nullable;
 
 /**
- * One job lifecycle for CLI (and, in , HTTP/MCP). Admit, heartbeat, cancel, deadline,
- * and request-finish live here as one story — do not split the race comments into hooks.
+ * One job lifecycle for CLI, HTTP and MCP submissions. Admit, heartbeat, cancel, deadline, and
+ * request-finish live here as one story — do not split the race comments into hooks.
  */
 public final class JobEnvelope {
 
@@ -125,10 +126,13 @@ public final class JobEnvelope {
     private static final String CANCEL_BY_DISCONNECT = "the client disconnected before the job finished";
 
     private final Host host;
+    private final JobLimits limits;
     private final ConcurrentHashMap<Long, LiveJob> liveJobs = new ConcurrentHashMap<>();
 
-    public JobEnvelope(Host host) {
+    /** {@code limits} come from the engine's resolved config; the envelope never reads the environment. */
+    public JobEnvelope(Host host, JobLimits limits) {
         this.host = host;
+        this.limits = limits;
     }
 
     /** Detached admission refusal: a same-fingerprint job is already in flight. */
@@ -331,13 +335,13 @@ public final class JobEnvelope {
         });
         runnerRef.set(started);
         started.start(); // register live job + runnerRef before start
-        // Keep-alive + optional wall deadline while the job runs.
+        // Keep-alive + optional wall deadline while the job runs, per JobLimits.
         // Client stream idle (JK_STREAM_IDLE_MS) resets on each heartbeat line. On deadline:
         // cancel + worker shutdown (grace→force) + interrupt runner; connection join is bounded.
         // User cancel / EOF: same worker policy with a short cancel grace — never hang.
-        long heartbeatMs = jobHeartbeatMs();
-        long deadlineMs = jobDeadlineMs();
-        long graceMs = jobDeadlineGraceMs();
+        long heartbeatMs = limits.heartbeatMs();
+        long deadlineMs = limits.deadlineMs();
+        long graceMs = limits.deadlineGraceMs();
         long cancelGraceMs = JobWorkers.cancelGraceMs();
         // Heartbeats are a wire line — a detached job has no writer, so its watchdog exists only
         // to enforce a wall deadline. No deadline, no writer → no thread and no idle wakeups.
@@ -785,39 +789,5 @@ public final class JobEnvelope {
         String cache = Jsonl.str(requestLine, "cache");
         if (cache != null) return cache;
         return "";
-    }
-
-    /**
-     * Heartbeat interval while an async job runs. Default 30s; {@code 0} disables.
-     * Env: {@code JK_ENGINE_HEARTBEAT_MS}.
-     */
-    public static long jobHeartbeatMs() {
-        return envLongMs("JK_ENGINE_HEARTBEAT_MS", 30_000L);
-    }
-
-    /**
-     * Optional per-request wall deadline. Default {@code 0} = off. Env: {@code
-     * JK_ENGINE_JOB_DEADLINE_MS}.
-     */
-    public static long jobDeadlineMs() {
-        return envLongMs("JK_ENGINE_JOB_DEADLINE_MS", 0L);
-    }
-
-    /**
-     * Grace after the wall deadline for the runner to unwind after worker kill. Default 30s.
-     * Env: {@code JK_ENGINE_JOB_DEADLINE_GRACE_MS}.
-     */
-    public static long jobDeadlineGraceMs() {
-        return envLongMs("JK_ENGINE_JOB_DEADLINE_GRACE_MS", 30_000L);
-    }
-
-    private static long envLongMs(String name, long defaultMs) {
-        String raw = System.getenv(name);
-        if (raw == null || raw.isBlank()) return defaultMs;
-        try {
-            return Long.parseLong(raw.trim());
-        } catch (NumberFormatException e) {
-            return defaultMs;
-        }
     }
 }

@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkHistoryConfig;
+import cc.jumpkick.config.JobLimits;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.InFlightBuilds;
@@ -55,7 +56,7 @@ class RepoGroupBuilderWireNoticeTest {
     @Test
     void the_dependency_confusion_warning_reaches_the_client_as_a_warn_line() {
         EnvelopeHost host = new EnvelopeHost();
-        JobEnvelope env = new JobEnvelope(host);
+        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
         StringWriter out = new StringWriter();
         var err = new ByteArrayOutputStream();
         var originalErr = System.err;

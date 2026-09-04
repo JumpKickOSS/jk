@@ -322,25 +322,27 @@ public final class EngineServer implements AutoCloseable {
                 journalWriter::accStepStart);
         this.liveRuns = new LiveRuns(inFlightBuilds, sessions, httpEvents, sseConnect, clockMillis);
         this.listeners = new EngineListeners(sessions, sse, journalWriter, inFlightBuilds, this::eventRequestId);
-        this.jobs = new JobEnvelope(new EngineEnvelopeHost(
-                this::tryStartBuildPlan,
-                this::abandonBuildPlanSlot,
-                this::noteBuildPlanFinished,
-                () -> draining,
-                requestIds,
-                clockMillis,
-                sessions,
-                sse,
-                journalWriter,
-                cacheGate,
-                currentEventRequestId,
-                inFlightBuilds,
-                activeBuildPlans,
-                idle,
-                this.log,
-                this.version,
-                historyConfig,
-                journal));
+        this.jobs = new JobEnvelope(
+                new EngineEnvelopeHost(
+                        this::tryStartBuildPlan,
+                        this::abandonBuildPlanSlot,
+                        this::noteBuildPlanFinished,
+                        () -> draining,
+                        requestIds,
+                        clockMillis,
+                        sessions,
+                        sse,
+                        journalWriter,
+                        cacheGate,
+                        currentEventRequestId,
+                        inFlightBuilds,
+                        activeBuildPlans,
+                        idle,
+                        this.log,
+                        this.version,
+                        historyConfig,
+                        journal),
+                config.jobLimits());
         this.verbs = VerbRegistry.standard(new EngineVerbBridge(
                 this::eventRequestId,
                 sessions,

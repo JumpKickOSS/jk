@@ -4,6 +4,7 @@ package cc.jumpkick.engine.jobs;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkHistoryConfig;
+import cc.jumpkick.config.JobLimits;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.InFlightBuilds;
@@ -34,6 +35,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.function.LongSupplier;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -44,7 +46,7 @@ class JobEnvelopeTest {
     void draining_plan_is_refused_without_running() {
         FakeHost host = new FakeHost();
         host.tryStart = false;
-        JobEnvelope env = new JobEnvelope(host);
+        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
         AtomicBoolean ran = new AtomicBoolean();
         StringWriter out = new StringWriter();
         env.submit(
@@ -62,7 +64,7 @@ class JobEnvelopeTest {
     @Test
     void runner_completes_and_publishes_request_finish() {
         FakeHost host = new FakeHost();
-        JobEnvelope env = new JobEnvelope(host);
+        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
         AtomicBoolean ran = new AtomicBoolean();
         StringWriter out = new StringWriter();
         env.submit(
@@ -85,7 +87,7 @@ class JobEnvelopeTest {
     @Test
     void maintenance_kind_never_writes_a_timeline() {
         FakeHost host = new FakeHost();
-        JobEnvelope env = new JobEnvelope(host);
+        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
         StringWriter out = new StringWriter();
         env.submit(
                 "{\"type\":\"cache-prune-request\",\"op\":\"clear\",\"dir\":\"/tmp/job-env\"}",
@@ -104,7 +106,7 @@ class JobEnvelopeTest {
     @Test
     void fire_and_forget_returns_jid_and_finishes_detached() throws Exception {
         FakeHost host = new FakeHost();
-        JobEnvelope env = new JobEnvelope(host);
+        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
         CountDownLatch ran = new CountDownLatch(1);
         long jid = env.submit(
                 "{\"type\":\"lock-request\",\"dir\":\"/tmp/job-env\"}",
@@ -132,7 +134,7 @@ class JobEnvelopeTest {
     @Test
     void duplicate_detached_build_is_refused_with_typed_already_running(@TempDir Path dir) throws Exception {
         FakeHost host = new FakeHost();
-        JobEnvelope env = new JobEnvelope(host);
+        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
         CountDownLatch started = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
         String line = "{\"type\":\"build-request\",\"dir\":" + Jsonl.quote(dir.toString()) + "}";
@@ -166,10 +168,51 @@ class JobEnvelopeTest {
     void deadline_kill_records_the_reason_on_the_accumulator() {
         FakeHost host = new FakeHost();
         host.accumulator = new BuildAccumulator("build", "/p", null, "web");
-        JobEnvelope env = new JobEnvelope(host);
+        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
         env.enforceDeadline(7L, Session.CancelToken.live(), null, null, 1234L);
         assertThat(host.accumulator.wasCancelled()).isTrue();
         assertThat(host.accumulator.cancelReason()).contains("1234ms");
+    }
+
+    /**
+     * The wall deadline is the one cancel the engine raises on its own, and it is driven here with a
+     * millisecond {@link JobLimits} — nothing in this test touches the environment, and nothing
+     * waits longer than the job takes to be killed.
+     */
+    @Test
+    void a_wall_deadline_cancels_a_running_job_and_names_the_deadline() throws Exception {
+        FakeHost host = new FakeHost();
+        host.clock = System::currentTimeMillis;
+        host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "web");
+        JobEnvelope env = new JobEnvelope(host, new JobLimits(0L, 50L, 100L));
+        CountDownLatch release = new CountDownLatch(1);
+
+        env.submit(
+                "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
+                JobRequest.plan("build", "jk-test-", (line, tok, w) -> {
+                    try {
+                        // The deadline kill interrupts this wait long before it expires.
+                        release.await(10, TimeUnit.SECONDS);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                    return JobOutcome.declined();
+                }),
+                new JobTransport.FireAndForget());
+
+        long deadline = System.currentTimeMillis() + 10_000;
+        while (!host.journalWritten && System.currentTimeMillis() < deadline) {
+            Thread.sleep(10);
+        }
+        release.countDown();
+        assertThat(host.journalWritten).isTrue();
+        assertThat(host.journalCancelled).isTrue();
+        assertThat(host.accumulator.cancelReason()).contains("50ms wall deadline");
+        assertThat(host.events)
+                .as("request-finish carries the deadline as its cancel reason")
+                .anyMatch(e -> e.contains("request-finish")
+                        && e.contains("\"cancelled\":true")
+                        && e.contains("wall deadline"));
     }
 
     /**
@@ -182,7 +225,7 @@ class JobEnvelopeTest {
     void a_user_cancel_journals_the_interrupt_code_and_names_the_user() {
         FakeHost host = new FakeHost();
         host.accumulator = new BuildAccumulator("build", "/p", null, "cli");
-        JobEnvelope env = new JobEnvelope(host);
+        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
 
         env.beginUserCancel(11L, Session.CancelToken.live(), null, 0L, true);
 
@@ -203,11 +246,12 @@ class JobEnvelopeTest {
     void a_wall_deadline_is_distinguishable_in_the_record_from_a_user_cancel() {
         FakeHost byUser = new FakeHost();
         byUser.accumulator = new BuildAccumulator("build", "/p", null, "cli");
-        new JobEnvelope(byUser).beginUserCancel(1L, Session.CancelToken.live(), null, 0L, true);
+        new JobEnvelope(byUser, JobLimits.DEFAULTS).beginUserCancel(1L, Session.CancelToken.live(), null, 0L, true);
 
         FakeHost byDeadline = new FakeHost();
         byDeadline.accumulator = new BuildAccumulator("build", "/p", null, "web");
-        new JobEnvelope(byDeadline).enforceDeadline(2L, Session.CancelToken.live(), null, null, 1234L);
+        new JobEnvelope(byDeadline, JobLimits.DEFAULTS)
+                .enforceDeadline(2L, Session.CancelToken.live(), null, null, 1234L);
 
         assertThat(byUser.journalRecord().exitCode()).isEqualTo(Exit.INTERRUPTED);
         assertThat(byDeadline.journalRecord().exitCode()).isEqualTo(Exit.INTERRUPTED);
@@ -226,7 +270,7 @@ class JobEnvelopeTest {
         FakeHost host = new FakeHost();
         host.accumulator = new BuildAccumulator("build", "/p", null, "cli");
 
-        new JobEnvelope(host).beginUserCancel(3L, Session.CancelToken.live(), null, 0L, false);
+        new JobEnvelope(host, JobLimits.DEFAULTS).beginUserCancel(3L, Session.CancelToken.live(), null, 0L, false);
 
         assertThat(host.accumulator.wasCancelled()).isTrue();
         assertThat(host.accumulator.cancelReason()).contains("disconnected").doesNotContain("Ctrl-C");
@@ -249,7 +293,7 @@ class JobEnvelopeTest {
     void a_body_that_ruled_success_is_not_relabelled_cancelled_by_the_end_of_request_eof() {
         FakeHost host = new FakeHost();
         host.accumulator = new BuildAccumulator("cache", "/tmp/job-env", null, "cli");
-        JobEnvelope env = new JobEnvelope(host);
+        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
         StringWriter out = new StringWriter();
 
         env.submit(
@@ -276,7 +320,7 @@ class JobEnvelopeTest {
     void a_detached_runner_that_dies_without_ruling_journals_a_failure() throws Exception {
         FakeHost host = new FakeHost();
         host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "cli");
-        JobEnvelope env = new JobEnvelope(host);
+        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
 
         env.submit(
                 "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
@@ -306,7 +350,7 @@ class JobEnvelopeTest {
     void run_notices_ride_the_wire_during_the_run_and_stderr_after_it() {
         RunNotices.clear();
         FakeHost host = new FakeHost();
-        JobEnvelope env = new JobEnvelope(host);
+        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
         StringWriter out = new StringWriter();
         var errDuring = new ByteArrayOutputStream();
         var originalErr = System.err;
@@ -354,7 +398,7 @@ class JobEnvelopeTest {
     void a_runner_that_throws_after_clean_rows_journals_a_failure_not_green() throws Exception {
         FakeHost host = new FakeHost();
         host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "cli");
-        JobEnvelope env = new JobEnvelope(host);
+        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
 
         env.submit(
                 "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
@@ -390,7 +434,7 @@ class JobEnvelopeTest {
     void a_body_killed_by_an_error_is_logged_and_settles_a_terminal_for_the_client() {
         FakeHost host = new FakeHost();
         host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "cli");
-        JobEnvelope env = new JobEnvelope(host);
+        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
         StringWriter out = new StringWriter();
 
         env.submit(
@@ -420,7 +464,7 @@ class JobEnvelopeTest {
     void a_runner_that_declines_with_clean_rows_still_derives_green() throws Exception {
         FakeHost host = new FakeHost();
         host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "cli");
-        JobEnvelope env = new JobEnvelope(host);
+        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
 
         env.submit(
                 "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
@@ -477,9 +521,12 @@ class JobEnvelopeTest {
             return ids.incrementAndGet();
         }
 
+        /** Frozen by default; a deadline test swaps in the wall clock. */
+        LongSupplier clock = () -> 1_000L;
+
         @Override
         public long nowMillis() {
-            return 1_000L;
+            return clock.getAsLong();
         }
 
         @Override
