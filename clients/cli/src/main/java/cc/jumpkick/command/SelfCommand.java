@@ -215,6 +215,20 @@ public final class SelfCommand extends GroupCommand {
                 return Exit.SOFTWARE;
             }
             if (!jarVersion.equals(Jk.VERSION)) {
+                // A classifier is not a version. `jk-engine-<version>-all.jar` is the assembly this
+                // build produces; the shipped name carries no classifier, because a client only ever
+                // spawns `jk-engine-<its own version>.jar`. Reading `-all` as part of the version
+                // turns "you handed me the assembly" into "you handed me a different release",
+                // which sends the reader looking for a version problem that does not exist.
+                if (jarVersion.startsWith(Jk.VERSION + "-")) {
+                    CommandWedge.printFail(
+                            "Self",
+                            "that is the " + jarVersion.substring(Jk.VERSION.length() + 1)
+                                    + " assembly of " + Jk.VERSION + ", and the engine ships without a"
+                                    + " classifier — materialize jk-engine-" + Jk.VERSION + ".jar"
+                                    + " (the build writes one under target/dist/lib/)");
+                    return Exit.SOFTWARE;
+                }
                 CommandWedge.printFail(
                         "Self",
                         "engine jar is " + jarVersion + ", this client is " + Jk.VERSION + " — refusing to"

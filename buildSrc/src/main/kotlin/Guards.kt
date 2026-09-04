@@ -609,6 +609,16 @@ object Guards {
                 description = "Fail when a JSON object is spliced by hand outside Jsonl.append",
             ),
             spec(
+                62,
+                "checkShipLayoutAgrees",
+                "the two builds and `install.sh` disagree on the ship layout's engine directory",
+                "compare the directory name in both builds and the installer; self-fail when an anchor stops matching",
+                GuardHome.ROOT,
+                tableTask = "`checkShipLayoutAgrees` (root project) + `.jk/after-build.kts`",
+                attach = emptySet(),
+                description = "Fail when the two builds and install.sh disagree on the ship layout",
+            ),
+            spec(
                 61,
                 "checkInstallTestsRedirectM2",
                 "a test that runs the install verb without `--m2-dir`, which publishes the fixture into the developer's real `~/.m2`",

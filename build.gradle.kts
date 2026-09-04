@@ -530,6 +530,47 @@ tasks.register("checkNoHistoricalNarration") {
     }
 }
 
+// Guard G62: the ship layout is one shape, and three files have to agree on it.
+//
+// `install.sh <binary>` reads the engine from `<dir-of-binary>/lib/`. Two builds write that
+// directory — the `dist` task below and `.jk/after-build-dist.kts` — and neither can see the other.
+// A rename in one is silent in the other: the installer keeps reading `lib/`, one build keeps
+// filling it, and the other produces a directory the installer walks straight past. The result is a
+// local install that silently pairs a freshly built client with the RELEASED engine.
+tasks.register("checkShipLayoutAgrees") {
+    group = "verification"
+    description = "Fail when the two builds and install.sh disagree on the ship layout"
+    val files = listOf("install.sh", "build.gradle.kts", ".jk/after-build-dist.kts")
+            .map { layout.projectDirectory.file(it) }
+    inputs.files(files).withPropertyName("shipLayoutReaders")
+    val stamp = layout.buildDirectory.file("guards/ship-layout-agrees.ok")
+    outputs.file(stamp)
+    doLast {
+        val readers = listOf(
+            Triple("install.sh", Regex("""SRC_LIB=.*pwd\)/([A-Za-z0-9_-]+)""""), "the installer's engine dir"),
+            Triple("build.gradle.kts", Regex("""shadowJar"\)\) \{ into\("([A-Za-z0-9_-]+)"\)"""), "Gradle's dist task"),
+            Triple(".jk/after-build-dist.kts", Regex("""dist\.resolve\("([A-Za-z0-9_-]+)"\)"""), "jk's dist script"))
+        val found = LinkedHashMap<String, String>()
+        val lost = mutableListOf<String>()
+        readers.forEach { (rel, pattern, label) ->
+            val f = layout.projectDirectory.file(rel).asFile
+            val hit = if (f.isFile) pattern.find(f.readText()) else null
+            if (hit == null) lost.add("  $rel — $label") else found[rel] = hit.groupValues[1]
+        }
+        if (lost.isNotEmpty()) {
+            throw GradleException("checkShipLayoutAgrees can no longer read the ship layout out of"
+                    + " these, so it is comparing nothing:\n" + lost.joinToString("\n")
+                    + "\n  Re-anchor the scan on how the file spells it now, or retire the guard.")
+        }
+        if (found.values.toSet().size != 1) {
+            throw GradleException("the ship layout is one directory and these disagree about its"
+                    + " name:\n" + found.entries.joinToString("\n") { "  ${it.key}: ${it.value}" }
+                    + "\n  install.sh reads <dir-of-binary>/<name>/jk-engine-<version>.jar.")
+        }
+        stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
+    }
+}
+
 // Guard G61: a test that runs the install verb redirects the Maven local repo.
 //
 // `[m2] install` defaults on, so an install's primary destination is the Maven local repo — and a
