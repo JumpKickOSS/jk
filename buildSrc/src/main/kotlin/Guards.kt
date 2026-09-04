@@ -630,7 +630,7 @@ object Guards {
                 description = "Fail when the curated integration registry, its coverage, or its CI job drifts",
             ),
             spec(
-                66,
+                64,
                 "checkNoDisabledCompile",
                 "a disabled `JavaCompile` task, which takes its source set out of every gate while the build stays green — the tests it would compile report `NO-SOURCE` and the tier prints \"did not run\"",
                 "ban; self-fail when the module has no compile tasks to scan",

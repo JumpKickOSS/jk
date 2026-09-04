@@ -38,4 +38,4 @@ G44 authority on a question about Gradle; the self-hosted side is the honest pla
 
 # A property of the Gradle task graph, not of the sources: whether a JavaCompile task is enabled.
 # The self-hosted build has no task to disable, and the hole it closes only exists on the Gradle side.
-G66 checkNoDisabledCompile — Gradle task-graph state; the jk build has no compile task to disable
+G64 checkNoDisabledCompile — Gradle task-graph state; the jk build has no compile task to disable

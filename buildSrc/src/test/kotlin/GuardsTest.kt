@@ -30,6 +30,7 @@ class GuardsTest {
                 "checkNoOrphanTestTags",
                 "checkTestPathsFromCheckoutRoot",
                 "checkManifestDepParity",
+                "checkNoDisabledCompile",
             )
     }
 

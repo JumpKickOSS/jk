@@ -922,7 +922,7 @@ Letters are allocated when a guard lands and are never reused.
 | G61 | `checkInstallTestsRedirectM2` (root project) + `.jk/after-build.kts` | a test that runs the install verb without `--m2-dir`, which publishes the fixture into the developer's real `~/.m2` | ban in both builds; self-fail when the scan stops finding install invocations |
 | G62 | `checkShipLayoutAgrees` (root project) + `.jk/after-build.kts` | the two builds and `install.sh` disagree on the ship layout's engine directory | compare the directory name in both builds and the installer; self-fail when an anchor stops matching |
 | G63 | `checkCuratedIntegration` (root project) + `.jk/after-build.kts` | a curated integration entry that is missing, renamed, untagged, tagged into a nightly tier, or claims a failure path the class does not show — plus a surface with only happy paths, a branch gate that stopped running the lane, and a nightly that stopped running the full tier | registry scan in both builds, floored on the integration population it is carved out of |
-| G66 | `checkNoDisabledCompile` | a disabled `JavaCompile` task, which takes its source set out of every gate while the build stays green — the tests it would compile report `NO-SOURCE` and the tier prints "did not run" | ban; self-fail when the module has no compile tasks to scan |
+| G64 | `checkNoDisabledCompile` | a disabled `JavaCompile` task, which takes its source set out of every gate while the build stays green — the tests it would compile report `NO-SOURCE` and the tier prints "did not run" | ban; self-fail when the module has no compile tasks to scan |
 <!-- guards:end -->
 
 `checkCliRuntimeClasspath` and `checkCliNoParseTypes` predate the letters.
