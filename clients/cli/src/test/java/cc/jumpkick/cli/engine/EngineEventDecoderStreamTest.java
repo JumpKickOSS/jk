@@ -28,7 +28,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * Wire-event decoding, both shapes. Single-plan: the {@link EngineClient.ActiveJobs} note must not
+ * Wire-event decoding, both shapes. Single-plan: the {@link ActiveJobs} note must not
  * outlive the stream (a stale jid adds a 2s cancel RPC to every later Ctrl-C in a watch loop), and
  * a cancel terminal injected before {@code plan-done} must settle, not NPE. Workspace: the events
  * that both shapes share are decoded by one table, so the assertions below are what stops
@@ -38,7 +38,7 @@ class EngineEventDecoderStreamTest {
 
     @BeforeEach
     void reset() {
-        EngineClient.ActiveJobs.forgetAll();
+        ActiveJobs.forgetAll();
     }
 
     private static BufferedReader stream(String... lines) {
@@ -93,7 +93,7 @@ class EngineEventDecoderStreamTest {
                 EngineEventDecoder.streamSingleBuildPlanEvents(reader, steps -> new BuildPlanListener() {}, null, null);
 
         assertThat(result.success()).isTrue();
-        assertThat(EngineClient.ActiveJobs.snapshot()).isEmpty();
+        assertThat(ActiveJobs.snapshot()).isEmpty();
     }
 
     @Test
@@ -108,7 +108,7 @@ class EngineEventDecoderStreamTest {
 
         assertThat(result.cancelled()).isTrue();
         assertThat(result.success()).isFalse();
-        assertThat(EngineClient.ActiveJobs.snapshot()).isEmpty();
+        assertThat(ActiveJobs.snapshot()).isEmpty();
     }
 
     /**

@@ -2,7 +2,7 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.GlobalOptions;
-import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EngineCancel;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.config.WorkspaceScan;
@@ -77,9 +77,9 @@ public final class CancelCommand implements CliCommand {
                 CommandWedge.printFail("Cancel", "jid must be non-negative");
                 return Exit.USAGE;
             }
-            ack = EngineClient.cancel(EnginePaths.current(), jid);
+            ack = EngineCancel.cancel(EnginePaths.current(), jid);
         } else {
-            ack = EngineClient.cancelForDir(EnginePaths.current(), dir.toString());
+            ack = EngineCancel.cancelForDir(EnginePaths.current(), dir.toString());
         }
 
         if (ack.isEmpty()) {

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
-import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EngineCancel;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceScan;
@@ -83,7 +83,7 @@ public final class GlobalCancel {
             Thread rpc = Thread.ofPlatform()
                     .daemon(true)
                     .name("jk-sigint-cancel")
-                    .start(() -> EngineClient.cancelBestEffortForInterrupt(dir));
+                    .start(() -> EngineCancel.cancelBestEffortForInterrupt(dir));
 
             // 2) Settle the live region (plan → cancelled job line) or a one-line notice.
             LiveRegion active = LiveRegion.active();

@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.ide;
 
 import cc.jumpkick.cli.Jk;
+import cc.jumpkick.cli.engine.EngineCancel;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineProbe;
 import cc.jumpkick.cli.engine.EngineRequests;
@@ -379,13 +380,13 @@ public class IdeEngineClient {
     public void cancel(Path moduleDir) {
         Path dir = moduleDir != null ? moduleDir.toAbsolutePath().normalize() : projectDir;
         try {
-            EngineClient.cancelForDir(EnginePaths.current(), dir.toString());
+            EngineCancel.cancelForDir(EnginePaths.current(), dir.toString());
         } catch (IOException ignored) {
             // best-effort
         }
         try {
             if (!dir.equals(projectDir)) {
-                EngineClient.cancelForDir(EnginePaths.current(), projectDir.toString());
+                EngineCancel.cancelForDir(EnginePaths.current(), projectDir.toString());
             }
         } catch (IOException ignored) {
             // best-effort

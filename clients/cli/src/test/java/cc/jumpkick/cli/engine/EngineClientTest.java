@@ -291,7 +291,7 @@ class EngineClientTest {
         EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, Jk.VERSION, null);
         startInBackground(server);
         Await.until(Duration.ofSeconds(30), () -> EngineProbe.ping(EnginePaths.activeSocket(p)));
-        EngineClient.ActiveJobs.forgetAll();
+        ActiveJobs.forgetAll();
 
         Path cache = Files.createDirectories(tempDirs.create().resolve("cache"));
         List<Long> liveWhileRunning = new ArrayList<>();
@@ -300,7 +300,7 @@ class EngineClientTest {
                 p,
                 new EngineRequests.CacheMaintRequest("prune", cache, true, false, cache),
                 steps -> {
-                    liveWhileRunning.addAll(EngineClient.ActiveJobs.snapshot());
+                    liveWhileRunning.addAll(ActiveJobs.snapshot());
                     return new BuildPlanListener() {};
                 },
                 (external, plans) -> {},
@@ -310,7 +310,7 @@ class EngineClientTest {
         assertThat(liveWhileRunning).hasSize(1).allMatch(jid -> jid > 0);
         // …and the handle is dropped once the stream ends, so the next Ctrl-C does not pay a
         // cancel RPC for a job that is already over.
-        assertThat(EngineClient.ActiveJobs.snapshot()).isEmpty();
+        assertThat(ActiveJobs.snapshot()).isEmpty();
 
         server.close();
     }

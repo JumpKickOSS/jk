@@ -88,7 +88,7 @@ public final class WireStream {
                 if (type == null) continue;
                 if (EngineProtocol.JOB_START.equals(type)) {
                     notedJid = Jsonl.longValue(line, "jid", -1);
-                    EngineClient.ActiveJobs.note(notedJid);
+                    ActiveJobs.note(notedJid);
                     notifyJobStart(line);
                     continue;
                 }
@@ -102,7 +102,7 @@ public final class WireStream {
         } finally {
             // The job is over however the stream ended — a stale jid here would add a 2s cancel
             // RPC to every later Ctrl-C in this process.
-            if (notedJid > 0) EngineClient.ActiveJobs.forget(notedJid);
+            if (notedJid > 0) ActiveJobs.forget(notedJid);
         }
     }
 

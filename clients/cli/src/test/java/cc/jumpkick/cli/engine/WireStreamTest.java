@@ -29,7 +29,7 @@ class WireStreamTest {
     @BeforeEach
     @AfterEach
     void reset() {
-        EngineClient.ActiveJobs.forgetAll();
+        ActiveJobs.forgetAll();
     }
 
     private static BufferedReader stream(String... lines) {
@@ -51,7 +51,7 @@ class WireStreamTest {
 
     @Test
     void the_jid_is_a_live_cancel_handle_for_the_whole_job_stream() throws Exception {
-        // This set is exactly what EngineClient.cancelBestEffortForInterrupt reads on Ctrl-C, and
+        // This set is exactly what EngineCancel.cancelBestEffortForInterrupt reads on Ctrl-C, and
         // it is the only handle that reaches a verb whose journal dir is the cache rather than the
         // user's project — jk cache prune, jk tool resolve, jk tool run <script>.
         List<Set<Long>> seenMidStream = new ArrayList<>();
@@ -62,14 +62,14 @@ class WireStreamTest {
                 ProtoLifecycle.jobFinish(77));
 
         String outcome = WireStream.pumpJob(reader, null, (type, line) -> {
-            seenMidStream.add(EngineClient.ActiveJobs.snapshot());
+            seenMidStream.add(ActiveJobs.snapshot());
             return EngineProtocol.BUILDPLAN_FINISH.equals(type) ? "done" : null;
         });
 
         assertThat(outcome).isEqualTo("done");
         assertThat(seenMidStream).isNotEmpty().allMatch(live -> live.equals(Set.of(77L)));
         // …and it is dropped on the way out: a stale jid costs every later Ctrl-C a 2s cancel RPC.
-        assertThat(EngineClient.ActiveJobs.snapshot()).isEmpty();
+        assertThat(ActiveJobs.snapshot()).isEmpty();
     }
 
     @Test
@@ -81,7 +81,7 @@ class WireStreamTest {
                 }))
                 .hasMessage("boom");
 
-        assertThat(EngineClient.ActiveJobs.snapshot()).isEmpty();
+        assertThat(ActiveJobs.snapshot()).isEmpty();
     }
 
     @Test
