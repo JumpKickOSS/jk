@@ -19,7 +19,6 @@ import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.Pom;
 import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoGroup;
-import cc.jumpkick.run.JkThreads;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
@@ -35,13 +34,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.CancellationException;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 
 /**
@@ -96,6 +88,7 @@ public final class LockOrchestrator {
 
     private final RepoGroup repos;
     private final Resolver resolverOverride;
+    private LockProgress.Timings timings = LockTimings::record;
 
     /**
      * {@code org.gradle.jvm.environment} for KMP variant selection ({@code "android"} for Android
@@ -154,6 +147,12 @@ public final class LockOrchestrator {
     LockOrchestrator(RepoGroup repos, Resolver resolver) {
         this.repos = Objects.requireNonNull(repos, "repos");
         this.resolverOverride = Objects.requireNonNull(resolver, "resolver");
+    }
+
+    /** Test seam: where phase timings go instead of the user's state directory. */
+    LockOrchestrator withTimings(LockProgress.Timings timings) {
+        this.timings = Objects.requireNonNull(timings, "timings");
+        return this;
     }
 
     /** Select KMP platform variants for {@code env} ({@code "android"} / {@code "standard-jvm"}). */
@@ -255,7 +254,7 @@ public final class LockOrchestrator {
             ResolveObserver observer,
             Map<String, String> lockedVersionPrefs)
             throws IOException, InterruptedException {
-        long lockStartNanos = System.nanoTime();
+        LockProgress progress = new LockProgress(observer, timings);
 
         Set<String> activated = project.features().activate(new LinkedHashSet<>(featuresRequested), withDefaults);
 
@@ -340,52 +339,23 @@ public final class LockOrchestrator {
                 : new MavenPackageSource(
                         repos, pomBuilder, bomConstraints, lockedVersionPrefs, kmp, platformPolicy, unmappedPolicy);
 
-        // Progress budget: graph phase + materialize phase (≈2× package count). Grow estimate as we go.
-        int declared = mainRoots.size() + testRoots.size() + processorRoots.size() + fileDeps.size();
-        int estimate = Math.max(10, declared * 12);
-        observer.onTotal(estimate * 2);
-        observer.onPhase("Resolving dependency graph…");
-
-        // live graph ticks during PubGrub decisions (not only post-scope).
-        long graphStartNanos = System.nanoTime();
-        Set<String> graphSeen = new LinkedHashSet<>();
-        Resolution mainResolution = resolveGroup(
-                mainRoots,
-                bomConstraints,
-                lockedVersionPrefs,
-                kmp,
-                sharedSource,
-                pomBuilder,
-                observer,
-                graphSeen,
-                estimate);
-        noteGraph(observer, mainResolution, graphSeen, estimate);
+        progress.graphPhase(mainRoots.size() + testRoots.size() + processorRoots.size() + fileDeps.size());
+        Resolution mainResolution =
+                resolveGroup(mainRoots, bomConstraints, lockedVersionPrefs, kmp, sharedSource, pomBuilder, progress);
+        progress.noteGraph(mainResolution);
         Map<String, String> testPrefs = new HashMap<>(lockedVersionPrefs);
         putVersions(testPrefs, mainResolution);
-        Resolution testResolution = resolveGroup(
-                testRoots, bomConstraints, testPrefs, kmp, sharedSource, pomBuilder, observer, graphSeen, estimate);
-        noteGraph(observer, testResolution, graphSeen, estimate);
+        Resolution testResolution =
+                resolveGroup(testRoots, bomConstraints, testPrefs, kmp, sharedSource, pomBuilder, progress);
+        progress.noteGraph(testResolution);
         Map<String, String> processorPrefs = new HashMap<>(lockedVersionPrefs);
         putVersions(processorPrefs, mainResolution);
         putVersions(processorPrefs, testResolution);
-        Resolution processorResolution = resolveGroup(
-                processorRoots,
-                bomConstraints,
-                processorPrefs,
-                kmp,
-                sharedSource,
-                pomBuilder,
-                observer,
-                graphSeen,
-                estimate);
-        noteGraph(observer, processorResolution, graphSeen, estimate);
-        long graphMs = (System.nanoTime() - graphStartNanos) / 1_000_000L;
+        Resolution processorResolution =
+                resolveGroup(processorRoots, bomConstraints, processorPrefs, kmp, sharedSource, pomBuilder, progress);
+        progress.noteGraph(processorResolution);
 
-        int uniquePackages = graphSeen.size() + fileDeps.size();
-        // Exact remaining budget for jar materialization (+ any under-estimated graph ticks).
-        observer.onTotal(Math.max(estimate * 2, graphSeen.size() + uniquePackages));
-        observer.onPhase("Downloading " + uniquePackages + " artifacts…");
-        long materializeStartNanos = System.nanoTime();
+        progress.materializePhase(progress.graphPackages() + fileDeps.size());
 
         Map<String, EnumSet<Scope>> mainTags = tagScopes(project, mainResolution, MAIN_SCOPES, false);
         Map<String, EnumSet<Scope>> testTags = tagScopes(project, testResolution, TEST_SCOPES, true);
@@ -403,112 +373,25 @@ public final class LockOrchestrator {
         mergeGraph(testResolution, testTags, Scope.TEST, tagsByKey, modByKey);
         mergeGraph(processorResolution, processorTags, Scope.PROCESSOR, tagsByKey, modByKey);
 
-        // Parallel jar materialize (io pool). Progress ticks on *completion* order
-        // via a queue drained on this thread so wedge/UI stays single-threaded; lock rows are
-        // still assembled in declaration order.
-        // no HostRateLimiter around toArtifact itself — warm re-locks serve
-        // immutable GAVs from the local mirror (no HTTP), and capping those to 6 concurrent
-        // turned a ~1s CAS walk into multi-minute wall time. The per-host cap lives inside
-        // MavenRepo.fetch around the network leg only, so cold-lock fan-out stays polite.
-        List<Map.Entry<String, Resolution.ResolvedModule>> ordered = new ArrayList<>(modByKey.entrySet());
-        int n = ordered.size();
-        Lockfile.Artifact[] arts = new Lockfile.Artifact[n];
-        BlockingQueue<MaterializeDone> doneQ = new LinkedBlockingQueue<>();
-        // First failure wins: tasks still waiting on a permit/queue skip their download instead
-        // of hammering the host for a lock that is already dead.
-        AtomicBoolean failed = new AtomicBoolean();
-        List<CompletableFuture<?>> inFlight = new ArrayList<>(n);
-        for (int i = 0; i < n; i++) {
-            final int idx = i;
-            var e = ordered.get(i);
-            EnumSet<Scope> tags = tagsByKey.get(e.getKey());
-            inFlight.add(CompletableFuture.supplyAsync(
-                            () -> {
-                                try {
-                                    if (failed.get()) {
-                                        throw new CompletionException(
-                                                new MavenRepo.FetchAbortedException("lock already failed — skipped"));
-                                    }
-                                    return toArtifact(
-                                            e.getValue(),
-                                            tags,
-                                            kmp,
-                                            pomBuilder,
-                                            fallbackSource,
-                                            bomConstraints,
-                                            constraintProvenance,
-                                            activatedFeatures,
-                                            ResolveObserver.NOOP,
-                                            failed::get);
-                                } catch (IOException | InterruptedException ex) {
-                                    throw new CompletionException(ex);
-                                }
-                            },
-                            JkThreads.io())
-                    .whenComplete((art, ex) -> {
-                        if (ex != null) {
-                            failed.set(true);
-                            doneQ.offer(MaterializeDone.fail(ex));
-                        } else {
-                            var mod = e.getValue();
-                            doneQ.offer(MaterializeDone.ok(idx, art, displayModule(mod.module()), mod.version()));
-                        }
-                    }));
-        }
-        int received = 0;
-        while (received < n) {
-            MaterializeDone d;
-            try {
-                d = doneQ.take();
-            } catch (InterruptedException ie) {
-                failed.set(true);
-                settle(inFlight);
-                Thread.currentThread().interrupt();
-                throw ie;
-            }
-            if (d.error != null) {
-                // Siblings are still on the io pool writing into the CAS. Let them wind down
-                // before the failure propagates — `failed` makes unstarted tasks return at once
-                // and in-flight ones abort at their next leg boundary, so this is
-                // bounded by whatever is mid-download. Escaping here leaves threads mutating a
-                // store the caller believes it has finished with.
-                failed.set(true);
-                settle(inFlight);
-                Throwable c = unwrapMaterialize(d.error);
-                // Abort noise can beat the root cause into the queue (a sibling parked at a leg
-                // boundary observes `failed` between the failing task's set and offer). Every
-                // task has settled by now, so the real failure is in the queue — prefer it.
-                if (c instanceof MavenRepo.FetchAbortedException) {
-                    MaterializeDone later;
-                    while ((later = doneQ.poll()) != null) {
-                        if (later.error == null) continue;
-                        Throwable candidate = unwrapMaterialize(later.error);
-                        if (!(candidate instanceof MavenRepo.FetchAbortedException)) {
-                            c = candidate;
-                            break;
-                        }
-                    }
-                }
-                if (c instanceof IOException io) throw io;
-                if (c instanceof InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                    throw ie;
-                }
-                if (c instanceof RuntimeException re) throw re;
-                if (c instanceof Error err) throw err;
-                throw new IOException(c);
-            }
-            arts[d.index] = d.artifact;
-            observer.onPackage(d.module, d.version);
-            received++;
-        }
-        for (Lockfile.Artifact art : arts) packages.add(art);
+        ArtifactMaterializer materializer = new ArtifactMaterializer(
+                (mod, tags, abort) -> toArtifact(
+                        mod,
+                        tags,
+                        kmp,
+                        pomBuilder,
+                        fallbackSource,
+                        bomConstraints,
+                        constraintProvenance,
+                        activatedFeatures,
+                        abort),
+                progress);
+        packages.addAll(materializer.materialize(new ArrayList<>(modByKey.entrySet()), tagsByKey));
 
         for (Dependency dep : fileDeps) {
             String version = dep.version() instanceof VersionSelector.Exact ex
                     ? ex.version()
                     : dep.version().raw();
-            observer.onPackage(dep.module(), version);
+            progress.materialized(dep.module(), version);
             EnumSet<Scope> tags = EnumSet.noneOf(Scope.class);
             for (Scope scope : SCOPES) {
                 for (Dependency d : project.dependencies().of(scope)) {
@@ -526,17 +409,7 @@ public final class LockOrchestrator {
                     List.of(),
                     null));
         }
-        long materializeMs = (System.nanoTime() - materializeStartNanos) / 1_000_000L;
-        long totalMs = (System.nanoTime() - lockStartNanos) / 1_000_000L;
-        // Host-wide atomized priors (every successful lock across every project).
-        try {
-            int graphPkgs = Math.max(1, graphSeen.size());
-            int matPkgs = Math.max(1, packages.size());
-            LockTimings.record(graphMs, graphPkgs, materializeMs, matPkgs, totalMs);
-        } catch (RuntimeException ignored) {
-            // advisory — never fail a lock over metrics I/O
-        }
-
+        progress.finished(packages.size());
         return new Lockfile(Lockfile.CURRENT_VERSION, "jk " + jkVersion, Lockfile.RESOLUTION_ALGORITHM, packages);
     }
 
@@ -566,22 +439,6 @@ public final class LockOrchestrator {
         }
     }
 
-    /**
-     * Catch-up graph progress for packages the live decision ticks did not already report.
-     * {@code seen} keys are display modules, the same keys the live ticks use.
-     */
-    private static void noteGraph(ResolveObserver observer, Resolution resolution, Set<String> seen, int estimate) {
-        for (Resolution.ResolvedModule mod : resolution.modules().values()) {
-            String display = displayModule(mod.module());
-            if (!seen.add(display)) continue;
-            observer.onGraphPackage(display, mod.version());
-            // Grow denominator if the graph outruns the initial estimate.
-            if (seen.size() > estimate) {
-                observer.onTotal(seen.size() * 2 + 16);
-            }
-        }
-    }
-
     private Resolution resolveGroup(
             List<Dependency> roots,
             Map<String, String> bomConstraints,
@@ -589,21 +446,10 @@ public final class LockOrchestrator {
             KmpRedirects kmp,
             MavenPackageSource sharedSource,
             EffectivePomBuilder sharedPomBuilder,
-            ResolveObserver observer,
-            Set<String> graphSeen,
-            int estimate)
+            LockProgress progress)
             throws IOException, InterruptedException {
         if (roots.isEmpty()) return new Resolution(Map.of());
         if (resolverOverride != null) return resolverOverride.resolve(roots);
-        BiConsumer<String, String> liveGraph = (pkg, ver) -> {
-            // Solver keys are package-id; display as module for progress.
-            String mod = displayModule(pkg);
-            if (!graphSeen.add(mod)) return;
-            observer.onGraphPackage(mod, ver);
-            if (graphSeen.size() > estimate) {
-                observer.onTotal(graphSeen.size() * 2 + 16);
-            }
-        };
         if (sharedSource != null && sharedPomBuilder != null) {
             sharedSource.setLockedVersionPrefs(prefs);
             sharedSource.setSnapshotPackages(snapshotModules(roots));
@@ -611,47 +457,12 @@ public final class LockOrchestrator {
             // the test/processor solves.
             sharedSource.resetSolveScopedState();
             return new PubGrubResolver(sharedSource, sharedPomBuilder, kmp)
-                    .withOnDecision(liveGraph)
+                    .withOnDecision(progress::graphPackage)
                     .resolve(roots);
         }
         return buildResolver(repos, bomConstraints, prefs, kmp)
-                .withOnDecision(liveGraph)
+                .withOnDecision(progress::graphPackage)
                 .resolve(roots);
-    }
-
-    /** Unwrap the layered CompletionExceptions around a materialize failure. */
-    private static Throwable unwrapMaterialize(Throwable error) {
-        Throwable c = error.getCause() != null ? error.getCause() : error;
-        if (c instanceof CompletionException ce && ce.getCause() != null) c = ce.getCause();
-        return c;
-    }
-
-    /**
-     * Wait for every materialize task to finish, discarding outcomes. Called when the lock is
-     * already lost, so the only thing that matters is that no task is still touching the CAS when
-     * this returns. Bounded: unstarted tasks skip at their gate and in-flight ones abort at
-     * their next leg boundary — only legs already in progress run to completion.
-     */
-    private static void settle(List<CompletableFuture<?>> inFlight) {
-        for (CompletableFuture<?> f : inFlight) {
-            try {
-                f.join();
-            } catch (CompletionException | CancellationException ignored) {
-                // the failure that got us here, or a sibling's — already reported
-            }
-        }
-    }
-
-    /** Completion event for parallel jar materialize (progress on complete, rows ordered). */
-    private record MaterializeDone(
-            int index, Lockfile.Artifact artifact, String module, String version, Throwable error) {
-        static MaterializeDone ok(int index, Lockfile.Artifact art, String module, String version) {
-            return new MaterializeDone(index, art, module, version, null);
-        }
-
-        static MaterializeDone fail(Throwable error) {
-            return new MaterializeDone(-1, null, null, null, error);
-        }
     }
 
     /**
@@ -845,13 +656,9 @@ public final class LockOrchestrator {
             Map<String, String> bomConstraints,
             Map<String, String> constraintProvenance,
             Map<String, List<String>> activatedFeatures,
-            ResolveObserver observer,
             BooleanSupplier abort)
             throws IOException, InterruptedException {
         Coordinate coord = mod.coordinate();
-        // Stream GA to lock-package events for human-readable UI; lock row name stays package key.
-        observer.onPackage(displayModule(mod.module()), mod.version());
-
         boolean kmpAlias = kmp.selectionFor(mod.module(), mod.version()).isPresent();
 
         String packageName = mod.module();
@@ -978,19 +785,6 @@ public final class LockOrchestrator {
                 + " (tried: "
                 + reposTried
                 + ") — the POM resolved but the artifact is missing; check the coordinate and repositories");
-    }
-
-    /** Human-facing module id: {@code group:artifact} for Maven package keys. */
-    private static String displayModule(String moduleOrKey) {
-        if (moduleOrKey == null) return "";
-        if (PackageId.isMavenPackageKey(moduleOrKey)) {
-            try {
-                return PackageId.parse(moduleOrKey).ga();
-            } catch (RuntimeException ignored) {
-                return moduleOrKey;
-            }
-        }
-        return moduleOrKey;
     }
 
     /**

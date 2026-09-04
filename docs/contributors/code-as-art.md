@@ -1273,7 +1273,7 @@ Same charter, one patient at a time. Current sizes:
 | `JkManagerView` | — | — | 455 | 800 | paint |
 | `JkManagerColor` | — | — | 380 | 800 | token colour |
 | `NewCommand` | 1,403 | 1,164 | 549 | 800 | wizard |
-| `LockOrchestrator` | — | — | 787 | 800 | partition / constrain / solve / materialize / assemble |
+| `LockOrchestrator` | — | — | 635 | 800 | partition / constrain / solve / materialize / assemble |
 
 ¹ EngineServer entered this batch at 3,418 lines; an earlier Typed Envelope peel had
 already taken it from its 7,073-line peak.
