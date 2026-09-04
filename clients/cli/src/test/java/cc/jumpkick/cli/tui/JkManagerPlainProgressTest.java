@@ -25,8 +25,7 @@ class JkManagerPlainProgressTest {
         cm.setWindowTitle("JumpKick - Building cc.jumpkick:jk:0.12.0...");
         String set = buf.toString(StandardCharsets.UTF_8);
         // OSC 0: half-circle glyph + base, terminated with ST (ESC \), not BEL.
-        String expected =
-                "\033]0;" + JkManager.WINDOW_TITLE_GLYPH_A + " JumpKick - Building cc.jumpkick:jk:0.12.0...\033\\";
+        String expected = "\033]0;" + WindowTitle.GLYPH_A + " JumpKick - Building cc.jumpkick:jk:0.12.0...\033\\";
         assertThat(set).contains(expected);
         buf.reset();
         cm.finishBuildPlanSuccess("ok", List.of());
@@ -285,8 +284,8 @@ class JkManagerPlainProgressTest {
         buf.reset();
         // Pin both axes of the title's own state — last glyph and swap anchor — so neither the
         // glyph identity nor the window depends on how long getting here took.
-        cm.windowTitleLastGlyph = JkManager.WINDOW_TITLE_GLYPH_A;
-        cm.windowTitleLastSwapMs = System.currentTimeMillis();
+        cm.windowTitle.lastGlyph = WindowTitle.GLYPH_A;
+        cm.windowTitle.lastSwapMs = System.currentTimeMillis();
 
         // Animator frames are not the title's clock. A whole fill cycle of them — which used to
         // rewrite the title on every phase advance — leaves it alone inside one swap window.
@@ -296,19 +295,19 @@ class JkManagerPlainProgressTest {
         assertThat(buf.toString(StandardCharsets.UTF_8)).doesNotContain("\033]0;");
 
         // Age the anchor past the interval: the next tick swaps to the other half-circle, once.
-        cm.windowTitleLastSwapMs -= JkManager.WINDOW_TITLE_SWAP_MS + 1;
+        cm.windowTitle.lastSwapMs -= WindowTitle.SWAP_MS + 1;
         cm.tick();
         String swapped = buf.toString(StandardCharsets.UTF_8);
         assertThat(swapped)
-                .contains("\033]0;" + JkManager.WINDOW_TITLE_GLYPH_B + " JumpKick - Building g:a:v...\033\\");
+                .contains("\033]0;" + WindowTitle.GLYPH_B + " JumpKick - Building g:a:v...\033\\");
         assertThat(swapped.split("\033]0;", -1).length - 1).isEqualTo(1);
 
         // The two glyphs alternate rather than latching on the second one.
         buf.reset();
-        cm.windowTitleLastSwapMs -= JkManager.WINDOW_TITLE_SWAP_MS + 1;
+        cm.windowTitle.lastSwapMs -= WindowTitle.SWAP_MS + 1;
         cm.tick();
         assertThat(buf.toString(StandardCharsets.UTF_8))
-                .contains("\033]0;" + JkManager.WINDOW_TITLE_GLYPH_A + " JumpKick - Building g:a:v...\033\\");
+                .contains("\033]0;" + WindowTitle.GLYPH_A + " JumpKick - Building g:a:v...\033\\");
         cm.finishBuildPlanSuccess("ok", List.of());
     }
 

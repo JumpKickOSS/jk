@@ -118,7 +118,7 @@ final class JkManagerView {
             if (m.done) return;
             m.done = true;
             LiveRegion.clearActive(m);
-            m.clearWindowTitle();
+            m.windowTitle.clear();
             if (m.animate && Theme.active().isAnsi()) {
                 if (m.planMode) m.wipeRegion();
                 else m.freezeSpinnerLine();
@@ -147,7 +147,7 @@ final class JkManagerView {
             if (m.done) return;
             m.done = true;
             LiveRegion.clearActive(m);
-            m.clearWindowTitle();
+            m.windowTitle.clear();
             // Process lines already in scrollback; wipe removes rule/blank + live chrome.
             int processAbove = m.planMode ? m.outputWindow.committedScrollbackLines() : 0;
             if (m.animate && Theme.active().isAnsi()) {

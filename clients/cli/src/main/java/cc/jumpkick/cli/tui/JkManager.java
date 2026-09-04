@@ -89,7 +89,11 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     /** Open pulse (blue↔dark blue) — tree rows and simple spinner lines, no chip background. */
     final Style[] openPulseColors = Spinner.buildOpenPulseStyles(PULSE_FRAMES);
 
-    /** Chip pulse (white↔chip blue) — plan header pill only; FG sits on solid chip BG. */
+    /**
+     * The one monitor for this region's state. The views and every owner extracted from this class
+     * that touches painted state synchronize on this same object, never on one of their own — a
+     * paint that took two locks could tear a frame or deadlock.
+     */
     final Object lock = new Object();
 
     final JkManagerView view = new JkManagerView(this);
@@ -158,29 +162,8 @@ public final class JkManager implements AutoCloseable, LiveRegion {
 
     int completedCount;
 
-    /** First half-circle glyph for the OSC window title spinner. */
-    static final String WINDOW_TITLE_GLYPH_A = "◐";
-
-    /** Second half-circle glyph for the OSC window title spinner. */
-    static final String WINDOW_TITLE_GLYPH_B = "◑";
-
-    /** Window title spinner swap interval. */
-    static final long WINDOW_TITLE_SWAP_MS = 500L;
-
-    /**
-     * OSC window title base (no spinner prefix), e.g. {@code JumpKick - Building g:a:v...}. A
-     * half-circle glyph is prepended and swapped on its own 500ms cadence.
-     */
-    String windowTitleBase = "";
-
-    /** Last half-circle glyph written into the OSC title; null until first emit. */
-    String windowTitleLastGlyph;
-
-    /** Wall time of the last title glyph swap; reset on {@link #setWindowTitle}. */
-    long windowTitleLastSwapMs;
-
-    /** True after {@link #setWindowTitle} until cleared on settle/dismiss/cancel. */
-    boolean windowTitleActive;
+    /** OSC 0 title with its own glyph cadence; every caller holds {@link #lock}. */
+    final WindowTitle windowTitle;
 
     Thread animator;
 
@@ -207,6 +190,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         this.animate = animate;
         this.planMode = planMode;
         this.width = width <= 0 ? DEFAULT_WIDTH : width;
+        this.windowTitle = new WindowTitle(this.out, animate);
     }
 
     /** Package-private convenience for simple-mode tests. */
@@ -365,40 +349,9 @@ public final class JkManager implements AutoCloseable, LiveRegion {
      */
     public void setWindowTitle(String title) {
         synchronized (lock) {
-            // Only an interactive ANSI terminal gets OSC 0 — under pipes/--quiet (!animate)
-            // or no-ANSI mode (--no-ansi, TERM=dumb, CI) the escapes would land verbatim in
-            // the output stream.
-            if (done || !animate || !Theme.active().isAnsi() || !Osc.oscEnabled()) return;
-            windowTitleBase = title == null ? "" : title;
-            windowTitleActive = !windowTitleBase.isEmpty();
-            windowTitleLastGlyph = null; // force immediate emit with the first glyph
-            windowTitleLastSwapMs = System.currentTimeMillis();
-            emitWindowTitleIfDue(windowTitleLastSwapMs);
-            out.flush();
+            if (done) return;
+            windowTitle.set(title);
         }
-    }
-
-    /**
-     * Emit OSC 0 with {@code glyph + " " + base} when the half-circle phase swaps. Must hold
-     * {@link #lock}.
-     */
-    void emitWindowTitleIfDue(long nowMs) {
-        if (!windowTitleActive || windowTitleBase.isEmpty()) return;
-        if (windowTitleLastGlyph != null && nowMs - windowTitleLastSwapMs < WINDOW_TITLE_SWAP_MS) return;
-        String glyph = WINDOW_TITLE_GLYPH_A.equals(windowTitleLastGlyph) ? WINDOW_TITLE_GLYPH_B : WINDOW_TITLE_GLYPH_A;
-        windowTitleLastGlyph = glyph;
-        windowTitleLastSwapMs = nowMs;
-        out.print(Osc.windowTitle(glyph + " " + windowTitleBase));
-    }
-
-    /** Clear a title set by {@link #setWindowTitle}, if any. */
-    void clearWindowTitle() {
-        if (!windowTitleActive) return;
-        windowTitleActive = false;
-        windowTitleBase = "";
-        windowTitleLastGlyph = null;
-        windowTitleLastSwapMs = 0L;
-        out.print(Osc.windowTitleClear());
     }
 
     /** Register a not-yet-started step row with a humanized display name. */
@@ -838,7 +791,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
             if (done) return true;
             done = true;
             LiveRegion.clearActive(this);
-            clearWindowTitle();
+            windowTitle.clear();
             if (!animate) return false;
             if (planMode) {
                 if (Theme.active().isAnsi()) {
@@ -875,7 +828,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
             if (done) return;
             done = true;
             LiveRegion.clearActive(this);
-            clearWindowTitle();
+            windowTitle.clear();
             if (!animate) {
                 out.flush();
                 return;
@@ -928,7 +881,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
             if (planMode) view.paintBuildPlan();
             else view.paintSimple();
             // OSC title swaps its half-circle glyph (◐↔◑) on its own 500ms cadence.
-            emitWindowTitleIfDue(System.currentTimeMillis());
+            windowTitle.emitIfDue(System.currentTimeMillis());
             out.flush();
             // Frame counter for chip pulse and fill-circle tree rows; the title keeps its own time.
             frame++;
