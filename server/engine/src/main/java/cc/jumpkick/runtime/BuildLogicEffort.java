@@ -6,8 +6,11 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.wire.runtime.TaskForecast;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -25,9 +28,10 @@ import java.util.Set;
  *
  * <ol>
  *   <li><strong>Measured, never invented.</strong> A script's price is its own recorded wall, for
- *       its own task, in its own module. A script with no history is worth {@link
- *       EffortWeights#TOKEN} — enough to say "something runs here", not enough to claim a duration
- *       nothing has observed. A better cold reading is worth having and does not exist yet.
+ *       its own task, in its own module. One warm run replaces everything below it. A script with no
+ *       history is read statically by {@link BuildLogicReading}, which falls back to {@link
+ *       EffortWeights#TOKEN} when the text carries no signal at all — enough to say "something runs
+ *       here", not enough to claim a duration nothing has observed.
  *   <li><strong>Only what exists.</strong> Discovery goes through {@link BuildLogicScripts#discover},
  *       the engine's own, so pricing cannot drift from what runs — including suffixed stems like
  *       {@code before-compile-collections.kts}. A project with no {@code .jk/} adds nothing, and
@@ -83,16 +87,17 @@ final class BuildLogicEffort {
      */
     static long moduleMillis(Path moduleDir, TaskForecast.Module m, BuildMetrics metrics) {
         if (moduleDir == null || m == null) return 0;
-        Set<BuildLogicAnchor> present = anchorsIn(moduleDir);
+        Map<BuildLogicAnchor, List<BuildLogicScripts.ScriptTask>> present = scriptsIn(moduleDir);
         if (present.isEmpty()) return 0;
         boolean compiles = runsAnyOf(m, COMPILE_STEPS);
         boolean packages = runsAnyOf(m, Set.of(TaskNames.PACKAGE_JAR));
         long total = 0;
-        for (BuildLogicAnchor anchor : present) {
+        for (var e : present.entrySet()) {
+            BuildLogicAnchor anchor = e.getKey();
             if (anchor.workspaceScoped()) continue; // priced by rootMillis, once, not per module
             boolean reached =
                     COMPILE_ANCHORS.contains(anchor) ? compiles : anchor == BuildLogicAnchor.BEFORE_PACKAGE && packages;
-            if (reached) total += millisFor(moduleDir, anchor, metrics);
+            if (reached) total += millisFor(moduleDir, anchor, e.getValue(), metrics);
         }
         return total;
     }
@@ -105,44 +110,50 @@ final class BuildLogicEffort {
     static long rootMillis(Path entryDir, BuildMetrics metrics, boolean gateRequested) {
         if (entryDir == null) return 0;
         long total = 0;
-        for (BuildLogicAnchor anchor : anchorsIn(entryDir)) {
+        for (var e : scriptsIn(entryDir).entrySet()) {
+            BuildLogicAnchor anchor = e.getKey();
             if (!anchor.workspaceScoped()) continue;
             if (anchor == BuildLogicAnchor.GATE && !gateRequested) continue;
-            total += millisFor(entryDir, anchor, metrics);
+            total += millisFor(entryDir, anchor, e.getValue(), metrics);
         }
         return total;
     }
 
-    /** Recorded wall for one anchor's scripts in {@code dir}, or TOKEN-worth when it is cold. */
-    private static long millisFor(Path dir, BuildLogicAnchor anchor, BuildMetrics metrics) {
+    /**
+     * Recorded wall for one anchor's scripts in {@code dir}, or the sum of their cold readings when
+     * nothing has timed the anchor on this host.
+     */
+    private static long millisFor(
+            Path dir, BuildLogicAnchor anchor, List<BuildLogicScripts.ScriptTask> scripts, BuildMetrics metrics) {
         String task = taskOf(anchor);
         if (task.isEmpty()) return 0;
         long own = metrics == null
                 ? 0
                 : EffortWeights.stepOkAvgMillisOwn(metrics, BuildMetrics.slashKey(dir.toString()), task);
-        // Cold: something runs here and nothing has ever timed it. TOKEN is a placeholder rather
-        // than an estimate — a real cold reading wants the script's own shape.
-        return own > 0 ? own : (long) EffortWeights.TOKEN * EffortWeights.MS_PER_WEIGHT;
+        if (own > 0) return own;
+        long cold = 0;
+        for (BuildLogicScripts.ScriptTask s : scripts) cold += BuildLogicReading.millis(s.file(), s.kind());
+        return cold;
     }
 
-    /** Anchors with at least one script under {@code projectDir}'s resolved logic dir. */
-    private static Set<BuildLogicAnchor> anchorsIn(Path projectDir) {
+    /** Scripts under {@code projectDir}'s resolved logic dir, grouped by the anchor they run at. */
+    private static Map<BuildLogicAnchor, List<BuildLogicScripts.ScriptTask>> scriptsIn(Path projectDir) {
         Optional<BuildLogicToml.Logic> logic;
         try {
             logic = BuildLogicToml.resolve(projectDir);
         } catch (RuntimeException e) {
-            return Set.of(); // a misconfigured logic dir is the build's error to report, not the ETA's
+            return Map.of(); // a misconfigured logic dir is the build's error to report, not the ETA's
         }
-        if (logic.isEmpty()) return Set.of();
+        if (logic.isEmpty()) return Map.of();
         try {
-            Set<BuildLogicAnchor> out = EnumSet.noneOf(BuildLogicAnchor.class);
+            Map<BuildLogicAnchor, List<BuildLogicScripts.ScriptTask>> out = new EnumMap<>(BuildLogicAnchor.class);
             for (BuildLogicScripts.ScriptTask s :
                     BuildLogicScripts.discover(logic.get().dir())) {
-                out.add(s.anchor());
+                out.computeIfAbsent(s.anchor(), a -> new ArrayList<>()).add(s);
             }
             return out;
         } catch (IOException | RuntimeException e) {
-            return Set.of();
+            return Map.of();
         }
     }
 

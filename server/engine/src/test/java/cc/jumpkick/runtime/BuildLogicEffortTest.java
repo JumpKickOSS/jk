@@ -125,6 +125,65 @@ class BuildLogicEffortTest {
     }
 
     /**
+     * A cold anchor is priced from its scripts' own text, so a real script is worth more than the
+     * placeholder and two scripts at one anchor are worth more than either alone. The stems the
+     * other tests here write are comment-only, which is exactly the no-signal case that still reads
+     * as {@code TOKEN}.
+     */
+    @Test
+    void a_cold_anchor_is_priced_from_the_scripts_it_will_run(@TempDir Path dir) throws Exception {
+        project(dir);
+        Path logic = dir.resolve(".jk");
+        Files.writeString(logic.resolve("after-build.kts"), "println(projectDir)\n");
+
+        long one = BuildLogicEffort.rootMillis(dir, null, false);
+        assertThat(one).isGreaterThan(TOKEN_MS);
+
+        Files.writeString(logic.resolve("after-build-sweep.kts"), "println(outDir)\n");
+        assertThat(BuildLogicEffort.rootMillis(dir, null, false))
+                .as("both scripts run at the anchor, so both are charged")
+                .isGreaterThan(one);
+    }
+
+    /** The reading is a prior. One recorded wall replaces it outright. */
+    @Test
+    void a_recorded_wall_replaces_the_cold_reading(@TempDir Path dir) throws Exception {
+        Path project = dir.resolve("p");
+        Files.createDirectories(project);
+        project(project);
+        Files.writeString(project.resolve(".jk/after-build.kts"), "println(projectDir)\n".repeat(500));
+
+        long cold = BuildLogicEffort.rootMillis(project, null, false);
+        BuildMetrics measured = metricsWith(
+                dir.resolve("metrics.json"),
+                BuildMetrics.slashKey(project.toString()),
+                TaskNames.BUILD_LOGIC_AFTER_BUILD,
+                42);
+
+        assertThat(BuildLogicEffort.rootMillis(project, measured, false))
+                .as("measured, never invented")
+                .isEqualTo(42)
+                .isNotEqualTo(cold);
+    }
+
+    /** A store with one successful run of {@code step} under {@code dir}, wall {@code ms}. */
+    private static BuildMetrics metricsWith(Path file, String dir, String step, long ms) {
+        BuildMetrics.record(
+                file,
+                new BuildMetrics.Outcome(
+                        "build",
+                        dir,
+                        null,
+                        true,
+                        false,
+                        ms,
+                        List.of(new BuildMetrics.StepSample(dir, step, "SUCCESS", ms))),
+                0);
+        BuildMetrics.clearMemo();
+        return BuildMetrics.load(file);
+    }
+
+    /**
      * Every stem the engine recognizes reaches a pricing decision. The exhaustive switch in
      * {@code taskOf} makes a new {@link BuildLogicAnchor} a compile error rather than a script
      * silently priced at zero, and {@code BuildLogicScripts} makes a new stem without an anchor a
