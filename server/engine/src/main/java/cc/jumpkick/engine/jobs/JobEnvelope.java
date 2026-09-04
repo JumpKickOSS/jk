@@ -14,7 +14,6 @@ import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.model.command.Exit;
-import cc.jumpkick.runtime.ProjectIds;
 import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.wire.protocol.EngineProtocol;
@@ -48,6 +47,7 @@ public final class JobEnvelope {
     private final JobLimits limits;
     private final JobWatchdog watchdogs;
     private final LiveJobRegistry live;
+    private final JobSettlement settlement;
 
     /** {@code limits} come from the engine's resolved config; the envelope never reads the environment. */
     public JobEnvelope(Host host, JobLimits limits) {
@@ -55,6 +55,7 @@ public final class JobEnvelope {
         this.limits = limits;
         this.watchdogs = new JobWatchdog(limits, host::nowMillis, host::accumulatorOf);
         this.live = new LiveJobRegistry(host::accumulatorOf, host::log);
+        this.settlement = new JobSettlement(host, host, host, host);
     }
 
     /** Detached admission refusal: a same-fingerprint job is already in flight. */
@@ -289,61 +290,15 @@ public final class JobEnvelope {
                 JobWorkers.clear(eventRequestId);
                 // Idempotent: runner finally usually released already; covers admit-without-run paths.
                 host.inFlight().release(eventRequestId);
-                long elapsedMillis = host.nowMillis() - eventStartMillis;
-                // cancelToken.cancelled also trips on the benign end-of-request EOF, so a finished
-                // build (success or failure) can look cancelled. Correct it once here for both the
-                // dashboard event and the journal.
-                boolean cancelled = effectiveCancelled(eventRequestId, cancelToken.cancelled());
-                // Same default as BuildAccumulator.toRecord — always emit success.
-                BuildAccumulator finishAcc = host.accumulatorOf(eventRequestId);
-                boolean success = finishAcc != null ? finishAcc.effectiveSuccess(cancelled) : !cancelled;
-                // Pin 100% only on success — a failed build keeps its last true percent, matching the
-                // workspace-runner path and the stated policy.
-                if (success && !cancelled) host.putLastProgress(eventRequestId, 100.0);
-                // Safety net: if the runner was abandoned/interrupted without a terminal
-                // wire event, still tell the CLI the job was cancelled so it does not report a crash.
-                // Harmless if the runner already sent workspace-/plan-finish (client has returned).
-                if (cancelled && writer != null) {
-                    // Same shape rule as pushCancelledTerminal: single builds journal as "build" but
-                    // their client loop only ends on plan-finish.
-                    WireWriter.sendQuiet(writer, LiveJobRegistry.cancelledTerminalLine(workspaceStream, eventDir));
-                }
-                // Release the plan slot before request-finish so status SSE carries the post-finish
-                // activeBuildPlans count — Live activity finishes in the same frame.
-                if (plan) host.noteBuildPlanFinished();
-                JsonOut finishPayload = JsonOut.object()
-                        .put("schema", 1)
-                        .put("type", "request-finish")
-                        .put("jid", eventRequestId)
-                        .put("kind", eventKind)
-                        .put("dir", eventDir)
-                        .put("projectId", ProjectIds.idOf(eventDir))
-                        .put("success", success)
-                        .put("cancelled", cancelled)
-                        .put("millis", elapsedMillis)
-                        .put("activeBuildPlans", host.activeBuildPlans());
-                String cancelReason = finishAcc != null ? finishAcc.cancelReason() : null;
-                if (cancelled && cancelReason != null) finishPayload.put("cancelReason", cancelReason);
-                host.publishEvent(
-                        "request-finish",
-                        host.withProgress(host.withIo(finishPayload, eventRequestId), eventRequestId));
-                // Journal first: clearProgress retires the JobSession (drops the accumulator).
-                // Writing after retire leaves a permanent running=true stub in jk jobs.
-                try {
-                    host.writeJournal(eventRequestId, cancelled, elapsedMillis, writer);
-                } finally {
-                    // Last write under the project's target/ is the journal's jk-results.md copy,
-                    // so this is the moment the engine is provably done with the tree. The client
-                    // blocks on this line rather than the plan terminal — otherwise `jk build`
-                    // returns mid-write and a following `jk clean` races the memo/journal writers.
-                    // In a finally so a throwing journal can never strand the client.
-                    if (writer != null) WireWriter.sendQuiet(writer, ProtoLifecycle.jobFinish(eventRequestId));
-                }
-                host.clearProgress(eventRequestId);
-                // Idle boundary after finish side-effects so prune/GC see journal + event garbage too.
-                // Cache maintenance (plan=false) only GCs when nothing else is in flight.
-                if (plan) host.maybeIdleBoundary();
-                else host.maybeIdleGc();
+                settlement.settle(
+                        eventRequestId,
+                        eventKind,
+                        eventDir,
+                        plan,
+                        workspaceStream,
+                        writer,
+                        eventStartMillis,
+                        cancelToken.cancelled());
             }
         };
         if (detached) {
@@ -410,25 +365,14 @@ public final class JobEnvelope {
         return live.cancelJobsForDir(dir);
     }
 
+    /** Whether a job's cancel token means a real cancel — see {@link JobSettlement#effectiveCancelled}. */
+    public boolean effectiveCancelled(long requestId, boolean rawCancelled) {
+        return settlement.effectiveCancelled(requestId, rawCancelled);
+    }
+
     /** Test seam: the registry, for driving cancels the way the wire does. */
     LiveJobRegistry live() {
         return live;
-    }
-
-    /**
-     * Whether the build was genuinely cancelled.
-     *
-     * <p>{@code cancelToken.cancelled} alone is unreliable — it also trips on the benign
-     * end-of-request EOF (client closes the socket the instant it reads the terminal message). For a
-     * request with an accumulator we trust an explicit stamp from CANCEL_REQUEST / mid-job EOF /
-     * deadline. A runner that already stamped a terminal outcome is never re-labelled cancelled by
-     * that race.
-     */
-    public boolean effectiveCancelled(long requestId, boolean rawCancelled) {
-        BuildAccumulator a = host.accumulatorOf(requestId);
-        if (a == null) return rawCancelled;
-        if (a.wasCancelled()) return true;
-        return rawCancelled && !a.hasOutcome();
     }
 
     public static String journalDir(String requestLine) {
