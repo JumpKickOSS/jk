@@ -135,6 +135,39 @@ slowTier(
     Duration.ofMinutes(30),
     "Microbenchmarks (@Tag bench). Prints medians, gates nothing — run on demand.")
 
+// The curated lane. Not a tier: the same integration filters, narrowed to the classes
+// `curated-integration.txt` names for this module, so a class runs here AND in the nightly
+// integration tier. Registered only where the registry has entries — a Test task with no matching
+// class is a green report about nothing.
+val curatedRegistry = rootProject.layout.projectDirectory.file(CuratedIntegration.REGISTRY)
+val curatedHere = CuratedIntegration.forModule(curatedRegistry.asFile.readText(), project.path)
+if (curatedHere.isNotEmpty()) {
+    tasks.register<Test>(CuratedIntegration.TASK) {
+        group = "verification"
+        description = "Curated integration classes for this module (the branch gate's boundary lane)"
+        val testSourceSet = sourceSets["test"]
+        testClassesDirs = testSourceSet.output.classesDirs
+        classpath = testSourceSet.runtimeClasspath
+        useJUnitPlatform { tier(TestTiers.INTEGRATION).applyTo(this) }
+        // A renamed or deleted class must fail the lane rather than shrink it silently. The guard
+        // catches that from the source tree; this catches it from the runtime.
+        filter {
+            curatedHere.forEach { includeTestsMatching(it.fqcn) }
+            isFailOnNoMatchingTests = true
+        }
+        inputs.file(curatedRegistry).withPropertyName("curatedRegistry")
+        shouldRunAfter(tasks.named("test"))
+        // One JVM per class. The lane is a subset, so it puts classes next to each other that the
+        // full tier never does, and a class that runs an engine in-process leaves process-wide
+        // state behind — enough to make a later class's worker fork die. A fresh JVM per class
+        // costs a second each and makes the verdict independent of who else is in the registry.
+        forkEvery = 1
+        systemProperty("junit.jupiter.execution.timeout.default", "300s")
+        systemProperty("junit.jupiter.execution.timeout.mode", "disabled_on_debug")
+        timeout.set(Duration.ofMinutes(20))
+    }
+}
+
 tasks.register("checkAll") {
     group = "verification"
     description = "Unit test + integrationTest for this module"

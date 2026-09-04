@@ -619,6 +619,16 @@ object Guards {
                 description = "Fail when the two builds and install.sh disagree on the ship layout",
             ),
             spec(
+                63,
+                "checkCuratedIntegration",
+                "a curated integration entry that is missing, renamed, untagged, tagged into a nightly tier, or claims a failure path the class does not show — plus a surface with only happy paths, a branch gate that stopped running the lane, and a nightly that stopped running the full tier",
+                "registry scan in both builds, floored on the integration population it is carved out of",
+                GuardHome.ROOT,
+                tableTask = "`checkCuratedIntegration` (root project) + `.jk/after-build.kts`",
+                attach = emptySet(),
+                description = "Fail when the curated integration registry, its coverage, or its CI job drifts",
+            ),
+            spec(
                 61,
                 "checkInstallTestsRedirectM2",
                 "a test that runs the install verb without `--m2-dir`, which publishes the fixture into the developer's real `~/.m2`",

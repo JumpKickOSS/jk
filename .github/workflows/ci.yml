@@ -51,6 +51,40 @@ jobs:
       - name: Shell installer verification fixtures
         run: bash scripts/test-installer-verification.sh
 
+  # The boundary lane. `checkFast` is network-free and fast but runs no integration class, so a
+  # wire, spawn, worker, workspace, install or lock regression can merge with a deterministic
+  # integration test sitting in the nightly tier that would have caught it. Membership is
+  # curated-integration.txt; guard G63 (checkCuratedIntegration) owns the registry's integrity and
+  # the existence of this job. The full tier stays nightly and complete.
+  #
+  # Its own job, alongside `test` rather than after it: a curated failure and a unit failure are
+  # different reports and a contributor should get both from one push.
+  curated-integration:
+    name: Curated integration lane
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: gradle
+
+      # Budget: 8 minutes wall clock for this step. Over it, drop or split an entry — raising the
+      # number turns the lane back into the full tier the branch gate cannot afford.
+      - name: Curated integration tests
+        timeout-minutes: 8
+        run: ./gradlew curatedIntegrationTest --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: curated-integration-results
+          path: '**/build/test-results/curatedIntegrationTest/'
+          if-no-files-found: warn
+          retention-days: 7
+
   installer-windows:
     name: PowerShell 5.1 installer verification
     runs-on: windows-latest

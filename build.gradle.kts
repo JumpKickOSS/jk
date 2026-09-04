@@ -20,6 +20,15 @@ tasks.register("integrationTest") {
     dependsOn(subprojects.map { it.tasks.matching { t -> t.name == "integrationTest" } })
 }
 
+// The branch gate's boundary lane: the integration classes curated-integration.txt names, run on
+// every pull request while the rest of the tier stays nightly. Not a tier — every class here also
+// runs in `integrationTest`, so nothing is reclassified to make the gate cheap.
+tasks.register(CuratedIntegration.TASK) {
+    group = "verification"
+    description = "Run the curated integration classes (the branch gate's boundary lane)"
+    dependsOn(subprojects.map { it.tasks.matching { t -> t.name == CuratedIntegration.TASK } })
+}
+
 // Off checkAll: framework/language e2e, 426s of the gating tier for 28 tests. What
 // they assert moves with a plugin or a toolchain, not with the change under review.
 tasks.register("slowTest") {
@@ -421,6 +430,147 @@ tasks.register("checkCiCadence") {
         if (problems.isNotEmpty()) {
             throw GradleException("CI cadence is incomplete:\n  " + problems.joinToString("\n  "))
         }
+    }
+}
+
+// Guard G63: the curated integration lane's registry is real, covered, and still wired to CI.
+//
+// The lane is a promise that six merge-critical boundaries are exercised on every pull request.
+// Every way that promise can rot is silent: a renamed class stops being selected, an entry loses
+// its `@Tag("integration")` and leaves the tier the lane filters, a surface ends up with only
+// happy paths, or the CI job that runs the lane is deleted while the registry stays behind and
+// keeps reading like coverage. None of those turn a build red on their own.
+//
+// The `failure` column is the arm worth explaining. A guard cannot know that a test exercises a
+// refused path, so it checks the claim is *visible*: the class asserts a throw or a non-zero exit,
+// or names a refusal in a test method name. That falsifies a wrong claim without pretending to
+// verify a right one.
+tasks.register("checkCuratedIntegration") {
+    group = "verification"
+    description = "Fail when the curated integration registry, its coverage, or its CI job drifts"
+    val registry = layout.projectDirectory.file(CuratedIntegration.REGISTRY)
+    val branch = layout.projectDirectory.file(".github/workflows/ci.yml")
+    val nightly = layout.projectDirectory.file(".github/workflows/ci-nightly.yml")
+    val tiersDoc = layout.projectDirectory.file("docs/contributors/test-suite-tiers.md")
+    val testSources = fileTree(layout.projectDirectory) {
+        CuratedIntegration.moduleDirs.values.forEach { include("$it/src/test/java/**/*.java") }
+    }
+    inputs.file(registry).withPropertyName("registry")
+    inputs.files(branch, nightly, tiersDoc).withPropertyName("wiring")
+    inputs.files(testSources).withPropertyName("testSources")
+    val treeRoot = layout.projectDirectory.asFile
+    val stamp = layout.buildDirectory.file("guards/curated-integration.ok")
+    outputs.file(stamp)
+    doLast {
+        val parsed = CuratedIntegration.parse(registry.asFile.readText())
+        val problems = parsed.faults.toMutableList()
+        if (parsed.entries.isEmpty()) {
+            throw GradleException("${CuratedIntegration.REGISTRY} names no classes, so the curated"
+                    + " lane would run nothing and report green. Fix the file or the parser.")
+        }
+
+        // Comments blanked before every tag read below: a class whose javadoc quotes
+        // `@Tag("integration")` to say why it is NOT tagged reads as tagged to a raw scan, which is
+        // how an untagged class got into the registry and silently ran nowhere.
+        fun code(f: File): String = CodeLines.blankNonCode(f.readText(), blankStrings = false)
+
+        // Floor under the scan: the full tier is what the lane is carved out of, so a walk that
+        // stops finding it is a green verdict about nothing. Measured at 109 classes.
+        val tagged = testSources.files.filter { code(it).contains("@Tag(\"integration\")") }
+        if (tagged.size < 90) {
+            throw GradleException("found ${tagged.size} @Tag(\"integration\") classes under"
+                    + " ${CuratedIntegration.moduleDirs.values}; measured against 109 and floored at"
+                    + " 90. Either the tier shrank into the curated subset — which is the one thing"
+                    + " this lane must not cause — or the scan broke and is passing vacuously.")
+        }
+
+        parsed.entries.groupBy { it.fqcn }.filterValues { it.size > 1 }.forEach { (fqcn, dupes) ->
+            problems.add("$fqcn is listed ${dupes.size} times (lines ${dupes.map { it.line }})")
+        }
+
+        val methodName = Regex("""\bvoid\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(""")
+        parsed.entries.forEach { entry ->
+            val source = treeRoot.resolve(entry.sourcePath)
+            if (!source.isFile) {
+                problems.add("${entry.fqcn} (line ${entry.line}): no source at ${entry.sourcePath}"
+                        + " — the class was renamed, moved, or deleted; update the registry")
+                return@forEach
+            }
+            val body = code(source)
+            if (!body.contains("@Tag(\"integration\")")) {
+                problems.add("${entry.fqcn} (line ${entry.line}): not @Tag(\"integration\"), so the"
+                        + " lane's filters never select it")
+            }
+            CuratedIntegration.disqualifyingTags.filter { body.contains("@Tag(\"$it\")") }.forEach {
+                problems.add("${entry.fqcn} (line ${entry.line}): carries @Tag(\"$it\"), which is a"
+                        + " nightly tier — the branch gate must not need the network, a framework"
+                        + " toolchain, or a benchmark")
+            }
+            if (CuratedOutcome.FAILURE in entry.outcomes) {
+                val asserts = CuratedIntegration.failureAssertions.any { body.contains(it) }
+                val names = methodName.findAll(body).map { it.groupValues[1].lowercase() }.toList()
+                val refuses = names.any { name -> CuratedIntegration.refusalWords.any { name.contains(it) } }
+                if (!asserts && !refuses) {
+                    problems.add("${entry.fqcn} (line ${entry.line}): claims a failure path and shows"
+                            + " none — no ${CuratedIntegration.failureAssertions} and no test method"
+                            + " naming a refusal. Drop the claim, or register a class that has one")
+                }
+            }
+        }
+
+        // The lane runs a subset of the tier's classes, so it has to inherit the tier's per-module
+        // setup — worker jars, engine jar, sandbox roots, transport. A module script that
+        // configures `integrationTest` by name gives the lane none of it, and the lane then fails
+        // for reasons the change under review did not cause.
+        parsed.entries.map { it.module }.distinct().sorted().forEach { module ->
+            val script = treeRoot.resolve(CuratedIntegration.moduleDirs.getValue(module) + "/build.gradle.kts")
+            val body = if (script.isFile) script.readText() else ""
+            if (body.contains("integrationTest") && !body.contains("CuratedIntegration.integrationTasks")) {
+                problems.add("$module configures integrationTest by name; the registry names classes"
+                        + " in it, so it must configure CuratedIntegration.integrationTasks instead"
+                        + " and give the lane the tier's environment")
+            }
+        }
+
+        val bySurface = parsed.entries.groupBy { it.surface }
+        CuratedSurface.entries.forEach { surface ->
+            val here = bySurface[surface].orEmpty()
+            val covered = here.flatMap { it.outcomes }.toSet()
+            val gaps = CuratedOutcome.entries.filterNot { it in covered }
+            if (here.isEmpty()) {
+                problems.add("surface '${surface.id}' (${surface.what}) has no entry")
+            } else if (gaps.isNotEmpty()) {
+                problems.add("surface '${surface.id}' (${surface.what}) has no "
+                        + gaps.joinToString(" or ") { it.id } + " path")
+            }
+        }
+
+        val branchText = branch.asFile.readText()
+        if (!branchText.contains(CuratedIntegration.TASK)) {
+            problems.add(".github/workflows/ci.yml must run ./gradlew ${CuratedIntegration.TASK} —"
+                    + " a registry no pull request executes is documentation, not a gate")
+        }
+        if (!nightly.asFile.readText().contains("./gradlew integrationTest")) {
+            problems.add(".github/workflows/ci-nightly.yml must still run the full ./gradlew"
+                    + " integrationTest; the curated lane is a subset, never a replacement")
+        }
+        val doc = tiersDoc.asFile.readText()
+        if (!doc.contains(CuratedIntegration.REGISTRY)) {
+            problems.add("docs/contributors/test-suite-tiers.md must name ${CuratedIntegration.REGISTRY}")
+        }
+        if (!doc.contains("${CuratedIntegration.BUDGET_MINUTES} minutes")) {
+            problems.add("docs/contributors/test-suite-tiers.md must state the lane's budget as"
+                    + " '${CuratedIntegration.BUDGET_MINUTES} minutes', the number CuratedIntegration owns")
+        }
+
+        if (problems.isNotEmpty()) {
+            throw GradleException("the curated integration lane does not cover what it claims —\n  "
+                    + problems.joinToString("\n  ")
+                    + "\n  ${parsed.entries.size} entries over ${tagged.size} integration classes."
+                    + " The lane is the only integration coverage a pull request gets; an entry that"
+                    + " no longer runs is a boundary nobody is watching until the nightly build.")
+        }
+        stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
     }
 }
 

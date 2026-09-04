@@ -34,6 +34,51 @@ Tag new heavy tests at class level:
 **Every tag is run by exactly one task.** G23 verifies the executable partition, and G52 verifies
 that the marked table above matches it.
 
+## The curated integration lane (every pull request)
+
+`checkFast` runs no integration class, and the full tier is too slow to gate on, so a wire, spawn,
+worker, workspace, install or lock regression could merge with a deterministic integration test —
+sitting in the nightly tier — that would have caught it.
+
+`./gradlew curatedIntegrationTest` closes that gap. It runs the classes named in
+`curated-integration.txt` at the checkout root, under the same `integrationTest` filters, and runs
+on every pull request as its own CI job.
+
+**Curated membership is a duplicate execution policy, not a tag.** Every listed class is
+`@Tag("integration")` and still runs in the nightly tier; nothing is reclassified to make the
+branch gate cheap, and the lane never replaces `integrationTest`.
+
+The registry has one line per class:
+
+```
+module | class | surface | outcomes | why it is merge-critical
+```
+
+Each class runs in a fresh JVM (`forkEvery = 1`). A subset puts classes next to each other that
+the full tier never does, and a class that runs an engine in-process leaves process-wide state
+behind; per-class forks cost about a second each and make the lane's verdict independent of who
+else is in the registry.
+
+Six surfaces have to stay covered — `wire`, `spawn`, `workers`, `workspace`, `install`, `lock` —
+each with at least one `success` and one `failure` entry. Guard **G63**
+(`checkCuratedIntegration`, both builds) rejects an entry that is missing, renamed, untagged,
+tagged into a nightly tier, or claims a failure path the class does not show; it also fails when a
+surface loses a path, when `ci.yml` stops running the lane, or when the nightly stops running the
+full tier.
+
+### Budget and escalation
+
+**8 minutes of wall clock**, enforced as `timeout-minutes` on the CI step. Measured at 1m28s,
+1m31s and 1m54s over three clean runs (`./gradlew clean` then `curatedIntegrationTest
+--no-build-cache`, 20 classes / 122 tests, 24-core Linux box shared with other builds), so the
+budget is headroom for a slower runner, not the current cost.
+
+Over budget, the answer is to **drop or split an entry**, never to raise the number: the lane
+exists because the full tier is what a branch gate cannot afford, and a lane that grows toward the
+full tier has stopped being a lane. Adding a class is fine when it buys a surface a path it does
+not have; adding a second class for a path a surface already covers is what the budget is there to
+refuse.
+
 ### Why `network` is off the merge gate
 
 `checkAll` must not depend on the network. Sonatype enforces a per-IP quota on Maven Central, so a
@@ -93,11 +138,12 @@ Measured profiling of a full `integrationTest` is expensive; use this as a **man
 
 ## CI
 
-- **PR / push (`ci.yml`):** `./gradlew checkFast` (unit tier + every structural guard) and the
-  commit-authorship scan. No coverage, no benches.
+- **PR / push (`ci.yml`):** `./gradlew checkFast` (unit tier + every structural guard), the curated
+  integration lane in its own job, and the commit-authorship scan. No coverage, no benches.
 - **Nightly (`ci-nightly.yml`):** Linux `integrationTest`, `slowTest`, `networkTest`, `benchTest`,
   and `coverageReport -Pjk.coverage`. macOS and Windows run `scripts/ci-product-smoke.sh`.
-- Local branch gate: `./gradlew checkFast`.
+- Local branch gate: `./gradlew checkFast`, plus `./gradlew curatedIntegrationTest` to run what the
+  pull request's boundary lane will run.
 - Local pre-merge when you touch wire/engine/CLI: `./gradlew checkAll` (`checkFast` plus
   `integrationTest`). Never `networkTest` or `benchTest` as a merge gate.
 - `./gradlew benchTest` runs nightly; it still gates nothing on deltas.

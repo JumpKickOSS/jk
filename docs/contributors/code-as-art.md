@@ -921,6 +921,7 @@ Letters are allocated when a guard lands and are never reused.
 | G60 | `checkOneJsonSplicer` (root project) + `.jk/after-build.kts` | a JSON object spliced by hand in `src/main/java` — a closing brace chopped and appended to, or a literal `{` opened onto another object's tail — outside `Jsonl.append` | ban in both builds; self-fail when the owner stops splicing or the scan sees too few sources |
 | G61 | `checkInstallTestsRedirectM2` (root project) + `.jk/after-build.kts` | a test that runs the install verb without `--m2-dir`, which publishes the fixture into the developer's real `~/.m2` | ban in both builds; self-fail when the scan stops finding install invocations |
 | G62 | `checkShipLayoutAgrees` (root project) + `.jk/after-build.kts` | the two builds and `install.sh` disagree on the ship layout's engine directory | compare the directory name in both builds and the installer; self-fail when an anchor stops matching |
+| G63 | `checkCuratedIntegration` (root project) + `.jk/after-build.kts` | a curated integration entry that is missing, renamed, untagged, tagged into a nightly tier, or claims a failure path the class does not show — plus a surface with only happy paths, a branch gate that stopped running the lane, and a nightly that stopped running the full tier | registry scan in both builds, floored on the integration population it is carved out of |
 <!-- guards:end -->
 
 `checkCliRuntimeClasspath` and `checkCliNoParseTypes` predate the letters.

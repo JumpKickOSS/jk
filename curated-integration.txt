@@ -1,0 +1,43 @@
+# The integration classes that run on every pull request.
+#
+# `./gradlew integrationTest` runs more than a hundred classes; the branch gate cannot afford all
+# of them, so it runs this subset and the full tier stays nightly. Membership is a duplicate
+# execution policy, not a JUnit tag: every class named here carries `@Tag("integration")` and runs
+# in the nightly tier too, so nothing is reclassified to make the gate pass.
+#
+# One entry per line, five `|`-separated fields:
+#
+#   module | class | surface | outcomes | why it is merge-critical
+#
+#   module    Gradle project path — `:cli` or `:engine`.
+#   class     fully-qualified test class; its source must exist under that module.
+#   surface   one of: wire, spawn, workers, workspace, install, lock.
+#   outcomes  comma-separated subset of {success, failure}. Every surface needs both across its
+#             entries, and a `failure` claim has to be visible in the class — a failure-shaped
+#             assertion, or a test method whose name says what is refused.
+#   why       one sentence: what merges broken when this class is not run.
+#
+# Blank lines and `#` comments are ignored. Guard G63 (`checkCuratedIntegration`, both builds)
+# checks every rule above, the wall-clock budget in docs/contributors/test-suite-tiers.md, and the
+# CI job that runs the lane.
+
+:cli    | cc.jumpkick.cli.engine.EngineClientTest        | wire      | success,failure | The client half of the JSONL socket: handshake, status, stop, drain, and the not-listening answers every command depends on.
+:engine | cc.jumpkick.engine.EngineServerTest            | wire      | success,failure | The server half of the same socket, including a stale socket file from a killed engine and the loopback TCP token gate.
+:engine | cc.jumpkick.engine.EngineServerRequestTest     | wire      | success         | Lock, audit, compile, tool-resolve and cache requests round-trip over the socket, so a wire shape change cannot land silently.
+:cli    | cc.jumpkick.cli.engine.EngineFleetTest         | spawn     | success,failure | Which processes count as this home's engine, and that stopping a foreign or dead pid reports rather than pretends.
+:engine | cc.jumpkick.engine.EngineTakeoverTest          | spawn     | success,failure | A newer engine repoints the endpoint and the predecessor drains, including the pid-file mismatch that strands a ghost.
+:engine | cc.jumpkick.engine.JobWorkersTest              | workers   | success,failure | Worker processes are tracked per request and killed on cancel, including one registered after shutdown.
+:engine | cc.jumpkick.engine.plugin.PluginLoaderTest     | workers   | success,failure | A forked plugin worker starts, and a bad spec exits non-zero instead of hanging the job.
+:engine | cc.jumpkick.engine.plugin.PluginProcessTest    | workers   | success         | The plugin fork's stdio split: protocol lines, passthrough output, and the pull queue over stdin.
+:engine | cc.jumpkick.compile.ForkedJavacTest            | workers   | success         | The javac worker launches, reports provenance, and is reused across compile and plan within one job.
+:cli    | cc.jumpkick.command.BuildCommandTest           | workspace | success,failure | The build verb over a real workspace, and that a compile error leaves a non-zero exit.
+:cli    | cc.jumpkick.command.TestCommandTest            | workspace | success,failure | The test verb end to end, including a failing suite surfacing as a failed build.
+:cli    | cc.jumpkick.command.SelectiveCommandTest       | workspace | success,failure | Module selection flags pick the right subgraph and reject a module the workspace does not have.
+:engine | cc.jumpkick.runtime.WorkspaceTestsKindE2eTest  | workspace | success         | A workspace member's tests compile against a sibling test-helper module, which is the multi-module test classpath in one case.
+:cli    | cc.jumpkick.command.InstallCommandTest         | install   | success,failure | Install writes the lib layout and launcher, publishes to the local Maven repo, and returns a usage error with no manifest.
+:cli    | cc.jumpkick.command.InstallWorkspaceTest       | install   | success,failure | Installing a workspace publishes every member and not the coordinator root, and a failing member names the module instead of exiting silently.
+:cli    | cc.jumpkick.cli.engine.EngineJarFetcherTest    | install   | success,failure | Materializing the engine jar into the home, and the checksum and missing-artifact refusals that keep a bad jar out.
+:cli    | cc.jumpkick.command.LockCommandTest            | lock      | success,failure | The lock pipeline for Java and Kotlin, plus the offline hard-failures when the lock does not cover a declared dependency.
+:cli    | cc.jumpkick.command.CacheCommandTest           | lock      | success,failure | The cache verbs over a real store, including the unconfirmed purge that aborts and the empty search that returns non-zero.
+:cli    | cc.jumpkick.command.BuildCacheTest             | lock      | success         | Freshness stamp, action cache and rebuild bypass — the layers that decide whether a second build does work.
+:cli    | cc.jumpkick.command.CleanExplainWhyRebuiltTest | lock      | success         | Clean removes the trees it owns and `explain` reports each compile task's cache status, including the hit after a build.
