@@ -12,11 +12,9 @@ import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.UnmappedPolicy;
 import cc.jumpkick.model.VersionSelector;
-import cc.jumpkick.repo.EffectivePom;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.MavenRepo;
-import cc.jumpkick.repo.Pom;
 import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoGroup;
 import java.io.IOException;
@@ -43,48 +41,12 @@ import java.util.function.BooleanSupplier;
  */
 public final class LockOrchestrator {
 
-    private static final List<Scope> SCOPES = List.of(
-            Scope.EXPORT,
-            Scope.MAIN,
-            Scope.RUNTIME,
-            Scope.PROVIDED,
-            Scope.TEST,
-            Scope.PROCESSOR,
-            Scope.DEV,
-            Scope.TEST_DEV);
-
     private static final List<Scope> MAIN_SCOPES =
             List.of(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME, Scope.PROVIDED, Scope.DEV);
 
     private static final List<Scope> TEST_SCOPES = List.of(Scope.TEST, Scope.TEST_DEV);
 
     private static final List<Scope> PROCESSOR_SCOPES = List.of(Scope.PROCESSOR);
-
-    private enum GraphGroup {
-        MAIN,
-        TEST,
-        PROCESSOR
-    }
-
-    /**
-     * jk test infrastructure: always injected into the TEST classpath via {@code putIfAbsent} so
-     * {@code jk test} (which forks {@code jk-test-runner} over the JUnit Platform Launcher API)
-     * works regardless of which test framework the user chose.
-     */
-    private static final Dependency JUNIT_LAUNCHER =
-            new Dependency("org.junit.platform:junit-platform-launcher", VersionSelector.parse("latest"));
-
-    /**
-     * Passive JUnit 5 default: injected only when the user declared no {@code [test-dependencies]}
-     * section, so that a bare project gets a working test framework out of the box. Once the user
-     * owns the section — even if they don't list JUnit — jk leaves the framework choice to them.
-     *
-     * <p>Declared as {@code latest}: {@code jk lock} pins today's latest stable release (reproducible
-     * builds), and {@code jk update} advances it — "jk defaults to the latest stable JUnit" stays
-     * evergreen without manual bumps.
-     */
-    private static final Dependency JUNIT_JUPITER =
-            new Dependency("org.junit.jupiter:junit-jupiter", VersionSelector.parse("latest"));
 
     private final RepoGroup repos;
     private final Resolver resolverOverride;
@@ -256,81 +218,25 @@ public final class LockOrchestrator {
             throws IOException, InterruptedException {
         LockProgress progress = new LockProgress(observer, timings);
 
-        Set<String> activated = project.features().activate(new LinkedHashSet<>(featuresRequested), withDefaults);
-
-        // Partition declared deps into main / test / processor (R5 + test isolation).
-        LinkedHashMap<String, Dependency> mainDeduped = new LinkedHashMap<>();
-        LinkedHashMap<String, Dependency> testDeduped = new LinkedHashMap<>();
-        LinkedHashMap<String, Dependency> processorDeduped = new LinkedHashMap<>();
-        LinkedHashMap<String, Dependency> optionalByLib = new LinkedHashMap<>();
-        Map<String, Scope> optionalScopeByLib = new HashMap<>();
-        for (Scope scope : SCOPES) {
-            if (scope == Scope.PLATFORM) continue;
-            for (Dependency dep : project.dependencies().of(scope)) {
-                if (dep.optional()) {
-                    optionalByLib.putIfAbsent(dep.library(), dep);
-                    optionalScopeByLib.putIfAbsent(dep.library(), scope);
-                } else {
-                    // packageKey so main jar and test-jar of the same GA can both root.
-                    switch (graphGroup(scope)) {
-                        case PROCESSOR -> processorDeduped.putIfAbsent(dep.packageKey(), dep);
-                        case TEST -> testDeduped.putIfAbsent(dep.packageKey(), dep);
-                        case MAIN -> mainDeduped.putIfAbsent(dep.packageKey(), dep);
-                    }
-                }
-            }
-        }
-        for (String depName : project.features().requestedDepNames(activated)) {
-            Dependency opt = optionalByLib.get(depName);
-            if (opt == null) {
-                throw new IllegalArgumentException("feature dependency '"
-                        + depName
-                        + "' is not a declared optional dependency"
-                        + " — declare it under [dependencies.*] with `optional = true`");
-            }
-            Scope optScope = optionalScopeByLib.getOrDefault(depName, Scope.MAIN);
-            switch (graphGroup(optScope)) {
-                case PROCESSOR -> processorDeduped.putIfAbsent(opt.packageKey(), opt);
-                case TEST -> testDeduped.putIfAbsent(opt.packageKey(), opt);
-                case MAIN -> mainDeduped.putIfAbsent(opt.packageKey(), opt);
-            }
-        }
-        // Cross-package features on path= libraries: pull their optional deps.
-        CrossPackageFeatures.Result cross = CrossPackageFeatures.expand(projectDir, mainDeduped.values());
-        Map<String, List<String>> activatedFeatures = cross.activatedFeaturesByModule();
-        for (Dependency extra : cross.extrasList()) {
-            mainDeduped.putIfAbsent(extra.packageKey(), extra);
-        }
-        // junit infrastructure rides the test graph only.
-        testDeduped.putIfAbsent(JUNIT_LAUNCHER.packageKey(), JUNIT_LAUNCHER);
-        if (project.dependencies().of(Scope.TEST).isEmpty()) {
-            testDeduped.putIfAbsent(JUNIT_JUPITER.packageKey(), JUNIT_JUPITER);
-        }
-        Map<String, String> bomConstraints = new LinkedHashMap<>();
-        Map<String, String> constraintProvenance = new LinkedHashMap<>();
+        LockRoots.Declared declared = LockRoots.partition(project, featuresRequested, withDefaults, projectDir);
+        Map<String, List<String>> activatedFeatures = declared.activatedFeatures();
         // one POM builder for BOM load + all scope solves + toArtifact packaging probes.
         EffectivePomBuilder pomBuilder = new EffectivePomBuilder(repos);
-        collectBomConstraints(project, pomBuilder, bomConstraints, constraintProvenance);
+        PlatformConstraints constraints = PlatformConstraints.collect(project, repos, pomBuilder);
+        Map<String, String> bomConstraints = constraints.versions();
 
         // Language runtimes must be lock deps so package-jar / boot-jar nest them.
         // Engine classpath injection alone is not enough for standalone `java -jar`.
         // Runs AFTER BOM collection: a platform that manages the runtime (grails-bom's groovy)
         // owns its version — the inject must not smuggle the scaffold default past it.
         Set<String> injected =
-                LanguageRuntimeInject.inject(project, projectDir, bomConstraints, mainDeduped, toolVersions);
+                LanguageRuntimeInject.inject(project, projectDir, bomConstraints, declared.main(), toolVersions);
 
-        List<Dependency> fileDeps = new ArrayList<>();
-        List<Dependency> mainDeclared = splitFile(mainDeduped, fileDeps);
-        List<Dependency> testDeclared = splitFile(testDeduped, fileDeps);
-        List<Dependency> processorDeclared = splitFile(processorDeduped, fileDeps);
-
-        stripBomForExactRoots(mainDeclared, bomConstraints, constraintProvenance, injected);
-        stripBomForExactRoots(testDeclared, bomConstraints, constraintProvenance, injected);
-        stripBomForExactRoots(processorDeclared, bomConstraints, constraintProvenance, injected);
-
-        List<Dependency> mainRoots = materializePlatformManaged(mainDeclared, bomConstraints);
-        List<Dependency> testRoots = materializePlatformManaged(testDeclared, bomConstraints);
-        List<Dependency> processorRoots = materializePlatformManaged(processorDeclared, bomConstraints);
+        LockRoots.Roots roots = constraints.apply(declared.split(), injected);
+        List<Dependency> fileDeps = roots.fileDeps();
+        List<Dependency> mainRoots = roots.main();
+        List<Dependency> testRoots = roots.test();
+        List<Dependency> processorRoots = roots.processor();
 
         KmpRedirects kmp = new KmpRedirects(repos, jvmEnvironment);
         // Shared package source across main/test/processor so version/deps caches survive scope splits.
@@ -339,7 +245,7 @@ public final class LockOrchestrator {
                 : new MavenPackageSource(
                         repos, pomBuilder, bomConstraints, lockedVersionPrefs, kmp, platformPolicy, unmappedPolicy);
 
-        progress.graphPhase(mainRoots.size() + testRoots.size() + processorRoots.size() + fileDeps.size());
+        progress.graphPhase(roots.declaredCount());
         Resolution mainResolution =
                 resolveGroup(mainRoots, bomConstraints, lockedVersionPrefs, kmp, sharedSource, pomBuilder, progress);
         progress.noteGraph(mainResolution);
@@ -374,16 +280,8 @@ public final class LockOrchestrator {
         mergeGraph(processorResolution, processorTags, Scope.PROCESSOR, tagsByKey, modByKey);
 
         ArtifactMaterializer materializer = new ArtifactMaterializer(
-                (mod, tags, abort) -> toArtifact(
-                        mod,
-                        tags,
-                        kmp,
-                        pomBuilder,
-                        fallbackSource,
-                        bomConstraints,
-                        constraintProvenance,
-                        activatedFeatures,
-                        abort),
+                (mod, tags, abort) ->
+                        toArtifact(mod, tags, kmp, pomBuilder, fallbackSource, constraints, activatedFeatures, abort),
                 progress);
         packages.addAll(materializer.materialize(new ArrayList<>(modByKey.entrySet()), tagsByKey));
 
@@ -393,7 +291,7 @@ public final class LockOrchestrator {
                     : dep.version().raw();
             progress.materialized(dep.module(), version);
             EnumSet<Scope> tags = EnumSet.noneOf(Scope.class);
-            for (Scope scope : SCOPES) {
+            for (Scope scope : LockRoots.SCOPES) {
                 for (Dependency d : project.dependencies().of(scope)) {
                     if (d.isFile() && d.module().equals(dep.module())) tags.add(scope);
                 }
@@ -411,26 +309,6 @@ public final class LockOrchestrator {
         }
         progress.finished(packages.size());
         return new Lockfile(Lockfile.CURRENT_VERSION, "jk " + jkVersion, Lockfile.RESOLUTION_ALGORITHM, packages);
-    }
-
-    private static GraphGroup graphGroup(Scope scope) {
-        return switch (scope) {
-            case PROCESSOR -> GraphGroup.PROCESSOR;
-            case TEST, TEST_DEV -> GraphGroup.TEST;
-            default -> GraphGroup.MAIN;
-        };
-    }
-
-    private static List<Dependency> splitFile(LinkedHashMap<String, Dependency> deduped, List<Dependency> fileDeps) {
-        List<Dependency> out = new ArrayList<>();
-        for (Dependency d : deduped.values()) {
-            if (d.isFile()) {
-                if (fileDeps.stream().noneMatch(f -> f.module().equals(d.module()))) fileDeps.add(d);
-            } else {
-                out.add(d);
-            }
-        }
-        return out;
     }
 
     private static void putVersions(Map<String, String> prefs, Resolution resolution) {
@@ -489,138 +367,6 @@ public final class LockOrchestrator {
         }
     }
 
-    private void collectBomConstraints(
-            JkBuild project,
-            EffectivePomBuilder pomBuilder,
-            Map<String, String> bomConstraints,
-            Map<String, String> constraintProvenance)
-            throws IOException, InterruptedException {
-        for (Dependency platformDep : project.dependencies().of(Scope.PLATFORM)) {
-            // Resolve caret/tilde/latest/snapshot against repo metadata, then load *that* BOM's
-            // catalog. Exact pins skip metadata. Open ranges are still rejected.
-            String bomVersion =
-                    PlatformBomVersions.resolve(repos, platformDep.group(), platformDep.name(), platformDep.version());
-            Coordinate bomCoord = Coordinate.of(platformDep.group(), platformDep.name(), bomVersion);
-            EffectivePom bomPom = pomBuilder.build(bomCoord);
-            String bomLabel = bomCoord.toGav();
-            for (Pom.Dep m : bomPom.managedDependencies()) {
-                if (m.version() == null || m.version().isBlank()) continue;
-                String existing = bomConstraints.get(m.module());
-                if (existing == null) {
-                    bomConstraints.put(m.module(), m.version());
-                    constraintProvenance.put(m.module(), bomLabel);
-                } else if (!existing.equals(m.version())) {
-                    throw new IllegalStateException("platform BOM conflict on `"
-                            + m.module()
-                            + "`: "
-                            + constraintProvenance.get(m.module())
-                            + " constrains to "
-                            + existing
-                            + ", but "
-                            + bomLabel
-                            + " constrains to "
-                            + m.version()
-                            + ". Pick one BOM or pin the coord explicitly.");
-                }
-            }
-            // Quarkus (and other) BOMs pin maven-resolver-api/impl via dependencyManagement but
-            // often omit named-locks. Bare edges are exact under a platform (EffectivePom fill),
-            // but keep the family in the platform map for preferredVersion / pinned-by when an
-            // edge arrives without a fill.
-            alignMavenResolverFamily(bomConstraints, constraintProvenance, bomPom, bomLabel);
-        }
-    }
-
-    /**
-     * Artifacts that must share one {@code maven-resolver} line. When a platform BOM manages any
-     * core resolver jar (or declares {@code maven-resolver.version}), pin the rest of the family
-     * to that line if still unconstrained.
-     */
-    private static final List<String> MAVEN_RESOLVER_FAMILY = List.of(
-            "maven-resolver-api",
-            "maven-resolver-spi",
-            "maven-resolver-util",
-            "maven-resolver-impl",
-            "maven-resolver-named-locks",
-            "maven-resolver-connector-basic",
-            "maven-resolver-transport-wagon",
-            "maven-resolver-transport-http",
-            "maven-resolver-transport-file");
-
-    /**
-     * Fill maven-resolver family gaps in {@code bomConstraints} so named-locks cannot float to a major line that
-     * breaks {@code NamedLockFactory.getLock(String)}. Public: the plugin tool-closure path aligns the same facts.
-     */
-    public static void alignMavenResolverFamily(
-            Map<String, String> bomConstraints,
-            Map<String, String> constraintProvenance,
-            EffectivePom bomPom,
-            String bomLabel) {
-        String line = bomPom.properties().get("maven-resolver.version");
-        if (line == null || line.isBlank()) {
-            // Prefer the BOM's own managed api/impl pin over a line already present from an
-            // earlier BOM (those are already in bomConstraints; we only fill gaps).
-            for (Pom.Dep m : bomPom.managedDependencies()) {
-                if (m.version() == null || m.version().isBlank() || m.module() == null) continue;
-                if ("org.apache.maven.resolver:maven-resolver-api".equals(m.module())
-                        || "org.apache.maven.resolver:maven-resolver-impl".equals(m.module())) {
-                    line = m.version();
-                    if (m.module().endsWith(":maven-resolver-api")) break;
-                }
-            }
-        }
-        if (line == null || line.isBlank()) return;
-        String provenance = bomLabel + " (maven-resolver family)";
-        for (String art : MAVEN_RESOLVER_FAMILY) {
-            String mod = "org.apache.maven.resolver:" + art;
-            if (bomConstraints.putIfAbsent(mod, line) == null) {
-                constraintProvenance.put(mod, provenance);
-            }
-        }
-    }
-
-    private static void stripBomForExactRoots(
-            List<Dependency> declared,
-            Map<String, String> bomConstraints,
-            Map<String, String> constraintProvenance,
-            Set<String> injectedRuntimes) {
-        for (Dependency d : declared) {
-            if (d.isPlatformManaged()) continue;
-            if (!(d.version() instanceof VersionSelector.Exact)) continue;
-            // An INJECTED runtime root is jk's own bookkeeping, not a user override — it
-            // already carries the BOM's managed version, and stripping the BOM here would
-            // flip every other edge of the GA to raw POM fills (grails-core declares a
-            // groovy NEWER than grails-bom manages → unsat,.
-            if (injectedRuntimes.contains(d.module())) continue;
-            if (bomConstraints.containsKey(d.module())) {
-                bomConstraints.remove(d.module());
-                constraintProvenance.remove(d.module());
-            }
-        }
-    }
-
-    private static List<Dependency> materializePlatformManaged(
-            List<Dependency> declared, Map<String, String> bomConstraints) {
-        List<Dependency> roots = new ArrayList<>(declared.size());
-        for (Dependency d : declared) {
-            if (d.isPlatformManaged()) {
-                String managed = bomConstraints.get(d.module());
-                if (managed == null) {
-                    throw new IllegalStateException("`" + d.module()
-                            + "` is declared without a version, but no [platform-dependencies] BOM manages it"
-                            + " — add a `version`, or import the BOM that pins it.");
-                }
-                roots.add(Dependency.of(d.library(), d.module(), VersionSelector.parse("=" + managed))
-                        .withOptional(d.optional())
-                        .withKind(d.kind())
-                        .withFeatures(d.requestedFeatures(), d.defaultFeatures()));
-            } else {
-                roots.add(d);
-            }
-        }
-        return roots;
-    }
-
     private Map<String, EnumSet<Scope>> tagScopes(
             JkBuild project, Resolution resolution, List<Scope> scopes, boolean includeJunitSeeds) {
         Map<String, EnumSet<Scope>> tagsByModule = new HashMap<>();
@@ -632,9 +378,9 @@ public final class LockOrchestrator {
                 rootModules.add(d.packageKey());
             }
             if (includeJunitSeeds && scope == Scope.TEST) {
-                rootModules.add(JUNIT_LAUNCHER.packageKey());
+                rootModules.add(LockRoots.JUNIT_LAUNCHER.packageKey());
                 if (project.dependencies().of(Scope.TEST).isEmpty()) {
-                    rootModules.add(JUNIT_JUPITER.packageKey());
+                    rootModules.add(LockRoots.JUNIT_JUPITER.packageKey());
                 }
             }
             if (rootModules.isEmpty()) continue;
@@ -653,8 +399,7 @@ public final class LockOrchestrator {
             KmpRedirects kmp,
             EffectivePomBuilder pomBuilder,
             String fallbackSource,
-            Map<String, String> bomConstraints,
-            Map<String, String> constraintProvenance,
+            PlatformConstraints constraints,
             Map<String, List<String>> activatedFeatures,
             BooleanSupplier abort)
             throws IOException, InterruptedException {
@@ -714,14 +459,10 @@ public final class LockOrchestrator {
 
         if (tags.isEmpty()) tags = EnumSet.of(Scope.MAIN);
 
-        String pinnedBy = null;
         String ga = PackageId.isMavenPackageKey(mod.module())
                 ? PackageId.parse(mod.module()).ga()
                 : mod.module();
-        String constrained = bomConstraints.get(ga);
-        if (constrained != null && constrained.equals(mod.version())) {
-            pinnedBy = constraintProvenance.get(ga);
-        }
+        String pinnedBy = constraints.pinnedBy(ga, mod.version());
         // Record activated cross-package features on the library row when present.
         List<String> feat = activatedFeatures.get(ga);
         if (feat == null) feat = activatedFeatures.get(mod.module());

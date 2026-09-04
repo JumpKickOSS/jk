@@ -36,6 +36,7 @@ import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolver.LockOrchestrator;
 import cc.jumpkick.resolver.NaiveResolver;
 import cc.jumpkick.resolver.PlatformBomVersions;
+import cc.jumpkick.resolver.PlatformConstraints;
 import cc.jumpkick.resolver.PubGrubResolver;
 import cc.jumpkick.resolver.Resolution;
 import cc.jumpkick.tool.TrustedPlugins;
@@ -521,7 +522,7 @@ public final class PluginBuild {
             if (m.version() == null || m.version().isBlank()) continue;
             constraints.putIfAbsent(m.module(), m.version());
         }
-        LockOrchestrator.alignMavenResolverFamily(constraints, new HashMap<>(), bomPom, bomGav);
+        PlatformConstraints.alignMavenResolverFamily(constraints, new HashMap<>(), bomPom, bomGav);
         if (constraints.isEmpty()) {
             throw new IOException("managed-by BOM " + bomGav + " contributed no managed dependency pins");
         }

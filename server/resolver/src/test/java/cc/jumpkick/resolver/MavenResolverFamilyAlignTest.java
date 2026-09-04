@@ -38,7 +38,7 @@ class MavenResolverFamilyAlignTest {
         provenance.put("org.apache.maven.resolver:maven-resolver-api", "io.quarkus.platform:quarkus-bom:3.38.0");
         provenance.put("org.apache.maven.resolver:maven-resolver-impl", "io.quarkus.platform:quarkus-bom:3.38.0");
 
-        LockOrchestrator.alignMavenResolverFamily(
+        PlatformConstraints.alignMavenResolverFamily(
                 constraints, provenance, bom, "io.quarkus.platform:quarkus-bom:3.38.0");
 
         assertThat(constraints.get("org.apache.maven.resolver:maven-resolver-named-locks"))
@@ -65,7 +65,7 @@ class MavenResolverFamilyAlignTest {
 
         Map<String, String> constraints = new LinkedHashMap<>();
         Map<String, String> provenance = new LinkedHashMap<>();
-        LockOrchestrator.alignMavenResolverFamily(
+        PlatformConstraints.alignMavenResolverFamily(
                 constraints, provenance, bom, "io.quarkus:quarkus-bootstrap-bom:3.38.0");
 
         assertThat(constraints.get("org.apache.maven.resolver:maven-resolver-named-locks"))
@@ -79,7 +79,7 @@ class MavenResolverFamilyAlignTest {
         EffectivePom bom = new EffectivePom("org.example", "plain-bom", "1.0", "pom", Map.of(), List.of(), List.of());
         Map<String, String> constraints = new LinkedHashMap<>();
         Map<String, String> provenance = new LinkedHashMap<>();
-        LockOrchestrator.alignMavenResolverFamily(constraints, provenance, bom, "org.example:plain-bom:1.0");
+        PlatformConstraints.alignMavenResolverFamily(constraints, provenance, bom, "org.example:plain-bom:1.0");
         assertThat(constraints).isEmpty();
     }
 
