@@ -1260,18 +1260,19 @@ Same charter, one patient at a time. Current sizes:
 
 | File | Before | Floor | Today | Cap | How |
 |---|---|---|---|---|---|
-| `EngineServer` | 3,418¹ | 1,064 | 587 | 800 | elect/accept/drain/close + composition root |
-| `JobEnvelope` | — | 683 | 500 | 800 | one submit path |
+| `EngineServer` | 3,418¹ | 1,064 | 580 | 800 | elect/accept/drain/close + composition root |
+| `JobEnvelope` | — | 683 | 512 | 800 | one submit path |
 | `HttpEngineServer` | 1,592 | 768 | 558 | 800 | router / history / project / live |
-| `EngineClient` | 2,616 | 942 | 573 | 800 | spawn, wire, hosted verbs |
-| `EngineProtocol` | 3,379 | 464 | 142 | 800 | discriminators; builders in `Proto*` families |
-| `BuildService` | 1,618 | 507 | 281 | 800 | lock-guard / execute / fold |
-| `BuildPlanner` | 5,348 | 1,191 | 512 | 800 | `Planner*` step clusters; facade `coreBuilder` |
-| `JkBuildParser` | 2,238 | 391 | 328 | 800 | `Manifest*` table parsers |
-| `JkManager` | 2,204² | 1,178 | 719 | 800 | facade: live region + Ctrl-C handoff |
+| `EngineClient` | 2,616 | 942 | 658 | 800 | spawn, wire, hosted verbs |
+| `EngineProtocol` | 3,379 | 464 | 143 | 800 | discriminators; builders in `Proto*` families |
+| `BuildService` | 1,618 | 507 | 283 | 800 | lock-guard / execute / fold |
+| `BuildPlanner` | 5,348 | 1,191 | 561 | 800 | `Planner*` step clusters; facade `coreBuilder` |
+| `JkBuildParser` | 2,238 | 391 | 395 | 800 | `Manifest*` table parsers |
+| `JkManager` | 2,204² | 1,178 | 726 | 800 | facade: live region + Ctrl-C handoff |
 | `JkManagerView` | — | — | 455 | 800 | paint |
 | `JkManagerColor` | — | — | 380 | 800 | token colour |
-| `NewCommand` | 1,403 | 1,164 | 546 | 800 | wizard |
+| `NewCommand` | 1,403 | 1,164 | 549 | 800 | wizard |
+| `LockOrchestrator` | — | — | 796 | 800 | partition / constrain / solve / materialize / assemble |
 
 ¹ EngineServer entered this batch at 3,418 lines; an earlier Typed Envelope peel had
 already taken it from its 7,073-line peak.
@@ -1297,6 +1298,9 @@ prints the tightened line whenever a listed file shrinks, and the same
 commit that pastes that number into `size-baseline.txt` updates **Today**
 here. Re-baselining upward requires deleting the invariant comment that
 justified the old number and writing one that justifies the new one.
+Unlisted rows have no ratchet line to paste: recount them with the same
+algorithm (`codeLines` in `.jk/after-build.kts`) in any commit that
+changes the file, and fix the number here in that commit.
 
 No listed file remains over a hard cap. A new exception is a reviewable
 `size-baseline.txt` entry plus the invariant that must not be split.
