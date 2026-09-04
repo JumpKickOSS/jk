@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.run;
 
 import cc.jumpkick.cli.tui.JkManager;
+import cc.jumpkick.cli.tui.OutputPane;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
@@ -152,7 +153,7 @@ public final class CommandManagerListener implements BuildPlanListener {
             streamed.add(ConsoleSpec.diagnosticKey(step, code, message));
         }
         // Non-test diagnostic: treat as tool/worker failure — force-open the process-output pane.
-        if (JkManager.forceShowOnStepFailure(step)) {
+        if (OutputPane.forceShowOnStepFailure(step)) {
             cm.showProcessFailureOutput();
         }
     }
@@ -179,7 +180,7 @@ public final class CommandManagerListener implements BuildPlanListener {
         cm.stepDone(module, step, ok, group == null ? "" : group);
         // Failed tool/worker (e.g. native-image): force-open the process-output peek. Test-runner
         // failures keep curated chrome and do not force-open.
-        if (!ok && JkManager.forceShowOnStepFailure(step)) {
+        if (!ok && OutputPane.forceShowOnStepFailure(step)) {
             cm.showProcessFailureOutput();
         }
     }

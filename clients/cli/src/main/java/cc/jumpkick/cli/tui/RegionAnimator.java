@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.tui;
 
 import java.util.function.BooleanSupplier;
+import java.util.function.LongConsumer;
 
 /**
  * Run exactly one of the live region's two background loops — the ANSI frame loop, or the
@@ -19,7 +20,7 @@ final class RegionAnimator {
     static final long STALE_FLUSH_MS = 360;
 
     private final Object lock;
-    private final OutputCapture capture;
+    private final LongConsumer flushStale;
     private final Runnable frame;
     private final Runnable heartbeat;
     private final BooleanSupplier done;
@@ -28,13 +29,14 @@ final class RegionAnimator {
     private Thread thread;
 
     /**
+     * @param flushStale flushes a captured partial line that went quiet; runs outside {@code lock}
      * @param frame paints one frame; takes {@code lock} itself
      * @param heartbeat one plain-mode beat; called under {@code lock}
      * @param done whether a terminal render already happened; read under {@code lock}
      */
-    RegionAnimator(Object lock, OutputCapture capture, Runnable frame, Runnable heartbeat, BooleanSupplier done) {
+    RegionAnimator(Object lock, LongConsumer flushStale, Runnable frame, Runnable heartbeat, BooleanSupplier done) {
         this.lock = lock;
-        this.capture = capture;
+        this.flushStale = flushStale;
         this.frame = frame;
         this.heartbeat = heartbeat;
         this.done = done;
@@ -64,7 +66,7 @@ final class RegionAnimator {
                 // Flush a captured partial line that's gone quiet (no newline),
                 // OUTSIDE the render lock so the order matches step writes
                 // (sink → lock) and can't deadlock with tick (lock only).
-                capture.flushStale(STALE_FLUSH_MS);
+                flushStale.accept(STALE_FLUSH_MS);
                 frame.run();
                 Thread.sleep(JkManager.FRAME_MS);
             }

@@ -241,9 +241,9 @@ final class JkManagerPlainView {
      */
     void dumpProcessOutput() {
         synchronized (m.lock) {
-            var pending = m.outputWindow.uncommittedForDisplay(OutputWindow.MAX_LINES);
+            var pending = m.pane.window().uncommittedForDisplay(OutputWindow.MAX_LINES);
             for (String line : pending) m.out.println(line);
-            m.outputWindow.markAllCommitted();
+            m.pane.window().markAllCommitted();
             if (!pending.isEmpty()) m.out.flush();
         }
     }

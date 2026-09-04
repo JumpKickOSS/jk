@@ -7,7 +7,6 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.NerdFontCaps;
 import cc.jumpkick.config.SessionContext;
-import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.terminal.Size;
 import cc.jumpkick.terminal.Style;
@@ -166,22 +165,8 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     /** The one background loop for this region; takes {@link #lock} where the manager did. */
     final RegionAnimator animator;
 
-    /** System.out/err redirection while the region is up — see {@link #captureOutput}. */
-    private final OutputCapture capture = new OutputCapture(this::writeProcessOutput);
-
-    /**
-     * Sliding process-output buffer for plan mode (Ctrl-O peek / force-show on tool failure). Always
-     * present; only plan+animate installs the key listener.
-     */
-    final OutputWindow outputWindow = new OutputWindow();
-
-    /**
-     * Ctrl-O peek listener (plan mode on an interactive TTY only); {@code null} when the controlling
-     * terminal is unavailable. Written by the plan-starting thread, read by whichever thread settles
-     * — often the SIGINT handler (renderCanceled → stopAnimator). {@link PeekKeys} owns the terminal
-     * attributes and the atomicity of giving them back.
-     */
-    private volatile PeekKeys keys;
+    /** Process-output pane, its Ctrl-O key and the stream swap; takes {@link #lock} where the manager did. */
+    final OutputPane pane;
 
     JkManager(PrintStream out, boolean animate, boolean planMode, int width) {
         // PlainAscii.wrap is identity under ANSI; under --no-ansi rewrites …/•/● in messages.
@@ -190,7 +175,8 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         this.planMode = planMode;
         this.width = width <= 0 ? DEFAULT_WIDTH : width;
         this.windowTitle = new WindowTitle(this.out, animate);
-        this.animator = new RegionAnimator(lock, capture, this::tick, plain::maybeEmitHeartbeat, () -> done);
+        this.pane = new OutputPane(this, lock);
+        this.animator = new RegionAnimator(lock, pane::flushStale, this::tick, plain::maybeEmitHeartbeat, () -> done);
     }
 
     /** Package-private convenience for simple-mode tests. */
@@ -241,13 +227,13 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         cm.view.ensureLeadingBlank(); // blank line before human chrome
         // config.build-output / JK_BUILD_OUTPUT: start with the process-output peek open.
         if (SessionContext.current().config().buildOutputOr(false)) {
-            cm.outputWindow.show();
+            cm.pane.window().show();
         }
         if (animate && Theme.active().isAnsi()) {
             out.print(Ansi.HIDE_CURSOR);
             out.flush();
             cm.animator.startFrames();
-            cm.keys = PeekKeys.attach(cm::toggleOutputWindow, () -> cm.animator.stopped() || cm.done);
+            cm.pane.attachPeekKey(() -> cm.animator.stopped() || cm.done);
         } else if (animate) {
             // Plain plan: stage/ETA/settle lines are event-driven; heartbeat covers long stages.
             cm.animator.startPlainHeartbeat();
@@ -257,7 +243,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
 
     /** Sliding process-output window for this plan (tests / force-show). */
     public OutputWindow outputWindow() {
-        return outputWindow;
+        return pane.window();
     }
 
     /**
@@ -265,39 +251,12 @@ public final class JkManager implements AutoCloseable, LiveRegion {
      * plan. Does not run for test failures — callers must not invoke this for run-tests.
      */
     public void showProcessFailureOutput() {
-        if (!planMode) return;
-        synchronized (lock) {
-            if (done) return;
-            boolean wasOpen = outputWindow.visible();
-            outputWindow.show();
-            if (animate && Theme.active().isAnsi() && !wasOpen) {
-                view.openPeekPaint();
-            } else if (animate && Theme.active().isAnsi()) {
-                view.requestFullRepaint();
-                view.paintBuildPlan();
-                out.flush();
-            } else if (!Theme.active().isAnsi()
-                    && !SessionContext.current().config().verboseOr(false)) {
-                // Plain mode buffers tool stdout (suppressed unless -v); a crash is the one
-                // moment it must surface — verbose already printed it live.
-                plain.dumpProcessOutput();
-            }
-        }
+        pane.showOnFailure();
     }
 
     /** Toggle the process-output pane (Ctrl-O). */
     public void toggleOutputWindow() {
-        if (!planMode) return;
-        synchronized (lock) {
-            if (done) return;
-            if (outputWindow.visible()) {
-                outputWindow.hide();
-                if (animate && Theme.active().isAnsi()) view.closePeekPaint();
-            } else {
-                outputWindow.show();
-                if (animate && Theme.active().isAnsi()) view.openPeekPaint();
-            }
-        }
+        pane.toggle();
     }
 
     /** Current terminal width in columns (updates on the next paint after a resize). */
@@ -410,7 +369,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
      * stage-change or 30s heartbeat line shows the updated {@code running N tests}.
      */
     public void notePlainTestTick(String module, String stepKey, int delta) {
-        if (!plain.animating() || !isCuratedTestStep(stepKey)) return;
+        if (!plain.animating() || !OutputPane.isCuratedTestStep(stepKey)) return;
         synchronized (lock) {
             Row r = rows.get(key(module, stepKey));
             if (r != null) plain.noteTestTick(r, delta);
@@ -756,19 +715,6 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         view.writeProcessOutput(text);
     }
 
-    /** A failed tool/worker step force-opens the process-output pane; a curated test failure does not. */
-    public static boolean forceShowOnStepFailure(String step) {
-        return !isCuratedTestStep(step);
-    }
-
-    /**
-     * The curated test-runner step ({@code run-tests} + forks) — keyed on step identity, never the
-     * step's group: compile-test failures are group Test too and must force-open (tool output).
-     */
-    private static boolean isCuratedTestStep(String stepKey) {
-        return stepKey != null && stepKey.startsWith(TaskNames.RUN_TESTS);
-    }
-
     public List<String> renderBuildPlanLines(int cols, long elapsedMillis) {
         return view.renderBuildPlanLines(cols, elapsedMillis);
     }
@@ -795,7 +741,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
             if (!animate) return false;
             if (planMode) {
                 if (Theme.active().isAnsi()) {
-                    flushVisibleOutputToScrollback();
+                    pane.flushVisibleToScrollback();
                     wipeRegion();
                     out.print(Osc.taskbarClear());
                     out.print(Ansi.SHOW_CURSOR);
@@ -947,22 +893,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     /** Stop the background loop and release the Ctrl-O key listener. Idempotent. */
     void stopAnimator() {
         animator.stop();
-        PeekKeys k = keys;
-        if (k != null) k.close();
-    }
-
-    /**
-     * Peek close for settle/cancel: process lines are already permanent scrollback above the live
-     * region — hide the pane so wipe clears separator+wedge (not a re-dump of the log). The settle
-     * path then prints one blank between that scrollback and the settle chip when any lines were
-     * committed.
-     */
-    void flushVisibleOutputToScrollback() {
-        synchronized (lock) {
-            if (!outputWindow.visible()) return;
-            // Lines were committed above the region as they arrived; leave them in scrollback.
-            outputWindow.hide();
-        }
+        pane.releasePeekKey();
     }
 
     // --- helpers ----------------------------------------------------------
@@ -984,18 +915,16 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     /**
      * Redirect {@code System.out}/{@code System.err} so any process/step output is line-buffered and
      * printed <em>above</em> the live region via {@link #writeAbove}, keeping the region pinned to
-     * the bottom. The region itself keeps painting to the original (captured) stdout, so there's no
-     * recursion. Close the returned scope (try-with-resources) to restore the streams and flush any
+     * the bottom. Close the returned scope (try-with-resources) to restore the streams and flush any
      * trailing partial line. No-op when not animating.
      */
     public OutputScope captureOutput() {
-        if (!animate || !capture.start()) return () -> {};
-        return capture::restore;
+        return pane.captureOutput();
     }
 
     /** Hand the real streams back, flushing a trailing partial line. Idempotent. */
     void restoreStreams() {
-        capture.restore();
+        pane.restoreStreams();
     }
 
     enum RowState {

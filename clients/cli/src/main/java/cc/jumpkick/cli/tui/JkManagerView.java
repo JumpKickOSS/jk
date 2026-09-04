@@ -112,7 +112,7 @@ final class JkManagerView {
      * as {@link JkManager#settle} but outputs nothing.
      */
     public void dismiss() {
-        m.restoreStreams();
+        m.pane.restoreStreams();
         m.stopAnimator();
         synchronized (m.lock) {
             if (m.done) return;
@@ -141,7 +141,7 @@ final class JkManagerView {
      * a subprocess ({@code jk run}) add their own separator when needed.
      */
     void settle(String line, List<String> above) {
-        m.restoreStreams(); // flush any captured output above the region first
+        m.pane.restoreStreams(); // flush any captured output above the region first
         m.stopAnimator();
         synchronized (m.lock) {
             if (m.done) return;
@@ -149,9 +149,9 @@ final class JkManagerView {
             LiveRegion.clearActive(m);
             m.windowTitle.clear();
             // Process lines already in scrollback; wipe removes rule/blank + live chrome.
-            int processAbove = m.planMode ? m.outputWindow.committedScrollbackLines() : 0;
+            int processAbove = m.planMode ? m.pane.window().committedScrollbackLines() : 0;
             if (m.animate && Theme.active().isAnsi()) {
-                if (m.planMode) m.flushVisibleOutputToScrollback();
+                if (m.planMode) m.pane.flushVisibleToScrollback();
                 // Simple mode keeps the settled spinner line and prints the result below it; plan
                 // mode replaces the whole region (cursor lands on the first wiped row).
                 if (m.planMode) m.wipeRegion();
@@ -181,7 +181,7 @@ final class JkManagerView {
             ensureLeadingBlank(); // quiet / late m.settle still gets the leading blank
             m.out.println(line);
             m.out.flush();
-            m.outputWindow.resetCommitted();
+            m.pane.window().resetCommitted();
         }
     }
 
@@ -225,7 +225,7 @@ final class JkManagerView {
         boolean verbose = SessionContext.current().config().verboseOr(false);
         if (!Theme.active().isAnsi() && !verbose) {
             synchronized (m.lock) {
-                if (m.planMode && !m.done) m.outputWindow.append(text);
+                if (m.planMode && !m.done) m.pane.window().append(text);
             }
             return;
         }
@@ -261,9 +261,9 @@ final class JkManagerView {
                 }
                 // append() reports blank-strips; a size compare would misread ring-full
                 // eviction (size unchanged on every accepted append) as a strip.
-                boolean accepted = m.outputWindow.append(text);
+                boolean accepted = m.pane.window().append(text);
                 if (!accepted) return; // blank-stripped: nothing new for the live region
-                if (m.outputWindow.visible()) {
+                if (m.pane.window().visible()) {
                     // Lift live region → emit one line into scrollback → repaint rule+wedge only.
                     liftEmitRepaintLive(text);
                 }
@@ -354,11 +354,11 @@ final class JkManagerView {
         int budget = OutputWindow.displayBudget(m.height, chrome.size());
         // Uncommitted only: lines from an earlier open (dump or live appends) are already
         // permanent scrollback right above — re-dumping them duplicates.
-        List<String> pane = m.outputWindow.uncommittedForDisplay(budget);
+        List<String> pane = m.pane.window().uncommittedForDisplay(budget);
         liftRegion();
         for (String line : pane) emitLine(line);
-        m.outputWindow.noteCommitted(pane.size());
-        m.outputWindow.markAllCommitted();
+        m.pane.window().noteCommitted(pane.size());
+        m.pane.window().markAllCommitted();
         writeLiveRegion(liveRegionLines(chrome, m.width));
         m.out.flush();
     }
@@ -385,8 +385,8 @@ final class JkManagerView {
         syncSize();
         liftRegion();
         emitLine(text);
-        m.outputWindow.noteCommitted(1);
-        m.outputWindow.markAllCommitted();
+        m.pane.window().noteCommitted(1);
+        m.pane.window().markAllCommitted();
         List<String> chrome = renderChromeLines(m.width, m.elapsedMillis());
         writeLiveRegion(liveRegionLines(chrome, m.width));
         m.out.flush();
@@ -411,9 +411,9 @@ final class JkManagerView {
      */
     private List<String> liveRegionLines(List<String> chrome, int cols) {
         List<String> live = new ArrayList<>();
-        if (m.outputWindow.visible()) {
+        if (m.pane.window().visible()) {
             live.add(OutputWindow.ruleLine(cols));
-        } else if (m.outputWindow.committedScrollbackLines() > 0) {
+        } else if (m.pane.window().committedScrollbackLines() > 0) {
             live.add(""); // blank stand-in for the rule
         }
         live.addAll(chrome);

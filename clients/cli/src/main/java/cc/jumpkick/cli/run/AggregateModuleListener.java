@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.run;
 
 import cc.jumpkick.cli.tui.JkManager;
+import cc.jumpkick.cli.tui.OutputPane;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
@@ -156,7 +157,7 @@ public final class AggregateModuleListener implements BuildPlanListener {
                 cm.writeAbove(report);
             }
         }
-        if (JkManager.forceShowOnStepFailure(step)) {
+        if (OutputPane.forceShowOnStepFailure(step)) {
             cm.showProcessFailureOutput();
         }
     }
@@ -192,7 +193,7 @@ public final class AggregateModuleListener implements BuildPlanListener {
         // succeeded.
         boolean ok = status == TaskStatus.SUCCESS || status == TaskStatus.SKIPPED;
         cm.stepDone(module, step, ok, group == null ? "" : group);
-        if (!ok && JkManager.forceShowOnStepFailure(step)) {
+        if (!ok && OutputPane.forceShowOnStepFailure(step)) {
             cm.showProcessFailureOutput();
         }
     }
