@@ -24,6 +24,7 @@
 :cli    | cc.jumpkick.cli.engine.EngineClientTest        | wire      | success,failure | The client half of the JSONL socket: handshake, status, stop, drain, and the not-listening answers every command depends on.
 :engine | cc.jumpkick.engine.EngineServerTest            | wire      | success,failure | The server half of the same socket, including a stale socket file from a killed engine and the loopback TCP token gate.
 :engine | cc.jumpkick.engine.EngineServerRequestTest     | wire      | success         | Lock, audit, compile, tool-resolve and cache requests round-trip over the socket, so a wire shape change cannot land silently.
+:engine | cc.jumpkick.engine.CancellationPrecedenceTest  | wire      | success,failure | The cancel chain over a live socket: ack shapes, the three cancel reasons, and that a cancelled client still reads its terminal and job-finish rather than EOF.
 :cli    | cc.jumpkick.cli.engine.EngineFleetTest         | spawn     | success,failure | Which processes count as this home's engine, and that stopping a foreign or dead pid reports rather than pretends.
 :engine | cc.jumpkick.engine.EngineTakeoverTest          | spawn     | success,failure | A newer engine repoints the endpoint and the predecessor drains, including the pid-file mismatch that strands a ghost.
 :engine | cc.jumpkick.engine.JobWorkersTest              | workers   | success,failure | Worker processes are tracked per request and killed on cancel, including one registered after shutdown.
