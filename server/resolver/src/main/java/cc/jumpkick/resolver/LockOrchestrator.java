@@ -19,7 +19,6 @@ import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.Pom;
 import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoGroup;
-import cc.jumpkick.resolver.pubgrub.Diagnostics;
 import cc.jumpkick.run.JkThreads;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -109,15 +108,12 @@ public final class LockOrchestrator {
 
     private LanguageRuntimeInject.ToolVersions toolVersions = LanguageRuntimeInject.ToolVersions.NONE;
 
-    private Diagnostics.Palette diagnosticPalette;
-
     /** BOM pin policy; default {@link PlatformPolicy#ENFORCED}. */
     private PlatformPolicy platformPolicy = PlatformPolicy.ENFORCED;
 
     /** Unmapped-fill policy; default {@link cc.jumpkick.model.UnmappedPolicy#MEDIATE}. */
     private UnmappedPolicy unmappedPolicy = UnmappedPolicy.MEDIATE;
 
-    /** Directory of the consuming {@code jk.toml} (path= feature expansion). */
     /** The compiler versions this lock pins; the injected stdlibs follow them exactly. */
     public LockOrchestrator withToolVersions(LanguageRuntimeInject.ToolVersions tools) {
         this.toolVersions = tools == null ? LanguageRuntimeInject.ToolVersions.NONE : tools;
@@ -166,20 +162,12 @@ public final class LockOrchestrator {
         return this;
     }
 
-    public LockOrchestrator withDiagnosticPalette(Diagnostics.Palette palette) {
-        this.diagnosticPalette = palette;
-        return this;
-    }
-
     private PubGrubResolver buildResolver(
             RepoGroup repos,
             Map<String, String> bomConstraints,
             Map<String, String> lockedVersionPrefs,
             KmpRedirects kmp) {
-        PubGrubResolver r =
-                new PubGrubResolver(repos, bomConstraints, lockedVersionPrefs, kmp, platformPolicy, unmappedPolicy);
-        if (diagnosticPalette != null) r.palette = diagnosticPalette;
-        return r;
+        return new PubGrubResolver(repos, bomConstraints, lockedVersionPrefs, kmp, platformPolicy, unmappedPolicy);
     }
 
     /** Lock with the project's default feature selection. */
@@ -310,7 +298,7 @@ public final class LockOrchestrator {
         }
         // Cross-package features on path= libraries: pull their optional deps.
         CrossPackageFeatures.Result cross = CrossPackageFeatures.expand(projectDir, mainDeduped.values());
-        this.crossPackageActivatedFeatures = cross.activatedFeaturesByModule();
+        Map<String, List<String>> activatedFeatures = cross.activatedFeaturesByModule();
         for (Dependency extra : cross.extrasList()) {
             mainDeduped.putIfAbsent(extra.packageKey(), extra);
         }
@@ -449,6 +437,7 @@ public final class LockOrchestrator {
                                             fallbackSource,
                                             bomConstraints,
                                             constraintProvenance,
+                                            activatedFeatures,
                                             ResolveObserver.NOOP,
                                             failed::get);
                                 } catch (IOException | InterruptedException ex) {
@@ -578,8 +567,8 @@ public final class LockOrchestrator {
     }
 
     /**
-     * Catch-up graph progress for any packages not already ticked live during the solve /
-     * . {@code seen} keys are display modules (same as live decision ticks).
+     * Catch-up graph progress for packages the live decision ticks did not already report.
+     * {@code seen} keys are display modules, the same keys the live ticks use.
      */
     private static void noteGraph(ResolveObserver observer, Resolution resolution, Set<String> seen, int estimate) {
         for (Resolution.ResolvedModule mod : resolution.modules().values()) {
@@ -621,13 +610,13 @@ public final class LockOrchestrator {
             // exclusion state is per-graph; main's clean paths must not bleed into
             // the test/processor solves.
             sharedSource.resetSolveScopedState();
-            PubGrubResolver r = new PubGrubResolver(sharedSource, sharedPomBuilder, kmp).withOnDecision(liveGraph);
-            if (diagnosticPalette != null) r.palette = diagnosticPalette;
-            return r.resolve(roots);
+            return new PubGrubResolver(sharedSource, sharedPomBuilder, kmp)
+                    .withOnDecision(liveGraph)
+                    .resolve(roots);
         }
-        PubGrubResolver r = buildResolver(repos, bomConstraints, prefs, kmp).withOnDecision(liveGraph);
-        if (diagnosticPalette != null) r.palette = diagnosticPalette;
-        return r.resolve(roots);
+        return buildResolver(repos, bomConstraints, prefs, kmp)
+                .withOnDecision(liveGraph)
+                .resolve(roots);
     }
 
     /** Unwrap the layered CompletionExceptions around a materialize failure. */
@@ -855,6 +844,7 @@ public final class LockOrchestrator {
             String fallbackSource,
             Map<String, String> bomConstraints,
             Map<String, String> constraintProvenance,
+            Map<String, List<String>> activatedFeatures,
             ResolveObserver observer,
             BooleanSupplier abort)
             throws IOException, InterruptedException {
@@ -926,10 +916,8 @@ public final class LockOrchestrator {
             pinnedBy = constraintProvenance.get(ga);
         }
         // Record activated cross-package features on the library row when present.
-        List<String> feat = crossPackageActivatedFeatures == null ? null : crossPackageActivatedFeatures.get(ga);
-        if (feat == null && crossPackageActivatedFeatures != null) {
-            feat = crossPackageActivatedFeatures.get(mod.module());
-        }
+        List<String> feat = activatedFeatures.get(ga);
+        if (feat == null) feat = activatedFeatures.get(mod.module());
         if (feat != null && !feat.isEmpty() && pinnedBy == null) {
             pinnedBy = "features:" + String.join(",", feat);
         }
@@ -944,9 +932,6 @@ public final class LockOrchestrator {
                 mod.deps(),
                 pinnedBy);
     }
-
-    /** Filled during {@link #lock}; read by {@link #toArtifact}. */
-    private Map<String, List<String>> crossPackageActivatedFeatures;
 
     /**
      * True when this package is not expected to publish a primary artifact: coordinate type

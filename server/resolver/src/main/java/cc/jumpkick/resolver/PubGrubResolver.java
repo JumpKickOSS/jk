@@ -42,8 +42,6 @@ public final class PubGrubResolver implements Resolver {
 
     private final EffectivePomBuilder pomBuilder;
     private KmpRedirects kmp = KmpRedirects.NONE;
-    /** Optional palette injected by the CLI so diagnostic colors match the live theme. */
-    Diagnostics.Palette palette; // package-private for LockOrchestrator
     /** Optional live graph progress (package key, version) during PubGrub decisions. */
     private BiConsumer<String, String> onDecision;
 
@@ -273,11 +271,8 @@ public final class PubGrubResolver implements Resolver {
             boolean ansi = System.console() != null
                     && !"dumb".equals(System.getenv("TERM"))
                     && !EnvValues.isCi(System::getenv);
-            // Use the injected palette (from the CLI theme) when available; fall back to the
-            // built-in DEFAULT which hard-codes the same values as JkDarkTheme.
-            Diagnostics.Palette palette = this.palette != null
-                    ? this.palette
-                    : (ansi ? Diagnostics.Palette.DEFAULT : Diagnostics.Palette.PLAIN);
+            // DEFAULT hard-codes the same values as JkDarkTheme, so the CLI and the engine agree.
+            Diagnostics.Palette palette = ansi ? Diagnostics.Palette.DEFAULT : Diagnostics.Palette.PLAIN;
             throw new UnsatisfiableException(Diagnostics.render(e.rootCause(), palette), e.rootCause());
         }
 

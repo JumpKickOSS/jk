@@ -1261,7 +1261,7 @@ Same charter, one patient at a time. Current sizes:
 | File | Before | Floor | Today | Cap | How |
 |---|---|---|---|---|---|
 | `EngineServer` | 3,418¹ | 1,064 | 580 | 800 | elect/accept/drain/close + composition root |
-| `JobEnvelope` | — | 683 | 512 | 800 | one submit path |
+| `JobEnvelope` | — | 683 | 496 | 800 | one submit path |
 | `HttpEngineServer` | 1,592 | 768 | 558 | 800 | router / history / project / live |
 | `EngineClient` | 2,616 | 942 | 658 | 800 | spawn, wire, hosted verbs |
 | `EngineProtocol` | 3,379 | 464 | 143 | 800 | discriminators; builders in `Proto*` families |
@@ -1272,7 +1272,7 @@ Same charter, one patient at a time. Current sizes:
 | `JkManagerView` | — | — | 455 | 800 | paint |
 | `JkManagerColor` | — | — | 380 | 800 | token colour |
 | `NewCommand` | 1,403 | 1,164 | 549 | 800 | wizard |
-| `LockOrchestrator` | — | — | 796 | 800 | partition / constrain / solve / materialize / assemble |
+| `LockOrchestrator` | — | — | 787 | 800 | partition / constrain / solve / materialize / assemble |
 
 ¹ EngineServer entered this batch at 3,418 lines; an earlier Typed Envelope peel had
 already taken it from its 7,073-line peak.
