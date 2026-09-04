@@ -44,7 +44,7 @@ public final class DeactivateCommand implements CliCommand {
         CliOutput.out("  • Directory JAVA_HOME / PATH from hook-env apply only in this shell.");
         CliOutput.out("  • Open a new terminal (or `exec $SHELL`) to drop session env.");
         CliOutput.out("  • To stop auto-hooks permanently, remove the block between");
-        CliOutput.out("    `# >>> jk installer >>>` and `# <<< jk installer <<<` from your shell rc.");
+        CliOutput.out("    `# >>> jk installer >>>` and `# <<< jk installer <<<` from each shell rc.");
         return Exit.SUCCESS;
     }
 }

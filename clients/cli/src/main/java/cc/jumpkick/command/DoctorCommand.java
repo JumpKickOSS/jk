@@ -17,6 +17,7 @@ import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
+import cc.jumpkick.terminal.posix.PosixPasswd;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.EnginePaths;
 import java.io.IOException;
@@ -26,10 +27,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * {@code jk doctor} — host health checklist. Prints a wedge header plus one row per subsystem
- * (engine, dirs, jdk, lock, tools) and a summary. {@code --output json} emits machine output.
+ * (engine, dirs, jdk, lock, shell, tools) and a summary. {@code --output json} emits machine output.
  */
 public final class DoctorCommand implements CliCommand {
 
@@ -40,7 +42,7 @@ public final class DoctorCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Check host health (engine, cache, JDKs, lock)";
+        return "Check host health (engine, cache, JDKs, lock, shell)";
     }
 
     @Override
@@ -67,6 +69,7 @@ public final class DoctorCommand implements CliCommand {
         Check cache = checkDirs();
         Check jdk = checkJdk();
         Check lock = checkLock();
+        Check shell = checkShell();
         List<ToolRow> toolRows;
         String toolsError = null;
         try {
@@ -110,6 +113,7 @@ public final class DoctorCommand implements CliCommand {
                     + "\"cache\":" + checkJson(cache) + ","
                     + "\"jdk\":" + checkJson(jdk) + ","
                     + "\"lock\":" + checkJson(lock) + ","
+                    + "\"shell\":" + checkJson(shell) + ","
                     + "\"tools\":{\"healthy\":" + healthy + ",\"pruned\":" + pruned + ",\"verified\":" + verified
                     + ",\"drifted\":" + drifted + ",\"firstSeen\":" + firstSeen + ",\"empty\":" + empty
                     + ",\"error\":" + Jsonl.quote(toolsError) + "}"
@@ -126,6 +130,7 @@ public final class DoctorCommand implements CliCommand {
         printCheck(cache, t);
         printCheck(jdk, t);
         printCheck(lock, t);
+        printCheck(shell, t);
 
         if (toolsError != null) {
             CliOutput.out(Theme.colorize("warn:    ", t.warning()) + Theme.colorize("tools", t.cyan())
@@ -181,13 +186,13 @@ public final class DoctorCommand implements CliCommand {
 
     // ---- checks ----
 
-    private enum Status {
+    enum Status {
         OK,
         WARN,
         FAIL
     }
 
-    private record Check(Status status, String label, String detail) {}
+    record Check(Status status, String label, String detail) {}
 
     /**
      * The verdicts a tool install can carry. The four fingerprint verdicts are reachable only under
@@ -258,6 +263,86 @@ public final class DoctorCommand implements CliCommand {
         } catch (IOException e) {
             return new Check(Status.WARN, "jdk", "probe failed: " + e.getMessage());
         }
+    }
+
+    static Check checkShell() {
+        Path home = Path.of(System.getProperty("user.home", ""));
+        return checkShell(
+                home,
+                Shell.live(System.getenv("SHELL"), PosixPasswd.loginShell().orElse(null), parentShellCommand()));
+    }
+
+    /**
+     * Login and current shells only — not every rc greedy-activate would touch. Missing block is a
+     * WARN; doctor never writes profiles.
+     */
+    static Check checkShell(Path home, List<Shell> live) {
+        if (live.isEmpty()) {
+            return new Check(Status.OK, "shell", "no login or current shell to check");
+        }
+        List<String> hooked = new ArrayList<>();
+        List<String> missing = new ArrayList<>();
+        for (Shell shell : live) {
+            String display = shell.rcFileDisplay();
+            if (hasInstallerBlock(shell.rcFile(home))) {
+                hooked.add(display);
+            } else {
+                missing.add(display);
+            }
+        }
+        if (missing.isEmpty()) {
+            return new Check(Status.OK, "shell", "hooks in " + String.join(", ", hooked));
+        }
+        String verb = missing.size() == 1 ? " has no jk block" : " have no jk block";
+        String detail = String.join(", ", missing) + verb + " — run `jk activate`";
+        if (!hooked.isEmpty()) {
+            detail = "hooks in " + String.join(", ", hooked) + "; " + detail;
+        }
+        return new Check(Status.WARN, "shell", detail);
+    }
+
+    private static boolean hasInstallerBlock(Path rcFile) {
+        try {
+            return Files.isRegularFile(rcFile) && ShellInstallerBlock.present(Files.readString(rcFile));
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    /**
+     * First ancestor that is not jk/java. {@code sh}/{@code dash} are filtered later in
+     * {@link Shell#live} so a script wrapper is not treated as an interactive bash.
+     */
+    static String parentShellCommand() {
+        try {
+            Optional<ProcessHandle> p = ProcessHandle.current().parent();
+            int hops = 0;
+            while (p.isPresent() && hops++ < 8) {
+                ProcessHandle handle = p.get();
+                String cmd = handle.info().command().orElse("");
+                if (cmd.isBlank() || processWrapper(cmd)) {
+                    p = handle.parent();
+                    continue;
+                }
+                return cmd;
+            }
+        } catch (RuntimeException ignored) {
+            // ProcessHandle is best-effort on some hosts
+        }
+        return null;
+    }
+
+    private static final Set<String> PROCESS_WRAPPERS =
+            Set.of("java", "javaw", "jk", "jkx", "jk.cmd", "jk.bat", "sudo", "env", "nice", "nohup", "timeout", "time");
+
+    private static boolean processWrapper(String command) {
+        String base = command.replace('\\', '/');
+        int slash = base.lastIndexOf('/');
+        String name = (slash >= 0 ? base.substring(slash + 1) : base).toLowerCase(Locale.ROOT);
+        if (name.endsWith(".exe")) {
+            name = name.substring(0, name.length() - 4);
+        }
+        return PROCESS_WRAPPERS.contains(name);
     }
 
     private static Check checkLock() {

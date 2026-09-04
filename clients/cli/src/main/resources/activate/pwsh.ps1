@@ -1,11 +1,11 @@
 # Directory-aware JAVA_HOME / PATH (hook-env). PATH ensure + completions wrap this in
 # `jk activate pwsh` full output; the profile line is: & "$HOME/…/jk" activate pwsh | …
 $env:__JK_EXE = '__JK_EXE__'
-$env:__JK_SHELL = 'pwsh'
+$env:__JK_SHELL = '__JK_SHELL__'
 
 function global:_jk_hook {
-    if ($env:__JK_SHELL -eq 'pwsh') {
-        $output = & $env:__JK_EXE hook-env -s pwsh | Out-String
+    if ($env:__JK_SHELL -eq '__JK_SHELL__') {
+        $output = & $env:__JK_EXE hook-env -s __JK_SHELL__ | Out-String
         if ($output -and $output.Trim()) {
             $output | Invoke-Expression
         }

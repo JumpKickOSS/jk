@@ -26,14 +26,18 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 /**
  * {@code jk activate [<shell>]} — print the full shell integration script (PATH + hooks +
- * completions) or install a one-line marker-bounded rc block that evals it.
+ * completions) or install a one-line marker-bounded rc block in every discovered profile.
  */
 public final class ActivateCommand implements CliCommand {
+
+    private static final String SUPPORTED = "bash, zsh, fish, pwsh, powershell";
 
     @Override
     public String name() {
@@ -50,9 +54,9 @@ public final class ActivateCommand implements CliCommand {
         return List.of(Param.of(
                 "shell",
                 Arity.ZERO_OR_ONE,
-                "Target shell: bash, zsh, fish, pwsh.\n"
+                "Target shell: " + SUPPORTED + ".\n"
                         + "With a name: print PATH + hooks + completions (for eval/source).\n"
-                        + "Omit to install the rc marker block."));
+                        + "Omit to install the rc marker block in every discovered profile."));
     }
 
     @Override
@@ -83,8 +87,7 @@ public final class ActivateCommand implements CliCommand {
     private int printScript(String shellName) {
         var shell = Shell.byName(shellName);
         if (shell.isEmpty()) {
-            CommandWedge.printFail(
-                    "Activate", "unsupported shell `" + shellName + "` (supported: bash, zsh, fish, pwsh)");
+            CommandWedge.printFail("Activate", "unsupported shell `" + shellName + "` (supported: " + SUPPORTED + ")");
             return Exit.USAGE;
         }
         ensureJkxLauncher();
@@ -109,124 +112,108 @@ public final class ActivateCommand implements CliCommand {
     }
 
     private int runInstaller(boolean assumeYes) throws IOException {
-        var shell = Shell.detect();
-        if (shell.isEmpty()) {
-            CommandWedge.printFail(
-                    "Activate",
-                    "couldn't detect your shell from $SHELL (value: `" + System.getenv("SHELL")
-                            + "`). Pass an explicit shell, e.g. `jk activate zsh`.");
-            return Exit.USAGE;
-        }
+        List<Shell> targets = Shell.installTargets(home());
         if (assumeYes) {
-            return writeActivation(shell.get());
+            return writeActivation(targets);
         }
         if (!isInteractiveTerminalSession()) {
-            return printManualInstructions(shell.get());
+            return printManualInstructions(targets);
         }
-        return runWizard(shell.get());
+        return runWizard(targets);
     }
 
-    private int writeActivation(Shell shell) throws IOException {
-        Path rcFile = shell.rcFile(home());
-        String rcDisplay = shell.rcFileDisplay();
-        String block = ShellInstallerBlock.render(shell, JkDirs.binDir(), home());
+    private int writeActivation(List<Shell> targets) throws IOException {
+        List<Shell> changed = new ArrayList<>();
+        for (Shell shell : targets) {
+            if (writeOne(shell)) {
+                changed.add(shell);
+            }
+        }
+        finishInstall();
         NerdFontCaps nerdFont = GlobalConfig.nerdFont();
         Theme t = Theme.active();
+        CommandWedge.envelopeStart();
+        if (changed.isEmpty()) {
+            CliOutput.out(JkWedge.chipLine(
+                    Glyphs.CHECK,
+                    "Activate",
+                    nerdFont,
+                    "Shell integration is already configured in " + coloredRcList(targets, t)));
+            return 0;
+        }
+        CliOutput.out(JkWedge.chipLine(
+                Glyphs.CHECK, "Activate", nerdFont, "Shell integration configured in " + coloredRcList(targets, t)));
+        return 0;
+    }
 
+    /** True when the file was created or the block changed. */
+    private boolean writeOne(Shell shell) throws IOException {
+        Path rcFile = shell.rcFile(home());
+        String block = ShellInstallerBlock.render(shell, JkDirs.binDir(), home());
         String previous = Files.exists(rcFile) ? Files.readString(rcFile, StandardCharsets.UTF_8) : "";
-        boolean hadBlock = ShellInstallerBlock.present(previous);
         String next = ShellInstallerBlock.upsert(previous, block);
-        if (hadBlock && previous.equals(next)) {
-            ensureJkxLauncher();
-            ensureBinOnSystemPath();
-            ShellCompletions.writeAll();
+        if (ShellInstallerBlock.present(previous) && previous.equals(next)) {
+            return false;
+        }
+        if (rcFile.getParent() != null) {
+            Files.createDirectories(rcFile.getParent());
+        }
+        Files.writeString(rcFile, next.endsWith("\n") ? next : next + "\n", StandardCharsets.UTF_8);
+        return true;
+    }
+
+    private int printManualInstructions(List<Shell> targets) throws IOException {
+        List<Shell> missing = new ArrayList<>();
+        for (Shell shell : targets) {
+            Path rcFile = shell.rcFile(home());
+            if (Files.exists(rcFile) && ShellInstallerBlock.present(Files.readString(rcFile, StandardCharsets.UTF_8))) {
+                continue;
+            }
+            missing.add(shell);
+        }
+        finishInstall();
+        NerdFontCaps nerdFont = GlobalConfig.nerdFont();
+        Theme t = Theme.active();
+        CommandWedge.envelopeStart();
+        if (missing.isEmpty()) {
+            CliOutput.out(JkWedge.chipLine(
+                    Glyphs.CHECK,
+                    "Activate",
+                    nerdFont,
+                    "Shell integration is already configured in " + coloredRcList(targets, t)));
+            return 0;
+        }
+        CliOutput.out(JkWedge.chipLine(Glyphs.BANG, "Activate", nerdFont, "Add these blocks to finish activation:"));
+        for (Shell shell : missing) {
+            String block = ShellInstallerBlock.render(shell, JkDirs.binDir(), home());
+            CliOutput.out("  " + Theme.colorize(shell.rcFileDisplay(), t.path()));
+            for (String line : block.split("\n", -1)) {
+                CliOutput.out("    " + Theme.colorize(line, t.shell()));
+            }
+        }
+        return 0;
+    }
+
+    private int runWizard(List<Shell> targets) throws IOException {
+        if (allConfigured(targets)) {
+            finishInstall();
+            Theme t = Theme.active();
+            NerdFontCaps nerdFont = GlobalConfig.nerdFont();
             CommandWedge.envelopeStart();
             CliOutput.out(JkWedge.chipLine(
                     Glyphs.CHECK,
                     "Activate",
                     nerdFont,
-                    "Shell integration is already configured in " + Theme.colorize(rcDisplay, t.path())));
+                    "Shell integration is already configured in " + coloredRcList(targets, t)));
             return 0;
         }
 
-        if (rcFile.getParent() != null) Files.createDirectories(rcFile.getParent());
-        Files.writeString(rcFile, next.endsWith("\n") ? next : next + "\n", StandardCharsets.UTF_8);
-        ensureJkxLauncher();
-        ensureBinOnSystemPath();
-        ShellCompletions.writeAll();
-        CommandWedge.envelopeStart();
-        CliOutput.out(JkWedge.chipLine(
-                Glyphs.CHECK,
-                "Activate",
-                nerdFont,
-                "Shell integration configured in " + Theme.colorize(rcDisplay, t.path())));
-        return 0;
-    }
-
-    private int printManualInstructions(Shell shell) throws IOException {
-        Path rcFile = shell.rcFile(home());
-        String rcDisplay = shell.rcFileDisplay();
-        String block = ShellInstallerBlock.render(shell, JkDirs.binDir(), home());
+        String rcList = targets.stream().map(Shell::rcFileDisplay).collect(Collectors.joining(", "));
         NerdFontCaps nerdFont = GlobalConfig.nerdFont();
-        Theme t = Theme.active();
-
-        if (Files.exists(rcFile)) {
-            String existing = Files.readString(rcFile, StandardCharsets.UTF_8);
-            if (ShellInstallerBlock.present(existing)) {
-                ensureJkxLauncher();
-                ensureBinOnSystemPath();
-                ShellCompletions.writeAll();
-                CommandWedge.envelopeStart();
-                CliOutput.out(JkWedge.chipLine(
-                        Glyphs.CHECK,
-                        "Activate",
-                        nerdFont,
-                        "Shell integration is already configured in " + Theme.colorize(rcDisplay, t.path())));
-                return 0;
-            }
-        }
-
-        ensureJkxLauncher();
-        ensureBinOnSystemPath();
-        ShellCompletions.writeAll();
-        CommandWedge.envelopeStart();
-        CliOutput.out(JkWedge.chipLine(
-                Glyphs.BANG,
-                "Activate",
-                nerdFont,
-                "Add this block to " + Theme.colorize(rcDisplay, t.path()) + " to finish activation:"));
-        for (String line : block.split("\n", -1)) {
-            CliOutput.out("  " + Theme.colorize(line, t.shell()));
-        }
-        return 0;
-    }
-
-    private int runWizard(Shell shell) throws IOException {
-        Path rcFile = shell.rcFile(home());
-        String rcDisplay = shell.rcFileDisplay();
-        NerdFontCaps nerdFont = GlobalConfig.nerdFont();
-
-        if (Files.exists(rcFile)) {
-            String existing = Files.readString(rcFile, StandardCharsets.UTF_8);
-            if (ShellInstallerBlock.present(existing)) {
-                ensureJkxLauncher();
-                ensureBinOnSystemPath();
-                ShellCompletions.writeAll();
-                Theme t = Theme.active();
-                CommandWedge.envelopeStart();
-                CliOutput.out(JkWedge.chipLine(
-                        Glyphs.CHECK,
-                        "Activate",
-                        nerdFont,
-                        "Shell integration is already configured in " + Theme.colorize(rcDisplay, t.path())));
-                return 0;
-            }
-        }
-
         Wizard wizard = Wizard.builder()
                 .command("Activate")
                 .subtitle("Shell integration")
-                .step(WizardStep.RadioStep.horizontal("modify", "Allow Jk to modify your " + rcDisplay + " file?")
+                .step(WizardStep.RadioStep.horizontal("modify", "Allow Jk to modify " + rcList + "?")
                         .choice("yes", "Yes")
                         .choice("no", "No")
                         .defaultChoice("yes")
@@ -237,19 +224,43 @@ public final class ActivateCommand implements CliCommand {
         Optional<Answers> result = wizard.run(terminal);
         if (result.isEmpty() || "no".equals(result.get().get("modify"))) {
             Theme t = Theme.active();
-            String block = ShellInstallerBlock.render(shell, JkDirs.binDir(), home());
             CommandWedge.envelopeStart();
-            CliOutput.out(JkWedge.chipLine(
-                    Glyphs.BANG,
-                    "Activate",
-                    nerdFont,
-                    "Skipped — add this block to " + Theme.colorize(rcDisplay, t.path()) + " manually:"));
-            for (String line : block.split("\n", -1)) {
-                CliOutput.out("  " + Theme.colorize(line, t.shell()));
+            CliOutput.out(JkWedge.chipLine(Glyphs.BANG, "Activate", nerdFont, "Skipped — add these blocks manually:"));
+            for (Shell shell : targets) {
+                String block = ShellInstallerBlock.render(shell, JkDirs.binDir(), home());
+                CliOutput.out("  " + Theme.colorize(shell.rcFileDisplay(), t.path()));
+                for (String line : block.split("\n", -1)) {
+                    CliOutput.out("    " + Theme.colorize(line, t.shell()));
+                }
             }
             return 0;
         }
-        return writeActivation(shell);
+        return writeActivation(targets);
+    }
+
+    private boolean allConfigured(List<Shell> targets) throws IOException {
+        for (Shell shell : targets) {
+            Path rcFile = shell.rcFile(home());
+            if (!Files.exists(rcFile)) {
+                return false;
+            }
+            if (!ShellInstallerBlock.present(Files.readString(rcFile, StandardCharsets.UTF_8))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private void finishInstall() throws IOException {
+        ensureJkxLauncher();
+        ensureBinOnSystemPath();
+        ShellCompletions.writeAll();
+    }
+
+    private static String coloredRcList(List<Shell> shells, Theme t) {
+        return shells.stream()
+                .map(s -> Theme.colorize(s.rcFileDisplay(), t.path()))
+                .collect(Collectors.joining(", "));
     }
 
     private static Path home() {

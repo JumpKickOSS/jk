@@ -148,6 +148,12 @@ jk deactivate                  # how to drop session env or remove the marker bl
 jk completion                  # refresh completion files
 ```
 
+Bare `jk activate` (and the installer's `--yes`) writes a marker block into every profile it
+should own: zsh on macOS, bash on Linux, both PowerShell 7 (`pwsh`) and Windows PowerShell
+5.1 (`powershell`) on Windows — plus any other supported rc file that already exists
+(`.bashrc` on a zsh Mac, Git Bash, fish, …). Pass a name to print one eval snippet:
+`jk activate zsh`.
+
 The installer / `jk activate` writes a marker block:
 
 ```text
@@ -156,7 +162,8 @@ eval "$("$HOME/.jk/bin/jk" activate zsh)"
 # <<< jk installer <<<
 ```
 
-(bash: `activate bash`; fish: `"$HOME/.jk/bin/jk" activate fish | source`.)
+(bash: `activate bash`; fish: `"$HOME/.jk/bin/jk" activate fish | source`;
+PowerShell 7: `activate pwsh`; Windows PowerShell 5.1: `activate powershell`.)
 
 - **PATH** — prepends `~/.jk/bin` so real `jk` / `jkx` resolve. On Windows the same step
   writes the User PATH, so `cmd.exe` and GUI-launched processes see it too
@@ -164,7 +171,11 @@ eval "$("$HOME/.jk/bin/jk" activate zsh)"
   `bin` dirs onto your live `PATH` when you `cd` (nvm and other PATH edits are left alone). A
   project `jk-lock.toml` `[jdk]` / `[graal]` entry wins over the global default when some installed
   JDK/Graal meets the lock floor (same major or newer).
-- **Completions** — bash, zsh, fish, pwsh
+- **Completions** — bash, zsh, fish, pwsh (sourced from both PowerShell profiles)
+
+`jk doctor` checks the login shell and the shell that launched `jk`, and warns if those
+profiles have no installer block. It does not look at unused rc files, and it never writes
+them — run `jk activate` to hook a newly installed shell.
 
 ## Official URLs
 

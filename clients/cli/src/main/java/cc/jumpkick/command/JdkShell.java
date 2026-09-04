@@ -9,9 +9,8 @@ import java.util.Optional;
  * Shell detection + rc-file paths shared by {@code jk jdk install} (advice text) and {@code jk jdk
  * update-shell} (actual rc edits).
  *
- * <p>Detection reads {@code $SHELL} and maps its basename to one of the supported shells (bash /
- * zsh / fish). Anything else returns {@link Optional#empty()} so the caller can fall back to a
- * generic message.
+ * <p>Detection uses {@link Shell#detect()} and maps bash / zsh / fish. Anything else returns
+ * {@link Optional#empty()} so the caller can fall back to a generic message.
  */
 enum JdkShell {
     BASH,
@@ -52,9 +51,9 @@ enum JdkShell {
         return "jk hook " + shellName() + " " + redirect + " " + rcFileDisplay();
     }
 
-    /** Detect from {@code $SHELL}. Returns empty when the env var is unset or unsupported. */
+    /** Detect via {@link Shell#detect()}. Returns empty when the result is not bash / zsh / fish. */
     static Optional<JdkShell> detect() {
-        return detect(System.getenv("SHELL"));
+        return Shell.detect().flatMap(s -> detect(s.name()));
     }
 
     /** Detect from an explicit value (test seam or {@code --shell} override). */

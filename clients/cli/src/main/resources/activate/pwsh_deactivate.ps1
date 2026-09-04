@@ -3,7 +3,7 @@
 if ($env:__JK_EXE) {
     $output = $null
     try {
-        $output = & $env:__JK_EXE hook-env -s pwsh --clear | Out-String
+        $output = & $env:__JK_EXE hook-env -s __JK_SHELL__ --clear | Out-String
     } catch {
         # missing/broken binary — handled below
     }

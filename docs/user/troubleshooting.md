@@ -118,7 +118,7 @@ Pin a hermetic module with `[test] workers = 1`. See [Test](test.md).
 
 ## Still stuck
 
-- `jk doctor` — host health (config + disk)
+- `jk doctor` — host health (config, disk, current/login shell hooks)
 - `jk explain --verbose` — per-task forecast
 - [Config](config.md) — `NO_COLOR`, `--offline`, `JK_HOME` isolation
 - [Install](install.md) — layout and env

@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import cc.jumpkick.host.Os;
 import java.nio.file.Path;
 
 /**
- * PowerShell flavour. Single-quoted strings with backtick escaping for embedded quotes, newlines,
- * and tabs.
+ * PowerShell 7+ ({@code pwsh}). Windows PowerShell 5.1 is {@link WindowsPowerShellShell}.
  */
 public final class PwshShell implements Shell {
 
@@ -26,32 +26,32 @@ public final class PwshShell implements Shell {
 
     @Override
     public String activateScript(String jkExe) {
-        // pwsh templates use straight `'...'` for the exe path — escape any
-        // embedded single quotes per PowerShell's `''` doubling rule.
-        return ShellResources.load("pwsh.ps1").replace("__JK_EXE__", jkExe.replace("'", "''"));
+        return loadActivate(name(), jkExe);
     }
 
     @Override
     public String deactivateScript() {
-        return ShellResources.load("pwsh_deactivate.ps1");
+        return loadDeactivate(name());
     }
 
     @Override
     public Path rcFile(Path home) {
-        // Cross-platform $PROFILE on Windows lives under Documents; on macOS
-        // and Linux PowerShell uses ~/.config/powershell/. Pick the most
-        // common Windows location since pwsh on Unix is rare for jk users.
-        return home.resolve("Documents").resolve("PowerShell").resolve("Microsoft.PowerShell_profile.ps1");
+        if (Os.isWindows()) {
+            return home.resolve("Documents").resolve("PowerShell").resolve("Microsoft.PowerShell_profile.ps1");
+        }
+        return home.resolve(".config").resolve("powershell").resolve("Microsoft.PowerShell_profile.ps1");
     }
 
     @Override
     public String rcFileDisplay() {
-        return "$PROFILE";
+        return Os.isWindows()
+                ? "~\\Documents\\PowerShell\\Microsoft.PowerShell_profile.ps1"
+                : "~/.config/powershell/Microsoft.PowerShell_profile.ps1";
     }
 
     @Override
     public String activationLine(String jkCommand) {
-        return "& " + jkCommand + " activate pwsh | Out-String | Invoke-Expression";
+        return "& " + jkCommand + " activate " + name() + " | Out-String | Invoke-Expression";
     }
 
     @Override
@@ -88,6 +88,16 @@ public final class PwshShell implements Shell {
      * PowerShell single-quoted string escape: doubles embedded single quotes and replaces common
      * control characters with backtick escapes that work inside single-quoted strings.
      */
+    static String loadActivate(String shellName, String jkExe) {
+        return ShellResources.load("pwsh.ps1")
+                .replace("__JK_EXE__", jkExe.replace("'", "''"))
+                .replace("__JK_SHELL__", shellName);
+    }
+
+    static String loadDeactivate(String shellName) {
+        return ShellResources.load("pwsh_deactivate.ps1").replace("__JK_SHELL__", shellName);
+    }
+
     static String pwshEscape(String value) {
         var sb = new StringBuilder(value.length() + 2);
         for (int i = 0; i < value.length(); i++) {

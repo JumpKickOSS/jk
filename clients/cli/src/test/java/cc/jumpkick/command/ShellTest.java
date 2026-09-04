@@ -3,9 +3,11 @@ package cc.jumpkick.command;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class ShellTest {
 
@@ -15,7 +17,9 @@ class ShellTest {
         assertThat(Shell.byName("ZSH")).get().isInstanceOf(ZshShell.class);
         assertThat(Shell.byName("Fish")).get().isInstanceOf(FishShell.class);
         assertThat(Shell.byName("pwsh")).get().isInstanceOf(PwshShell.class);
-        assertThat(Shell.byName("powershell")).get().isInstanceOf(PwshShell.class);
+        assertThat(Shell.byName("powershell")).get().isInstanceOf(WindowsPowerShellShell.class);
+        assertThat(Shell.byName("powershell.exe")).get().isInstanceOf(WindowsPowerShellShell.class);
+        assertThat(Shell.byName("pwsh.exe")).get().isInstanceOf(PwshShell.class);
         assertThat(Shell.byName("sh")).get().isInstanceOf(BashShell.class);
     }
 
@@ -161,6 +165,8 @@ class ShellTest {
                 .isEqualTo("\"$HOME/.jk/bin/jk\" activate fish | source");
         assertThat(new PwshShell().activationLine(new PwshShell().commandExpr(jk, home)))
                 .isEqualTo("& \"$HOME/.jk/bin/jk\" activate pwsh | Out-String | Invoke-Expression");
+        assertThat(new WindowsPowerShellShell().activationLine(new WindowsPowerShellShell().commandExpr(jk, home)))
+                .isEqualTo("& \"$HOME/.jk/bin/jk\" activate powershell | Out-String | Invoke-Expression");
     }
 
     @Test
@@ -214,5 +220,80 @@ class ShellTest {
         assertThat(Shell.detect("/home/u/.jk/bin/dash")).isEmpty();
         assertThat(Shell.detect(null)).isEmpty();
         assertThat(Shell.detect("")).isEmpty();
+    }
+
+    @Test
+    void detect_chain_prefers_shell_env_over_passwd_and_rc(@TempDir Path home) throws Exception {
+        Files.writeString(home.resolve(".bashrc"), "# bash\n");
+        assertThat(Shell.detect("/bin/zsh", "/bin/bash", home, "Linux")).get().isInstanceOf(ZshShell.class);
+    }
+
+    @Test
+    void detect_chain_uses_passwd_when_shell_env_is_unset(@TempDir Path home) {
+        assertThat(Shell.detect(null, "/usr/bin/fish", home, "Linux")).get().isInstanceOf(FishShell.class);
+    }
+
+    @Test
+    void detect_chain_skips_unsupported_env_and_passwd(@TempDir Path home) throws Exception {
+        Files.writeString(home.resolve(".zshrc"), "# zsh\n");
+        assertThat(Shell.detect("/bin/dash", "/usr/sbin/nologin", home, "Linux"))
+                .get()
+                .isInstanceOf(ZshShell.class);
+    }
+
+    @Test
+    void detect_chain_ignores_rc_when_more_than_one_exists(@TempDir Path home) throws Exception {
+        Files.writeString(home.resolve(".bashrc"), "# bash\n");
+        Files.writeString(home.resolve(".zshrc"), "# zsh\n");
+        assertThat(Shell.detect(null, null, home, "Linux")).get().isInstanceOf(BashShell.class);
+        assertThat(Shell.detect(null, null, home, "Mac OS X")).get().isInstanceOf(ZshShell.class);
+        assertThat(Shell.detect(null, null, home, "Windows 11")).get().isInstanceOf(PwshShell.class);
+    }
+
+    @Test
+    void detect_chain_os_default_when_home_is_empty(@TempDir Path home) {
+        assertThat(Shell.detect(null, null, home, "Linux")).get().isInstanceOf(BashShell.class);
+        assertThat(Shell.detect("", "", home, "Darwin")).get().isInstanceOf(ZshShell.class);
+    }
+
+    @Test
+    void install_targets_linux_always_bashrc_and_existing_extras(@TempDir Path home) throws Exception {
+        List<Shell> empty = Shell.installTargets(home, "Linux");
+        assertThat(empty).hasSize(1);
+        assertThat(empty.getFirst()).isInstanceOf(BashShell.class);
+
+        Files.writeString(home.resolve(".zshrc"), "# zsh\n");
+        Files.createDirectories(home.resolve(".config/fish"));
+        Files.writeString(home.resolve(".config/fish/config.fish"), "# fish\n");
+        List<Shell> extras = Shell.installTargets(home, "Linux");
+        assertThat(extras.stream().map(Shell::name).toList()).containsExactly("bash", "zsh", "fish");
+    }
+
+    @Test
+    void install_targets_darwin_always_zshrc(@TempDir Path home) throws Exception {
+        assertThat(Shell.installTargets(home, "Mac OS X")).hasSize(1).first().isInstanceOf(ZshShell.class);
+        Files.writeString(home.resolve(".bashrc"), "# bash\n");
+        assertThat(Shell.installTargets(home, "Mac OS X").stream()
+                        .map(Shell::name)
+                        .toList())
+                .containsExactly("zsh", "bash");
+    }
+
+    @Test
+    void install_targets_windows_always_both_powershell_profiles(@TempDir Path home) {
+        assertThat(Shell.installTargets(home, "Windows 11").stream()
+                        .map(Shell::name)
+                        .toList())
+                .containsExactly("pwsh", "powershell");
+    }
+
+    @Test
+    void windows_powershell_profile_is_the_51_path() {
+        var home = Path.of("/home/u");
+        var sh = new WindowsPowerShellShell();
+        assertThat(sh.rcFile(home))
+                .isEqualTo(home.resolve("Documents/WindowsPowerShell/Microsoft.PowerShell_profile.ps1"));
+        assertThat(sh.activateScript("/jk")).contains("hook-env -s powershell");
+        assertThat(sh.activateScript("/jk")).contains("LocationChangedAction");
     }
 }

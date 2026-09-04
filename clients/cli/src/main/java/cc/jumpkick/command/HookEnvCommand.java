@@ -39,7 +39,7 @@ public final class HookEnvCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.value("<shell>", "Shell: bash | zsh | fish | pwsh.", "-s", "--shell")
+                Opt.value("<shell>", "Shell: bash | zsh | fish | pwsh | powershell.", "-s", "--shell")
                         .require(),
                 Opt.flag("Undo JAVA_HOME/GRAALVM_HOME and toolchain bins.", "--clear"));
     }

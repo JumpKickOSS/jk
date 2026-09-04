@@ -1,20 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import cc.jumpkick.host.Os;
+import cc.jumpkick.terminal.posix.PosixPasswd;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Per-shell syntax for environment-modification commands emitted by {@code jk hook-env}. Each
  * {@link Shell} returns a single newline-terminated line that the shell can {@code eval} / {@code
  * source} verbatim.
  *
- * <p>Modelled on mise's {@code Shell} trait but trimmed to the four shells we target: bash, zsh,
- * fish, PowerShell. Other shells (xonsh, nushell, elvish) are intentionally absent — adding them is
- * the obvious extension.
+ * <p>Modelled on mise's {@code Shell} trait but trimmed to the shells we target: bash, zsh, fish,
+ * PowerShell 7 ({@code pwsh}), and Windows PowerShell 5.1 ({@code powershell}).
  */
-public sealed interface Shell permits BashShell, ZshShell, FishShell, PwshShell {
+public sealed interface Shell permits BashShell, ZshShell, FishShell, PwshShell, WindowsPowerShellShell {
 
     /**
      * Canonical short name used both as the picocli value and in serialized state (e.g. {@code
@@ -41,7 +47,8 @@ public sealed interface Shell permits BashShell, ZshShell, FishShell, PwshShell 
     /**
      * RC file the activation line should be appended to. This is the file the user's interactive
      * shell sources at startup — {@code .zshrc} (not {@code .zshenv}), {@code .bashrc}, {@code
-     * config/fish/config.fish}, {@code $PROFILE} on PowerShell.
+     * config/fish/config.fish}, PowerShell 7 {@code $PROFILE}, or Windows PowerShell 5.1 {@code
+     * $PROFILE}.
      */
     Path rcFile(Path home);
 
@@ -99,21 +106,148 @@ public sealed interface Shell permits BashShell, ZshShell, FishShell, PwshShell 
             case "bash", "sh" -> Optional.of(new BashShell());
             case "zsh" -> Optional.of(new ZshShell());
             case "fish" -> Optional.of(new FishShell());
-            case "pwsh", "powershell" -> Optional.of(new PwshShell());
+            case "pwsh", "pwsh.exe" -> Optional.of(new PwshShell());
+            case "powershell", "powershell.exe" -> Optional.of(new WindowsPowerShellShell());
             default -> Optional.empty();
         };
     }
 
-    /** Detect the user's shell from {@code $SHELL}. */
-    static Optional<Shell> detect() {
-        return detect(System.getenv("SHELL"));
+    /**
+     * Profiles {@code jk activate} (no shell name) writes. Always the platform default(s) — zsh on
+     * macOS, bash on Linux, both PowerShell profiles on Windows — plus any other supported rc file
+     * that already exists (Git Bash, fish, extra PowerShell, …).
+     */
+    static List<Shell> installTargets(Path home) {
+        return installTargets(home, Os.name());
     }
 
-    /** Test seam — caller supplies the raw {@code $SHELL} value. */
+    /** Test seam — caller supplies {@code os.name}. */
+    static List<Shell> installTargets(Path home, String osName) {
+        List<Shell> targets = new ArrayList<>();
+        if (Os.isWindows(osName)) {
+            targets.add(new PwshShell());
+            targets.add(new WindowsPowerShellShell());
+        } else if (Os.isDarwin(osName)) {
+            targets.add(new ZshShell());
+        } else {
+            targets.add(new BashShell());
+        }
+        for (Shell shell : all()) {
+            if (named(targets, shell.name())) {
+                continue;
+            }
+            if (shell instanceof WindowsPowerShellShell && !Os.isWindows(osName)) {
+                continue;
+            }
+            if (home != null && Files.isRegularFile(shell.rcFile(home))) {
+                targets.add(shell);
+            }
+        }
+        return List.copyOf(targets);
+    }
+
+    private static List<Shell> all() {
+        return List.of(new BashShell(), new ZshShell(), new FishShell(), new PwshShell(), new WindowsPowerShellShell());
+    }
+
+    private static boolean named(List<Shell> shells, String name) {
+        for (Shell shell : shells) {
+            if (shell.name().equals(name)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Best-effort single-shell guess for commands that still want one rc ({@code jk jdk
+     * update-shell}). {@code jk activate} with no name uses {@link #installTargets} instead.
+     */
+    static Optional<Shell> detect() {
+        Path home = Path.of(System.getProperty("user.home", ""));
+        return detect(System.getenv("SHELL"), PosixPasswd.loginShell().orElse(null), home, Os.name());
+    }
+
+    /** Map a raw shell path or name ({@code $SHELL}, {@code bash}, …). Empty when unset or unsupported. */
     static Optional<Shell> detect(String rawShell) {
-        if (rawShell == null || rawShell.isBlank()) return Optional.empty();
-        int slash = rawShell.lastIndexOf('/');
-        String name = slash >= 0 ? rawShell.substring(slash + 1) : rawShell;
-        return byName(name);
+        return byName(basename(rawShell));
+    }
+
+    /**
+     * Shells {@code jk doctor} should inspect: login ({@code $SHELL}, then {@code pw_shell}) and the
+     * parent process, if that parent is a supported interactive shell. Script hosts ({@code sh},
+     * {@code dash}) are ignored as parents so an installer or CI wrapper is not treated as bash.
+     */
+    static List<Shell> live(String shellEnv, String passwdShell, String parentCommand) {
+        LinkedHashMap<String, Shell> out = new LinkedHashMap<>();
+        addLive(out, detect(shellEnv));
+        addLive(out, detect(passwdShell));
+        if (parentCommand != null && !parentCommand.isBlank() && !scriptHost(basename(parentCommand))) {
+            addLive(out, detect(parentCommand));
+        }
+        return List.copyOf(out.values());
+    }
+
+    private static void addLive(LinkedHashMap<String, Shell> out, Optional<Shell> shell) {
+        shell.ifPresent(s -> out.putIfAbsent(s.name(), s));
+    }
+
+    private static boolean scriptHost(String basename) {
+        String name = basename.toLowerCase(Locale.ROOT);
+        if (name.endsWith(".exe")) {
+            name = name.substring(0, name.length() - 4);
+        }
+        return Set.of("sh", "dash", "ash", "busybox").contains(name);
+    }
+
+    /**
+     * Full detection chain. {@code shellEnv} is {@code $SHELL}; {@code passwdShell} is {@code
+     * pw_shell} from the account database.
+     */
+    static Optional<Shell> detect(String shellEnv, String passwdShell, Path home, String osName) {
+        Optional<Shell> fromEnv = detect(shellEnv);
+        if (fromEnv.isPresent()) {
+            return fromEnv;
+        }
+        Optional<Shell> fromPasswd = detect(passwdShell);
+        if (fromPasswd.isPresent()) {
+            return fromPasswd;
+        }
+        Optional<Shell> fromRc = uniqueExistingRc(home);
+        if (fromRc.isPresent()) {
+            return fromRc;
+        }
+        return osDefault(osName);
+    }
+
+    private static String basename(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return "";
+        }
+        int slash = Math.max(raw.lastIndexOf('/'), raw.lastIndexOf('\\'));
+        return slash >= 0 ? raw.substring(slash + 1) : raw;
+    }
+
+    private static Optional<Shell> uniqueExistingRc(Path home) {
+        if (home == null) {
+            return Optional.empty();
+        }
+        List<Shell> found = new ArrayList<>();
+        for (Shell shell : all()) {
+            if (Files.isRegularFile(shell.rcFile(home))) {
+                found.add(shell);
+            }
+        }
+        return found.size() == 1 ? Optional.of(found.getFirst()) : Optional.empty();
+    }
+
+    private static Optional<Shell> osDefault(String osName) {
+        if (Os.isDarwin(osName)) {
+            return Optional.of(new ZshShell());
+        }
+        if (Os.isWindows(osName)) {
+            return Optional.of(new PwshShell());
+        }
+        return Optional.of(new BashShell());
     }
 }
