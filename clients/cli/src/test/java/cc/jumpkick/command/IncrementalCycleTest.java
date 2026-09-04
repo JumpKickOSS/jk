@@ -25,30 +25,26 @@ import org.junit.jupiter.api.io.TempDir;
 @Tag("integration")
 class IncrementalCycleTest {
 
-    private static final String LIB_ONE =
-            """
+    private static final String LIB_ONE = """
             package ex;
             public class Lib {
                 public static String alpha() { return "alpha"; }
             }
             """;
-    private static final String LIB_TWO =
-            """
+    private static final String LIB_TWO = """
             package ex;
             public class Lib {
                 public static String alpha() { return "alpha"; }
                 public static String betamethod() { return "beta"; }
             }
             """;
-    private static final String APP_ONE =
-            """
+    private static final String APP_ONE = """
             package ex;
             public class App {
                 public static String use() { return Lib.alpha(); }
             }
             """;
-    private static final String APP_TWO =
-            """
+    private static final String APP_TWO = """
             package ex;
             public class App {
                 public static String use() { return Lib.alpha() + Lib.betamethod(); }
@@ -57,9 +53,7 @@ class IncrementalCycleTest {
 
     @Test
     void a_dependent_module_never_keeps_an_artifact_from_other_sources(@TempDir Path dir) throws IOException {
-        Files.writeString(
-                dir.resolve("jk.toml"),
-                """
+        Files.writeString(dir.resolve("jk.toml"), """
                 group   = "com.example"
                 name    = "root"
                 version = "1.0.0"
@@ -71,9 +65,7 @@ class IncrementalCycleTest {
         Path lib = Files.createDirectories(dir.resolve("lib/src/main/java/ex"));
         Path app = Files.createDirectories(dir.resolve("app/src/main/java/ex"));
         Files.writeString(dir.resolve("lib/jk.toml"), "name = \"lib\"\n");
-        Files.writeString(
-                dir.resolve("app/jk.toml"),
-                """
+        Files.writeString(dir.resolve("app/jk.toml"), """
                 name = "app"
 
                 [dependencies]
@@ -84,7 +76,9 @@ class IncrementalCycleTest {
         build(dir);
         state(lib, app, LIB_TWO, APP_TWO);
         build(dir);
-        assertThat(appCallsBeta(dir)).as("the two-method build is what it says it is").isTrue();
+        assertThat(appCallsBeta(dir))
+                .as("the two-method build is what it says it is")
+                .isTrue();
 
         // Back to a state the action cache has already seen, then forward again. Both keys are
         // hits; neither may be answered with the artifacts the other left behind.
