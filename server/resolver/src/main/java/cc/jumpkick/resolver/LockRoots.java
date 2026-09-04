@@ -24,6 +24,12 @@ import java.util.Set;
 final class LockRoots {
 
     /** Every declared scope, in partition order. {@link Scope#PLATFORM} is BOM input, not a root. */
+    static final List<Scope> MAIN_SCOPES = List.of(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME, Scope.PROVIDED, Scope.DEV);
+
+    static final List<Scope> TEST_SCOPES = List.of(Scope.TEST, Scope.TEST_DEV);
+
+    static final List<Scope> PROCESSOR_SCOPES = List.of(Scope.PROCESSOR);
+
     static final List<Scope> SCOPES = List.of(
             Scope.EXPORT,
             Scope.MAIN,
