@@ -72,10 +72,16 @@ jobs:
           cache: gradle
 
       # Budget: 8 minutes wall clock for this step. Over it, drop or split an entry — raising the
-      # number turns the lane back into the full tier the branch gate cannot afford.
+      # number turns the lane back into the full tier the branch gate cannot afford. The elapsed
+      # seconds land in the run summary so the budget is checked against a measurement.
       - name: Curated integration tests
         timeout-minutes: 8
-        run: ./gradlew curatedIntegrationTest --no-daemon
+        run: |
+          set -euo pipefail
+          start=$SECONDS
+          ./gradlew curatedIntegrationTest --no-daemon
+          echo "curated integration lane: $((SECONDS - start))s of an 8 minute budget" \
+            >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v4
         if: failure()
