@@ -69,15 +69,15 @@ final class HttpProjectApi {
                     .put("path", result.path().toString())
                     .put("dir", result.path().toString());
             if (result.projectId() != null) created.put("projectId", result.projectId());
-            HttpEngineServer.sendJson(exchange, 201, created.toString());
+            HttpResponses.sendJson(exchange, 201, created.toString());
         } catch (IllegalArgumentException e) {
-            HttpEngineServer.sendJson(
+            HttpResponses.sendJson(
                     exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
         } catch (IllegalStateException e) {
-            HttpEngineServer.sendJson(
+            HttpResponses.sendJson(
                     exchange, 409, JsonOut.object().put("error", e.getMessage()).toString());
         } catch (IOException e) {
-            HttpEngineServer.sendJson(
+            HttpResponses.sendJson(
                     exchange,
                     500,
                     JsonOut.object()
@@ -107,7 +107,7 @@ final class HttpProjectApi {
                         .map(Path::of)
                         .orElse(null),
                 historyDirs);
-        HttpEngineServer.sendJson(
+        HttpResponses.sendJson(
                 exchange,
                 200,
                 JsonOut.object()
@@ -123,7 +123,7 @@ final class HttpProjectApi {
     void handleTemplates(HttpExchange exchange) throws IOException {
         TemplatesCache cached = templatesCache;
         if (cached != null && System.nanoTime() - cached.atNanos() < TEMPLATES_TTL_NANOS) {
-            HttpEngineServer.sendJson(exchange, 200, cached.json());
+            HttpResponses.sendJson(exchange, 200, cached.json());
             return;
         }
         var entries = Giter8TemplateIndex.picker(Giter8TemplateIndex.searchRoots());
@@ -146,7 +146,7 @@ final class HttpProjectApi {
         arr.append(']');
         String json = arr.toString();
         templatesCache = new TemplatesCache(json, System.nanoTime());
-        HttpEngineServer.sendJson(exchange, 200, json);
+        HttpResponses.sendJson(exchange, 200, json);
     }
 
     /**
@@ -158,16 +158,16 @@ final class HttpProjectApi {
         String projectId;
         String dir;
         try {
-            projectId = HttpEngineServer.queryParam(q, "project");
-            dir = HttpEngineServer.queryParam(q, "dir");
+            projectId = HttpQuery.queryParam(q, "project");
+            dir = HttpQuery.queryParam(q, "dir");
         } catch (IllegalArgumentException e) {
             // Malformed percent-encoding is the client's error, not a 500.
-            HttpEngineServer.sendJson(
+            HttpResponses.sendJson(
                     exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
             return;
         }
         if ((projectId == null || projectId.isBlank()) && (dir == null || dir.isBlank())) {
-            HttpEngineServer.sendJson(
+            HttpResponses.sendJson(
                     exchange,
                     400,
                     JsonOut.object()
@@ -178,7 +178,7 @@ final class HttpProjectApi {
         if (projectId != null && !projectId.isBlank()) {
             var path = ProjectIdentity.pathForId(projectId);
             if (path.isEmpty()) {
-                HttpEngineServer.sendJson(
+                HttpResponses.sendJson(
                         exchange,
                         404,
                         JsonOut.object()
@@ -194,7 +194,7 @@ final class HttpProjectApi {
         ProjectCard card = ProjectCard.of(Path.of(dir));
         String resolvedId = card.projectId() != null ? card.projectId() : projectId;
         if (card.coord() != null) {
-            HttpEngineServer.sendJson(
+            HttpResponses.sendJson(
                     exchange,
                     200,
                     JsonOut.object()
@@ -204,7 +204,7 @@ final class HttpProjectApi {
                             .put("description", card.description())
                             .toString());
         } else {
-            HttpEngineServer.sendJson(
+            HttpResponses.sendJson(
                     exchange,
                     200,
                     JsonOut.object()
@@ -223,29 +223,29 @@ final class HttpProjectApi {
         Path projectDir;
         List<Scope> scopes;
         try {
-            String dir = HttpEngineServer.queryParam(query, "dir");
+            String dir = HttpQuery.queryParam(query, "dir");
             if (dir == null || dir.isBlank()) {
-                HttpEngineServer.sendJson(
+                HttpResponses.sendJson(
                         exchange,
                         400,
                         JsonOut.object().put("error", "missing \"dir\"").toString());
                 return;
             }
             projectDir = Path.of(dir);
-            scopes = DependencyGraphModel.parseScopes(HttpEngineServer.queryParam(query, "scopes"));
+            scopes = DependencyGraphModel.parseScopes(HttpQuery.queryParam(query, "scopes"));
         } catch (IllegalArgumentException e) {
-            HttpEngineServer.sendJson(
+            HttpResponses.sendJson(
                     exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
             return;
         }
-        boolean transitive = EnvValues.parseBool(HttpEngineServer.queryParamLenient(query, "transitive"))
+        boolean transitive = EnvValues.parseBool(HttpQuery.queryParamLenient(query, "transitive"))
                 .orElse(false);
         DependencyGraphModel.Graph data;
         try {
             data = DependencyGraphModel.forProjectDir(projectDir, scopes, transitive);
         } catch (IOException | JkBuildParseException e) {
             String msg = e.getMessage() == null || e.getMessage().isBlank() ? e.toString() : e.getMessage();
-            HttpEngineServer.sendJson(
+            HttpResponses.sendJson(
                     exchange, 422, JsonOut.object().put("error", msg).toString());
             return;
         }
@@ -276,7 +276,7 @@ final class HttpProjectApi {
         body.put("availableScopes", data.availableScopes());
         body.put("nodes", nodes);
         body.put("edges", edges);
-        HttpEngineServer.sendJson(exchange, 200, MiniJson.write(body));
+        HttpResponses.sendJson(exchange, 200, MiniJson.write(body));
     }
 
     /**
@@ -286,14 +286,14 @@ final class HttpProjectApi {
     void handleProjectFiles(HttpExchange exchange) throws IOException {
         String projectId;
         try {
-            projectId = HttpEngineServer.queryParam(exchange.getRequestURI().getRawQuery(), "project");
+            projectId = HttpQuery.queryParam(exchange.getRequestURI().getRawQuery(), "project");
         } catch (IllegalArgumentException e) {
-            HttpEngineServer.sendJson(
+            HttpResponses.sendJson(
                     exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
             return;
         }
         if (projectId == null || projectId.isBlank()) {
-            HttpEngineServer.sendJson(
+            HttpResponses.sendJson(
                     exchange,
                     400,
                     JsonOut.object().put("error", "missing \"project\"").toString());
@@ -301,7 +301,7 @@ final class HttpProjectApi {
         }
         var root = WorkspaceFileAccess.resolveRoot(projectId);
         if (root.isEmpty()) {
-            HttpEngineServer.sendJson(
+            HttpResponses.sendJson(
                     exchange,
                     404,
                     JsonOut.object()
@@ -314,7 +314,7 @@ final class HttpProjectApi {
         try {
             list = WorkspaceFileAccess.list(root.get());
         } catch (IOException e) {
-            HttpEngineServer.sendJson(
+            HttpResponses.sendJson(
                     exchange,
                     500,
                     JsonOut.object()
@@ -334,7 +334,7 @@ final class HttpProjectApi {
         body.put("dir", list.root().toString());
         body.put("truncated", list.truncated());
         body.put("files", files);
-        HttpEngineServer.sendJson(exchange, 200, MiniJson.write(body));
+        HttpResponses.sendJson(exchange, 200, MiniJson.write(body));
     }
 
     /**
@@ -346,22 +346,22 @@ final class HttpProjectApi {
         String path;
         try {
             String q = exchange.getRequestURI().getRawQuery();
-            projectId = HttpEngineServer.queryParam(q, "project");
-            path = HttpEngineServer.queryParam(q, "path");
+            projectId = HttpQuery.queryParam(q, "project");
+            path = HttpQuery.queryParam(q, "path");
         } catch (IllegalArgumentException e) {
-            HttpEngineServer.sendJson(
+            HttpResponses.sendJson(
                     exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
             return;
         }
         if (projectId == null || projectId.isBlank()) {
-            HttpEngineServer.sendJson(
+            HttpResponses.sendJson(
                     exchange,
                     400,
                     JsonOut.object().put("error", "missing \"project\"").toString());
             return;
         }
         if (path == null || path.isBlank()) {
-            HttpEngineServer.sendJson(
+            HttpResponses.sendJson(
                     exchange,
                     400,
                     JsonOut.object().put("error", "missing \"path\"").toString());
@@ -369,7 +369,7 @@ final class HttpProjectApi {
         }
         var root = WorkspaceFileAccess.resolveRoot(projectId);
         if (root.isEmpty()) {
-            HttpEngineServer.sendJson(
+            HttpResponses.sendJson(
                     exchange,
                     404,
                     JsonOut.object()
@@ -380,17 +380,17 @@ final class HttpProjectApi {
         }
         switch (WorkspaceFileAccess.read(root.get(), path)) {
             case WorkspaceFileAccess.ReadResult.BadRequest bad ->
-                HttpEngineServer.sendJson(
+                HttpResponses.sendJson(
                         exchange,
                         400,
                         JsonOut.object().put("error", bad.error()).toString());
             case WorkspaceFileAccess.ReadResult.NotFound ignored ->
-                HttpEngineServer.sendJson(
+                HttpResponses.sendJson(
                         exchange,
                         404,
                         JsonOut.object().put("error", "not found").toString());
             case WorkspaceFileAccess.ReadResult.TooLarge too ->
-                HttpEngineServer.sendJson(
+                HttpResponses.sendJson(
                         exchange,
                         413,
                         JsonOut.object()
@@ -399,7 +399,7 @@ final class HttpProjectApi {
                                 .put("maxBytes", too.maxBytes())
                                 .toString());
             case WorkspaceFileAccess.ReadResult.Binary ignored ->
-                HttpEngineServer.sendJson(
+                HttpResponses.sendJson(
                         exchange,
                         415,
                         JsonOut.object().put("error", "binary file").toString());
@@ -415,7 +415,7 @@ final class HttpProjectApi {
                 body.put("encoding", b.encoding());
                 body.put("etag", b.etag());
                 body.put("content", b.content());
-                HttpEngineServer.sendJson(exchange, 200, MiniJson.write(body));
+                HttpResponses.sendJson(exchange, 200, MiniJson.write(body));
             }
         }
     }
@@ -431,22 +431,22 @@ final class HttpProjectApi {
         String path;
         try {
             String q = exchange.getRequestURI().getRawQuery();
-            projectId = HttpEngineServer.queryParam(q, "project");
-            path = HttpEngineServer.queryParam(q, "path");
+            projectId = HttpQuery.queryParam(q, "project");
+            path = HttpQuery.queryParam(q, "path");
         } catch (IllegalArgumentException e) {
-            HttpEngineServer.sendJson(
+            HttpResponses.sendJson(
                     exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
             return;
         }
         if (projectId == null || projectId.isBlank()) {
-            HttpEngineServer.sendJson(
+            HttpResponses.sendJson(
                     exchange,
                     400,
                     JsonOut.object().put("error", "missing \"project\"").toString());
             return;
         }
         if (path == null || path.isBlank()) {
-            HttpEngineServer.sendJson(
+            HttpResponses.sendJson(
                     exchange,
                     400,
                     JsonOut.object().put("error", "missing \"path\"").toString());
@@ -454,7 +454,7 @@ final class HttpProjectApi {
         }
         var root = WorkspaceFileAccess.resolveRoot(projectId);
         if (root.isEmpty()) {
-            HttpEngineServer.sendJson(
+            HttpResponses.sendJson(
                     exchange,
                     404,
                     JsonOut.object()
@@ -465,17 +465,17 @@ final class HttpProjectApi {
         }
         switch (WorkspaceFileAccess.readRaw(root.get(), path)) {
             case WorkspaceFileAccess.RawResult.BadRequest bad ->
-                HttpEngineServer.sendJson(
+                HttpResponses.sendJson(
                         exchange,
                         400,
                         JsonOut.object().put("error", bad.error()).toString());
             case WorkspaceFileAccess.RawResult.NotFound ignored ->
-                HttpEngineServer.sendJson(
+                HttpResponses.sendJson(
                         exchange,
                         404,
                         JsonOut.object().put("error", "not found").toString());
             case WorkspaceFileAccess.RawResult.TooLarge too ->
-                HttpEngineServer.sendJson(
+                HttpResponses.sendJson(
                         exchange,
                         413,
                         JsonOut.object()
@@ -484,7 +484,7 @@ final class HttpProjectApi {
                                 .put("maxBytes", too.maxBytes())
                                 .toString());
             case WorkspaceFileAccess.RawResult.Ok ok ->
-                HttpEngineServer.sendBytes(
+                HttpResponses.sendBytes(
                         exchange, 200, ok.body().contentType(), ok.body().bytes());
         }
     }
@@ -504,7 +504,7 @@ final class HttpProjectApi {
         int maxBody = WorkspaceFileAccess.MAX_FILE_BYTES * 6 + 4096;
         byte[] raw = exchange.getRequestBody().readNBytes(maxBody + 1);
         if (raw.length > maxBody) {
-            HttpEngineServer.sendJson(
+            HttpResponses.sendJson(
                     exchange,
                     413,
                     JsonOut.object()
@@ -520,21 +520,21 @@ final class HttpProjectApi {
         String etag = Jsonl.topStr(body, "etag");
         String encoding = Jsonl.topStr(body, "encoding");
         if (projectId == null || projectId.isBlank()) {
-            HttpEngineServer.sendJson(
+            HttpResponses.sendJson(
                     exchange,
                     400,
                     JsonOut.object().put("error", "missing \"project\"").toString());
             return;
         }
         if (path == null || path.isBlank()) {
-            HttpEngineServer.sendJson(
+            HttpResponses.sendJson(
                     exchange,
                     400,
                     JsonOut.object().put("error", "missing \"path\"").toString());
             return;
         }
         if (content == null) {
-            HttpEngineServer.sendJson(
+            HttpResponses.sendJson(
                     exchange,
                     400,
                     JsonOut.object().put("error", "missing \"content\"").toString());
@@ -542,7 +542,7 @@ final class HttpProjectApi {
         }
         var root = WorkspaceFileAccess.resolveRoot(projectId);
         if (root.isEmpty()) {
-            HttpEngineServer.sendJson(
+            HttpResponses.sendJson(
                     exchange,
                     404,
                     JsonOut.object()
@@ -553,17 +553,17 @@ final class HttpProjectApi {
         }
         switch (WorkspaceFileAccess.write(root.get(), path, content, etag, encoding)) {
             case WorkspaceFileAccess.WriteResult.BadRequest bad ->
-                HttpEngineServer.sendJson(
+                HttpResponses.sendJson(
                         exchange,
                         400,
                         JsonOut.object().put("error", bad.error()).toString());
             case WorkspaceFileAccess.WriteResult.NotFound ignored ->
-                HttpEngineServer.sendJson(
+                HttpResponses.sendJson(
                         exchange,
                         404,
                         JsonOut.object().put("error", "not found").toString());
             case WorkspaceFileAccess.WriteResult.TooLarge too ->
-                HttpEngineServer.sendJson(
+                HttpResponses.sendJson(
                         exchange,
                         413,
                         JsonOut.object()
@@ -572,10 +572,10 @@ final class HttpProjectApi {
                                 .put("maxBytes", too.maxBytes())
                                 .toString());
             case WorkspaceFileAccess.WriteResult.NotWritable nw ->
-                HttpEngineServer.sendJson(
+                HttpResponses.sendJson(
                         exchange, 415, JsonOut.object().put("error", nw.error()).toString());
             case WorkspaceFileAccess.WriteResult.Conflict conflict ->
-                HttpEngineServer.sendJson(
+                HttpResponses.sendJson(
                         exchange,
                         409,
                         JsonOut.object()
@@ -583,7 +583,7 @@ final class HttpProjectApi {
                                 .put("etag", conflict.currentEtag())
                                 .toString());
             case WorkspaceFileAccess.WriteResult.Failed failed ->
-                HttpEngineServer.sendJson(
+                HttpResponses.sendJson(
                         exchange,
                         500,
                         JsonOut.object().put("error", failed.error()).toString());
@@ -603,7 +603,7 @@ final class HttpProjectApi {
                 if (fileName.equals(ManifestPaths.MANIFEST) || fileName.equals(ManifestPaths.LIBRARIES)) {
                     resp.put("lockStale", Boolean.TRUE);
                 }
-                HttpEngineServer.sendJson(exchange, 200, MiniJson.write(resp));
+                HttpResponses.sendJson(exchange, 200, MiniJson.write(resp));
             }
         }
     }

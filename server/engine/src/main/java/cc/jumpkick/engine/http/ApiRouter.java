@@ -32,10 +32,10 @@ final class ApiRouter {
         String allow = allowedMethods(path);
         if (!allow.isEmpty()) {
             exchange.getResponseHeaders().set("Allow", allow);
-            HttpEngineServer.sendText(exchange, 405, "method not allowed\n");
+            HttpResponses.sendText(exchange, 405, "method not allowed\n");
             return;
         }
-        HttpEngineServer.sendText(exchange, 404, "no such endpoint\n");
+        HttpResponses.sendText(exchange, 404, "no such endpoint\n");
     }
 
     private String allowedMethods(String path) {

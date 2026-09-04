@@ -14,7 +14,6 @@ import java.io.IOException;
 import java.net.BindException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -381,13 +380,13 @@ public final class HttpEngineServer implements AutoCloseable {
                 // NPE instead of closing cleanly.
                 HttpServer current = server;
                 if (current == null) {
-                    sendText(exchange, 503, "engine is shutting down\n");
+                    HttpResponses.sendText(exchange, 503, "engine is shutting down\n");
                     return;
                 }
                 if (!HostCheck.allowed(
                         exchange.getRequestHeaders().getFirst("Host"),
                         current.getAddress().getPort())) {
-                    sendText(exchange, 421, "unrecognized Host header\n");
+                    HttpResponses.sendText(exchange, 421, "unrecognized Host header\n");
                     return;
                 }
                 boolean sse = isEventStreamRequest(exchange);
@@ -395,7 +394,7 @@ public final class HttpEngineServer implements AutoCloseable {
                 Semaphore gate = sse ? (mcpSurface ? mcpSse : webSse) : admission;
                 if (!gate.tryAcquire()) {
                     exchange.getResponseHeaders().set("Retry-After", "1");
-                    sendText(
+                    HttpResponses.sendText(
                             exchange,
                             503,
                             !sse
@@ -415,7 +414,7 @@ public final class HttpEngineServer implements AutoCloseable {
                 // A handler bug must not kill the virtual thread silently mid-response.
                 log.accept("jk engine: http handler error: " + e);
                 try {
-                    sendText(exchange, 500, "internal error\n");
+                    HttpResponses.sendText(exchange, 500, "internal error\n");
                 } catch (Exception ignored) {
                     // response already started (IllegalStateException) or client gone
                 }
@@ -427,7 +426,7 @@ public final class HttpEngineServer implements AutoCloseable {
         String path = exchange.getRequestURI().getPath();
         if (isMcpPath(path)) {
             if (mcp == null) {
-                sendText(exchange, 404, "not found\n"); // [mcp] enabled = false
+                HttpResponses.sendText(exchange, 404, "not found\n"); // [mcp] enabled = false
                 return;
             }
             // MCP is agent-facing; always token-gated (even loopback) — same CSRF posture as POST
@@ -436,10 +435,11 @@ public final class HttpEngineServer implements AutoCloseable {
             // header, matching /api and the docs, so tokens stay out of shell history/proxy logs.
             boolean sseQueryToken = exchange.getRequestMethod().equals("GET")
                     && acceptsEventStream(exchange)
-                    && tokenValid(queryParamLenient(exchange.getRequestURI().getRawQuery(), "access_token"));
+                    && tokenValid(
+                            HttpQuery.queryParamLenient(exchange.getRequestURI().getRawQuery(), "access_token"));
             if (!tokenValid(bearerToken(exchange.getRequestHeaders().getFirst("Authorization"))) && !sseQueryToken) {
                 exchange.getResponseHeaders().set("WWW-Authenticate", "Bearer");
-                sendText(exchange, 401, "missing or invalid bearer token\n");
+                HttpResponses.sendText(exchange, 401, "missing or invalid bearer token\n");
                 return;
             }
             handleMcp(exchange);
@@ -448,7 +448,7 @@ public final class HttpEngineServer implements AutoCloseable {
         if (path.equals("/api") || path.startsWith("/api/")) {
             if (!authorized(exchange)) {
                 exchange.getResponseHeaders().set("WWW-Authenticate", "Bearer");
-                sendText(exchange, 401, "missing or invalid bearer token\n");
+                HttpResponses.sendText(exchange, 401, "missing or invalid bearer token\n");
                 return;
             }
             // Generation gate: fail-closed except bootstrap status + SSE (EventSource
@@ -489,7 +489,7 @@ public final class HttpEngineServer implements AutoCloseable {
                 .put("version", s != null ? s.version() : "")
                 .put("startedAt", s != null ? s.startedAtMillis() : 0L)
                 .toString();
-        sendJson(exchange, 409, body);
+        HttpResponses.sendJson(exchange, 409, body);
     }
 
     /**
@@ -504,7 +504,7 @@ public final class HttpEngineServer implements AutoCloseable {
                 handleMcpEvents(exchange);
                 return;
             }
-            sendJson(
+            HttpResponses.sendJson(
                     exchange,
                     200,
                     JsonOut.object()
@@ -529,7 +529,7 @@ public final class HttpEngineServer implements AutoCloseable {
         }
         if (!method.equals("POST")) {
             exchange.getResponseHeaders().set("Allow", "GET, HEAD, POST");
-            sendText(exchange, 405, "method not allowed\n");
+            HttpResponses.sendText(exchange, 405, "method not allowed\n");
             return;
         }
         String body = new String(exchange.getRequestBody().readNBytes(MAX_BODY_BYTES), StandardCharsets.UTF_8);
@@ -539,7 +539,7 @@ public final class HttpEngineServer implements AutoCloseable {
             exchange.sendResponseHeaders(202, -1);
             return;
         }
-        sendJson(exchange, 200, response);
+        HttpResponses.sendJson(exchange, 200, response);
     }
 
     /**
@@ -579,7 +579,7 @@ public final class HttpEngineServer implements AutoCloseable {
      * leakage); open SSE after tools/call returns, or use {@code requestId} from the tool result.
      */
     Long resolveMcpEventFilter(String query) {
-        String rid = queryParamLenient(query, "jid");
+        String rid = HttpQuery.queryParamLenient(query, "jid");
         if (rid != null && !rid.isBlank()) {
             try {
                 return Long.parseLong(rid.trim());
@@ -587,7 +587,7 @@ public final class HttpEngineServer implements AutoCloseable {
                 return null;
             }
         }
-        String tok = queryParamLenient(query, "progressToken");
+        String tok = HttpQuery.queryParamLenient(query, "progressToken");
         if (tok != null && !tok.isBlank()) {
             Long bound = progressTokens.resolve(tok.trim());
             // -1 never appears as a real requestId; filtered stream stays quiet until bind lands
@@ -649,45 +649,13 @@ public final class HttpEngineServer implements AutoCloseable {
         boolean read = method.equals("GET") || method.equals("HEAD");
         return read
                 && exchange.getRequestURI().getPath().equals("/api/events")
-                && tokenValid(queryParamLenient(exchange.getRequestURI().getRawQuery(), "access_token"));
+                && tokenValid(
+                        HttpQuery.queryParamLenient(exchange.getRequestURI().getRawQuery(), "access_token"));
     }
 
     private static String bearerToken(String authorization) {
         if (authorization == null || !authorization.startsWith("Bearer ")) return null;
         return authorization.substring("Bearer ".length()).trim();
-    }
-
-    /**
-     * The decoded value of {@code name} in a RAW query string ({@code getRawQuery()}), or null.
-     * Split first, then decode each value once. Decoding never maps {@code +} to space (matches
-     * the SPA's {@code encodeURIComponent}).
-     */
-    static String queryParam(String rawQuery, String name) {
-        if (rawQuery == null) return null;
-        for (String pair : rawQuery.split("&")) {
-            int eq = pair.indexOf('=');
-            if (eq > 0 && pair.substring(0, eq).equals(name)) return decodeOnce(pair.substring(eq + 1));
-        }
-        return null;
-    }
-
-    /** Percent-decode without the {@code application/x-www-form-urlencoded} {@code +}→space rule. */
-    private static String decodeOnce(String raw) {
-        return URLDecoder.decode(raw.replace("+", "%2B"), StandardCharsets.UTF_8);
-    }
-
-    /**
-     * {@link #queryParam} that treats malformed percent-encoding as an absent parameter instead of
-     * throwing. For token / filter lookups where the caller's answer to garbage is "no" (401 /
-     * unfiltered), not a 500 from the generic handler. Handlers that owe the client a
-     * message keep the throwing form and map it to 400 themselves.
-     */
-    static String queryParamLenient(String rawQuery, String name) {
-        try {
-            return queryParam(rawQuery, name);
-        } catch (IllegalArgumentException e) {
-            return null;
-        }
     }
 
     private boolean tokenValid(String presented) {
@@ -768,42 +736,6 @@ public final class HttpEngineServer implements AutoCloseable {
     /** Test seam: shrink the SSE heartbeat so quiet-stream behavior is testable in milliseconds. */
     void heartbeatMillis(long millis) {
         this.heartbeatMillis = millis;
-    }
-
-    static void sendJson(HttpExchange exchange, int status, String body) throws IOException {
-        exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
-        exchange.getResponseHeaders().set("Cache-Control", "no-store");
-        if (exchange.getRequestMethod().equals("HEAD")) {
-            exchange.sendResponseHeaders(status, -1);
-            return;
-        }
-        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
-        exchange.sendResponseHeaders(status, bytes.length);
-        exchange.getResponseBody().write(bytes);
-    }
-
-    static void sendText(HttpExchange exchange, int status, String body) throws IOException {
-        exchange.getResponseHeaders().set("Content-Type", "text/plain; charset=utf-8");
-        if (exchange.getRequestMethod().equals("HEAD")) {
-            exchange.sendResponseHeaders(status, -1);
-            return;
-        }
-        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
-        exchange.sendResponseHeaders(status, bytes.length);
-        exchange.getResponseBody().write(bytes);
-    }
-
-    /** Binary response with an explicit content type (image preview raw endpoint). */
-    static void sendBytes(HttpExchange exchange, int status, String contentType, byte[] body) throws IOException {
-        exchange.getResponseHeaders()
-                .set("Content-Type", contentType == null ? "application/octet-stream" : contentType);
-        exchange.getResponseHeaders().set("Cache-Control", "no-store");
-        if (exchange.getRequestMethod().equals("HEAD")) {
-            exchange.sendResponseHeaders(status, -1);
-            return;
-        }
-        exchange.sendResponseHeaders(status, body.length);
-        exchange.getResponseBody().write(body);
     }
 
     /**

@@ -42,17 +42,17 @@ final class HttpHistoryApi {
      * {@code requestId}/{@code progress}.
      */
     void handleHistory(HttpExchange exchange) throws IOException {
-        String id = HttpEngineServer.queryParamLenient(exchange.getRequestURI().getRawQuery(), "id");
+        String id = HttpQuery.queryParamLenient(exchange.getRequestURI().getRawQuery(), "id");
         if (id != null && !id.isBlank()) {
             var record = journal.recordFile(id);
             if (record.isEmpty()) {
-                HttpEngineServer.sendJson(
+                HttpResponses.sendJson(
                         exchange,
                         404,
                         JsonOut.object().put("error", "no such build: " + id).toString());
                 return;
             }
-            HttpEngineServer.sendJson(
+            HttpResponses.sendJson(
                     exchange,
                     200,
                     redactRecordJson(
@@ -305,16 +305,16 @@ final class HttpHistoryApi {
      */
     void handleHistoryArtifact(HttpExchange exchange) throws IOException {
         String query = exchange.getRequestURI().getRawQuery();
-        var artifact = journal.artifact(
-                HttpEngineServer.queryParamLenient(query, "id"), HttpEngineServer.queryParamLenient(query, "name"));
+        var artifact =
+                journal.artifact(HttpQuery.queryParamLenient(query, "id"), HttpQuery.queryParamLenient(query, "name"));
         if (artifact.isEmpty()) {
-            HttpEngineServer.sendJson(
+            HttpResponses.sendJson(
                     exchange,
                     404,
                     JsonOut.object().put("error", "no such artifact").toString());
             return;
         }
-        HttpEngineServer.sendText(exchange, 200, Files.readString(artifact.get(), StandardCharsets.UTF_8));
+        HttpResponses.sendText(exchange, 200, Files.readString(artifact.get(), StandardCharsets.UTF_8));
     }
 
     /**
@@ -322,15 +322,15 @@ final class HttpHistoryApi {
      * token is required even on loopback (CSRF defense).
      */
     void handleHistoryDelete(HttpExchange exchange) throws IOException {
-        String id = HttpEngineServer.queryParamLenient(exchange.getRequestURI().getRawQuery(), "id");
+        String id = HttpQuery.queryParamLenient(exchange.getRequestURI().getRawQuery(), "id");
         if (id == null || !journal.delete(id)) {
-            HttpEngineServer.sendJson(
+            HttpResponses.sendJson(
                     exchange,
                     404,
                     JsonOut.object().put("error", "no such build").toString());
             return;
         }
-        HttpEngineServer.sendJson(
+        HttpResponses.sendJson(
                 exchange, 200, JsonOut.object().put("deleted", true).toString());
     }
 }

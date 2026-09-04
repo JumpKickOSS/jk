@@ -97,17 +97,17 @@ final class StaticContent {
         boolean head = method.equals("HEAD");
         if (!head && !method.equals("GET")) {
             exchange.getResponseHeaders().set("Allow", "GET, HEAD");
-            HttpEngineServer.sendText(exchange, 405, "method not allowed\n");
+            HttpResponses.sendText(exchange, 405, "method not allowed\n");
             return;
         }
         String rel = relativize(exchange.getRequestURI().getPath());
         if (rel == null) {
-            HttpEngineServer.sendText(exchange, 404, "not found\n");
+            HttpResponses.sendText(exchange, 404, "not found\n");
             return;
         }
         if (serveFromDisk(exchange, rel, head)) return;
         if (serveFromClasspath(exchange, rel, head)) return;
-        HttpEngineServer.sendText(exchange, 404, "not found\n");
+        HttpResponses.sendText(exchange, 404, "not found\n");
     }
 
     /**

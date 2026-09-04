@@ -61,7 +61,7 @@ final class HttpReadApi {
                 .put("mcpMaxEventStreams", config.mcp().maxEventStreams())
                 .put("webRoot", webRoot.toString())
                 .toString();
-        HttpEngineServer.sendJson(exchange, 200, body);
+        HttpResponses.sendJson(exchange, 200, body);
     }
 
     /**
@@ -81,7 +81,7 @@ final class HttpReadApi {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("path", EffectiveUserConfig.configPath().toString());
         body.put("rows", rows);
-        HttpEngineServer.sendJson(exchange, 200, MiniJson.write(body));
+        HttpResponses.sendJson(exchange, 200, MiniJson.write(body));
     }
 
     /**
@@ -89,8 +89,7 @@ final class HttpReadApi {
      */
     void handleLog(HttpExchange exchange) throws IOException {
         int requested = 120;
-        String param =
-                HttpEngineServer.queryParamLenient(exchange.getRequestURI().getRawQuery(), "lines");
+        String param = HttpQuery.queryParamLenient(exchange.getRequestURI().getRawQuery(), "lines");
         if (param != null) {
             try {
                 requested = Math.max(1, Math.min(400, Integer.parseInt(param)));
@@ -136,13 +135,12 @@ final class HttpReadApi {
      * {@code GET /api/fs?dir=…} — the workspace picker behind the dashboard's Browse button.
      */
     void handleFs(HttpExchange exchange) throws IOException {
-        String requested =
-                HttpEngineServer.queryParamLenient(exchange.getRequestURI().getRawQuery(), "dir");
+        String requested = HttpQuery.queryParamLenient(exchange.getRequestURI().getRawQuery(), "dir");
         Path dir;
         try {
             dir = requested == null || requested.isBlank() ? PathUtil.userHome() : PathUtil.resolveUserPath(requested);
         } catch (IllegalArgumentException e) {
-            HttpEngineServer.sendJson(
+            HttpResponses.sendJson(
                     exchange,
                     400,
                     JsonOut.object()
@@ -157,7 +155,7 @@ final class HttpReadApi {
                 if (!name.startsWith(".") && Files.isDirectory(entry)) subdirs.add(name);
             }
         } catch (IOException | DirectoryIteratorException e) {
-            HttpEngineServer.sendJson(
+            HttpResponses.sendJson(
                     exchange,
                     400,
                     JsonOut.object()
@@ -169,7 +167,7 @@ final class HttpReadApi {
         boolean truncated = subdirs.size() > MAX_FS_ENTRIES;
         if (truncated) subdirs = subdirs.subList(0, MAX_FS_ENTRIES);
         Path parent = dir.getParent();
-        HttpEngineServer.sendJson(
+        HttpResponses.sendJson(
                 exchange,
                 200,
                 JsonOut.object()
@@ -185,8 +183,7 @@ final class HttpReadApi {
      * {@code GET /api/metrics[?dir=…]} — running build aggregates as a flat JSON array.
      */
     void handleMetrics(HttpExchange exchange) throws IOException {
-        String dirFilter =
-                HttpEngineServer.queryParamLenient(exchange.getRequestURI().getRawQuery(), "dir");
+        String dirFilter = HttpQuery.queryParamLenient(exchange.getRequestURI().getRawQuery(), "dir");
         StringBuilder body = new StringBuilder("[");
         for (BuildMetrics.Entry e : metrics.get()) {
             // Same base-dir filter semantics as the wire metrics verb (project rows fold dir#dN).
@@ -196,12 +193,12 @@ final class HttpReadApi {
             if (body.length() > 1) body.append(',');
             body.append(MetricsVerb.metricsFields(JsonOut.object(), e));
         }
-        HttpEngineServer.sendJson(exchange, 200, body.append(']').toString());
+        HttpResponses.sendJson(exchange, 200, body.append(']').toString());
     }
 
     /** {@code GET /api/cache} — cache-directory breakdown for the Status view. */
     void handleCache(HttpExchange exchange) throws IOException {
-        HttpEngineServer.sendJson(exchange, 200, cache.get().toJson().toString());
+        HttpResponses.sendJson(exchange, 200, cache.get().toJson().toString());
     }
 
     /**
@@ -214,7 +211,7 @@ final class HttpReadApi {
                 exchange.getRequestBody().readNBytes(HttpEngineServer.MAX_BODY_BYTES), StandardCharsets.UTF_8);
         String dir = Jsonl.str(body, "dir");
         if (dir == null || dir.isBlank()) {
-            HttpEngineServer.sendJson(
+            HttpResponses.sendJson(
                     exchange,
                     400,
                     JsonOut.object().put("error", "missing \"dir\"").toString());
@@ -225,7 +222,7 @@ final class HttpReadApi {
         try {
             requestId = jobs.trigger(JobSpec.of(kind, dir));
         } catch (JobEnvelope.AlreadyRunning e) {
-            HttpEngineServer.sendJson(
+            HttpResponses.sendJson(
                     exchange,
                     409,
                     JsonOut.object()
@@ -234,7 +231,7 @@ final class HttpReadApi {
                             .toString());
             return;
         } catch (LockFloor.LockFloorRefused e) {
-            HttpEngineServer.sendJson(
+            HttpResponses.sendJson(
                     exchange,
                     409,
                     JsonOut.object()
@@ -245,15 +242,15 @@ final class HttpReadApi {
         } catch (IllegalStateException e) {
             String msg = e.getMessage() == null ? "" : e.getMessage();
             exchange.getResponseHeaders().set("Retry-After", "1");
-            HttpEngineServer.sendJson(
+            HttpResponses.sendJson(
                     exchange, 503, JsonOut.object().put("error", msg).toString());
             return;
         } catch (IllegalArgumentException e) {
-            HttpEngineServer.sendJson(
+            HttpResponses.sendJson(
                     exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
             return;
         }
-        HttpEngineServer.sendJson(
+        HttpResponses.sendJson(
                 exchange,
                 202,
                 JsonOut.object()
@@ -274,7 +271,7 @@ final class HttpReadApi {
             String dir = Jsonl.str(body, "dir");
             if (dir != null && !dir.isBlank()) {
                 int n = jobs.cancelDir(dir);
-                HttpEngineServer.sendJson(
+                HttpResponses.sendJson(
                         exchange,
                         n > 0 ? 200 : 404,
                         JsonOut.object()
@@ -284,14 +281,14 @@ final class HttpReadApi {
                                 .toString());
                 return;
             }
-            HttpEngineServer.sendJson(
+            HttpResponses.sendJson(
                     exchange,
                     400,
                     JsonOut.object().put("error", "missing \"jid\" or \"dir\"").toString());
             return;
         }
         boolean ok = jobs.cancel(jid);
-        HttpEngineServer.sendJson(
+        HttpResponses.sendJson(
                 exchange,
                 ok ? 200 : 404,
                 JsonOut.object()
