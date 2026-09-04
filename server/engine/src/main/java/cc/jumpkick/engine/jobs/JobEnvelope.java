@@ -2,7 +2,6 @@
 package cc.jumpkick.engine.jobs;
 
 import cc.jumpkick.compile.JavaCompilerHost;
-import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.config.JobLimits;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.BuildJobFingerprint;
@@ -11,7 +10,6 @@ import cc.jumpkick.engine.JobWorkers;
 import cc.jumpkick.engine.JsonOut;
 import cc.jumpkick.engine.WireWriter;
 import cc.jumpkick.engine.journal.BuildAccumulator;
-import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.InputTrees;
@@ -23,7 +21,6 @@ import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoEvents;
 import cc.jumpkick.wire.protocol.ProtoJobs;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
-import cc.jumpkick.wire.runtime.progress.ProgressBarMode;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -32,7 +29,6 @@ import java.io.StringWriter;
 import java.nio.channels.SocketChannel;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -41,75 +37,12 @@ import org.jspecify.annotations.Nullable;
  */
 public final class JobEnvelope {
 
-    /** Process-side callbacks the envelope must not own. */
-    public interface Host {
-        boolean tryStartBuildPlan();
-
-        void abandonBuildPlanSlot();
-
-        void noteBuildPlanFinished();
-
-        boolean draining();
-
-        long nextRequestId();
-
-        long nowMillis();
-
-        void putMode(long id, ProgressBarMode mode);
-
-        void publishRequestStart(long id, String kind, String dir, long buildNumber);
-
-        void registerAccumulator(
-                long id,
-                String kind,
-                String dir,
-                String trigger,
-                boolean noTimeline,
-                boolean rebuild,
-                long buildNumber,
-                @Nullable String journalId);
-
-        ReentrantReadWriteLock cacheGate();
-
-        void bindEventRequestId(long id);
-
-        void unbindEventRequestId();
-
-        IoLedger runIo(long id);
-
-        InFlightBuilds inFlight();
-
-        @Nullable
-        BuildAccumulator accumulatorOf(long id);
-
-        void putLastProgress(long id, double percent);
-
-        int activeBuildPlans();
-
-        JsonOut withProgress(JsonOut payload, long id);
-
-        JsonOut withIo(JsonOut payload, long id);
-
-        void publishEvent(String type, JsonOut payload);
-
-        void clearProgress(long id);
-
-        void writeJournal(long id, boolean cancelled, long millis, @Nullable BufferedWriter writer);
-
-        void maybeIdleBoundary();
-
-        void maybeIdleGc();
-
-        void log(String message);
-
-        String version();
-
-        JkHistoryConfig historyConfig();
-
-        BuildJournal journal();
-
-        String coordOf(String dir);
-    }
+    /**
+     * Process-side callbacks the envelope must not own, as the union of the four ports the
+     * extracted phases take: {@link PlanSlots}, {@link JobEvents}, {@link JobJournaling} and
+     * {@link JobRuntime}. One implementation wires all four; each phase asks for only the ports it uses.
+     */
+    public interface Host extends PlanSlots, JobEvents, JobJournaling, JobRuntime {}
 
     private final Host host;
     private final JobLimits limits;
