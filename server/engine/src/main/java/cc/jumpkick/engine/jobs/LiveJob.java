@@ -3,6 +3,7 @@ package cc.jumpkick.engine.jobs;
 
 import cc.jumpkick.config.Session;
 import java.io.BufferedWriter;
+import java.nio.channels.SocketChannel;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.Nullable;
 
@@ -15,7 +16,9 @@ public record LiveJob(
         AtomicReference<Thread> runnerRef,
         /** Streaming socket for this job — used to push an immediate cancelled terminal. */
         @Nullable BufferedWriter writer,
-        /** Connection thread parked on client readLine — interrupted so teardown can run. */
+        /** The job's socket; its read side is half-closed to wake the connection thread off readLine. */
+        @Nullable SocketChannel channel,
+        /** Connection thread parked on client readLine — woken so teardown can run. */
         @Nullable Thread connectionThread,
         String dir,
         String kind,

@@ -5,7 +5,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
 import java.io.BufferedWriter;
+import java.io.OutputStreamWriter;
 import java.io.StringWriter;
+import java.nio.ByteBuffer;
+import java.nio.channels.Channels;
+import java.nio.channels.Pipe;
+import java.nio.charset.StandardCharsets;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -90,5 +95,33 @@ class WireWriterTest {
         // The contract is that a gone client is not an error here — the cancel-watching read loop
         // sees the same disconnect. Not throwing IS the assertion.
         assertThatCode(() -> WireWriter.sendQuiet(closed, "{\"type\":\"e\"}")).doesNotThrowAnyException();
+    }
+
+    /**
+     * The channel under the writer is interruptible, and the JDK closes it when the thread blocked
+     * in it is interrupted. A cancelled runner is interrupted while it is still emitting progress,
+     * so its line must be written by a thread nobody interrupts, or the socket dies under every
+     * other producer.
+     */
+    @Test
+    void a_line_sent_from_an_interrupted_thread_lands_and_leaves_the_channel_open() throws Exception {
+        Pipe pipe = Pipe.open();
+        BufferedWriter writer = new BufferedWriter(
+                new OutputStreamWriter(Channels.newOutputStream(pipe.sink()), StandardCharsets.UTF_8));
+        Thread.currentThread().interrupt();
+        try {
+            assertThatCode(() -> WireWriter.sendQuiet(writer, "{\"type\":\"progress\"}"))
+                    .doesNotThrowAnyException();
+        } finally {
+            assertThat(Thread.interrupted())
+                    .as("the interrupt stays the caller's")
+                    .isTrue();
+        }
+        WireWriter.send(writer, "{\"type\":\"job-finish\"}");
+        assertThat(pipe.sink().isOpen()).isTrue();
+        ByteBuffer buf = ByteBuffer.allocate(256);
+        pipe.source().read(buf);
+        assertThat(new String(buf.array(), 0, buf.position(), StandardCharsets.UTF_8))
+                .isEqualTo("{\"type\":\"progress\"}\n{\"type\":\"job-finish\"}\n");
     }
 }

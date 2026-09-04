@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
+import cc.jumpkick.run.JkThreads;
 import java.io.BufferedWriter;
 import java.io.IOException;
+import java.io.InterruptedIOException;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 
@@ -26,12 +30,36 @@ public final class WireWriter {
 
     private WireWriter() {}
 
-    /** Write one line, atomically with respect to every other producer on this writer. */
+    /**
+     * Write one line, atomically with respect to every other producer on this writer.
+     *
+     * <p>The write runs on an io-pool thread, not the caller's. The writer sits on an interruptible
+     * channel, and the JDK closes such a channel when the thread blocked in it is interrupted — so a
+     * cancelled runner interrupted mid-progress-line would take the client's stream down for every
+     * producer sharing it, before the terminal and {@code job-finish} could reach the client. Nobody
+     * interrupts the io pool. A caller interrupted while waiting gets an {@link InterruptedIOException}
+     * and keeps its interrupt flag; the line still lands, and the socket stays open.
+     */
     public static void send(BufferedWriter writer, String line) throws IOException {
-        synchronized (writer) {
-            writer.write(line);
-            writer.write('\n');
-            writer.flush();
+        Future<?> written = JkThreads.io().submit(() -> {
+            synchronized (writer) {
+                writer.write(line);
+                writer.write('\n');
+                writer.flush();
+            }
+            return null;
+        });
+        try {
+            written.get();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new InterruptedIOException("interrupted while a wire line was being written");
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof IOException io) throw io;
+            if (cause instanceof RuntimeException re) throw re;
+            if (cause instanceof Error err) throw err;
+            throw new IOException(cause);
         }
     }
 

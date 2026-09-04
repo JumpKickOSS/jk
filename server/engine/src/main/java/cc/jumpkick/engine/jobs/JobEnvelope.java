@@ -260,6 +260,7 @@ public final class JobEnvelope {
                 cancelToken,
                 runnerRef,
                 writer,
+                channel,
                 detached ? null : connectionThread,
                 eventDir,
                 eventKind,
@@ -611,11 +612,12 @@ public final class JobEnvelope {
             Session.CancelToken token,
             AtomicReference<Thread> runnerRef,
             @Nullable BufferedWriter writer,
+            @Nullable SocketChannel channel,
             @Nullable Thread connectionThread,
             String dir,
             String kind,
             boolean workspaceStream) {
-        liveJobs.put(jid, new LiveJob(token, runnerRef, writer, connectionThread, dir, kind, workspaceStream));
+        liveJobs.put(jid, new LiveJob(token, runnerRef, writer, channel, connectionThread, dir, kind, workspaceStream));
     }
 
     public void unregisterLiveJob(long jid) {
@@ -636,17 +638,12 @@ public final class JobEnvelope {
         beginUserCancel(jid, job.token(), job.runnerRef(), JobWorkers.cancelGraceMs(), true);
         // Terminal + reader wake happen off-thread: the job's stream writer can be wedged in a
         // socket write (client not draining), and `jk cancel` / POST /api/cancel must ack
-        // without waiting behind that monitor. Order inside the task still matters:
-        // terminal first, then the interrupt that may close the channel.
+        // without waiting behind that monitor. Order inside the task still matters: terminal
+        // first, then the wake — a half-close where the transport allows it, so the write side
+        // stays open for the job-finish the client blocks on.
         Thread.ofVirtual().name("jk-cancel-settle-" + jid).start(() -> {
             pushCancelledTerminal(job);
-            if (job.connectionThread() != null) {
-                try {
-                    job.connectionThread().interrupt();
-                } catch (RuntimeException ignored) {
-                    // best-effort wake
-                }
-            }
+            if (job.connectionThread() != null) wakeOffClientRead(job.channel(), job.connectionThread());
         });
         return true;
     }
