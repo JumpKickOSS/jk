@@ -3,6 +3,7 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EngineProbe;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.model.command.CliCommand;
@@ -40,11 +41,11 @@ public final class EngineStartCommand implements CliCommand {
         EnginePaths.Paths paths = EnginePaths.current();
         // Was a matching engine already up before we touched it? Distinguishes "already running"
         // from a fresh start in the settled wedge below.
-        boolean alreadyUp = EngineClient.handshake(EnginePaths.activeSocket(paths), Jk.VERSION)
+        boolean alreadyUp = EngineProbe.handshake(EnginePaths.activeSocket(paths), Jk.VERSION)
                 .map(h -> Jk.VERSION.equals(h.version()))
                 .orElse(false);
         try {
-            EngineClient.Handshake hs = EngineClient.ensureRunning(paths, Jk.VERSION);
+            EngineProbe.Handshake hs = EngineClient.ensureRunning(paths, Jk.VERSION);
             String pid = pidStyled(hs.pid());
             String message =
                     alreadyUp ? "Engine already running (pid " + pid + ")" : "Build engine started (pid " + pid + ")";

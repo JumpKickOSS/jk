@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
-import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EngineJournalReads;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.Pill;
@@ -61,7 +61,7 @@ public final class ActivityCommand implements CliCommand {
     @Override
     public int run(Invocation in) throws Exception {
         int limit = in.value("limit").map(ActivityCommand::parseLimit).orElse(DEFAULT_LIMIT);
-        List<String> lines = EngineClient.historyList(EnginePaths.current(), limit);
+        List<String> lines = EngineJournalReads.historyList(EnginePaths.current(), limit);
         List<String> entries = lines.stream()
                 .filter(l -> EngineProtocol.HISTORY_ENTRY.equals(EngineProtocol.typeOf(l)))
                 .toList();

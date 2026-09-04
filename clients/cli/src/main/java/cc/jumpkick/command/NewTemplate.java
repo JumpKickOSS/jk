@@ -2,6 +2,7 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.engine.EngineCatalogFreshen;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.tui.CommandWedge;
@@ -82,7 +83,7 @@ final class NewTemplate {
         Path target = NewWizard.resolveTarget(args.directory(), args.cwd(), resolvedName);
         Path parentDir = target.getParent() == null ? args.cwd() : target.getParent();
         if (officialShortName(args.ref())) {
-            EngineClient.freshenCatalog(EnginePaths.current(), "templates", args.offline(), null, null);
+            EngineCatalogFreshen.freshenCatalog(EnginePaths.current(), "templates", args.offline(), null, null);
         }
         Layout resolvedLayout;
         try {

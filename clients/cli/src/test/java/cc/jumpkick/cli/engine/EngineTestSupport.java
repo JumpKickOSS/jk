@@ -125,7 +125,7 @@ public final class EngineTestSupport {
             // forceStop waits for pid death when the pid file is present.
             long pid = EngineClient.readPidForSocket(socket);
             if (pid <= 0) {
-                var status = EngineClient.status(socket);
+                var status = EngineProbe.status(socket);
                 if (status.isEmpty()) return;
                 pid = status.get().pid();
             }

@@ -3,7 +3,7 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.CliPaths;
-import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EngineCatalogFreshen;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
@@ -72,8 +72,8 @@ public final class LibraryUpdateCommand implements CliCommand {
             Files.copy(cacheFile, previousBackup, StandardCopyOption.REPLACE_EXISTING);
         }
         try {
-            String error =
-                    EngineClient.freshenCatalogNow(EnginePaths.current(), "libraries", source.toString(), cacheFile);
+            String error = EngineCatalogFreshen.freshenCatalogNow(
+                    EnginePaths.current(), "libraries", source.toString(), cacheFile);
             if (error != null) {
                 restoreBackup(cacheFile, previousBackup);
                 CommandWedge.printFail("Library", error);

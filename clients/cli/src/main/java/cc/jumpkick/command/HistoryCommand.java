@@ -2,7 +2,7 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
-import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EngineJournalReads;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.Table;
@@ -111,7 +111,7 @@ public final class HistoryCommand extends GroupCommand {
         @Override
         public int run(Invocation in) throws Exception {
             int limit = in.value("limit").map(HistoryListCommand::parseLimit).orElse(50);
-            List<String> lines = EngineClient.historyList(EnginePaths.current(), limit);
+            List<String> lines = EngineJournalReads.historyList(EnginePaths.current(), limit);
             List<String> entries = lines.stream()
                     .filter(l -> EngineProtocol.HISTORY_ENTRY.equals(EngineProtocol.typeOf(l)))
                     .toList();
@@ -184,7 +184,7 @@ public final class HistoryCommand extends GroupCommand {
                 return Exit.USAGE;
             }
             String id = in.positionals().get(0);
-            List<String> lines = EngineClient.historyShow(EnginePaths.current(), id);
+            List<String> lines = EngineJournalReads.historyShow(EnginePaths.current(), id);
             String record = lines.stream()
                     .filter(l -> EngineProtocol.HISTORY_RECORD.equals(EngineProtocol.typeOf(l)))
                     .findFirst()
@@ -301,7 +301,7 @@ public final class HistoryCommand extends GroupCommand {
                 return Exit.USAGE;
             }
             String id = in.positionals().get(0);
-            if (EngineClient.historyDelete(EnginePaths.current(), id)) {
+            if (EngineJournalReads.historyDelete(EnginePaths.current(), id)) {
                 CommandWedge.printOk("History", "Deleted build " + id);
                 return 0;
             }

@@ -3,6 +3,7 @@ package cc.jumpkick.cli.ide;
 
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EngineProbe;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestSelection;
@@ -86,14 +87,14 @@ public class IdeEngineClient {
     }
 
     /** Ensure a live engine (spawn/replace on version skew). */
-    public EngineClient.Handshake connect() throws IOException {
+    public EngineProbe.Handshake connect() throws IOException {
         return EngineClient.ensureRunning(EnginePaths.current(), Jk.VERSION);
     }
 
     /** Engine status (heap, active requests, …). */
-    public EngineClient.Status status() throws IOException {
+    public EngineProbe.Status status() throws IOException {
 
-        return EngineClient.status(EnginePaths.activeSocket(EnginePaths.current()))
+        return EngineProbe.status(EnginePaths.activeSocket(EnginePaths.current()))
                 .orElseThrow(() -> new IOException("engine not reachable — call connect() first"));
     }
 

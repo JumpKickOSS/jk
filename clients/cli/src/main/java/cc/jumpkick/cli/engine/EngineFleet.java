@@ -53,7 +53,7 @@ public final class EngineFleet {
      * {@code stop --pid} would answer "no running engine with pid N" about a process that is
      * running. Verified against a SIGSTOP'd engine.
      */
-    public record Member(EnginePaths.Paths paths, Path socket, EngineClient.Status status, long pid, boolean current) {
+    public record Member(EnginePaths.Paths paths, Path socket, EngineProbe.Status status, long pid, boolean current) {
 
         /**
          * Short, stable handle for a human to refer to: the identity hash, or a pid-derived label for an
@@ -111,7 +111,7 @@ public final class EngineFleet {
         Set<Long> known = new HashSet<>();
         for (EnginePaths.Paths paths : EnginePaths.identitiesIn(stateDir)) {
             Path socket = EnginePaths.activeSocket(paths);
-            Optional<EngineClient.Status> status = EngineClient.status(socket);
+            Optional<EngineProbe.Status> status = EngineProbe.status(socket);
             if (status.isPresent()) {
                 long pid = status.get().pid();
                 boolean isCurrent = paths.key().equals(currentKey);
@@ -147,7 +147,7 @@ public final class EngineFleet {
                 Path socket = pidFile.resolveSibling(stem + ".sock");
                 String key = keyFromPidStem(stem);
                 EnginePaths.Paths paths = EnginePaths.forKey(key, stateDir);
-                Optional<EngineClient.Status> status = EngineClient.status(socket);
+                Optional<EngineProbe.Status> status = EngineProbe.status(socket);
                 if (status.isPresent() && status.get().pid() == pid) {
                     out.add(new Member(paths, socket, status.get(), pid, false));
                 } else {
@@ -252,7 +252,7 @@ public final class EngineFleet {
         for (Path state : candidateStateDirs(cmd)) {
             for (EnginePaths.Paths paths : EnginePaths.identitiesIn(state)) {
                 Path socket = EnginePaths.activeSocket(paths);
-                Optional<EngineClient.Status> status = EngineClient.status(socket);
+                Optional<EngineProbe.Status> status = EngineProbe.status(socket);
                 if (status.isPresent() && status.get().pid() == pid) {
                     return new Member(paths, socket, status.get(), pid, false);
                 }

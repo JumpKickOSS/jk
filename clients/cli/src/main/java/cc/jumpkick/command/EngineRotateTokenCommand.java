@@ -2,6 +2,7 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EngineProbe;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -50,7 +51,7 @@ public final class EngineRotateTokenCommand implements CliCommand {
         }
         // A running engine still holds the old token in memory — stop it so the old value is
         // genuinely revoked, not just replaced on disk. The next command respawns and mints fresh.
-        if (EngineClient.ping(EnginePaths.activeSocket(paths)) && !EngineClient.stop(EnginePaths.activeSocket(paths))) {
+        if (EngineProbe.ping(EnginePaths.activeSocket(paths)) && !EngineClient.stop(EnginePaths.activeSocket(paths))) {
             CommandWedge.printFail(
                     "Engine",
                     "token file removed, but stopping the running engine failed;"

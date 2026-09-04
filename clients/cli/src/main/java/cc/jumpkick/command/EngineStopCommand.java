@@ -3,6 +3,7 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineFleet;
+import cc.jumpkick.cli.engine.EngineProbe;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.DrainView;
@@ -54,7 +55,7 @@ public final class EngineStopCommand implements CliCommand {
             return stopByPid(pidArg.get(), in.isSet("now"));
         }
         EnginePaths.Paths paths = EnginePaths.current();
-        Optional<EngineClient.Status> before = EngineClient.status(EnginePaths.activeSocket(paths));
+        Optional<EngineProbe.Status> before = EngineProbe.status(EnginePaths.activeSocket(paths));
         if (before.isEmpty()) {
             return stopUnresponsiveHolder(paths);
         }
@@ -213,7 +214,7 @@ public final class EngineStopCommand implements CliCommand {
                     EngineClient.forceStop(EnginePaths.activeSocket(paths));
                     break;
                 }
-                Optional<EngineClient.Status> s = EngineClient.status(EnginePaths.activeSocket(paths));
+                Optional<EngineProbe.Status> s = EngineProbe.status(EnginePaths.activeSocket(paths));
                 if (s.isEmpty()) {
                     // The draining engine has unbound its listener so a successor can bind. Status
                     // going silent is not exit — wait for the process, not the socket.
@@ -223,8 +224,8 @@ public final class EngineStopCommand implements CliCommand {
                         continue;
                     }
                     sleep(150);
-                    if (EngineClient.status(EnginePaths.activeSocket(paths)).isEmpty()
-                            && !EngineClient.ping(EnginePaths.activeSocket(paths))) break;
+                    if (EngineProbe.status(EnginePaths.activeSocket(paths)).isEmpty()
+                            && !EngineProbe.ping(EnginePaths.activeSocket(paths))) break;
                     continue;
                 }
                 view.setJobs(Math.max(0, s.get().activeBuildPlans()));

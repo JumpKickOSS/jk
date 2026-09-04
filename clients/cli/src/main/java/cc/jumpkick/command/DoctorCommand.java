@@ -3,7 +3,7 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
-import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EngineProbe;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.compat.BuildTool;
@@ -217,11 +217,11 @@ public final class DoctorCommand implements CliCommand {
     private static Check checkEngine() {
         EnginePaths.Paths paths = EnginePaths.current();
         Path socket = EnginePaths.activeSocket(paths);
-        Optional<EngineClient.Status> st = EngineClient.status(socket);
+        Optional<EngineProbe.Status> st = EngineProbe.status(socket);
         if (st.isEmpty()) {
             // A socket that accepts connections but never answers status is a wedged engine, not
             // an absent one — `jk build` would hang on it instead of lazy-starting a fresh one.
-            if (EngineClient.reachable(socket)) {
+            if (EngineProbe.reachable(socket)) {
                 return new Check(
                         Status.FAIL,
                         "engine",
@@ -229,7 +229,7 @@ public final class DoctorCommand implements CliCommand {
             }
             return new Check(Status.WARN, "engine", "not running (lazy start on next build)");
         }
-        EngineClient.Status s = st.get();
+        EngineProbe.Status s = st.get();
         String detail = "running pid " + s.pid() + " · " + s.version() + " · up "
                 + formatUptime((System.currentTimeMillis() - s.startedAtMillis()) / 1000);
         if (s.httpError() != null && !s.httpError().isBlank()) {

@@ -5,6 +5,7 @@ import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineFleet;
+import cc.jumpkick.cli.engine.EngineProbe;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
@@ -51,7 +52,7 @@ public final class EngineStatusCommand implements CliCommand {
     public int run(Invocation in) {
         GlobalOptions global = GlobalOptions.from(in);
         EnginePaths.Paths paths = EnginePaths.current();
-        Optional<EngineClient.Status> status = EngineClient.status(EnginePaths.activeSocket(paths));
+        Optional<EngineProbe.Status> status = EngineProbe.status(EnginePaths.activeSocket(paths));
         if (status.isEmpty()) {
             // "not running" is only true of THIS directory's engine. Saying it flatly while others are
             // alive is how eighteen engines once went unnoticed, so name them. And a silent probe is
@@ -81,7 +82,7 @@ public final class EngineStatusCommand implements CliCommand {
             }
             return Exit.FAILURE;
         }
-        EngineClient.Status s = status.get();
+        EngineProbe.Status s = status.get();
         long uptimeSeconds = Math.max(0, (System.currentTimeMillis() - s.startedAtMillis()) / 1000);
         if (global.outputIsJson()) {
             CliOutput.out("{\"running\":true"
@@ -250,7 +251,7 @@ public final class EngineStatusCommand implements CliCommand {
      * owner-only token file is readable: fragments never leave the browser, and this line is how
      * the dashboard SPA bootstraps its token — click/open the printed URL and it's authenticated.
      */
-    private static String describeHttp(EngineClient.Status s, EnginePaths.Paths paths) {
+    private static String describeHttp(EngineProbe.Status s, EnginePaths.Paths paths) {
         if (s.httpUrl() != null) {
             try {
                 String token = Files.readString(paths.httpToken()).trim();
@@ -269,7 +270,7 @@ public final class EngineStatusCommand implements CliCommand {
      * Unobservable parts are dropped; {@code null} when nothing at all was observed (an engine
      * predating the memory fields).
      */
-    private static String formatMemory(EngineClient.Status s) {
+    private static String formatMemory(EngineProbe.Status s) {
         StringBuilder out = new StringBuilder();
         if (s.heapUsedBytes() >= 0 && s.heapCommittedBytes() >= 0) {
             out.append("Heap ")
@@ -297,7 +298,7 @@ public final class EngineStatusCommand implements CliCommand {
      * committed}-beyond-used in indigo, and the rest (up to {@code max}) in bright-black. {@code
      * null} when the heap max isn't observable (nothing to scale against).
      */
-    private static String memoryBar(EngineClient.Status s) {
+    private static String memoryBar(EngineProbe.Status s) {
         long max = s.heapMaxBytes();
         if (max <= 0 || s.heapUsedBytes() < 0 || s.heapCommittedBytes() < 0) return null;
         int width = 50;

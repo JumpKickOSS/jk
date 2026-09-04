@@ -5,6 +5,7 @@ import cc.jumpkick.cli.CliPaths;
 import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.PathDisplay;
+import cc.jumpkick.cli.engine.EngineCatalogFreshen;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.run.BuildPlanConsole;
@@ -85,7 +86,7 @@ public final class UpdateCommand implements CliCommand {
         Files.createDirectories(cache);
         // Same pre-flight as lock: first-time download + revalidate before engine parses jk.toml.
         // Engine-hosted (JIT, no client-side TTL): the CLI never talks to the registry's network.
-        EngineClient.freshenCatalog(EnginePaths.current(), "libraries", global.offline, null, null);
+        EngineCatalogFreshen.freshenCatalog(EnginePaths.current(), "libraries", global.offline, null, null);
 
         String gitTarget = null;
         if (in.has("git")) {

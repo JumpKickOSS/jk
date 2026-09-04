@@ -66,7 +66,7 @@ class EngineClientTest {
     @Test
     void ping_is_false_when_nothing_is_listening() throws IOException {
         EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
-        assertThat(EngineClient.ping(EnginePaths.activeSocket(p))).isFalse();
+        assertThat(EngineProbe.ping(EnginePaths.activeSocket(p))).isFalse();
     }
 
     @Test
@@ -77,14 +77,14 @@ class EngineClientTest {
         // Endpoint is written before acceptLoop (AOT plan / HTTP / warmup still run first).
         // Wait for a real pong — cold CI can take longer than the 2s connect timeout between
         // writeEndpoint and the accept loop, so "endpoint exists" alone races.
-        Await.until(Duration.ofSeconds(30), () -> EngineClient.ping(EnginePaths.activeSocket(p)));
+        Await.until(Duration.ofSeconds(30), () -> EngineProbe.ping(EnginePaths.activeSocket(p)));
 
-        var hs = EngineClient.handshake(EnginePaths.activeSocket(p), "7.7.7");
+        var hs = EngineProbe.handshake(EnginePaths.activeSocket(p), "7.7.7");
         assertThat(hs).isPresent();
         assertThat(hs.get().version()).isEqualTo("7.7.7");
         assertThat(hs.get().pid()).isEqualTo(ProcessHandle.current().pid());
 
-        var status = EngineClient.status(EnginePaths.activeSocket(p));
+        var status = EngineProbe.status(EnginePaths.activeSocket(p));
         assertThat(status).isPresent();
         assertThat(status.get().version()).isEqualTo("7.7.7");
         assertThat(status.get().heapUsedBytes()).isPositive(); // best-effort memory made it across the wire
@@ -99,7 +99,7 @@ class EngineClientTest {
         EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
         EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0", null);
         Thread serverThread = startInBackground(server);
-        Await.until(Duration.ofSeconds(30), () -> EngineClient.ping(EnginePaths.activeSocket(p)));
+        Await.until(Duration.ofSeconds(30), () -> EngineProbe.ping(EnginePaths.activeSocket(p)));
 
         assertThat(EngineClient.stop(EnginePaths.activeSocket(p))).isTrue();
         serverThread.join(5_000);
@@ -117,13 +117,13 @@ class EngineClientTest {
         EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
         EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0", null);
         startInBackground(server);
-        Await.until(Duration.ofSeconds(30), () -> EngineClient.ping(EnginePaths.activeSocket(p)));
+        Await.until(Duration.ofSeconds(30), () -> EngineProbe.ping(EnginePaths.activeSocket(p)));
 
-        assertThat(EngineClient.handshake(EnginePaths.activeSocket(p), "1.0")
+        assertThat(EngineProbe.handshake(EnginePaths.activeSocket(p), "1.0")
                         .orElseThrow()
                         .draining())
                 .isFalse();
-        var s = EngineClient.status(EnginePaths.activeSocket(p)).orElseThrow();
+        var s = EngineProbe.status(EnginePaths.activeSocket(p)).orElseThrow();
         assertThat(s.draining()).isFalse();
         assertThat(s.activeBuildPlans()).isZero();
 
@@ -135,7 +135,7 @@ class EngineClientTest {
         EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
         EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0", null);
         Thread serverThread = startInBackground(server);
-        Await.until(Duration.ofSeconds(30), () -> EngineClient.ping(EnginePaths.activeSocket(p)));
+        Await.until(Duration.ofSeconds(30), () -> EngineProbe.ping(EnginePaths.activeSocket(p)));
 
         assertThat(EngineClient.drain(EnginePaths.activeSocket(p))).isZero(); // no in-flight jobs → immediate exit
         serverThread.join(5_000);
@@ -147,7 +147,7 @@ class EngineClientTest {
         EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
         EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0", null);
         Thread serverThread = startInBackground(server);
-        Await.until(Duration.ofSeconds(30), () -> EngineClient.ping(EnginePaths.activeSocket(p)));
+        Await.until(Duration.ofSeconds(30), () -> EngineProbe.ping(EnginePaths.activeSocket(p)));
 
         long pid = EngineClient.readPidForSocket(EnginePaths.activeSocket(p));
         // In-process EngineServer records this JVM's pid; forceStop must not kill us.
@@ -183,7 +183,7 @@ class EngineClientTest {
             acceptor.start();
 
             long t0 = System.nanoTime();
-            assertThat(EngineClient.handshake(sock, "1.0")).isEmpty();
+            assertThat(EngineProbe.handshake(sock, "1.0")).isEmpty();
             long ms = (System.nanoTime() - t0) / 1_000_000L;
             // LIVENESS, not performance: the exchange watchdog is 2s and the alternative is the
             // stream-idle timeout, which is minutes. 8s is 4x the watchdog on purpose — a tighter
@@ -219,13 +219,13 @@ class EngineClientTest {
             EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
             EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "7.7.7", null);
             startInBackground(server);
-            Await.until(Duration.ofSeconds(30), () -> EngineClient.ping(EnginePaths.activeSocket(p)));
+            Await.until(Duration.ofSeconds(30), () -> EngineProbe.ping(EnginePaths.activeSocket(p)));
 
-            var hs = EngineClient.handshake(EnginePaths.activeSocket(p), "7.7.7");
+            var hs = EngineProbe.handshake(EnginePaths.activeSocket(p), "7.7.7");
             assertThat(hs).isPresent();
             assertThat(hs.get().version()).isEqualTo("7.7.7");
 
-            var status = EngineClient.status(EnginePaths.activeSocket(p));
+            var status = EngineProbe.status(EnginePaths.activeSocket(p));
             assertThat(status).isPresent();
             assertThat(status.get().version()).isEqualTo("7.7.7");
 
@@ -289,7 +289,7 @@ class EngineClientTest {
         EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
         EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, Jk.VERSION, null);
         startInBackground(server);
-        Await.until(Duration.ofSeconds(30), () -> EngineClient.ping(EnginePaths.activeSocket(p)));
+        Await.until(Duration.ofSeconds(30), () -> EngineProbe.ping(EnginePaths.activeSocket(p)));
         EngineClient.ActiveJobs.forgetAll();
 
         Path cache = Files.createDirectories(tempDirs.create().resolve("cache"));
@@ -319,9 +319,9 @@ class EngineClientTest {
         EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
         EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "3.3.3", null);
         startInBackground(server);
-        Await.until(Duration.ofSeconds(30), () -> EngineClient.ping(EnginePaths.activeSocket(p)));
+        Await.until(Duration.ofSeconds(30), () -> EngineProbe.ping(EnginePaths.activeSocket(p)));
 
-        EngineClient.Handshake hs = EngineClient.ensureRunning(p, "3.3.3");
+        EngineProbe.Handshake hs = EngineClient.ensureRunning(p, "3.3.3");
         assertThat(hs.version()).isEqualTo("3.3.3");
 
         server.close();

@@ -5,7 +5,7 @@ import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.CliPaths;
 import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.GlobalOptions;
-import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EngineCatalogFreshen;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
@@ -174,7 +174,7 @@ public final class JdkInstallCommand implements CliCommand {
                     // ephemeralCachePath() below, which the engine has no way to share with this
                     // process.
                     if (!global.offline && (feedUrl == null || cacheFile != null)) {
-                        EngineClient.freshenCatalogIfRunning(
+                        EngineCatalogFreshen.freshenCatalogIfRunning(
                                 EnginePaths.current(), "jdks", feedUrl != null ? feedUrl.toString() : null, cacheFile);
                     }
                     boolean refresh = SessionContext.current().config().forceOr(false);

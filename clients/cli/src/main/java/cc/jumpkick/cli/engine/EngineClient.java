@@ -16,11 +16,7 @@ import cc.jumpkick.wire.protocol.DenyReport;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ExecPlan;
 import cc.jumpkick.wire.protocol.GeneratedFiles;
-import cc.jumpkick.wire.protocol.HistoryDeleteRequest;
-import cc.jumpkick.wire.protocol.HistoryListRequest;
-import cc.jumpkick.wire.protocol.HistoryShowRequest;
 import cc.jumpkick.wire.protocol.IdeWireModel;
-import cc.jumpkick.wire.protocol.MetricsRequest;
 import cc.jumpkick.wire.protocol.ModuleGraphAck;
 import cc.jumpkick.wire.protocol.NewProjectAck;
 import cc.jumpkick.wire.protocol.OutdatedReport;
@@ -45,7 +41,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -55,11 +50,11 @@ import java.util.function.Function;
 import java.util.function.ObjIntConsumer;
 
 /**
- * CLI-side counterpart to the engine's {@code EngineServer}: connects, ensures a live
- * version-matched engine, and exposes hosted verbs. Spawn/takeover/AOT live in {@link
- * EngineSpawn}; request records in {@link EngineRequests}; fat hosted bodies in {@link
- * EngineHosted}. This type stays the one command-facing facade (scoreboard 800–1,200) so adding
- * {@code jk quux} does not scatter imports across six collaborators.
+ * CLI-side counterpart to the engine's {@code EngineServer}: ensures a live version-matched engine
+ * and exposes the hosted verbs. Probes live in {@link EngineProbe}, spawn/takeover/AOT in {@link
+ * EngineSpawn}, request records in {@link EngineRequests}, fat hosted bodies in {@link
+ * EngineHosted}. This type stays the one command-facing facade for verbs so adding {@code jk quux}
+ * does not scatter imports across six collaborators.
  */
 public final class EngineClient {
 
@@ -73,163 +68,6 @@ public final class EngineClient {
     private static final Duration STOP_DEATH_WAIT = Duration.ofMillis(1_500);
 
     private EngineClient() {}
-
-    /** What a connection's {@code hello}/{@code hello-ack} handshake reveals about the engine. */
-    public record Handshake(String version, long pid, long startedAtMillis, boolean draining, String buildId) {}
-
-    /**
-     * {@code jk engine status} snapshot. Memory fields use {@code -1} when unknown; http fields
-     * report embedded server URL/error; {@code aotTrainingPid} is visibility-only.
-     */
-    public record Status(
-            String version,
-            long pid,
-            long startedAtMillis,
-            int activeRequests,
-            int activeBuildPlans,
-            boolean draining,
-            long heapUsedBytes,
-            long heapCommittedBytes,
-            long heapMaxBytes,
-            long rssBytes,
-            long aotTrainingPid,
-            String httpUrl,
-            String httpError,
-            /** MCP JSON-RPC endpoint when HTTP is up ({@code httpUrl + "/mcp"}), else null. */
-            String mcpUrl,
-            /** Last-job VFS object from {@code status-ack}, or {@code null} when none yet. */
-            String vfsJson,
-            int cores,
-            long totalMemoryBytes,
-            long availableMemoryBytes,
-            double systemCpuLoad,
-            double systemLoadAverage,
-            String engineEpoch) {
-        public Status(
-                String version,
-                long pid,
-                long startedAtMillis,
-                int activeRequests,
-                int activeBuildPlans,
-                boolean draining,
-                long heapUsedBytes,
-                long heapCommittedBytes,
-                long heapMaxBytes,
-                long rssBytes,
-                long aotTrainingPid,
-                String httpUrl,
-                String httpError,
-                String mcpUrl) {
-            this(
-                    version,
-                    pid,
-                    startedAtMillis,
-                    activeRequests,
-                    activeBuildPlans,
-                    draining,
-                    heapUsedBytes,
-                    heapCommittedBytes,
-                    heapMaxBytes,
-                    rssBytes,
-                    aotTrainingPid,
-                    httpUrl,
-                    httpError,
-                    mcpUrl,
-                    null,
-                    -1,
-                    -1,
-                    -1,
-                    -1,
-                    -1,
-                    null);
-        }
-    }
-
-    /**
-     * Connect, ping, and get {@code pong} back — the engine-existence check per {@code docs/architecture.md}
-     * (never trust a pidfile alone). {@code false} for anything from "nothing is listening" to "it
-     * answered something unexpected."
-     */
-    public static boolean ping(Path socket) {
-        try (SocketChannel ch = EngineWire.connect(socket)) {
-            String reply = EngineWire.exchange(ch, ProtoLifecycle.ping());
-            return EngineProtocol.PONG.equals(EngineProtocol.typeOf(reply));
-        } catch (IOException e) {
-            return false;
-        }
-    }
-
-    /** Connect and perform the {@code hello}/{@code hello-ack} handshake; empty if unreachable. */
-    public static Optional<Handshake> handshake(Path socket, String clientVersion) {
-        try (SocketChannel ch = EngineWire.connect(socket)) {
-            String ack = EngineWire.exchange(ch, ProtoLifecycle.hello(clientVersion));
-            if (!EngineProtocol.HELLO_ACK.equals(EngineProtocol.typeOf(ack))) return Optional.empty();
-            // Protocol-zero's teeth: an engine speaking a NEWER protocol than this client is not
-            // usable — treat it as unreachable so the ensure path elects/starts a matching one
-            // (which the newer engine's takeover logic then arbitrates).
-            if (Jsonl.intValue(ack, "proto", EngineProtocol.PROTOCOL) > EngineProtocol.PROTOCOL) {
-                return Optional.empty();
-            }
-            String ackBuildId = Jsonl.str(ack, "buildId");
-            return Optional.of(new Handshake(
-                    Jsonl.str(ack, "version"),
-                    Jsonl.longValue(ack, "pid", -1),
-                    Jsonl.longValue(ack, "startedAt", -1),
-                    Jsonl.bool(ack, "draining", false),
-                    ackBuildId == null ? "" : ackBuildId));
-        } catch (IOException e) {
-            return Optional.empty();
-        }
-    }
-
-    /**
-     * Whether a socket connection can be opened at all, regardless of protocol behavior — for host
-     * checks (e.g. {@code jk doctor}) that must tell "nothing is listening" (a WARN — lazy-start
-     * handles it) apart from "something is listening but not answering" (a wedged engine, a FAIL).
-     * {@link #status} alone cannot make that distinction: it returns empty for both.
-     */
-    public static boolean reachable(Path socket) {
-        try (SocketChannel ch = EngineWire.connect(socket)) {
-            return true;
-        } catch (IOException e) {
-            return false;
-        }
-    }
-
-    /** Connect and request a status snapshot; empty if no engine is reachable. */
-    public static Optional<Status> status(Path socket) {
-        try (SocketChannel ch = EngineWire.connect(socket)) {
-            EngineWire.exchange(ch, ProtoLifecycle.hello(Jk.VERSION, "probe")); // handshake first, response discarded
-            String ack = EngineWire.exchange(ch, ProtoLifecycle.statusRequest());
-            if (!EngineProtocol.STATUS_ACK.equals(EngineProtocol.typeOf(ack))) return Optional.empty();
-            String httpUrl = Jsonl.str(ack, "httpUrl");
-            String mcpUrl = Jsonl.str(ack, "mcpUrl"); // null = MCP disabled
-            return Optional.of(new Status(
-                    Jsonl.str(ack, "version"),
-                    Jsonl.longValue(ack, "pid", -1),
-                    Jsonl.longValue(ack, "startedAt", -1),
-                    Jsonl.intValue(ack, "activeRequests", -1),
-                    Jsonl.intValue(ack, "activeBuildPlans", 0),
-                    Jsonl.bool(ack, "draining", false),
-                    Jsonl.longValue(ack, "heapUsedBytes", -1),
-                    Jsonl.longValue(ack, "heapCommittedBytes", -1),
-                    Jsonl.longValue(ack, "heapMaxBytes", -1),
-                    Jsonl.longValue(ack, "rssBytes", -1),
-                    Jsonl.longValue(ack, "aotTrainingPid", -1),
-                    httpUrl,
-                    Jsonl.str(ack, "httpError"),
-                    mcpUrl,
-                    Jsonl.nested(ack, "vfs"),
-                    Jsonl.intValue(ack, "cores", -1),
-                    Jsonl.longValue(ack, "totalMemoryBytes", -1),
-                    Jsonl.longValue(ack, "availableMemoryBytes", -1),
-                    Jsonl.doubleValue(ack, "systemCpuLoad", -1),
-                    Jsonl.doubleValue(ack, "systemLoadAverage", -1),
-                    Jsonl.str(ack, "engineEpoch")));
-        } catch (IOException e) {
-            return Optional.empty();
-        }
-    }
 
     /**
      * Ask a reachable engine to shut down gracefully; {@code true} if one was reached and acknowledged
@@ -392,28 +230,6 @@ public final class EngineClient {
         }
     }
 
-    // ---- build history ({@code jk history}) — thin RPC over the engine's journal ----------------
-
-    /** Newest-first {@code history-entry} lines (flat JSONL), spawning the engine if none is running. */
-    public static List<String> historyList(EnginePaths.Paths paths, int limit) throws IOException {
-        return streamHistory(paths, new HistoryListRequest(limit).encode());
-    }
-
-    /** One entry's detail: a {@code history-record} header line plus module/step/diag lines. */
-    public static List<String> historyShow(EnginePaths.Paths paths, String id) throws IOException {
-        return streamHistory(paths, new HistoryShowRequest(id).encode());
-    }
-
-    /** Delete one entry; {@code true} if it existed. */
-    public static boolean historyDelete(EnginePaths.Paths paths, String id) throws IOException {
-        for (String line : streamHistory(paths, new HistoryDeleteRequest(id).encode())) {
-            if (EngineProtocol.HISTORY_DELETED.equals(EngineProtocol.typeOf(line))) {
-                return Jsonl.bool(line, "deleted", false);
-            }
-        }
-        return false;
-    }
-
     /**
      * Cancel a live engine job by jid. Returns the {@code cancel-ack} line, or empty if the
      * engine is unreachable. Idempotent: already-finished jids yield {@code cancelled=false}.
@@ -434,7 +250,7 @@ public final class EngineClient {
     }
 
     /**
-     * SIGINT pathsame {@code cancel-request} wire as {@link #cancel}/{@link #cancelForDir},
+     * The SIGINT path: the same {@code cancel-request} wire as {@link #cancel}/{@link #cancelForDir},
      * but <em>never</em> spawns or replaces an engine and never blocks long. Call this from the
      * Ctrl-C handler before {@code halt}; the hard exit is the backup if this is too late.
      *
@@ -538,43 +354,14 @@ public final class EngineClient {
     }
 
     /**
-     * Running aggregate rows ({@code metrics-entry} flat JSONL) for {@code dir}'s project tiers
-     * plus the global tiers; {@code null} dir asks for every row. Spawns the engine if needed.
-     */
-    public static List<String> metrics(EnginePaths.Paths paths, String dir) throws IOException {
-        return streamHistory(paths, new MetricsRequest(dir).encode());
-    }
-
-    /** Send a history/metrics request, collect the flat reply lines up to (not including) the terminal. */
-    private static List<String> streamHistory(EnginePaths.Paths paths, String request) throws IOException {
-        ensureRunning(paths, Jk.VERSION);
-        List<String> out = new ArrayList<>();
-        try (SocketChannel ch = EngineWire.connect(EnginePaths.activeSocket(paths))) {
-            BufferedWriter writer =
-                    new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
-            writer.write(request);
-            writer.write('\n');
-            writer.flush();
-            BufferedReader reader = EngineWire.protocolReader(ch);
-            String line;
-            while ((line = reader.readLine()) != null) {
-                String type = EngineProtocol.typeOf(line);
-                if (EngineProtocol.HISTORY_DONE.equals(type) || EngineProtocol.METRICS_DONE.equals(type)) break;
-                out.add(line);
-                if (EngineProtocol.HISTORY_DELETED.equals(type) || EngineProtocol.ERROR.equals(type)) break;
-            }
-        }
-        return out;
-    }
-
-    /**
      * The one entry point real commands use: a live, version-matched engine is guaranteed to be
      * reachable at {@code paths.socket} when this returns normally. Spawns lazily if none is
      * running; kills and replaces a stale (version-mismatched) engine transparently. Throws with a
      * message pointing at the engine's log file if it still can't be reached after a fresh spawn
      * per {@code docs/architecture.md}, the engine is load-bearing and this is not silently swallowed.
      */
-    public static Handshake ensureRunning(EnginePaths.Paths paths, String clientVersion) throws IOException {
+    public static EngineProbe.Handshake ensureRunning(EnginePaths.Paths paths, String clientVersion)
+            throws IOException {
         return EngineSpawn.ensure(paths, clientVersion);
     }
 
@@ -658,57 +445,6 @@ public final class EngineClient {
     public static NewProjectAck newProject(EnginePaths.Paths paths, EngineRequests.NewProjectRequest req)
             throws IOException {
         return EngineReads.newProject(paths, req);
-    }
-
-    /**
-     * On-demand, engine-hosted freshen of a network-backed catalog — {@code "templates"} (before
-     * {@code jk new}/{@code init}) or {@code "libraries"} (before {@code jk lock}/{@code update}).
-     * Starts the engine if it isn't already running (these two commands have no bootstrap concern —
-     * they never need to run before a JDK exists). {@code url}/{@code cacheFile} override the
-     * default source/destination ({@code "libraries"} only; {@code null} for {@code "templates"}).
-     * Best-effort: never throws — a stale/offline catalog is not this call's problem, the caller
-     * resolves against whatever the local cache already holds.
-     *
-     * <p>{@code jk jdk install}/{@code update} must not use this — use {@link
-     * #freshenCatalogIfRunning} instead, which never starts an engine.
-     */
-    public static void freshenCatalog(
-            EnginePaths.Paths paths, String catalog, boolean offline, String url, Path cacheFile) {
-        if (offline) return; // nothing to freshen without a network
-        try {
-            ensureRunning(paths, Jk.VERSION);
-        } catch (IOException e) {
-            return; // no engine to host the freshen — local resolution proceeds against the cache
-        }
-        EngineReads.freshenCatalog(paths, catalog, false, url, cacheFile == null ? null : cacheFile.toString(), false);
-    }
-
-    /**
-     * As {@link #freshenCatalog} but always hits the network and returns the engine error (or
-     * {@code null} on success). Used by {@code jk library update}.
-     */
-    public static String freshenCatalogNow(EnginePaths.Paths paths, String catalog, String url, Path cacheFile)
-            throws IOException {
-        ensureRunning(paths, Jk.VERSION);
-        return EngineReads.freshenCatalogNow(paths, catalog, url, cacheFile == null ? null : cacheFile.toString());
-    }
-
-    /**
-     * As {@link #freshenCatalog}, but for {@code "jdks"} from {@code jk jdk install}/{@code
-     * update} specifically: it must work to bootstrap a bare machine that has no JDK at all yet
-     * (possibly the one that will host the engine), so it never starts an engine — only an
-     * already-reachable one is asked to freshen. Returns {@code true} when it delegated (an engine
-     * answered); {@code false} means nothing happened here and the caller must fetch {@code
-     * jdks.json} itself ({@code JdkCatalogClient}). Never throws.
-     *
-     * <p>Once a healthy engine is running, every client — this CLI path included — funnels JDK
-     * installs through it the same way the web dashboard and MCP always do, so there is one place
-     * that actually touches the JDK feed's network when the engine is available.
-     */
-    public static boolean freshenCatalogIfRunning(EnginePaths.Paths paths, String catalog, String url, Path cacheFile) {
-        if (!reachable(EnginePaths.activeSocket(paths))) return false;
-        EngineReads.freshenCatalog(paths, catalog, false, url, cacheFile == null ? null : cacheFile.toString());
-        return true;
     }
 
     /** Module DAG for {@code jk explain --graph}. */

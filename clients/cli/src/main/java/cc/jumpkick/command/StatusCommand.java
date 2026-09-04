@@ -6,6 +6,8 @@ import cc.jumpkick.cli.EnsureFreshLock;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EngineJournalReads;
+import cc.jumpkick.cli.engine.EngineProbe;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.BuildPlanConsole;
@@ -77,7 +79,7 @@ public final class StatusCommand implements CliCommand {
                 && BuildPlanConsole.isInteractiveTerminal();
 
         List<String> rows;
-        Optional<EngineClient.Status> engine = Optional.empty();
+        Optional<EngineProbe.Status> engine = Optional.empty();
         ProjectSnapshot project = null;
         Forecast forecast = null;
         String lastHistory = null;
@@ -90,7 +92,7 @@ public final class StatusCommand implements CliCommand {
         }
 
         try (var analyzing = live ? CommandWedge.analyzingStdout("Status", "Analyzing status...") : null) {
-            rows = EngineClient.metrics(paths, globalOnly ? null : cwd.toString()).stream()
+            rows = EngineJournalReads.metrics(paths, globalOnly ? null : cwd.toString()).stream()
                     .filter(l -> EngineProtocol.METRICS_ENTRY.equals(EngineProtocol.typeOf(l)))
                     .toList();
 
@@ -99,7 +101,7 @@ public final class StatusCommand implements CliCommand {
                 return 0;
             }
 
-            engine = EngineClient.status(EnginePaths.activeSocket(paths));
+            engine = EngineProbe.status(EnginePaths.activeSocket(paths));
             if (!globalOnly) {
                 project = loadProject(cwd);
                 if (project != null) {
@@ -281,11 +283,11 @@ public final class StatusCommand implements CliCommand {
     /**
      * Status chip tail: {@code JumpKick Engine v[focused]X[/] is running (pid [yellow]N[/])}.
      */
-    static String engineStatusMessage(Optional<EngineClient.Status> engine) {
+    static String engineStatusMessage(Optional<EngineProbe.Status> engine) {
         return RichText.parse(engineStatusMarkup(engine)).render();
     }
 
-    static String engineStatusMarkup(Optional<EngineClient.Status> engine) {
+    static String engineStatusMarkup(Optional<EngineProbe.Status> engine) {
         String version = Jk.VERSION;
         if (engine.isEmpty()) {
             return "JumpKick Engine v[focused]" + version + "[/] is not running";
@@ -473,7 +475,7 @@ public final class StatusCommand implements CliCommand {
     private static String findLastHistory(EnginePaths.Paths paths, Path cwd) {
         try {
             String base = cwd.toString();
-            List<String> lines = EngineClient.historyList(paths, 50);
+            List<String> lines = EngineJournalReads.historyList(paths, 50);
             for (String line : lines) {
                 if (!EngineProtocol.HISTORY_ENTRY.equals(EngineProtocol.typeOf(line))) continue;
                 if (Jsonl.bool(line, "running", false)) continue;

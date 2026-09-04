@@ -5,6 +5,7 @@ import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.OpenBrowser;
 import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EngineProbe;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
@@ -55,8 +56,8 @@ public final class WebCommand implements CliCommand {
             return Exit.SOFTWARE;
         }
 
-        EngineClient.Status status =
-                EngineClient.status(EnginePaths.activeSocket(paths)).orElse(null);
+        EngineProbe.Status status =
+                EngineProbe.status(EnginePaths.activeSocket(paths)).orElse(null);
         if (status == null) {
             CommandWedge.printFail("Web", "Engine did not answer after start");
             return Exit.SOFTWARE;

@@ -6,6 +6,7 @@ import cc.jumpkick.cli.CliPaths;
 import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.ProjectContext;
+import cc.jumpkick.cli.engine.EngineCatalogFreshen;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EnginePrewarm;
 import cc.jumpkick.cli.engine.EngineRequests;
@@ -107,7 +108,7 @@ public final class LockCommand implements CliCommand {
         // before anything parses jk.toml short names. Engine-hosted (JIT, no client-side TTL): the
         // CLI never talks to the library registry's network itself, and the engine reads the same
         // on-disk file this writes, closing the race with background StoreFeedRefresh.
-        EngineClient.freshenCatalog(
+        EngineCatalogFreshen.freshenCatalog(
                 EnginePaths.current(),
                 "libraries",
                 global.offline,

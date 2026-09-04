@@ -2,7 +2,7 @@
 package cc.jumpkick.cli.run;
 
 import cc.jumpkick.builds.ProjectBuilds;
-import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EngineProbe;
 import cc.jumpkick.wire.EnginePaths;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -208,8 +208,8 @@ public final class DashboardCodeLink {
         String url = null;
         try {
             EnginePaths.Paths paths = EnginePaths.current();
-            url = EngineClient.status(EnginePaths.activeSocket(paths))
-                    .map(EngineClient.Status::httpUrl)
+            url = EngineProbe.status(EnginePaths.activeSocket(paths))
+                    .map(EngineProbe.Status::httpUrl)
                     .filter(s -> s != null && !s.isBlank())
                     .orElse(null);
         } catch (RuntimeException ignored) {

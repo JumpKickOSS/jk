@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.TestAnsi;
-import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EngineProbe;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
@@ -55,8 +55,28 @@ class StatusCommandTest {
         String down = TestAnsi.strip(StatusCommand.engineStatusMessage(Optional.empty()));
         assertThat(down).isEqualTo("JumpKick Engine v" + Jk.VERSION + " is not running");
 
-        EngineClient.Status s =
-                new EngineClient.Status(Jk.VERSION, 403279L, 0L, 0, 0, false, 0L, 0L, 0L, 0L, 0L, null, null, null);
+        EngineProbe.Status s = new EngineProbe.Status(
+                Jk.VERSION,
+                403279L,
+                0L,
+                0,
+                0,
+                false,
+                0L,
+                0L,
+                0L,
+                0L,
+                0L,
+                null,
+                null,
+                null,
+                null,
+                -1,
+                -1,
+                -1,
+                -1,
+                -1,
+                null);
         String up = TestAnsi.strip(StatusCommand.engineStatusMessage(Optional.of(s)));
         assertThat(up).isEqualTo("JumpKick Engine v" + Jk.VERSION + " is running (pid 403279)");
     }

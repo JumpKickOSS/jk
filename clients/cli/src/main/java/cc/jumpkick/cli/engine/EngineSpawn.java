@@ -58,18 +58,18 @@ public final class EngineSpawn {
 
     private EngineSpawn() {}
 
-    private static boolean buildIdCurrent(EngineClient.Handshake hs, String clientVersion) {
+    private static boolean buildIdCurrent(EngineProbe.Handshake hs, String clientVersion) {
         if (hs.buildId().isEmpty()) return true;
         String expected = EngineInstall.current().engineSha(clientVersion).orElse("");
         if (expected.isEmpty()) return true;
         return expected.startsWith(hs.buildId());
     }
 
-    static EngineClient.Handshake ensure(EnginePaths.Paths paths, String clientVersion) throws IOException {
+    static EngineProbe.Handshake ensure(EnginePaths.Paths paths, String clientVersion) throws IOException {
         Path socket = EnginePaths.activeSocket(paths);
         Reachability reach = probe(socket, clientVersion);
         if (reach instanceof Reachability.Live live) {
-            EngineClient.Handshake hs = live.handshake();
+            EngineProbe.Handshake hs = live.handshake();
             // A draining engine has unbound its listener; this branch is the race before unbind.
             // Do not spawn a third copy on top of the successor that is already taking over.
             if (hs.draining()) {
@@ -107,7 +107,7 @@ public final class EngineSpawn {
      * newer protocol).
      */
     private sealed interface Reachability {
-        record Live(EngineClient.Handshake handshake) implements Reachability {}
+        record Live(EngineProbe.Handshake handshake) implements Reachability {}
 
         record Absent() implements Reachability {}
 
@@ -138,7 +138,7 @@ public final class EngineSpawn {
                 return new Reachability.Unusable();
             }
             String ackBuildId = Jsonl.str(ack, "buildId");
-            return new Reachability.Live(new EngineClient.Handshake(
+            return new Reachability.Live(new EngineProbe.Handshake(
                     Jsonl.str(ack, "version"),
                     Jsonl.longValue(ack, "pid", -1),
                     Jsonl.longValue(ack, "startedAt", -1),
@@ -161,7 +161,7 @@ public final class EngineSpawn {
      * Bring up a fresh engine with AOT self-heal: TRAIN/USE/NONE, drop a bad cache and retry once,
      * and wait out slow cold starts rather than reporting "could not start".
      */
-    private static EngineClient.Handshake startWithSelfHeal(EnginePaths.Paths paths, String clientVersion)
+    private static EngineProbe.Handshake startWithSelfHeal(EnginePaths.Paths paths, String clientVersion)
             throws IOException {
         return startOnce(paths, clientVersion, resolveEngineTarget(paths, clientVersion));
     }
@@ -169,7 +169,7 @@ public final class EngineSpawn {
     /**
      * Spawn and wait until serving; re-picks AOT mode per attempt and retries once on early exit.
      */
-    private static EngineClient.Handshake startOnce(EnginePaths.Paths paths, String clientVersion, EngineTarget target)
+    private static EngineProbe.Handshake startOnce(EnginePaths.Paths paths, String clientVersion, EngineTarget target)
             throws IOException {
         for (int attempt = 0; attempt < 2; attempt++) {
             AotMode mode = chooseAotMode(target);
@@ -718,14 +718,14 @@ public final class EngineSpawn {
     }
 
     /** Outcome of waiting for a freshly spawned engine — lets the ladder tell a crash from a slow boot. */
-    private record StartResult(Outcome outcome, EngineClient.Handshake handshake) {
+    private record StartResult(Outcome outcome, EngineProbe.Handshake handshake) {
         enum Outcome {
             UP,
             CHILD_EXITED,
             TIMED_OUT
         }
 
-        static StartResult up(EngineClient.Handshake h) {
+        static StartResult up(EngineProbe.Handshake h) {
             return new StartResult(Outcome.UP, h);
         }
 
@@ -742,13 +742,13 @@ public final class EngineSpawn {
             EnginePaths.Paths paths, String clientVersion, Duration timeout, Process spawned) {
         long deadline = System.nanoTime() + timeout.toNanos();
         while (System.nanoTime() < deadline) {
-            Optional<EngineClient.Handshake> h = EngineClient.handshake(EnginePaths.activeSocket(paths), clientVersion);
+            Optional<EngineProbe.Handshake> h = EngineProbe.handshake(EnginePaths.activeSocket(paths), clientVersion);
             if (h.isPresent()) return StartResult.up(h.get());
             if (spawned != null && !spawned.isAlive()) {
                 // The child died (setsid keeps the pid, so liveness is authoritative). One last
                 // handshake: a concurrent spawn may have won the election and be serving already
                 // our child exiting is then the healthy loser, not a failure.
-                return EngineClient.handshake(EnginePaths.activeSocket(paths), clientVersion)
+                return EngineProbe.handshake(EnginePaths.activeSocket(paths), clientVersion)
                         .map(StartResult::up)
                         .orElseGet(StartResult::exited);
             }

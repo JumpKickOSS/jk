@@ -5,6 +5,7 @@ import cc.jumpkick.cli.args.Abbreviations;
 import cc.jumpkick.cli.args.ArgParser;
 import cc.jumpkick.cli.args.ParseException;
 import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EngineProbe;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Confirm;
@@ -253,7 +254,7 @@ public final class CommandDispatch {
         try {
             PluginCommandReport report;
             var paths = EnginePaths.current();
-            if (!EngineClient.ping(EnginePaths.activeSocket(paths))) return null;
+            if (!EngineProbe.ping(EnginePaths.activeSocket(paths))) return null;
             report = EngineClient.pluginCommand(paths, dir, JkDirs.cache(), command, args);
 
             if (!report.found()) return null;
