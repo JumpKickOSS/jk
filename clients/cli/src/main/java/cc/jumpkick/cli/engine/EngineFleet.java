@@ -140,7 +140,7 @@ public final class EngineFleet {
         if (!Files.isDirectory(dir)) return;
         try (var listing = Files.list(dir)) {
             listing.filter(f -> f.getFileName().toString().endsWith(".pid")).forEach(pidFile -> {
-                long pid = EngineClient.readPidFile(pidFile);
+                long pid = EngineProcessControl.readPidFile(pidFile);
                 if (pid <= 0 || known.contains(pid) || !alive(pid) || !isEnginePid(pid)) return;
                 String stem = pidFile.getFileName().toString();
                 stem = stem.substring(0, stem.length() - ".pid".length());
@@ -370,9 +370,9 @@ public final class EngineFleet {
 
     /** The pid this identity recorded, from the active generation's file or the base one. */
     private static long recordedPid(EnginePaths.Paths paths, Path socket) {
-        long pid = EngineClient.readPidForSocket(socket);
+        long pid = EngineProcessControl.readPidForSocket(socket);
         if (pid > 0) return pid;
-        return EngineClient.readPidFile(paths.pid());
+        return EngineProcessControl.readPidFile(paths.pid());
     }
 
     /**
@@ -389,16 +389,16 @@ public final class EngineFleet {
         // Not answering: there is no clean path to ask for, so go straight to the kill. Asking a wedged
         // engine politely and then reporting success is how one gets left behind.
         if (!member.responsive()) {
-            EngineClient.hardKill(pid);
+            EngineProcessControl.hardKill(pid);
             return new StopResult(member, waitGone(pid, EXIT_GRACE_MS) ? Outcome.KILLED : Outcome.SURVIVED);
         }
         if (now) {
-            if (!EngineClient.forceStop(member.socket())) {
-                EngineClient.hardKill(pid);
+            if (!EngineProcessControl.forceStop(member.socket())) {
+                EngineProcessControl.hardKill(pid);
             }
             return new StopResult(member, settle(member, pid, /* mayKill= */ true));
         }
-        int jobs = EngineClient.drain(member.socket());
+        int jobs = EngineProcessControl.drain(member.socket());
         if (jobs > 0) {
             return new StopResult(member, Outcome.DRAINING);
         }
@@ -452,7 +452,7 @@ public final class EngineFleet {
         StopResult result = stop(member, false);
         if (result.outcome() != Outcome.DRAINING) return result;
         if (waitForExit(member.pid())) return new StopResult(member, Outcome.STOPPED);
-        EngineClient.hardKill(member.pid());
+        EngineProcessControl.hardKill(member.pid());
         return new StopResult(member, waitForExit(member.pid()) ? Outcome.KILLED : Outcome.SURVIVED);
     }
 
@@ -474,7 +474,7 @@ public final class EngineFleet {
     private static Outcome settle(Member member, long pid, boolean mayKill) {
         if (waitGone(pid, EXIT_GRACE_MS)) return Outcome.STOPPED;
         if (!mayKill) return Outcome.DRAINING;
-        EngineClient.hardKill(pid);
+        EngineProcessControl.hardKill(pid);
         return waitGone(pid, EXIT_GRACE_MS) ? Outcome.KILLED : Outcome.SURVIVED;
     }
 

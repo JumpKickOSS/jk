@@ -3,9 +3,9 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
-import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineFleet;
 import cc.jumpkick.cli.engine.EngineProbe;
+import cc.jumpkick.cli.engine.EngineProcessControl;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
@@ -59,7 +59,7 @@ public final class EngineStatusCommand implements CliCommand {
             // not proof of absence either: a wedged process can hold this directory's election state
             // without ever answering — every fresh spawn then loses to it, so the one thing status
             // must not do is call that "not running".
-            long stray = EngineClient.unresponsiveHolderPid(EnginePaths.activeSocket(paths));
+            long stray = EngineProcessControl.unresponsiveHolderPid(EnginePaths.activeSocket(paths));
             List<EngineFleet.Member> others = EngineFleet.list();
             if (global.outputIsJson()) {
                 CliOutput.out("{\"running\":false"

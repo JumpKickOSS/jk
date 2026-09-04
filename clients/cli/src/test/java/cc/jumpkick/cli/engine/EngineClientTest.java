@@ -101,7 +101,7 @@ class EngineClientTest {
         Thread serverThread = startInBackground(server);
         Await.until(Duration.ofSeconds(30), () -> EngineProbe.ping(EnginePaths.activeSocket(p)));
 
-        assertThat(EngineClient.stop(EnginePaths.activeSocket(p))).isTrue();
+        assertThat(EngineProcessControl.stop(EnginePaths.activeSocket(p))).isTrue();
         serverThread.join(5_000);
         assertThat(serverThread.isAlive()).isFalse();
     }
@@ -109,7 +109,7 @@ class EngineClientTest {
     @Test
     void stop_on_a_non_running_engine_is_a_no_op_success() throws IOException {
         EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
-        assertThat(EngineClient.stop(EnginePaths.activeSocket(p))).isTrue();
+        assertThat(EngineProcessControl.stop(EnginePaths.activeSocket(p))).isTrue();
     }
 
     @Test
@@ -137,7 +137,8 @@ class EngineClientTest {
         Thread serverThread = startInBackground(server);
         Await.until(Duration.ofSeconds(30), () -> EngineProbe.ping(EnginePaths.activeSocket(p)));
 
-        assertThat(EngineClient.drain(EnginePaths.activeSocket(p))).isZero(); // no in-flight jobs → immediate exit
+        assertThat(EngineProcessControl.drain(EnginePaths.activeSocket(p)))
+                .isZero(); // no in-flight jobs → immediate exit
         serverThread.join(5_000);
         assertThat(serverThread.isAlive()).isFalse();
     }
@@ -149,11 +150,11 @@ class EngineClientTest {
         Thread serverThread = startInBackground(server);
         Await.until(Duration.ofSeconds(30), () -> EngineProbe.ping(EnginePaths.activeSocket(p)));
 
-        long pid = EngineClient.readPidForSocket(EnginePaths.activeSocket(p));
+        long pid = EngineProcessControl.readPidForSocket(EnginePaths.activeSocket(p));
         // In-process EngineServer records this JVM's pid; forceStop must not kill us.
         assertThat(pid).isEqualTo(ProcessHandle.current().pid());
 
-        assertThat(EngineClient.forceStop(EnginePaths.activeSocket(p))).isTrue();
+        assertThat(EngineProcessControl.forceStop(EnginePaths.activeSocket(p))).isTrue();
         serverThread.join(5_000);
         assertThat(serverThread.isAlive()).isFalse();
     }
@@ -196,14 +197,14 @@ class EngineClientTest {
 
     @Test
     void wait_for_death_or_kill_is_a_no_op_for_missing_pid() {
-        EngineClient.waitForDeathOrKill(-1, Duration.ofMillis(50));
-        EngineClient.waitForDeathOrKill(9_999_999_999L, Duration.ofMillis(50));
+        EngineProcessControl.waitForDeathOrKill(-1, Duration.ofMillis(50));
+        EngineProcessControl.waitForDeathOrKill(9_999_999_999L, Duration.ofMillis(50));
     }
 
     @Test
     void drain_on_a_non_running_engine_is_minus_one() throws IOException {
         EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
-        assertThat(EngineClient.drain(EnginePaths.activeSocket(p))).isEqualTo(-1);
+        assertThat(EngineProcessControl.drain(EnginePaths.activeSocket(p))).isEqualTo(-1);
     }
 
     /**
@@ -229,7 +230,7 @@ class EngineClientTest {
             assertThat(status).isPresent();
             assertThat(status.get().version()).isEqualTo("7.7.7");
 
-            assertThat(EngineClient.stop(EnginePaths.activeSocket(p))).isTrue();
+            assertThat(EngineProcessControl.stop(EnginePaths.activeSocket(p))).isTrue();
         } finally {
             if (previousOsName != null) System.setProperty("os.name", previousOsName);
             else System.clearProperty("os.name");

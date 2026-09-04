@@ -6,6 +6,7 @@ import cc.jumpkick.cli.EnsureFreshLock;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.PathDisplay;
 import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EngineProcessControl;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.run.SilentListener;
 import cc.jumpkick.cli.tui.CommandWedge;
@@ -295,7 +296,7 @@ public final class IdeSupport {
         }
         if (t.isAlive()) {
             try {
-                EngineClient.forceStop(EnginePaths.activeSocket(paths));
+                EngineProcessControl.forceStop(EnginePaths.activeSocket(paths));
             } catch (RuntimeException ignored) {
                 // best-effort
             }

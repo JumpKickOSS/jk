@@ -25,19 +25,19 @@ class UnresponsiveHolderTest {
         Path socket = tempDirs.create().resolve("gen1.sock");
         Path pidFile = EnginePaths.pidFor(socket);
 
-        assertThat(EngineClient.unresponsiveHolderPid(socket))
+        assertThat(EngineProcessControl.unresponsiveHolderPid(socket))
                 .as("no pid file → genuinely not running")
                 .isZero();
 
         Process dead = SleepMain.spawn(0);
         dead.waitFor();
         Files.writeString(pidFile, Long.toString(dead.pid()));
-        assertThat(EngineClient.unresponsiveHolderPid(socket))
+        assertThat(EngineProcessControl.unresponsiveHolderPid(socket))
                 .as("a dead pid is a stale file, not a holder")
                 .isZero();
 
         Files.writeString(pidFile, Long.toString(ProcessHandle.current().pid()));
-        assertThat(EngineClient.unresponsiveHolderPid(socket))
+        assertThat(EngineProcessControl.unresponsiveHolderPid(socket))
                 .as("this JVM is never a kill target (in-process engine tests share it)")
                 .isZero();
     }
@@ -48,7 +48,7 @@ class UnresponsiveHolderTest {
         Process wedge = SleepMain.spawn(60_000);
         try {
             Files.writeString(EnginePaths.pidFor(socket), Long.toString(wedge.pid()));
-            assertThat(EngineClient.unresponsiveHolderPid(socket)).isEqualTo(wedge.pid());
+            assertThat(EngineProcessControl.unresponsiveHolderPid(socket)).isEqualTo(wedge.pid());
         } finally {
             wedge.destroyForcibly();
             wedge.waitFor();

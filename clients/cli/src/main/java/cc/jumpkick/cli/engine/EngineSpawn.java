@@ -87,15 +87,15 @@ public final class EngineSpawn {
         } else if (reach instanceof Reachability.Silent silent) {
             // Accepts connections but never replies. Displace so startWithSelfHeal
             // can bind — do not wait for the 60m stream idle on the next build.
-            long pid = silent.pidHint() > 0 ? silent.pidHint() : EngineClient.readPidForSocket(socket);
+            long pid = silent.pidHint() > 0 ? silent.pidHint() : EngineProcessControl.readPidForSocket(socket);
             logReason(
                     paths,
                     "displacing unresponsive engine"
                             + (pid > 0 ? " (pid " + pid + ")" : "")
                             + " — handshake timed out");
-            if (pid > 0) EngineClient.hardKill(pid);
-            else EngineClient.forceStop(socket); // best-effort; may still be false
-            EngineClient.waitForDeathOrKill(pid, STOP_DEATH_WAIT);
+            if (pid > 0) EngineProcessControl.hardKill(pid);
+            else EngineProcessControl.forceStop(socket); // best-effort; may still be false
+            EngineProcessControl.waitForDeathOrKill(pid, STOP_DEATH_WAIT);
         }
         // Absent / unusable / version skew → spawn (takeover or cold start).
         return startWithSelfHeal(paths, clientVersion);
@@ -149,7 +149,7 @@ public final class EngineSpawn {
             if (msg.contains("did not reply")
                     || msg.contains("closed the connection without replying")
                     || msg.contains("no protocol traffic")) {
-                return new Reachability.Silent(EngineClient.readPidForSocket(socket));
+                return new Reachability.Silent(EngineProcessControl.readPidForSocket(socket));
             }
             // Connect worked but mid-exchange failure (reset, etc.) — treat as unusable and let
             // spawn/takeover decide; avoid hard-killing a healthy peer on a flaky read.

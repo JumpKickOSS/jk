@@ -6,8 +6,8 @@ import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.Jk;
-import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineFleet;
+import cc.jumpkick.cli.engine.EngineProcessControl;
 import cc.jumpkick.cli.engine.EngineSpawn;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.config.GlobalConfig;
@@ -307,7 +307,7 @@ public final class SelfCommand extends GroupCommand {
             // otherwise the NEW engine's startup drains it gracefully — zero interrupted builds.
             var paths = EnginePaths.current();
             if (in.isSet("now")) {
-                EngineClient.forceStop(EnginePaths.activeSocket(paths));
+                EngineProcessControl.forceStop(EnginePaths.activeSocket(paths));
             }
             Path newJk = pathClient(JkDirs.binDir());
             if (Files.isRegularFile(newJk)) {

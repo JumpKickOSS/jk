@@ -123,15 +123,15 @@ public final class EngineTestSupport {
             EnginePaths.Paths paths = EnginePaths.current();
             Path socket = EnginePaths.activeSocket(paths);
             // forceStop waits for pid death when the pid file is present.
-            long pid = EngineClient.readPidForSocket(socket);
+            long pid = EngineProcessControl.readPidForSocket(socket);
             if (pid <= 0) {
                 var status = EngineProbe.status(socket);
                 if (status.isEmpty()) return;
                 pid = status.get().pid();
             }
-            if (!EngineClient.forceStop(socket)) {
-                EngineClient.hardKill(pid);
-                EngineClient.waitForDeathOrKill(pid, Duration.ofMillis(1_500));
+            if (!EngineProcessControl.forceStop(socket)) {
+                EngineProcessControl.hardKill(pid);
+                EngineProcessControl.waitForDeathOrKill(pid, Duration.ofMillis(1_500));
             }
         } catch (RuntimeException ignored) {
             // best-effort

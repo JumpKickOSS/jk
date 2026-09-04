@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
-import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineFleet;
 import cc.jumpkick.cli.engine.EngineProbe;
+import cc.jumpkick.cli.engine.EngineProcessControl;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.DrainView;
@@ -64,13 +64,13 @@ public final class EngineStopCommand implements CliCommand {
         // Force: stop now, then CONFIRM it went. Reporting "stopped" without checking is how a wedged
         // engine ends up being the user's problem to find and kill.
         if (in.isSet("now")) {
-            if (!EngineClient.forceStop(EnginePaths.activeSocket(paths)))
-                EngineClient.hardKill(before.get().pid());
+            if (!EngineProcessControl.forceStop(EnginePaths.activeSocket(paths)))
+                EngineProcessControl.hardKill(before.get().pid());
             return confirmGone(before.get().pid(), started);
         }
 
         // Graceful drain. The engine enters draining and reports the in-flight job count.
-        int jobs = EngineClient.drain(EnginePaths.activeSocket(paths));
+        int jobs = EngineProcessControl.drain(EnginePaths.activeSocket(paths));
         if (jobs <= 0) {
             // Idle (or already gone): the engine should exit immediately — verify, and escalate if not.
             return confirmGone(before.get().pid(), started);
@@ -103,11 +103,11 @@ public final class EngineStopCommand implements CliCommand {
      * path too, because an engine with no working socket has nothing to drain.
      */
     private int stopUnresponsiveHolder(EnginePaths.Paths paths) {
-        long pid = EngineClient.unresponsiveHolderPid(EnginePaths.activeSocket(paths));
+        long pid = EngineProcessControl.unresponsiveHolderPid(EnginePaths.activeSocket(paths));
         if (pid <= 0) {
             return settle(Exit.SUCCESS, "not running");
         }
-        EngineClient.hardKill(pid);
+        EngineProcessControl.hardKill(pid);
         if (EngineFleet.waitForExit(pid)) {
             return settle(
                     Exit.SUCCESS,
@@ -133,7 +133,7 @@ public final class EngineStopCommand implements CliCommand {
             CommandWedge.printLine(stoppedWedge(elapsed(started)));
             return Exit.SUCCESS;
         }
-        EngineClient.hardKill(pid);
+        EngineProcessControl.hardKill(pid);
         if (EngineFleet.waitForExit(pid)) {
             return settle(Exit.SUCCESS, "Engine stopped after a hard kill (it did not exit on request).");
         }
@@ -211,7 +211,7 @@ public final class EngineStopCommand implements CliCommand {
         try {
             while (true) {
                 if (view.forceRequested()) {
-                    EngineClient.forceStop(EnginePaths.activeSocket(paths));
+                    EngineProcessControl.forceStop(EnginePaths.activeSocket(paths));
                     break;
                 }
                 Optional<EngineProbe.Status> s = EngineProbe.status(EnginePaths.activeSocket(paths));
