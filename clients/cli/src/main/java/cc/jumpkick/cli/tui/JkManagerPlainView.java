@@ -130,7 +130,7 @@ final class JkManagerPlainView {
         if (m.done || !animating()) return;
         progressMode = true;
         printInitializing();
-        if (m.countdown.seeded()) etaAnnounced = true;
+        if (m.header.countdown.seeded()) etaAnnounced = true;
         String status = currentStatus();
         if (PlainPhase.PREPARE.equals(status)) return;
         // Wait for "compiling N sources" / "running N tests" before the first line of those phases.
@@ -353,7 +353,7 @@ final class JkManagerPlainView {
             }
             return PlainPhase.status(active.phase != null ? active.phase : active.step);
         }
-        String sl = m.solveLabel;
+        String sl = m.header.solveLabel();
         if (sl != null && !sl.isEmpty()) return PlainPhase.status(sl);
         return PlainPhase.PREPARE;
     }
@@ -386,7 +386,7 @@ final class JkManagerPlainView {
     }
 
     private String etaClock() {
-        long remMs = m.countdown.remainingMs(m.elapsedMillis());
+        long remMs = m.header.countdown.remainingMs(m.elapsedMillis());
         if (remMs < 0) return null;
         return DurationText.clockMillis(remMs);
     }

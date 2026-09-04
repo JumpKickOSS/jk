@@ -10,12 +10,8 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.terminal.Size;
 import cc.jumpkick.terminal.Style;
-import cc.jumpkick.wire.runtime.progress.ClockProgressStrategy;
-import cc.jumpkick.wire.runtime.progress.HeaderProgressState;
 import cc.jumpkick.wire.runtime.progress.HeaderProgressStrategy;
 import cc.jumpkick.wire.runtime.progress.ProgressBarMode;
-import cc.jumpkick.wire.runtime.progress.SharedPeak;
-import cc.jumpkick.wire.runtime.progress.WeightedProgressStrategy;
 import java.io.PrintStream;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -77,13 +73,6 @@ public final class JkManager implements AutoCloseable, LiveRegion {
      * nerd-font caps — gate the powerline pill header. Package-private: tests set it directly.
      */
     NerdFontCaps nerdFont = GlobalConfig.nerdFont();
-    /**
-     * When set and {@code denominator == 0}, the header shows this text instead of the progress
-     * bar — used by {@code jk lock} to display "Resolving dependencies…" during the PubGrub solve
-     * step before the total artifact count is known.
-     */
-    volatile String solveLabel = "";
-
     /** Open pulse (blue↔dark blue) — tree rows and simple spinner lines, no chip background. */
     final Style[] openPulseColors = Spinner.buildOpenPulseStyles(PULSE_FRAMES);
 
@@ -126,25 +115,6 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     List<String> scopeHintNames = List.of();
     // Package-private: JkManagerTest rewinds the wall anchor to simulate elapsed time.
     long startNanos;
-    long numerator;
-    long denominator;
-    /**
-     * Remaining-work anchors and the painted countdown face. Strategy AUTO reads {@link
-     * Countdown#r0()} to pick the clock bar; without a residual the bar falls back to
-     * {@code elapsed/R0}. Header bar mode is {@link ProgressBarMode} ({@code JK_PROGRESS_MODE}) —
-     * AUTO uses {@link ClockProgressStrategy} when R0 is seeded, else {@link
-     * WeightedProgressStrategy}.
-     */
-    final Countdown countdown = new Countdown();
-
-    final ProgressBarMode progressMode = ProgressBarMode.fromEnvironment();
-    /** One monotonic floor across the strategy pair — the AUTO takeover must not repaint backwards. */
-    final SharedPeak displayedPeak = new SharedPeak();
-
-    final ClockProgressStrategy clockProgress = new ClockProgressStrategy(displayedPeak);
-    final WeightedProgressStrategy weightedProgress = new WeightedProgressStrategy(displayedPeak);
-    int modulesComplete;
-    int modulesTotal; // 0 = hide module remaining
     long finishSeq;
 
     final Map<String, Row> rows = new LinkedHashMap<>();
@@ -168,7 +138,10 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     /** Process-output pane, its Ctrl-O key and the stream swap; takes {@link #lock} where the manager did. */
     final OutputPane pane;
 
-    JkManager(PrintStream out, boolean animate, boolean planMode, int width) {
+    /** The header bar's numbers and the solve label; takes {@link #lock} where the manager did. */
+    final HeaderProgress header;
+
+    JkManager(PrintStream out, boolean animate, boolean planMode, int width, ProgressBarMode progressMode) {
         // PlainAscii.wrap is identity under ANSI; under --no-ansi rewrites …/•/● in messages.
         this.out = PlainAscii.wrap(out);
         this.animate = animate;
@@ -176,7 +149,13 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         this.width = width <= 0 ? DEFAULT_WIDTH : width;
         this.windowTitle = new WindowTitle(this.out, animate);
         this.pane = new OutputPane(this, lock);
+        this.header = new HeaderProgress(lock, plain, progressMode, this::elapsedMillis, () -> done);
         this.animator = new RegionAnimator(lock, pane::flushStale, this::tick, plain::maybeEmitHeartbeat, () -> done);
+    }
+
+    /** Package-private convenience for tests: the default strategy, no environment read. */
+    JkManager(PrintStream out, boolean animate, boolean planMode, int width) {
+        this(out, animate, planMode, width, ProgressBarMode.AUTO);
     }
 
     /** Package-private convenience for simple-mode tests. */
@@ -188,7 +167,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
 
     /** Start simple-task mode: spinner (when {@code animate}) + {@code command}. */
     public static JkManager simple(PrintStream out, String command, boolean animate) {
-        JkManager cm = new JkManager(out, animate, false, DEFAULT_WIDTH);
+        JkManager cm = new JkManager(out, animate, false, DEFAULT_WIDTH, ProgressBarMode.fromEnvironment());
         cm.label = command;
         LiveRegion.setActive(cm);
         cm.view.ensureLeadingBlank(); // blank line before human chrome
@@ -219,7 +198,8 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     public static JkManager plan(PrintStream out, String name, boolean animate) {
         // Probe here — a plan start is a natural boundary — never from the frame-render path.
         Size.Window size = animate ? Size.refresh() : new Size.Window(DEFAULT_HEIGHT, DEFAULT_WIDTH);
-        JkManager cm = new JkManager(out, animate, true, size.cols());
+        // JK_PROGRESS_MODE is read here, at the region's start, and nowhere in the header itself.
+        JkManager cm = new JkManager(out, animate, true, size.cols(), ProgressBarMode.fromEnvironment());
         cm.height = size.rows();
         cm.name = name;
         cm.startNanos = System.nanoTime();
@@ -266,12 +246,12 @@ public final class JkManager implements AutoCloseable, LiveRegion {
 
     /** Aggregate progress numerator currently driving the bar (for tests/inspection). */
     public long numerator() {
-        return numerator;
+        return header.numerator();
     }
 
     /** Aggregate progress denominator currently driving the bar (for tests/inspection). */
     public long denominator() {
-        return denominator;
+        return header.denominator();
     }
 
     /** Header module, e.g. {@code "acme:api"}. */
@@ -349,7 +329,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
             // First module task starting = execute has begun: freeze the R0 seed path so
             // provisional eta rewrites cannot thrash the total. Residual still
             // re-anchors the painted countdown.
-            countdown.lockSeed();
+            header.lockSeed();
             plain.emitPhaseChange();
         }
     }
@@ -416,82 +396,32 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         }
     }
 
-    /**
-     * Seed the countdown with remaining wall work {@code R0} (ms). Same figure as {@code jk
-     * explain}. After execute starts (first {@link #stepRunning} or a completed module in {@link
-     * #setModuleProgress}), further seed-path updates are ignored so a provisional lock-window
-     * figure cannot thrash mid-run. Live residual still re-anchors display via {@link
-     * #setBarResidualRemaining}. Pre-execute re-seeds (post-forecast, post-prepare) replace a
-     * provisional seed while unlocked.
-     */
+    /** Seed the countdown with remaining wall work {@code R0} (ms); see {@link HeaderProgress}. */
     public void setEtaEstimate(long remainingOrTotalMillis) {
-        setRemainingWorkEstimate(remainingOrTotalMillis);
+        header.setRemainingWorkEstimate(remainingOrTotalMillis);
     }
 
-    /**
-     * Apply a seed remaining estimate (R0 path). {@code 0} before any seed is ignored (unknown).
-     * After execute locks the seed path, updates are ignored — residual mid-run uses {@link
-     * #setBarResidualRemaining} instead.
-     */
     public void setRemainingWorkEstimate(long remainingMillis) {
-        synchronized (lock) {
-            if (!countdown.seed(remainingMillis, elapsedMillis())) return;
-            this.solveLabel = ""; // R0 is enough to drive the adaptive bar (drop the solve label)
-            plain.emitEtaKnown();
-        }
+        header.setRemainingWorkEstimate(remainingMillis);
     }
 
-    /**
-     * Apply live residual remaining from engine RemainingWork. Updates the adaptive clock bar and
-     * re-anchors the countdown so painted remaining eases toward residual and hits 0 with it.
-     * Between residual samples the paint open-loop-decays residual by wall time. Pass {@code -1}
-     * to clear residual (countdown falls back to frozen R0 − elapsed).
-     */
     public void setBarResidualRemaining(long residualMillis) {
-        synchronized (lock) {
-            if (!countdown.residual(residualMillis, elapsedMillis())) return;
-            this.solveLabel = "";
-            plain.emitEtaKnown();
-        }
+        header.setBarResidualRemaining(residualMillis);
     }
 
-    /**
-     * Run-wide total estimate in ms for desktop notifications ({@code 0} = never seeded).
-     * Live countdown prefers residual re-anchor; falls back to R0 − elapsed.
-     */
+    /** Run-wide total estimate in ms for desktop notifications ({@code 0} = never seeded). */
     public long etaEstimateMs() {
-        synchronized (lock) {
-            return countdown.etaEstimateMs();
-        }
+        return header.etaEstimateMs();
     }
 
-    /**
-     * Workspace module progress for the header secondary remaining-work display.
-     * {@code total <= 0} hides the module counter.
-     */
+    /** Workspace module progress for the header's secondary remaining-work display. */
     public void setModuleProgress(int complete, int total) {
-        synchronized (lock) {
-            this.modulesComplete = Math.max(0, complete);
-            this.modulesTotal = Math.max(0, total);
-            // A completed module means execute is underway — freeze the R0 seed path.
-            // modulesTotal alone arrives with the work model *before* the engine's real
-            // post-forecast seed (`eta` line), so it must not lock. Residual
-            // re-anchors for display still apply after lock.
-            if (this.modulesComplete > 0) countdown.lockSeed();
-        }
+        header.setModuleProgress(complete, total);
     }
 
-    /**
-     * Set a text label shown in the header instead of the progress bar when the denominator is
-     * still 0 (pre-solve step). Once {@link #progress} is called with a positive denominator the
-     * bar takes over automatically; pass {@code ""} to clear explicitly.
-     */
+    /** Header text instead of the bar while the denominator is still 0; {@code ""} clears it. */
     public void solveLabel(String label) {
-        // Same lock as the other solveLabel writers (preflight/progress/seed) — worker and
-        // render threads otherwise raced on plain JMM visibility.
-        synchronized (lock) {
-            this.solveLabel = label == null ? "" : label;
-        }
+        header.solveLabel(label);
     }
 
     /**
@@ -519,11 +449,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
             } else {
                 n.state = PhaseState.RUNNING;
             }
-            if (denominator <= 0) {
-                if (label != null && !label.isEmpty()) this.solveLabel = label;
-                else if (total > 0) this.solveLabel = pill + " " + done + "/" + total;
-                else this.solveLabel = pill + "…";
-            }
+            header.preflightLabel(pill, done, total, label);
         }
     }
 
@@ -563,48 +489,17 @@ public final class JkManager implements AutoCloseable, LiveRegion {
 
     /** Set the aggregate progress numerator/denominator (engine weight slices). */
     public void progress(long numerator, long denominator) {
-        synchronized (lock) {
-            this.numerator = Math.max(0, numerator);
-            this.denominator = Math.max(0, denominator);
-            HeaderProgressState st = progressState(elapsedMillis());
-            HeaderProgressStrategy strat = activeProgressStrategy();
-            long[] d = strat.onWeightProgress(st, this.numerator, this.denominator);
-            // Weighted strategy owns monotonic peak; keep fields in sync for tests.
-            if ("weighted".equals(strat.id()) && d[1] > 0) {
-                this.numerator = d[0];
-                this.denominator = d[1];
-            }
-            if (this.denominator > 0 || st.hasR0()) {
-                this.solveLabel = "";
-            }
-            if (d[1] > 0) plain.ensureProgressStarted(d[0], d[1]);
-        }
+        header.progress(numerator, denominator);
     }
 
-    /**
-     * Numerator/denominator for the painted bar via {@link ProgressBarMode} strategy (clock when
-     * R0 seeded under AUTO, else weighted; override with {@code JK_PROGRESS_MODE}).
-     */
+    /** Numerator/denominator for the painted bar; see {@link HeaderProgress#displayBar}. */
     long[] displayBar(long elapsedMillis) {
-        synchronized (lock) {
-            return activeProgressStrategy().display(progressState(elapsedMillis));
-        }
+        return header.displayBar(elapsedMillis);
     }
 
     /** Active strategy for tests/diagnostics. */
     HeaderProgressStrategy activeProgressStrategy() {
-        return progressMode.select(clockProgress, weightedProgress, countdown.r0(), countdown.residual());
-    }
-
-    private HeaderProgressState progressState(long elapsedMillis) {
-        return new HeaderProgressState(
-                numerator,
-                denominator,
-                countdown.r0(),
-                countdown.r0SetAtElapsedMs(),
-                elapsedMillis,
-                countdown.residual(),
-                done);
+        return header.activeProgressStrategy();
     }
 
     /**

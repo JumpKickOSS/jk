@@ -643,19 +643,19 @@ final class JkManagerView {
         long barNum = bd[0];
         long barDen = bd[1];
         // Sample worker-written state under the lock — the animator thread otherwise read
-        // m.denominator/m.solveLabel on plain JMM visibility.
+        // m.header.denominator()/m.header.solveLabel() on plain JMM visibility.
         long den;
         String sl;
         synchronized (m.lock) {
-            den = m.denominator;
-            sl = m.solveLabel;
+            den = m.header.denominator();
+            sl = m.header.solveLabel();
         }
         boolean hasBar = barDen > 0 || den > 0;
         boolean phase1 = !hasBar && !sl.isEmpty();
         long elapsedSec = Math.max(0L, elapsedMillis) / 1000L;
         Countdown.Face face;
         synchronized (m.lock) {
-            face = m.countdown.face(elapsedMillis);
+            face = m.header.countdown.face(elapsedMillis);
         }
         RichText clock = clockFace(face, elapsedSec);
         RenderContext ctx = frameCtx.withCaps(m.nerdFont).withFrame(m.frame);
