@@ -22,7 +22,7 @@ import java.util.Set;
  * {@code features} / {@code default-features} on a path dependency whose target has {@code
  * jk.toml}, activate that library's optional deps into the consumer's resolve graph.
  */
-final class CrossPackageFeatures {
+public final class CrossPackageFeatures {
 
     private CrossPackageFeatures() {}
 
@@ -30,7 +30,7 @@ final class CrossPackageFeatures {
      * @param projectDir directory of the consuming {@code jk.toml} (resolves relative path=)
      * @return extra non-optional roots to merge into the main graph, keyed by module
      */
-    static Result expand(Path projectDir, Collection<Dependency> declared) {
+    public static Result expand(Path projectDir, Collection<Dependency> declared) {
         Map<String, Dependency> extras = new LinkedHashMap<>();
         Map<String, List<String>> activatedByLibraryModule = new LinkedHashMap<>();
         if (projectDir == null) {
@@ -102,13 +102,14 @@ final class CrossPackageFeatures {
         return null;
     }
 
-    record Result(Map<String, Dependency> extraRoots, Map<String, List<String>> activatedFeaturesByModule) {
-        Result {
+    /** Extra roots to merge into the consumer's main graph, and the features activated per path library module. */
+    public record Result(Map<String, Dependency> extraRoots, Map<String, List<String>> activatedFeaturesByModule) {
+        public Result {
             extraRoots = Map.copyOf(extraRoots);
             activatedFeaturesByModule = Map.copyOf(activatedFeaturesByModule);
         }
 
-        List<Dependency> extrasList() {
+        public List<Dependency> extrasList() {
             return new ArrayList<>(extraRoots.values());
         }
     }

@@ -37,13 +37,12 @@ class LockRootsTest {
     void declared_roots_land_in_their_graph_and_an_optional_waits_for_its_feature() throws Exception {
         JkBuild project = JkBuildParser.parse(MANIFEST);
 
-        LockRoots.Declared plain = LockRoots.partition(project, List.of(), true, null);
+        LockRoots.Declared plain = LockRoots.partition(project, List.of(), true);
         assertThat(plain.main().keySet()).containsExactly("com.foo:core:jar:");
         assertThat(plain.test().keySet()).containsExactly("com.foo:truth:jar:", LockRoots.JUNIT_LAUNCHER.packageKey());
         assertThat(plain.processor()).isEmpty();
-        assertThat(plain.activatedFeatures()).isEmpty();
 
-        LockRoots.Declared withDb = LockRoots.partition(project, List.of("db"), true, null);
+        LockRoots.Declared withDb = LockRoots.partition(project, List.of("db"), true);
         assertThat(withDb.main().keySet()).containsExactly("com.foo:core:jar:", "com.foo:mysql:jar:");
     }
 
@@ -54,7 +53,7 @@ class LockRootsTest {
                 name = "app"
                 version = "1.0.0"
                 """);
-        LockRoots.Declared declared = LockRoots.partition(bare, List.of(), true, null);
+        LockRoots.Declared declared = LockRoots.partition(bare, List.of(), true);
         assertThat(declared.test().keySet())
                 .containsExactly(LockRoots.JUNIT_LAUNCHER.packageKey(), LockRoots.JUNIT_JUPITER.packageKey());
         assertThat(declared.test().values())
@@ -75,7 +74,7 @@ class LockRootsTest {
                 default = []
                 fast = { deps = ["core"] }
                 """);
-        assertThatThrownBy(() -> LockRoots.partition(project, List.of("fast"), true, null))
+        assertThatThrownBy(() -> LockRoots.partition(project, List.of("fast"), true))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("feature dependency 'core' is not a declared optional dependency"
                         + " — declare it under [dependencies.*] with `optional = true`");
@@ -89,7 +88,7 @@ class LockRootsTest {
                 new LinkedHashMap<>(Map.of(jar.packageKey(), jar, local.packageKey(), local));
         LinkedHashMap<String, Dependency> test = new LinkedHashMap<>(Map.of(local.packageKey(), local));
 
-        LockRoots.Roots roots = new LockRoots.Declared(main, test, new LinkedHashMap<>(), Map.of()).split();
+        LockRoots.Roots roots = new LockRoots.Declared(main, test, new LinkedHashMap<>()).split();
 
         assertThat(roots.main()).containsExactly(jar);
         assertThat(roots.test()).isEmpty();

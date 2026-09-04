@@ -15,6 +15,8 @@ import cc.jumpkick.model.Scope;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolver.LockOrchestrator;
+import cc.jumpkick.testing.LoopbackHttp;
+import cc.jumpkick.testing.MavenStub;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -98,5 +100,67 @@ class PathSourceResolutionTest {
 
         assertThat(prep.project()).isSameAs(plain);
         assertThat(prep.repos()).isSameAs(baseRepos);
+    }
+
+    /**
+     * A feature selection on a path library survives the rewrite: the library's optional dependency
+     * roots in the consumer's main graph, and the library's lock row names the activated feature.
+     */
+    @Test
+    void a_feature_selection_on_a_path_dependency_pulls_the_library_optional_dep_and_marks_the_row(@TempDir Path tmp)
+            throws Exception {
+        Path lib = tmp.resolve("lib");
+        writeLibrary(lib);
+        Files.writeString(lib.resolve("jk.toml"), """
+                group   = "com.acme"
+                name    = "widgets"
+                version = "0.1.0"
+                jdk     = 25
+                java    = 25
+
+                [dependencies]
+                extra = { group = "com.acme", name = "extra", version = "1.0", optional = true }
+
+                [features]
+                default = []
+                db = { deps = ["extra"] }
+                """);
+        LoopbackHttp http = new LoopbackHttp();
+        http.start();
+        try {
+            new MavenStub(http)
+                    .leaf("org.junit.jupiter", "junit-jupiter", "6.1.0")
+                    .leaf("org.junit.platform", "junit-platform-launcher", "6.1.0")
+                    .leaf("com.acme", "extra", "1.0");
+            Cas cas = new Cas(tmp.resolve("cas"));
+            RepoGroup baseRepos = RepoGroup.of(new MavenRepo("maven-stub", http.base(), new Http(), cas));
+            Dependency path =
+                    Dependency.pathByName("widgets", new PathSource("./lib")).withFeatures(List.of("db"), false);
+            JkBuild consumer = new JkBuild(
+                    new Project("com.example", "app", "0.1.0", 25),
+                    new JkBuild.Dependencies(Map.of(Scope.MAIN, List.of(path))));
+
+            PathSourceResolution.Prepared prep = PathSourceResolution.prepare(
+                    consumer, baseRepos, cas, tmp, Path.of(System.getProperty("java.home")), "test");
+
+            assertThat(prep.project().dependencies().of(Scope.MAIN).stream().map(Dependency::module))
+                    .containsExactly("com.acme:widgets", "com.acme:extra");
+            assertThat(prep.project().dependencies().of(Scope.MAIN).get(1).optional())
+                    .isFalse();
+            assertThat(prep.activatedFeatures()).containsExactly(Map.entry("com.acme:widgets", List.of("db")));
+
+            Lockfile lock = new LockOrchestrator(prep.repos())
+                    .withActivatedFeatures(prep.activatedFeatures())
+                    .lock(prep.project(), "test", List.of(), true);
+            Lockfile.Artifact widgets = lock.artifacts().stream()
+                    .filter(p -> p.matchesModule("com.acme:widgets"))
+                    .findFirst()
+                    .orElseThrow();
+            assertThat(widgets.pinnedBy()).isEqualTo("features:db");
+            assertThat(lock.artifacts().stream().anyMatch(p -> p.matchesModule("com.acme:extra")))
+                    .isTrue();
+        } finally {
+            http.stop();
+        }
     }
 }

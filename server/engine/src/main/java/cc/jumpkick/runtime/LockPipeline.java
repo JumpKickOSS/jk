@@ -273,6 +273,7 @@ public final class LockPipeline {
         // Deliberately no Diagnostics.Palette here — the engine emits plain text and the client themes it.
         LockOrchestrator orchestrator = new LockOrchestrator(pathPrep.repos())
                 .withProjectDir(lockDir)
+                .withActivatedFeatures(pathPrep.activatedFeatures())
                 .withJvmEnvironment(PluginContributions.jvmEnvironment(pathPrep.project(), lockDir))
                 .withPlatformPolicy(policy.platform())
                 .withUnmappedPolicy(pathPrep.project().build().unmappedPolicy());

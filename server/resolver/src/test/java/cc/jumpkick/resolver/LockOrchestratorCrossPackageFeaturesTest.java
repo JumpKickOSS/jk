@@ -15,7 +15,6 @@ import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.testing.LoopbackHttp;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.EnumMap;
 import java.util.List;
@@ -26,9 +25,9 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * The features a consumer activates on a path library are recorded on that library's lock row. The
- * partition phase computes them on the locking thread and the row assembler reads them on the io
- * pool, so the value has to reach a thread that never ran {@code lock()}.
+ * The features a consumer activated on a path library are recorded on that library's lock row. The
+ * map arrives on the locking thread and the row assembler reads it on the io pool, so the value has
+ * to reach a thread that never ran {@code lock()}.
  */
 class LockOrchestratorCrossPackageFeaturesTest {
 
@@ -41,25 +40,10 @@ class LockOrchestratorCrossPackageFeaturesTest {
 
     @Test
     void activated_features_reach_the_library_row_assembled_on_the_io_pool(@TempDir Path dir) throws Exception {
-        Path lib = dir.resolve("widget");
-        Files.createDirectories(lib);
-        Files.writeString(lib.resolve("jk.toml"), """
-                group = "com.example"
-                name = "widget"
-                version = "0.1.0"
-
-                [dependencies]
-                mysql = { group = "com.mysql", name = "mysql-connector-j", version = "8.0.0", optional = true }
-
-                [features]
-                default = []
-                mysql = { deps = ["mysql"] }
-                """);
         // The row assembler fetches the library's artifact; the stub repo serves it under the
         // synthetic path: coordinate the solver stub below reports.
         http.served().put("/path/widget/1.0/widget-1.0.jar", EMPTY_JAR);
-        Dependency consumer =
-                Dependency.pathByName("widget", new PathSource("widget")).withFeatures(List.of("mysql"), false);
+        Dependency consumer = Dependency.pathByName("widget", new PathSource("widget"));
         EnumMap<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
         byScope.put(Scope.MAIN, List.of(consumer));
         JkBuild project = new JkBuild(new Project("com.example", "app", "1.0", 25), new JkBuild.Dependencies(byScope));
@@ -70,8 +54,9 @@ class LockOrchestratorCrossPackageFeaturesTest {
                 : new Resolution(Map.of());
         RepoGroup repos = RepoGroup.of(new MavenRepo("local", http.base(), new Http(), new Cas(dir.resolve("cache"))));
 
-        Lockfile lock =
-                new LockOrchestrator(repos, onlyTheLibrary).withProjectDir(dir).lock(project, "test");
+        Lockfile lock = new LockOrchestrator(repos, onlyTheLibrary)
+                .withActivatedFeatures(Map.of("path:widget", List.of("mysql")))
+                .lock(project, "test");
 
         Lockfile.Artifact widget = lock.artifacts().stream()
                 .filter(a -> a.name().equals("path:widget"))

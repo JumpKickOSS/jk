@@ -10,6 +10,7 @@ import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.resolver.CrossPackageFeatures;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -27,8 +28,12 @@ public final class PathSourceResolution {
 
     private PathSourceResolution() {}
 
-    /** The result of preparing a build: the dependency-rewritten project and the augmented repos. */
-    public record Prepared(JkBuild project, RepoGroup repos) {}
+    /**
+     * The result of preparing a build: the dependency-rewritten project, the augmented repos, and the
+     * cross-package features activated on each path library, keyed by the coordinate its lock row
+     * carries — the selection itself travels no further than the rewrite.
+     */
+    public record Prepared(JkBuild project, RepoGroup repos, Map<String, List<String>> activatedFeatures) {}
 
     /**
      * Materialize every path dependency in {@code effective} (resolving each against {@code
@@ -39,9 +44,14 @@ public final class PathSourceResolution {
             JkBuild effective, RepoGroup baseRepos, Cas cas, Path lockRootDir, Path javaHome, String jkVersion)
             throws IOException, InterruptedException {
         Map<Scope, List<Dependency>> byScope = effective.dependencies().byScope();
+        // A feature selection on a path library pulls that library's optional deps into the
+        // consumer's main graph. Expanded here, before the rewrite: the exact coordinate pin that
+        // replaces a path dep carries no selection, so this is the last place that can see it.
+        CrossPackageFeatures.Result cross =
+                CrossPackageFeatures.expand(lockRootDir, byScope.getOrDefault(Scope.MAIN, List.of()));
         boolean anyPath = byScope.values().stream().flatMap(List::stream).anyMatch(Dependency::isPath);
         if (!anyPath) {
-            return new Prepared(effective, baseRepos);
+            return new Prepared(effective, baseRepos, Map.of());
         }
 
         PathSourceMaterializer materializer =
@@ -68,6 +78,7 @@ public final class PathSourceResolution {
 
         // Rewrite each path dep into an exact pin on the materialized coordinate.
         EnumMap<Scope, List<Dependency>> rewritten = new EnumMap<>(Scope.class);
+        Map<String, List<String>> activated = new LinkedHashMap<>();
         byScope.forEach((scope, list) -> {
             List<Dependency> out = new ArrayList<>(list.size());
             for (Dependency d : list) {
@@ -78,9 +89,17 @@ public final class PathSourceResolution {
                 PathSourceMaterializer.Materialized m =
                         bySource.get(d.pathSource().rawPath());
                 out.add(Dependency.of(d.library(), m.coordinate(), VersionSelector.parse("=" + m.version())));
+                List<String> features = cross.activatedFeaturesByModule().get(d.module());
+                if (features != null && !features.isEmpty()) activated.put(m.coordinate(), features);
             }
             rewritten.put(scope, out);
         });
+        // The library's activated optional deps root in the consumer's main graph as ordinary deps.
+        List<Dependency> main = new ArrayList<>(rewritten.getOrDefault(Scope.MAIN, List.of()));
+        for (Dependency extra : cross.extrasList()) {
+            if (main.stream().noneMatch(x -> x.packageKey().equals(extra.packageKey()))) main.add(extra);
+        }
+        rewritten.put(Scope.MAIN, main);
 
         JkBuild project = JkBuild.builder(effective.project())
                 .dependencies(new JkBuild.Dependencies(rewritten))
@@ -95,6 +114,6 @@ public final class PathSourceResolution {
         // answers before any remote is consulted. Preserve exclusive group bindings on baseRepos
         // (JumpKick first-party) — rebuilding without them re-opens jumpkick→404→central for every
         // Central GAV.
-        return new Prepared(project, baseRepos.withReposPrepended(extraRepos));
+        return new Prepared(project, baseRepos.withReposPrepended(extraRepos), Map.copyOf(activated));
     }
 }

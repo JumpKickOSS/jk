@@ -5,7 +5,6 @@ import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -71,14 +70,12 @@ final class LockRoots {
 
     /**
      * Declared roots per graph, still keyed by package key so later phases can add to them (the
-     * language-runtime inject roots the compiler runtime into {@code main}), plus the cross-package
-     * features activated on each path library.
+     * language-runtime inject roots the compiler runtime into {@code main}).
      */
     record Declared(
             LinkedHashMap<String, Dependency> main,
             LinkedHashMap<String, Dependency> test,
-            LinkedHashMap<String, Dependency> processor,
-            Map<String, List<String>> activatedFeatures) {
+            LinkedHashMap<String, Dependency> processor) {
 
         /** Split file dependencies out of every graph; the rest are the roots the solvers see. */
         Roots split() {
@@ -110,12 +107,12 @@ final class LockRoots {
 
     /**
      * Partition {@code project}'s declared dependencies. Optional dependencies enter only when a
-     * requested feature names them; cross-package features on {@code path=} libraries pull that
-     * library's optional deps into {@code main}; the JUnit Platform launcher always rides the test
-     * graph, and JUnit Jupiter joins it only when the user declared no test dependencies at all.
+     * requested feature names them; the JUnit Platform launcher always rides the test graph, and
+     * JUnit Jupiter joins it only when the user declared no test dependencies at all. Cross-package
+     * features on {@code path=} libraries are expanded by the engine before the path dep is rewritten
+     * to a coordinate, so they arrive here as ordinary main roots.
      */
-    static Declared partition(
-            JkBuild project, Collection<String> featuresRequested, boolean withDefaults, Path projectDir) {
+    static Declared partition(JkBuild project, Collection<String> featuresRequested, boolean withDefaults) {
         Set<String> activated = project.features().activate(new LinkedHashSet<>(featuresRequested), withDefaults);
 
         // Partition declared deps into main / test / processor (R5 + test isolation).
@@ -155,17 +152,12 @@ final class LockRoots {
                 case MAIN -> mainDeduped.putIfAbsent(opt.packageKey(), opt);
             }
         }
-        // Cross-package features on path= libraries: pull their optional deps.
-        CrossPackageFeatures.Result cross = CrossPackageFeatures.expand(projectDir, mainDeduped.values());
-        for (Dependency extra : cross.extrasList()) {
-            mainDeduped.putIfAbsent(extra.packageKey(), extra);
-        }
         // junit infrastructure rides the test graph only.
         testDeduped.putIfAbsent(JUNIT_LAUNCHER.packageKey(), JUNIT_LAUNCHER);
         if (project.dependencies().of(Scope.TEST).isEmpty()) {
             testDeduped.putIfAbsent(JUNIT_JUPITER.packageKey(), JUNIT_JUPITER);
         }
-        return new Declared(mainDeduped, testDeduped, processorDeduped, cross.activatedFeaturesByModule());
+        return new Declared(mainDeduped, testDeduped, processorDeduped);
     }
 
     private static GraphGroup graphGroup(Scope scope) {

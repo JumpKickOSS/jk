@@ -38,8 +38,11 @@ public final class LockOrchestrator {
      */
     private String jvmEnvironment = "standard-jvm";
 
-    /** Consuming project directory — resolves path= deps for cross-package features. */
+    /** Consuming project directory — language-runtime inference reads its source trees. */
     private Path projectDir;
+
+    /** Cross-package features activated per library module, recorded on that library's row. */
+    private Map<String, List<String>> activatedFeatures = Map.of();
 
     private LanguageRuntimeInject.ToolVersions toolVersions = LanguageRuntimeInject.ToolVersions.NONE;
 
@@ -57,6 +60,12 @@ public final class LockOrchestrator {
 
     public LockOrchestrator withProjectDir(Path projectDir) {
         this.projectDir = projectDir;
+        return this;
+    }
+
+    /** The features the consumer activated on each path library, keyed by the module its row carries. */
+    public LockOrchestrator withActivatedFeatures(Map<String, List<String>> activatedFeatures) {
+        this.activatedFeatures = activatedFeatures == null ? Map.of() : Map.copyOf(activatedFeatures);
         return this;
     }
 
@@ -190,8 +199,7 @@ public final class LockOrchestrator {
             throws IOException, InterruptedException {
         LockProgress progress = new LockProgress(observer, timings);
 
-        LockRoots.Declared declared = LockRoots.partition(project, featuresRequested, withDefaults, projectDir);
-        Map<String, List<String>> activatedFeatures = declared.activatedFeatures();
+        LockRoots.Declared declared = LockRoots.partition(project, featuresRequested, withDefaults);
         // one POM builder for BOM load + all scope solves + toArtifact packaging probes.
         EffectivePomBuilder pomBuilder = new EffectivePomBuilder(repos);
         PlatformConstraints constraints = PlatformConstraints.collect(project, repos, pomBuilder);
