@@ -254,32 +254,33 @@ dependencies { testApksig("com.android.tools.build:apksig:8.7.3") }
 // green. slowTest joined the list when @Tag("slow") moved off the gate; AndroidSpikeTest
 // does not skip, it asserts the property is non-blank, so the tier failed on a missing jar rather
 // than quietly covering nothing.
-listOf("integrationTest", "networkTest", "slowTest").forEach { tier ->
-    tasks.named<Test>(tier) {
-        integrationWorkerJars.forEach { (prop, cfg) ->
-            dependsOn(cfg)
-            // inputs.files is what makes the up-to-date check see a rebuilt plugin. dependsOn only
-            // orders the tasks, and a doFirst systemProperty is set at execution time — so without
-            // this, editing a plugin's source left integrationTest UP-TO-DATE and Gradle replayed
-            // the previous run's results. Revert checks against a plugin change came back green as
-            // no-ops until `--rerun` was passed by hand.
-            inputs.files(cfg).withPropertyName(prop).withPathSensitivity(PathSensitivity.NONE)
-            doFirst { systemProperty(prop, cfg.singleFile.absolutePath) }
-        }
-        seedWorkerRepos(
-                ":spring-boot",
-                ":grails",
-                ":micronaut",
-                ":android",
-                ":protobuf",
-                ":minified",
-                ":kotlin-compiler",
-                ":groovy-compiler",
-                ":auditor")
-        dependsOn(testApksig)
-        inputs.files(testApksig).withPropertyName("apksigClasspath").withPathSensitivity(PathSensitivity.NONE)
-        doFirst { systemProperty("jk.android.apksig.classpath", testApksig.asPath) }
+// The curated lane is in the list for the same reason: it runs a subset of integrationTest's
+// classes, so it needs the same plugin worker jars and seeded repos or it covers something else.
+val integrationTiers = CuratedIntegration.integrationTasks + listOf("networkTest", "slowTest")
+tasks.withType<Test>().matching { it.name in integrationTiers }.configureEach {
+    integrationWorkerJars.forEach { (prop, cfg) ->
+        dependsOn(cfg)
+        // inputs.files is what makes the up-to-date check see a rebuilt plugin. dependsOn only
+        // orders the tasks, and a doFirst systemProperty is set at execution time — so without
+        // this, editing a plugin's source left integrationTest UP-TO-DATE and Gradle replayed
+        // the previous run's results. Revert checks against a plugin change came back green as
+        // no-ops until `--rerun` was passed by hand.
+        inputs.files(cfg).withPropertyName(prop).withPathSensitivity(PathSensitivity.NONE)
+        doFirst { systemProperty(prop, cfg.singleFile.absolutePath) }
     }
+    seedWorkerRepos(
+            ":spring-boot",
+            ":grails",
+            ":micronaut",
+            ":android",
+            ":protobuf",
+            ":minified",
+            ":kotlin-compiler",
+            ":groovy-compiler",
+            ":auditor")
+    dependsOn(testApksig)
+    inputs.files(testApksig).withPropertyName("apksigClasspath").withPathSensitivity(PathSensitivity.NONE)
+    doFirst { systemProperty("jk.android.apksig.classpath", testApksig.asPath) }
 }
 
 // ---------------------------------------------------------------------------

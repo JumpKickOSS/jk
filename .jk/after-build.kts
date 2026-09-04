@@ -2883,6 +2883,39 @@ guard("G57", "checkCiCadence") {
     if (!text(at("build.gradle.kts")).contains("\"coverageReport\"")) {
         problems.add("build.gradle.kts must register coverageReport")
     }
+    // Gradle is the bootstrap oracle, so the only evidence that jk can still build jk is a job
+    // that does it. Deleting the job leaves the self-host claim in the docs with nothing behind
+    // it, and nothing else goes red.
+    if (!branch.contains("self-host:")) {
+        problems.add("ci.yml must keep the self-host job — a pull request has to prove jk still"
+            + " builds and tests this checkout")
+    }
+    if (!branch.contains("JK_HOME:")) {
+        problems.add("the self-host job must run against an isolated JK_HOME, or it can pass on"
+            + " state the pull request did not produce")
+    }
+    listOf("jk build", "jk test").forEach { verb ->
+        if (!branch.contains(verb)) {
+            problems.add("ci.yml's self-host job must run `$verb`")
+        }
+    }
+    if (!Files.isRegularFile(at("scripts/dogfood-wall-measure.sh"))) {
+        problems.add("scripts/dogfood-wall-measure.sh is missing")
+    }
+    val wall = at(".github/workflows/wall-measure.yml")
+    if (!Files.isRegularFile(wall)) {
+        problems.add(".github/workflows/wall-measure.yml is missing — the Gradle/jk wall"
+            + " comparison is scheduled, not something a contributor has to remember")
+    } else {
+        val wallText = text(wall)
+        listOf("schedule:", "dogfood-wall-measure.sh", "upload-artifact", "row.jsonl")
+            .filterNot(wallText::contains)
+            .forEach { missing ->
+                problems.add("wall-measure.yml must keep '$missing': a measurement nobody"
+                    + " schedules, or whose machine-readable result nobody keeps, is not a"
+                    + " baseline")
+            }
+    }
     if (problems.isNotEmpty()) {
         error("CI cadence is incomplete:\n" + bullets(problems))
     }
@@ -3029,6 +3062,165 @@ guard("G62", "checkShipLayoutAgrees") {
             + "\n  install.sh reads <dir-of-binary>/<name>/jk-engine-<version>.jar, so a build that"
             + " writes a different name produces a dist the installer ignores — and a local install"
             + " that falls back to the released engine without saying so.")
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Guard G63: the curated integration lane's registry is real, covered, and still wired to CI.
+//
+// `curated-integration.txt` is the single owner both builds read; this side re-derives the rules
+// from the file rather than from Gradle's parser, so a green verdict here is independent evidence.
+//
+// Every way the lane rots is silent: a renamed class stops being selected, an entry loses its
+// `@Tag("integration")` and leaves the tier the lane filters, a surface ends up with only happy
+// paths, or the CI job is deleted while the registry stays behind reading like coverage.
+//
+// The `failure` column is checked for visibility, not truth: a class claiming a refused path must
+// assert a throw or a non-zero exit, or name a refusal in a test method. That falsifies a wrong
+// claim without pretending to verify a right one.
+// ---------------------------------------------------------------------------
+
+guard("G63", "checkCuratedIntegration") {
+    val registry = "curated-integration.txt"
+    val surfaces = mapOf(
+        "wire" to "CLI to engine JSONL wire",
+        "spawn" to "engine spawn, election and takeover",
+        "workers" to "worker and plugin process launch",
+        "workspace" to "workspace build and test",
+        "install" to "install and materialize",
+        "lock" to "lockfile and action cache")
+    val outcomes = setOf("success", "failure")
+    val modules = mapOf(":cli" to "clients/cli", ":engine" to "server/engine")
+    val failureAssertions = listOf(
+        "assertThatThrownBy", "assertThrows", "catchThrowable", "assertThatExceptionOfType",
+        "isNotEqualTo(0)", "isNotZero")
+    val refusalWords = listOf(
+        "fail", "refus", "reject", "denie", "invalid", "missing", "unknown", "error", "stale",
+        "mismatch", "conflict", "nonzero", "orphan", "ghost", "corrupt", "crash", "timeout",
+        "noop", "no_op", "not_", "never", "without", "bad_", "loses")
+    val disqualifying = listOf("slow", "network", "bench")
+
+    val faults = mutableListOf<String>()
+    data class Entry(val module: String, val fqcn: String, val surface: String,
+                     val paths: Set<String>, val line: Int)
+    val entries = mutableListOf<Entry>()
+    text(at(registry)).lines().forEachIndexed { index, raw ->
+        val body = raw.trim()
+        if (body.isEmpty() || body.startsWith("#")) return@forEachIndexed
+        val n = index + 1
+        val fields = body.split("|").map { it.trim() }
+        if (fields.size != 5) {
+            faults.add("$registry:$n: ${fields.size} fields, expected 5 (module | class | surface | outcomes | why)")
+            return@forEachIndexed
+        }
+        val paths = fields[3].split(",").map { it.trim() }.toSet()
+        when {
+            fields[0] !in modules -> faults.add("$registry:$n: unknown module '${fields[0]}'; one of ${modules.keys}")
+            !fields[1].contains('.') -> faults.add("$registry:$n: '${fields[1]}' is not a fully-qualified class name")
+            fields[2] !in surfaces -> faults.add("$registry:$n: unknown surface '${fields[2]}'; one of ${surfaces.keys}")
+            !outcomes.containsAll(paths) -> faults.add("$registry:$n: unknown outcome(s) ${paths - outcomes}; one or both of $outcomes")
+            fields[4].length < 20 -> faults.add("$registry:$n: the reason is ${fields[4].length} characters; say what merges broken without this class")
+            else -> entries.add(Entry(fields[0], fields[1], fields[2], paths, n))
+        }
+    }
+    if (entries.isEmpty()) {
+        error("$registry names no classes, so the curated lane would run nothing and report green."
+            + " Fix the file or this parse.")
+    }
+
+    // Floor under the scan: the lane is carved out of the integration tier, so a walk that stops
+    // finding the tier is a green verdict about nothing. Measured at 109 classes. Read from
+    // `codeOf`, not the raw file: a class whose javadoc quotes `@Tag("integration")` to explain why
+    // it is NOT tagged reads as tagged otherwise, and one did.
+    val tagged = testJava.filter { codeOf(it).contains("@Tag(\"integration\")") }
+    if (tagged.size < 90) {
+        error("found ${tagged.size} @Tag(\"integration\") classes; measured against 109 and floored"
+            + " at 90. Either the tier shrank into the curated subset — the one thing this lane must"
+            + " not cause — or the scan broke and is passing vacuously.")
+    }
+
+    entries.groupBy { it.fqcn }.filterValues { it.size > 1 }.forEach { (fqcn, dupes) ->
+        faults.add("$fqcn is listed ${dupes.size} times (lines ${dupes.map { it.line }})")
+    }
+
+    val methodName = Regex("""\bvoid\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(""")
+    entries.forEach { entry ->
+        val relPath = modules.getValue(entry.module) + "/src/test/java/" + entry.fqcn.replace('.', '/') + ".java"
+        val source = at(relPath)
+        if (!Files.isRegularFile(source)) {
+            faults.add("${entry.fqcn} (line ${entry.line}): no source at $relPath — the class was"
+                + " renamed, moved, or deleted; update the registry")
+            return@forEach
+        }
+        val body = codeOf(source)
+        if (!body.contains("@Tag(\"integration\")")) {
+            faults.add("${entry.fqcn} (line ${entry.line}): not @Tag(\"integration\"), so the lane's"
+                + " filters never select it")
+        }
+        disqualifying.filter { body.contains("@Tag(\"$it\")") }.forEach {
+            faults.add("${entry.fqcn} (line ${entry.line}): carries @Tag(\"$it\"), which is a nightly"
+                + " tier — the branch gate must not need the network, a framework toolchain, or a"
+                + " benchmark")
+        }
+        if ("failure" in entry.paths) {
+            val asserts = failureAssertions.any { body.contains(it) }
+            val names = methodName.findAll(body).map { it.groupValues[1].lowercase() }.toList()
+            val refuses = names.any { name -> refusalWords.any { name.contains(it) } }
+            if (!asserts && !refuses) {
+                faults.add("${entry.fqcn} (line ${entry.line}): claims a failure path and shows none"
+                    + " — no $failureAssertions and no test method naming a refusal. Drop the claim,"
+                    + " or register a class that has one")
+            }
+        }
+    }
+
+    // The lane runs a subset of the tier's classes, so it has to inherit the tier's per-module
+    // setup — worker jars, engine jar, sandbox roots, transport. A module script that configures
+    // `integrationTest` by name gives the lane none of it, and the lane then fails for reasons the
+    // change under review did not cause.
+    entries.map { it.module }.distinct().sorted().forEach { module ->
+        val script = at(modules.getValue(module) + "/build.gradle.kts")
+        val body = if (Files.isRegularFile(script)) text(script) else ""
+        if (body.contains("integrationTest") && !body.contains("CuratedIntegration.integrationTasks")) {
+            faults.add("$module configures integrationTest by name; the registry names classes in"
+                + " it, so it must configure CuratedIntegration.integrationTasks instead and give"
+                + " the lane the tier's environment")
+        }
+    }
+
+    val bySurface = entries.groupBy { it.surface }
+    surfaces.forEach { (id, what) ->
+        val here = bySurface[id].orEmpty()
+        val gaps = outcomes.filterNot { path -> here.any { path in it.paths } }
+        if (here.isEmpty()) {
+            faults.add("surface '$id' ($what) has no entry")
+        } else if (gaps.isNotEmpty()) {
+            faults.add("surface '$id' ($what) has no " + gaps.sorted().joinToString(" or ") + " path")
+        }
+    }
+
+    if (!text(at(".github/workflows/ci.yml")).contains("curatedIntegrationTest")) {
+        faults.add(".github/workflows/ci.yml must run ./gradlew curatedIntegrationTest — a registry"
+            + " no pull request executes is documentation, not a gate")
+    }
+    if (!text(at(".github/workflows/ci-nightly.yml")).contains("./gradlew integrationTest")) {
+        faults.add(".github/workflows/ci-nightly.yml must still run the full ./gradlew"
+            + " integrationTest; the curated lane is a subset, never a replacement")
+    }
+    val doc = text(at("docs/contributors/test-suite-tiers.md"))
+    if (!doc.contains(registry)) {
+        faults.add("docs/contributors/test-suite-tiers.md must name $registry")
+    }
+    if (!doc.contains("8 minutes")) {
+        faults.add("docs/contributors/test-suite-tiers.md must state the lane's budget as '8"
+            + " minutes', the number buildSrc/src/main/kotlin/CuratedIntegration.kt owns")
+    }
+
+    if (faults.isNotEmpty()) {
+        error("the curated integration lane does not cover what it claims:\n" + bullets(faults)
+            + "\n  ${entries.size} entries over ${tagged.size} integration classes. The lane is the"
+            + " only integration coverage a pull request gets; an entry that no longer runs is a"
+            + " boundary nobody is watching until the nightly build.")
     }
 }
 

@@ -54,6 +54,29 @@ ROWS=("$@")
 mkdir -p "$OUT_DIR"
 ROW_FILE="$OUT_DIR/row.md"
 : > "$ROW_FILE"
+# The machine-readable twin of row.md: one JSON object per line, an `env` object followed by one
+# `measurement` per side per row. Trend tooling and the scheduled CI job read this file; the
+# markdown is for people, and a table nobody can parse is not a baseline.
+ROW_JSONL="$OUT_DIR/row.jsonl"
+: > "$ROW_JSONL"
+
+# emit_json <type> <key=value>… — values are strings, except a key ending in `_s`, whose value is
+# the slash-separated wall list the markdown column carries and lands as an array of seconds.
+emit_json() {
+  python3 - "$ROW_JSONL" "$@" <<'PY'
+import json, sys
+out, kind, *pairs = sys.argv[1:]
+row = {"type": kind}
+for pair in pairs:
+    key, _, value = pair.partition("=")
+    if key.endswith("_s"):
+        row[key] = [None if part == "FAILED" else float(part) for part in value.split("/") if part]
+    else:
+        row[key] = value
+with open(out, "a", encoding="utf-8") as handle:
+    handle.write(json.dumps(row, sort_keys=True) + "\n")
+PY
+}
 
 want_jk()     { [[ "$SIDES" == both || "$SIDES" == jk ]]; }
 want_gradle() { [[ "$SIDES" == both || "$SIDES" == gradle ]]; }
@@ -106,6 +129,11 @@ env_block() {
     echo "Guard parity: both builds enforce the same guard letters (G51 checks the two sets)."
     echo
   } >> "$ROW_FILE"
+
+  emit_json env \
+    "date=$(date -Iseconds)" "os=$os" "cpu=$cpu" "cores=$cores" "threads=$threads" \
+    "mem_total_gib=$memtotal" "mem_available_gib=$memavail" "head=$headsha" \
+    "jk=$jkver" "jk_built_from_head=$jkbuilt" "runs=$RUNS"
 }
 
 # Change a source file's CONTENT, not just its mtime. jk hashes inputs, so `touch` alone leaves
@@ -199,10 +227,13 @@ for row in "${ROWS[@]}"; do
       if want_gradle; then
         w="$(run_side "gradle rebuild" gradle-rebuild -- ./gradlew build dist --no-build-cache --rerun-tasks --console=plain)"
         echo "| Gradle | \`build dist --no-build-cache --rerun-tasks\` | $w |" >> "$ROW_FILE"
+        emit_json measurement "row=rebuild" "side=gradle" \
+          "command=./gradlew build dist --no-build-cache --rerun-tasks" "walls_s=$w"
       fi
       if want_jk; then
         w="$(run_side "jk rebuild" jk-rebuild -- "$JK" build -r)"
         echo "| jk | \`jk build -r\` | $w |" >> "$ROW_FILE"
+        emit_json measurement "row=rebuild" "side=jk" "command=jk build -r" "walls_s=$w"
       fi
       echo >> "$ROW_FILE"
       want_jk && jk_detail
@@ -213,10 +244,12 @@ for row in "${ROWS[@]}"; do
       if want_gradle; then
         w="$(run_side "gradle no-op" gradle-noop -- ./gradlew build dist --console=plain)"
         echo "| Gradle | \`build dist\` | $w |" >> "$ROW_FILE"
+        emit_json measurement "row=noop" "side=gradle" "command=./gradlew build dist" "walls_s=$w"
       fi
       if want_jk; then
         w="$(run_side "jk no-op" jk-noop -- "$JK" build)"
         echo "| jk | \`jk build\` | $w |" >> "$ROW_FILE"
+        emit_json measurement "row=noop" "side=jk" "command=jk build" "walls_s=$w"
       fi
       echo >> "$ROW_FILE"
       ;;
@@ -237,6 +270,8 @@ for row in "${ROWS[@]}"; do
           printf '  %-46s run %d: %s s\n' "gradle touched" "$i" "${walls[-1]}" >&2
         done
         echo "| Gradle | \`build dist\` after an edit | $(IFS='/'; echo "${walls[*]}") |" >> "$ROW_FILE"
+        emit_json measurement "row=touched" "side=gradle" "command=./gradlew build dist" \
+          "walls_s=$(IFS='/'; echo "${walls[*]}")" "touched=$TOUCH"
       fi
       if want_jk; then
         walls=()
@@ -246,6 +281,8 @@ for row in "${ROWS[@]}"; do
           printf '  %-46s run %d: %s s\n' "jk touched" "$i" "${walls[-1]}" >&2
         done
         echo "| jk | \`jk build\` after an edit | $(IFS='/'; echo "${walls[*]}") |" >> "$ROW_FILE"
+        emit_json measurement "row=touched" "side=jk" "command=jk build" \
+          "walls_s=$(IFS='/'; echo "${walls[*]}")" "touched=$TOUCH"
       fi
       restore_touched
       trap - EXIT
@@ -257,6 +294,7 @@ done
 
 echo >&2
 echo "row written to $ROW_FILE" >&2
+echo "machine-readable rows in $ROW_JSONL" >&2
 echo "logs in $OUT_DIR" >&2
 echo >&2
 cat "$ROW_FILE"

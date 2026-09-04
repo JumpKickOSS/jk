@@ -454,7 +454,9 @@ tasks.named<Test>("test") {
             "cc.jumpkick.cli.engine.JkTempDirFactory")
 }
 
-tasks.named<Test>("integrationTest") {
+// The tier and the curated lane, configured once: the lane runs a subset of these classes, so it
+// needs the same worker jars, sandbox roots and transport or it is exercising a different product.
+tasks.withType<Test>().matching { it.name in CuratedIntegration.integrationTasks }.configureEach {
     jvmArgs("--enable-native-access=ALL-UNNAMED")
     // As :cli:test — keep ambient terminal detection out of rendered-output assertions.
     environment("JK_NERD_FONT", "false")

@@ -13,6 +13,54 @@ This repository is a **dual-build tree**: the same product sources build under *
 Do not treat dual-build as temporary scaffolding you must hide: both layouts live in this
 repo until a deliberate Gradle cut-over (backlog below).
 
+## Which build is the oracle
+
+**Gradle is the bootstrap and the merge authority.** It produces the `jk` a self-host build needs,
+and `./gradlew checkFast` plus the curated integration lane are what a pull request has to pass.
+
+**Self-host is a first-class oracle, not a courtesy run.** Every pull request also runs a
+`self-host` job that bootstraps from that workflow's own Gradle artifacts, installs into an
+isolated `JK_HOME`, and then uses that `jk` to build the checkout, run its fast test tier, and run
+the house-rule gate. A guard failure there is annotated with the guard that owns it, so a parity
+break reads as `G51 checkGuardParity` rather than as build output.
+
+| Question | Answer today |
+|---|---|
+| What must be green to merge | Gradle: `checkFast`, the curated integration lane, and the self-host job |
+| What produces the `jk` under test | Gradle `dist` + `installLocal`, in the same workflow run |
+| Where CI installs it | `$GITHUB_WORKSPACE/.ci-jk-home` — never the runner's `~/.jk` |
+| What proves the graph is honest | `jk build` must not rewrite the committed `jk-lock.toml` |
+| Wall-clock comparison | `.github/workflows/wall-measure.yml`, weekly, informational |
+
+Guard **G57** (`checkCiCadence`, both builds) keeps the self-host job, its isolated `JK_HOME`, and
+the scheduled wall measurement in place: removing any of them fails the build rather than quietly
+retiring the oracle.
+
+### Cache and home isolation
+
+The CI lane sets `JK_HOME` to a directory inside the workspace, so the store, the action cache and
+the engine jar all come from that run. Nothing it reads survives from another job, and nothing it
+writes leaks into one. Locally the same isolation is a `JK_HOME=/some/tmp/dir` prefix; do not point
+a scratch run at your real `~/.jk`.
+
+### When self-host can replace Gradle as the primary oracle
+
+Judgement is not a criterion. All five of these have to be facts before the Gradle job becomes an
+optional parity run:
+
+1. **Bootstrap without in-tree Gradle** — a published release, or a sibling checkout, installs a
+   `jk` capable of building this tree, so a clean product checkout never runs `./gradlew`.
+2. **Coverage parity** — `jk test --profile integration` runs every class
+   `./gradlew integrationTest` runs, with the same pass/fail verdict on the same commit.
+3. **Guard parity with no exceptions that could be ported** — `guard-parity.txt` holds only
+   letters that genuinely cannot live in both builds.
+4. **Green on every supported OS** — the self-host lane passes on Linux, macOS and Windows, not
+   only the Linux runner it starts on.
+5. **A wall baseline that holds** — the scheduled measurement has enough history that a regression
+   is distinguishable from runner noise, and the rebuild row has not regressed against it.
+
+Until all five hold, Gradle stays the trusted bootstrap and the merge authority.
+
 ## Bootstrap (chicken-egg)
 
 You need a working `jk` before pure-jk can build the monorepo.
@@ -140,7 +188,8 @@ build rather than silently never running.
 
 ### Future cut-over (backlog)
 
-Not started — keep dual-build green until this epic is scheduled:
+Not started — keep dual-build green until this epic is scheduled. The gate on starting it is the
+five criteria in [Which build is the oracle](#when-self-host-can-replace-gradle-as-the-primary-oracle):
 
 1. **Bootstrap without in-tree Gradle** — install `jk` from a release (or a sibling Gradle-only
    checkout) so a clean product tree never needs `./gradlew`.
@@ -196,6 +245,21 @@ export JK_AOT_TRAIN=off   # train-on-miss off; still *use* existing caches
 
 Pure-jk test forks set `-Djk.aot.train=off` automatically. For host engines in CI, export
 `JK_AOT_TRAIN=off` before the job starts (or restart the engine after exporting).
+
+## Wall-clock comparison
+
+`scripts/dogfood-wall-measure.sh` builds this tree both ways on one machine and writes three rows —
+rebuild, warm no-op, and one file really edited — to `build/dogfood-wall/`:
+
+| File | For |
+|---|---|
+| `row.md` | people: the rows plus the machine they were measured on |
+| `row.jsonl` | tooling: one `env` object, then one `measurement` per side per row, walls in seconds |
+
+`.github/workflows/wall-measure.yml` runs it weekly and uploads both. It is **informational** and
+`continue-on-error`: a hosted runner's wall time moves with the runner it lands on, so a single row
+proves nothing about a change. A threshold belongs here only once the series is long enough to say
+what normal is — criterion 5 above.
 
 ## Roadmap (summary)
 

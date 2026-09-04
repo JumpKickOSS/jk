@@ -1,0 +1,74 @@
+# Gradle vs JumpKick wall-clock comparison of this tree, on a schedule.
+# Manual re-run: Actions → "Dogfood wall measurement" → Run workflow.
+#
+# Informational, never a gate. A hosted runner's wall time moves with the runner it lands on, so
+# a single row proves nothing about a change; the point is a machine-readable series long enough
+# that drift becomes visible. When a stable baseline exists, this is where a threshold would go.
+name: Dogfood wall measurement
+
+on:
+  schedule:
+    # 07:40 UTC on Mondays — after the nightly, on a day nobody is waiting for it.
+    - cron: "40 7 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: wall-measure
+  cancel-in-progress: true
+
+env:
+  TERM: xterm-256color
+
+jobs:
+  wall:
+    name: Rebuild / no-op / touched
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      JK_HOME: ${{ github.workspace }}/.ci-jk-home
+      JK_AOT_TRAIN: 'off'
+      OUT_DIR: ${{ github.workspace }}/build/dogfood-wall
+      # One timed run per side. A hosted runner is too noisy for a median to mean anything, and
+      # the rebuild row builds a native image on both sides.
+      RUNS: '1'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: graalvm/setup-graalvm@0def53c0fd8534bc13416c9469f5be45265824fd # v1.6.3
+        with:
+          java-version: '25'
+          distribution: 'graalvm'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache: 'gradle'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Bootstrap jk from Gradle artifacts
+        run: |
+          set -euo pipefail
+          ./gradlew dist installLocal --no-daemon
+          ./install.sh build/dist/jk
+          echo "$JK_HOME/bin" >> "$GITHUB_PATH"
+
+      # continue-on-error, deliberately: the measurement is a record, and a slow or flaky runner
+      # must not read as a product regression until a baseline says what normal is.
+      - name: Measure rebuild, no-op and touched
+        continue-on-error: true
+        run: ./scripts/dogfood-wall-measure.sh rebuild noop touched
+
+      - name: Summarize
+        if: always()
+        run: cat "$OUT_DIR/row.md" >> "$GITHUB_STEP_SUMMARY" || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dogfood-wall
+          path: |
+            build/dogfood-wall/row.md
+            build/dogfood-wall/row.jsonl
+            build/dogfood-wall/*.log
+          if-no-files-found: error
+          retention-days: 90

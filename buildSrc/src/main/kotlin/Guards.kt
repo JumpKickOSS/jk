@@ -571,12 +571,13 @@ object Guards {
             spec(
                 57,
                 "checkCiCadence",
-                "nightly CI no longer runs `benchTest`, `coverageReport`, or the macOS/Windows product smoke",
+                "nightly CI no longer runs `benchTest`, `coverageReport`, or the macOS/Windows product smoke; the branch gate loses the self-host job or its isolated `JK_HOME`; or the scheduled Gradle-vs-jk wall measurement stops running or stops keeping a machine-readable result",
                 "workflow text scan in both builds",
                 GuardHome.ROOT,
                 tableTask = "`checkCiCadence` (root project) + `.jk/after-build.kts`",
                 attach = emptySet(),
-                description = "Fail when nightly CI drops coverage, benches, or OS smoke",
+                description =
+                    "Fail when CI drops coverage, benches, OS smoke, the self-host job, or the wall measurement",
             ),
             spec(
                 58,
@@ -617,6 +618,16 @@ object Guards {
                 tableTask = "`checkShipLayoutAgrees` (root project) + `.jk/after-build.kts`",
                 attach = emptySet(),
                 description = "Fail when the two builds and install.sh disagree on the ship layout",
+            ),
+            spec(
+                63,
+                "checkCuratedIntegration",
+                "a curated integration entry that is missing, renamed, untagged, tagged into a nightly tier, or claims a failure path the class does not show — plus a surface with only happy paths, a branch gate that stopped running the lane, and a nightly that stopped running the full tier",
+                "registry scan in both builds, floored on the integration population it is carved out of",
+                GuardHome.ROOT,
+                tableTask = "`checkCuratedIntegration` (root project) + `.jk/after-build.kts`",
+                attach = emptySet(),
+                description = "Fail when the curated integration registry, its coverage, or its CI job drifts",
             ),
             spec(
                 61,
