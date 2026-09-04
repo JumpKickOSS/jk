@@ -118,35 +118,35 @@ class HttpEventStreamTest extends HttpEngineServerHarness {
     void an_attached_dashboard_stream_is_counted() throws Exception {
         // Derived from the admission budget rather than a separate counter, so it cannot drift from what
         // actually holds a slot. Draining one permit stands in for one attached tab.
-        server.webSseAdmission().acquire(1);
+        server.admission().webSse().acquire(1);
         try {
             assertThat(server.liveEventStreams()).isEqualTo(1);
         } finally {
-            server.webSseAdmission().release(1);
+            server.admission().webSse().release(1);
         }
         assertThat(server.liveEventStreams()).isZero();
     }
 
     @Test
     void dashboard_and_mcp_streams_both_count() throws Exception {
-        server.webSseAdmission().acquire(2);
-        server.mcpSseAdmission().acquire(3);
+        server.admission().webSse().acquire(2);
+        server.admission().mcpSse().acquire(3);
         try {
             assertThat(server.liveEventStreams()).isEqualTo(5);
         } finally {
-            server.webSseAdmission().release(2);
-            server.mcpSseAdmission().release(3);
+            server.admission().webSse().release(2);
+            server.admission().mcpSse().release(3);
         }
     }
 
     @Test
     void a_fully_drained_budget_counts_every_slot_and_never_goes_negative() throws Exception {
-        int web = server.webSseAdmission().drainPermits();
+        int web = server.admission().webSse().drainPermits();
         try {
             assertThat(server.liveEventStreams()).isGreaterThanOrEqualTo(web);
             assertThat(server.liveEventStreams()).isNotNegative();
         } finally {
-            server.webSseAdmission().release(web);
+            server.admission().webSse().release(web);
         }
     }
 

@@ -103,13 +103,13 @@ class HttpAdmissionTest extends HttpEngineServerHarness {
 
     @Test
     void saturated_admission_gate_yields_503_with_retry_after() throws Exception {
-        int permits = server.admission().drainPermits();
+        int permits = server.admission().rpc().drainPermits();
         try {
             HttpResponse<String> resp = get("/hello.txt");
             assertThat(resp.statusCode()).isEqualTo(503);
             assertThat(resp.headers().firstValue("Retry-After")).contains("1");
         } finally {
-            server.admission().release(permits);
+            server.admission().rpc().release(permits);
         }
         assertThat(get("/hello.txt").statusCode()).isEqualTo(200);
     }
@@ -237,12 +237,12 @@ class HttpAdmissionTest extends HttpEngineServerHarness {
             // view) with the only permit back in the semaphore — then probe. Probing earlier
             // would race the parked request's own pre-park admission on the budget of one.
             long deadline = System.currentTimeMillis() + 5_000;
-            while ((livePolls.get() < 2 || tiny.admission().availablePermits() < 1)
+            while ((livePolls.get() < 2 || tiny.admission().rpc().availablePermits() < 1)
                     && System.currentTimeMillis() < deadline) {
                 Thread.sleep(10);
             }
             assertThat(livePolls.get()).isGreaterThanOrEqualTo(2); // inside waitUntilGone
-            assertThat(tiny.admission().availablePermits()).isEqualTo(1); // permit yielded
+            assertThat(tiny.admission().rpc().availablePermits()).isEqualTo(1); // permit yielded
             HttpResponse<String> probe = client.send(
                     HttpRequest.newBuilder(URI.create(url + "api/status"))
                             .header("Authorization", "Bearer " + tok)
@@ -260,7 +260,7 @@ class HttpAdmissionTest extends HttpEngineServerHarness {
 
     @Test
     void sse_beyond_its_own_cap_is_503_without_touching_rpc_admission() throws Exception {
-        int drained = server.webSseAdmission().drainPermits();
+        int drained = server.admission().webSse().drainPermits();
         try {
             assertTimeoutPreemptively(Duration.ofSeconds(5), () -> {
                 HttpResponse<String> resp = get("/api/events");
@@ -270,13 +270,13 @@ class HttpAdmissionTest extends HttpEngineServerHarness {
             });
             assertThat(get("/api/status").statusCode()).isEqualTo(200); // RPC budget unaffected
         } finally {
-            server.webSseAdmission().release(drained);
+            server.admission().webSse().release(drained);
         }
     }
 
     @Test
     void exhausted_web_sse_budget_leaves_mcp_streams_connectable() throws Exception {
-        int drained = server.webSseAdmission().drainPermits();
+        int drained = server.admission().webSse().drainPermits();
         try {
             assertThat(get("/api/events").statusCode()).isEqualTo(503);
             HttpResponse<Stream<String>> mcpStream = openMcpEvents();
@@ -287,13 +287,13 @@ class HttpAdmissionTest extends HttpEngineServerHarness {
                 mcpStream.body().close();
             }
         } finally {
-            server.webSseAdmission().release(drained);
+            server.admission().webSse().release(drained);
         }
     }
 
     @Test
     void exhausted_mcp_sse_budget_leaves_web_streams_connectable() throws Exception {
-        int drained = server.mcpSseAdmission().drainPermits();
+        int drained = server.admission().mcpSse().drainPermits();
         try {
             HttpResponse<Stream<String>> rejected = openMcpEvents();
             assertThat(rejected.statusCode()).isEqualTo(503);
@@ -302,18 +302,18 @@ class HttpAdmissionTest extends HttpEngineServerHarness {
             var lines = openEvents(""); // web budget untouched
             assertThat(nextLine(lines)).isEqualTo(": connected");
         } finally {
-            server.mcpSseAdmission().release(drained);
+            server.admission().mcpSse().release(drained);
         }
     }
 
     @Test
     void rpc_saturation_does_not_block_event_streams() throws Exception {
-        int permits = server.admission().drainPermits();
+        int permits = server.admission().rpc().drainPermits();
         try {
             var lines = openEvents("");
             assertThat(nextLine(lines)).isEqualTo(": connected");
         } finally {
-            server.admission().release(permits);
+            server.admission().rpc().release(permits);
         }
     }
 }

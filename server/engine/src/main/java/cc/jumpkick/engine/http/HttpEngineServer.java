@@ -19,11 +19,9 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Semaphore;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -51,17 +49,7 @@ public final class HttpEngineServer implements AutoCloseable {
 
     private final JkHttpConfig config;
     private final StaticContent staticContent;
-    private final Semaphore admission;
-
-    /**
-     * Budgets for concurrent long-lived SSE streams — separate from RPC admission (an open stream
-     * holds its slot for the connection's life, so streams drawing from the RPC semaphore would let
-     * {@code maxConcurrentRequests} EventSource tabs starve every other endpoint) and from each
-     * other (a runaway agent must not evict the dashboard, or vice versa).
-     */
-    private final Semaphore webSse;
-
-    private final Semaphore mcpSse;
+    private final HttpAdmission admission;
     private final Path webRoot;
     private final HttpTokenGate tokens;
     private final EngineEpochGate epoch;
@@ -158,9 +146,7 @@ public final class HttpEngineServer implements AutoCloseable {
             Consumer<String> log) {
         this.config = config;
         this.staticContent = new StaticContent(webRoot, version);
-        this.admission = new Semaphore(config.effectiveMaxConcurrentRequests());
-        this.webSse = new Semaphore(config.maxEventStreams());
-        this.mcpSse = new Semaphore(config.mcp().maxEventStreams());
+        this.admission = new HttpAdmission(config);
         this.webRoot = webRoot;
         this.tokens = new HttpTokenGate(tokenFile);
         this.epoch = new EngineEpochGate(status);
@@ -187,7 +173,7 @@ public final class HttpEngineServer implements AutoCloseable {
                         version,
                         progressTokens,
                         () -> this.liveRuns.get(),
-                        this::yieldingAdmission,
+                        admission::yieldingRpc,
                         jid -> journal.rawFinishedRecordByRequestId(jid)
                                 .map(r -> HttpHistoryApi.redactRecordJson(r, new HashMap<>()))
                                 .orElse(null))
@@ -353,26 +339,19 @@ public final class HttpEngineServer implements AutoCloseable {
                     HttpResponses.sendText(exchange, 421, "unrecognized Host header\n");
                     return;
                 }
-                boolean sse = isEventStreamRequest(exchange);
-                boolean mcpSurface = isMcpPath(exchange.getRequestURI().getPath());
-                Semaphore gate = sse ? (mcpSurface ? mcpSse : webSse) : admission;
-                if (!gate.tryAcquire()) {
+                HttpAdmission.Lane lane = admission.laneFor(exchange);
+                if (!lane.tryAcquire()) {
                     exchange.getResponseHeaders().set("Retry-After", "1");
-                    HttpResponses.sendText(
-                            exchange,
-                            503,
-                            !sse
-                                    ? "engine busy\n"
-                                    : mcpSurface ? "too many MCP event streams\n" : "too many event streams\n");
+                    HttpResponses.sendText(exchange, 503, lane.busy());
                     return;
                 }
                 // Peak must be observed at admission, not when a status snapshot happens to run —
                 // SSE spikes between snapshots were invisible to the high-water mark.
-                if (sse) onSseAdmitted.run();
+                if (lane.stream()) onSseAdmitted.run();
                 try {
                     dispatch(exchange);
                 } finally {
-                    gate.release();
+                    lane.release();
                 }
             } catch (RuntimeException e) {
                 // A handler bug must not kill the virtual thread silently mid-response.
@@ -388,7 +367,7 @@ public final class HttpEngineServer implements AutoCloseable {
 
     private void dispatch(HttpExchange exchange) throws IOException {
         String path = exchange.getRequestURI().getPath();
-        if (isMcpPath(path)) {
+        if (HttpAdmission.isMcpPath(path)) {
             if (mcp == null) {
                 HttpResponses.sendText(exchange, 404, "not found\n"); // [mcp] enabled = false
                 return;
@@ -423,7 +402,7 @@ public final class HttpEngineServer implements AutoCloseable {
     private void handleMcp(HttpExchange exchange) throws IOException {
         String method = exchange.getRequestMethod();
         if (method.equals("GET") || method.equals("HEAD")) {
-            if (method.equals("GET") && acceptsEventStream(exchange)) {
+            if (method.equals("GET") && HttpAdmission.acceptsEventStream(exchange)) {
                 handleMcpEvents(exchange);
                 return;
             }
@@ -520,27 +499,6 @@ public final class HttpEngineServer implements AutoCloseable {
         return null;
     }
 
-    /**
-     * Matches exactly the requests that enter a long-lived stream loop ({@link #handleEvents},
-     * {@link #handleMcpEvents}) — these draw from the SSE budget, not RPC admission.
-     */
-    private static boolean isEventStreamRequest(HttpExchange exchange) {
-        if (!exchange.getRequestMethod().equals("GET")) return false;
-        String path = exchange.getRequestURI().getPath();
-        if (path.equals("/api/events")) return true;
-        return isMcpPath(path) && acceptsEventStream(exchange);
-    }
-
-    private static boolean isMcpPath(String path) {
-        return path.equals("/mcp") || path.startsWith("/mcp/");
-    }
-
-    static boolean acceptsEventStream(HttpExchange exchange) {
-        String accept = exchange.getRequestHeaders().getFirst("Accept");
-        if (accept == null || accept.isBlank()) return false;
-        return accept.toLowerCase(Locale.ROOT).contains("text/event-stream");
-    }
-
     /** Project metadata fallback for MCP {@code jk_project} — one card, one parse path. */
     private Map<String, Object> projectMap(String dir) {
         Map<String, Object> m = new LinkedHashMap<>();
@@ -633,49 +591,13 @@ public final class HttpEngineServer implements AutoCloseable {
         this.heartbeatMillis = millis;
     }
 
-    /**
-     * {@link AdmissionYield} over the RPC gate: MCP long-polls park here after releasing their
-     * permit, so 16 waiting agents cannot 503 the surface (including the {@code jk_cancel} that
-     * would un-wedge them). Reacquire is uninterruptible — the balancing {@code release()} in
-     * {@link #handle} must never release a permit this thread does not hold.
-     */
-    private <T> T yieldingAdmission(Supplier<T> blocking) {
-        admission.release();
-        try {
-            return blocking.get();
-        } finally {
-            admission.acquireUninterruptibly();
-        }
-    }
-
-    /** Test seam: the admission gate, so a saturated-server {@code 503} is deterministically testable. */
-    Semaphore admission() {
-        return admission;
-    }
-
-    /** Test seam: the web-UI SSE budget, so over-cap stream rejection is deterministically testable. */
-    /**
-     * How many long-lived SSE streams are attached right now (dashboard + MCP).
-     *
-     * <p>Derived from the admission budgets rather than a separate counter, so it cannot drift from what
-     * actually holds a slot: a stream keeps its permit for the life of the connection.
-     *
-     * <p>Used to decide whether an <em>orphaned</em> engine — one no endpoint pointer names, so no CLI can
-     * reach it — still has a browser attached. It deliberately has no say in the <em>displaced</em> case:
-     * a successor needs this port, and a dashboard tab reconnects to it.
-     */
+    /** How many long-lived SSE streams are attached right now (dashboard + MCP); see {@link HttpAdmission}. */
     public int liveEventStreams() {
-        int web = config.maxEventStreams() - webSse.availablePermits();
-        int mcp = config.mcp().maxEventStreams() - mcpSse.availablePermits();
-        return Math.max(0, web) + Math.max(0, mcp);
+        return admission.liveEventStreams();
     }
 
-    Semaphore webSseAdmission() {
-        return webSse;
-    }
-
-    /** Test seam: the MCP SSE budget — independent of {@link #webSseAdmission()}. */
-    Semaphore mcpSseAdmission() {
-        return mcpSse;
+    /** Test seam: the three admission budgets. */
+    HttpAdmission admission() {
+        return admission;
     }
 }

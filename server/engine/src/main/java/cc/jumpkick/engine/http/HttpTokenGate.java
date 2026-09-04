@@ -84,7 +84,7 @@ final class HttpTokenGate {
      */
     boolean authorizesMcp(HttpExchange exchange) {
         boolean sseQueryToken = exchange.getRequestMethod().equals("GET")
-                && HttpEngineServer.acceptsEventStream(exchange)
+                && HttpAdmission.acceptsEventStream(exchange)
                 && tokenValid(
                         HttpQuery.queryParamLenient(exchange.getRequestURI().getRawQuery(), "access_token"));
         return tokenValid(bearerToken(exchange.getRequestHeaders().getFirst("Authorization"))) || sseQueryToken;
