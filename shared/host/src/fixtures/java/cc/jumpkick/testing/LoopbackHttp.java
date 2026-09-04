@@ -60,6 +60,7 @@ public class LoopbackHttp implements BeforeEachCallback, AfterEachCallback {
     private final List<String> requested = new CopyOnWriteArrayList<>();
 
     private volatile Consumer<String> beforeServe;
+    private volatile Consumer<String> beforeMiss;
     private boolean concurrent;
     private HttpServer server;
     private ExecutorService pool;
@@ -87,6 +88,16 @@ public class LoopbackHttp implements BeforeEachCallback, AfterEachCallback {
         return this;
     }
 
+    /**
+     * Invoke {@code gate} with the request path when no body is registered for it, before the 404
+     * is written. May block, like {@link #beforeServe}: it is how a test decides when a miss lands
+     * relative to the responses it is holding open.
+     */
+    public LoopbackHttp beforeMiss(Consumer<String> gate) {
+        this.beforeMiss = gate;
+        return this;
+    }
+
     @Override
     public void beforeEach(ExtensionContext context) throws IOException {
         start();
@@ -109,6 +120,8 @@ public class LoopbackHttp implements BeforeEachCallback, AfterEachCallback {
             requested.add(path);
             byte[] body = served.get(path);
             if (body == null) {
+                Consumer<String> gate = beforeMiss;
+                if (gate != null) gate.accept(path);
                 exchange.sendResponseHeaders(404, -1);
             } else {
                 Consumer<String> gate = beforeServe;

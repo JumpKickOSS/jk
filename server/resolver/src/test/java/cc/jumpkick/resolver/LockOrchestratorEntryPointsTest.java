@@ -193,11 +193,12 @@ class LockOrchestratorEntryPointsTest {
         http.beforeServe(path -> {
             if (!path.equals(slowJar)) return;
             slowRequested.countDown();
-            try {
-                releaseSlow.await(30, TimeUnit.SECONDS);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
+            await(releaseSlow);
+        });
+        // The ghost's miss waits for the sibling to be mid-download, so the failure is always
+        // known while a download is still in flight — whatever order the pool started them in.
+        http.beforeMiss(path -> {
+            if (path.equals(ghostJar)) await(slowRequested);
         });
         JkBuild project = project(Map.of(
                 Scope.MAIN,
@@ -216,7 +217,7 @@ class LockOrchestratorEntryPointsTest {
 
         assertThat(slowRequested.await(30, TimeUnit.SECONDS)).isTrue();
         Await.until(Duration.ofSeconds(30), () -> http.requestsFor(ghostJar) >= 1);
-        locking.join(500);
+        locking.join(1_000);
         assertThat(locking.isAlive())
                 .as("the failure is known, but the lock waits for the sibling still downloading")
                 .isTrue();
@@ -228,6 +229,14 @@ class LockOrchestratorEntryPointsTest {
                 .as("the real cause, not the abort noise a settled sibling reports")
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageStartingWith("could not fetch artifact com.foo:ghost:1.0 ");
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            if (!latch.await(30, TimeUnit.SECONDS)) throw new AssertionError("latch never released");
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private RepoGroup repos(Path dir) {
