@@ -1263,7 +1263,7 @@ Same charter, one patient at a time. Current sizes:
 |---|---|---|---|---|---|
 | `EngineServer` | 3,418¹ | 1,064 | 580 | 800 | elect/accept/drain/close + composition root |
 | `JobEnvelope` | — | 683 | 496 | 800 | one submit path |
-| `HttpEngineServer` | 1,592 | 768 | 508 | 800 | router / history / project / live |
+| `HttpEngineServer` | 1,592 | 768 | 439 | 800 | router / history / project / live |
 | `EngineClient` | 2,616 | 942 | 658 | 800 | spawn, wire, hosted verbs |
 | `EngineProtocol` | 3,379 | 464 | 143 | 800 | discriminators; builders in `Proto*` families |
 | `BuildService` | 1,618 | 507 | 283 | 800 | lock-guard / execute / fold |

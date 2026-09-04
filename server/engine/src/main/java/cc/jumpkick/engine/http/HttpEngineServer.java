@@ -7,7 +7,6 @@ import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.runtime.BuildMetrics;
 import cc.jumpkick.runtime.ProjectCard;
-import cc.jumpkick.wire.EngineTransport;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
@@ -15,10 +14,7 @@ import java.net.BindException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.PosixFilePermissions;
-import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -33,8 +29,8 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
- * Embedded JDK {@code jdk.httpserver}: Host-header check, admission semaphore, bearer-token gates
- * ({@link #authorized}), {@link StaticContent}, {@link ApiRouter}. Bind failure is non-fatal.
+ * Embedded JDK {@code jdk.httpserver}: Host-header check, admission semaphore, {@link HttpTokenGate},
+ * {@link EngineEpochGate}, {@link StaticContent}, {@link ApiRouter}. Bind failure is non-fatal.
  */
 public final class HttpEngineServer implements AutoCloseable {
 
@@ -67,7 +63,8 @@ public final class HttpEngineServer implements AutoCloseable {
 
     private final Semaphore mcpSse;
     private final Path webRoot;
-    private final Path tokenFile;
+    private final HttpTokenGate tokens;
+    private final EngineEpochGate epoch;
     private final Path logFile;
     private final Supplier<StatusSnapshot> status;
     private final HttpEvents events;
@@ -128,7 +125,6 @@ public final class HttpEngineServer implements AutoCloseable {
         this.onSseAdmitted = onSseAdmitted != null ? onSseAdmitted : () -> {};
     }
 
-    private byte[] token;
     private long heartbeatMillis = DEFAULT_HEARTBEAT_MILLIS;
 
     /**
@@ -166,7 +162,8 @@ public final class HttpEngineServer implements AutoCloseable {
         this.webSse = new Semaphore(config.maxEventStreams());
         this.mcpSse = new Semaphore(config.mcp().maxEventStreams());
         this.webRoot = webRoot;
-        this.tokenFile = tokenFile;
+        this.tokens = new HttpTokenGate(tokenFile);
+        this.epoch = new EngineEpochGate(status);
         this.logFile = logFile;
         this.status = status;
         this.events = events;
@@ -234,7 +231,7 @@ public final class HttpEngineServer implements AutoCloseable {
      * WSL2 localhost forwarding from Windows.
      */
     public void start() throws IOException {
-        loadOrMintToken();
+        tokens.loadOrMint();
         InetSocketAddress bind = new InetSocketAddress(InetAddress.getByName(config.host()), config.port());
         server = bindWithRetry(bind);
         server.createContext("/", this::handle);
@@ -264,39 +261,6 @@ public final class HttpEngineServer implements AutoCloseable {
                     throw e;
                 }
             }
-        }
-    }
-
-    /**
-     * Load the owner-only bearer token from disk, or mint one. Stable across restarts so open
-     * dashboard tabs keep working; rotate only via {@code jk engine rotate-token}.
-     */
-    private void loadOrMintToken() throws IOException {
-        String existing = readPersistedToken();
-        if (existing != null) {
-            token = existing.getBytes(StandardCharsets.UTF_8);
-            return;
-        }
-        String minted = EngineTransport.newToken();
-        token = minted.getBytes(StandardCharsets.UTF_8);
-        Files.deleteIfExists(tokenFile);
-        try {
-            Files.createFile(
-                    tokenFile, PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")));
-        } catch (UnsupportedOperationException e) {
-            Files.createFile(tokenFile); // non-POSIX filesystem (Windows): default ACLs are per-user
-        }
-        Files.writeString(tokenFile, minted);
-    }
-
-    /** The persisted token if the file exists and holds a non-blank value, else {@code null}. */
-    private String readPersistedToken() {
-        try {
-            if (!Files.isRegularFile(tokenFile)) return null;
-            String value = Files.readString(tokenFile, StandardCharsets.UTF_8).trim();
-            return value.isEmpty() ? null : value;
-        } catch (IOException e) {
-            return null; // unreadable — mint a fresh one rather than fail to serve
         }
     }
 
@@ -429,67 +393,26 @@ public final class HttpEngineServer implements AutoCloseable {
                 HttpResponses.sendText(exchange, 404, "not found\n"); // [mcp] enabled = false
                 return;
             }
-            // MCP is agent-facing; always token-gated (even loopback) — same CSRF posture as POST
-            // /api/build. ?access_token= exists solely for the SSE GET (EventSource cannot set
-            // headers); every other shape — mutating POSTs above all — must present the Bearer
-            // header, matching /api and the docs, so tokens stay out of shell history/proxy logs.
-            boolean sseQueryToken = exchange.getRequestMethod().equals("GET")
-                    && acceptsEventStream(exchange)
-                    && tokenValid(
-                            HttpQuery.queryParamLenient(exchange.getRequestURI().getRawQuery(), "access_token"));
-            if (!tokenValid(bearerToken(exchange.getRequestHeaders().getFirst("Authorization"))) && !sseQueryToken) {
-                exchange.getResponseHeaders().set("WWW-Authenticate", "Bearer");
-                HttpResponses.sendText(exchange, 401, "missing or invalid bearer token\n");
+            if (!tokens.authorizesMcp(exchange)) {
+                tokens.challenge(exchange);
                 return;
             }
             handleMcp(exchange);
             return;
         }
         if (path.equals("/api") || path.startsWith("/api/")) {
-            if (!authorized(exchange)) {
-                exchange.getResponseHeaders().set("WWW-Authenticate", "Bearer");
-                HttpResponses.sendText(exchange, 401, "missing or invalid bearer token\n");
+            if (!tokens.authorizesApi(exchange)) {
+                tokens.challenge(exchange);
                 return;
             }
-            // Generation gate: fail-closed except bootstrap status + SSE (EventSource
-            // cannot send headers). Stale dashboards hard-refresh on 409.
-            if (!engineEpochOk(exchange)) {
-                sendEngineEpochConflict(exchange);
+            if (!epoch.allows(exchange)) {
+                epoch.sendConflict(exchange);
                 return;
             }
             api.handle(exchange);
             return;
         }
         staticContent.serve(exchange); // static is never token-gated — the dashboard shell has no secrets
-    }
-
-    /**
-     * {@code GET /api/status} and {@code GET /api/events} may omit the epoch header (bootstrap /
-     * EventSource). Every other {@code /api/*} call must send a matching {@code X-Jk-Engine-Epoch}.
-     */
-    private boolean engineEpochOk(HttpExchange exchange) {
-        String path = exchange.getRequestURI().getPath();
-        String method = exchange.getRequestMethod();
-        boolean bootstrap = ("GET".equals(method) || "HEAD".equals(method))
-                && (path.equals("/api/status") || path.equals("/api/events"));
-        if (bootstrap) return true;
-        String presented = exchange.getRequestHeaders().getFirst("X-Jk-Engine-Epoch");
-        if (presented == null || presented.isBlank()) return false;
-        StatusSnapshot s = status.get();
-        String expected = s != null ? s.engineEpoch() : null;
-        return expected != null && expected.equals(presented.trim());
-    }
-
-    private void sendEngineEpochConflict(HttpExchange exchange) throws IOException {
-        StatusSnapshot s = status.get();
-        String epoch = s != null && s.engineEpoch() != null ? s.engineEpoch() : "";
-        String body = JsonOut.object()
-                .put("error", "engine-epoch-mismatch")
-                .put("engineEpoch", epoch)
-                .put("version", s != null ? s.version() : "")
-                .put("startedAt", s != null ? s.startedAtMillis() : 0L)
-                .toString();
-        HttpResponses.sendJson(exchange, 409, body);
     }
 
     /**
@@ -612,7 +535,7 @@ public final class HttpEngineServer implements AutoCloseable {
         return path.equals("/mcp") || path.startsWith("/mcp/");
     }
 
-    private static boolean acceptsEventStream(HttpExchange exchange) {
+    static boolean acceptsEventStream(HttpExchange exchange) {
         String accept = exchange.getRequestHeaders().getFirst("Accept");
         if (accept == null || accept.isBlank()) return false;
         return accept.toLowerCase(Locale.ROOT).contains("text/event-stream");
@@ -634,34 +557,6 @@ public final class HttpEngineServer implements AutoCloseable {
         if (card.description() != null) m.put("description", card.description());
         if (card.version() != null) m.put("version", card.version());
         return m;
-    }
-
-    /**
-     * Every {@code /api/*} call needs the bearer token — loopback is not a free pass. A bare
-     * browser open without {@code #t=} or a stored token must not paint live activity (fail-closed).
-     * Static shell assets stay ungated so the SPA can show the authorization dialog. {@code GET
-     * /api/events} also accepts {@code ?access_token=} because {@code EventSource} cannot send
-     * headers.
-     */
-    private boolean authorized(HttpExchange exchange) {
-        if (tokenValid(bearerToken(exchange.getRequestHeaders().getFirst("Authorization")))) return true;
-        String method = exchange.getRequestMethod();
-        boolean read = method.equals("GET") || method.equals("HEAD");
-        return read
-                && exchange.getRequestURI().getPath().equals("/api/events")
-                && tokenValid(
-                        HttpQuery.queryParamLenient(exchange.getRequestURI().getRawQuery(), "access_token"));
-    }
-
-    private static String bearerToken(String authorization) {
-        if (authorization == null || !authorization.startsWith("Bearer ")) return null;
-        return authorization.substring("Bearer ".length()).trim();
-    }
-
-    private boolean tokenValid(String presented) {
-        if (presented == null || presented.isEmpty()) return false;
-        // Constant-time, immune to length/prefix probing.
-        return MessageDigest.isEqual(presented.getBytes(StandardCharsets.UTF_8), token);
     }
 
     /**
