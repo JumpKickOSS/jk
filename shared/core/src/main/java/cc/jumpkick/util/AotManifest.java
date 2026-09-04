@@ -23,6 +23,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.locks.ReentrantLock;
 import lombok.Builder;
+import org.jspecify.annotations.NullUnmarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Human-readable index of files under {@code state/aot/}: {@code aot.toml}. Opaque
@@ -52,22 +54,22 @@ public final class AotManifest {
     @Builder(toBuilder = true)
     public record Entry(
             String file,
-            String tool,
-            String key,
-            String status,
-            Long sizeBytes,
-            String jdkHome,
-            String jdkVendor,
-            String jdkVersion,
-            String gc,
+            @Nullable String tool,
+            @Nullable String key,
+            @Nullable String status,
+            @Nullable Long sizeBytes,
+            @Nullable String jdkHome,
+            @Nullable String jdkVendor,
+            @Nullable String jdkVersion,
+            @Nullable String gc,
             List<String> classpath,
             List<String> jvmFlags,
-            String jkVersion,
-            String engineJar,
-            Long engineJarSize,
-            Long engineJarMtimeMs,
-            String created,
-            String lastUsed) {
+            @Nullable String jkVersion,
+            @Nullable String engineJar,
+            @Nullable Long engineJarSize,
+            @Nullable Long engineJarMtimeMs,
+            @Nullable String created,
+            @Nullable String lastUsed) {
 
         public Entry {
             Objects.requireNonNull(file, "file");
@@ -79,6 +81,12 @@ public final class AotManifest {
             return new EntryBuilder().file(file);
         }
 
+        /**
+         * Lombok fills the staged fields in; the class is declared here only to add
+         * {@link EntryBuilder#classpathString}. Unmarked because those generated fields are
+         * write-once builder state, not the record's contract.
+         */
+        @NullUnmarked
         public static class EntryBuilder {
             private List<String> classpath = List.of();
             private List<String> jvmFlags = List.of();
@@ -90,6 +98,12 @@ public final class AotManifest {
                 return this;
             }
         }
+    }
+
+    /** One optional scalar; an unset or blank value is omitted, like every other absent field. */
+    private static void field(StringBuilder sb, String key, @Nullable String value) {
+        if (value == null || value.isBlank()) return;
+        sb.append(key).append(" = ").append(MinimalToml.quote(value)).append('\n');
     }
 
     /** ISO-8601 UTC timestamp for {@code created}/{@code last_used}. */
@@ -280,7 +294,7 @@ public final class AotManifest {
      * GC, flags — the diagnostic detail explaining <em>which</em> setup failed) rather than
      * flattening to a bare file name.
      */
-    private static Entry noaotRow(Entry prev, String primary) {
+    private static Entry noaotRow(@Nullable Entry prev, String primary) {
         Entry.EntryBuilder b = prev != null ? prev.toBuilder() : Entry.builder(primary);
         if (prev == null || blank(prev.tool()) || blank(prev.key())) fillToolKey(b, primary);
         return b.status("noaot").build();
@@ -296,7 +310,7 @@ public final class AotManifest {
 
     // ---- internals --------------------------------------------------------------------------
 
-    private static boolean blank(String s) {
+    private static boolean blank(@Nullable String s) {
         return s == null || s.isBlank();
     }
 
@@ -483,7 +497,8 @@ public final class AotManifest {
         return -1;
     }
 
-    private static void finishArray(Entry.EntryBuilder cur, String field, List<String> buf) {
+    private static void finishArray(
+            Entry.@Nullable EntryBuilder cur, @Nullable String field, @Nullable List<String> buf) {
         if (cur != null && field != null && buf != null) applyArray(cur, field, buf);
     }
 
@@ -520,7 +535,7 @@ public final class AotManifest {
         }
     }
 
-    private static Long parseLong(String s) {
+    private static @Nullable Long parseLong(String s) {
         try {
             return Long.parseLong(s.strip());
         } catch (NumberFormatException e) {
@@ -550,40 +565,19 @@ public final class AotManifest {
         for (Entry e : ordered) {
             sb.append("[[cache]]\n");
             sb.append("file = ").append(MinimalToml.quote(e.file())).append('\n');
-            if (!blank(e.tool()))
-                sb.append("tool = ").append(MinimalToml.quote(e.tool())).append('\n');
-            if (!blank(e.key()))
-                sb.append("key = ").append(MinimalToml.quote(e.key())).append('\n');
-            if (!blank(e.status()))
-                sb.append("status = ").append(MinimalToml.quote(e.status())).append('\n');
+            field(sb, "tool", e.tool());
+            field(sb, "key", e.key());
+            field(sb, "status", e.status());
             if (e.sizeBytes() != null)
                 sb.append("size_bytes = ").append(e.sizeBytes()).append('\n');
-            if (!blank(e.created()))
-                sb.append("created = ").append(MinimalToml.quote(e.created())).append('\n');
-            if (!blank(e.lastUsed()))
-                sb.append("last_used = ")
-                        .append(MinimalToml.quote(e.lastUsed()))
-                        .append('\n');
-            if (!blank(e.jdkHome()))
-                sb.append("jdk_home = ").append(MinimalToml.quote(e.jdkHome())).append('\n');
-            if (!blank(e.jdkVendor()))
-                sb.append("jdk_vendor = ")
-                        .append(MinimalToml.quote(e.jdkVendor()))
-                        .append('\n');
-            if (!blank(e.jdkVersion()))
-                sb.append("jdk_version = ")
-                        .append(MinimalToml.quote(e.jdkVersion()))
-                        .append('\n');
-            if (!blank(e.gc()))
-                sb.append("gc = ").append(MinimalToml.quote(e.gc())).append('\n');
-            if (!blank(e.jkVersion()))
-                sb.append("jk_version = ")
-                        .append(MinimalToml.quote(e.jkVersion()))
-                        .append('\n');
-            if (!blank(e.engineJar()))
-                sb.append("engine_jar = ")
-                        .append(MinimalToml.quote(e.engineJar()))
-                        .append('\n');
+            field(sb, "created", e.created());
+            field(sb, "last_used", e.lastUsed());
+            field(sb, "jdk_home", e.jdkHome());
+            field(sb, "jdk_vendor", e.jdkVendor());
+            field(sb, "jdk_version", e.jdkVersion());
+            field(sb, "gc", e.gc());
+            field(sb, "jk_version", e.jkVersion());
+            field(sb, "engine_jar", e.engineJar());
             if (e.engineJarSize() != null)
                 sb.append("engine_jar_size = ").append(e.engineJarSize()).append('\n');
             if (e.engineJarMtimeMs() != null)
@@ -652,7 +646,7 @@ public final class AotManifest {
     }
 
     /** Best-effort size of a cache file, or null. */
-    public static Long sizeOf(Path cache) {
+    public static @Nullable Long sizeOf(Path cache) {
         try {
             if (cache != null && Files.isRegularFile(cache)) return Files.size(cache);
         } catch (IOException ignored) {

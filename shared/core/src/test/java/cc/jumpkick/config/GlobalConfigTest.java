@@ -13,7 +13,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
-import java.util.function.UnaryOperator;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -120,7 +120,7 @@ class GlobalConfigTest {
     // ───────────────────────────────────────────────────────────────
     // The no-ANSI gate: one owner, two predicates
 
-    private static Function<String, String> env(String... pairs) {
+    private static Function<String, @Nullable String> env(String... pairs) {
         Map<String, String> m = new HashMap<>();
         for (int i = 0; i < pairs.length; i += 2) m.put(pairs[i], pairs[i + 1]);
         return m::get;
@@ -298,7 +298,7 @@ class GlobalConfigTest {
      */
     @Test
     void interpolate_resolves_against_an_injected_environment() {
-        UnaryOperator<String> env = var -> "TOKEN".equals(var) ? "s3cr3t" : null;
+        Function<String, @Nullable String> env = var -> "TOKEN".equals(var) ? "s3cr3t" : null;
         assertThat(RepositoryToml.interpolate(
                         "x-${TOKEN}-y", RepositoryToml.VarPolicy.STRICT, "repositories.corp", env))
                 .isEqualTo("x-s3cr3t-y");

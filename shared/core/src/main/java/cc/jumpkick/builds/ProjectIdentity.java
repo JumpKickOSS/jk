@@ -22,6 +22,7 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Durable project identity for history, metrics, and dashboard routes.
@@ -42,7 +43,13 @@ import java.util.stream.Stream;
  * <p>The opaque {@link #id()} is URL-safe and is the sole key under {@code builds/projects/&lt;id&gt;/}.
  * Absolute path is operational (where to build), not the identity.
  */
-public record ProjectIdentity(String id, String coord, Path path, Source source, String gitRemote, String gitRelPath) {
+public record ProjectIdentity(
+        String id,
+        String coord,
+        Path path,
+        Source source,
+        @Nullable String gitRemote,
+        @Nullable String gitRelPath) {
 
     public enum Source {
         EXPLICIT,
@@ -64,7 +71,7 @@ public record ProjectIdentity(String id, String coord, Path path, Source source,
     }
 
     /** Resolve identity for a project or workspace root directory. */
-    public static ProjectIdentity resolve(Path projectDir) {
+    public static ProjectIdentity resolve(@Nullable Path projectDir) {
         Path abs = projectDir == null
                 ? Path.of(".").toAbsolutePath().normalize()
                 : projectDir.toAbsolutePath().normalize();
@@ -118,8 +125,7 @@ public record ProjectIdentity(String id, String coord, Path path, Source source,
      * Ensure a lock carries a durable {@code project-id}: preserve existing, recover from
      * history when possible, otherwise mint.
      */
-    public static Lockfile ensureProjectId(Lockfile lock, Path projectDir) {
-        if (lock == null) return null;
+    public static Lockfile ensureProjectId(Lockfile lock, @Nullable Path projectDir) {
         if (lock.projectId() != null && !lock.projectId().isBlank()) {
             return lock;
         }
@@ -251,7 +257,7 @@ public record ProjectIdentity(String id, String coord, Path path, Source source,
         return g + ":" + n;
     }
 
-    private static String blankToEmpty(String s) {
+    private static String blankToEmpty(@Nullable String s) {
         return s == null || s.isBlank() ? "" : s.strip();
     }
 
@@ -309,14 +315,14 @@ public record ProjectIdentity(String id, String coord, Path path, Source source,
         return Optional.of(new GitInfo(remote, relStr));
     }
 
-    private static Path gitTopLevel(Path dir) {
+    private static @Nullable Path gitTopLevel(Path dir) {
         String out = git(dir, "rev-parse", "--show-toplevel");
         if (out == null || out.isBlank()) return null;
         Path p = Path.of(out.trim());
         return Files.isDirectory(p) ? p.toAbsolutePath().normalize() : null;
     }
 
-    private static String gitRemote(Path top) {
+    private static @Nullable String gitRemote(Path top) {
         String origin = git(top, "remote", "get-url", "origin");
         if (origin != null && !origin.isBlank()) return origin.trim();
         String remotes = git(top, "remote");
@@ -348,7 +354,7 @@ public record ProjectIdentity(String id, String coord, Path path, Source source,
         return r.toLowerCase(Locale.ROOT);
     }
 
-    private static String git(Path cwd, String... args) {
+    private static @Nullable String git(Path cwd, String... args) {
         try {
             ProcessBuilder pb = new ProcessBuilder();
             pb.command(new ArrayList<>() {
@@ -378,7 +384,12 @@ public record ProjectIdentity(String id, String coord, Path path, Source source,
 
     /** Sidecar written under {@code builds/projects/<id>/identity.toml}. */
     public record IdentityFile(
-            String id, String coord, String path, String source, String gitRemote, String gitRelPath) {
+            String id,
+            @Nullable String coord,
+            String path,
+            @Nullable String source,
+            @Nullable String gitRemote,
+            @Nullable String gitRelPath) {
 
         public static Optional<IdentityFile> read(Path projectHome) {
             Path f = projectHome.resolve(ProjectBuilds.IDENTITY);

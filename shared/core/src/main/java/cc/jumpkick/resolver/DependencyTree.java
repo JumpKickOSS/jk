@@ -18,6 +18,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Cargo-style dependency tree from a project + {@link Lockfile}: the nested, rail-drawn walk.
@@ -121,7 +122,7 @@ public final class DependencyTree {
             int maxDepth,
             Styling styling,
             boolean flatten,
-            List<Scope> scopeOrder) {
+            @Nullable List<Scope> scopeOrder) {
         return render(project, lock, projectDir, maxDepth, styling, flatten, scopeOrder, false);
     }
 
@@ -141,8 +142,9 @@ public final class DependencyTree {
             int maxDepth,
             Styling styling,
             boolean flatten,
-            List<Scope> scopeOrder,
+            @Nullable List<Scope> scopeOrder,
             boolean stack) {
+        List<Scope> order = DependencyTreeStyle.sectionOrder(scopeOrder);
         StringBuilder out = new StringBuilder();
         // Root node: styled via rootLine, which defaults to " ● boldCoord" but
         // callers (e.g. jk tree) can override to a pill-wrapped form.
@@ -157,13 +159,13 @@ public final class DependencyTree {
         int bodyStart = out.length();
         if (project.isWorkspaceRoot()) {
             if (flatten) {
-                DependencyFlatten.renderWorkspaceScopes(project, projectDir, styling, scopeOrder, stack, out);
+                DependencyFlatten.renderWorkspaceScopes(project, projectDir, styling, order, stack, out);
             } else {
-                renderWorkspaceScopes(project, projectDir, maxDepth, styling, scopeOrder, stack, seenModules, out);
+                renderWorkspaceScopes(project, projectDir, maxDepth, styling, order, stack, seenModules, out);
             }
         } else if (flatten) {
             DependencyFlatten.renderScopes(
-                    project, lock, styling, scopeOrder, stack, WorkspaceGraph.forMember(projectDir, lock), out);
+                    project, lock, styling, order, stack, WorkspaceGraph.forMember(projectDir, lock), out);
         } else {
             renderScopeSections(
                     project,
@@ -173,13 +175,13 @@ public final class DependencyTree {
                     "",
                     styling,
                     WorkspaceGraph.forMember(projectDir, lock),
-                    scopeOrder,
+                    order,
                     stack,
                     seenModules,
                     out);
         }
         if (out.length() == bodyStart) {
-            appendEmptyScopesHint(project, projectDir, scopeOrder, styling, out);
+            appendEmptyScopesHint(project, projectDir, order, styling, out);
         }
         return out.toString();
     }
@@ -195,7 +197,7 @@ public final class DependencyTree {
         Set<Scope> selected = new HashSet<>(DependencyTreeStyle.sectionOrder(scopeOrder));
         List<Scope> elsewhere = new ArrayList<>();
         List<LoadedModule> modules = project.isWorkspaceRoot()
-                ? WorkspaceGraph.loadModules(project.workspace().modules(), projectDir)
+                ? WorkspaceGraph.loadModules(project.workspaceModules(), projectDir)
                 : List.of();
         for (Scope s : DependencyTreeStyle.allScopeOrder()) {
             if (selected.contains(s)) continue;
@@ -233,7 +235,7 @@ public final class DependencyTree {
             Set<String> seenModules,
             StringBuilder out) {
 
-        List<String> moduleRels = root.workspace().modules();
+        List<String> moduleRels = root.workspaceModules();
         WorkspaceGraph ws = WorkspaceGraph.collapse(WorkspaceGraph.modulesByName(moduleRels, rootDir));
         List<LoadedModule> modules = WorkspaceGraph.loadModules(moduleRels, rootDir);
 
@@ -380,7 +382,7 @@ public final class DependencyTree {
      */
     private static void renderScopeDepList(
             JkBuild project,
-            Lockfile lock,
+            @Nullable Lockfile lock,
             List<Scope> scopes,
             int depth,
             int maxDepth,
@@ -399,7 +401,7 @@ public final class DependencyTree {
      */
     private static void renderScopeDepList(
             JkBuild project,
-            Lockfile lock,
+            @Nullable Lockfile lock,
             List<Scope> scopes,
             int depth,
             int maxDepth,
@@ -455,7 +457,7 @@ public final class DependencyTree {
             WorkspaceGraph ws,
             Set<String> seenModules,
             StringBuilder out,
-            String declaredVersion,
+            @Nullable String declaredVersion,
             boolean platformPin) {
 
         LoadedModule sibling = ws.sibling(module);
@@ -546,7 +548,7 @@ public final class DependencyTree {
             Styling styling,
             Set<String> seen,
             StringBuilder out,
-            String declaredVersion,
+            @Nullable String declaredVersion,
             boolean platformPin) {
 
         Lockfile.Artifact pkg = graph.artifact(module);
@@ -639,13 +641,13 @@ public final class DependencyTree {
      * declared deps (read from each module's {@code jk.toml}) so {@code jk why} can walk from the
      * real roots — the root {@code jk.toml} typically has none.
      */
-    static List<String> collectRoots(JkBuild project, Path projectDir) {
+    static List<String> collectRoots(JkBuild project, @Nullable Path projectDir) {
         if (project == null) return List.of();
         if (!project.isWorkspaceRoot() || projectDir == null) {
             return collectRoots(project);
         }
         Set<String> roots = new LinkedHashSet<>(collectRoots(project));
-        for (LoadedModule m : WorkspaceGraph.loadModules(project.workspace().modules(), projectDir)) {
+        for (LoadedModule m : WorkspaceGraph.loadModules(project.workspaceModules(), projectDir)) {
             roots.addAll(collectRoots(m.build()));
         }
         return new ArrayList<>(roots);

@@ -14,6 +14,7 @@ import java.util.Objects;
 import java.util.Queue;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Inverse dependency paths from declared roots to a target module ({@code jk why}). Each
@@ -49,7 +50,7 @@ public final class Provenance {
      * Empty if the target isn't in the lockfile or is unreachable.
      */
     public static List<Path> pathsTo(
-            JkBuild project, Lockfile lock, String targetModule, java.nio.file.Path projectDir) {
+            JkBuild project, Lockfile lock, String targetModule, java.nio.file.@Nullable Path projectDir) {
         return pathsTo(LockGraph.of(project, lock, projectDir), targetModule);
     }
 

@@ -5,6 +5,7 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Resolves {@code nerd-font = "auto"} into concrete {@link NerdFontCaps}.
@@ -37,7 +38,7 @@ public final class NerdFontDetect {
     }
 
     /** Probe over an env lookup, consulting the real config sources. */
-    public static Result detect(Function<String, String> env) {
+    public static Result detect(Function<String, @Nullable String> env) {
         return detect(env, TerminalFonts.real(env));
     }
 
@@ -45,7 +46,7 @@ public final class NerdFontDetect {
      * Fully injectable probe. {@code fonts} supplies each terminal's configured font name, which is
      * the only part of this that touches the filesystem — tests pass a stub and stay hermetic.
      */
-    public static Result detect(Function<String, String> env, TerminalFonts fonts) {
+    public static Result detect(Function<String, @Nullable String> env, TerminalFonts fonts) {
         // T0 — environments that never want PUA, whatever the font situation is.
         if (EnvValues.isCi(env)) {
             return new Result(NerdFontCaps.NONE, "ci", "CI environment");
@@ -152,11 +153,11 @@ public final class NerdFontDetect {
         return new Result(caps, source, label + " font " + name);
     }
 
-    private static String lower(String s) {
+    private static String lower(@Nullable String s) {
         return s == null ? "" : s.trim().toLowerCase(Locale.ROOT);
     }
 
-    private static boolean notBlank(String s) {
+    private static boolean notBlank(@Nullable String s) {
         return s != null && !s.isBlank();
     }
 }

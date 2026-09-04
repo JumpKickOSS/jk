@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.function.IntSupplier;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Effective CPU count for concurrency defaultscgroup CPU quota when present, else
@@ -131,7 +132,7 @@ public final class AvailableCpus {
     /**
      * Relative path from unified cgroup v2 line {@code 0::/foo/bar}, or null.
      */
-    static String processCgroupRelative(Path procSelfCgroup) {
+    static @Nullable String processCgroupRelative(Path procSelfCgroup) {
         if (procSelfCgroup == null || !Files.isRegularFile(procSelfCgroup)) return null;
         try {
             List<String> lines = Files.readAllLines(procSelfCgroup, StandardCharsets.UTF_8);
@@ -147,7 +148,7 @@ public final class AvailableCpus {
         return null;
     }
 
-    private static String readFirstLine(Path f) {
+    private static @Nullable String readFirstLine(Path f) {
         if (f == null || !Files.isRegularFile(f)) return null;
         try {
             List<String> lines = Files.readAllLines(f, StandardCharsets.UTF_8);

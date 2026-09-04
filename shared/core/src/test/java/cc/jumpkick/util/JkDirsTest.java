@@ -10,6 +10,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 class JkDirsTest {
@@ -104,7 +105,7 @@ class JkDirsTest {
     @Test
     void only_five_environment_names_are_read() {
         List<String> seen = new ArrayList<>();
-        Function<String, String> recording = name -> {
+        Function<String, @Nullable String> recording = name -> {
             seen.add(name);
             return null;
         };

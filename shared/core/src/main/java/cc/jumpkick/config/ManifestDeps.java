@@ -18,7 +18,9 @@ import cc.jumpkick.util.GitUrl;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
+import java.util.Objects;
 import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 import org.tomlj.TomlTable;
 
 /**
@@ -29,7 +31,8 @@ public final class ManifestDeps {
 
     private ManifestDeps() {}
 
-    static JkBuild.Dependencies parseDependencies(TomlTable root, Workspace workspace, LibraryCatalog catalog) {
+    static JkBuild.Dependencies parseDependencies(
+            TomlTable root, @Nullable Workspace workspace, LibraryCatalog catalog) {
         EnumMap<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
 
         // [dependencies] → MAIN scope (all entries are flat deps, no sub-tables)
@@ -59,7 +62,7 @@ public final class ManifestDeps {
             EnumMap<Scope, List<Dependency>> byScope,
             TomlTable root,
             Scope scope,
-            Workspace workspace,
+            @Nullable Workspace workspace,
             LibraryCatalog catalog) {
         TomlTable table = root.getTable(scope.tomlSection());
         if (table == null) return;
@@ -68,7 +71,11 @@ public final class ManifestDeps {
     }
 
     static List<Dependency> parseScopeTable(
-            TomlTable scopeTable, List<String> keys, Scope scope, Workspace workspace, LibraryCatalog catalog) {
+            TomlTable scopeTable,
+            List<String> keys,
+            Scope scope,
+            @Nullable Workspace workspace,
+            LibraryCatalog catalog) {
         List<Dependency> result = new ArrayList<>(keys.size());
         for (String name : keys) {
             Object value = scopeTable.get(List.of(name));
@@ -196,7 +203,7 @@ public final class ManifestDeps {
     }
 
     static Dependency parseDepEntry(
-            String name, TomlTable entry, Scope scope, Workspace workspace, LibraryCatalog catalog) {
+            String name, TomlTable entry, Scope scope, @Nullable Workspace workspace, LibraryCatalog catalog) {
         // `optional = true` withholds the dep from the default resolution; a
         // [features] entry pulls it in by name. Works with every dep form
         // (coord / git / path / workspace / sha256) since it's applied to the
@@ -284,7 +291,7 @@ public final class ManifestDeps {
     }
 
     static Dependency parseDepEntryForm(
-            String name, TomlTable entry, Scope scope, Workspace workspace, LibraryCatalog catalog) {
+            String name, TomlTable entry, Scope scope, @Nullable Workspace workspace, LibraryCatalog catalog) {
         String displayPath = scope.tomlSection() + "." + name;
         boolean hasWorkspace = entry.contains("workspace");
         boolean hasVersion = entry.contains("version");
@@ -416,7 +423,7 @@ public final class ManifestDeps {
         return Dependency.of(name, group + ":" + artifact, selector);
     }
 
-    static Dependency resolveWorkspaceDep(String name, String displayPath, Workspace workspace) {
+    static Dependency resolveWorkspaceDep(String name, String displayPath, @Nullable Workspace workspace) {
         // The workspace lookup chain: modules are resolved upstream at
         // merge time (we don't have them here at single-file parse time),
         // so first check [workspace.dependencies], then fall back to
@@ -440,10 +447,12 @@ public final class ManifestDeps {
 
     static Dependency materialize(String name, WorkspaceDependency wd) {
         String module = wd.module();
-        if (wd.gitSource() != null) {
-            return Dependency.git(name, module, wd.gitSource());
+        GitSource source = wd.gitSource();
+        if (source != null) {
+            return Dependency.git(name, module, source);
         }
-        return Dependency.of(name, module, wd.version());
+        // The record admits exactly one of version/source, which no type here can state.
+        return Dependency.of(name, module, Objects.requireNonNull(wd.version(), "version"));
     }
 
     static GitSource parseGitSource(TomlTable obj, String displayPath) {
@@ -490,10 +499,6 @@ public final class ManifestDeps {
             shallow = false;
         } else {
             int set = (tag != null ? 1 : 0) + (branch != null ? 1 : 0) + (rev != null ? 1 : 0);
-            if (set == 0) {
-                throw new JkBuildParseException(
-                        displayPath + " must set `tag`, `branch`, or `rev` (or embed the ref in the URL)");
-            }
             if (set > 1) {
                 throw new JkBuildParseException(displayPath + " must set exactly one of `tag`, `branch`, or `rev`");
             }
@@ -503,9 +508,12 @@ public final class ManifestDeps {
             } else if (branch != null) {
                 ref = new GitRefSpec.Branch(branch);
                 shallow = false;
-            } else {
+            } else if (rev != null) {
                 ref = new GitRefSpec.Rev(rev);
                 shallow = false;
+            } else {
+                throw new JkBuildParseException(
+                        displayPath + " must set `tag`, `branch`, or `rev` (or embed the ref in the URL)");
             }
         }
 

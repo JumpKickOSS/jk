@@ -14,7 +14,7 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.function.Consumer;
-import java.util.function.UnaryOperator;
+import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -136,7 +136,8 @@ public final class JdkEnsure {
         // jk-lock.toml / project.jdk / project.java-floor / default / env / PATH).
         // The environment is the request's, never this process's: the engine is a daemon, so
         // System.getenv here would answer from whichever shell started it.
-        UnaryOperator<String> env = projectDir != null ? BuildEnv.forModule(projectDir) : BuildEnv.ambient();
+        Function<String, @Nullable String> env =
+                projectDir != null ? BuildEnv.forModule(projectDir) : BuildEnv.ambient();
         JdkResolution.Request req = new JdkResolution.Request(
                 projectDir,
                 SessionContext.current().jdkSpec(),

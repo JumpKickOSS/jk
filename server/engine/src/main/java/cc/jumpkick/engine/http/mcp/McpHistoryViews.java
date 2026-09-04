@@ -170,7 +170,7 @@ public final class McpHistoryViews {
     }
 
     /** A JSON tool argument as a boolean: a real JSON {@code true}, or a string in jk's truth set. */
-    public static @Nullable Boolean parseBool(Object raw) {
+    public static @Nullable Boolean parseBool(@Nullable Object raw) {
         if (raw == null) return null;
         if (raw instanceof Boolean b) return b;
         return EnvValues.parseBool(String.valueOf(raw)).orElse(null);

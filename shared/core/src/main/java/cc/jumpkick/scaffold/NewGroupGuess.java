@@ -10,6 +10,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Default {@code groupId} for {@code jk init} from git user email: GitHub → {@code io.github.*},
@@ -54,7 +55,7 @@ public final class NewGroupGuess {
     }
 
     /** Caller supplies cwd + home (tests and {@code jk new}). */
-    public static String guess(Path cwd, Path home) {
+    public static String guess(Path cwd, @Nullable Path home) {
         return readEmail(cwd, home).map(NewGroupGuess::groupForEmail).orElse(FALLBACK);
     }
 
@@ -120,7 +121,7 @@ public final class NewGroupGuess {
      * .git/config} (what {@code git config user.email} writes) over an in-tree {@code .gitconfig}.
      * If nothing matched, try {@code ~/.gitconfig}. Return the first {@code user.email} found.
      */
-    static Optional<String> readEmail(Path cwd, Path home) {
+    static Optional<String> readEmail(Path cwd, @Nullable Path home) {
         for (Path p = cwd; p != null; p = p.getParent()) {
             var repo = parseEmail(p.resolve(".git").resolve("config"));
             if (repo.isPresent()) return repo;

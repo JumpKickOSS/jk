@@ -6,6 +6,7 @@ import cc.jumpkick.lock.ManifestPaths;
 import java.nio.file.Path;
 import java.util.Objects;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Resolves JumpKick's on-disk layout. Everything jk owns lives under one home directory,
@@ -56,11 +57,11 @@ public final class JkDirs {
     /** Provisioned build-tool distribution directory under {@link #storeDir()}. */
     public static final String TOOLS_DIR = "tools";
 
-    private final Function<String, String> env;
+    private final Function<String, @Nullable String> env;
     private final String userHome;
     private final String osName;
 
-    private JkDirs(Function<String, String> env, String userHome, String osName) {
+    private JkDirs(Function<String, @Nullable String> env, String userHome, String osName) {
         this.env = Objects.requireNonNull(env, "env");
         this.userHome = Objects.requireNonNull(userHome, "userHome");
         this.osName = osName != null ? osName : "";
@@ -88,7 +89,7 @@ public final class JkDirs {
     }
 
     /** Test seam: fully synthetic environment (host OS name). */
-    public static JkDirs of(Function<String, String> env, String userHome) {
+    public static JkDirs of(Function<String, @Nullable String> env, String userHome) {
         return new JkDirs(env, userHome, Os.name());
     }
 
@@ -96,7 +97,7 @@ public final class JkDirs {
      * Test seam: synthetic environment + OS name. The layout is identical on every OS; the name
      * only reaches {@link #jdksDir()}.
      */
-    public static JkDirs of(Function<String, String> env, String userHome, String osName) {
+    public static JkDirs of(Function<String, @Nullable String> env, String userHome, String osName) {
         return new JkDirs(env, userHome, osName);
     }
 
@@ -326,7 +327,7 @@ public final class JkDirs {
         return path.normalize();
     }
 
-    private static String nonBlank(String value) {
+    private static @Nullable String nonBlank(@Nullable String value) {
         return (value == null || value.isBlank()) ? null : value;
     }
 }

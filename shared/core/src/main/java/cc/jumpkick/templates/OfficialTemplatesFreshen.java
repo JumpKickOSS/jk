@@ -14,6 +14,7 @@ import java.util.Locale;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Shallow clone / fetch of the official Giter8 monorepo ({@code JumpKickOSS/jk-templates}) for engine
@@ -271,7 +272,7 @@ public final class OfficialTemplatesFreshen {
         return new Parsed(url, rev, cacheKeyForUrl(url, rev));
     }
 
-    private static String cacheKeyForUrl(String url, String rev) {
+    private static String cacheKeyForUrl(String url, @Nullable String rev) {
         String base = url.toLowerCase(Locale.ROOT)
                 .replaceAll("^https?://", "")
                 .replaceAll("^git@", "")
@@ -283,7 +284,7 @@ public final class OfficialTemplatesFreshen {
         return base;
     }
 
-    record Parsed(String url, String rev, String cacheKey) {
+    record Parsed(String url, @Nullable String rev, String cacheKey) {
         List<String> cloneArgs(Path dest) {
             List<String> args = new ArrayList<>();
             args.add("git");

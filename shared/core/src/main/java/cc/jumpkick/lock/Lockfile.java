@@ -9,6 +9,7 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * In-memory {@code jk-lock.toml} (schema {@code version = 1}). Optional fields ({@code [jdk]},
@@ -19,22 +20,22 @@ public record Lockfile(
         int version,
         String generatedBy,
         String resolutionAlgorithm,
-        JdkPin jdk,
-        GraalPin graal,
-        String kotlin,
-        String scala,
+        @Nullable JdkPin jdk,
+        @Nullable GraalPin graal,
+        @Nullable String kotlin,
+        @Nullable String scala,
         List<Artifact> artifacts,
         List<PluginEntry> plugins,
-        List<SdkEntry> sdk,
-        List<ModuleEntry> modules,
+        @Nullable List<SdkEntry> sdk,
+        @Nullable List<ModuleEntry> modules,
         /** Minimum jk able to run this lock — a floor, never an artifact pin; null on legacy locks. */
-        String jkMin,
+        @Nullable String jkMin,
         /** SHA-256 of every {@code jk.toml} that fed this lock; null on legacy locks. */
-        String manifestsSha256,
+        @Nullable String manifestsSha256,
         /** Durable auto project identity; null until minted. */
-        String projectId,
+        @Nullable String projectId,
         /** Resolved {@code [native] metadata-repository} pin; null when no module declares one. */
-        NativeMetadata nativeMetadata) {
+        @Nullable NativeMetadata nativeMetadata) {
 
     /**
      * What a lock says about one toolchain, on two independent axes.
@@ -117,7 +118,8 @@ public record Lockfile(
         }
     }
 
-    private static String blankToEmpty(String s) {
+    /** Trimmed text, or {@code ""} for a missing or blank value. Toolchain pins never hold null. */
+    static String blankToEmpty(@Nullable String s) {
         return s == null || s.isBlank() ? "" : s.trim();
     }
 
@@ -132,13 +134,13 @@ public record Lockfile(
      * binaries. Version plus the zip's digest is everything {@code jk sync} needs to materialize it
      * offline.
      */
-    public record NativeMetadata(String version, String checksum) {
+    public record NativeMetadata(String version, @Nullable String checksum) {
         public NativeMetadata {
             Objects.requireNonNull(version, "version");
         }
 
         /** Raw hex SHA-256 of the repository zip (strips a {@code "sha256:"} prefix), or null. */
-        public String checksumHex() {
+        public @Nullable String checksumHex() {
             if (checksum == null) return null;
             return checksum.startsWith("sha256:") ? checksum.substring(7) : checksum;
         }
@@ -154,14 +156,14 @@ public record Lockfile(
             String group,
             String name,
             String version,
-            Integer java,
-            String kotlin,
-            String groovy,
-            String scala,
-            String description,
-            String sources,
-            Boolean m2integration,
-            Boolean m2install) {
+            @Nullable Integer java,
+            @Nullable String kotlin,
+            @Nullable String groovy,
+            @Nullable String scala,
+            @Nullable String description,
+            @Nullable String sources,
+            @Nullable Boolean m2integration,
+            @Nullable Boolean m2install) {
         public ModuleEntry {
             Objects.requireNonNull(path, "path");
             Objects.requireNonNull(group, "group");
@@ -175,12 +177,12 @@ public record Lockfile(
                 String group,
                 String name,
                 String version,
-                Integer java,
-                String kotlin,
-                String groovy,
-                String description,
-                String sources,
-                Boolean m2integration) {
+                @Nullable Integer java,
+                @Nullable String kotlin,
+                @Nullable String groovy,
+                @Nullable String description,
+                @Nullable String sources,
+                @Nullable Boolean m2integration) {
             this(path, group, name, version, java, kotlin, groovy, description, sources, m2integration, null);
         }
 
@@ -190,13 +192,13 @@ public record Lockfile(
                 String group,
                 String name,
                 String version,
-                Integer java,
-                String kotlin,
-                String groovy,
-                String description,
-                String sources,
-                Boolean m2integration,
-                Boolean m2install) {
+                @Nullable Integer java,
+                @Nullable String kotlin,
+                @Nullable String groovy,
+                @Nullable String description,
+                @Nullable String sources,
+                @Nullable Boolean m2integration,
+                @Nullable Boolean m2install) {
             this(
                     path,
                     group,
@@ -234,15 +236,15 @@ public record Lockfile(
             int version,
             String generatedBy,
             String resolutionAlgorithm,
-            JdkPin jdk,
-            String kotlin,
+            @Nullable JdkPin jdk,
+            @Nullable String kotlin,
             List<Artifact> artifacts,
             List<PluginEntry> plugins,
-            List<SdkEntry> sdk,
-            List<ModuleEntry> modules,
-            String jkMin,
-            String manifestsSha256,
-            String projectId) {
+            @Nullable List<SdkEntry> sdk,
+            @Nullable List<ModuleEntry> modules,
+            @Nullable String jkMin,
+            @Nullable String manifestsSha256,
+            @Nullable String projectId) {
         this(
                 version,
                 generatedBy,
@@ -266,11 +268,11 @@ public record Lockfile(
             int version,
             String generatedBy,
             String resolutionAlgorithm,
-            JdkPin jdk,
-            String kotlin,
+            @Nullable JdkPin jdk,
+            @Nullable String kotlin,
             List<Artifact> artifacts,
             List<PluginEntry> plugins,
-            List<SdkEntry> sdk) {
+            @Nullable List<SdkEntry> sdk) {
         this(
                 version,
                 generatedBy,
@@ -291,12 +293,12 @@ public record Lockfile(
             int version,
             String generatedBy,
             String resolutionAlgorithm,
-            JdkPin jdk,
-            String kotlin,
+            @Nullable JdkPin jdk,
+            @Nullable String kotlin,
             List<Artifact> artifacts,
             List<PluginEntry> plugins,
-            List<SdkEntry> sdk,
-            String jkMin) {
+            @Nullable List<SdkEntry> sdk,
+            @Nullable String jkMin) {
         this(
                 version,
                 generatedBy,
@@ -317,13 +319,13 @@ public record Lockfile(
             int version,
             String generatedBy,
             String resolutionAlgorithm,
-            JdkPin jdk,
-            String kotlin,
+            @Nullable JdkPin jdk,
+            @Nullable String kotlin,
             List<Artifact> artifacts,
             List<PluginEntry> plugins,
-            List<SdkEntry> sdk,
-            List<ModuleEntry> modules,
-            String jkMin) {
+            @Nullable List<SdkEntry> sdk,
+            @Nullable List<ModuleEntry> modules,
+            @Nullable String jkMin) {
         this(
                 version,
                 generatedBy,
@@ -488,8 +490,8 @@ public record Lockfile(
             int version,
             String generatedBy,
             String resolutionAlgorithm,
-            JdkPin jdk,
-            String kotlin,
+            @Nullable JdkPin jdk,
+            @Nullable String kotlin,
             List<Artifact> artifacts,
             List<PluginEntry> plugins) {
         this(version, generatedBy, resolutionAlgorithm, jdk, kotlin, artifacts, plugins, List.of());
@@ -500,14 +502,19 @@ public record Lockfile(
             int version,
             String generatedBy,
             String resolutionAlgorithm,
-            JdkPin jdk,
-            String kotlin,
+            @Nullable JdkPin jdk,
+            @Nullable String kotlin,
             List<Artifact> artifacts) {
         this(version, generatedBy, resolutionAlgorithm, jdk, kotlin, artifacts, List.of());
     }
 
     /** Constructor that stamps a JDK but no Kotlin version. */
-    public Lockfile(int version, String generatedBy, String resolutionAlgorithm, JdkPin jdk, List<Artifact> artifacts) {
+    public Lockfile(
+            int version,
+            String generatedBy,
+            String resolutionAlgorithm,
+            @Nullable JdkPin jdk,
+            List<Artifact> artifacts) {
         this(version, generatedBy, resolutionAlgorithm, jdk, null, artifacts, List.of());
     }
 
@@ -621,7 +628,7 @@ public record Lockfile(
     }
 
     /** Empty artifact set with a resolved JDK pinned for the project. */
-    public static Lockfile empty(String jkVersion, JdkPin jdk) {
+    public static Lockfile empty(String jkVersion, @Nullable JdkPin jdk) {
         return new Lockfile(
                 CURRENT_VERSION,
                 "jk " + jkVersion,
@@ -666,14 +673,14 @@ public record Lockfile(
             String name,
             String version,
             String source,
-            String checksum,
-            String path,
+            @Nullable String checksum,
+            @Nullable String path,
             List<Scope> scopes,
             List<String> deps,
-            String pinnedBy,
-            GitInfo git,
+            @Nullable String pinnedBy,
+            @Nullable GitInfo git,
             /** SHA-256 of the {@code -sources.jar}, or {@code null} when not published. */
-            String sourcesChecksum) {
+            @Nullable String sourcesChecksum) {
 
         public Artifact {
             Objects.requireNonNull(name, "name");
@@ -693,12 +700,12 @@ public record Lockfile(
                 String name,
                 String version,
                 String source,
-                String checksum,
-                String path,
+                @Nullable String checksum,
+                @Nullable String path,
                 List<Scope> scopes,
                 List<String> deps,
-                String pinnedBy,
-                GitInfo git) {
+                @Nullable String pinnedBy,
+                @Nullable GitInfo git) {
             this(name, version, source, checksum, path, scopes, deps, pinnedBy, git, null);
         }
 
@@ -707,11 +714,11 @@ public record Lockfile(
                 String name,
                 String version,
                 String source,
-                String checksum,
-                String path,
+                @Nullable String checksum,
+                @Nullable String path,
                 List<Scope> scopes,
                 List<String> deps,
-                String pinnedBy) {
+                @Nullable String pinnedBy) {
             this(name, version, source, checksum, path, scopes, deps, pinnedBy, null, null);
         }
 
@@ -720,15 +727,21 @@ public record Lockfile(
                 String name,
                 String version,
                 String source,
-                String checksum,
-                String path,
+                @Nullable String checksum,
+                @Nullable String path,
                 List<Scope> scopes,
                 List<String> deps) {
             this(name, version, source, checksum, path, scopes, deps, null, null, null);
         }
 
         /** Convenience constructor for callers that don't care about scopes (defaults to MAIN). */
-        public Artifact(String name, String version, String source, String checksum, String path, List<String> deps) {
+        public Artifact(
+                String name,
+                String version,
+                String source,
+                @Nullable String checksum,
+                @Nullable String path,
+                List<String> deps) {
             this(name, version, source, checksum, path, List.of(Scope.MAIN), deps, null, null, null);
         }
 
@@ -832,16 +845,16 @@ public record Lockfile(
         }
 
         /** Raw hex SHA-256 of the jar (strips a {@code "sha256:"} prefix), or {@code null}. */
-        public String checksumHex() {
+        public @Nullable String checksumHex() {
             return stripSha256(checksum);
         }
 
         /** Raw hex SHA-256 of the {@code -sources.jar} (strips the prefix), or {@code null}. */
-        public String sourcesChecksumHex() {
+        public @Nullable String sourcesChecksumHex() {
             return stripSha256(sourcesChecksum);
         }
 
-        private static String stripSha256(String c) {
+        private static @Nullable String stripSha256(@Nullable String c) {
             if (c == null) return null;
             return c.startsWith("sha256:") ? c.substring(7) : c;
         }
@@ -851,7 +864,8 @@ public record Lockfile(
          * the original ref token (e.g. {@code tag:v1}). Present only for git-built artifacts; null for
          * Maven coordinates.
          */
-        public record GitInfo(String url, String rev, String ref) {
+        public record GitInfo(
+                String url, String rev, @Nullable String ref) {
             public GitInfo {
                 Objects.requireNonNull(url, "url");
                 Objects.requireNonNull(rev, "rev");

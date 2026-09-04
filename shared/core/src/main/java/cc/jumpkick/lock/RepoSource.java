@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.lock;
 
+import org.jspecify.annotations.Nullable;
+
 /**
  * Split of a lockfile artifact {@code source} on the first {@code '+'} ({@code "<name>+<url>"},
  * or synthetic forms with no {@code '+'}).
@@ -17,8 +19,7 @@ public record RepoSource(String source) {
     }
 
     /** Strict name before {@code '+'}, or {@code null} if missing/first/last. */
-    public String name() {
-        if (source == null) return null;
+    public @Nullable String name() {
         int plus = source.indexOf('+');
         if (plus <= 0 || plus >= source.length() - 1) return null;
         return source.substring(0, plus);
@@ -26,7 +27,6 @@ public record RepoSource(String source) {
 
     /** Lenient URL after first {@code '+'} when {@code plus > 0}, else the whole string. */
     public String url() {
-        if (source == null) return null;
         int plus = source.indexOf('+');
         return plus > 0 ? source.substring(plus + 1) : source;
     }

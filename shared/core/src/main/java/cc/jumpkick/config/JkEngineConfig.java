@@ -47,7 +47,7 @@ public record JkEngineConfig(
             MachineConfig.of(DEFAULT_MAX_HEAP_MB, JkEngineConfig::validHeap);
 
     /** {@code jobs} / {@code JK_JOBS}: the built-in is "unset", which {@link Jobs} reads as cores. */
-    private static final MachineConfig<Integer> JOBS = MachineConfig.of(null);
+    private static final MachineConfig<@Nullable Integer> JOBS = MachineConfig.of(null);
 
     /** {@code continue} / {@code JK_CONTINUE}: the built-in is fail-fast; CI moves the floor. */
     private static final MachineConfig<Boolean> KEEP_GOING = MachineConfig.of(false);
@@ -79,7 +79,7 @@ public record JkEngineConfig(
     }
 
     /** As {@link #resolve()} but against an explicit config file + env — for tests. */
-    static JkEngineConfig resolve(Path userConfig, Function<String, String> env) {
+    static JkEngineConfig resolve(Path userConfig, Function<String, @Nullable String> env) {
         TomlScan scan = scan(userConfig);
         return new JkEngineConfig(
                 // CI moves the floor, not the precedence: an explicit file or env value still wins.
@@ -106,17 +106,17 @@ public record JkEngineConfig(
     }
 
     /** Machine defaults only (CI-aware heap and continue, no file/env override). */
-    public static JkEngineConfig resolvedDefaults(Function<String, String> env) {
+    public static JkEngineConfig resolvedDefaults(Function<String, @Nullable String> env) {
         return new JkEngineConfig(defaultMaxHeapMb(env), null, defaultKeepGoing(env), DEFAULT_VFS_MAX_MB, true);
     }
 
     /** Unset heap default: 512 MiB on CI, else 256 MiB. */
-    public static int defaultMaxHeapMb(Function<String, String> env) {
+    public static int defaultMaxHeapMb(Function<String, @Nullable String> env) {
         return EnvValues.isCi(env) ? CI_DEFAULT_MAX_HEAP_MB : DEFAULT_MAX_HEAP_MB;
     }
 
     /** Unset {@code continue} default: keep going on CI, fail fast at a prompt. */
-    public static boolean defaultKeepGoing(Function<String, String> env) {
+    public static boolean defaultKeepGoing(Function<String, @Nullable String> env) {
         return EnvValues.isCi(env);
     }
 

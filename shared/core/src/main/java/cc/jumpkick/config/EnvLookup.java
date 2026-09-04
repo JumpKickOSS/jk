@@ -8,7 +8,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.UnaryOperator;
+import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The environment a build sees: {@code .env} files layered under the real environment.
@@ -45,9 +46,9 @@ import java.util.function.UnaryOperator;
 public final class EnvLookup {
 
     private final Map<String, String> fromFiles;
-    private final UnaryOperator<String> realEnv;
+    private final Function<String, @Nullable String> realEnv;
 
-    private EnvLookup(Map<String, String> fromFiles, UnaryOperator<String> realEnv) {
+    private EnvLookup(Map<String, String> fromFiles, Function<String, @Nullable String> realEnv) {
         this.fromFiles = Map.copyOf(fromFiles);
         this.realEnv = realEnv;
     }
@@ -59,7 +60,7 @@ public final class EnvLookup {
      * @param realEnv the caller's environment — {@code Inputs.env} on the build path, never
      * {@code System::getenv} directly from the engine
      */
-    public static EnvLookup forModule(Path moduleDir, UnaryOperator<String> realEnv) {
+    public static EnvLookup forModule(Path moduleDir, Function<String, @Nullable String> realEnv) {
         Map<String, String> layered = new LinkedHashMap<>();
         workspaceRoot(moduleDir).ifPresent(root -> {
             if (!root.equals(moduleDir)) layered.putAll(readCached(root.resolve(ManifestPaths.ENV)));
@@ -77,7 +78,7 @@ public final class EnvLookup {
      * line that leaves the engine, so an uncached read here is two file reads per line of
      * build output. A missing file costs one stat and is never cached.
      */
-    private static Map<String, String> readCached(Path file) {
+    private static @Nullable Map<String, String> readCached(Path file) {
         Path key = file.toAbsolutePath().normalize();
         StampedMemo.FileStamp stamp = StampedMemo.FileStamp.of(key);
         if (stamp == null) return Map.of(); // missing/unreadable → empty, exactly like DotEnv.read
@@ -91,13 +92,13 @@ public final class EnvLookup {
     }
 
     /** The value for {@code name}: the real environment if set, else {@code .env}, else null. */
-    public String get(String name) {
+    public @Nullable String get(String name) {
         String real = realEnv.apply(name);
         return real != null ? real : fromFiles.get(name);
     }
 
     /** This lookup as the function {@code JkBuildParser.parse} expects. */
-    public UnaryOperator<String> asFunction() {
+    public Function<String, @Nullable String> asFunction() {
         return this::get;
     }
 

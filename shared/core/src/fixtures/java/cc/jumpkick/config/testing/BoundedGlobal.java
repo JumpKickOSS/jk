@@ -2,6 +2,7 @@
 package cc.jumpkick.config.testing;
 
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * One process-global a test may not leak, and how to put it back.
@@ -51,5 +52,5 @@ public interface BoundedGlobal {
      * Put the global back. Receives whatever {@link #capture()} returned, or {@code null} for a
      * restore-only global — in which case this should drop the memo rather than set a value.
      */
-    void restore(Object captured);
+    void restore(@Nullable Object captured);
 }

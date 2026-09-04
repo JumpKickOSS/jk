@@ -17,6 +17,7 @@ import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Set;
 import java.util.function.IntConsumer;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Write via temp sibling + move ({@code REPLACE_EXISTING} fallback).
@@ -143,7 +144,7 @@ public final class AtomicWrites {
      * <p>Non-POSIX filesystems take neither branch and get the JDK's default: nothing to set, and
      * nothing to throw.
      */
-    private static Path staging(Path parent, Path target) throws IOException {
+    private static Path staging(@Nullable Path parent, Path target) throws IOException {
         String prefix = "." + target.getFileName() + "-";
         if (Files.getFileAttributeView(parent, PosixFileAttributeView.class) == null) {
             return Files.createTempFile(parent, prefix, ".tmp"); // non-POSIX: no modes to manage

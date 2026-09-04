@@ -11,6 +11,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Looks up the font a given terminal is configured with. The <em>only</em> part of nerd-font
@@ -61,16 +62,16 @@ public interface TerminalFonts {
     };
 
     /** The real thing, reading preferences and config files under the given environment. */
-    static TerminalFonts real(Function<String, String> env) {
+    static TerminalFonts real(Function<String, @Nullable String> env) {
         return new Real(env);
     }
 
     /** Reads the actual sources. Package-private so the interface stays the published surface. */
     final class Real implements TerminalFonts {
 
-        private final Function<String, String> env;
+        private final Function<String, @Nullable String> env;
 
-        Real(Function<String, String> env) {
+        Real(Function<String, @Nullable String> env) {
             this.env = env;
         }
 
@@ -123,7 +124,7 @@ public interface TerminalFonts {
          * the running app bundle. Insiders / Cursor / Windsurf are out of scope, so an unrecognised
          * value reads as absent rather than guessing a directory.
          */
-        private Path vscodeSettings() {
+        private @Nullable Path vscodeSettings() {
             Path home = home();
             if (home == null) return null;
             String askpass = lower(env.apply("VSCODE_GIT_ASKPASS_NODE"));
@@ -150,21 +151,21 @@ public interface TerminalFonts {
                     .or(() -> readJsonString(settings, "buffer_font_family"));
         }
 
-        private Path home() {
+        private @Nullable Path home() {
             String h = env.apply("HOME");
             if (h == null || h.isBlank()) h = System.getProperty("user.home");
             return (h == null || h.isBlank()) ? null : Path.of(h);
         }
 
         /** Honoured only when set, non-blank, and absolute — same rule the reference tool applies. */
-        private Path xdgConfigHome() {
+        private @Nullable Path xdgConfigHome() {
             String x = env.apply("XDG_CONFIG_HOME");
             if (x == null || x.isBlank()) return null;
             Path p = Path.of(x);
             return p.isAbsolute() ? p : null;
         }
 
-        private static String lower(String s) {
+        private static String lower(@Nullable String s) {
             return s == null ? "" : s.toLowerCase(Locale.ROOT);
         }
     }

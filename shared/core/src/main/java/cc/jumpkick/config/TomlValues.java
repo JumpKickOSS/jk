@@ -5,6 +5,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 import org.tomlj.Toml;
 import org.tomlj.TomlArray;
 import org.tomlj.TomlParseResult;
@@ -67,13 +68,13 @@ public final class TomlValues {
     }
 
     /** A boolean value; absent table/key or wrong type → empty. */
-    public static Optional<Boolean> optBoolean(TomlTable table, String key) {
+    public static Optional<Boolean> optBoolean(@Nullable TomlTable table, String key) {
         if (table == null) return Optional.empty();
         return (table.get(key) instanceof Boolean b) ? Optional.of(b) : Optional.empty();
     }
 
     /** A non-blank string value; absent table/key, blank, or wrong type → empty. */
-    public static Optional<String> optString(TomlTable table, String key) {
+    public static Optional<String> optString(@Nullable TomlTable table, String key) {
         if (table == null) return Optional.empty();
         return (table.get(key) instanceof String s && !s.isBlank()) ? Optional.of(s) : Optional.empty();
     }
@@ -83,7 +84,7 @@ public final class TomlValues {
      * empty. Callers needing a narrower range (e.g. only non-negative) should {@link Optional#filter}
      * the result.
      */
-    public static Optional<Integer> optInt(TomlTable table, String key) {
+    public static Optional<Integer> optInt(@Nullable TomlTable table, String key) {
         if (table == null) return Optional.empty();
         if (table.get(key) instanceof Long l && l >= Integer.MIN_VALUE && l <= Integer.MAX_VALUE) {
             return Optional.of(l.intValue());

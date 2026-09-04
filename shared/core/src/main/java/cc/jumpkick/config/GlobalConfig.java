@@ -9,6 +9,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 import org.tomlj.TomlParseResult;
 
 /**
@@ -46,7 +47,7 @@ public final class GlobalConfig {
     }
 
     /** The process-wide resolved value; see {@link #nerdFont()}. Cleared by {@link #clearCache()}. */
-    private static volatile NerdFontCaps resolvedNerdFont;
+    private static volatile @Nullable NerdFontCaps resolvedNerdFont;
 
     /**
      * The bare no-ANSI triple — {@code --no-ansi}, {@code TERM=dumb}, {@code CI=true/1}. When true,
@@ -61,7 +62,7 @@ public final class GlobalConfig {
     }
 
     /** Injectable overload of {@link #ansiSuppressed()} — tests pin the trigger matrix here. */
-    static boolean ansiSuppressed(JkConfig config, Function<String, String> env) {
+    static boolean ansiSuppressed(JkConfig config, Function<String, @Nullable String> env) {
         if (config.noAnsiOr(false)) return true;
         // Forced ANSI outranks the environment suppressors: without it the mode cannot be pinned
         // in the ANSI direction at all, so an assertion about ANSI output passes or fails on
@@ -80,7 +81,7 @@ public final class GlobalConfig {
     }
 
     /** Injectable overload of {@link #colorEnabled()} — tests pin the trigger matrix here. */
-    static boolean colorEnabled(JkConfig config, Function<String, String> env) {
+    static boolean colorEnabled(JkConfig config, Function<String, @Nullable String> env) {
         if (ansiSuppressed(config, env)) return false;
         var choice = config.colorOr(JkConfig.ColorChoice.AUTO);
         return switch (choice) {
@@ -122,7 +123,7 @@ public final class GlobalConfig {
      * The declared mode, before {@code auto} is resolved. Split out so {@code jk self setup-terminal}
      * can report what was asked for separately from what was detected.
      */
-    static NerdFontMode nerdFontMode(Path configFile, String jkEnv, String hostEnv) {
+    static NerdFontMode nerdFontMode(Path configFile, @Nullable String jkEnv, @Nullable String hostEnv) {
         return NerdFontMode.parse(jkEnv)
                 .or(() -> NerdFontMode.parseBooleanOnly(hostEnv))
                 .or(() -> stringFromRoot(configFile, "nerd-font").flatMap(NerdFontMode::parse))
@@ -138,7 +139,7 @@ public final class GlobalConfig {
     }
 
     /** As {@link #engineJdkPin()} but against an explicit config file + env value — for tests. */
-    static Optional<String> engineJdkPin(Path file, String envValue) {
+    static Optional<String> engineJdkPin(Path file, @Nullable String envValue) {
         if (envValue != null && !envValue.isBlank()) return Optional.of(envValue.trim());
         return stringFromGlobal(file, "toolchain", "jdk");
     }

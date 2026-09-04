@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 import org.tomlj.TomlArray;
 import org.tomlj.TomlTable;
 
@@ -17,21 +18,21 @@ import org.tomlj.TomlTable;
 public final class ManifestImage {
 
     public record ImageConfigData(
-            String base,
-            String user,
+            @Nullable String base,
+            @Nullable String user,
             List<Integer> ports,
             Map<String, String> env,
             Map<String, String> labels,
-            String registry,
-            String tag,
+            @Nullable String registry,
+            @Nullable String tag,
             List<String> platforms,
-            String main,
+            @Nullable String main,
             /** {@code image.docker-executable} — override for the docker/podman CLI. */
-            String dockerExecutable,
+            @Nullable String dockerExecutable,
             /** {@code image.docker-file} — relative path to a Dockerfile; enables Dockerfile mode. */
-            String dockerFile,
+            @Nullable String dockerFile,
             /** {@code image.aot-cache} — train a JVM AOT cache into the image. */
-            Boolean aotCache) {
+            @Nullable Boolean aotCache) {
 
         /** No {@code [image]} table anywhere — every field unset. */
         public static final ImageConfigData EMPTY = new ImageConfigData(
@@ -76,7 +77,7 @@ public final class ManifestImage {
                 aotCache);
     }
 
-    private static String nonBlank(String s) {
+    private static @Nullable String nonBlank(@Nullable String s) {
         return (s != null && !s.isBlank()) ? s : null;
     }
 

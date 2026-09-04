@@ -6,7 +6,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.Optional;
-import java.util.function.UnaryOperator;
+import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -55,7 +56,7 @@ class BuildEnvToolchainTest {
                 Map.of("JK_JDK", "temurin-21", "JAVA_HOME", "/opt/jdk-21", "GRAALVM_HOME", "/opt/graal-21");
 
         SessionContext.runWhere(sessionWith(requestEnv), () -> {
-            UnaryOperator<String> env = BuildEnv.ambient();
+            Function<String, @Nullable String> env = BuildEnv.ambient();
             for (String name : BuildEnv.TOOLCHAIN) {
                 assertThat(env.apply(name))
                         .as("%s must come from the request, not the daemon", name)

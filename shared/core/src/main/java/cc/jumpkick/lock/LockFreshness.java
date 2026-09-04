@@ -4,6 +4,7 @@ package cc.jumpkick.lock;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Whether {@code jk-lock.toml} still matches the manifests it was derived from.
@@ -67,10 +68,11 @@ public final class LockFreshness {
 
             Lockfile lock = LockfileReader.read(lockFile);
             String stored = lock.manifestsSha256();
-            if (!isValidDigest(stored)) {
+            if (stored == null || !isValidDigest(stored)) {
                 return true; // no trustworthy stamp → re-lock
             }
             Path owner = lockFile.toAbsolutePath().normalize().getParent();
+            if (owner == null) return true; // a lock at a filesystem root stamps nothing
             String live = LockManifestDigest.compute(owner);
             if (!stored.equalsIgnoreCase(live)) return true;
             return missingNativePin(owner, lock);
@@ -94,7 +96,7 @@ public final class LockFreshness {
     }
 
     /** {@code true} when {@code hex} is a 64-char hex SHA-256 (case-insensitive). */
-    static boolean isValidDigest(String hex) {
+    static boolean isValidDigest(@Nullable String hex) {
         if (hex == null || hex.length() != 64) return false;
         for (int i = 0; i < 64; i++) {
             char c = hex.charAt(i);

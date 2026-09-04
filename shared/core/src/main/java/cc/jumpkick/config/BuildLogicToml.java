@@ -7,6 +7,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Where a project's build logic lives: {@code [build].logic}, else the convention directories
@@ -113,7 +114,7 @@ public final class BuildLogicToml {
         return EnvValues.parseBool(n).filter(on -> !on).isPresent() || n.equals("none") || n.equals("disable");
     }
 
-    private static Logic declaredDir(Path root, String logicRel) {
+    private static @Nullable Logic declaredDir(Path root, String logicRel) {
         rejectRetiredName(logicRel);
         Path dir = root.resolve(logicRel).normalize();
         if (!dir.startsWith(root)) {

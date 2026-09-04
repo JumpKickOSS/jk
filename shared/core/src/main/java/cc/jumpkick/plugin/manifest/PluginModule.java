@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.plugin;
+package cc.jumpkick.plugin.manifest;
 
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Detects a plugin-worker module from on-disk authoring files — not from {@code [application]}.
@@ -25,7 +26,7 @@ public final class PluginModule {
      * or on the resource path, or a {@code Plugin} service registration (compiler / tool workers
      * that have no consumer table).
      */
-    public static boolean isWorker(Path moduleDir) {
+    public static boolean isWorker(@Nullable Path moduleDir) {
         if (moduleDir == null) return false;
         return Files.isRegularFile(moduleDir.resolve(ManifestPaths.PLUGIN_MANIFEST))
                 || Files.isRegularFile(resource(moduleDir, ManifestPaths.PLUGIN_MANIFEST))
@@ -36,7 +37,7 @@ public final class PluginModule {
      * {@link #WORKER_MAIN} for a plugin worker; otherwise {@link JkBuild#mainClass()} (the
      * {@code [application]} main, or {@code null}).
      */
-    public static String mainClass(Path moduleDir, JkBuild build) {
+    public static @Nullable String mainClass(@Nullable Path moduleDir, @Nullable JkBuild build) {
         if (isWorker(moduleDir)) return WORKER_MAIN;
         return build == null ? null : build.mainClass();
     }

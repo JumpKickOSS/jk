@@ -21,10 +21,11 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 import java.util.function.Supplier;
-import java.util.function.UnaryOperator;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
+import org.jspecify.annotations.Nullable;
 import org.tomlj.TomlArray;
 import org.tomlj.TomlTable;
 
@@ -96,12 +97,12 @@ public final class PluginTableRegistry {
     private static volatile Map<String, PluginDescriptor> BY_TABLE = loadBuiltIns();
 
     /** Jar the plugin was installed from, or {@code null} when the manifest is test-classpath only. */
-    public static Path archive(String pluginId) {
+    public static @Nullable Path archive(String pluginId) {
         return pluginId == null ? null : ARCHIVES.get(pluginId);
     }
 
     /** Manifest whose {@code id} or {@code table} equals {@code name}. */
-    public static PluginDescriptor byIdOrTable(String name) {
+    public static @Nullable PluginDescriptor byIdOrTable(String name) {
         if (name == null || name.isBlank()) return null;
         for (PluginDescriptor m : BY_TABLE.values()) {
             if (name.equals(m.id()) || name.equals(m.table())) return m;
@@ -152,9 +153,9 @@ public final class PluginTableRegistry {
      * human-readable failure detail otherwise. Unset outside the engine (CLI, plain tests), where
      * parses must never reach the network.
      */
-    private static volatile UnaryOperator<String> MISSING_BUILT_IN_FETCHER;
+    private static volatile @Nullable Function<String, @Nullable String> MISSING_BUILT_IN_FETCHER;
 
-    public static void missingBuiltInFetcher(UnaryOperator<String> fetcher) {
+    public static void missingBuiltInFetcher(Function<String, @Nullable String> fetcher) {
         MISSING_BUILT_IN_FETCHER = fetcher;
     }
 
@@ -162,8 +163,8 @@ public final class PluginTableRegistry {
      * One chance to lazily install the built-in owning {@code table} before the unowned-table
      * error: returns a failure detail to surface, or {@code null} (caller rechecks the registry).
      */
-    public static String tryFetchMissingBuiltIn(String table) {
-        UnaryOperator<String> fetcher = MISSING_BUILT_IN_FETCHER;
+    public static @Nullable String tryFetchMissingBuiltIn(String table) {
+        Function<String, @Nullable String> fetcher = MISSING_BUILT_IN_FETCHER;
         return fetcher == null ? null : fetcher.apply(table);
     }
 
@@ -187,7 +188,7 @@ public final class PluginTableRegistry {
      * engine materializes (sync/lock/build pre-flight). An explicit declaration may <em>replace</em>
      * a built-in with the same id or table; two declarations colliding with each other is an error.
      */
-    public static List<PluginDescriptor> manifestsFor(Path moduleDir, List<PluginDeclaration> decls) {
+    public static List<PluginDescriptor> manifestsFor(@Nullable Path moduleDir, List<PluginDeclaration> decls) {
         if (decls == null || decls.isEmpty()) return manifests();
         List<PluginDescriptor> out = new ArrayList<>(manifests());
         Set<String> ids = new HashSet<>();
@@ -253,7 +254,7 @@ public final class PluginTableRegistry {
             TomlTable groupTable = readTable(table, group.table());
             if (groupTable == null) continue;
             Map<String, PluginDescriptor.SchemaKey> subSchema =
-                    manifest.subSchemas().get(group.schema());
+                    manifest.subSchemas().getOrDefault(group.schema(), Map.of());
             String whereBase = manifest.table() + "." + group.table();
             Map<String, Map<String, Object>> entries = new LinkedHashMap<>();
             for (String entry : groupTable.keySet()) {
@@ -295,7 +296,7 @@ public final class PluginTableRegistry {
         return values;
     }
 
-    private static TomlTable readTable(TomlTable parent, String key) {
+    private static @Nullable TomlTable readTable(TomlTable parent, String key) {
         Object raw = parent.contains(key) ? parent.get(key) : null;
         return raw instanceof TomlTable t ? t : null;
     }
@@ -319,7 +320,7 @@ public final class PluginTableRegistry {
         return out;
     }
 
-    private static Object read(String tableName, PluginDescriptor.SchemaKey key, TomlTable table) {
+    private static @Nullable Object read(String tableName, PluginDescriptor.SchemaKey key, TomlTable table) {
         if (!table.contains(key.name())) return null;
         String where = "[" + tableName + "]." + key.name();
         return switch (key.type()) {
@@ -382,7 +383,7 @@ public final class PluginTableRegistry {
      * class in {@code :core} main. Try the class, then the context loader, then the defining
      * loader with the full path.
      */
-    private static InputStream openBuiltIn(String resource) {
+    private static @Nullable InputStream openBuiltIn(String resource) {
         InputStream in = PluginTableRegistry.class.getResourceAsStream(resource);
         if (in != null) return in;
         String full = "cc/jumpkick/plugin/manifest/" + resource;
@@ -447,7 +448,7 @@ public final class PluginTableRegistry {
      * Parse one built-in manifest; {@code null} when the bytes are not a current catalog (stale
      * {@code [scaffold]} copies, truncated fixtures). Class init must not die on leftovers.
      */
-    static PluginDescriptor tryParseBuiltIn(String toml, String displayPath) {
+    static @Nullable PluginDescriptor tryParseBuiltIn(String toml, String displayPath) {
         try {
             return parseBuiltIn(toml, displayPath);
         } catch (RuntimeException e) {
@@ -533,7 +534,7 @@ public final class PluginTableRegistry {
      * First-party {@code plugins/<id>/jk-plugin.toml} under {@code root}. Empty when {@code root}
      * is null or none of the files exist; incomplete trees (some present, some not) fail closed.
      */
-    static Map<String, PluginDescriptor> loadFromWorkspacePluginSources(Path root) {
+    static Map<String, PluginDescriptor> loadFromWorkspacePluginSources(@Nullable Path root) {
         if (root == null) return Map.of();
         Map<String, PluginDescriptor> byTable = new LinkedHashMap<>();
         int missing = 0;
@@ -568,14 +569,14 @@ public final class PluginTableRegistry {
      * from {@code …/target/classes/test} does not apply, but core's classes dir still sits under
      * the checkout.
      */
-    static Path discoverTestWorkspaceRoot() {
+    static @Nullable Path discoverTestWorkspaceRoot() {
         Path fromCwd = workspaceRootOwning(
                 Path.of(System.getProperty("user.dir", ".")).toAbsolutePath().normalize());
         if (fromCwd != null) return fromCwd;
         return workspaceRootFromCodeSource();
     }
 
-    private static Path workspaceRootOwning(Path dir) {
+    private static @Nullable Path workspaceRootOwning(Path dir) {
         if (dir == null) return null;
         var owned = WorkspaceScan.findRoot(dir);
         if (owned.isPresent() && isFirstPartyPluginCheckout(owned.get())) return owned.get();
@@ -585,7 +586,7 @@ public final class PluginTableRegistry {
         return null;
     }
 
-    private static Path workspaceRootFromCodeSource() {
+    private static @Nullable Path workspaceRootFromCodeSource() {
         try {
             var src = PluginTableRegistry.class.getProtectionDomain().getCodeSource();
             if (src == null || src.getLocation() == null) return null;
@@ -608,7 +609,7 @@ public final class PluginTableRegistry {
                         .resolve(ManifestPaths.PLUGIN_MANIFEST));
     }
 
-    private static String zipEntryText(Path jar, String entry) throws IOException {
+    private static @Nullable String zipEntryText(Path jar, String entry) throws IOException {
         try (ZipFile zip = new ZipFile(jar.toFile())) {
             ZipEntry e = zip.getEntry(entry);
             if (e == null) return null;

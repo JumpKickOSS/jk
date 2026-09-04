@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.TreeMap;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Parsed {@code [train]} / {@code [[train.profile]]} from {@code jk.toml}.
@@ -15,7 +16,11 @@ import java.util.TreeMap;
  * {@code jk build} never runs it.
  */
 public record TrainConfig(
-        String command, String commitTo, boolean requireFresh, boolean aotCache, List<Profile> profiles) {
+        @Nullable String command,
+        @Nullable String commitTo,
+        boolean requireFresh,
+        boolean aotCache,
+        List<Profile> profiles) {
 
     public static final TrainConfig EMPTY = new TrainConfig(null, null, false, false, List.of());
 

@@ -15,6 +15,7 @@ import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.IntConsumer;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
@@ -233,7 +234,7 @@ class AtomicWritesTest {
     }
 
     /** Runs a move that must fail, returning the exception so the caller can time the call alone. */
-    private static IOException denyMove(Path tmp, Path target) {
+    private static @Nullable IOException denyMove(Path tmp, Path target) {
         try {
             AtomicWrites.moveInto(tmp, target);
             return null;

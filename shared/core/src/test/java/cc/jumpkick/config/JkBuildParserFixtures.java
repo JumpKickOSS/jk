@@ -3,6 +3,7 @@ package cc.jumpkick.config;
 
 import cc.jumpkick.library.LibraryCatalog;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /** Shared jk.toml fixtures for the {@link JkBuildParser} test classes. */
 final class JkBuildParserFixtures {
@@ -20,7 +21,7 @@ final class JkBuildParserFixtures {
             "jackson-databind", new LibraryCatalog.Module("tools.jackson.core", "jackson-databind"),
             "picocli", new LibraryCatalog.Module("info.picocli", "picocli")));
 
-    static String graal(String value) {
+    static String graal(@Nullable String value) {
         return PROJECT + """
 
                 [native]

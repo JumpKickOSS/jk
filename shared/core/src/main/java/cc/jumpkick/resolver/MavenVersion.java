@@ -18,9 +18,6 @@
  */
 package cc.jumpkick.resolver;
 
-// Vendored from Apache Maven 3.9.16 maven-artifact ComparableVersion (Apache-2.0)
-// so:core / the native CLI do not link maven-artifact or plexus-utils.
-
 import java.math.BigInteger;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -30,6 +27,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Properties;
+import org.jspecify.annotations.Nullable;
 
 /**
  * <p>
@@ -72,7 +70,7 @@ final class MavenVersion implements Comparable<MavenVersion> {
 
     private String value;
 
-    private String canonical;
+    private @Nullable String canonical;
 
     private ListItem items;
 
@@ -83,7 +81,7 @@ final class MavenVersion implements Comparable<MavenVersion> {
         int STRING_ITEM = 1;
         int LIST_ITEM = 2;
 
-        int compareTo(Item item);
+        int compareTo(@Nullable Item item);
 
         int getType();
 
@@ -117,7 +115,7 @@ final class MavenVersion implements Comparable<MavenVersion> {
         }
 
         @Override
-        public int compareTo(Item item) {
+        public int compareTo(@Nullable Item item) {
             if (item == null) {
                 return (value == 0) ? 0 : 1; // 1.0 == 1, 1.1 > 1
             }
@@ -187,7 +185,7 @@ final class MavenVersion implements Comparable<MavenVersion> {
         }
 
         @Override
-        public int compareTo(Item item) {
+        public int compareTo(@Nullable Item item) {
             if (item == null) {
                 return (value == 0) ? 0 : 1; // 1.0 == 1, 1.1 > 1
             }
@@ -258,7 +256,7 @@ final class MavenVersion implements Comparable<MavenVersion> {
         }
 
         @Override
-        public int compareTo(Item item) {
+        public int compareTo(@Nullable Item item) {
             if (item == null) {
                 return BigInteger.ZERO.equals(value) ? 0 : 1; // 1.0 == 1, 1.1 > 1
             }
@@ -379,7 +377,7 @@ final class MavenVersion implements Comparable<MavenVersion> {
         }
 
         @Override
-        public int compareTo(Item item) {
+        public int compareTo(@Nullable Item item) {
             if (item == null) {
                 // 1-rc < 1, 1-ga > 1
                 return comparableQualifier(value).compareTo(RELEASE_VERSION_INDEX);
@@ -454,7 +452,7 @@ final class MavenVersion implements Comparable<MavenVersion> {
         }
 
         @Override
-        public int compareTo(Item item) {
+        public int compareTo(@Nullable Item item) {
             if (item == null) {
                 if (size() == 0) {
                     return 0; // 1-0 = 1- (normalize) = 1

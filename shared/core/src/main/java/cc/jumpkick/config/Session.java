@@ -51,7 +51,7 @@ public record Session(
         @With CancelToken cancel,
         // Variant selection + client-resolved env (env: indirection for signing secrets).
         String variant,
-        Map<String, String> clientEnv,
+        @Nullable Map<String, String> clientEnv,
         /** CLI packaging override: empty, {@code fat}, or {@code minified} ({@code jk assemble --minified}). */
         @With String assemblyOverride,
         /** Test suite / tag selection ({@code jk test --suite}/tags); default = unit suite only. */

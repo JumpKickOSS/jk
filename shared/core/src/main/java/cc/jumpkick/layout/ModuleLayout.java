@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Canonical module input roots.
@@ -89,7 +90,7 @@ public final class ModuleLayout {
      * The explicit {@code layout} choice for a module dir: {@code TRUE} = simple, {@code FALSE} =
      * traditional, {@code null} = no key or an unrecognized value (let the tree decide).
      */
-    private static Boolean explicitLayout(Path dir) {
+    private static @Nullable Boolean explicitLayout(Path dir) {
         Path toml = dir.resolve(ManifestPaths.MANIFEST);
         Path key = toml.toAbsolutePath().normalize();
         StampedMemo.FileStamp stamp = StampedMemo.FileStamp.of(key);
@@ -97,7 +98,7 @@ public final class ModuleLayout {
         return LAYOUT_CACHE.get(key, stamp, () -> scanLayout(toml));
     }
 
-    private static Boolean scanLayout(Path toml) {
+    private static @Nullable Boolean scanLayout(Path toml) {
         String layout = TomlScan.scan(toml, "layout").get("layout");
         if (layout == null || layout.isBlank()) return null;
         try {

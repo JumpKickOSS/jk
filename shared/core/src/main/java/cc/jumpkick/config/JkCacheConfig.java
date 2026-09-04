@@ -111,7 +111,7 @@ public record JkCacheConfig(
     }
 
     /** As {@link #resolve()} but against an explicit config file + env — probes {@link JkDirs#cache()}. */
-    static JkCacheConfig resolve(Path userConfig, Function<String, String> env) {
+    static JkCacheConfig resolve(Path userConfig, Function<String, @Nullable String> env) {
         Objects.requireNonNull(env, "env");
         return resolve(userConfig, env, () -> DiskSpace.probe(JkDirs.cache()));
     }
@@ -120,12 +120,12 @@ public record JkCacheConfig(
      * Fully injectable resolve for tests: file + env + optional disk snapshot ({@code null} disk
      * skips the small-volume clamp).
      */
-    static JkCacheConfig resolve(Path userConfig, Function<String, String> env, @Nullable DiskSpace disk) {
+    static JkCacheConfig resolve(Path userConfig, Function<String, @Nullable String> env, @Nullable DiskSpace disk) {
         return resolve(userConfig, env, () -> disk);
     }
 
     static JkCacheConfig resolve(
-            Path userConfig, Function<String, String> env, @Nullable Supplier<DiskSpace> cacheDisk) {
+            Path userConfig, Function<String, @Nullable String> env, @Nullable Supplier<DiskSpace> cacheDisk) {
         Objects.requireNonNull(env, "env");
         TomlScan scan = scan(userConfig);
 
@@ -150,11 +150,11 @@ public record JkCacheConfig(
      * Machine defaults only (CI + disk clamp, no file/env size overrides). Used by the config
      * dashboard so {@code overridden} compares against what this host would pick if unset.
      */
-    public static JkCacheConfig resolvedDefaults(Function<String, String> env) {
+    public static JkCacheConfig resolvedDefaults(Function<String, @Nullable String> env) {
         return resolve(Path.of("/__jk_no_config__"), env, () -> DiskSpace.probe(JkDirs.cache()));
     }
 
-    static JkCacheConfig resolvedDefaults(Function<String, String> env, @Nullable DiskSpace disk) {
+    static JkCacheConfig resolvedDefaults(Function<String, @Nullable String> env, @Nullable DiskSpace disk) {
         return resolve(Path.of("/__jk_no_config__"), env, disk);
     }
 
@@ -227,7 +227,7 @@ public record JkCacheConfig(
      * {@link MachineConfig#accept} judges the preferred key first so an out-of-range value there
      * falls through to the legacy key rather than suppressing it.
      */
-    private static @Nullable Double envCacheGb(Function<String, String> env) {
+    private static @Nullable Double envCacheGb(Function<String, @Nullable String> env) {
         Double gb = MAX_CACHE_SIZE_GB.accept(
                 EnvValues.doubleValue(env, "JK_MAX_CACHE_SIZE_GB").orElse(null));
         if (gb != null) return gb;

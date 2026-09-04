@@ -11,6 +11,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Resolve {@code --modules}/{@code -m} selectors to absolute module directories. Shared by {@code
@@ -34,7 +35,7 @@ public final class ModuleSelection {
 
     private ModuleSelection() {}
 
-    public record Result(Set<Path> moduleDirs, String errorMessage) {
+    public record Result(Set<Path> moduleDirs, @Nullable String errorMessage) {
         public boolean ok() {
             return errorMessage == null;
         }
@@ -43,7 +44,7 @@ public final class ModuleSelection {
             return new Result(Set.copyOf(dirs), null);
         }
 
-        public static Result fail(String msg) {
+        public static Result fail(@Nullable String msg) {
             return new Result(Set.of(), msg);
         }
     }
@@ -64,7 +65,8 @@ public final class ModuleSelection {
      * {@code affectedSince}. When both are set, the result is their <strong>intersection</strong>.
      * When neither is set, returns {@code null} (caller should not filter).
      */
-    public static Result resolveOptional(Path entryDir, JkBuild entryBuild, String modulesSpec, String affectedSince) {
+    public static @Nullable Result resolveOptional(
+            Path entryDir, JkBuild entryBuild, String modulesSpec, String affectedSince) {
         return resolveOptional(entryDir, entryBuild, modulesSpec, affectedSince, false);
     }
 
@@ -72,7 +74,7 @@ public final class ModuleSelection {
      * As {@link #resolveOptional(Path, JkBuild, String, String)} with {@code affectedWip} for
      * {@code --affected}. {@code affectedSince} and {@code affectedWip} together is a config error.
      */
-    public static Result resolveOptional(
+    public static @Nullable Result resolveOptional(
             Path entryDir, JkBuild entryBuild, String modulesSpec, String affectedSince, boolean affectedWip) {
         if (affectedWip && affectedSince != null && !affectedSince.isBlank()) {
             return Result.fail("use --affected (WIP) or --affected-since=<ref>, not both");
@@ -90,9 +92,8 @@ public final class ModuleSelection {
             affected = AffectedSelection.resolve(entryDir, entryBuild, affectedSince);
             if (!affected.ok()) return Result.fail(affected.errorMessage());
         }
-        if (modules == null && affected == null) return null;
-        if (modules == null) return Result.ok(affected.moduleDirs());
         if (affected == null) return modules;
+        if (modules == null) return Result.ok(affected.moduleDirs());
         Set<Path> inter = new LinkedHashSet<>();
         for (Path p : modules.moduleDirs()) {
             if (affected.moduleDirs().contains(p)) inter.add(p);

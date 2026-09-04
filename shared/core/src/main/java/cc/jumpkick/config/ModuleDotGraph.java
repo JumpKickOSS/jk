@@ -14,6 +14,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Emit a module dependency DAG for {@code jk explain --graph} and the engine dashboard.
@@ -91,8 +92,8 @@ public final class ModuleDotGraph {
      * Structured DAG for {@code modulesByDir}. When {@code only} is non-null, only those module
      * dirs (and edges fully inside the set) appear.
      */
-    public static GraphData graphData(Path workspaceRoot, Map<Path, JkBuild> modulesByDir, Set<Path> only) {
-        Graph g = build(workspaceRoot, modulesByDir, only);
+    public static GraphData graphData(Path workspaceRoot, Map<Path, JkBuild> modulesByDir, @Nullable Set<Path> only) {
+        Graph g = build(workspaceRoot, modulesByDir, only == null ? Set.of() : only);
         return toGraphData(g, true);
     }
 
@@ -287,7 +288,7 @@ public final class ModuleDotGraph {
         return new Graph(root, modules, filteredEdges, ids);
     }
 
-    private static String coordOf(JkBuild build, Path dir) {
+    private static String coordOf(@Nullable JkBuild build, Path dir) {
         if (build == null) {
             return dir != null && dir.getFileName() != null ? dir.getFileName().toString() : "module";
         }

@@ -26,6 +26,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Queue;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Structured dependency graph for the engine dashboard ({@code GET /api/project/graph}) and other
@@ -55,7 +56,12 @@ public final class DependencyGraphModel {
             Scope.DEV,
             Scope.TEST_DEV);
 
-    public record Node(String id, String label, String version, String path, String kind) {
+    public record Node(
+            String id,
+            String label,
+            @Nullable String version,
+            @Nullable String path,
+            String kind) {
         public Node {
             Objects.requireNonNull(id, "id");
             Objects.requireNonNull(label, "label");
@@ -64,7 +70,7 @@ public final class DependencyGraphModel {
     }
 
     /** {@code from} (dependent) → {@code to} (prereq); optional {@code scope} for declared edges. */
-    public record Edge(String from, String to, String scope) {
+    public record Edge(String from, String to, @Nullable String scope) {
         public Edge {
             Objects.requireNonNull(from, "from");
             Objects.requireNonNull(to, "to");
@@ -189,7 +195,7 @@ public final class DependencyGraphModel {
         return buildStandalone(root, entry, scopeList, transitive, graph);
     }
 
-    private static Lockfile readLock(Path projectDir) {
+    private static @Nullable Lockfile readLock(Path projectDir) {
         try {
             Path lf = LockPaths.lockFile(projectDir);
             if (Files.isRegularFile(lf)) return LockfileReader.read(lf);
@@ -247,7 +253,8 @@ public final class DependencyGraphModel {
         b.addDeclaredDeps(rootId, rootBuild, scopes);
         for (var e : modulesByDir.entrySet()) {
             Path dir = e.getKey().toAbsolutePath().normalize();
-            b.addDeclaredDeps(idByDir.get(dir), e.getValue(), scopes);
+            var moduleId = idByDir.get(dir);
+            if (moduleId != null) b.addDeclaredDeps(moduleId, e.getValue(), scopes);
         }
         return b.finish(true);
     }
@@ -380,7 +387,7 @@ public final class DependencyGraphModel {
          * {@link ModuleOrder#resolveSibling} rule the build order uses. No table-key fallback: a
          * declared external whose TOML key happens to equal a module's name stays external.
          */
-        private String resolveWorkspaceId(Dependency d) {
+        private @Nullable String resolveWorkspaceId(Dependency d) {
             String id = ModuleOrder.resolveSibling(d, idByCoord, idByName);
             if (id != null) return id;
             SiblingModule sib = ModuleOrder.resolveSibling(d, siblingByCoord, siblingByName);
@@ -443,7 +450,7 @@ public final class DependencyGraphModel {
             return declaredKeys.contains(key) ? "declared" : "transitive";
         }
 
-        private void addEdge(String from, String to, String scope) {
+        private void addEdge(String from, String to, @Nullable String scope) {
             if (from.equals(to)) return;
             String key = from + "\0" + to + "\0" + (scope == null ? "" : scope);
             if (!edgeKeys.add(key)) return;

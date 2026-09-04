@@ -25,8 +25,7 @@ public final class PolicyChecker {
         for (Lockfile.Artifact pkg : lock.artifacts()) {
             // Source format: `<name>+<url>`; we test the host portion. RepoSource.url() applies the
             // lenient split (url after the first '+', else the whole string) this check has always used.
-            String url = RepoSource.parse(pkg.source()).url();
-            String host = hostOf(url);
+            String host = hostOf(RepoSource.parse(pkg.source()).url());
             for (String denied : policy.deniedSources()) {
                 if (hostMatches(host, denied)) {
                     out.add(new Violation(

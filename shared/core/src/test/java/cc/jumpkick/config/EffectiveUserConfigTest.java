@@ -9,6 +9,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -69,7 +70,7 @@ class EffectiveUserConfigTest {
                 .orElseThrow(() -> new AssertionError("missing key " + key));
     }
 
-    private static Function<String, String> env(String... kv) {
+    private static Function<String, @Nullable String> env(String... kv) {
         Map<String, String> m = new HashMap<>();
         for (int i = 0; i + 1 < kv.length; i += 2) m.put(kv[i], kv[i + 1]);
         return m::get;

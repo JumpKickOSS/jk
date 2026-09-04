@@ -5,6 +5,7 @@ import cc.jumpkick.model.DenyPolicy;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import org.jspecify.annotations.Nullable;
 import org.tomlj.TomlArray;
 import org.tomlj.TomlTable;
 
@@ -43,7 +44,7 @@ final class ManifestDeny {
         return new DenyPolicy(sources, List.of(), List.of(), yanked);
     }
 
-    private static List<String> optionalStringList(TomlTable table, String key) {
+    private static List<String> optionalStringList(@Nullable TomlTable table, String key) {
         if (table == null) return List.of();
         TomlArray arr = table.getArray(key);
         if (arr == null) return List.of();

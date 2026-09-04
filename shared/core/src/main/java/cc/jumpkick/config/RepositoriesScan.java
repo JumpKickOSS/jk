@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Client-side line scanner for {@code [repositories]}. It exists because credentials must resolve
@@ -114,7 +115,12 @@ public final class RepositoriesScan {
     }
 
     private static void commit(
-            List<Repo> out, String name, String url, String token, String username, String password) {
+            List<Repo> out,
+            @Nullable String name,
+            @Nullable String url,
+            @Nullable String token,
+            @Nullable String username,
+            @Nullable String password) {
         if (name == null || url == null || url.isBlank()) return;
         String where = "repositories." + name;
         out.add(new Repo(

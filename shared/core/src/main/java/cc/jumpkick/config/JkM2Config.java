@@ -36,7 +36,7 @@ public record JkM2Config(boolean integration, boolean install) {
     }
 
     /** As {@link #resolve()} but against an explicit config file + env, with no JVM properties. */
-    static JkM2Config resolve(Path userConfig, Function<String, String> env) {
+    static JkM2Config resolve(Path userConfig, Function<String, @Nullable String> env) {
         return resolve(userConfig, env, name -> null);
     }
 
@@ -45,7 +45,8 @@ public record JkM2Config(boolean integration, boolean install) {
      * of {@code integration} and ranks directly under it on each substrate, so a machine that still
      * sets the old name is not overridden by the file.
      */
-    static JkM2Config resolve(Path userConfig, Function<String, String> env, Function<String, String> property) {
+    static JkM2Config resolve(
+            Path userConfig, Function<String, @Nullable String> env, Function<String, @Nullable String> property) {
         TomlScan scan = scan(userConfig);
         return new JkM2Config(
                 INTEGRATION.layer(

@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Forge OAuth client IDs from the {@code [forge]} table (provider defaults + {@code [[forge.host]]}
@@ -129,7 +130,8 @@ public final class ForgeAuthConfig {
         return new ForgeAuthConfig(byProvider, byHost);
     }
 
-    private static void commitHost(Map<String, String> byHost, boolean inHostEntry, String name, String cid) {
+    private static void commitHost(
+            Map<String, String> byHost, boolean inHostEntry, @Nullable String name, @Nullable String cid) {
         if (inHostEntry && name != null && !name.isBlank() && cid != null && !cid.isBlank()) {
             byHost.put(name.toLowerCase(Locale.ROOT).strip(), cid.strip());
         }

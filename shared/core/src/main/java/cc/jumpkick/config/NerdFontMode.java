@@ -3,6 +3,7 @@ package cc.jumpkick.config;
 
 import java.util.Locale;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Declared Nerd Font intent — what the user asked for, before detection runs. The resolved
@@ -34,7 +35,7 @@ public enum NerdFontMode {
      * plus the three mode words. Anything unrecognised — including blank — yields empty so the
      * caller falls through to the next precedence layer, exactly as a bad boolean does today.
      */
-    public static Optional<NerdFontMode> parse(String raw) {
+    public static Optional<NerdFontMode> parse(@Nullable String raw) {
         if (raw == null || raw.isBlank()) return Optional.empty();
         String v = raw.trim().toLowerCase(Locale.ROOT);
         // Strip TOML quoting so a hand-edited `nerd-font = "wedge"` scans the same as a bare word.
@@ -54,7 +55,7 @@ public enum NerdFontMode {
      * word there is ignored rather than honoured, since {@code NERD_FONT} is a cross-tool variable
      * with no notion of jk's axes.
      */
-    public static Optional<NerdFontMode> parseBooleanOnly(String raw) {
+    public static Optional<NerdFontMode> parseBooleanOnly(@Nullable String raw) {
         return EnvValues.parseBool(raw).map(b -> b ? ON : OFF);
     }
 

@@ -15,6 +15,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Read-only view of harvested {@code project-metrics.toml} + {@code host-metrics.toml} scalars.
@@ -131,7 +132,7 @@ public final class AggregatedMetrics {
     }
 
     /** {@code last} is usable when mean is unknown, or last is not a tiny fraction of mean. */
-    static boolean isCredibleLast(double lastMs, Double meanMs) {
+    static boolean isCredibleLast(double lastMs, @Nullable Double meanMs) {
         if (!(lastMs > 0)) return false;
         if (meanMs == null || !(meanMs > 0)) return true;
         // Cache-restore / skip mis-recorded as SUCCESS: 32ms last vs 32s mean.
@@ -238,7 +239,7 @@ public final class AggregatedMetrics {
         return hostMean;
     }
 
-    public static String sanitize(String s) {
+    public static String sanitize(@Nullable String s) {
         if (s == null) return "unknown";
         // Forward slashes first so Windows paths stay one key family with Unix; a POSIX
         // backslash name is NOT a separator and folds to '_' like any other odd character.

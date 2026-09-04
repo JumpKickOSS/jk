@@ -6,6 +6,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Resolve {@code --affected-since=&lt;git-ref&gt;} or {@code --affected} (WIP) to module directories.
@@ -15,7 +16,7 @@ public final class AffectedSelection {
 
     private AffectedSelection() {}
 
-    public record Result(Set<Path> moduleDirs, String errorMessage) {
+    public record Result(Set<Path> moduleDirs, @Nullable String errorMessage) {
         public boolean ok() {
             return errorMessage == null;
         }
@@ -87,7 +88,7 @@ public final class AffectedSelection {
     }
 
     /** {@code null} on git failure. Paths relative to the process cwd (repo root). */
-    public static List<String> gitDiffNameOnly(Path root, String ref) {
+    public static @Nullable List<String> gitDiffNameOnly(Path root, String ref) {
         // --end-of-options: a ref like "--output=…" must be read as a revision, not a git
         // option. Matches the discipline in GitCliExtension. --relative + stdout-only parsing:
         // see DirtyPaths.gitDiffNameOnly.

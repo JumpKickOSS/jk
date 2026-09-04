@@ -76,7 +76,7 @@ public record JkHttpConfig(
     }
 
     /** As {@link #resolve()} but against an explicit config file + env — for tests. */
-    static Optional<JkHttpConfig> resolve(Path userConfig, Function<String, String> env) {
+    static Optional<JkHttpConfig> resolve(Path userConfig, Function<String, @Nullable String> env) {
         Optional<Boolean> envEnabled = EnvValues.bool(env, "JK_HTTP_ENABLED");
         if (envEnabled.isPresent() && !envEnabled.get()) return Optional.empty();
         Optional<JkHttpConfig> file = fromToml(userConfig);

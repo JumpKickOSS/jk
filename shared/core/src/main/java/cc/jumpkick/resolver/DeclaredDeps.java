@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.jspecify.annotations.Nullable;
 
 /**
  * What a {@code jk.toml} <em>declares</em>, as the tree needs it: the direct modules of a scope, the
@@ -57,7 +58,7 @@ final class DeclaredDeps {
      * Concrete version from a selector when one is known (platform BOMs must pin). {@code null} for
      * {@code latest} / empty.
      */
-    private static String versionLiteral(VersionSelector sel) {
+    private static @Nullable String versionLiteral(VersionSelector sel) {
         if (sel == null) return null;
         return switch (sel) {
             case VersionSelector.Exact e -> e.version();

@@ -22,6 +22,7 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Host-wide declared-dependency frequency under {@code builds/projects/dep-frequency.toml}.
@@ -197,7 +198,7 @@ public final class DepFrequency {
         return new DepFrequency(map);
     }
 
-    private static void collectDepsLine(String line, Set<String> deps) {
+    private static void collectDepsLine(String line, @Nullable Set<String> deps) {
         if (deps == null) return;
         Matcher m = QUOTED.matcher(line);
         while (m.find()) {

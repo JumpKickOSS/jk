@@ -90,7 +90,7 @@ public final class JkConfigLoader {
     }
 
     /** Build a config layer from environment variables. */
-    static JkConfig loadFromEnv(Function<String, String> env) {
+    static JkConfig loadFromEnv(Function<String, @Nullable String> env) {
         // NO_COLOR (any non-empty value) → never; defers to JK_COLOR if also set.
         JkConfig.ColorChoice color = EnvValues.string(env, ENV_COLOR)
                 .flatMap(JkConfig.ColorChoice::parse)
@@ -120,7 +120,7 @@ public final class JkConfigLoader {
     }
 
     /** A {@code JK_*} boolean, per the jk-wide truth set; anything else = unset. */
-    private static @Nullable Boolean envBool(Function<String, String> env, String name) {
+    private static @Nullable Boolean envBool(Function<String, @Nullable String> env, String name) {
         return EnvValues.bool(env, name).orElse(null);
     }
 }

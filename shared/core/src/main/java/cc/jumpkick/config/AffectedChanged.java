@@ -5,6 +5,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Per-invocation, cross-module carrier for {@code --affected} runs: the changed production types
@@ -41,7 +42,7 @@ public final class AffectedChanged {
      * workspace run asks for the same set, and one {@code git} exec per invocation is the honest
      * cost. {@code null} (git failed) is cached as an empty marker and returned as {@code null}.
      */
-    public List<String> dirtyPaths(Path root) {
+    public @Nullable List<String> dirtyPaths(Path root) {
         Path key = root.toAbsolutePath().normalize();
         List<String> got = dirtyByRoot.computeIfAbsent(key, r -> {
             List<String> wip = DirtyPaths.wip(r);

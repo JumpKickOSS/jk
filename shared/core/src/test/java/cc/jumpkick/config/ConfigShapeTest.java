@@ -18,6 +18,7 @@ import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -285,7 +286,7 @@ class ConfigShapeTest {
     /** Sanity: the env/file loader still round-trips through the nullable components. */
     @Test
     void loader_layers_still_merge_through_nullable_components() {
-        Function<String, String> env = Map.of("JK_QUIET", "true")::get;
+        Function<String, @Nullable String> env = Map.of("JK_QUIET", "true")::get;
         JkConfig fromEnv = JkConfigLoader.loadFromEnv(env);
         assertThat(fromEnv.quiet()).isTrue();
         assertThat(fromEnv.verbose()).isNull();

@@ -10,6 +10,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Flattened view of the machine-scoped {@code ~/.jk/config.toml} (plus env) as key /
@@ -49,12 +50,13 @@ public final class EffectiveUserConfig {
     }
 
     /** As {@link #rows()} against an explicit config file + env — for tests. */
-    public static List<Row> rows(Path userConfig, Function<String, String> env) {
+    public static List<Row> rows(Path userConfig, Function<String, @Nullable String> env) {
         return rows(userConfig, env, () -> JkCacheConfig.DiskSpace.probe(JkDirs.cache()));
     }
 
     /** Test seam: inject disk space so size defaults are hermetic. */
-    static List<Row> rows(Path userConfig, Function<String, String> env, Supplier<JkCacheConfig.DiskSpace> disk) {
+    static List<Row> rows(
+            Path userConfig, Function<String, @Nullable String> env, Supplier<JkCacheConfig.DiskSpace> disk) {
         List<Row> out = new ArrayList<>();
         addGlobal(out, userConfig, env);
         addToolchain(out, userConfig, env);
@@ -67,7 +69,7 @@ public final class EffectiveUserConfig {
         return List.copyOf(out);
     }
 
-    private static void addGlobal(List<Row> out, Path file, Function<String, String> env) {
+    private static void addGlobal(List<Row> out, Path file, Function<String, @Nullable String> env) {
         // The declared mode, not the detected caps: this table reports configuration intent, so
         // "auto" must read as "auto" rather than as whatever this terminal happens to resolve to.
         NerdFontMode mode = GlobalConfig.nerdFontMode(file, env.apply("JK_NERD_FONT"), env.apply("NERD_FONT"));
@@ -83,12 +85,12 @@ public final class EffectiveUserConfig {
         };
     }
 
-    private static void addToolchain(List<Row> out, Path file, Function<String, String> env) {
+    private static void addToolchain(List<Row> out, Path file, Function<String, @Nullable String> env) {
         String pin = GlobalConfig.engineJdkPin(file, env.apply("JK_ENGINE_JDK")).orElse("");
         add(out, "toolchain.jdk", "", pin);
     }
 
-    private static void addHttp(List<Row> out, Path file, Function<String, String> env) {
+    private static void addHttp(List<Row> out, Path file, Function<String, @Nullable String> env) {
         Optional<JkHttpConfig> resolved = JkHttpConfig.resolve(file, env);
         JkHttpConfig d = JkHttpConfig.DEFAULTS;
         add(out, "http.enabled", true, resolved.isPresent());
@@ -102,7 +104,7 @@ public final class EffectiveUserConfig {
         add(out, "mcp.max-event-streams", d.mcp().maxEventStreams(), e.mcp().maxEventStreams());
     }
 
-    private static void addEngine(List<Row> out, Path file, Function<String, String> env) {
+    private static void addEngine(List<Row> out, Path file, Function<String, @Nullable String> env) {
         // Heap default is CI-aware (256 MiB locally, 512 MiB when CI=1|true).
         JkEngineConfig d = JkEngineConfig.resolvedDefaults(env);
         JkEngineConfig e = JkEngineConfig.resolve(file, env);
@@ -114,7 +116,7 @@ public final class EffectiveUserConfig {
     }
 
     private static void addCache(
-            List<Row> out, Path file, Function<String, String> env, Supplier<JkCacheConfig.DiskSpace> disk) {
+            List<Row> out, Path file, Function<String, @Nullable String> env, Supplier<JkCacheConfig.DiskSpace> disk) {
         // Defaults are machine-aware (CI + small-disk clamp) so "overridden" is real user intent.
         JkCacheConfig.DiskSpace space = disk != null ? disk.get() : null;
         JkCacheConfig d = JkCacheConfig.resolvedDefaults(env, space);
@@ -128,7 +130,7 @@ public final class EffectiveUserConfig {
         add(out, "cache.prune-interval-days", d.pruneIntervalDays(), e.pruneIntervalDays());
     }
 
-    private static void addHistory(List<Row> out, Path file, Function<String, String> env) {
+    private static void addHistory(List<Row> out, Path file, Function<String, @Nullable String> env) {
         JkHistoryConfig d = JkHistoryConfig.DEFAULTS;
         JkHistoryConfig e = JkHistoryConfig.resolve(file, env);
         add(out, "history.enabled", d.enabled(), e.enabled());
@@ -136,7 +138,7 @@ public final class EffectiveUserConfig {
         add(out, "history.max-disk-mb", d.maxDiskMb(), e.maxDiskMb());
     }
 
-    private static void addM2(List<Row> out, Path file, Function<String, String> env) {
+    private static void addM2(List<Row> out, Path file, Function<String, @Nullable String> env) {
         JkM2Config d = JkM2Config.DEFAULTS;
         JkM2Config e = JkM2Config.resolve(file, env);
         add(out, "m2.integration", d.integration(), e.integration());
@@ -150,7 +152,7 @@ public final class EffectiveUserConfig {
         add(out, "templates.sources", sourcesLabel(d.sources()), sourcesLabel(e.sources()));
     }
 
-    private static String jobsLabel(Integer jobs) {
+    private static String jobsLabel(@Nullable Integer jobs) {
         return jobs == null ? "auto" : Integer.toString(jobs);
     }
 

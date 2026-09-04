@@ -20,6 +20,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Folds selected {@code [variants]} overlays into a flat effective {@link JkBuild} (and plugin
@@ -102,7 +103,7 @@ public final class VariantApply {
     /** One resolved dimension: its name, the selected value name, and that value's overlay. */
     private record Chosen(String dimension, String value, Variants.Value overlay) {}
 
-    private static Chosen chooseCustom(Variants.Dimension dimension, Selection selection, boolean lenient) {
+    private static @Nullable Chosen chooseCustom(Variants.Dimension dimension, Selection selection, boolean lenient) {
         String name = selection.values().get(dimension.name());
         if (name == null) name = selection.values().get("*"); // bare --variant <value>
         if (name == null) name = dimension.defaultValue();
@@ -170,7 +171,7 @@ public final class VariantApply {
                         + name + "\" but declares no [" + manifest.table() + "." + group.table() + "." + name + "]");
             }
             Map<String, PluginDescriptor.SchemaKey> subSchema =
-                    manifest.subSchemas().get(group.schema());
+                    manifest.subSchemas().getOrDefault(group.schema(), Map.of());
             for (Map.Entry<String, Object> e : entry.entrySet()) {
                 Object value = e.getValue();
                 if (value instanceof String s) {
