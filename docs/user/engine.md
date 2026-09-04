@@ -84,6 +84,7 @@ jobs run inside it.
 | `JK_ENGINE_HEARTBEAT_MS` | 30000 | Heartbeat while async jobs run. 0 disables. |
 | `JK_ENGINE_JOB_DEADLINE_MS` | 0 | Job wall deadline in ms. 0 = off. |
 | `JK_ENGINE_JOB_DEADLINE_GRACE_MS` | 30000 | Join grace after a deadline cancel, in ms. |
+| `JK_CANCEL_GRACE_MS` | 500 | Shared SIGTERM-to-SIGKILL window for forked workers on cancel, in ms; clamped to 5000. |
 <!-- engine-process:end -->
 
 HTTP / MCP knobs are `[http]` / `[mcp]`: [Config](config.md), [Web](web.md), [MCP](mcp.md).

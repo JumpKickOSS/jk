@@ -54,7 +54,7 @@ public final class JobEnvelope {
         this.host = host;
         this.limits = limits;
         this.watchdogs = new JobWatchdog(limits, host::nowMillis, host::accumulatorOf);
-        this.live = new LiveJobRegistry(host::accumulatorOf, host::log);
+        this.live = new LiveJobRegistry(host::accumulatorOf, host::log, limits.cancelGraceMs());
         this.settlement = new JobSettlement(host, host, host, host);
     }
 
@@ -258,7 +258,7 @@ public final class JobEnvelope {
         });
         runnerRef.set(started);
         started.start(); // register live job + runnerRef before start
-        long cancelGraceMs = JobWorkers.cancelGraceMs();
+        long cancelGraceMs = limits.cancelGraceMs();
         final Thread watchdog = watchdogs.start(eventRequestId, cancelToken, runnerRef, done, writer);
         Runnable finish = () -> {
             try {

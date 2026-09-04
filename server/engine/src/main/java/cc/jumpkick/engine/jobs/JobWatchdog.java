@@ -96,7 +96,7 @@ final class JobWatchdog {
             a.markUserCancelled(
                     true, "exceeded the " + deadlineMs + "ms wall deadline (JK_ENGINE_JOB_DEADLINE_MS); cancelled");
         }
-        int killed = JobWorkers.shutdownForRequest(eventRequestId, JobWorkers.cancelGraceMs());
+        int killed = JobWorkers.shutdownForRequest(eventRequestId, limits.cancelGraceMs());
         LiveJobRegistry.interruptRunner(runnerThread);
         WireWriter.sendQuiet(
                 writer,

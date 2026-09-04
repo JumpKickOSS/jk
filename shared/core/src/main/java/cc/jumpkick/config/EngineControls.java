@@ -85,7 +85,13 @@ public final class EngineControls {
                     "JK_ENGINE_JOB_DEADLINE_GRACE_MS",
                     "30000",
                     ENGINE_START,
-                    "Join grace after a deadline cancel, in ms."));
+                    "Join grace after a deadline cancel, in ms."),
+            control(
+                    "",
+                    "JK_CANCEL_GRACE_MS",
+                    "500",
+                    ENGINE_START,
+                    "Shared SIGTERM-to-SIGKILL window for forked workers on cancel, in ms; clamped to 5000."));
 
     /** TomlScan keys: {@code engine.max-heap-mb}, … */
     public static String[] tomlScanKeys() {

@@ -91,7 +91,7 @@ class ConnectionWatchTest {
         watch.awaitRunner(
                 8L,
                 new CountDownLatch(1),
-                new JobLimits(0L, 50L, 100L),
+                new JobLimits(0L, 50L, 100L, 500L),
                 0L,
                 System.currentTimeMillis(),
                 false,

@@ -196,7 +196,7 @@ class CancellationPrecedenceTest extends EngineServerHarness {
 
     @Test
     void a_wall_deadline_is_a_third_reason_and_names_itself_on_the_wire() throws Exception {
-        Iterator<String> sse = startEngine(JkEngineConfig.DEFAULTS.withJobLimits(new JobLimits(0L, 400L, 200L)));
+        Iterator<String> sse = startEngine(JkEngineConfig.DEFAULTS.withJobLimits(new JobLimits(0L, 400L, 200L, 500L)));
         try (Client building = new Client(EnginePaths.activeSocket(paths))) {
             startLock(building);
             assertThat(held.await(10, TimeUnit.SECONDS)).isTrue();

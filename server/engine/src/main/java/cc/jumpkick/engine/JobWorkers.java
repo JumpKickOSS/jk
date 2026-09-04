@@ -24,9 +24,9 @@ import java.util.concurrent.TimeUnit;
  *
  * <p><strong>Cancel contract</strong> {@link #shutdownForRequest} signals <em>all</em>
  * live workers first (tight loop — effectively simultaneous), then waits one shared wall-clock
- * grace (default {@value #DEFAULT_CANCEL_GRACE_MS} ms for the whole set, not per process), then
- * force-kills survivors. Cancel never hangs. Plugins must treat that shared sub-second window as
- * all they get.
+ * grace (the caller's configured {@code JK_CANCEL_GRACE_MS}, one window for the whole set, not per
+ * process), then force-kills survivors. Cancel never hangs. Plugins must treat that shared
+ * sub-second window as all they get.
  *
  * <p><strong>Windows:</strong> {@link Process#destroy} is <em>not</em> SIGTERM. On the HotSpot
  * Windows implementation it typically maps to an immediate terminate (similar to
@@ -36,19 +36,6 @@ import java.util.concurrent.TimeUnit;
  * session cancel token / stdin EOF where possible, and treat force-kill as the portable last step.
  */
 public final class JobWorkers {
-
-    /**
-     * Default <strong>shared</strong> wall-clock grace for the whole worker set. Not
-     * per-worker and not additive. Override: {@code JK_CANCEL_GRACE_MS} (clamped 0…{@link
-     * #MAX_CANCEL_GRACE_MS} so a mistaken env cannot reintroduce multi-second wedged UX).
-     */
-    public static final long DEFAULT_CANCEL_GRACE_MS = 500L;
-
-    /**
-     * Absolute ceiling for {@code JK_CANCEL_GRACE_MS}. Only a misconfiguration safety clamp — product
-     * default remains {@link #DEFAULT_CANCEL_GRACE_MS}. Not “workers may take 5 s each.”
-     */
-    public static final long MAX_CANCEL_GRACE_MS = 5_000L;
 
     /**
      * The request a fork on this thread belongs to.
@@ -336,23 +323,6 @@ public final class JobWorkers {
             }
         } catch (RuntimeException ignored) {
             // best-effort
-        }
-    }
-
-    /**
-     * Shared wall-clock cancel grace for the whole worker set. Default {@link
-     * #DEFAULT_CANCEL_GRACE_MS}; env {@code JK_CANCEL_GRACE_MS} clamped to {@code 0}…{@link
-     * #MAX_CANCEL_GRACE_MS} so a typo cannot restore multi-second wedged UX.
-     */
-    public static long cancelGraceMs() {
-        String raw = System.getenv("JK_CANCEL_GRACE_MS");
-        if (raw == null || raw.isBlank()) return DEFAULT_CANCEL_GRACE_MS;
-        try {
-            long n = Long.parseLong(raw.trim());
-            if (n < 0) return DEFAULT_CANCEL_GRACE_MS;
-            return Math.min(n, MAX_CANCEL_GRACE_MS);
-        } catch (NumberFormatException e) {
-            return DEFAULT_CANCEL_GRACE_MS;
         }
     }
 

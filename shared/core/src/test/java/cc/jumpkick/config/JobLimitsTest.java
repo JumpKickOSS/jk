@@ -8,7 +8,7 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** The three job knobs resolve from an explicit environment, so no test depends on the JVM's own. */
+/** The four job knobs resolve from an explicit environment, so no test depends on the JVM's own. */
 class JobLimitsTest {
 
     @Test
@@ -18,6 +18,17 @@ class JobLimitsTest {
         assertThat(limits.heartbeatMs()).isEqualTo(registryDefault("JK_ENGINE_HEARTBEAT_MS"));
         assertThat(limits.deadlineMs()).isEqualTo(registryDefault("JK_ENGINE_JOB_DEADLINE_MS"));
         assertThat(limits.deadlineGraceMs()).isEqualTo(registryDefault("JK_ENGINE_JOB_DEADLINE_GRACE_MS"));
+        assertThat(limits.cancelGraceMs()).isEqualTo(registryDefault("JK_CANCEL_GRACE_MS"));
+    }
+
+    @Test
+    void the_cancel_grace_is_clamped_to_its_ceiling_and_a_negative_falls_back() {
+        assertThat(JobLimits.resolve(Map.of("JK_CANCEL_GRACE_MS", "60000")::get).cancelGraceMs())
+                .isEqualTo(JobLimits.MAX_CANCEL_GRACE_MS);
+        assertThat(JobLimits.resolve(Map.of("JK_CANCEL_GRACE_MS", "-1")::get).cancelGraceMs())
+                .isEqualTo(JobLimits.DEFAULT_CANCEL_GRACE_MS);
+        assertThat(JobLimits.resolve(Map.of("JK_CANCEL_GRACE_MS", "0")::get).cancelGraceMs())
+                .isZero();
     }
 
     @Test
@@ -25,8 +36,9 @@ class JobLimitsTest {
         JobLimits limits = JobLimits.resolve(Map.of(
                 "JK_ENGINE_HEARTBEAT_MS", "0",
                 "JK_ENGINE_JOB_DEADLINE_MS", "50",
-                "JK_ENGINE_JOB_DEADLINE_GRACE_MS", "100")::get);
-        assertThat(limits).isEqualTo(new JobLimits(0L, 50L, 100L));
+                "JK_ENGINE_JOB_DEADLINE_GRACE_MS", "100",
+                "JK_CANCEL_GRACE_MS", "5")::get);
+        assertThat(limits).isEqualTo(new JobLimits(0L, 50L, 100L, 5L));
     }
 
     @Test
@@ -43,9 +55,9 @@ class JobLimitsTest {
         assertThat(resolved.jobLimits().deadlineMs()).isEqualTo(50L);
         assertThat(JkEngineConfig.DEFAULTS.jobLimits()).isEqualTo(JobLimits.DEFAULTS);
         assertThat(JkEngineConfig.DEFAULTS
-                        .withJobLimits(new JobLimits(1L, 2L, 3L))
+                        .withJobLimits(new JobLimits(1L, 2L, 3L, 500L))
                         .jobLimits())
-                .isEqualTo(new JobLimits(1L, 2L, 3L));
+                .isEqualTo(new JobLimits(1L, 2L, 3L, 500L));
     }
 
     /** The default {@code docs/user/engine.md} renders for {@code env}, so the two cannot disagree. */

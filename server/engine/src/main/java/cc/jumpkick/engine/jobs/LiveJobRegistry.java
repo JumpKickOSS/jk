@@ -37,10 +37,14 @@ public final class LiveJobRegistry {
     private final ConcurrentHashMap<Long, LiveJob> liveJobs = new ConcurrentHashMap<>();
     private final Function<Long, @Nullable BuildAccumulator> accumulatorOf;
     private final Consumer<String> log;
+    private final long cancelGraceMs;
 
-    LiveJobRegistry(Function<Long, @Nullable BuildAccumulator> accumulatorOf, Consumer<String> log) {
+    /** @param cancelGraceMs the shared worker SIGTERM-to-SIGKILL window a remote cancel uses */
+    LiveJobRegistry(
+            Function<Long, @Nullable BuildAccumulator> accumulatorOf, Consumer<String> log, long cancelGraceMs) {
         this.accumulatorOf = accumulatorOf;
         this.log = log;
+        this.cancelGraceMs = cancelGraceMs;
     }
 
     /**
@@ -103,7 +107,7 @@ public final class LiveJobRegistry {
         LiveJob job = liveJobs.get(jid);
         if (job == null) return false;
         // Remote `jk cancel` / POST /api/cancel — an explicit signal.
-        beginUserCancel(jid, job.token(), job.runnerRef(), JobWorkers.cancelGraceMs(), true);
+        beginUserCancel(jid, job.token(), job.runnerRef(), cancelGraceMs, true);
         // Terminal + reader wake happen off-thread: the job's stream writer can be wedged in a
         // socket write (client not draining), and `jk cancel` / POST /api/cancel must ack
         // without waiting behind that monitor. Order inside the task still matters: terminal
