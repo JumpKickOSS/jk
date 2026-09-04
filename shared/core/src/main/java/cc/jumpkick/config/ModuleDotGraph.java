@@ -79,7 +79,8 @@ public final class ModuleDotGraph {
      * Render the module DAG in {@code format} ({@code dot} or {@code mermaid}). When {@code only}
      * is non-null, only those module dirs (and edges fully inside the set) appear.
      */
-    public static String render(String format, Path workspaceRoot, Map<Path, JkBuild> modulesByDir, Set<Path> only) {
+    public static String render(
+            String format, Path workspaceRoot, Map<Path, JkBuild> modulesByDir, @Nullable Set<Path> only) {
         String fmt = format == null ? "" : format.trim().toLowerCase(Locale.ROOT);
         return switch (fmt) {
             case "dot" -> toDot(workspaceRoot, modulesByDir, only);
@@ -93,8 +94,7 @@ public final class ModuleDotGraph {
      * dirs (and edges fully inside the set) appear.
      */
     public static GraphData graphData(Path workspaceRoot, Map<Path, JkBuild> modulesByDir, @Nullable Set<Path> only) {
-        Graph g = build(workspaceRoot, modulesByDir, only == null ? Set.of() : only);
-        return toGraphData(g, true);
+        return toGraphData(build(workspaceRoot, modulesByDir, only), true);
     }
 
     /** Single-module project: one node, no edges. */
@@ -134,7 +134,7 @@ public final class ModuleDotGraph {
      * Render DOT for {@code modulesByDir}. When {@code only} is non-null, only those module dirs
      * (and edges fully inside the set) appear. Empty map → a trivial empty digraph.
      */
-    public static String toDot(Path workspaceRoot, Map<Path, JkBuild> modulesByDir, Set<Path> only) {
+    public static String toDot(Path workspaceRoot, Map<Path, JkBuild> modulesByDir, @Nullable Set<Path> only) {
         Graph g = build(workspaceRoot, modulesByDir, only);
         StringBuilder sb = new StringBuilder();
         sb.append("digraph modules {\n");
@@ -175,7 +175,7 @@ public final class ModuleDotGraph {
      * Mermaid {@code flowchart LR} for the same DAG. Labels use quoted node text; node ids stay
      * alphanumeric ({@code m0}, {@code m1}, …) so coordinates with {@code :} are safe.
      */
-    public static String toMermaid(Path workspaceRoot, Map<Path, JkBuild> modulesByDir, Set<Path> only) {
+    public static String toMermaid(Path workspaceRoot, Map<Path, JkBuild> modulesByDir, @Nullable Set<Path> only) {
         Graph g = build(workspaceRoot, modulesByDir, only);
         StringBuilder sb = new StringBuilder();
         sb.append("flowchart LR\n");
@@ -257,7 +257,8 @@ public final class ModuleDotGraph {
         return new GraphData(workspace, nodes, edges);
     }
 
-    private static Graph build(Path workspaceRoot, Map<Path, JkBuild> modulesByDir, Set<Path> only) {
+    /** {@code only == null} means every module; an empty set means none. */
+    private static Graph build(Path workspaceRoot, Map<Path, JkBuild> modulesByDir, @Nullable Set<Path> only) {
         Objects.requireNonNull(workspaceRoot, "workspaceRoot");
         Objects.requireNonNull(modulesByDir, "modulesByDir");
         Path root = workspaceRoot.toAbsolutePath().normalize();

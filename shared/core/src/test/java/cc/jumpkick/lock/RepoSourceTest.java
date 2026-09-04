@@ -59,12 +59,4 @@ class RepoSourceTest {
         assertThat(rs.name()).isNull();
         assertThat(rs.url()).isEqualTo("git:gh:foo/bar:1.2.3");
     }
-
-    @Test
-    void null_source_is_tolerated() {
-        // repoName(null) has always returned null; url() degrades to null rather than throwing.
-        RepoSource rs = RepoSource.parse(null);
-        assertThat(rs.name()).isNull();
-        assertThat(rs.url()).isNull();
-    }
 }

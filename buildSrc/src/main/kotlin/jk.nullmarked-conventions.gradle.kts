@@ -21,8 +21,10 @@ dependencies {
 
 tasks.withType<JavaCompile>().configureEach {
     val excuse = NullMarking.unmarkedCompileTasks["${project.name}:$name"]
+    // Error Prone's own switch, set outside its lambda: inside it, `isEnabled` resolves to the
+    // compile task and silently disables the whole compilation instead of the checker.
+    options.errorprone.enabled.set(excuse == null)
     options.errorprone {
-        isEnabled = excuse == null
         disableAllChecks = true
         error("RequireExplicitNullMarking")
         nullaway {

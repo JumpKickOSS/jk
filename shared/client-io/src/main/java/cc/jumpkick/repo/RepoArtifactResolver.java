@@ -25,7 +25,7 @@ public final class RepoArtifactResolver {
 
     /**
      * The {@code <name>} before the {@code '+'} in a lockfile source ({@code "central+https://…"}),
-     * or {@code null} when the source is absent/malformed. Delegates to the shared {@link RepoSource}
+     * or {@code null} when the source is malformed. Delegates to the shared {@link RepoSource}
      * parser (in {@code :core}), which owns the {@code <name>+<url>} split.
      */
     public static String repoName(String source) {
