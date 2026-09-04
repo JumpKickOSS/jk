@@ -252,7 +252,11 @@ final class WorkspacePreparePhase {
                     spec.imageDocker(),
                     decorate);
         }
-        if (target == WorkspaceTarget.COMPILE && selected) {
+        boolean consumed = jarConsumed.contains(BuildGraph.canonicalPath(dir));
+        // Compile-only is the tail of the cone. A module another module in this run compiles
+        // against is resolved through its jar, so it packages even when it is in the selection —
+        // the same rule test-only plans follow below, and packaging has already compiled it.
+        if (target == WorkspaceTarget.COMPILE && selected && !consumed) {
             return CompilePlans.compileBuildPlan(dir, request.cache(), request.profile(), request.verbose(), decorate);
         }
         if (target == WorkspaceTarget.INSTALL) {
@@ -266,7 +270,6 @@ final class WorkspacePreparePhase {
             }
             return builder.build();
         }
-        boolean consumed = jarConsumed.contains(BuildGraph.canonicalPath(dir));
         boolean testOnly = (target.testOnly() || request.testOnly()) && !consumed;
         BuildPlanner.Inputs inputs = moduleInputs(dir, request, moduleDirs, testOnly);
         BuildPlan.Builder builder = BuildPlanner.coreBuilder(inputs, forceRebuild);

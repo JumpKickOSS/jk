@@ -562,9 +562,7 @@ public final class TestCommand implements CliCommand {
         // manifest is the baseline layer, exactly as when invoked at the root. Reading the
         // member's own manifest here made the member's (usually empty) tags the baseline and
         // dropped the root's, so a root exclude-tags = ["slow"] ran slow tests from inside a member.
-        Path root = WorkspaceScan.isWorkspaceRoot(wd)
-                ? wd
-                : WorkspaceScan.findRoot(wd).orElse(wd);
+        Path root = WorkspaceScan.owningRoot(wd).orElse(wd);
         if (scriptsOnly && !BuildLogicToml.hasStem(root, "gate")) {
             throw new IllegalArgumentException(BuildLogicToml.NO_GATE_SCRIPTS);
         }

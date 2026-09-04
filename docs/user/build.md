@@ -16,6 +16,10 @@ jk clean --force        # also invalidate this project's action-cache entries
 shapes: [Packaging](packaging.md). Tests that run as part of build are the **default
 (unit) suite** unless you pass `--suite` / `--all` — [Test](test.md).
 
+In a [workspace](workspaces.md), `jk compile` type-checks every module, or just the
+`-m` cone. Compile-only stops at classes; a module that another module in the same run
+compiles against is packaged instead, because the edge between them is its jar.
+
 When something fails, run `jk results` — [Troubleshooting](troubleshooting.md).
 
 ## What gets skipped

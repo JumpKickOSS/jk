@@ -253,8 +253,7 @@ public final class TreeCommand implements CliCommand {
     /** Workspace root when {@code project} is a member or the root itself; otherwise the project. */
     static Path workspaceOrProject(Path project) {
         Path dir = project.toAbsolutePath().normalize();
-        if (WorkspaceScan.isWorkspaceRoot(dir)) return dir;
-        return WorkspaceScan.findRoot(dir).orElse(dir);
+        return WorkspaceScan.owningRoot(dir).orElse(dir);
     }
 
     private static boolean isModuleDir(Path dir) {

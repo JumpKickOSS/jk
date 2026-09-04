@@ -157,16 +157,21 @@ public final class WireStream {
     }
 
     /**
-     * Bare EOF without a terminal line: a crash — unless this process already asked for cancel
-     * (Ctrl-C's cooperative token), in which case the disconnect IS the cancel settling.
+     * Bare EOF without a terminal line — unless this process already asked for cancel (Ctrl-C's
+     * cooperative token), in which case the disconnect IS the cancel settling.
+     *
+     * <p>The message states what was observed and nothing else. A stream that ends without its
+     * terminal is just as easily an engine that finished in a vocabulary this reader does not end
+     * on, and naming a crash nobody checked for sends the reader to look for a corpse that is not
+     * there — while the engine is still up and answering {@code jk engine status}.
      */
     private static IOException disconnected() {
         try {
             if (SessionContext.current().cancelled()) return new JobCancelledException();
         } catch (RuntimeException ignored) {
-            // no session installed — fall through to the crash message
+            // no session installed — fall through to the generic message
         }
-        return new IOException("jk engine: the build engine disconnected unexpectedly before finishing "
-                + "(it may have crashed); run `jk engine status` for details");
+        return new IOException("jk engine: the engine closed the connection without sending a result; "
+                + "run `jk engine status` to see whether it is still running, and check its log for the job");
     }
 }

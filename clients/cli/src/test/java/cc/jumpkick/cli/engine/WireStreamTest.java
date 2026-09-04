@@ -120,14 +120,16 @@ class WireStreamTest {
         assertThat(consumed).hasSize(2);
     }
 
+    /** The reader saw no terminal. That is all it saw, and all the message may claim. */
     @Test
-    void a_terminal_less_stream_reports_a_crash() {
+    void a_terminal_less_stream_reports_the_missing_result_without_diagnosing_a_crash() {
         BufferedReader reader = stream(ProtoEvents.planDone(0));
 
         assertThatThrownBy(() -> WireStream.pumpJob(reader, null, (type, line) -> null))
                 .isInstanceOf(IOException.class)
                 .isNotInstanceOf(JobCancelledException.class)
-                .hasMessageContaining("disconnected unexpectedly");
+                .hasMessageContaining("without sending a result")
+                .hasMessageNotContaining("crash");
     }
 
     @Test

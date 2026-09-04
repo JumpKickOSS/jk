@@ -55,6 +55,17 @@ public final class WorkspaceScan {
         return Optional.empty();
     }
 
+    /**
+     * The workspace root {@code dir} belongs to — {@code dir} itself when it is a root, otherwise
+     * the ancestor that lists it — or empty when {@code dir} is a standalone project. Callers
+     * deciding "workspace build or single project?" want this, not {@link #findRoot}: a root is
+     * not one of its own {@code workspace.modules}, so {@code findRoot} answers empty there.
+     */
+    public static Optional<Path> owningRoot(Path dir) {
+        Path normalized = dir.toAbsolutePath().normalize();
+        return isWorkspaceRoot(normalized) ? Optional.of(normalized) : findRoot(normalized);
+    }
+
     /** True when {@code dir/jk.toml} declares a non-empty {@code [workspace] modules} list. */
     public static boolean isWorkspaceRoot(Path dir) {
         Path toml = dir.resolve(ManifestPaths.MANIFEST);

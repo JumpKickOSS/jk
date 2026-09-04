@@ -381,6 +381,38 @@ class JobEnvelopeTest {
     }
 
     /**
+     * A body killed by an {@link Error} is invisible to the {@code catch (Exception)} arms verbs
+     * wrap themselves in, so the envelope owns both halves of making it observable: the throwable
+     * and its stack reach the engine log, and a terminal reaches the client. Without the terminal
+     * the stream just ends, and a bare EOF is all the CLI has to report.
+     */
+    @Test
+    void a_body_killed_by_an_error_is_logged_and_settles_a_terminal_for_the_client() {
+        FakeHost host = new FakeHost();
+        host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "cli");
+        JobEnvelope env = new JobEnvelope(host);
+        StringWriter out = new StringWriter();
+
+        env.submit(
+                "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
+                JobRequest.plan("build", "jk-test-", (line, tok, w) -> {
+                    throw new NoClassDefFoundError("cc/example/Missing");
+                }),
+                new JobTransport.SocketWatch(new BufferedReader(new StringReader("")), new BufferedWriter(out)));
+
+        assertThat(host.logs)
+                .as("the log carries the throwable and its stack, not just that something failed")
+                .anyMatch(l -> l.contains("java.lang.NoClassDefFoundError")
+                        && l.contains("cc/example/Missing")
+                        && l.contains("at cc.jumpkick.engine.jobs.JobEnvelopeTest"));
+        // request-failed is the one terminal both the single-plan and the workspace decoder end on.
+        assertThat(out.toString().lines().map(EngineProtocol::typeOf))
+                .as("the client's stream ends on a terminal, never on a bare EOF")
+                .contains(EngineProtocol.ERROR);
+        assertThat(out.toString()).contains("NoClassDefFoundError");
+    }
+
+    /**
      * The contract the catch must not break: {@link JobOutcome.Declined} with clean rows is the
      * documented derive-from-facts path and still reads green.
      */
@@ -552,8 +584,12 @@ class JobEnvelopeTest {
         @Override
         public void maybeIdleGc() {}
 
+        final List<String> logs = Collections.synchronizedList(new ArrayList<>());
+
         @Override
-        public void log(String message) {}
+        public void log(String message) {
+            logs.add(message);
+        }
 
         @Override
         public String version() {
