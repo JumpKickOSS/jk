@@ -4,6 +4,7 @@ package cc.jumpkick.config;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Lenient {@code JK_*} env coercion. Booleans: {@code 1/true/yes/on} vs {@code 0/false/no/off}
@@ -22,29 +23,29 @@ public final class EnvValues {
     private EnvValues() {}
 
     /** A non-blank env value; {@code null}/blank → empty. */
-    public static Optional<String> string(Function<String, String> env, String name) {
+    public static Optional<String> string(Function<String, @Nullable String> env, String name) {
         return parseString(env.apply(name));
     }
 
     /** The one answer to "am I on CI": {@code CI} parsed per the jk-wide truth set, defaulting off. */
-    public static boolean isCi(Function<String, String> env) {
+    public static boolean isCi(Function<String, @Nullable String> env) {
         return bool(env, "CI").orElse(false);
     }
 
     /** A boolean env value parsed per the jk-wide truth set; unrecognised → empty. */
-    public static Optional<Boolean> bool(Function<String, String> env, String name) {
+    public static Optional<Boolean> bool(Function<String, @Nullable String> env, String name) {
         return parseBool(env.apply(name));
     }
 
     /** An {@code int} env value; absent, non-numeric, or out of {@code int} range → empty. */
-    public static Optional<Integer> intValue(Function<String, String> env, String name) {
+    public static Optional<Integer> intValue(Function<String, @Nullable String> env, String name) {
         return longValue(env, name)
                 .filter(l -> l >= Integer.MIN_VALUE && l <= Integer.MAX_VALUE)
                 .map(Long::intValue);
     }
 
     /** A {@code long} env value; absent or non-numeric → empty. */
-    public static Optional<Long> longValue(Function<String, String> env, String name) {
+    public static Optional<Long> longValue(Function<String, @Nullable String> env, String name) {
         String v = env.apply(name);
         if (v == null || v.isBlank()) return Optional.empty();
         try {
@@ -55,7 +56,7 @@ public final class EnvValues {
     }
 
     /** A {@code double} env value; absent or non-numeric → empty. */
-    public static Optional<Double> doubleValue(Function<String, String> env, String name) {
+    public static Optional<Double> doubleValue(Function<String, @Nullable String> env, String name) {
         String v = env.apply(name);
         if (v == null || v.isBlank()) return Optional.empty();
         try {
@@ -75,7 +76,7 @@ public final class EnvValues {
      * for callers that already hold the raw value, e.g. a value read from somewhere other than {@link
      * System#getenv}.
      */
-    public static Optional<Boolean> parseBool(String raw) {
+    public static Optional<Boolean> parseBool(@Nullable String raw) {
         if (raw == null) return Optional.empty();
         return switch (raw.trim().toLowerCase(Locale.ROOT)) {
             case "1", "true", "yes", "on" -> Optional.of(Boolean.TRUE);

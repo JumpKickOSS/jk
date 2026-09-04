@@ -14,6 +14,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Dependency-first (Kahn) ordering of a workspace's modules. Shared by client and engine so both
@@ -61,7 +62,7 @@ public final class ModuleOrder {
      * first-party artifact) must stay an external artifact, not become a module edge.
      * Shared by build ordering and the dependency graph so both draw identical module edges.
      */
-    public static <T> T resolveSibling(Dependency d, Map<String, T> byCoord, Map<String, T> byName) {
+    public static <T> @Nullable T resolveSibling(Dependency d, Map<String, T> byCoord, Map<String, T> byName) {
         T hit = byCoord.get(d.module());
         if (hit == null && d.isWorkspace()) {
             hit = byName.get(d.workspaceName());

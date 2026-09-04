@@ -10,7 +10,7 @@ import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.WorkspaceMerge;
-import cc.jumpkick.plugin.PluginModule;
+import cc.jumpkick.plugin.manifest.PluginModule;
 import cc.jumpkick.testing.RepoRoot;
 import java.nio.file.Files;
 import java.nio.file.Path;

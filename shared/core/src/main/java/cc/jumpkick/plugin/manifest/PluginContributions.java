@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Evaluates declarative plugin contributions (platforms, compiler args, Kotlin plugins) against
@@ -222,23 +223,27 @@ public final class PluginContributions {
      */
     public record StepDep(
             String artifact,
-            String coordinateSpec,
+            @Nullable String coordinateSpec,
             boolean transitive,
-            String sdkComponent,
-            String sdkPath,
-            String managedBy,
+            @Nullable String sdkComponent,
+            @Nullable String sdkPath,
+            @Nullable String managedBy,
             List<String> with) {
 
         public StepDep {
             with = with == null ? List.of() : List.copyOf(with);
         }
 
-        public StepDep(String artifact, String coordinateSpec) {
+        public StepDep(String artifact, @Nullable String coordinateSpec) {
             this(artifact, coordinateSpec, false, null, null, null, List.of());
         }
 
         public StepDep(
-                String artifact, String coordinateSpec, boolean transitive, String sdkComponent, String sdkPath) {
+                String artifact,
+                @Nullable String coordinateSpec,
+                boolean transitive,
+                @Nullable String sdkComponent,
+                @Nullable String sdkPath) {
             this(artifact, coordinateSpec, transitive, sdkComponent, sdkPath, null, List.of());
         }
     }
@@ -403,11 +408,11 @@ public final class PluginContributions {
 
     /** One predicate, or unconditional when {@code when} is null. */
     private static boolean holds(
-            PluginDescriptor.Condition when,
+            PluginDescriptor.@Nullable Condition when,
             PluginConfig config,
             Project project,
             boolean nativeDeclared,
-            Set<String> classpathModules,
+            @Nullable Set<String> classpathModules,
             String pluginId) {
         if (when == null) return true;
         return switch (when) {

@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk native} pre-checks: a GraalVM home with {@code native-image}, and exactly one main.
@@ -82,7 +83,7 @@ public final class NativePreflight {
      * Declared entry point only — no scan. Order matches {@code NativePlans.resolveMain} then
      * {@code [application] main}.
      */
-    public static String specifiedMain(Path moduleDir, String cliOverride) {
+    public static @Nullable String specifiedMain(Path moduleDir, @Nullable String cliOverride) {
         if (notBlank(cliOverride)) return cliOverride;
         Path toml = moduleDir.resolve(ManifestPaths.MANIFEST);
         if (!Files.isRegularFile(toml)) return null;
@@ -180,7 +181,7 @@ public final class NativePreflight {
         return false;
     }
 
-    private static boolean notBlank(String s) {
+    private static boolean notBlank(@Nullable String s) {
         return s != null && !s.isBlank();
     }
 }

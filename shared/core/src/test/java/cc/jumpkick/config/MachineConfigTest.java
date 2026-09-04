@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -82,10 +83,10 @@ class MachineConfigTest {
             Object builtIn,
             String fileBody,
             Object fromFile,
-            String envName,
-            String validEnv,
-            Object fromEnv,
-            String invalidEnv,
+            @Nullable String envName,
+            @Nullable String validEnv,
+            @Nullable Object fromEnv,
+            @Nullable String invalidEnv,
             Read read) {
         @Override
         public String toString() {
@@ -94,7 +95,7 @@ class MachineConfigTest {
     }
 
     interface Read {
-        Object of(Path userConfig, Function<String, String> env) throws IOException;
+        Object of(Path userConfig, Function<String, @Nullable String> env) throws IOException;
     }
 
     static List<Reader> readers() {
@@ -203,8 +204,8 @@ class MachineConfigTest {
      */
     @Test
     void a_two_valued_setting_still_ranks_env_over_file(@TempDir Path dir) throws IOException {
-        Function<String, String> on = Map.of("JK_M2_INTEGRATION", "true")::get;
-        Function<String, String> off = Map.of("JK_M2_INTEGRATION", "false")::get;
+        Function<String, @Nullable String> on = Map.of("JK_M2_INTEGRATION", "true")::get;
+        Function<String, @Nullable String> off = Map.of("JK_M2_INTEGRATION", "false")::get;
         assertThat(JkM2Config.resolve(write(dir, "[m2]\nintegration = false\n"), on)
                         .integration())
                 .isTrue();
@@ -241,7 +242,7 @@ class MachineConfigTest {
         }
     }
 
-    private static Function<String, String> noEnv() {
+    private static Function<String, @Nullable String> noEnv() {
         return name -> null;
     }
 

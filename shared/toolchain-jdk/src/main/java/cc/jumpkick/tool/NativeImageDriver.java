@@ -20,12 +20,13 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Consumer;
-import java.util.function.UnaryOperator;
+import java.util.function.Function;
 import java.util.jar.Attributes;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Driver for GraalVM {@code native-image}: verify binary, assemble classpath, exec. Stdout/stderr
@@ -333,7 +334,7 @@ public final class NativeImageDriver {
      * {@code BuildEnv.forModule(dir)} so {@code GRAALVM_HOME} and {@code PATH} are the ones the
      * user actually invoked jk with.
      */
-    public static Optional<Path> resolve(Path javaHome, UnaryOperator<String> env) {
+    public static Optional<Path> resolve(Path javaHome, Function<String, @Nullable String> env) {
         // 1. Project-pinned JDK
         Optional<Path> pinned = GraalLauncher.in(javaHome);
         if (pinned.isPresent()) return pinned;

@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Working-tree path enumerator for {@code --affected}. ProcessBuilder only — the same style as
@@ -26,7 +27,7 @@ public final class DirtyPaths {
      * (not a repo / no binary / non-zero). Empty list means git worked and nothing is dirty,
      * including a missing {@code HEAD~1} fallback.
      */
-    public static List<String> wip(Path root) {
+    public static @Nullable List<String> wip(Path root) {
         List<String> wt = workingTree(root);
         if (wt == null) return null;
         if (!wt.isEmpty()) return wt;
@@ -35,7 +36,7 @@ public final class DirtyPaths {
     }
 
     /** Unstaged + staged vs HEAD, plus untracked. {@code null} on git failure. */
-    static List<String> workingTree(Path root) {
+    static @Nullable List<String> workingTree(Path root) {
         List<String> diff = gitDiffNameOnly(root, "HEAD");
         if (diff == null) return null;
         List<String> untracked = gitUntracked(root);
@@ -57,11 +58,11 @@ public final class DirtyPaths {
      * With it, both commands speak workspace-root-relative, and dirt outside the root (which no
      * module can own) drops out instead of mis-resolving.
      */
-    static List<String> gitDiffNameOnly(Path root, String rev) {
+    static @Nullable List<String> gitDiffNameOnly(Path root, String rev) {
         return gitLines(root, "diff", "--name-only", "--relative", "--end-of-options", rev);
     }
 
-    static List<String> gitUntracked(Path root) {
+    static @Nullable List<String> gitUntracked(Path root) {
         return gitLines(root, "ls-files", "--others", "--exclude-standard");
     }
 
@@ -70,7 +71,7 @@ public final class DirtyPaths {
      * stderr is discarded, never parsed: a {@code warning:}/{@code hint:} line merged into the
      * output would otherwise be taken for a dirty path.
      */
-    static List<String> gitLines(Path root, String... gitArgs) {
+    static @Nullable List<String> gitLines(Path root, String... gitArgs) {
         try {
             List<String> cmd = new ArrayList<>();
             cmd.add("git");

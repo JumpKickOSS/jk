@@ -3,6 +3,7 @@ package cc.jumpkick.resolver;
 
 import cc.jumpkick.model.PackageId;
 import cc.jumpkick.resolver.DependencyTreeStyle.Styling;
+import org.jspecify.annotations.Nullable;
 
 /**
  * How a module key becomes a printable coordinate. One owner, because the tree renders the same
@@ -58,7 +59,7 @@ final class TreeCoords {
     }
 
     /** {@code group:artifact:version} when a version is known, else {@code group:artifact}. */
-    static String coordVersioned(String module, String version, Styling styling) {
+    static String coordVersioned(String module, @Nullable String version, Styling styling) {
         Ga ga = split(module);
         return version == null
                 ? styling.group().apply(ga.group()) + ":" + styling.artifact().apply(ga.artifact())

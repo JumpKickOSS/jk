@@ -15,6 +15,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Predicate;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Per-job input-tree snapshot. One covering {@code walkFileTree} of {@code src/} (compact: also
@@ -36,10 +37,10 @@ public final class InputTrees {
     private static volatile LastJob LAST = LastJob.EMPTY;
 
     /** Override for tests; {@code null} means {@link JkEngineConfig#resolve()}. */
-    private static volatile JkEngineConfig testConfig;
+    private static volatile @Nullable JkEngineConfig testConfig;
 
     /** Test seam: when set, a covering walk fails as if the tree could not be listed. */
-    static volatile IOException loadFailureForTest;
+    static volatile @Nullable IOException loadFailureForTest;
 
     public static Snapshot of(Path root) {
         return of(root, WalkSkip.ID_NONE);
@@ -466,7 +467,7 @@ public final class InputTrees {
         return r;
     }
 
-    private static volatile JkEngineConfig resolved;
+    private static volatile @Nullable JkEngineConfig resolved;
 
     /** Caller holds the table's monitor. */
     private static void decideStream(Table table) {
@@ -477,7 +478,7 @@ public final class InputTrees {
     }
 
     /** Caller holds the table's monitor. */
-    private static Snapshot ancestor(Table table, Path abs, String skipId) {
+    private static @Nullable Snapshot ancestor(Table table, Path abs, String skipId) {
         for (Key cov : table.covering) {
             if (cov.skipId.equals(skipId) && abs.startsWith(cov.root) && !abs.equals(cov.root)) {
                 return table.byKey.get(cov);

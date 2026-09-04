@@ -531,12 +531,12 @@ object Guards {
             spec(
                 53,
                 "checkNullMarkedApiPackages",
-                "a production package in `shared/jk-api`, `shared/wire`, or `shared/plugin-sdk` lacks package-level `@NullMarked`, or the measured 14-package corpus shrinks",
+                "a production package in an enforced null-marked root (`shared/jk-api`, `shared/wire`, `shared/plugin-sdk`, `shared/core`) lacks package-level `@NullMarked` without a `NullMarking.excludedPackages` entry, an exclusion goes stale, or the measured 30-package corpus drifts",
                 "ban, no allowlist",
                 GuardHome.ROOT,
                 tableTask = "`checkNullMarkedApiPackages` (root project) + `.jk/after-build.kts`",
                 attach = emptySet(),
-                description = "Fail when an enforced API boundary package lacks package-level @NullMarked",
+                description = "Fail when an enforced null-marked package lacks package-level @NullMarked",
             ),
             spec(
                 54,

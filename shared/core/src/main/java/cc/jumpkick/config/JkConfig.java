@@ -66,7 +66,7 @@ public record JkConfig(
         ALWAYS,
         NEVER;
 
-        public static Optional<ColorChoice> parse(String s) {
+        public static Optional<ColorChoice> parse(@Nullable String s) {
             if (s == null || s.isBlank()) return Optional.empty();
             return switch (s.trim().toLowerCase(Locale.ROOT)) {
                 case "auto" -> Optional.of(AUTO);
@@ -87,7 +87,7 @@ public record JkConfig(
         ALWAYS,
         NEVER;
 
-        public static Optional<NotifyChoice> parse(String s) {
+        public static Optional<NotifyChoice> parse(@Nullable String s) {
             if (s == null || s.isBlank()) return Optional.empty();
             return switch (s.trim().toLowerCase(Locale.ROOT)) {
                 case "auto" -> Optional.of(AUTO);

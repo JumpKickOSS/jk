@@ -20,7 +20,9 @@ dependencies {
 }
 
 tasks.withType<JavaCompile>().configureEach {
+    val excuse = NullMarking.unmarkedCompileTasks["${project.name}:$name"]
     options.errorprone {
+        isEnabled = excuse == null
         disableAllChecks = true
         error("RequireExplicitNullMarking")
         nullaway {

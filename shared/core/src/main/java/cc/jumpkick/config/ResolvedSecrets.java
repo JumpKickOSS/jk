@@ -4,6 +4,7 @@ package cc.jumpkick.config;
 import java.nio.file.Path;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Credential values jk resolved for itself, so free-form text that leaves the process can mask
@@ -85,7 +86,7 @@ public final class ResolvedSecrets {
      * The workspace root owning {@code dir}, else {@code dir} itself — a single-module project is
      * its own scope. Absolute and normalized so the record and lookup sides key alike.
      */
-    private static Path scope(Path dir) {
+    private static @Nullable Path scope(Path dir) {
         try {
             Path abs = dir.toAbsolutePath().normalize();
             return WorkspaceLocator.findRoot(abs).orElse(abs);

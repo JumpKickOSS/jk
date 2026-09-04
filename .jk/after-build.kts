@@ -3161,14 +3161,18 @@ guard("G51", "checkGuardParity") {
 }
 
 // ---------------------------------------------------------------------------
-// Guard G53: every production package in the enforced API boundaries is @NullMarked.
+// Guard G53: every production package in an enforced source root is @NullMarked.
 // ---------------------------------------------------------------------------
 
 guard("G53", "checkNullMarkedApiPackages") {
+    // Mirrors buildSrc's NullMarking.enforcedRoots; this gate cannot read buildSrc.
     val roots = listOf(
         "shared/jk-api/src/main/java/",
         "shared/wire/src/main/java/",
-        "shared/plugin-sdk/src/main/java/")
+        "shared/plugin-sdk/src/main/java/",
+        "shared/core/src/main/java/")
+    // Mirrors NullMarking.excludedPackages: a package left unmarked on purpose, with its reason.
+    val excluded = emptyMap<String, String>()
     val packagePattern = Regex("""(?m)^\s*package\s+([A-Za-z_][\w.]*)\s*;""")
     val sources = treeFiles.filter { file ->
         val path = rel(file)
@@ -3178,20 +3182,24 @@ guard("G53", "checkNullMarkedApiPackages") {
         .filterNot { it.fileName.toString() == "package-info.java" }
         .mapNotNull { packagePattern.find(text(it))?.groupValues?.get(1) }
         .toSortedSet()
-    if (packages.size != 14) {
-        error("Found ${packages.size} production API packages; measured against 14. The source"
+    if (packages.size != 30) {
+        error("Found ${packages.size} enforced production packages; measured against 30. The source"
             + " roots or package parser drifted, so this guard cannot report green.")
     }
     val markers = sources.filter { it.fileName.toString() == "package-info.java" }.associateBy { file ->
         packagePattern.find(text(file))?.groupValues?.get(1)
     }
-    val missing = packages.filter { pkg ->
+    val marked = packages.filter { pkg ->
         val marker = markers[pkg]
-        marker == null || !text(marker).contains("@NullMarked")
-    }
-    if (missing.isNotEmpty()) {
-        error("Production API packages must declare package-level @NullMarked:\n"
-            + bullets(missing))
+        marker != null && text(marker).contains("@NullMarked")
+    }.toSet()
+    val faults = mutableListOf<String>()
+    (packages - marked - excluded.keys).forEach { faults.add("$it lacks package-level @NullMarked") }
+    (excluded.keys - packages).forEach { faults.add("$it is excluded but is not a production package") }
+    excluded.keys.filter { it in marked }.forEach { faults.add("$it is marked now - drop its exclusion") }
+    if (faults.isNotEmpty()) {
+        error("Enforced production packages must declare package-level @NullMarked, or hold an"
+            + " exclusion entry stating why:\n" + bullets(faults.sorted()))
     }
 }
 

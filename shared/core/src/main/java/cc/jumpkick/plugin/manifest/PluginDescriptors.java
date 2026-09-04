@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 import org.tomlj.Toml;
 import org.tomlj.TomlArray;
 import org.tomlj.TomlParseResult;
@@ -111,7 +112,8 @@ public final class PluginDescriptors {
     }
 
     /** Typed schema keys from one table of {@code key = { type = "…", … }} specs. */
-    private static Map<String, PluginDescriptor.SchemaKey> parseSchemaKeys(TomlTable schemaTable, String where) {
+    private static Map<String, PluginDescriptor.SchemaKey> parseSchemaKeys(
+            @Nullable TomlTable schemaTable, String where) {
         Map<String, PluginDescriptor.SchemaKey> schema = new LinkedHashMap<>();
         if (schemaTable == null) return schema;
         for (String key : schemaTable.keySet()) {
@@ -155,7 +157,7 @@ public final class PluginDescriptors {
     }
 
     /** The {@code [code]} table — the plugin's worker jar carrying step/packager bodies (P3). */
-    private static PluginDescriptor.Code parseCode(TomlParseResult result, String displayPath) {
+    private static PluginDescriptor.@Nullable Code parseCode(TomlParseResult result, String displayPath) {
         TomlTable code = result.getTable("code");
         if (code == null) return null;
         // `worker` names a registered first-party worker jar; a third-party plugin IS its own
@@ -172,7 +174,7 @@ public final class PluginDescriptors {
     }
 
     /** Parse the {@code [packaging]} table. */
-    private static PluginDescriptor.Packaging parsePackaging(TomlParseResult result, String displayPath) {
+    private static PluginDescriptor.@Nullable Packaging parsePackaging(TomlParseResult result, String displayPath) {
         TomlTable packaging = result.getTable("packaging");
         if (packaging == null) return null;
         List<PluginDescriptor.Packaging.Variant> variants = new ArrayList<>();
@@ -456,7 +458,7 @@ public final class PluginDescriptors {
      * PluginDescriptor.Condition} — the closed predicate set; two predicates in one {@code when}
      * (or an unknown one) is a load error, never a silently-false condition.
      */
-    private static PluginDescriptor.Condition parseCondition(TomlTable entry, String where) {
+    private static PluginDescriptor.@Nullable Condition parseCondition(TomlTable entry, String where) {
         if (!entry.contains("when")) return null;
         TomlTable when = entry.getTable("when");
         if (when == null) {
@@ -533,7 +535,7 @@ public final class PluginDescriptors {
         return out;
     }
 
-    private static Object defaultFor(TomlTable spec, PluginDescriptor.SchemaKey.Type type, String where) {
+    private static @Nullable Object defaultFor(TomlTable spec, PluginDescriptor.SchemaKey.Type type, String where) {
         if (!spec.contains("default")) return null;
         return switch (type) {
             case STRING -> spec.getString("default");
@@ -561,7 +563,7 @@ public final class PluginDescriptors {
      * the manifest at load with the upgrade error. Only the {@code >=} form exists; anything else
      * is a manifest error. Pre-release suffixes compare by their numeric core.
      */
-    static void requireJkCompat(String id, String jkCompat) {
+    static void requireJkCompat(String id, @Nullable String jkCompat) {
         if (jkCompat == null || jkCompat.isBlank()) return;
         String spec = jkCompat.trim();
         if (!spec.startsWith(">=")) {
@@ -577,7 +579,7 @@ public final class PluginDescriptors {
     }
 
     /** Numeric core of a {@code >=x.y} spec, or null when unset. */
-    public static String jkCompatFloor(String jkCompat) {
+    public static @Nullable String jkCompatFloor(String jkCompat) {
         if (jkCompat == null || jkCompat.isBlank()) return null;
         String spec = jkCompat.trim();
         if (!spec.startsWith(">=")) return null;

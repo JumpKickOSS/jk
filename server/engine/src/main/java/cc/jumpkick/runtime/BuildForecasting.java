@@ -173,10 +173,7 @@ public final class BuildForecasting {
                 Set<Path> memoDirty = new HashSet<>(memo.get().dirty());
                 withStaleOutputs(graph, entryDir, memo.get().fingerprints(), memoDirty);
                 return new Preflight(
-                        memoDirty,
-                        memo.get().restoreNeeded(),
-                        memo.get().fingerprints(),
-                        List.of());
+                        memoDirty, memo.get().restoreNeeded(), memo.get().fingerprints(), List.of());
             }
             fps = PreflightMemo.snapshotFingerprints(graph, skipTests);
         } else {

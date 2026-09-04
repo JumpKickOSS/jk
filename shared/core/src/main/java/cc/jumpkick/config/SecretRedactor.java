@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Masks {@code .env}-sourced values in text that leaves the process.
@@ -101,7 +102,7 @@ public final class SecretRedactor {
      * Build a redactor from an {@link EnvLookup}: the effective value of every name a {@code .env}
      * file declares, whether the file or the real environment supplied it.
      */
-    public static SecretRedactor from(EnvLookup env) {
+    public static SecretRedactor from(@Nullable EnvLookup env) {
         Objects.requireNonNull(env, "env");
         Set<String> values = new LinkedHashSet<>();
         for (String name : env.fileNames()) {
@@ -210,7 +211,7 @@ public final class SecretRedactor {
         return v;
     }
 
-    private volatile SecretRedactor escapedJsonView;
+    private volatile @Nullable SecretRedactor escapedJsonView;
 
     /**
      * JSON string-body escaping, delegated to {@code Jsonl.quote} (the writer this redaction
@@ -231,7 +232,6 @@ public final class SecretRedactor {
      * cache key.
      */
     public String forCacheKey(String value) {
-        if (value == null) return null;
         if (secrets.isEmpty() || !containsSecret(value)) return value;
         return KEY_PREFIX + Hashing.sha256Hex(value);
     }

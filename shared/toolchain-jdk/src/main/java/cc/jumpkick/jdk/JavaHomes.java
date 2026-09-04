@@ -13,7 +13,8 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Project;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.function.UnaryOperator;
+import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Resolves the JDK home for a Java launch: project pin via {@link JdkResolution#resolveForHook},
@@ -36,7 +37,7 @@ public final class JavaHomes {
             Lockfile lock = readLockSoft(projectDir);
             JkBuild build = readBuildSoft(projectDir);
             // The request's environment, not the daemon's.
-            UnaryOperator<String> env = BuildEnv.forModule(projectDir);
+            Function<String, @Nullable String> env = BuildEnv.forModule(projectDir);
             JdkResolution.Request req = new JdkResolution.Request(
                     projectDir,
                     SessionContext.current().jdkSpec(),

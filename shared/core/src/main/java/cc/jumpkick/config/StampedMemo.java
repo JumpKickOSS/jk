@@ -44,12 +44,12 @@ import org.jspecify.annotations.Nullable;
  * @param <S> staleness stamp, compared by {@link Object#equals}
  * @param <V> memoized value; {@code null} is a value, so "this file says nothing" is memoized too
  */
-public final class StampedMemo<K, S, V> {
+public final class StampedMemo<K, S, V extends @Nullable Object> {
 
     private final ConcurrentHashMap<K, Entry<S, V>> entries = new ConcurrentHashMap<>();
 
     /** {@code ConcurrentHashMap} rejects null values, so the entry wrapper carries the nullable one. */
-    private record Entry<S, V>(S stamp, @Nullable V value) {}
+    private record Entry<S, V extends @Nullable Object>(S stamp, V value) {}
 
     /**
      * Entries kept before the map is cleared, or {@link Integer#MAX_VALUE} for no bound.
@@ -67,7 +67,7 @@ public final class StampedMemo<K, S, V> {
     }
 
     /** A fresh, empty memo with no entry bound. */
-    public static <K, S, V> StampedMemo<K, S, V> create() {
+    public static <K, S, V extends @Nullable Object> StampedMemo<K, S, V> create() {
         return new StampedMemo<>(Integer.MAX_VALUE);
     }
 
@@ -79,7 +79,7 @@ public final class StampedMemo<K, S, V> {
      * re-read. {@code FileHashMemo} ranks victims instead, because its entries are ~200 B and it is
      * the one memo where the eviction order is worth paying for.
      */
-    public static <K, S, V> StampedMemo<K, S, V> bounded(int maxEntries) {
+    public static <K, S, V extends @Nullable Object> StampedMemo<K, S, V> bounded(int maxEntries) {
         if (maxEntries < 1) throw new IllegalArgumentException("maxEntries must be positive");
         return new StampedMemo<>(maxEntries);
     }
@@ -89,7 +89,7 @@ public final class StampedMemo<K, S, V> {
      * stamp {@link Object#equals equals} this one; otherwise {@code compute} runs and its result
      * replaces the entry.
      */
-    public @Nullable V get(K key, S stamp, Supplier<V> compute) {
+    public V get(K key, S stamp, Supplier<V> compute) {
         Entry<S, V> hit = entries.get(key);
         if (hit != null && hit.stamp().equals(stamp)) return hit.value();
         V fresh = compute.get();

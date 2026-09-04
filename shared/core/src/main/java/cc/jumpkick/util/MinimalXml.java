@@ -6,6 +6,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Minimal XML reader/writer for small machine-written configs (no JAXP). Supports elements,
@@ -44,7 +45,7 @@ public final class MinimalXml {
         }
 
         /** Attribute value, or {@code null} when absent. */
-        public String attr(String attrName) {
+        public @Nullable String attr(String attrName) {
             return attributes.get(attrName);
         }
 
@@ -139,6 +140,7 @@ public final class MinimalXml {
             this.s = !s.isEmpty() && s.charAt(0) == '\uFEFF' ? s.substring(1) : s;
         }
 
+        @Nullable
         Element document() {
             Element root = null;
             while (i < s.length()) {

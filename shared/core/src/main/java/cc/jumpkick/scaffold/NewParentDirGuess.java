@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Educated guess for the parent directory of a new project (web {@code New project} modal and any
@@ -63,7 +64,7 @@ public final class NewParentDirGuess {
      * @param home user home (may be null)
      * @param historyDirs absolute project dirs from past builds (may be empty)
      */
-    public static Path guess(Path home, List<Path> historyDirs) {
+    public static Path guess(@Nullable Path home, List<Path> historyDirs) {
         Path homeAbs = home == null ? null : home.toAbsolutePath().normalize();
         if (homeAbs != null && !Files.isDirectory(homeAbs)) homeAbs = null;
 
@@ -87,7 +88,7 @@ public final class NewParentDirGuess {
      * Longest common ancestor of history dirs that is under home (or unrestricted when home is
      * null), exists, and is deeper than home when possible.
      */
-    static Path commonBuildParent(List<Path> historyDirs, Path homeAbs) {
+    static @Nullable Path commonBuildParent(List<Path> historyDirs, @Nullable Path homeAbs) {
         if (historyDirs == null || historyDirs.isEmpty()) return null;
         List<Path> parents = new ArrayList<>();
         for (Path d : historyDirs) {
@@ -118,7 +119,7 @@ public final class NewParentDirGuess {
         return common;
     }
 
-    static Path longestCommonPrefix(Path a, Path b) {
+    static @Nullable Path longestCommonPrefix(Path a, Path b) {
         if (a == null || b == null) return null;
         a = a.toAbsolutePath().normalize();
         b = b.toAbsolutePath().normalize();
@@ -135,7 +136,7 @@ public final class NewParentDirGuess {
      * Walk non-hidden children under home (depth ≤ 4), collect parents of directories that contain
      * {@code .git}, and return the most common such parent (tie → shorter path, then name order).
      */
-    static Path gitClusterParent(Path homeAbs) {
+    static @Nullable Path gitClusterParent(Path homeAbs) {
         List<Path> repoParents = new ArrayList<>();
         int[] visits = {0};
         scanGit(homeAbs, homeAbs, 0, repoParents, visits);

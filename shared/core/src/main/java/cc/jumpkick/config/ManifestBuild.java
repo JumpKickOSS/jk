@@ -29,6 +29,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 import org.tomlj.TomlArray;
 import org.tomlj.TomlTable;
 
@@ -95,7 +96,7 @@ public final class ManifestBuild {
      */
     static void checkUnownedTables(
             TomlTable root,
-            Path moduleDir,
+            @Nullable Path moduleDir,
             List<PluginDeclaration> plugins,
             List<PluginDescriptor> installed,
             Map<String, String> builtInFetchFailures) {
@@ -139,7 +140,7 @@ public final class ManifestBuild {
      * conditioned deps silently never contribute. Idempotent: modules already declared (including
      * everything the pre-resolution fold added) are skipped.
      */
-    static JkBuild reapplyPlatformContributions(Path moduleDir, JkBuild module) {
+    static JkBuild reapplyPlatformContributions(@Nullable Path moduleDir, JkBuild module) {
         try {
             List<PluginDescriptor> manifests = PluginTableRegistry.manifestsFor(moduleDir, module.plugins());
             return module.withDependencies(withPlatformContributions(
@@ -210,8 +211,15 @@ public final class ManifestBuild {
         String graal = graalSpec.resolverSpec();
         if (graal.isEmpty()) graal = "graalvm";
         JkBuild.NativeMode enabled = parseNativeEnabled(native_);
+        VersionSelector metadata = parseMetadataRepository(native_);
         return Optional.of(new JkBuild.NativeConfig(
-                mainClass, name, args, graal, enabled, parseMetadataRepository(native_), graalSpec));
+                mainClass,
+                name,
+                args,
+                graal,
+                enabled,
+                metadata == null ? JkBuild.NativeConfig.METADATA_REPOSITORY_DEFAULT : metadata,
+                graalSpec));
     }
 
     /**
@@ -220,7 +228,7 @@ public final class ManifestBuild {
      * JkBuild.NativeConfig#METADATA_REPOSITORY_DEFAULT} in place. Bare versions float like a
      * dependency's ({@code "1.1"} is a caret floor); write {@code "=1.1.4"} to nail one release.
      */
-    private static VersionSelector parseMetadataRepository(TomlTable native_) {
+    private static @Nullable VersionSelector parseMetadataRepository(TomlTable native_) {
         String raw = native_.getString("metadata-repository");
         if (raw == null) return null;
         if (raw.isBlank()) {
@@ -545,7 +553,7 @@ public final class ManifestBuild {
         return name;
     }
 
-    private static String scalar(Object value, String where) {
+    private static String scalar(@Nullable Object value, String where) {
         if (value instanceof String s) return s;
         if (value instanceof Boolean || value instanceof Long || value instanceof Double) {
             return String.valueOf(value);

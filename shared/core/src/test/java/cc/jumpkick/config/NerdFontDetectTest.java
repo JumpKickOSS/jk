@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -219,7 +220,7 @@ class NerdFontDetectTest {
         return detect(env, new Fonts().iterm(f).alacritty(f).vscode(f).zed(f));
     }
 
-    private static Function<String, String> lookup(Map<String, String> env) {
+    private static Function<String, @Nullable String> lookup(@Nullable Map<String, String> env) {
         return env::get;
     }
 

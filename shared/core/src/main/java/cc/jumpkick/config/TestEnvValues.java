@@ -8,7 +8,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.function.UnaryOperator;
+import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The one expansion of {@code [test] env}.
@@ -70,7 +71,7 @@ public final class TestEnvValues {
          *
          * @param env the build's environment, normally {@link BuildEnv#forModule(Path)}
          */
-        record Launch(UnaryOperator<String> env) implements Mode {
+        record Launch(Function<String, @Nullable String> env) implements Mode {
             public Launch {
                 Objects.requireNonNull(env, "env");
             }
@@ -110,7 +111,7 @@ public final class TestEnvValues {
      * @throws JkBuildParseException if a {@link JkBuild.TestEnvDecl.Set} value references an
      * environment variable that is not set — in both modes, which is the whole point of this type
      */
-    public static Map<String, String> resolve(
+    public static @Nullable Map<String, String> resolve(
             List<JkBuild.TestEnvDecl> declared, Path moduleDir, Path target, Mode mode) {
         Map<String, String> out = new LinkedHashMap<>();
         for (JkBuild.TestEnvDecl decl : declared) {
@@ -147,7 +148,7 @@ public final class TestEnvValues {
      * or disappears — hence a marker for absent rather than dropping the entry, so that toggling
      * {@code JK_WEB_JS_SKIP} cannot replay the other setting's cached result.
      */
-    private static String forwarded(String name, Mode mode) {
+    private static @Nullable String forwarded(String name, Mode mode) {
         return switch (mode) {
             case Mode.Launch launch -> launch.env().apply(name);
             case Mode.CacheKey key -> {
@@ -162,7 +163,7 @@ public final class TestEnvValues {
     }
 
     /** Path tokens preserved, environment references expanded, anything the environment answered hashed. */
-    private static String keyed(String raw, String where, Mode.CacheKey mode) {
+    private static @Nullable String keyed(String raw, String where, Mode.CacheKey mode) {
         boolean[] fromEnvironment = {false};
         String expanded = Interpolation.expand(raw, where, name -> switch (name) {
             case TARGET, MODULE -> "${" + name + "}";
@@ -172,6 +173,7 @@ public final class TestEnvValues {
                 yield value;
             }
         });
+        if (expanded == null) return null;
         String masked = mode.secrets().forCacheKey(expanded);
         // A non-secret reference (${HOME}, a CI build id) still keys by VALUE — a changed
         // environment must retest — but the literal is an absolute path or an identifier and must

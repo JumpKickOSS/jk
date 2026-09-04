@@ -7,6 +7,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Declarative plugin manifest ({@code jk-plugin.toml}): owned table, schema, contributions.
@@ -16,12 +17,12 @@ import java.util.Objects;
 public record PluginDescriptor(
         String id,
         String table,
-        String version,
-        String jkCompat,
+        @Nullable String version,
+        @Nullable String jkCompat,
         Map<String, SchemaKey> schema,
         Contributions contributions,
-        Code code,
-        Packaging packaging,
+        @Nullable Code code,
+        @Nullable Packaging packaging,
         List<GradleImport> gradleImports,
         Map<String, Map<String, SchemaKey>> subSchemas,
         Map<String, SubTable> subTables) {
@@ -57,14 +58,15 @@ public record PluginDescriptor(
      * config); {@code missingVersionWarning} is reported when {@code versionTo} is set but the
      * Gradle build declares the plugin without an inline version.
      */
-    public record GradleImport(String id, String versionTo, String missingVersionWarning) {
+    public record GradleImport(
+            String id, @Nullable String versionTo, @Nullable String missingVersionWarning) {
         public GradleImport {
             Objects.requireNonNull(id, "id");
         }
     }
 
     /** {@code [code]}: worker jar artifactId and protocol prefix. */
-    public record Code(String worker, String protocolPrefix) {}
+    public record Code(@Nullable String worker, String protocolPrefix) {}
 
     /**
      * {@code [packaging]} static descriptor for run/install/image (no plugin code).
@@ -77,7 +79,7 @@ public record PluginDescriptor(
      * @param layeredImage layered container dependency layout
      */
     public record Packaging(
-            String packager,
+            @Nullable String packager,
             String execMode,
             boolean selfContained,
             boolean classesRun,
@@ -144,7 +146,7 @@ public record PluginDescriptor(
             List<ProvidedClasspath> providedClasspath,
             List<SourceRoot> sourceRoots,
             /** GMM {@code org.gradle.jvm.environment} (e.g. {@code "android"}), or null. */
-            String jvmEnvironment) {
+            @Nullable String jvmEnvironment) {
 
         public static final Contributions NONE = new Contributions(
                 List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
@@ -180,14 +182,16 @@ public record PluginDescriptor(
      * {@code kind = "resource"} spelling; source otherwise. Always relative and non-escaping —
      * the parser rejects absolute or {@code ..} dirs at manifest load.
      */
-    public record SourceRoot(String dir, boolean resource, Condition when) {
+    public record SourceRoot(
+            String dir, boolean resource, @Nullable Condition when) {
         public SourceRoot {
             Objects.requireNonNull(dir, "dir");
         }
     }
 
     /** Extra packager artifact (fetch-only; not on the project graph). */
-    public record PackagerDependency(String artifact, String coordinate, Condition when) {}
+    public record PackagerDependency(
+            String artifact, String coordinate, @Nullable Condition when) {}
 
     /**
      * One tool artifact entry — the shape of both {@code [[contribute.step-dependency]]} and
@@ -203,19 +207,19 @@ public record PluginDescriptor(
      */
     public record StepDependency(
             String artifact,
-            String coordinate,
+            @Nullable String coordinate,
             boolean transitive,
-            String sdkComponent,
-            String sdkPath,
-            String managedBy,
+            @Nullable String sdkComponent,
+            @Nullable String sdkPath,
+            @Nullable String managedBy,
             List<String> with,
-            Condition when) {
+            @Nullable Condition when) {
 
         public StepDependency {
             with = with == null ? List.of() : List.copyOf(with);
         }
 
-        public StepDependency(String artifact, String coordinate, Condition when) {
+        public StepDependency(String artifact, @Nullable String coordinate, @Nullable Condition when) {
             this(artifact, coordinate, false, null, null, null, List.of(), when);
         }
     }
@@ -223,18 +227,24 @@ public record PluginDescriptor(
     /**
      * Step-dependency also on the COMPILE classpath (PROVIDED: compile-only, not packaged).
      */
-    public record ProvidedClasspath(String dependency, Condition when) {}
+    public record ProvidedClasspath(
+            String dependency, @Nullable Condition when) {}
 
     /**
      * BOM-style platform dependency; injected at parse time (may not use {@code classpath-has}).
      */
-    public record PlatformDependency(String coordinate, Condition when) {}
+    public record PlatformDependency(
+            String coordinate, @Nullable Condition when) {}
 
     /**
      * Default javac/kotlinc/groovyc/ksp args; skipped when the user already supplied the same arg.
      */
     public record CompilerArgs(
-            List<String> javac, List<String> kotlin, List<String> groovy, List<String> ksp, Condition when) {
+            List<String> javac,
+            List<String> kotlin,
+            List<String> groovy,
+            List<String> ksp,
+            @Nullable Condition when) {
         public CompilerArgs {
             javac = javac == null ? List.of() : List.copyOf(javac);
             kotlin = kotlin == null ? List.of() : List.copyOf(kotlin);
@@ -243,7 +253,7 @@ public record PluginDescriptor(
         }
 
         /** No groovy lane. */
-        public CompilerArgs(List<String> javac, List<String> kotlin, List<String> ksp, Condition when) {
+        public CompilerArgs(List<String> javac, List<String> kotlin, List<String> ksp, @Nullable Condition when) {
             this(javac, kotlin, List.of(), ksp, when);
         }
     }
@@ -253,14 +263,18 @@ public record PluginDescriptor(
      * initialization policy, which reachability metadata does not express and static analysis
      * cannot infer. Composed before the user's {@code [native] args}, so the user wins.
      */
-    public record NativeArgs(List<String> args, Condition when) {
+    public record NativeArgs(List<String> args, @Nullable Condition when) {
         public NativeArgs {
             args = args == null ? List.of() : List.copyOf(args);
         }
     }
 
     /** Kotlin compiler plugin: BTA id, jar coordinate, options. */
-    public record KotlinPlugin(String id, String coordinate, List<String> options, Condition when) {
+    public record KotlinPlugin(
+            String id,
+            String coordinate,
+            List<String> options,
+            @Nullable Condition when) {
         public KotlinPlugin {
             options = options == null ? List.of() : List.copyOf(options);
         }
@@ -292,9 +306,9 @@ public record PluginDescriptor(
             String name,
             Type type,
             boolean required,
-            Object defaultValue,
-            String example,
-            String hint,
+            @Nullable Object defaultValue,
+            @Nullable String example,
+            @Nullable String hint,
             boolean secret) {
 
         public enum Type {
@@ -317,7 +331,7 @@ public record PluginDescriptor(
         }
 
         /** The default's runtime shape, normalized to the {@code PluginConfig} value vocabulary. */
-        public Object normalizedDefault() {
+        public @Nullable Object normalizedDefault() {
             if (defaultValue instanceof List<?> l)
                 return List.copyOf(l.stream().map(String::valueOf).toList());
             return defaultValue;

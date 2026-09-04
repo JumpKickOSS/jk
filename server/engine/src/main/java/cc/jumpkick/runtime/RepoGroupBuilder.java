@@ -24,7 +24,8 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.function.UnaryOperator;
+import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Builds a {@link RepoGroup} from project/global repositories (project wins on name clash),
@@ -62,7 +63,8 @@ public final class RepoGroupBuilder {
      * {@code repositories.<name>} position, rather than a silent null that would fall through to
      * the ambient AWS chain and fail far away from the cause.
      */
-    static ObjectStoreConfig expandObjectStore(String repoName, ObjectStoreConfig cfg, UnaryOperator<String> env) {
+    static ObjectStoreConfig expandObjectStore(
+            String repoName, ObjectStoreConfig cfg, Function<String, @Nullable String> env) {
         if (cfg == null || cfg.isEmpty()) return ObjectStoreConfig.EMPTY;
         String where = "repositories." + repoName;
         RepositoryToml.VarPolicy strict = RepositoryToml.VarPolicy.STRICT;
@@ -87,7 +89,8 @@ public final class RepoGroupBuilder {
      * {@code Inputs.env}, which layers the project's {@code .env} under the caller's shell
      * environment; the three-argument overload keeps ambient behaviour for tooling and tests.
      */
-    public static RepoGroup buildFor(JkBuild project, URI overrideUrl, Cas cas, UnaryOperator<String> env) {
+    public static RepoGroup buildFor(
+            JkBuild project, URI overrideUrl, Cas cas, Function<String, @Nullable String> env) {
         Http http = new Http();
         List<MavenRepo> repos = new ArrayList<>();
         boolean mirrorToM2 = project.project().m2integration();

@@ -9,6 +9,7 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Closed {@code ${…}} interpolation for manifest contributions: {@code ${config.<key>}},
@@ -74,7 +75,8 @@ final class Interpolation {
      * Resolve a validated template. Null {@code kotlinVersion} makes {@code ${kotlin.version}} an
      * evaluation error.
      */
-    static String resolve(String template, PluginConfig config, Project project, String kotlinVersion) {
+    static String resolve(
+            @Nullable String template, PluginConfig config, Project project, @Nullable String kotlinVersion) {
         Matcher m = VAR.matcher(template);
         StringBuilder out = new StringBuilder();
         while (m.find()) {

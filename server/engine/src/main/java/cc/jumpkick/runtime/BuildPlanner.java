@@ -37,8 +37,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 import java.util.function.Supplier;
-import java.util.function.UnaryOperator;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Assembles {@link BuildPlan} DAGs for build-family commands: core tasks via {@link #coreBuilder},
@@ -246,7 +247,7 @@ public final class BuildPlanner {
          * client env, did see it. Same precedence the plugin-config {@code env:} indirection
          * already documents.
          */
-        public UnaryOperator<String> env() {
+        public Function<String, @Nullable String> env() {
             return BuildEnv.forModule(dir);
         }
 

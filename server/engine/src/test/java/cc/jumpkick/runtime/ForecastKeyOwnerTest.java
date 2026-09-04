@@ -11,7 +11,7 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.plugin.PluginModule;
+import cc.jumpkick.plugin.manifest.PluginModule;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;

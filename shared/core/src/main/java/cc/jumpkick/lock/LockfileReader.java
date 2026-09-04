@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 import org.tomlj.Toml;
 import org.tomlj.TomlArray;
 import org.tomlj.TomlParseResult;
@@ -208,7 +209,7 @@ public final class LockfileReader {
      * normal clean diagnostic — not an unchecked {@code TomlInvalidTypeException} escaping to
      * callers that only catch {@code IOException}.
      */
-    private static TomlTable tableOrFail(TomlParseResult result, String key, String origin) {
+    private static @Nullable TomlTable tableOrFail(TomlParseResult result, String key, String origin) {
         if (result.isTable(key)) return result.getTable(key);
         if (result.contains(key)) {
             throw new IllegalArgumentException("jk-lock.toml in " + origin + ": `" + key + "` must be a [" + key
@@ -224,7 +225,7 @@ public final class LockfileReader {
      * it cannot be read either way without guessing — it is rejected, and {@code jk lock} restates
      * it honestly.
      */
-    private static <T> T toPin(TomlTable table, String section, Pins<T> factory) {
+    private static <T> @Nullable T toPin(@Nullable TomlTable table, String section, Pins<T> factory) {
         if (table == null) return null;
         if (table.contains("vendor") || table.contains("version")) {
             throw new IllegalArgumentException("["
@@ -233,10 +234,10 @@ public final class LockfileReader {
                     + " suggestion or a pin — re-run `jk lock` to restate it as suggested-*/required-*");
         }
         T pin = factory.of(
-                table.getString("suggested-vendor"),
-                table.getString("suggested-version"),
-                table.getString("required-vendor"),
-                table.getString("required-version"));
+                Lockfile.blankToEmpty(table.getString("suggested-vendor")),
+                Lockfile.blankToEmpty(table.getString("suggested-version")),
+                Lockfile.blankToEmpty(table.getString("required-vendor")),
+                Lockfile.blankToEmpty(table.getString("required-version")));
         if (((Lockfile.ToolchainPin) pin).isEmpty()) {
             throw new IllegalArgumentException("[" + section + "] names no vendor or version — omit the table instead");
         }
@@ -253,7 +254,7 @@ public final class LockfileReader {
      * [native]}. A table with no {@code metadata-repository} is the same as no table: there is
      * nothing to extract without a version, and the checksum alone pins nothing.
      */
-    private static Lockfile.NativeMetadata toNativeMetadata(TomlTable table) {
+    private static Lockfile.@Nullable NativeMetadata toNativeMetadata(@Nullable TomlTable table) {
         if (table == null) return null;
         String version = table.getString("metadata-repository");
         if (version == null || version.isBlank()) return null;

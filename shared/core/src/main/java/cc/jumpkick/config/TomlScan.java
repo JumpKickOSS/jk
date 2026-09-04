@@ -17,6 +17,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Line scanner for a handful of flat TOML scalars on hot, engine-free paths — not a full parser.
@@ -144,7 +145,8 @@ public final class TomlScan {
                 if (arrayKey != null) {
                     // Inside a multi-line string array: collect quoted elements until the
                     // `]` outside quotes that closes it (IPv6-style values carry `]` inside).
-                    if (collectArrayLine(line, arrays.get(arrayKey))) arrayKey = null;
+                    List<String> open = arrays.computeIfAbsent(arrayKey, k -> new ArrayList<>());
+                    if (collectArrayLine(line, open)) arrayKey = null;
                     continue;
                 }
                 if (line.startsWith("[")) {
@@ -196,7 +198,7 @@ public final class TomlScan {
     }
 
     /** The scanned value for {@code "section.key"} / {@code "key"}, or {@code null} when absent. */
-    public String get(String qualifiedKey) {
+    public @Nullable String get(String qualifiedKey) {
         return values.get(qualifiedKey);
     }
 

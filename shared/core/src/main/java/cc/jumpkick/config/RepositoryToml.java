@@ -8,9 +8,10 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.function.UnaryOperator;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 import org.tomlj.TomlArray;
 import org.tomlj.TomlTable;
 
@@ -60,7 +61,7 @@ public final class RepositoryToml {
      * @param onBad {@link OnBad#REJECT} throws {@link JkBuildParseException} on the first bad entry;
      *     {@link OnBad#SKIP} drops it
      */
-    public static List<RepositorySpec> repositories(TomlTable repos, VarPolicy vars, OnBad onBad) {
+    public static List<RepositorySpec> repositories(@Nullable TomlTable repos, VarPolicy vars, OnBad onBad) {
         if (repos == null) return List.of();
         List<RepositorySpec> result = new ArrayList<>(repos.size());
         for (String name : repos.keySet()) {
@@ -86,7 +87,7 @@ public final class RepositoryToml {
     }
 
     /** One entry; {@code null} when it is malformed and the layer skips rather than rejects. */
-    private static RepositorySpec entry(String name, Object value, VarPolicy vars, OnBad onBad) {
+    private static @Nullable RepositorySpec entry(String name, @Nullable Object value, VarPolicy vars, OnBad onBad) {
         String url;
         Optional<RepoCredential> credential = Optional.empty();
         Optional<ObjectStoreConfig> objectStore = Optional.empty();
@@ -99,7 +100,7 @@ public final class RepositoryToml {
                 if (onBad == OnBad.SKIP) return null;
                 throw new JkBuildParseException("repositories." + name + " requires a string `url` field");
             }
-            UnaryOperator<String> interp = raw -> interpolate(raw, vars, "repositories." + name);
+            Function<@Nullable String, @Nullable String> interp = raw -> interpolate(raw, vars, "repositories." + name);
             credential = credential(t, interp);
             objectStore = objectStore(t, interp);
             try {
@@ -122,7 +123,7 @@ public final class RepositoryToml {
     }
 
     /** Expand {@code raw} under {@code policy} against the process environment; {@code where} names the position. */
-    public static String interpolate(String raw, VarPolicy policy, String where) {
+    public static @Nullable String interpolate(@Nullable String raw, VarPolicy policy, String where) {
         return interpolate(raw, policy, where, System::getenv);
     }
 
@@ -131,7 +132,8 @@ public final class RepositoryToml {
      * build path expands object-store credentials against the layered request environment
      * ({@code .env} under the caller's shell), not the engine process's environ.
      */
-    public static String interpolate(String raw, VarPolicy policy, String where, UnaryOperator<String> env) {
+    public static @Nullable String interpolate(
+            @Nullable String raw, VarPolicy policy, String where, Function<String, @Nullable String> env) {
         return switch (policy) {
             case DEFER -> raw;
             case LENIENT ->
@@ -155,7 +157,8 @@ public final class RepositoryToml {
      * Bearer beats basic — the one place that decides what a {@code token} / {@code username} /
      * {@code password} triple means. Blank is absent.
      */
-    public static Optional<RepoCredential> credentialOf(String token, String username, String password) {
+    public static Optional<RepoCredential> credentialOf(
+            @Nullable String token, @Nullable String username, @Nullable String password) {
         if (token != null && !token.isBlank()) return Optional.of(new RepoCredential.Bearer(token));
         if (username != null && !username.isBlank()) {
             return Optional.of(new RepoCredential.Basic(username, password == null ? "" : password));
@@ -168,7 +171,7 @@ public final class RepositoryToml {
      * (which returns the replacement, or may throw for a strict "unset var" policy). {@code null} in →
      * {@code null} out.
      */
-    public static String interpolate(String raw, UnaryOperator<String> resolveVar) {
+    public static @Nullable String interpolate(@Nullable String raw, Function<String, String> resolveVar) {
         if (raw == null) return null;
         Matcher m = ENV_REF.matcher(raw);
         StringBuilder out = new StringBuilder();
@@ -183,7 +186,8 @@ public final class RepositoryToml {
      * Bearer ({@code token}) or basic ({@code username}/{@code password}) credential on the table, or
      * empty. {@code interp} applies the caller's {@code ${ENV}} interpolation to each value.
      */
-    public static Optional<RepoCredential> credential(TomlTable t, UnaryOperator<String> interp) {
+    public static Optional<RepoCredential> credential(
+            TomlTable t, Function<@Nullable String, @Nullable String> interp) {
         return credentialOf(
                 interp.apply(t.getString("token")),
                 interp.apply(t.getString("username")),
@@ -195,7 +199,8 @@ public final class RepositoryToml {
      * {@code session-token}) for s3://gs:// backends, or empty when none set. {@code interp} applies
      * the caller's {@code ${ENV}} interpolation.
      */
-    public static Optional<ObjectStoreConfig> objectStore(TomlTable t, UnaryOperator<String> interp) {
+    public static Optional<ObjectStoreConfig> objectStore(
+            TomlTable t, Function<@Nullable String, @Nullable String> interp) {
         ObjectStoreConfig cfg = new ObjectStoreConfig(
                 blankToNull(interp.apply(t.getString("region"))),
                 blankToNull(interp.apply(t.getString("endpoint"))),
@@ -205,7 +210,7 @@ public final class RepositoryToml {
         return cfg.isEmpty() ? Optional.empty() : Optional.of(cfg);
     }
 
-    private static String blankToNull(String s) {
+    private static @Nullable String blankToNull(@Nullable String s) {
         return (s == null || s.isBlank()) ? null : s;
     }
 

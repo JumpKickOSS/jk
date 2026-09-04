@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk tree --flatten}: each scope's full transitive closure as one deduplicated, sorted list.
@@ -32,7 +33,7 @@ final class DependencyFlatten {
     private DependencyFlatten() {}
 
     /** One flattened dependency: {@code group:artifact}, optional resolved version, and a tag. */
-    private record FlatDep(String module, String version, String tag) {}
+    private record FlatDep(String module, @Nullable String version, String tag) {}
 
     /** Single-project flatten: each scope lists its full transitive dep closure, flat + sorted. */
     static void renderScopes(
@@ -91,9 +92,8 @@ final class DependencyFlatten {
     static void renderWorkspaceScopes(
             JkBuild root, Path rootDir, Styling styling, List<Scope> scopeOrder, boolean stack, StringBuilder out) {
 
-        WorkspaceGraph ws = WorkspaceGraph.collapse(
-                WorkspaceGraph.modulesByName(root.workspace().modules(), rootDir));
-        List<LoadedModule> modules = WorkspaceGraph.loadModules(root.workspace().modules(), rootDir);
+        WorkspaceGraph ws = WorkspaceGraph.collapse(WorkspaceGraph.modulesByName(root.workspaceModules(), rootDir));
+        List<LoadedModule> modules = WorkspaceGraph.loadModules(root.workspaceModules(), rootDir);
 
         List<Scope> sections = new ArrayList<>();
         for (Scope s : DependencyTreeStyle.sectionOrder(scopeOrder)) {
@@ -168,7 +168,7 @@ final class DependencyFlatten {
             WorkspaceGraph ws,
             Set<String> visited,
             Map<String, FlatDep> out,
-            String declaredVersion,
+            @Nullable String declaredVersion,
             boolean platformPin) {
 
         LoadedModule sibling = ws.sibling(module);

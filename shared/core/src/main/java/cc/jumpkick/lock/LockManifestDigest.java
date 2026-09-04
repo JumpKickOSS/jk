@@ -6,6 +6,7 @@ import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.PathSource;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -198,11 +199,9 @@ public final class LockManifestDigest {
             throws IOException {
         for (List<Dependency> deps : build.dependencies().byScope().values()) {
             for (Dependency d : deps) {
-                if (!d.isPath()) continue;
-                Path toml = declaringDir
-                        .resolve(d.pathSource().rawPath())
-                        .normalize()
-                        .resolve(ManifestPaths.MANIFEST);
+                PathSource source = d.pathSource();
+                if (!d.isPath() || source == null) continue;
+                Path toml = declaringDir.resolve(source.rawPath()).normalize().resolve(ManifestPaths.MANIFEST);
                 if (!Files.isRegularFile(toml)) {
                     absent(toml, inputs);
                     continue;
@@ -212,7 +211,7 @@ public final class LockManifestDigest {
                     key = owner.relativize(toml).toString().replace('\\', '/');
                 } catch (IllegalArgumentException e) {
                     // Outside the workspace root: key by the declared path (machine-stable).
-                    key = "path:" + d.pathSource().rawPath().replace('\\', '/');
+                    key = "path:" + source.rawPath().replace('\\', '/');
                 }
                 if (!parts.containsKey(key)) parts.put(key, normalized(read(toml, inputs)));
             }

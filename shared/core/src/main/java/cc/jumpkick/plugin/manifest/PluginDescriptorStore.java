@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Read side of materialized third-party manifests under
@@ -53,7 +54,7 @@ public final class PluginDescriptorStore {
     }
 
     /** The materialized manifest for {@code decl}, or empty when not yet locked + extracted. */
-    public static Optional<PluginDescriptor> manifestFor(Path moduleDir, PluginDeclaration decl) {
+    public static Optional<PluginDescriptor> manifestFor(@Nullable Path moduleDir, PluginDeclaration decl) {
         if (moduleDir == null) return Optional.empty();
         Optional<Lockfile.PluginEntry> entry = lockEntry(moduleDir, decl);
         if (entry.isEmpty()) return Optional.empty();
@@ -77,7 +78,7 @@ public final class PluginDescriptorStore {
     }
 
     /** True when any declaration lacks a materialized manifest (validation must stay soft). */
-    public static boolean hasUnresolved(Path moduleDir, List<PluginDeclaration> decls) {
+    public static boolean hasUnresolved(@Nullable Path moduleDir, List<PluginDeclaration> decls) {
         for (PluginDeclaration decl : decls) {
             if (manifestFor(moduleDir, decl).isEmpty()) return true;
         }

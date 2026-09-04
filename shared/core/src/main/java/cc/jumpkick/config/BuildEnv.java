@@ -7,7 +7,8 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.UnaryOperator;
+import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The one way a build-path caller obtains its environment.
@@ -102,7 +103,7 @@ public final class BuildEnv {
      * ClientEnvForward.resolve()}, which passes {@code System::getenv}) and the engine's test-JVM
      * seed ({@link #machine()}), so the two cannot drift.
      */
-    public static Map<String, String> machine(UnaryOperator<String> env) {
+    public static Map<String, String> machine(Function<String, @Nullable String> env) {
         Map<String, String> out = new LinkedHashMap<>();
         for (String name : MACHINE) {
             String value = env.apply(name);
@@ -117,9 +118,9 @@ public final class BuildEnv {
      * <p>Safe off a request (a unit test, a CLI-side helper): with no session installed the client
      * layer is simply empty and the engine's own environment answers.
      */
-    public static UnaryOperator<String> forModule(Path moduleDir) {
+    public static Function<String, @Nullable String> forModule(Path moduleDir) {
         Map<String, String> clientEnv = clientEnv();
-        UnaryOperator<String> real = name -> {
+        Function<String, @Nullable String> real = name -> {
             String fromClient = clientEnv.get(name);
             return fromClient != null ? fromClient : System.getenv(name);
         };
@@ -138,7 +139,7 @@ public final class BuildEnv {
      * <p>Prefer {@link #forModule} whenever a directory is available; this is the narrower answer,
      * not the convenient one.
      */
-    public static UnaryOperator<String> ambient() {
+    public static Function<String, @Nullable String> ambient() {
         Map<String, String> clientEnv = clientEnv();
         return name -> {
             String fromClient = clientEnv.get(name);
@@ -168,7 +169,8 @@ public final class BuildEnv {
     private static Map<String, String> clientEnv() {
         try {
             Session session = SessionContext.current();
-            return session == null ? Map.of() : session.clientEnv();
+            Map<String, String> env = session == null ? null : session.clientEnv();
+            return env == null ? Map.of() : env;
         } catch (RuntimeException e) {
             return Map.of(); // no session installed — not a request
         }

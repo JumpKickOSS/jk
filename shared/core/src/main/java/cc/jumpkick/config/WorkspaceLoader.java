@@ -13,6 +13,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Loads each {@code workspace.modules} entry's {@code jk.toml} (globs expanded by
@@ -35,8 +36,7 @@ public final class WorkspaceLoader {
 
         Map<Path, JkBuild> modules = new LinkedHashMap<>();
         List<String> bad = new ArrayList<>();
-        for (String module :
-                WorkspaceModules.expand(workspaceRoot, root.workspace().modules())) {
+        for (String module : WorkspaceModules.expand(workspaceRoot, root.workspaceModules())) {
             Path moduleDir = workspaceRoot.resolve(module).normalize();
             Path moduleJkToml = moduleDir.resolve(ManifestPaths.MANIFEST);
             if (!Files.exists(moduleJkToml)) {
@@ -119,7 +119,7 @@ public final class WorkspaceLoader {
      */
     private static void checkArtifactCollisions(Path workspaceRoot, JkBuild root, Map<Path, JkBuild> modules) {
         Map<String, Path> claimed = new LinkedHashMap<>();
-        record Entry(Path dir, JkBuild build) {}
+        record Entry(@Nullable Path dir, JkBuild build) {}
         List<Entry> all = new ArrayList<>(modules.size() + 1);
         // Only include the root if it could plausibly produce its own jar
         // (i.e., it declares a non-blank artifact). Many workspace roots
@@ -163,7 +163,7 @@ public final class WorkspaceLoader {
      * with its full path: {@code relativize} throws {@link IllegalArgumentException} when the two
      * paths differ in absoluteness or root, and a collision message must not become a crash.
      */
-    private static String moduleLabel(Path workspaceRoot, Path moduleDir) {
+    private static String moduleLabel(Path workspaceRoot, @Nullable Path moduleDir) {
         if (moduleDir == null) return "<workspace root>";
         Path label = moduleDir.startsWith(workspaceRoot) ? workspaceRoot.relativize(moduleDir) : moduleDir;
         return label.toString().replace('\\', '/');

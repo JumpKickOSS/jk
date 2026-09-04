@@ -4,12 +4,13 @@ package cc.jumpkick.layout;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.plugin.PluginModule;
+import cc.jumpkick.plugin.manifest.PluginModule;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Pure path layout for module build outputs.
@@ -89,7 +90,7 @@ public final class BuildLayout {
     /** True when on-disk plugin authoring files mark this module as a worker. */
     private final boolean pluginWorker;
     /** {@code [native].name} when set — the on-disk binary basename, not the Maven artifact id. */
-    private final String nativeName;
+    private final @Nullable String nativeName;
 
     private BuildLayout(
             Path workspaceRoot,
@@ -98,7 +99,7 @@ public final class BuildLayout {
             String version,
             boolean hasMain,
             boolean pluginWorker,
-            String nativeName) {
+            @Nullable String nativeName) {
         this.workspaceRoot = Objects.requireNonNull(workspaceRoot, "workspaceRoot");
         this.moduleRoot = Objects.requireNonNull(moduleRoot, "moduleRoot");
         this.artifact = Objects.requireNonNull(artifact, "artifact");
@@ -140,7 +141,7 @@ public final class BuildLayout {
                 nativeName(project));
     }
 
-    private static String nativeName(JkBuild project) {
+    private static @Nullable String nativeName(JkBuild project) {
         return project.nativeConfig().map(JkBuild.NativeConfig::name).orElse(null);
     }
 
@@ -189,7 +190,7 @@ public final class BuildLayout {
     /** Memoized {@link #moduleTargetDir()} — every layout accessor funnels through it, and the
      * alias-fallback path costs filesystem walks; both roots are final, so the answer is stable
      * for the instance's life. */
-    private volatile Path cachedModuleTargetDir;
+    private volatile @Nullable Path cachedModuleTargetDir;
 
     /**
      * Root of this module's output tree: {@code <module>/target/} when standalone (or the unit is

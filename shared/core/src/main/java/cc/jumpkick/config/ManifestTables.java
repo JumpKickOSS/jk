@@ -52,7 +52,7 @@ public final class ManifestTables {
      * optional; without it a declared dimension must be selected ({@code --variant <dim>=<value>}).
      */
     static Variants parseVariants(
-            TomlTable root, Workspace workspace, LibraryCatalog catalog, List<PluginDescriptor> installed) {
+            TomlTable root, @Nullable Workspace workspace, LibraryCatalog catalog, List<PluginDescriptor> installed) {
         TomlTable table = root.getTable("variants");
         if (table == null) return Variants.EMPTY;
         Map<String, PluginDescriptor> byTable = new LinkedHashMap<>();
@@ -93,7 +93,7 @@ public final class ManifestTables {
     static Variants.Value parseVariantValue(
             String where,
             TomlTable valueTable,
-            Workspace workspace,
+            @Nullable Workspace workspace,
             LibraryCatalog catalog,
             Map<String, PluginDescriptor> pluginsByTable) {
         List<String> extraSrc = List.of();
@@ -176,12 +176,12 @@ public final class ManifestTables {
     }
 
     /** Present boolean key → its value; absent → null (caller applies the default). */
-    static Boolean optionalBool(TomlTable table, String key) {
+    static @Nullable Boolean optionalBool(TomlTable table, String key) {
         return table.contains(key) ? table.getBoolean(key) : null;
     }
 
     /** Read an optional string key; present-but-non-string is a parse error; absent → null. */
-    static String stringOrThrow(TomlTable table, String key, String path) {
+    static @Nullable String stringOrThrow(TomlTable table, String key, String path) {
         if (!table.contains(key)) return null;
         String value = table.getString(key);
         if (value == null) {
@@ -297,7 +297,7 @@ public final class ManifestTables {
         return new Features(byName, defaults);
     }
 
-    static Workspace parseWorkspace(TomlTable root, LibraryCatalog catalog) {
+    static @Nullable Workspace parseWorkspace(TomlTable root, LibraryCatalog catalog) {
         TomlTable workspace = root.getTable("workspace");
         if (workspace == null) return null;
         List<String> modules = optionalStringList(workspace, "modules", "workspace.modules");
@@ -567,7 +567,7 @@ public final class ManifestTables {
     }
 
     /** Parse CLI / wire override: empty → null (no override), {@code fat} / {@code minified}. */
-    public static JkBuildParser.ArtifactOverride parseArtifactOverride(String raw) {
+    public static JkBuildParser.@Nullable ArtifactOverride parseArtifactOverride(String raw) {
         if (raw == null || raw.isBlank()) return null;
         return switch (raw.trim().toLowerCase(Locale.ROOT)) {
             case "fat", "true", "assembly" -> new JkBuildParser.ArtifactOverride(true, false);

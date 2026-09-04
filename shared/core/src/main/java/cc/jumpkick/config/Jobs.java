@@ -4,6 +4,7 @@ package cc.jumpkick.config;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.IntSupplier;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Mill-shaped concurrent-work budgethow many module/worker units may run at once.
@@ -31,12 +32,12 @@ public final class Jobs {
      * Resolve a user/config/env spec to a positive concurrency. {@code null} or {@code 0} → cores;
      * negative → cores (invalid treated as default).
      */
-    public static int effective(Integer spec) {
+    public static int effective(@Nullable Integer spec) {
         return effective(spec, AvailableCpus::count);
     }
 
     /** As {@link #effective(Integer)} with an injectable core count (tests). */
-    public static int effective(Integer spec, IntSupplier cores) {
+    public static int effective(@Nullable Integer spec, IntSupplier cores) {
         int c = Math.max(1, cores.getAsInt());
         if (spec == null || spec == 0) return c;
         if (spec < 0) return c;
@@ -47,7 +48,7 @@ public final class Jobs {
      * Precedence: CLI value if present, else env {@code JK_JOBS}, else {@code [engine] jobs}, else
      * default (cores).
      */
-    public static int resolve(Optional<Integer> cli, JkEngineConfig engine, Function<String, String> env) {
+    public static int resolve(Optional<Integer> cli, JkEngineConfig engine, Function<String, @Nullable String> env) {
         if (cli != null && cli.isPresent()) return effective(cli.get());
         Optional<Integer> fromEnv = EnvValues.intValue(env, "JK_JOBS");
         if (fromEnv.isEmpty()) fromEnv = EnvValues.intValue(env, "JK_ENGINE_JOBS");

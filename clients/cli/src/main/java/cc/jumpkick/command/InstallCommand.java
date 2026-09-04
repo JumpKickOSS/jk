@@ -21,7 +21,7 @@ import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.command.Exit;
-import cc.jumpkick.plugin.PluginModule;
+import cc.jumpkick.plugin.manifest.PluginModule;
 import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.run.BuildPlanResult;

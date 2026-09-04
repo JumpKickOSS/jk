@@ -5,6 +5,7 @@ import cc.jumpkick.model.Scope;
 import java.util.List;
 import java.util.Locale;
 import java.util.function.UnaryOperator;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The presentation vocabulary of {@code jk tree}: the {@link Styling} operators, the marker-tag
@@ -127,7 +128,7 @@ public final class DependencyTreeStyle {
     }
 
     /** The scope sections to consider, in display order: an explicit override or the default set. */
-    static List<Scope> sectionOrder(List<Scope> override) {
+    static List<Scope> sectionOrder(@Nullable List<Scope> override) {
         return override != null ? override : defaultScopeOrder();
     }
 

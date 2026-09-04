@@ -21,7 +21,7 @@ import cc.jumpkick.model.GitSource;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
-import cc.jumpkick.plugin.PluginModule;
+import cc.jumpkick.plugin.manifest.PluginModule;
 import cc.jumpkick.publish.PublishablePom;
 import cc.jumpkick.repo.ArtifactMemo;
 import cc.jumpkick.repo.M2CompatWriter;

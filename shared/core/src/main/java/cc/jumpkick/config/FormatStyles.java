@@ -6,6 +6,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Resolves the effective Java/Kotlin formatter styles {@code jk format} hands to the {@code
@@ -51,7 +52,11 @@ public final class FormatStyles {
 
     /** The chosen concrete styles and hygiene flags for a format run. */
     public record Resolved(
-            String java, String kotlin, boolean optimizeImports, boolean importOrder, boolean removeUnusedImports) {}
+            @Nullable String java,
+            @Nullable String kotlin,
+            boolean optimizeImports,
+            boolean importOrder,
+            boolean removeUnusedImports) {}
 
     /**
      * Resolve the effective styles and hygiene flags from (CLI flags) + (jk.toml {@code [format]}).
@@ -96,14 +101,14 @@ public final class FormatStyles {
         return new Resolved(java, kotlin, optimizeImports, importOrder, removeUnusedImports);
     }
 
-    private static boolean firstNonNullBool(Boolean... vals) {
+    private static boolean firstNonNullBool(@Nullable Boolean... vals) {
         for (Boolean v : vals) {
             if (v != null) return v;
         }
         return false; // unreachable: last arg is always a non-null default
     }
 
-    private static StylePair alias(String name, String source) {
+    private static @Nullable StylePair alias(@Nullable String name, String source) {
         if (name == null || name.isBlank()) return null;
         StylePair pair = ALIASES.get(name.trim().toLowerCase(Locale.ROOT));
         if (pair == null) {
@@ -117,7 +122,7 @@ public final class FormatStyles {
         return pair;
     }
 
-    private static void validate(String style, List<String> allowed, String lang) {
+    private static void validate(@Nullable String style, List<String> allowed, String lang) {
         if (!allowed.contains(style)) {
             throw new IllegalArgumentException("unknown "
                     + lang
@@ -128,7 +133,7 @@ public final class FormatStyles {
         }
     }
 
-    private static String firstNonNull(String... vals) {
+    private static @Nullable String firstNonNull(@Nullable String... vals) {
         for (String v : vals) {
             if (v != null && !v.isBlank()) return v;
         }

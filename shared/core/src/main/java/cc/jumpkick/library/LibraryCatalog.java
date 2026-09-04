@@ -21,6 +21,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.function.Consumer;
+import org.jspecify.annotations.Nullable;
 import org.tomlj.TomlTable;
 
 /**
@@ -41,7 +42,7 @@ public final class LibraryCatalog {
 
     private static final String BUNDLED_RESOURCE = "/cc/jumpkick/library/libraries.toml";
 
-    private static volatile LibraryCatalog bundled;
+    private static volatile @Nullable LibraryCatalog bundled;
 
     private final List<Layer> layers;
 

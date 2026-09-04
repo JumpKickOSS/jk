@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The workspace siblings a {@code jk tree} render can see, and the disk reads that found them.
@@ -41,7 +42,7 @@ import java.util.Map;
 record WorkspaceGraph(Map<String, String> byName, Map<String, LoadedModule> byGa) {
 
     /** A workspace module loaded for the scope-first view (build is required; lock may be absent). */
-    record LoadedModule(JkBuild build, Lockfile lock) {}
+    record LoadedModule(JkBuild build, @Nullable Lockfile lock) {}
 
     static WorkspaceGraph none() {
         return new WorkspaceGraph(Map.of(), Map.of());
@@ -60,7 +61,7 @@ record WorkspaceGraph(Map<String, String> byName, Map<String, LoadedModule> byGa
             Path root = rootDir.get();
             JkBuild rootBuild = JkBuildParser.parseLocal(root.resolve(ManifestPaths.MANIFEST));
             if (!rootBuild.isWorkspaceRoot()) return none();
-            List<LoadedModule> loaded = loadModules(rootBuild.workspace().modules(), root, lock);
+            List<LoadedModule> loaded = loadModules(rootBuild.workspaceModules(), root, lock);
             List<JkBuild> siblingBuilds = new ArrayList<>(loaded.size());
             for (LoadedModule m : loaded) siblingBuilds.add(m.build());
             Map<String, String> byName = new HashMap<>();
@@ -118,7 +119,7 @@ record WorkspaceGraph(Map<String, String> byName, Map<String, LoadedModule> byGa
      * ~15 identical parses per render. With no shared lock, each distinct lock path is
      * still parsed at most once.
      */
-    static List<LoadedModule> loadModules(List<String> moduleRels, Path rootDir, Lockfile sharedLock) {
+    static List<LoadedModule> loadModules(List<String> moduleRels, Path rootDir, @Nullable Lockfile sharedLock) {
         JkBuild rootBuild = null;
         if (rootDir != null) {
             try {
@@ -158,7 +159,7 @@ record WorkspaceGraph(Map<String, String> byName, Map<String, LoadedModule> byGa
         return modules;
     }
 
-    private static Lockfile readLockOrNull(Path lockFile) {
+    private static @Nullable Lockfile readLockOrNull(Path lockFile) {
         try {
             return LockfileReader.read(lockFile);
         } catch (Exception e) {
@@ -184,6 +185,7 @@ record WorkspaceGraph(Map<String, String> byName, Map<String, LoadedModule> byGa
     }
 
     /** The loaded sibling {@code module} names, or {@code null} when it names no sibling here. */
+    @Nullable
     LoadedModule sibling(String module) {
         if (byGa.isEmpty() && byName.isEmpty()) return null;
         if (Dependency.isWorkspaceRef(module)) {

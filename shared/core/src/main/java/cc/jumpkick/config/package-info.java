@@ -10,4 +10,7 @@
  * {@code [history]}) ignore project files; only user-global + env apply.
  * Malformed values are "unset", never a hard failure.
  */
+@NullMarked
 package cc.jumpkick.config;
+
+import org.jspecify.annotations.NullMarked;

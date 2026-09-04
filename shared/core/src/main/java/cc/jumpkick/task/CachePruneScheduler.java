@@ -11,6 +11,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Cache-prune cadence: {@code .last-pruned} bookkeeping consulted by the engine's idle-boundary
@@ -167,7 +168,7 @@ public final class CachePruneScheduler {
     }
 
     /** {@code path} is a {@code lib/} directory, or a file directly under one. */
-    private static Path libDirOf(Path path) {
+    private static @Nullable Path libDirOf(Path path) {
         if (Files.isDirectory(path) && "lib".equals(fileName(path))) return path;
         Path parent = path.getParent();
         if (parent != null && "lib".equals(fileName(parent))) return parent;

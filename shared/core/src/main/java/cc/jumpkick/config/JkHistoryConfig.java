@@ -36,7 +36,7 @@ public record JkHistoryConfig(boolean enabled, int maxAgeDays, int maxDiskMb) {
     }
 
     /** As {@link #resolve()} but against an explicit config file + env — for tests. */
-    static JkHistoryConfig resolve(Path userConfig, Function<String, String> env) {
+    static JkHistoryConfig resolve(Path userConfig, Function<String, @Nullable String> env) {
         TomlTable history = historyTable(userConfig);
         return new JkHistoryConfig(
                 ENABLED.layer(

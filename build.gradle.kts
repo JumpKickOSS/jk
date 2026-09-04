@@ -131,16 +131,15 @@ tasks.register("checkAll") {
     dependsOn(checkFast, "integrationTest")
 }
 
-// Guard G53: every production package in the three enforced API boundary modules is @NullMarked.
+// Guard G53: every production package in an enforced source root is @NullMarked, or is registered
+// as a temporary exclusion with a reason and a follow-up.
 tasks.register("checkNullMarkedApiPackages") {
     group = "verification"
-    description = "Fail when an enforced API boundary package lacks package-level @NullMarked"
-    val roots = listOf(
-        layout.projectDirectory.dir("shared/jk-api/src/main/java"),
-        layout.projectDirectory.dir("shared/wire/src/main/java"),
-        layout.projectDirectory.dir("shared/plugin-sdk/src/main/java"))
+    description = "Fail when an enforced null-marked package lacks package-level @NullMarked"
+    val roots = NullMarking.enforcedRoots.map { layout.projectDirectory.dir(it) }
     val sources = roots.map { root -> fileTree(root) { include("**/*.java") } }
     inputs.files(sources)
+    inputs.property("excluded", NullMarking.excludedPackages)
     val stamp = layout.buildDirectory.file("guards/null-marked-api-packages.ok")
     outputs.file(stamp)
     doLast {
@@ -149,22 +148,32 @@ tasks.register("checkNullMarkedApiPackages") {
             .filterNot { it.name == "package-info.java" }
             .mapNotNull { packagePattern.find(it.readText())?.groupValues?.get(1) }
             .toSortedSet()
-        if (packages.size != 14) {
+        if (packages.size != 30) {
             throw GradleException(
-                "The null-marked API guard found ${packages.size} production packages; it was measured against 14."
+                "The null-marked package guard found ${packages.size} production packages; it was measured against 30."
                     + " The source roots or package parser drifted, so do not trust a green result.")
         }
-        val missing = packages.filter { pkg ->
+        val marked = packages.filter { pkg ->
             val relative = pkg.replace('.', '/') + "/package-info.java"
             val marker = roots.asSequence().map { it.file(relative).asFile }.firstOrNull(File::isFile)
-            marker == null
-                || !marker.readText().contains("@NullMarked")
-                || packagePattern.find(marker.readText())?.groupValues?.get(1) != pkg
+            marker != null
+                && marker.readText().contains("@NullMarked")
+                && packagePattern.find(marker.readText())?.groupValues?.get(1) == pkg
+        }.toSet()
+        val faults = mutableListOf<String>()
+        (packages - marked - NullMarking.excludedPackages.keys).forEach {
+            faults.add("  $it lacks package-level @NullMarked and is not a registered exclusion")
         }
-        if (missing.isNotEmpty()) {
+        (NullMarking.excludedPackages.keys - packages).forEach {
+            faults.add("  $it is registered as an exclusion but is not a production package any more")
+        }
+        NullMarking.excludedPackages.keys.filter { it in marked }.forEach {
+            faults.add("  $it is @NullMarked now — drop its exclusion registry entry")
+        }
+        if (faults.isNotEmpty()) {
             throw GradleException(
-                "Production API packages must declare package-level @NullMarked:\n"
-                    + missing.joinToString("\n") { "  $it" })
+                "Enforced production packages must declare package-level @NullMarked, or hold a"
+                    + " NullMarking.excludedPackages entry stating why:\n" + faults.sorted().joinToString("\n"))
         }
         stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
     }

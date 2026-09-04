@@ -5,9 +5,10 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.function.UnaryOperator;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 import org.tomlj.TomlArray;
 import org.tomlj.TomlTable;
 
@@ -204,7 +205,8 @@ public final class Interpolation {
      * "succeeds" while authenticating anonymously, or points a tool at the wrong place.
      * {@code describe} names the position so the message is actionable.
      */
-    public static String expand(String raw, String describe, UnaryOperator<String> env) {
+    public static @Nullable String expand(
+            @Nullable String raw, String describe, Function<String, @Nullable String> env) {
         if (raw == null || raw.indexOf('$') < 0) return raw;
         return RepositoryToml.interpolate(raw, var -> {
             String value = env.apply(var);

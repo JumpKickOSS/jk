@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Deterministic TOML emitter for {@link Lockfile}: sorted keys, LF newlines, two-space indent, no
@@ -24,9 +25,16 @@ public final class LockfileWriter {
 
     private LockfileWriter() {}
 
+    /** The directory that owns {@code file}. A lockfile at a filesystem root has no owner. */
+    private static Path ownerOf(Path file) {
+        Path owner = file.toAbsolutePath().normalize().getParent();
+        if (owner == null) throw new IllegalArgumentException("jk-lock.toml must live in a directory: " + file);
+        return owner;
+    }
+
     public static void write(Lockfile lockfile, Path file) throws IOException {
         // Always stamp a live manifests digest so staleness survives git-clone mtimes.
-        Path owner = file.toAbsolutePath().normalize().getParent();
+        Path owner = ownerOf(file);
         write(lockfile, file, LockManifestDigest.compute(owner));
     }
 
@@ -38,7 +46,7 @@ public final class LockfileWriter {
     public static void write(Lockfile lockfile, Path file, String manifestsSha256) throws IOException {
         Lockfile stamped = lockfile.withManifestsSha256(manifestsSha256);
         // Preserve / mint durable project-id: never drop on rewrite.
-        Path owner = file.toAbsolutePath().normalize().getParent();
+        Path owner = ownerOf(file);
         if (stamped.projectId() == null || stamped.projectId().isBlank()) {
             String existing = null;
             if (Files.isRegularFile(file)) {
@@ -234,7 +242,7 @@ public final class LockfileWriter {
      * One toolchain table. Each axis is written on exactly one side — a required vendor makes the
      * suggested one noise — and a blank field is left out rather than written empty.
      */
-    private static void writeToolchain(StringBuilder out, String table, Lockfile.ToolchainPin pin) {
+    private static void writeToolchain(StringBuilder out, String table, Lockfile.@Nullable ToolchainPin pin) {
         if (pin == null || pin.isEmpty()) return;
         out.append('\n').append('[').append(table).append(']').append('\n');
         field(out, "suggested-vendor", pin.suggestedVendor());
@@ -243,7 +251,7 @@ public final class LockfileWriter {
         field(out, "required-version", pin.requiredVersion());
     }
 
-    private static void field(StringBuilder out, String key, String value) {
+    private static void field(StringBuilder out, String key, @Nullable String value) {
         if (value == null || value.isEmpty()) return;
         out.append(key).append(" = ").append(quote(value)).append('\n');
     }

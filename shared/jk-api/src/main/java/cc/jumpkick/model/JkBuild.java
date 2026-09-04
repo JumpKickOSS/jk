@@ -518,6 +518,16 @@ public record JkBuild(
         return workspace != null && !workspace.isEmpty();
     }
 
+    /** Module paths from the {@code [workspace]} block; empty when this is not a workspace root. */
+    public List<String> workspaceModules() {
+        return workspace == null ? List.of() : workspace.modules();
+    }
+
+    /** Workspace dependency aliases; empty when this is not a workspace root. */
+    public Map<String, Workspace.WorkspaceDependency> workspaceDependencies() {
+        return workspace == null ? Map.of() : workspace.dependencies();
+    }
+
     public Optional<Workspace> workspaceOpt() {
         return Optional.ofNullable(workspace);
     }

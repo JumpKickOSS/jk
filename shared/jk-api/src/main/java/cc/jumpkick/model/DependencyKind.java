@@ -2,6 +2,7 @@
 package cc.jumpkick.model;
 
 import java.util.Locale;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Which output of a dependency coordinate (or workspace sibling) an edge selects.
@@ -29,7 +30,7 @@ public enum DependencyKind {
      * Parse a {@code kind = "..."} value. Unknown spellings throw so bad imports fail at parse
      * time rather than silently selecting main.
      */
-    public static DependencyKind parse(String raw) {
+    public static DependencyKind parse(@Nullable String raw) {
         if (raw == null || raw.isBlank()) return MAIN;
         String s = raw.trim().toLowerCase(Locale.ROOT);
         for (DependencyKind k : values()) {

@@ -14,9 +14,9 @@ import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.Variants;
 import cc.jumpkick.model.Workspace;
-import cc.jumpkick.plugin.PluginModule;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginDescriptorStore;
+import cc.jumpkick.plugin.manifest.PluginModule;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -147,14 +147,20 @@ public final class JkBuildParser {
         }
     }
 
+    /** The directory holding {@code manifest}. A manifest at a filesystem root has no module. */
+    private static Path moduleDirOf(Path manifest) {
+        Path dir = manifest.getParent();
+        if (dir == null) throw new JkBuildParseException("jk.toml must live in a directory: " + manifest);
+        return dir;
+    }
+
     /**
      * Parse {@code jk.toml} and resolve workspace inheritance / sibling placeholders for the module
      * directory that owns the file. Prefer this for build, publish, status, etc.
      */
     public static JkBuild parse(Path file) throws IOException {
         Path abs = file.toAbsolutePath().normalize();
-        Path dir = abs.getParent();
-        JkBuild resolved = WorkspaceResolve.applyWorkspace(dir, parseLocal(file));
+        JkBuild resolved = WorkspaceResolve.applyWorkspace(moduleDirOf(abs), parseLocal(file));
         List<PluginDeclaration> user = UserPlugins.fromConfig();
         if (user.isEmpty()) return resolved;
         return resolved.withPlugins(UserPlugins.merge(user, resolved.plugins()));
@@ -177,7 +183,7 @@ public final class JkBuildParser {
                     // the one read, on the miss that needs it.
                     String body = stamp.body() != null ? stamp.body() : readManifest(key);
                     TomlParseResult root = document(key, stamp, body);
-                    Path moduleDir = key.getParent();
+                    Path moduleDir = moduleDirOf(key);
                     LibraryCatalog catalog;
                     try {
                         catalog = LibraryCatalog.forProject(moduleDir);
@@ -248,7 +254,7 @@ public final class JkBuildParser {
      * caller's business (most side tables have an empty value for it); a file that exists and is
      * malformed is never absence, and throws.
      */
-    private static TomlParseResult documentIfPresent(Path file) {
+    private static @Nullable TomlParseResult documentIfPresent(Path file) {
         if (file == null || !Files.isRegularFile(file)) return null;
         try {
             return document(file);
@@ -268,7 +274,7 @@ public final class JkBuildParser {
     }
 
     /** Drop memo and re-parse without workspace resolution. */
-    public static JkBuild reparseLocal(Path file) throws IOException {
+    public static @Nullable JkBuild reparseLocal(Path file) throws IOException {
         forget(file);
         return parseLocal(file);
     }
@@ -298,12 +304,12 @@ public final class JkBuildParser {
      * manifests from {@link PluginDescriptorStore}. Short-name resolution uses the catalog the
      * caller supplied (disk parse passes {@link LibraryCatalog#forProject}).
      */
-    private static JkBuild parse(String toml, LibraryCatalog catalog, Path moduleDir) {
+    private static JkBuild parse(String toml, LibraryCatalog catalog, @Nullable Path moduleDir) {
         Objects.requireNonNull(toml, "toml");
         return build(document(toml), catalog, moduleDir);
     }
 
-    private static JkBuild build(TomlParseResult result, LibraryCatalog catalog, Path moduleDir) {
+    private static JkBuild build(TomlParseResult result, LibraryCatalog catalog, @Nullable Path moduleDir) {
         Objects.requireNonNull(catalog, "catalog");
         rejectRemovedCatalogConfig(result);
         rejectRemovedProjectTable(result);
@@ -409,7 +415,7 @@ public final class JkBuildParser {
     }
 
     /** The {@link Scope} whose toml section is {@code name}, or null. */
-    static Scope scopeForSection(String name) {
+    static @Nullable Scope scopeForSection(String name) {
         for (Scope scope : Scope.values()) {
             if (scope.tomlSection().equals(name)) return scope;
         }
@@ -430,12 +436,12 @@ public final class JkBuildParser {
     }
 
     /** Present boolean key → its value; absent → null (caller applies the default). */
-    static Boolean optionalBool(TomlTable table, String key) {
+    static @Nullable Boolean optionalBool(TomlTable table, String key) {
         return table.contains(key) ? table.getBoolean(key) : null;
     }
 
     /** Read an optional string key; present-but-non-string is a parse error; absent → null. */
-    static String stringOrThrow(TomlTable table, String key, String path) {
+    static @Nullable String stringOrThrow(TomlTable table, String key, String path) {
         if (!table.contains(key)) return null;
         String value = table.getString(key);
         if (value == null) {
@@ -484,15 +490,21 @@ public final class JkBuildParser {
     }
 
     /** Convert a tomlj value to a plain JDK type so plugin-api stays tomlj-free. */
-    static Object tomlToJava(Object value) {
+    static @Nullable Object tomlToJava(@Nullable Object value) {
         if (value instanceof TomlTable t) {
             Map<String, Object> map = new LinkedHashMap<>();
-            for (String k : t.keySet()) map.put(k, tomlToJava(t.get(k)));
+            for (String k : t.keySet()) {
+                Object converted = tomlToJava(t.get(k));
+                if (converted != null) map.put(k, converted);
+            }
             return Collections.unmodifiableMap(map);
         }
         if (value instanceof TomlArray arr) {
             List<Object> list = new ArrayList<>(arr.size());
-            for (int i = 0; i < arr.size(); i++) list.add(tomlToJava(arr.get(i)));
+            for (int i = 0; i < arr.size(); i++) {
+                Object converted = tomlToJava(arr.get(i));
+                if (converted != null) list.add(converted);
+            }
             return List.copyOf(list);
         }
         return value; // String, Long, Double, Boolean — already JDK types
@@ -532,7 +544,10 @@ public final class JkBuildParser {
         return ManifestDeps.isVersionSpecOrKeyword(value);
     }
 
-    record EmbeddedUrlParts(String baseUrl, String subdir, String refSpec) {}
+    record EmbeddedUrlParts(
+            String baseUrl,
+            @Nullable String subdir,
+            @Nullable String refSpec) {}
 
     static EmbeddedUrlParts splitEmbeddedUrl(String urlRaw) {
         return ManifestDeps.splitEmbeddedUrl(urlRaw);
@@ -597,11 +612,11 @@ public final class JkBuildParser {
         }
     }
 
-    public static ArtifactOverride parseArtifactOverride(String raw) {
+    public static @Nullable ArtifactOverride parseArtifactOverride(String raw) {
         return ManifestTables.parseArtifactOverride(raw);
     }
 
-    static JkBuild reapplyPlatformContributions(Path moduleDir, JkBuild module) {
+    static JkBuild reapplyPlatformContributions(@Nullable Path moduleDir, JkBuild module) {
         return ManifestBuild.reapplyPlatformContributions(moduleDir, module);
     }
 }

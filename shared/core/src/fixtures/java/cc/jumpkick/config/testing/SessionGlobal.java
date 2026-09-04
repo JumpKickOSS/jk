@@ -4,6 +4,7 @@ package cc.jumpkick.config.testing;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@link SessionContext}'s process-wide static — the original leak bounded.
@@ -36,7 +37,7 @@ public final class SessionGlobal implements BoundedGlobal {
     }
 
     @Override
-    public void restore(Object captured) {
+    public void restore(@Nullable Object captured) {
         if (captured instanceof Session s) SessionContext.install(s);
     }
 }

@@ -2,6 +2,7 @@
 package cc.jumpkick.util;
 
 import cc.jumpkick.host.Os;
+import org.jspecify.annotations.Nullable;
 
 /**
  * One place for the backslash-to-slash rewrites behind journal/metrics/bind keys and display
@@ -25,7 +26,6 @@ public final class DirKeys {
 
     /** Forward-slash form for display and key building; POSIX backslash names pass through verbatim. */
     public static String slashes(String s) {
-        if (s == null) return null;
         return Os.isWindows() || looksWindowsAbsolute(s) ? s.replace('\\', '/') : s;
     }
 
@@ -34,8 +34,8 @@ public final class DirKeys {
      * letter — NTFS is case-insensitive and launchers disagree about drive case ({@code cd c:\ws}),
      * so {@code C:/ws} and {@code c:/ws} must be one journal/metrics/bind key, not two.
      */
-    public static String key(String s) {
-        String v = slashes(s);
+    public static @Nullable String key(@Nullable String s) {
+        String v = s == null ? null : slashes(s);
         if (v != null
                 && v.length() >= 3
                 && Character.isLowerCase(v.charAt(0))

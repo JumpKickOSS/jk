@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 import org.tomlj.TomlArray;
 import org.tomlj.TomlTable;
 
@@ -48,7 +49,7 @@ final class ManifestTrain {
         return new TrainConfig(command, commitTo, requireFresh, aotCache, profiles);
     }
 
-    private static Map<String, String> stringMap(TomlTable table) {
+    private static Map<String, String> stringMap(@Nullable TomlTable table) {
         if (table == null) return Map.of();
         Map<String, String> out = new LinkedHashMap<>();
         for (String key : table.keySet()) {

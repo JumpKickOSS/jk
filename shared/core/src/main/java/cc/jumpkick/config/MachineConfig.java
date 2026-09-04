@@ -44,20 +44,20 @@ import org.jspecify.annotations.Nullable;
  * @param valid judges every layer alike; {@link #any()} for fields whose decode is their validation
  * @param <T> the setting's type
  */
-public record MachineConfig<T>(T builtIn, Predicate<T> valid) {
+public record MachineConfig<T extends @Nullable Object>(T builtIn, Predicate<T> valid) {
 
     /** A setting whose only validity rule is that the layer decoded at all. */
-    public static <T> MachineConfig<T> of(T builtIn) {
+    public static <T extends @Nullable Object> MachineConfig<T> of(T builtIn) {
         return new MachineConfig<>(builtIn, any());
     }
 
     /** A setting with a range rule ({@code port <= 65535}, {@code size > 0}, …). */
-    public static <T> MachineConfig<T> of(T builtIn, Predicate<T> valid) {
+    public static <T extends @Nullable Object> MachineConfig<T> of(T builtIn, Predicate<T> valid) {
         return new MachineConfig<>(builtIn, valid);
     }
 
     /** Accepts anything that decoded — for booleans and free strings, where parsing is the check. */
-    public static <T> Predicate<T> any() {
+    public static <T extends @Nullable Object> Predicate<T> any() {
         return v -> true;
     }
 

@@ -3,6 +3,7 @@ package cc.jumpkick.model;
 
 import java.util.Arrays;
 import java.util.Locale;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A toolchain declaration from {@code jk.toml} — {@code jdk} / {@code jdk-vendor} /
@@ -78,14 +79,15 @@ public record ToolchainSpec(
      *
      * @param label the key being read, for error text ({@code "jdk"}, {@code "[native].graal"})
      */
-    public static ToolchainSpec of(String label, String combined, String vendorRaw, String versionRaw) {
-        boolean hasCombined = combined != null && !combined.isBlank();
+    public static ToolchainSpec of(
+            String label, @Nullable String combined, @Nullable String vendorRaw, @Nullable String versionRaw) {
+        String named = combined != null && !combined.isBlank() ? combined : null;
         boolean hasParts = notBlank(vendorRaw) || notBlank(versionRaw);
-        if (hasCombined && hasParts) {
+        if (named != null && hasParts) {
             throw new IllegalArgumentException(
                     label + " and " + label + "-vendor/" + label + "-version both set — use one or the other");
         }
-        if (hasCombined) return parse(label, combined);
+        if (named != null) return parse(label, named);
         if (!hasParts) return NONE;
         Part vendor = part(label + "-vendor", vendorRaw, false);
         Part version = part(label + "-version", versionRaw, true);
@@ -142,7 +144,7 @@ public record ToolchainSpec(
 
     private record Part(String text, boolean required) {}
 
-    private static Part part(String label, String raw, boolean allowVersion) {
+    private static Part part(String label, @Nullable String raw, boolean allowVersion) {
         if (raw == null) return new Part("", false);
         String s = raw.trim();
         boolean required = s.startsWith("=");
@@ -160,11 +162,11 @@ public record ToolchainSpec(
         return String.join("-", Arrays.copyOfRange(tok, from, Math.max(from, to)));
     }
 
-    private static boolean notBlank(String s) {
+    private static boolean notBlank(@Nullable String s) {
         return s != null && !s.isBlank();
     }
 
-    private static String blankToEmpty(String s) {
+    private static String blankToEmpty(@Nullable String s) {
         return s == null || s.isBlank() ? "" : s.trim();
     }
 

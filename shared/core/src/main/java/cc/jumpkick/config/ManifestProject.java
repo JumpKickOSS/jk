@@ -11,6 +11,7 @@ import cc.jumpkick.model.ToolchainSpec;
 import cc.jumpkick.model.VersionSelector;
 import java.util.Set;
 import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 import org.tomlj.TomlTable;
 
 /**
@@ -63,16 +64,9 @@ public final class ManifestProject {
 
         String name = requireString(root, "name", "name");
 
-        String group = parseInheritableString(
-                root, "group", ProjectInherit.GROUP, inherits, workspaceRoot, /* requiredWhenRootOrStandalone */ true);
+        String group = parseInheritableString(root, "group", ProjectInherit.GROUP, inherits, workspaceRoot);
 
-        String version = parseInheritableString(
-                root,
-                "version",
-                ProjectInherit.VERSION,
-                inherits,
-                workspaceRoot,
-                /* requiredWhenRootOrStandalone */ true);
+        String version = parseInheritableString(root, "version", ProjectInherit.VERSION, inherits, workspaceRoot);
 
         ToolchainSpec jdkSpec;
         boolean declaresJdk = root.contains("jdk") || root.contains("jdk-vendor") || root.contains("jdk-version");
@@ -230,7 +224,7 @@ public final class ManifestProject {
             inherits.add(inherit);
             return true;
         }
-        if (!present) return true;
+        if (m2 == null || !present) return true;
         Boolean value = m2.getBoolean(key);
         if (value == null) {
             throw new JkBuildParseException("[m2]." + key + " must be true or false");
@@ -247,8 +241,7 @@ public final class ManifestProject {
             String key,
             ProjectInherit inherit,
             java.util.EnumSet<ProjectInherit> inherits,
-            boolean workspaceRoot,
-            boolean required) {
+            boolean workspaceRoot) {
         String path = key;
         if (isWorkspaceInherit(root, key)) {
             if (workspaceRoot) {
@@ -259,17 +252,12 @@ public final class ManifestProject {
             return Project.VERSION_FROM_WORKSPACE;
         }
         if (!root.contains(key)) {
-            if (workspaceRoot || required) {
-                // Members: omit → inherit. Roots: omit of group/version → error.
-                if (!workspaceRoot) {
-                    inherits.add(inherit);
-                    return Project.VERSION_FROM_WORKSPACE;
-                }
+            // Members: omit -> inherit. Roots: omit of group/version -> error.
+            if (!workspaceRoot) {
+                inherits.add(inherit);
+                return Project.VERSION_FROM_WORKSPACE;
             }
-            if (required) {
-                throw new JkBuildParseException("jk.toml is missing required key `" + path + "`");
-            }
-            return null;
+            throw new JkBuildParseException("jk.toml is missing required key `" + path + "`");
         }
         String value = root.getString(key);
         if (value == null) {
@@ -288,8 +276,8 @@ public final class ManifestProject {
     static boolean isWorkspaceInherit(TomlTable root, String key) {
         if (!root.contains(key) || !root.isTable(key)) return false;
         TomlTable t = root.getTable(key);
-        Boolean ws = t.getBoolean("workspace");
-        if (!Boolean.TRUE.equals(ws)) {
+        Boolean ws = t == null ? null : t.getBoolean("workspace");
+        if (t == null || !Boolean.TRUE.equals(ws)) {
             throw new JkBuildParseException(
                     key + ".workspace must be `true` (the only legal value), or set " + key + " to a concrete value");
         }
@@ -366,7 +354,7 @@ public final class ManifestProject {
     }
 
     /** One toolchain key as text: unquoted int or string. Null when absent/blank. */
-    private static String scalarSpec(TomlTable table, String key, String pathLabel, String exampleHint) {
+    private static @Nullable String scalarSpec(TomlTable table, String key, String pathLabel, String exampleHint) {
         if (!table.contains(key)) return null;
         Object raw = table.get(key);
         String spec;
@@ -385,7 +373,7 @@ public final class ManifestProject {
      * floating dependency version: bare {@code 2.3.21} → caret, {@code =2.3.21} pins. Absent → {@code
      * null} (a Java project).
      */
-    static VersionSelector parseKotlinVersion(TomlTable root) {
+    static @Nullable VersionSelector parseKotlinVersion(TomlTable root) {
         if (!root.contains("kotlin")) return null;
         String raw = root.getString("kotlin");
         if (raw == null) {
@@ -400,7 +388,7 @@ public final class ManifestProject {
      * a floating dependency version: bare {@code 5.0.4} → caret, {@code =5.0.4} pins. Absent →
      * {@code null} (not a Groovy project).
      */
-    static VersionSelector parseGroovyVersion(TomlTable root) {
+    static @Nullable VersionSelector parseGroovyVersion(TomlTable root) {
         if (!root.contains("groovy")) return null;
         String raw = root.getString("groovy");
         if (raw == null) {
@@ -415,7 +403,7 @@ public final class ManifestProject {
      * floating dependency version: bare {@code 3} → caret, {@code =3.8.4} pins. Absent →
      * {@code null} (not a Scala project).
      */
-    static VersionSelector parseScalaVersion(TomlTable root) {
+    static @Nullable VersionSelector parseScalaVersion(TomlTable root) {
         if (!root.contains("scala")) return null;
         String raw = root.getString("scala");
         if (raw == null) {

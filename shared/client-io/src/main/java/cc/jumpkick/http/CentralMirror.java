@@ -10,7 +10,8 @@ import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.function.UnaryOperator;
+import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 
 /**
  * When Maven Central rate-limits us, route Central traffic to Google's GCS mirror for a while
@@ -112,7 +113,7 @@ public final class CentralMirror {
         return stamp;
     }
 
-    static boolean enabledByEnv(UnaryOperator<String> env) {
+    static boolean enabledByEnv(Function<String, @Nullable String> env) {
         return EnvValues.parseBool(env.apply(ENV_DISABLE)).orElse(true);
     }
 

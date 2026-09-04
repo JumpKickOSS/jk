@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.TreeSet;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Best-effort collection of declared Maven dependency keys from a project or workspace root
@@ -28,7 +29,7 @@ public final class DeclaredDeps {
      * Union of declared Maven deps from the root manifest and each workspace module. Failures
      * parsing individual files are skipped.
      */
-    public static Set<String> collect(Path projectOrWorkspaceRoot) {
+    public static Set<String> collect(@Nullable Path projectOrWorkspaceRoot) {
         if (projectOrWorkspaceRoot == null) return Set.of();
         Path root = projectOrWorkspaceRoot.toAbsolutePath().normalize();
         Path rootToml = root.resolve(ManifestPaths.MANIFEST);
@@ -90,7 +91,7 @@ public final class DeclaredDeps {
         try {
             JkBuild rootBuild = JkBuildParser.parse(rootToml);
             if (rootBuild.isWorkspaceRoot()) {
-                rels = rootBuild.workspace().modules();
+                rels = rootBuild.workspaceModules();
             }
         } catch (Exception e) {
             TomlScan scan = TomlScan.scan(rootToml, "workspace.modules");
