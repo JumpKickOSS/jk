@@ -26,6 +26,8 @@ import cc.jumpkick.wire.runtime.progress.ProgressBarMode;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.nio.channels.SocketChannel;
 import java.nio.file.Path;
 import java.util.List;
@@ -285,14 +287,17 @@ public final class JobEnvelope {
                     outcome = JobOutcome.failed(Exit.SOFTWARE);
                     BuildAccumulator thrown = host.accumulatorOf(eventRequestId);
                     if (thrown != null) thrown.addEscapedThrow(t);
-                    host.log("jk engine: job " + eventRequestId + " body threw "
-                            + t.getClass().getName()
-                            + (t.getMessage() == null ? "" : ": " + t.getMessage()));
+                    reportDeadJob(eventRequestId, eventDir, writer, t);
                 }
                 // The one success law: the body's verdict is stamped here, nowhere else. A
                 // declined verdict leaves the journal to the accumulated facts.
                 BuildAccumulator acc = host.accumulatorOf(eventRequestId);
                 if (acc != null) acc.stamp(outcome);
+            } catch (Throwable t) {
+                // The setup and teardown around the body are outside its own catch, and a throw
+                // there would otherwise reach nothing but the default uncaught handler: no log
+                // line, no wire terminal, and a client that reads EOF and blames a crash.
+                reportDeadJob(eventRequestId, eventDir, writer, t);
             } finally {
                 RunNotices.closeSink(io);
                 InputTrees.finishJob();
@@ -657,6 +662,31 @@ public final class JobEnvelope {
         return workspaceStream
                 ? ProtoEvents.workspaceFinish(false, 1, List.of(), true)
                 : ProtoEvents.planFinish(dir == null ? "" : dir, false, true);
+    }
+
+    /**
+     * A job thread that died without ruling. The throwable goes to the engine log with its stack,
+     * and a terminal settles the client's stream: {@code request-failed} is the one line both the
+     * single-plan and the workspace decoder end on, so it is right whatever shape was streaming.
+     *
+     * <p>Both halves matter. {@code catch (Exception)} at a verb boundary cannot see an
+     * {@link Error}, and a job that ends with no terminal at all leaves the client at a bare EOF —
+     * which it can only report as an engine that may have crashed, however healthy the engine is.
+     */
+    private void reportDeadJob(long jid, @Nullable String dir, @Nullable BufferedWriter writer, Throwable t) {
+        String summary = t.getClass().getName() + (t.getMessage() == null ? "" : ": " + t.getMessage());
+        host.log("jk engine: job " + jid + " died: " + summary + System.lineSeparator() + stackOf(t));
+        if (writer == null) return;
+        WireWriter.sendQuiet(
+                writer,
+                ProtoLifecycle.requestFailed(EventRedaction.redactEnv(
+                        dir, "the build engine hit an internal error and could not finish: " + summary)));
+    }
+
+    private static String stackOf(Throwable t) {
+        StringWriter rendered = new StringWriter();
+        t.printStackTrace(new PrintWriter(rendered, true));
+        return rendered.toString();
     }
 
     /** Cancel every live job whose dir matches (canonical absolute path). */

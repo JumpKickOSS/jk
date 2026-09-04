@@ -30,4 +30,12 @@ public final class WorkspaceLocator {
     public static Optional<Path> findRoot(Path moduleDir) throws IOException {
         return WorkspaceScan.findRoot(moduleDir);
     }
+
+    /**
+     * The workspace root {@code dir} belongs to — {@code dir} itself when it is a root — or empty
+     * for a standalone project. See {@link WorkspaceScan#owningRoot}.
+     */
+    public static Optional<Path> owningRoot(Path dir) throws IOException {
+        return WorkspaceScan.owningRoot(dir);
+    }
 }

@@ -8,6 +8,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
+import cc.jumpkick.engine.jobs.JobRequest;
 import cc.jumpkick.engine.jobs.JobSelect;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.lock.ManifestPaths;
@@ -26,18 +27,47 @@ import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
 import cc.jumpkick.wire.runtime.WorkspaceSpec;
 import java.io.BufferedWriter;
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
+/**
+ * {@code jk compile}. Two arms: a workspace (root or member) compiles through the one workspace
+ * orchestrator and settles {@code workspace-finish}; a standalone project runs a single plan and
+ * settles {@code plan-finish}.
+ *
+ * <p>The client picks its decoder from the same question — {@link WorkspaceLocator#owningRoot} on
+ * the entry dir — and the two answers must agree. A stream decoded as the other shape never sees
+ * its terminal and ends at EOF, which reads to the user as an engine that died.
+ */
 public final class CompileVerb implements HostedVerb {
 
     private final VerbHost host;
 
     public CompileVerb(VerbHost host) {
         this.host = host;
+    }
+
+    /** The terminal shape follows the arm, so cancel and the envelope's safety net emit the right line. */
+    @Override
+    public JobRequest toJobRequest(String requestLine) {
+        return new JobRequest(
+                isWorkspace(requestLine) ? JobKind.workspace("compile") : jobKind(), threadPrefix(), this::run);
+    }
+
+    private static boolean isWorkspace(String requestLine) {
+        try {
+            return WorkspaceLocator.owningRoot(
+                            Path.of(CompileRequest.decode(requestLine).dir()))
+                    .isPresent();
+        } catch (IOException | RuntimeException e) {
+            // Undecidable here is not fatal: run() asks the same question again with the request's
+            // session, and a wrong guess only costs the safety-net terminal its shape.
+            return false;
+        }
     }
 
     @Override
@@ -97,7 +127,7 @@ public final class CompileVerb implements HostedVerb {
                 // Workspace (root or member): the one-orchestrator COMPILE path — compile-only
                 // terminal on the selection, prereqs packaged first via the shared cascade.
                 // The client mirrors this condition and expects workspace events.
-                var wsRoot = WorkspaceLocator.findRoot(entryDir);
+                var wsRoot = WorkspaceLocator.owningRoot(entryDir);
                 if (wsRoot.isPresent()) {
                     JkBuild rootBuild = JkBuildParser.parse(wsRoot.get().resolve(ManifestPaths.MANIFEST));
                     if (rootBuild.isWorkspaceRoot()) {
