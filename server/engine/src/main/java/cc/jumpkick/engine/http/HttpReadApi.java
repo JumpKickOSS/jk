@@ -207,8 +207,7 @@ final class HttpReadApi {
      * job kind (test, lock, …) through the same admission point MCP {@code jk_run} uses.
      */
     void handleBuild(HttpExchange exchange) throws IOException {
-        String body = new String(
-                exchange.getRequestBody().readNBytes(HttpEngineServer.MAX_BODY_BYTES), StandardCharsets.UTF_8);
+        String body = HttpRequests.body(exchange);
         String dir = Jsonl.str(body, "dir");
         if (dir == null || dir.isBlank()) {
             HttpResponses.sendJson(
@@ -264,8 +263,7 @@ final class HttpReadApi {
      * live job for a checkout (the wire's dir-scoped cancel, now on every surface).
      */
     void handleCancel(HttpExchange exchange) throws IOException {
-        String body = new String(
-                exchange.getRequestBody().readNBytes(HttpEngineServer.MAX_BODY_BYTES), StandardCharsets.UTF_8);
+        String body = HttpRequests.body(exchange);
         long jid = Jsonl.longValue(body, "jid", -1);
         if (jid < 0) {
             String dir = Jsonl.str(body, "dir");

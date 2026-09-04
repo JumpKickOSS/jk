@@ -2,21 +2,16 @@
 package cc.jumpkick.engine.http;
 
 import cc.jumpkick.config.JkHttpConfig;
-import cc.jumpkick.engine.JsonOut;
 import cc.jumpkick.engine.journal.BuildJournal;
-import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.runtime.BuildMetrics;
-import cc.jumpkick.runtime.ProjectCard;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.net.BindException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -26,16 +21,15 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
- * Embedded JDK {@code jdk.httpserver}: Host-header check, admission semaphore, {@link HttpTokenGate},
- * {@link EngineEpochGate}, {@link StaticContent}, {@link ApiRouter}. Bind failure is non-fatal.
+ * Embedded JDK {@code jdk.httpserver}: bind/stop lifecycle, the gate chain every exchange passes
+ * (Host header, {@link HttpAdmission}, {@link HttpTokenGate}, {@link EngineEpochGate}), the route
+ * table over {@link ApiRouter} / {@link McpFront} / {@link StaticContent}, and the composition of
+ * those owners. Nothing else. Bind failure is non-fatal.
  */
 public final class HttpEngineServer implements AutoCloseable {
 
     /** Grace period {@link HttpServer#stop} gives in-flight exchanges before hard-closing. */
     private static final int STOP_GRACE_SECONDS = 1;
-
-    /** Cap on a request body ({@code POST /api/build} carries one flat object; 64 KiB is generous). */
-    static final int MAX_BODY_BYTES = 64 * 1024;
 
     /** Bind attempts before giving up — rides out a just-displaced predecessor still releasing the port. */
     private static final int BIND_ATTEMPTS = 25;
@@ -62,7 +56,7 @@ public final class HttpEngineServer implements AutoCloseable {
     private final ApiRouter api = new ApiRouter();
     private final Consumer<String> log;
     private final McpHandler mcp;
-    private final String engineVersion;
+    private final McpFront mcpFront;
     private final HttpHistoryApi historyApi;
     private final HttpProjectApi projectApi;
     private final HttpReadApi readApi;
@@ -146,9 +140,7 @@ public final class HttpEngineServer implements AutoCloseable {
         this.cache = cache;
         this.liveVitals = new LiveVitals(events, status, cache);
         this.log = log != null ? log : s -> {};
-        this.engineVersion = version;
         this.progressTokens = new ProgressTokenRegistry();
-        this.sse = new SseEndpoint(events, liveVitals, progressTokens, this.log);
         // null when [mcp] enabled=false — dispatch 404s every /mcp path before reaching it.
         // MCP journal reads are redacted at the supplier — every consumer (history view=full,
         // diagnostics, project cards, run-wait summaries) sees the same defense-in-depth as REST.
@@ -156,7 +148,7 @@ public final class HttpEngineServer implements AutoCloseable {
                 ? new McpHandler(
                         status,
                         jobs,
-                        this::projectMap,
+                        McpFront::projectMap,
                         () -> HttpHistoryApi.redactRecords(journal.rawRecords(200)),
                         version,
                         progressTokens,
@@ -170,6 +162,8 @@ public final class HttpEngineServer implements AutoCloseable {
         if (this.mcp != null) this.mcp.cacheSnapshot(cache);
         // jk_details serves a budgeted tail of the journal-owned details.jsonl transcript.
         if (this.mcp != null) this.mcp.detailsFile(journal::detailsFile);
+        this.sse = new SseEndpoint(events, liveVitals, progressTokens, this.log);
+        this.mcpFront = this.mcp == null ? null : new McpFront(this.mcp, sse, version);
         this.historyApi = new HttpHistoryApi(journal, () -> this.liveRuns.get());
         this.projectApi = new HttpProjectApi(journal);
         this.readApi = new HttpReadApi(config, webRoot, logFile, status, jobs, metrics, cache, this::url);
@@ -364,7 +358,7 @@ public final class HttpEngineServer implements AutoCloseable {
                 tokens.challenge(exchange);
                 return;
             }
-            handleMcp(exchange);
+            mcpFront.handle(exchange);
             return;
         }
         if (path.equals("/api") || path.startsWith("/api/")) {
@@ -380,74 +374,6 @@ public final class HttpEngineServer implements AutoCloseable {
             return;
         }
         staticContent.serve(exchange); // static is never token-gated — the dashboard shell has no secrets
-    }
-
-    /**
-     * MCP Streamable-HTTP style: {@code POST /mcp} with JSON-RPC body; {@code GET /mcp} with {@code
-     * Accept: text/event-stream} opens an SSE progress stream ({@code notifications/jk/event});
-     * otherwise GET returns a small discovery document.
-     */
-    private void handleMcp(HttpExchange exchange) throws IOException {
-        String method = exchange.getRequestMethod();
-        if (method.equals("GET") || method.equals("HEAD")) {
-            if (method.equals("GET") && HttpAdmission.acceptsEventStream(exchange)) {
-                sse.serveMcp(exchange);
-                return;
-            }
-            HttpResponses.sendJson(
-                    exchange,
-                    200,
-                    JsonOut.object()
-                            .put("schema", 1)
-                            .put("type", "mcp-discovery")
-                            .put("protocolVersion", McpHandler.PROTOCOL_VERSION)
-                            .put("server", McpHandler.SERVER_NAME)
-                            .put("version", engineVersion)
-                            .put("endpoint", "POST /mcp")
-                            .put("events", "/api/events")
-                            .put(
-                                    "mcpEvents",
-                                    "GET /mcp (Accept: text/event-stream); optional ?jid=N or " + "?progressToken=T")
-                            .put(
-                                    "instructions",
-                                    "JSON-RPC 2.0 POST. Methods: initialize, tools/list, tools/call, ping. "
-                                            + "Bearer token required. Live progress: GET /mcp with "
-                                            + "Accept: text/event-stream (optional ?jid= or "
-                                            + "?progressToken=) or GET /api/events (dashboard SSE).")
-                            .toString());
-            return;
-        }
-        if (!method.equals("POST")) {
-            exchange.getResponseHeaders().set("Allow", "GET, HEAD, POST");
-            HttpResponses.sendText(exchange, 405, "method not allowed\n");
-            return;
-        }
-        String body = new String(exchange.getRequestBody().readNBytes(MAX_BODY_BYTES), StandardCharsets.UTF_8);
-        String response = mcp.handleBody(body);
-        if (response == null || response.isEmpty()) {
-            // JSON-RPC notification — accepted, no body.
-            exchange.sendResponseHeaders(202, -1);
-            return;
-        }
-        HttpResponses.sendJson(exchange, 200, response);
-    }
-
-    /** Project metadata fallback for MCP {@code jk_project} — one card, one parse path. */
-    private Map<String, Object> projectMap(String dir) {
-        Map<String, Object> m = new LinkedHashMap<>();
-        Path root;
-        try {
-            root = PathUtil.resolveUserPath(dir);
-        } catch (IllegalArgumentException e) {
-            m.put("dir", dir);
-            return m;
-        }
-        ProjectCard card = ProjectCard.of(root);
-        m.put("dir", card.dir());
-        if (card.coord() != null) m.put("coord", card.coord());
-        if (card.description() != null) m.put("description", card.description());
-        if (card.version() != null) m.put("version", card.version());
-        return m;
     }
 
     /** Test seam: rebind rules for in-flight history rows. */

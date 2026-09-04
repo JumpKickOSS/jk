@@ -52,8 +52,7 @@ final class HttpProjectApi {
      * {@link cc.jumpkick.scaffold.NewScaffolder} path as {@code jk new}.
      */
     void handleNewProject(HttpExchange exchange) throws IOException {
-        String body = new String(
-                exchange.getRequestBody().readNBytes(HttpEngineServer.MAX_BODY_BYTES), StandardCharsets.UTF_8);
+        String body = HttpRequests.body(exchange);
         String name = Jsonl.str(body, "name");
         String parentDir = Jsonl.str(body, "parentDir");
         String group = Jsonl.str(body, "group");
