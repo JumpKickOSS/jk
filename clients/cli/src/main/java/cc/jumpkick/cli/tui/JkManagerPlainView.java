@@ -152,7 +152,7 @@ final class JkManagerPlainView {
      * ({@code running 80 tests} / {@code compiling 12 sources}) and prints the stage change. Must
      * hold the manager lock.
      */
-    void onStepMessage(JkManager.Row r) {
+    void onStepMessage(PlanModel.Row r) {
         if (!animating()) return;
         if (r.message.contains("classpath input size")) emitStepDetail(r.message);
         var tests = PlainPhase.runningTestsCount(r.message);
@@ -174,7 +174,7 @@ final class JkManagerPlainView {
      * stage-change or heartbeat line shows the updated {@code running N tests}. Must hold the
      * manager lock.
      */
-    void noteTestTick(JkManager.Row r, int delta) {
+    void noteTestTick(PlanModel.Row r, int delta) {
         if (r.plainRemainingTests < 0) return;
         r.plainRemainingTests = Math.max(0, r.plainRemainingTests - Math.max(0, delta));
         r.plainStatusOverride = PlainPhase.runningTests(r.plainRemainingTests);
@@ -343,7 +343,7 @@ final class JkManagerPlainView {
     }
 
     private String currentStatus() {
-        JkManager.Row active = firstActiveRow();
+        PlanModel.Row active = firstActiveRow();
         if (active != null) {
             if (active.plainStatusOverride != null && !active.plainStatusOverride.isEmpty()) {
                 return active.plainStatusOverride;
@@ -359,7 +359,7 @@ final class JkManagerPlainView {
     }
 
     private String currentSubject() {
-        JkManager.Row active = firstActiveRow();
+        PlanModel.Row active = firstActiveRow();
         if (active != null) {
             if (active.module != null && !active.module.isEmpty()) return active.module;
             if (active.message != null && !active.message.isEmpty()) return active.message;
@@ -371,10 +371,10 @@ final class JkManagerPlainView {
     }
 
     /** Newest active row (insertion order) — the step that just started owns the status. */
-    private JkManager.Row firstActiveRow() {
-        JkManager.Row last = null;
-        for (JkManager.Row r : m.rows.values()) {
-            if (r.state == JkManager.RowState.ACTIVE) last = r;
+    private PlanModel.Row firstActiveRow() {
+        PlanModel.Row last = null;
+        for (PlanModel.Row r : m.model.rows().values()) {
+            if (r.state == PlanModel.RowState.ACTIVE) last = r;
         }
         return last;
     }

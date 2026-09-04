@@ -1269,7 +1269,7 @@ Same charter, one patient at a time. Current sizes:
 | `BuildService` | 1,618 | 507 | 283 | 800 | lock-guard / execute / fold |
 | `BuildPlanner` | 5,348 | 1,191 | 561 | 800 | `Planner*` step clusters; facade `coreBuilder` |
 | `JkBuildParser` | 2,238 | 391 | 395 | 800 | `Manifest*` table parsers |
-| `JkManager` | 2,204² | 1,178 | 561 | 800 | facade: live region + Ctrl-C handoff |
+| `JkManager` | 2,204² | 1,178 | 401 | 800 | facade: live region + Ctrl-C handoff |
 | `JkManagerView` | — | — | 455 | 800 | paint |
 | `JkManagerColor` | — | — | 380 | 800 | token colour |
 | `NewCommand` | 1,403 | 1,164 | 549 | 800 | wizard |

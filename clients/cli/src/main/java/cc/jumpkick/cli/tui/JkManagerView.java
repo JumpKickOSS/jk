@@ -510,15 +510,15 @@ final class JkManagerView {
         int rowsAfterHeader = Math.max(1, m.height - 2 - (hasScopeHint ? 1 : 0));
         // Shrink the work tree so ✓ [N of M] still fits under the wedge (live region only).
         int completionSlots = 0;
-        if (m.completedCount > 0 && rowsAfterHeader > 1) {
+        if (m.model.completedCount() > 0 && rowsAfterHeader > 1) {
             completionSlots = Math.min(JkManager.MAX_COMPLETIONS + 1, Math.max(1, rowsAfterHeader / 2));
         }
         int budget = Math.max(1, rowsAfterHeader - completionSlots);
-        List<JkManager.TreeEntry> visible = collectVisibleTree();
+        List<PlanModel.TreeEntry> visible = collectVisibleTree();
         Tree work = Tree.untitled().gap(Tree.Gap.NONE);
         int shown = 0;
         for (int i = 0; i < visible.size() && budget > 0; i++) {
-            JkManager.TreeEntry entry = visible.get(i);
+            PlanModel.TreeEntry entry = visible.get(i);
             String rowLabel = entry.line == null ? "" : entry.line.stripLeading();
             Tree.Node node = Tree.node(RichText.ansi(rowLabel));
             budget--;
@@ -534,17 +534,17 @@ final class JkManagerView {
         }
         chrome.addAll(work.render(frameCtx));
 
-        if (m.completedCount > 0) {
+        if (m.model.completedCount() > 0) {
             int room = Math.max(0, rowsAfterHeader - (chrome.size() - 1));
             if (room > 0) {
-                boolean overflow = m.completedCount > Math.min(JkManager.MAX_COMPLETIONS, room);
+                boolean overflow = m.model.completedCount() > Math.min(JkManager.MAX_COMPLETIONS, room);
                 int cap = Math.max(0, Math.min(JkManager.MAX_COMPLETIONS, overflow ? room - 1 : room));
-                int have = m.recentCompletions.size();
+                int have = m.model.recentCompletions().size();
                 int compShown = Math.min(have, cap);
                 for (int i = 0; i < compShown; i++) {
-                    chrome.add("    " + m.recentCompletions.get(have - 1 - i));
+                    chrome.add("    " + m.model.recentCompletions().get(have - 1 - i));
                 }
-                int more = m.completedCount - compShown;
+                int more = m.model.completedCount() - compShown;
                 if (more > 0) {
                     chrome.add(Theme.colorize("      … plus " + more + " more …", dim.italic()));
                 }
@@ -554,47 +554,47 @@ final class JkManagerView {
     }
 
     /** Running/failed tree entries, newest first. Module rows when available; else preflight phases. */
-    private List<JkManager.TreeEntry> collectVisibleTree() {
-        List<JkManager.TreeEntry> entries = new ArrayList<>();
-        List<JkManager.Row> active = new ArrayList<>();
-        List<JkManager.Row> failed = new ArrayList<>();
-        for (JkManager.Row r : m.rows.values()) {
-            if (r.state == JkManager.RowState.ACTIVE) active.add(r);
-            else if (r.state == JkManager.RowState.FAILED) failed.add(r);
+    private List<PlanModel.TreeEntry> collectVisibleTree() {
+        List<PlanModel.TreeEntry> entries = new ArrayList<>();
+        List<PlanModel.Row> active = new ArrayList<>();
+        List<PlanModel.Row> failed = new ArrayList<>();
+        for (PlanModel.Row r : m.model.rows().values()) {
+            if (r.state == PlanModel.RowState.ACTIVE) active.add(r);
+            else if (r.state == PlanModel.RowState.FAILED) failed.add(r);
         }
         if (!active.isEmpty() || !failed.isEmpty()) {
             for (int i = active.size() - 1; i >= 0; i--) entries.add(treeEntryForRow(active.get(i)));
             failed.sort((a, b) -> Long.compare(b.seq, a.seq));
-            for (JkManager.Row r : failed) entries.add(treeEntryForRow(r));
+            for (PlanModel.Row r : failed) entries.add(treeEntryForRow(r));
             return entries;
         }
-        for (int i = m.phaseOrder.size() - 1; i >= 0; i--) {
-            JkManager.PhaseNode n = m.phases.get(m.phaseOrder.get(i));
-            if (n != null && (n.state == JkManager.PhaseState.RUNNING || n.state == JkManager.PhaseState.FAILED)) {
+        for (int i = m.model.phaseOrder().size() - 1; i >= 0; i--) {
+            PlanModel.PhaseNode n = m.model.phases().get(m.model.phaseOrder().get(i));
+            if (n != null && (n.state == PlanModel.PhaseState.RUNNING || n.state == PlanModel.PhaseState.FAILED)) {
                 entries.add(treeEntryForPhase(n));
             }
         }
         return entries;
     }
 
-    private JkManager.TreeEntry treeEntryForRow(JkManager.Row r) {
-        boolean failed = r.state == JkManager.RowState.FAILED;
+    private PlanModel.TreeEntry treeEntryForRow(PlanModel.Row r) {
+        boolean failed = r.state == PlanModel.RowState.FAILED;
         String brief = failed ? r.briefError : "";
         if ((brief == null || brief.isEmpty()) && failed) {
-            JkManager.PhaseNode n = m.phases.get(r.phase);
+            PlanModel.PhaseNode n = m.model.phases().get(r.phase);
             if (n != null) brief = n.briefError;
         }
         String detail = failed ? "" : JkManagerColor.detailForDisplay(r.module, r.message);
-        return new JkManager.TreeEntry(
+        return new PlanModel.TreeEntry(
                 renderWorkRow(r.module, JkManagerColor.phaseLabel(r.phase), failed, detail),
                 brief == null ? "" : brief);
     }
 
-    private JkManager.TreeEntry treeEntryForPhase(JkManager.PhaseNode n) {
-        boolean failed = n.state == JkManager.PhaseState.FAILED;
+    private PlanModel.TreeEntry treeEntryForPhase(PlanModel.PhaseNode n) {
+        boolean failed = n.state == PlanModel.PhaseState.FAILED;
         String phaseLabel = n.label == null || n.label.isEmpty() ? JkManagerColor.phaseLabel(n.key) : n.label;
         String detail = failed ? "" : (n.detail == null ? "" : n.detail);
-        return new JkManager.TreeEntry(renderWorkRow("", phaseLabel, failed, detail), failed ? n.briefError : "");
+        return new PlanModel.TreeEntry(renderWorkRow("", phaseLabel, failed, detail), failed ? n.briefError : "");
     }
 
     /** Dim segment separator between module, phase, and detail on a work row. */

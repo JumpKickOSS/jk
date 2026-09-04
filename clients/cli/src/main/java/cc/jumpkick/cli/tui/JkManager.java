@@ -14,24 +14,25 @@ import cc.jumpkick.wire.runtime.progress.HeaderProgressStrategy;
 import cc.jumpkick.wire.runtime.progress.ProgressBarMode;
 import java.io.PrintStream;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Live console for long-running commands: simple pulse-circle task mode, or plan mode (header
  * with pulse + {@link ProgressBar} + compact module/phase tree). Animates on a TTY; under pipes/{@code
  * --quiet}/{@code --no-progress} only prints the final result. Active {@link LiveRegion} for Ctrl-C.
  *
- * <p>This type is the public TUI facade and the live region itself. Its collaborators own one
- * thing each: {@link JkManagerView} paints and settles the ANSI frame, {@link JkManagerPlainView}
- * is its {@code --no-ansi} sibling on the mode axis, {@link JkManagerColor} classifies detail
- * tokens, {@link OutputWindow} rings process output and {@link PeekKeys} is its Ctrl-O key,
- * {@link OutputCapture} owns the {@code System.out} swap, and {@link Countdown} owns the
- * remaining-work anchors. What stays here is the {@code done} flag and the one lock over it —
- * settle, dismiss, close and the SIGINT {@link #renderCanceled} race to set it and each tears the
- * region down differently, so it must have exactly one writer (, under 1,200).
+ * <p>This type is the public TUI facade and the live region itself, and it retains exactly four
+ * things: the terminal-region lifecycle — the {@code done} flag and the one {@link #lock} over it,
+ * which settle, dismiss, close and the SIGINT {@link #renderCanceled} race to set and each tears
+ * the region down differently, so it must have exactly one writer; the header and plan identity
+ * (name, target, coordinate, scope hint, wall anchor); the delegations to its collaborators; and
+ * the two mode factories. Everything else has one owner: {@link PlanModel} holds the step and
+ * phase state, {@link HeaderProgress} the bar's numbers and the solve label, {@link OutputPane} the
+ * process-output pane with its key and stream swap, {@link RegionAnimator} the one background
+ * loop, {@link WindowTitle} the OSC title; {@link JkManagerView} paints and settles the ANSI frame,
+ * {@link JkManagerPlainView} is its {@code --no-ansi} sibling, and {@link JkManagerColor}
+ * classifies detail tokens. Owners that touch painted state receive {@link #lock} and take it
+ * where this class did; none has a monitor of its own.
  */
 public final class JkManager implements AutoCloseable, LiveRegion {
 
@@ -115,19 +116,6 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     List<String> scopeHintNames = List.of();
     // Package-private: JkManagerTest rewinds the wall anchor to simulate elapsed time.
     long startNanos;
-    long finishSeq;
-
-    final Map<String, Row> rows = new LinkedHashMap<>();
-
-    /** Coarse plan phases in first-seen order (render newest-first). Key = wire phase name. */
-    final List<String> phaseOrder = new ArrayList<>();
-
-    final Map<String, PhaseNode> phases = new LinkedHashMap<>();
-
-    /** Pre-formatted completion lines, oldest→newest; bounded to {@link #MAX_COMPLETIONS}. */
-    final List<String> recentCompletions = new ArrayList<>();
-
-    int completedCount;
 
     /** OSC 0 title with its own glyph cadence; every caller holds {@link #lock}. */
     final WindowTitle windowTitle;
@@ -141,6 +129,9 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     /** The header bar's numbers and the solve label; takes {@link #lock} where the manager did. */
     final HeaderProgress header;
 
+    /** Step and phase state of the plan; takes {@link #lock} where the manager did. */
+    final PlanModel model;
+
     JkManager(PrintStream out, boolean animate, boolean planMode, int width, ProgressBarMode progressMode) {
         // PlainAscii.wrap is identity under ANSI; under --no-ansi rewrites …/•/● in messages.
         this.out = PlainAscii.wrap(out);
@@ -150,6 +141,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         this.windowTitle = new WindowTitle(this.out, animate);
         this.pane = new OutputPane(this, lock);
         this.header = new HeaderProgress(lock, plain, progressMode, this::elapsedMillis, () -> done);
+        this.model = new PlanModel(lock, new PlanEvents());
         this.animator = new RegionAnimator(lock, pane::flushStale, this::tick, plain::maybeEmitHeartbeat, () -> done);
     }
 
@@ -293,107 +285,42 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         }
     }
 
-    /** Register a not-yet-started step row with a humanized display name. */
     public void addTask(String module, String stepKey) {
-        addTaskLabeled(module, stepKey, humanize(stepKey));
+        model.addTask(module, stepKey);
     }
 
-    /** Register a not-yet-started step row with an explicit display label. */
     public void addTaskLabeled(String module, String stepKey, String display) {
-        synchronized (lock) {
-            rows.computeIfAbsent(key(module, stepKey), k -> new Row(module, display, stepKey));
-        }
+        model.addTaskLabeled(module, stepKey, display);
     }
 
-    /** Mark a step running (phase defaults to the step key). */
     public void stepRunning(String module, String stepKey) {
-        stepRunning(module, stepKey, "");
+        model.stepRunning(module, stepKey);
     }
 
-    /**
-     * Mark a step running and record its coarse {@code phase} (wire name, e.g. {@code compile}) for
-     * the vertical phase chain. Empty phase falls back to the step key (same as the web dashboard).
-     *
-     * <p>No-ops when the step already has a terminal status so a late/out-of-order {@code stepStart}
-     * cannot resurrect a finished row (same rule as the dashboard rehydrate path).
-     */
     public void stepRunning(String module, String stepKey, String phase) {
-        synchronized (lock) {
-            String phaseKey = phaseKey(phase, stepKey);
-            Row r = rows.computeIfAbsent(key(module, stepKey), k -> new Row(module, humanize(stepKey), phaseKey));
-            if (r.state == RowState.DONE || r.state == RowState.FAILED) return;
-            r.phase = phaseKey;
-            r.state = RowState.ACTIVE;
-            this.target = module;
-            touchPhaseStart(phaseKey);
-            // First module task starting = execute has begun: freeze the R0 seed path so
-            // provisional eta rewrites cannot thrash the total. Residual still
-            // re-anchors the painted countdown.
-            header.lockSeed();
-            plain.emitPhaseChange();
-        }
+        model.stepRunning(module, stepKey, phase);
     }
 
-    /** Set the current sub-task message for a running step. */
     public void stepMessage(String module, String stepKey, String message) {
-        synchronized (lock) {
-            Row r = rows.get(key(module, stepKey));
-            if (r == null) return;
-            r.message = message == null ? "" : message;
-            plain.onStepMessage(r);
-        }
+        model.stepMessage(module, stepKey, message);
     }
 
-    /**
-     * A static test finished. Decrements the plain remaining-test count without printing — the next
-     * stage-change or 30s heartbeat line shows the updated {@code running N tests}.
-     */
+    /** A static test finished; the plain view's remaining-test count follows without printing. */
     public void notePlainTestTick(String module, String stepKey, int delta) {
         if (!plain.animating() || !OutputPane.isCuratedTestStep(stepKey)) return;
-        synchronized (lock) {
-            Row r = rows.get(key(module, stepKey));
-            if (r != null) plain.noteTestTick(r, delta);
-        }
+        model.notePlainTestTick(module, stepKey, delta);
     }
 
-    /** Mark a step finished (phase defaults empty). */
     public void stepDone(String module, String stepKey, boolean ok) {
-        stepDone(module, stepKey, ok, "");
+        model.stepDone(module, stepKey, ok);
     }
 
-    /** Mark a step finished; updates the phase chain aggregate for {@code phase}. */
     public void stepDone(String module, String stepKey, boolean ok, String phase) {
-        synchronized (lock) {
-            String phaseKey = phaseKey(phase, stepKey);
-            Row r = rows.computeIfAbsent(key(module, stepKey), k -> new Row(module, humanize(stepKey), phaseKey));
-            if (r.state == RowState.DONE || r.state == RowState.FAILED) return;
-            r.phase = phaseKey;
-            r.state = ok ? RowState.DONE : RowState.FAILED;
-            r.message = "";
-            r.seq = ++finishSeq;
-            touchPhaseFinish(phaseKey, ok);
-        }
+        model.stepDone(module, stepKey, ok, phase);
     }
 
-    /**
-     * Terminal cleanup for one module's plan: any still-{@link RowState#ACTIVE} rows (lost wire
-     * {@code task-finish}, cancel between start and finish, …) settle so they leave the live tree
-     * instead of lingering for the rest of the workspace build.
-     */
     public void finishModule(String module, boolean ok) {
-        synchronized (lock) {
-            if (module == null) return;
-            for (Row r : rows.values()) {
-                if (!module.equals(r.module) || r.state != RowState.ACTIVE) continue;
-                r.state = ok ? RowState.DONE : RowState.FAILED;
-                r.message = "";
-                r.seq = ++finishSeq;
-                if (r.phase != null && !r.phase.isEmpty()) {
-                    touchPhaseFinish(r.phase, ok);
-                }
-            }
-            if (ok) plain.emitModuleBuilt(module);
-        }
+        model.finishModule(module, ok);
     }
 
     /** Seed the countdown with remaining wall work {@code R0} (ms); see {@link HeaderProgress}. */
@@ -424,67 +351,13 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         header.solveLabel(label);
     }
 
-    /**
-     * Workspace preflight: phase pill for {@code stage} + optional header label while the bar may
-     * still be preflight-only. Called from {@link cc.jumpkick.cli.run.AggregateContext#preflight}.
-     */
+    /** Workspace preflight: phase pill for {@code stage} + optional header label. */
     public void preflight(String stage, int done, int total, String label) {
-        synchronized (lock) {
-            String key = stage == null || stage.isEmpty() ? "checking" : stage;
-            String pill = phaseLabel(key);
-            PhaseNode n = phases.get(key);
-            if (n == null) {
-                n = new PhaseNode(key, pill);
-                phases.put(key, n);
-                phaseOrder.add(key);
-            }
-            // Prefer an explicit label; else "3/10" style progress on the tree row detail.
-            if (label != null && !label.isEmpty()) n.detail = label;
-            else if (total > 0) n.detail = done + "/" + total;
-            boolean complete = total > 0 && done >= total;
-            if (complete) {
-                // Success → drop from the live chain (failed preflight keeps a red row).
-                phases.remove(key);
-                phaseOrder.remove(key);
-            } else {
-                n.state = PhaseState.RUNNING;
-            }
-            header.preflightLabel(pill, done, total, label);
-        }
+        model.preflight(stage, done, total, label);
     }
 
-    /**
-     * Attach a short failure summary to the step/phase owning {@code stepKey} (or {@code phase} if
-     * set). Full diagnostics still go above the region / result files.
-     */
     public void attachPhaseError(String module, String stepKey, String phase, String brief) {
-        synchronized (lock) {
-            String msg = brief == null ? "" : brief.trim().replace('\n', ' ');
-            if (msg.length() > 96) {
-                int cut = 93;
-                // Never split a surrogate pair: an emoji-heavy assertion brief cut mid-pair
-                // ends in a lone high surrogate (mojibake in the tree's brief-error row, and
-                // PlainAscii passes lone surrogates through).
-                if (Character.isHighSurrogate(msg.charAt(cut - 1))) cut--;
-                msg = msg.substring(0, cut) + Glyphs.ELLIPSIS;
-            }
-            Row r = rows.get(key(module, stepKey));
-            if (r != null && !msg.isEmpty()) r.briefError = msg;
-            // Prefer the row's recorded wire phase (e.g. "compile") when callers pass empty
-            // phase or a step key that has no PhaseNode.
-            String pk = phaseKey(phase, stepKey);
-            if (r != null && r.phase != null && !r.phase.isEmpty()) {
-                if (pk == null || pk.isEmpty() || !phases.containsKey(pk)) {
-                    pk = r.phase;
-                }
-            }
-            if (pk == null || pk.isEmpty()) return;
-            PhaseNode n = phases.get(pk);
-            if (n == null) return;
-            if (!msg.isEmpty()) n.briefError = msg;
-            n.anyFailed = true;
-            n.state = PhaseState.FAILED;
-        }
+        model.attachPhaseError(module, stepKey, phase, brief);
     }
 
     /** Set the aggregate progress numerator/denominator (engine weight slices). */
@@ -502,19 +375,11 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         return header.activeProgressStrategy();
     }
 
-    /**
-     * Record a finished unit's pre-formatted completion line in the live tail under the wedge
-     * (newest first, capped to {@link #MAX_COMPLETIONS}; the rest collapse into a
-     * {@code … plus N more …} footer). Does not write to the terminal or to process-output
-     * scrollback — the next plan paint includes it in the live region. Callers that aren't
-     * animating should print append-only instead (see {@link #animating}).
-     */
+    /** Record a finished unit's completion line in the live tail; see {@link PlanModel#addCompletion}. */
     public void addCompletion(String line) {
         synchronized (lock) {
             if (done) return;
-            completedCount++;
-            recentCompletions.add(line);
-            if (recentCompletions.size() > MAX_COMPLETIONS) recentCompletions.remove(0);
+            model.addCompletion(line);
         }
     }
 
@@ -729,54 +594,6 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         }
     }
 
-    private static String phaseKey(String phase, String stepKey) {
-        if (phase != null && !phase.isEmpty()) return phase;
-        return stepKey == null ? "" : stepKey;
-    }
-
-    private void touchPhaseStart(String phaseKey) {
-        if (phaseKey == null || phaseKey.isEmpty()) return;
-        PhaseNode n = phases.get(phaseKey);
-        if (n == null) {
-            n = new PhaseNode(phaseKey, phaseLabel(phaseKey));
-            phases.put(phaseKey, n);
-            phaseOrder.add(phaseKey);
-        }
-        n.runningCount++;
-        n.state = PhaseState.RUNNING;
-    }
-
-    private void touchPhaseFinish(String phaseKey, boolean ok) {
-        if (phaseKey == null || phaseKey.isEmpty()) return;
-        PhaseNode n = phases.get(phaseKey);
-        if (n == null) {
-            n = new PhaseNode(phaseKey, phaseLabel(phaseKey));
-            phases.put(phaseKey, n);
-            phaseOrder.add(phaseKey);
-        }
-        n.runningCount = Math.max(0, n.runningCount - 1);
-        if (!ok) {
-            n.anyFailed = true;
-            if (n.briefError == null || n.briefError.isEmpty()) n.briefError = "Failed";
-        }
-        if (n.runningCount == 0) {
-            if (n.anyFailed) {
-                n.state = PhaseState.FAILED;
-            } else {
-                // Success → remove from the live chain (web-like: only active/failed stay visible)
-                phases.remove(phaseKey);
-                phaseOrder.remove(phaseKey);
-            }
-        } else {
-            n.state = n.anyFailed ? PhaseState.FAILED : PhaseState.RUNNING;
-        }
-    }
-
-    /** {@code compile} → {@code Compile}. */
-    static String phaseLabel(String wire) {
-        return JkManagerColor.phaseLabel(wire);
-    }
-
     public static String coloredModule(String module) {
         return JkManagerColor.coloredModule(module);
     }
@@ -792,15 +609,6 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     }
 
     // --- helpers ----------------------------------------------------------
-
-    private static String key(String module, String stepKey) {
-        return module + '\0' + stepKey;
-    }
-
-    /** {@code compile-java} → {@code Compile java} for a step row's display label. */
-    static String humanize(String stepKey) {
-        return JkManagerColor.humanize(stepKey);
-    }
 
     public interface OutputScope extends AutoCloseable {
         @Override
@@ -822,67 +630,36 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         pane.restoreStreams();
     }
 
-    enum RowState {
-        PENDING,
-        ACTIVE,
-        DONE,
-        FAILED
-    }
-
-    enum PhaseState {
-        PENDING,
-        RUNNING,
-        SUCCESS,
-        FAILED
-    }
-
-    static final class PhaseNode {
-        final String key;
-        final String label;
-        PhaseState state = PhaseState.PENDING;
-        int runningCount;
-        boolean anyFailed;
-        /** One-line summary under a failed phase (full diagnostics stay in result files). */
-        String briefError = "";
-        /** Live sub-task for preflight / phase-only rows (e.g. artifact being fetched). */
-        String detail = "";
-
-        PhaseNode(String key, String label) {
-            this.key = key;
-            this.label = label;
+    /** The region's answer to model changes: header target, seed lock, plain-view lines. */
+    private final class PlanEvents implements PlanModel.Events {
+        @Override
+        public void stepStarted(String module) {
+            target = module;
+            // First module task starting = execute has begun: freeze the R0 seed path so
+            // provisional eta rewrites cannot thrash the total. Residual still
+            // re-anchors the painted countdown.
+            header.lockSeed();
+            plain.emitPhaseChange();
         }
-    }
 
-    static final class Row {
-        final String module;
-        final String step;
-        String phase;
-        RowState state = RowState.PENDING;
-        String message = "";
-        /** One-line failure summary under a failed row (full diagnostics stay above / in files). */
-        String briefError = "";
-        /** Plain status override ({@code compiling 12 sources} / {@code running 80 tests}). */
-        String plainStatusOverride = "";
-        /** Remaining static tests for plain countdown; {@code -1} = unknown. */
-        int plainRemainingTests = -1;
-
-        long seq;
-
-        Row(String module, String step, String phase) {
-            this.module = module;
-            this.step = step;
-            this.phase = phase == null ? "" : phase;
+        @Override
+        public void stepMessage(PlanModel.Row row) {
+            plain.onStepMessage(row);
         }
-    }
 
-    /** One compact tree line (+ optional brief under failed work). */
-    static final class TreeEntry {
-        final String line;
-        final String briefError;
+        @Override
+        public void testTick(PlanModel.Row row, int delta) {
+            plain.noteTestTick(row, delta);
+        }
 
-        TreeEntry(String line, String briefError) {
-            this.line = line;
-            this.briefError = briefError == null ? "" : briefError;
+        @Override
+        public void moduleBuilt(String module) {
+            plain.emitModuleBuilt(module);
+        }
+
+        @Override
+        public void preflight(String pill, int done, int total, String label) {
+            header.preflightLabel(pill, done, total, label);
         }
     }
 }
