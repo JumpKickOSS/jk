@@ -172,7 +172,8 @@ class JobEnvelopeTest {
         FakeHost host = new FakeHost();
         host.accumulator = new BuildAccumulator("build", "/p", null, "web");
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
-        env.enforceDeadline(7L, Session.CancelToken.live(), null, null, 1234L);
+        new JobWatchdog(new JobLimits(0L, 1234L, 0L), () -> 1_000L, id -> host.accumulator)
+                .enforceDeadline(7L, Session.CancelToken.live(), null, null);
         assertThat(host.accumulator.wasCancelled()).isTrue();
         assertThat(host.accumulator.cancelReason()).contains("1234ms");
     }
@@ -253,8 +254,8 @@ class JobEnvelopeTest {
 
         FakeHost byDeadline = new FakeHost();
         byDeadline.accumulator = new BuildAccumulator("build", "/p", null, "web");
-        new JobEnvelope(byDeadline, JobLimits.DEFAULTS)
-                .enforceDeadline(2L, Session.CancelToken.live(), null, null, 1234L);
+        new JobWatchdog(new JobLimits(0L, 1234L, 0L), () -> 1_000L, id -> byDeadline.accumulator)
+                .enforceDeadline(2L, Session.CancelToken.live(), null, null);
 
         assertThat(byUser.journalRecord().exitCode()).isEqualTo(Exit.INTERRUPTED);
         assertThat(byDeadline.journalRecord().exitCode()).isEqualTo(Exit.INTERRUPTED);

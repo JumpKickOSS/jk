@@ -119,7 +119,7 @@ public final class JobEnvelope {
     /**
      * Why a cancelled row was cancelled, for the two signals this envelope can tell apart. Both
      * ride the journal as the {@code cancelled} warning diagnostic and {@code request-finish}'s
-     * {@code cancelReason}, next to the wall deadline's own sentence in {@link #enforceDeadline}.
+     * {@code cancelReason}, next to the wall deadline's own sentence in {@link JobWatchdog#enforceDeadline}.
      */
     private static final String CANCEL_BY_USER = "cancelled by the user (Ctrl-C, jk cancel, or the dashboard)";
 
@@ -127,12 +127,14 @@ public final class JobEnvelope {
 
     private final Host host;
     private final JobLimits limits;
+    private final JobWatchdog watchdogs;
     private final ConcurrentHashMap<Long, LiveJob> liveJobs = new ConcurrentHashMap<>();
 
     /** {@code limits} come from the engine's resolved config; the envelope never reads the environment. */
     public JobEnvelope(Host host, JobLimits limits) {
         this.host = host;
         this.limits = limits;
+        this.watchdogs = new JobWatchdog(limits, host::nowMillis, host::accumulatorOf);
     }
 
     /** Detached admission refusal: a same-fingerprint job is already in flight. */
@@ -239,7 +241,6 @@ public final class JobEnvelope {
                 admit.buildNumber(),
                 admit.journalId());
         // The slot was already claimed above, atomically with the shutdown check.
-        Thread heartbeatThread = null;
         AtomicReference<Thread> runnerRef = new AtomicReference<>();
         // Public jid surface — client tracks this for Ctrl-C / jk cancel.
         if (writer != null) {
@@ -336,44 +337,12 @@ public final class JobEnvelope {
         });
         runnerRef.set(started);
         started.start(); // register live job + runnerRef before start
-        // Keep-alive + optional wall deadline while the job runs, per JobLimits.
-        // Client stream idle (JK_STREAM_IDLE_MS) resets on each heartbeat line. On deadline:
-        // cancel + worker shutdown (grace→force) + interrupt runner; connection join is bounded.
-        // User cancel / EOF: same worker policy with a short cancel grace — never hang.
-        long heartbeatMs = limits.heartbeatMs();
+        // The join budgets below share the watchdog's limits: deadline plus grace, or a short
+        // cancel grace, so a wedged runner can never hang the connection.
         long deadlineMs = limits.deadlineMs();
         long graceMs = limits.deadlineGraceMs();
         long cancelGraceMs = JobWorkers.cancelGraceMs();
-        // Heartbeats are a wire line — a detached job has no writer, so its watchdog exists only
-        // to enforce a wall deadline. No deadline, no writer → no thread and no idle wakeups.
-        if ((heartbeatMs > 0 && writer != null) || deadlineMs > 0) {
-            heartbeatThread = Thread.ofVirtual().name("jk-job-watchdog", 0).start(() -> {
-                long start = host.nowMillis();
-                while (done.getCount() > 0) {
-                    long elapsed = host.nowMillis() - start;
-                    long wait = heartbeatMs > 0 ? heartbeatMs : 1_000L;
-                    if (deadlineMs > 0) {
-                        long remaining = deadlineMs - elapsed;
-                        if (remaining <= 0) {
-                            enforceDeadline(eventRequestId, cancelToken, runnerRef.get(), writer, deadlineMs);
-                            return;
-                        }
-                        wait = Math.min(wait, remaining);
-                    }
-                    try {
-                        if (done.await(wait, TimeUnit.MILLISECONDS)) return;
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        return;
-                    }
-                    if (done.getCount() == 0) return;
-                    if (heartbeatMs > 0 && writer != null) {
-                        WireWriter.sendQuiet(writer, ProtoLifecycle.heartbeat(host.nowMillis() - start));
-                    }
-                }
-            });
-        }
-        final Thread watchdog = heartbeatThread;
+        final Thread watchdog = watchdogs.start(eventRequestId, cancelToken, runnerRef, done, writer);
         Runnable finish = () -> {
             try {
                 try {
@@ -418,7 +387,7 @@ public final class JobEnvelope {
                         long elapsed = host.nowMillis() - eventStartMillis;
                         long budget = Math.max(1L, deadlineMs + graceMs - elapsed);
                         if (!done.await(budget, TimeUnit.MILLISECONDS)) {
-                            enforceDeadline(eventRequestId, cancelToken, runnerRef.get(), writer, deadlineMs);
+                            watchdogs.enforceDeadline(eventRequestId, cancelToken, runnerRef.get(), writer);
                             // Last chance for the runner to unwind after worker kill / interrupt.
                             // Cap hard so UX never waits the full 30s grace when the job is deadlocked.
                             long lastChance = Math.min(graceMs, Math.max(cancelGraceMs + 200L, 1_000L));
@@ -730,38 +699,6 @@ public final class JobEnvelope {
         } catch (RuntimeException ignored) {
             // best-effort
         }
-    }
-
-    /**
-     * Wall-deadline kill: cooperative cancel + worker grace→force + interrupt
-     * runner. Idempotent; safe from the watchdog and the connection thread. Stamps the accumulator so
-     * deadline-truncated wall-clock never trains ETA (same as user cancel).
-     */
-    public void enforceDeadline(
-            long eventRequestId,
-            Session.CancelToken cancelToken,
-            @Nullable Thread runnerThread,
-            @Nullable BufferedWriter writer,
-            long deadlineMs) {
-        cancelToken.cancel();
-        // Reason rides the accumulator so a job with no wire writer (HTTP/MCP) still journals WHY
-        // it was cancelled and request-finish can carry it — the ERR_DEADLINE line below is
-        // wire-only.
-        BuildAccumulator a = host.accumulatorOf(eventRequestId);
-        if (a != null) {
-            a.markUserCancelled(
-                    true, "exceeded the " + deadlineMs + "ms wall deadline (JK_ENGINE_JOB_DEADLINE_MS); cancelled");
-        }
-        int killed = JobWorkers.shutdownForRequest(eventRequestId, JobWorkers.cancelGraceMs());
-        interruptRunner(runnerThread);
-        WireWriter.sendQuiet(
-                writer,
-                ProtoLifecycle.error(
-                        EngineProtocol.ERR_DEADLINE,
-                        "job exceeded "
-                                + deadlineMs
-                                + "ms (JK_ENGINE_JOB_DEADLINE_MS); cancelled"
-                                + (killed > 0 ? " (killed " + killed + " worker process(es))" : "")));
     }
 
     /**
