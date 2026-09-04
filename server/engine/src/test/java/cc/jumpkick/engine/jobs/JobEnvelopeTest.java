@@ -231,7 +231,7 @@ class JobEnvelopeTest {
         host.accumulator = new BuildAccumulator("build", "/p", null, "cli");
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
 
-        env.beginUserCancel(11L, Session.CancelToken.live(), null, 0L, true);
+        env.live().beginUserCancel(11L, Session.CancelToken.live(), null, 0L, true);
 
         BuildRecord record = host.journalRecord();
         assertThat(record.cancelled()).isTrue();
@@ -250,7 +250,9 @@ class JobEnvelopeTest {
     void a_wall_deadline_is_distinguishable_in_the_record_from_a_user_cancel() {
         FakeHost byUser = new FakeHost();
         byUser.accumulator = new BuildAccumulator("build", "/p", null, "cli");
-        new JobEnvelope(byUser, JobLimits.DEFAULTS).beginUserCancel(1L, Session.CancelToken.live(), null, 0L, true);
+        new JobEnvelope(byUser, JobLimits.DEFAULTS)
+                .live()
+                .beginUserCancel(1L, Session.CancelToken.live(), null, 0L, true);
 
         FakeHost byDeadline = new FakeHost();
         byDeadline.accumulator = new BuildAccumulator("build", "/p", null, "web");
@@ -274,7 +276,9 @@ class JobEnvelopeTest {
         FakeHost host = new FakeHost();
         host.accumulator = new BuildAccumulator("build", "/p", null, "cli");
 
-        new JobEnvelope(host, JobLimits.DEFAULTS).beginUserCancel(3L, Session.CancelToken.live(), null, 0L, false);
+        new JobEnvelope(host, JobLimits.DEFAULTS)
+                .live()
+                .beginUserCancel(3L, Session.CancelToken.live(), null, 0L, false);
 
         assertThat(host.accumulator.wasCancelled()).isTrue();
         assertThat(host.accumulator.cancelReason()).contains("disconnected").doesNotContain("Ctrl-C");
@@ -282,9 +286,9 @@ class JobEnvelopeTest {
 
     @Test
     void cancelled_terminal_shape_matches_stream() {
-        assertThat(EngineProtocol.typeOf(JobEnvelope.cancelledTerminalLine(true, "/ws")))
+        assertThat(EngineProtocol.typeOf(LiveJobRegistry.cancelledTerminalLine(true, "/ws")))
                 .isEqualTo(EngineProtocol.WORKSPACE_FINISH);
-        assertThat(EngineProtocol.typeOf(JobEnvelope.cancelledTerminalLine(false, "/p")))
+        assertThat(EngineProtocol.typeOf(LiveJobRegistry.cancelledTerminalLine(false, "/p")))
                 .isEqualTo(EngineProtocol.BUILDPLAN_FINISH);
     }
 
@@ -571,7 +575,7 @@ class JobEnvelopeTest {
         env.submit(
                 "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
                 JobRequest.plan("build", "jk-test-", (line, tok, w) -> {
-                    env.beginUserCancel(1L, tok, null, 0L, true);
+                    env.live().beginUserCancel(1L, tok, null, 0L, true);
                     return JobOutcome.declined();
                 }),
                 new JobTransport.FireAndForget());

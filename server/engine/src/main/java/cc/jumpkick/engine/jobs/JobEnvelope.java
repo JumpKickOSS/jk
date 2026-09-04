@@ -30,9 +30,6 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.nio.channels.SocketChannel;
-import java.nio.file.Path;
-import java.util.List;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -116,25 +113,17 @@ public final class JobEnvelope {
         String coordOf(String dir);
     }
 
-    /**
-     * Why a cancelled row was cancelled, for the two signals this envelope can tell apart. Both
-     * ride the journal as the {@code cancelled} warning diagnostic and {@code request-finish}'s
-     * {@code cancelReason}, next to the wall deadline's own sentence in {@link JobWatchdog#enforceDeadline}.
-     */
-    private static final String CANCEL_BY_USER = "cancelled by the user (Ctrl-C, jk cancel, or the dashboard)";
-
-    private static final String CANCEL_BY_DISCONNECT = "the client disconnected before the job finished";
-
     private final Host host;
     private final JobLimits limits;
     private final JobWatchdog watchdogs;
-    private final ConcurrentHashMap<Long, LiveJob> liveJobs = new ConcurrentHashMap<>();
+    private final LiveJobRegistry live;
 
     /** {@code limits} come from the engine's resolved config; the envelope never reads the environment. */
     public JobEnvelope(Host host, JobLimits limits) {
         this.host = host;
         this.limits = limits;
         this.watchdogs = new JobWatchdog(limits, host::nowMillis, host::accumulatorOf);
+        this.live = new LiveJobRegistry(host::accumulatorOf, host::log);
     }
 
     /** Detached admission refusal: a same-fingerprint job is already in flight. */
@@ -256,7 +245,7 @@ public final class JobEnvelope {
         // an interrupt landing after the loop exits would poison teardown I/O instead.
         AtomicBoolean parkedOnRead = new AtomicBoolean(false);
         Thread connectionThread = Thread.currentThread();
-        registerLiveJob(
+        live.registerLiveJob(
                 eventRequestId,
                 cancelToken,
                 runnerRef,
@@ -323,7 +312,7 @@ public final class JobEnvelope {
                 // hold, cancel watches liveJobs — this order means a job never looks finished
                 // while cancelJob would still succeed. The hold still frees before the connection
                 // thread's teardown so a follow-up same-project build is not rejected.
-                unregisterLiveJob(eventRequestId);
+                live.unregisterLiveJob(eventRequestId);
                 host.inFlight().release(eventRequestId);
                 done.countDown();
                 // Unblock the connection thread only if it is parked on client readLine
@@ -358,7 +347,7 @@ public final class JobEnvelope {
                             if (line == null) {
                                 // EOF / client gone mid-job — same bounded cancel path (not explicit:
                                 // an EOF after a reported failure is the terminal-read race).
-                                beginUserCancel(eventRequestId, cancelToken, runnerRef, cancelGraceMs, false);
+                                live.beginUserCancel(eventRequestId, cancelToken, runnerRef, cancelGraceMs, false);
                                 break;
                             }
                             // Any in-band line while a job runs is noise: cancellation arrives
@@ -369,14 +358,14 @@ public final class JobEnvelope {
                             if (done.getCount() == 0 || Thread.currentThread().isInterrupted()) {
                                 break; // runner done / cancel wake — join below
                             }
-                            beginUserCancel(eventRequestId, cancelToken, runnerRef, cancelGraceMs, false);
+                            live.beginUserCancel(eventRequestId, cancelToken, runnerRef, cancelGraceMs, false);
                             break;
                         }
                     }
                     parkedOnRead.set(false);
                 } catch (RuntimeException ignored) {
                     if (done.getCount() > 0) {
-                        beginUserCancel(eventRequestId, cancelToken, runnerRef, cancelGraceMs, false);
+                        live.beginUserCancel(eventRequestId, cancelToken, runnerRef, cancelGraceMs, false);
                     }
                 }
                 // Clear interrupt so await/join below is not spuriously skipped.
@@ -404,7 +393,7 @@ public final class JobEnvelope {
                         long joinBudget = cancelGraceMs + 500L;
                         if (!done.await(joinBudget, TimeUnit.MILLISECONDS)) {
                             JobWorkers.shutdownForRequest(eventRequestId, 0L);
-                            interruptRunner(runnerRef.get());
+                            LiveJobRegistry.interruptRunner(runnerRef.get());
                             if (!done.await(200L, TimeUnit.MILLISECONDS)) {
                                 host.log("jk engine: job "
                                         + eventRequestId
@@ -448,7 +437,7 @@ public final class JobEnvelope {
                 if (cancelled && writer != null) {
                     // Same shape rule as pushCancelledTerminal: single builds journal as "build" but
                     // their client loop only ends on plan-finish.
-                    WireWriter.sendQuiet(writer, cancelledTerminalLine(workspaceStream, eventDir));
+                    WireWriter.sendQuiet(writer, LiveJobRegistry.cancelledTerminalLine(workspaceStream, eventDir));
                 }
                 // Release the plan slot before request-finish so status SSE carries the post-finish
                 // activeBuildPlans count — Live activity finishes in the same frame.
@@ -518,38 +507,6 @@ public final class JobEnvelope {
     }
 
     /**
-     * User / EOF cancel: set cooperative flag and shut down workers with a short
-     * grace→force window on a helper thread so the connection reader is not blocked. Idempotent.
-     *
-     * <p>Stamps the accumulator as user-cancelled immediately so a force-killed runner that never
-     * emits userCancelled is journaled as cancelled, not as a truncated success/failure.
-     */
-    public void beginUserCancel(
-            long eventRequestId,
-            Session.CancelToken cancelToken,
-            @Nullable AtomicReference<Thread> runnerRef,
-            long cancelGraceMs,
-            boolean explicit) {
-        cancelToken.cancel();
-        markUserCancelled(eventRequestId, explicit);
-        Thread.ofVirtual().name("jk-cancel-" + eventRequestId, 0).start(() -> {
-            // Workers first (SIGTERM → grace → SIGKILL), then interrupt the runner so
-            // the scheduler does not join the rest of the DAG.
-            int killed = JobWorkers.shutdownForRequest(eventRequestId, cancelGraceMs);
-            interruptRunner(runnerRef != null ? runnerRef.get() : null);
-            if (killed > 0) {
-                host.log("jk engine: cancel job "
-                        + eventRequestId
-                        + " — shut down "
-                        + killed
-                        + " worker process(es) (grace "
-                        + cancelGraceMs
-                        + "ms)");
-            }
-        });
-    }
-
-    /**
      * Wake the connection thread off client-readLine so it can run the finish tail.
      *
      * <p>Half-closing the read direction is the gentle wake: the blocked read sees EOF while the
@@ -560,7 +517,7 @@ public final class JobEnvelope {
      * whose half-close does not wake a blocked read is still covered — the client half-closes its
      * own end once it has the terminal, which delivers the same EOF.
      */
-    private static void wakeOffClientRead(@Nullable SocketChannel channel, Thread connectionThread) {
+    static void wakeOffClientRead(@Nullable SocketChannel channel, Thread connectionThread) {
         if (channel != null) {
             try {
                 channel.shutdownInput();
@@ -574,64 +531,6 @@ public final class JobEnvelope {
         } catch (RuntimeException ignored) {
             // best-effort wake
         }
-    }
-
-    public void registerLiveJob(
-            long jid,
-            Session.CancelToken token,
-            AtomicReference<Thread> runnerRef,
-            @Nullable BufferedWriter writer,
-            @Nullable SocketChannel channel,
-            @Nullable Thread connectionThread,
-            String dir,
-            String kind,
-            boolean workspaceStream) {
-        liveJobs.put(jid, new LiveJob(token, runnerRef, writer, channel, connectionThread, dir, kind, workspaceStream));
-    }
-
-    public void unregisterLiveJob(long jid) {
-        liveJobs.remove(jid);
-    }
-
-    /**
-     * Cancel one live job by jid. Returns {@code false} if unknown/already finished (idempotent soft
-     * miss). Covers CLI-socket jobs and HTTP/MCP jobs.
-     *
-     * <p>Pushes a cancelled terminal on the job's stream immediately so a remote {@code jk cancel}
-     * settles the building CLI without waiting for the runner to unwind.
-     */
-    public boolean cancelJob(long jid) {
-        LiveJob job = liveJobs.get(jid);
-        if (job == null) return false;
-        // Remote `jk cancel` / POST /api/cancel — an explicit signal.
-        beginUserCancel(jid, job.token(), job.runnerRef(), JobWorkers.cancelGraceMs(), true);
-        // Terminal + reader wake happen off-thread: the job's stream writer can be wedged in a
-        // socket write (client not draining), and `jk cancel` / POST /api/cancel must ack
-        // without waiting behind that monitor. Order inside the task still matters: terminal
-        // first, then the wake — a half-close where the transport allows it, so the write side
-        // stays open for the job-finish the client blocks on.
-        Thread.ofVirtual().name("jk-cancel-settle-" + jid).start(() -> {
-            pushCancelledTerminal(job);
-            if (job.connectionThread() != null) wakeOffClientRead(job.channel(), job.connectionThread());
-        });
-        return true;
-    }
-
-    private void pushCancelledTerminal(LiveJob job) {
-        if (job.writer() == null) return;
-        WireWriter.sendQuiet(job.writer(), cancelledTerminalLine(job.workspaceStream(), job.dir()));
-    }
-
-    /**
-     * The cancelled terminal matching the stream's real shape: a single-project build registers
-     * kind "build" too, but its client loop only ends on {@code plan-finish} — a
-     * {@code workspace-finish} there is a no-op and the CLI settles as "engine disconnected"
-     * instead of cancelled.
-     */
-    public static String cancelledTerminalLine(boolean workspaceStream, @Nullable String dir) {
-        return workspaceStream
-                ? ProtoEvents.workspaceFinish(false, 1, List.of(), true)
-                : ProtoEvents.planFinish(dir == null ? "" : dir, false, true);
     }
 
     /**
@@ -659,46 +558,19 @@ public final class JobEnvelope {
         return rendered.toString();
     }
 
+    /** Cancel one live job by jid; {@code false} when unknown or already finished. */
+    public boolean cancelJob(long jid) {
+        return live.cancelJob(jid);
+    }
+
     /** Cancel every live job whose dir matches (canonical absolute path). */
     public int cancelJobsForDir(String dir) {
-        if (dir == null || dir.isBlank()) return 0;
-        String want = BuildJobFingerprint.canonicalDir(dir);
-        if (want == null || want.isBlank())
-            want = Path.of(dir).toAbsolutePath().normalize().toString();
-        int n = 0;
-        for (var e : liveJobs.entrySet()) {
-            String d = e.getValue().dir();
-            String got = d == null ? "" : BuildJobFingerprint.canonicalDir(d);
-            if (got == null || got.isBlank()) {
-                try {
-                    got = Path.of(d).toAbsolutePath().normalize().toString();
-                } catch (RuntimeException ignored) {
-                    got = d;
-                }
-            }
-            if (want.equals(got) && cancelJob(e.getKey())) n++;
-        }
-        return n;
+        return live.cancelJobsForDir(dir);
     }
 
-    /**
-     * Stamp the cancel <em>and</em> why, so the journal can name who stopped the run. {@code
-     * cancelled=true} alone reads the same for a Ctrl-C and for a wall deadline, and only the
-     * deadline recorded a reason — the flag that already tells the two user paths apart
-     * is the one that picks the sentence, so there is one mapping rather than a literal per caller.
-     */
-    private void markUserCancelled(long requestId, boolean explicit) {
-        BuildAccumulator a = host.accumulatorOf(requestId);
-        if (a != null) a.markUserCancelled(explicit, explicit ? CANCEL_BY_USER : CANCEL_BY_DISCONNECT);
-    }
-
-    static void interruptRunner(@Nullable Thread runnerThread) {
-        if (runnerThread == null) return;
-        try {
-            runnerThread.interrupt();
-        } catch (RuntimeException ignored) {
-            // best-effort
-        }
+    /** Test seam: the registry, for driving cancels the way the wire does. */
+    LiveJobRegistry live() {
+        return live;
     }
 
     /**
