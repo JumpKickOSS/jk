@@ -630,6 +630,15 @@ object Guards {
                 description = "Fail when the curated integration registry, its coverage, or its CI job drifts",
             ),
             spec(
+                66,
+                "checkNoDisabledCompile",
+                "a disabled `JavaCompile` task, which takes its source set out of every gate while the build stays green — the tests it would compile report `NO-SOURCE` and the tier prints \"did not run\"",
+                "ban; self-fail when the module has no compile tasks to scan",
+                GuardHome.MODULE,
+                attach = setOf(GuardAttach.CHECK),
+                description = "Fail when a JavaCompile task in this module is disabled",
+            ),
+            spec(
                 61,
                 "checkInstallTestsRedirectM2",
                 "a test that runs the install verb without `--m2-dir`, which publishes the fixture into the developer's real `~/.m2`",

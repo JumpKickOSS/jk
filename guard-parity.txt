@@ -35,3 +35,7 @@ G0 it lives with this file.
 G44 checkBothBuildsSeeEveryModule compares settings.gradle.kts against the root jk.toml
 G44 [workspace]. Asking Gradle to check that both builds see every module makes Gradle the
 G44 authority on a question about Gradle; the self-hosted side is the honest place for it.
+
+# A property of the Gradle task graph, not of the sources: whether a JavaCompile task is enabled.
+# The self-hosted build has no task to disable, and the hole it closes only exists on the Gradle side.
+G66 checkNoDisabledCompile — Gradle task-graph state; the jk build has no compile task to disable
