@@ -45,9 +45,8 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     static final long FRAME_MS = Spinner.FRAME_MS;
 
     /** Flush a captured partial line (no newline yet) after this much quiet. */
-    private static final long STALE_FLUSH_MS = 360;
-
     private static final int DEFAULT_WIDTH = 80;
+
     private static final int DEFAULT_HEIGHT = 24;
 
     /** Max step rows shown before completed rows collapse into a "+N" line. */
@@ -101,7 +100,6 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     /** The {@code --no-ansi} half of the mode axis; inert whenever ANSI is live. */
     final JkManagerPlainView plain = new JkManagerPlainView(this);
 
-    volatile boolean stopped; // animator should stop
     boolean done; // a terminal render already happened
     int frame;
     int linesDrawn; // plan mode: lines in the live region
@@ -165,7 +163,8 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     /** OSC 0 title with its own glyph cadence; every caller holds {@link #lock}. */
     final WindowTitle windowTitle;
 
-    Thread animator;
+    /** The one background loop for this region; takes {@link #lock} where the manager did. */
+    final RegionAnimator animator;
 
     /** System.out/err redirection while the region is up — see {@link #captureOutput}. */
     private final OutputCapture capture = new OutputCapture(this::writeProcessOutput);
@@ -191,6 +190,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         this.planMode = planMode;
         this.width = width <= 0 ? DEFAULT_WIDTH : width;
         this.windowTitle = new WindowTitle(this.out, animate);
+        this.animator = new RegionAnimator(lock, capture, this::tick, plain::maybeEmitHeartbeat, () -> done);
     }
 
     /** Package-private convenience for simple-mode tests. */
@@ -209,7 +209,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         if (animate && Theme.active().isAnsi()) {
             out.print(Ansi.HIDE_CURSOR);
             out.flush();
-            cm.startAnimator();
+            cm.animator.startFrames();
         } else if (animate) {
             // Plain multi-line: mandatory start line.
             cm.plain.printIndeterminate(true);
@@ -246,11 +246,11 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         if (animate && Theme.active().isAnsi()) {
             out.print(Ansi.HIDE_CURSOR);
             out.flush();
-            cm.startAnimator();
-            cm.keys = PeekKeys.attach(cm::toggleOutputWindow, () -> cm.stopped || cm.done);
+            cm.animator.startFrames();
+            cm.keys = PeekKeys.attach(cm::toggleOutputWindow, () -> cm.animator.stopped() || cm.done);
         } else if (animate) {
             // Plain plan: stage/ETA/settle lines are event-driven; heartbeat covers long stages.
-            cm.startPlainHeartbeat();
+            cm.animator.startPlainHeartbeat();
         }
         return cm;
     }
@@ -944,67 +944,11 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         return (System.nanoTime() - startNanos) / 1_000_000L;
     }
 
-    // --- animation --------------------------------------------------------
-
-    private void startAnimator() {
-        animator = new Thread(this::loop, "jk-command-manager");
-        animator.setDaemon(true);
-        animator.start();
-    }
-
-    /** Plain-mode background thread: wake about once a second and emit a 30s stage heartbeat. */
-    private void startPlainHeartbeat() {
-        animator = new Thread(this::plainHeartbeatLoop, "jk-plain-heartbeat");
-        animator.setDaemon(true);
-        animator.start();
-    }
-
-    private void loop() {
-        try {
-            while (!stopped) {
-                // Flush a captured partial line that's gone quiet (no newline),
-                // OUTSIDE the render lock so the order matches step writes
-                // (sink → lock) and can't deadlock with tick (lock only).
-                capture.flushStale(STALE_FLUSH_MS);
-                tick();
-                Thread.sleep(FRAME_MS);
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-    }
-
-    private void plainHeartbeatLoop() {
-        try {
-            while (!stopped) {
-                Thread.sleep(1_000L);
-                synchronized (lock) {
-                    if (done || stopped) return;
-                    plain.maybeEmitHeartbeat();
-                }
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-    }
-
+    /** Stop the background loop and release the Ctrl-O key listener. Idempotent. */
     void stopAnimator() {
-        stopped = true;
+        animator.stop();
         PeekKeys k = keys;
         if (k != null) k.close();
-        Thread a;
-        synchronized (lock) {
-            a = animator;
-            animator = null;
-        }
-        if (a != null) {
-            a.interrupt();
-            try {
-                a.join(200);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        }
     }
 
     /**

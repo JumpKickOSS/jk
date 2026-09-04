@@ -298,8 +298,7 @@ class JkManagerPlainProgressTest {
         cm.windowTitle.lastSwapMs -= WindowTitle.SWAP_MS + 1;
         cm.tick();
         String swapped = buf.toString(StandardCharsets.UTF_8);
-        assertThat(swapped)
-                .contains("\033]0;" + WindowTitle.GLYPH_B + " JumpKick - Building g:a:v...\033\\");
+        assertThat(swapped).contains("\033]0;" + WindowTitle.GLYPH_B + " JumpKick - Building g:a:v...\033\\");
         assertThat(swapped.split("\033]0;", -1).length - 1).isEqualTo(1);
 
         // The two glyphs alternate rather than latching on the second one.
