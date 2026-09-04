@@ -17,17 +17,10 @@ import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.tool.TrustedPlugins;
 import java.io.IOException;
-import java.io.OutputStream;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
-import java.util.jar.Attributes;
-import java.util.jar.JarEntry;
-import java.util.jar.JarOutputStream;
-import java.util.jar.Manifest;
-import javax.tools.ToolProvider;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -246,32 +239,6 @@ class ThirdPartyPluginTest {
     }
 
     private static Path publishFixture(Path repo, String version) throws Exception {
-        Path src = Files.createTempDirectory("hello-plugin-src");
-        Path srcFile = src.resolve("HelloPluginMain.java");
-        Files.writeString(srcFile, MAIN);
-        int rc = ToolProvider.getSystemJavaCompiler().run(null, null, null, "-d", src.toString(), srcFile.toString());
-        if (rc != 0) throw new IllegalStateException("fixture compile failed");
-
-        Path dir = Files.createDirectories(
-                repo.resolve(GROUP.replace('.', '/')).resolve(ARTIFACT).resolve(version));
-        Path jar = dir.resolve(ARTIFACT + "-" + version + ".jar");
-        Manifest mf = new Manifest();
-        mf.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
-        mf.getMainAttributes().put(Attributes.Name.MAIN_CLASS, "HelloPluginMain");
-        try (OutputStream out = Files.newOutputStream(jar);
-                JarOutputStream jos = new JarOutputStream(out, mf)) {
-            jos.putNextEntry(new JarEntry("jk-plugin.toml"));
-            jos.write(MANIFEST.getBytes(StandardCharsets.UTF_8));
-            jos.closeEntry();
-            jos.putNextEntry(new JarEntry("HelloPluginMain.class"));
-            jos.write(Files.readAllBytes(src.resolve("HelloPluginMain.class")));
-            jos.closeEntry();
-        }
-        Files.writeString(dir.resolve(ARTIFACT + "-" + version + ".pom"), """
-                <project><modelVersion>4.0.0</modelVersion>
-                <groupId>%s</groupId><artifactId>%s</artifactId><version>%s</version>
-                </project>
-                """.formatted(GROUP, ARTIFACT, version));
-        return repo;
+        return ThirdPartyPluginFixture.publish(repo, GROUP, ARTIFACT, version, "HelloPluginMain", MAIN, MANIFEST);
     }
 }
