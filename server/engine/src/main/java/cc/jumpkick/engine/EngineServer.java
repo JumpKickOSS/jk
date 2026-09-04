@@ -88,9 +88,6 @@ public final class EngineServer implements AutoCloseable {
     /** High-water marks for concurrent load (UDS + SSE combined). */
     private final AtomicInteger peakActiveConnections = new AtomicInteger();
 
-    /** How often the displacement watchdog re-reads the endpoint / pid file. */
-    private static final long DISPLACEMENT_TICK_MS = 1_000;
-
     /**
      * Sidecar AOT trainer spawner/process. Spawned only after winning election; reaped on exit.
      * Clients never talk to it.
@@ -213,6 +210,9 @@ public final class EngineServer implements AutoCloseable {
     /** Serves accepted sockets; built once the election has settled the token. */
     private EngineConnection connection;
 
+    /** Decides, once a second, whether this engine is primary, displaced or orphaned. */
+    private final DisplacementWatchdog watchdog;
+
     /**
      * Quiet background revalidation of {@code store/libs.global.toml} and {@code store/jdks.json}
      * (every 12 h). Started only after winning the resident-engine election — never in {@code --job}
@@ -279,6 +279,17 @@ public final class EngineServer implements AutoCloseable {
                 DrainReporter.sockets(),
                 this.log,
                 DrainReporter.TICK_MS);
+        this.watchdog = new DisplacementWatchdog(
+                election,
+                activeBuildPlans::get,
+                this::liveEventStreams,
+                () -> shuttingDown,
+                this::yieldListeners,
+                () -> {
+                    aot.stopQuietly();
+                    close();
+                },
+                this.log);
         this.idle = new IdleHousekeeping(
                 activeBuildPlans,
                 cacheGate,
@@ -408,75 +419,12 @@ public final class EngineServer implements AutoCloseable {
                 new EngineStartup(version, pid, election, aot, http, journal, idle, log).run(won);
         storeFeedRefresh = started.feeds();
         engineMaintenance = started.maintenance();
-        startDisplacementWatchdog();
+        watchdog.start();
         acceptLoop();
         awaitDrainComplete();
         cleanup();
         log.accept("jk engine: stopped");
         return true;
-    }
-
-    /**
-     * Lifecycle watchdog over the endpoint pointer <em>and</em> the pid file. The filename alone is
-     * not identity: deleting and recreating the state dir leaves a ghost engine whose generation
-     * name matches the successor's pointer, so it would never drain. The pid file and a hello of
-     * the path catch that.
-     *
-     * <ul>
-     * <li><b>Pointer, pid file, or live hello names someone else</b> — displaced. Yield UDS/TCP and
-     * HTTP immediately so the successor can bind them, drain in-flight jobs, report status to the
-     * successor, exit when idle. Attached dashboard streams get no vote: the successor needs the
-     * port, and a tab reconnects to it.
-     * <li><b>The pointer is absent</b> — orphaned. Exit once genuinely unused — no jobs and no
-     * attached streams. Keep HTTP while a browser is attached, because here there is no successor
-     * to hand it to.
-     * <li><b>The pointer names this engine and the pid file matches</b> — primary. Never
-     * self-terminates.
-     * </ul>
-     */
-    private void startDisplacementWatchdog() {
-        Thread t = new Thread(
-                () -> {
-                    while (!shuttingDown) {
-                        try {
-                            Thread.sleep(DISPLACEMENT_TICK_MS);
-                        } catch (InterruptedException e) {
-                            return;
-                        }
-                        try {
-                            if (displacementTick()) return;
-                        } catch (IOException ignored) {
-                            // transient read failure — check again next tick
-                        }
-                    }
-                },
-                "jk-engine-displacement-watchdog");
-        t.setDaemon(true);
-        t.start();
-    }
-
-    /**
-     * One watchdog check: displaced → yield listeners and drain; orphaned and unused → exit.
-     * Returns {@code true} when the watchdog's work is done. Package-private so a test can drive a
-     * tick on the calling thread.
-     */
-    boolean displacementTick() throws IOException {
-        if (election.displacedBySuccessor()) {
-            log.accept("jk engine: displaced by a newer engine — yielding listeners and draining");
-            yieldListeners(activeBuildPlans.get() == 0);
-            return true;
-        }
-        if (election.endpointMissing() && orphanedAndUnused()) {
-            log.accept("jk engine: no endpoint names this engine and it is unused — exiting");
-            aot.stopQuietly();
-            synchronized (lifecycleLock) {
-                shuttingDown = true;
-                closeServerChannelQuietly();
-                lifecycleLock.notifyAll();
-            }
-            return true;
-        }
-        return false;
     }
 
     private void acceptLoop() {
@@ -535,6 +483,11 @@ public final class EngineServer implements AutoCloseable {
 
     private StatusSnapshot statusSnapshot() {
         return vitals.snapshot();
+    }
+
+    /** Dashboard and MCP streams attached right now; zero when HTTP is off. */
+    private int liveEventStreams() {
+        return http.liveEventStreams();
     }
 
     private int liveConnectionCount() {
@@ -627,6 +580,11 @@ public final class EngineServer implements AutoCloseable {
         http.stopNow();
     }
 
+    /** Test seam: one watchdog decision on the calling thread. */
+    boolean displacementTick() throws IOException {
+        return watchdog.tick();
+    }
+
     /** Test seam: whether the drain reporter has been started (drain entered). */
     boolean drainStartedForTests() {
         return drain.started();
@@ -665,20 +623,6 @@ public final class EngineServer implements AutoCloseable {
         } catch (IOException ignored) {
             // already closing
         }
-    }
-
-    /**
-     * True when an orphaned engine has nothing left to serve: no in-flight jobs and no attached SSE
-     * stream.
-     *
-     * <p>The stream check is what keeps this from breaking the case that matters — a developer who works
-     * through the Web UI, leaves the tab open overnight and comes back to it. A browser cannot spawn an
-     * engine the way the CLI can, so exiting under an attached tab would leave them with a dead SPA and no
-     * indication that the fix is to run a command.
-     */
-    private boolean orphanedAndUnused() {
-        if (activeBuildPlans.get() != 0) return false;
-        return http.liveEventStreams() == 0;
     }
 
     private void cleanup() {
