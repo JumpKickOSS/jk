@@ -38,7 +38,7 @@ class HttpEventStreamTest extends HttpEngineServerHarness {
 
     @Test
     void quiet_events_stream_heartbeats() throws Exception {
-        server.heartbeatMillis(50);
+        server.sse().heartbeatMillis(50);
         var lines = openEvents("");
         assertThat(nextLine(lines)).isEqualTo(": connected");
         assertThat(nextLine(lines)).isEqualTo("");

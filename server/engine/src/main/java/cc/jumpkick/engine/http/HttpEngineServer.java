@@ -15,7 +15,6 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -34,9 +33,6 @@ public final class HttpEngineServer implements AutoCloseable {
 
     /** Grace period {@link HttpServer#stop} gives in-flight exchanges before hard-closing. */
     private static final int STOP_GRACE_SECONDS = 1;
-
-    /** How often a quiet SSE stream writes a comment line — dead-client detection + proxy keepalive. */
-    private static final long DEFAULT_HEARTBEAT_MILLIS = 15_000;
 
     /** Cap on a request body ({@code POST /api/build} carries one flat object; 64 KiB is generous). */
     static final int MAX_BODY_BYTES = 64 * 1024;
@@ -58,6 +54,7 @@ public final class HttpEngineServer implements AutoCloseable {
     private final HttpEvents events;
     private final EngineHttpJobs jobs;
     private final ProgressTokenRegistry progressTokens;
+    private final SseEndpoint sse;
     private final BuildJournal journal;
     private final Supplier<List<BuildMetrics.Entry>> metrics;
     private final Supplier<CacheSnapshot> cache;
@@ -77,14 +74,6 @@ public final class HttpEngineServer implements AutoCloseable {
      */
     private volatile Supplier<List<HttpLive.Run>> liveRuns = List::of;
 
-    /**
-     * Invoked once after each dashboard SSE subscription is registered — delivers a compact
-     * mid-flight {@code run-snapshot} (phases + progress + startedAt) to <em>that</em>
-     * subscription only so a refreshed tab resumes without flooding the bus or blocking live
-     * ticks behind a phase-by-phase replay.
-     */
-    private volatile Consumer<HttpEvents.Subscription> onEventsConnect = s -> {};
-
     private volatile HttpServer server;
     private volatile ExecutorService executor;
 
@@ -98,7 +87,7 @@ public final class HttpEngineServer implements AutoCloseable {
     public void setLiveRunSupport(
             Supplier<List<HttpLive.Run>> liveRuns, Consumer<HttpEvents.Subscription> onEventsConnect) {
         this.liveRuns = liveRuns != null ? liveRuns : List::of;
-        this.onEventsConnect = onEventsConnect != null ? onEventsConnect : s -> {};
+        sse.onConnect(onEventsConnect);
     }
 
     /** Engine hook: bump the combined-connection high-water mark on every SSE admission. */
@@ -112,8 +101,6 @@ public final class HttpEngineServer implements AutoCloseable {
     public void setOnSseAdmitted(Runnable onSseAdmitted) {
         this.onSseAdmitted = onSseAdmitted != null ? onSseAdmitted : () -> {};
     }
-
-    private long heartbeatMillis = DEFAULT_HEARTBEAT_MILLIS;
 
     /**
      * @param webRoot the resolved on-disk static root (the caller resolves {@code web-root} against
@@ -161,6 +148,7 @@ public final class HttpEngineServer implements AutoCloseable {
         this.log = log != null ? log : s -> {};
         this.engineVersion = version;
         this.progressTokens = new ProgressTokenRegistry();
+        this.sse = new SseEndpoint(events, liveVitals, progressTokens, this.log);
         // null when [mcp] enabled=false — dispatch 404s every /mcp path before reaching it.
         // MCP journal reads are redacted at the supplier — every consumer (history view=full,
         // diagnostics, project cards, run-wait summaries) sees the same defense-in-depth as REST.
@@ -187,7 +175,7 @@ public final class HttpEngineServer implements AutoCloseable {
         this.readApi = new HttpReadApi(config, webRoot, logFile, status, jobs, metrics, cache, this::url);
         api.register("GET", "/api/status", readApi::handleStatus);
         api.register("GET", "/api/config", readApi::handleConfig);
-        api.register("GET", "/api/events", this::handleEvents);
+        api.register("GET", "/api/events", sse::serveDashboard);
         api.register("GET", "/api/log", readApi::handleLog);
         api.register("GET", "/api/fs", readApi::handleFs);
         api.register("POST", "/api/build", readApi::handleBuild);
@@ -403,7 +391,7 @@ public final class HttpEngineServer implements AutoCloseable {
         String method = exchange.getRequestMethod();
         if (method.equals("GET") || method.equals("HEAD")) {
             if (method.equals("GET") && HttpAdmission.acceptsEventStream(exchange)) {
-                handleMcpEvents(exchange);
+                sse.serveMcp(exchange);
                 return;
             }
             HttpResponses.sendJson(
@@ -444,61 +432,6 @@ public final class HttpEngineServer implements AutoCloseable {
         HttpResponses.sendJson(exchange, 200, response);
     }
 
-    /**
-     * MCP progress SSE: same hub as {@code /api/events}, framed as Streamable-HTTP {@code message}
-     * events with {@code notifications/jk/event} JSON-RPC bodies. Optional query filters: {@code
-     * jid} (engine job id) or {@code progressToken} (bound from tools/call {@code
-     * _meta.progressToken}).
-     */
-    private void handleMcpEvents(HttpExchange exchange) throws IOException {
-        Long filter = resolveMcpEventFilter(exchange.getRequestURI().getRawQuery());
-        exchange.getResponseHeaders().set("Content-Type", "text/event-stream; charset=utf-8");
-        exchange.getResponseHeaders().set("Cache-Control", "no-store");
-        if (filter != null) {
-            exchange.getResponseHeaders().set("X-Jk-Jid", Long.toString(filter));
-        }
-        exchange.sendResponseHeaders(200, 0);
-        var out = exchange.getResponseBody();
-        String hello = filter == null ? ": mcp-events connected\n\n" : ": mcp-events connected jid=" + filter + "\n\n";
-        try (HttpEvents.Subscription subscription = events.subscribe(HttpEvents.FrameStyle.MCP, filter)) {
-            out.write(hello.getBytes(StandardCharsets.UTF_8));
-            out.flush();
-            while (true) {
-                String frame = subscription.next(heartbeatMillis);
-                out.write((frame != null ? frame : ": heartbeat\n\n").getBytes(StandardCharsets.UTF_8));
-                out.flush();
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        } catch (IOException e) {
-            // client closed
-        }
-    }
-
-    /**
-     * Resolve optional SSE filter from query string. {@code jid} wins over {@code
-     * progressToken}. An unknown progress token filters to a never-matching id (no wrong-job
-     * leakage); open SSE after tools/call returns, or use {@code requestId} from the tool result.
-     */
-    Long resolveMcpEventFilter(String query) {
-        String rid = HttpQuery.queryParamLenient(query, "jid");
-        if (rid != null && !rid.isBlank()) {
-            try {
-                return Long.parseLong(rid.trim());
-            } catch (NumberFormatException e) {
-                return null;
-            }
-        }
-        String tok = HttpQuery.queryParamLenient(query, "progressToken");
-        if (tok != null && !tok.isBlank()) {
-            Long bound = progressTokens.resolve(tok.trim());
-            // -1 never appears as a real requestId; filtered stream stays quiet until bind lands
-            // on a later reconnect, or the agent switches to ?requestId=.
-            return bound != null ? bound : -1L;
-        }
-        return null;
-    }
-
     /** Project metadata fallback for MCP {@code jk_project} — one card, one parse path. */
     private Map<String, Object> projectMap(String dir) {
         Map<String, Object> m = new LinkedHashMap<>();
@@ -517,78 +450,14 @@ public final class HttpEngineServer implements AutoCloseable {
         return m;
     }
 
-    /**
-     * SSE stream: event frames plus comment heartbeats. Holds an SSE-budget slot (not an RPC
-     * admission permit) for the stream's life; dead-client write and {@link #close} interrupt
-     * end it.
-     */
-    private void handleEvents(HttpExchange exchange) throws IOException {
-        exchange.getResponseHeaders().set("Content-Type", "text/event-stream; charset=utf-8");
-        exchange.getResponseHeaders().set("Cache-Control", "no-store");
-        exchange.sendResponseHeaders(200, 0);
-        var out = exchange.getResponseBody();
-        // Detached until hydrated: broadcasts don't reach the subscription while the connect
-        // snapshot is captured, and the engine's rehydrate callback attaches it under its
-        // connect ordering lock — so no event can fall between the snapshot and the queue.
-        // If anything below throws before attach, the subscription was never in the
-        // hub, so hasSubscribers() cannot stay true for the process's life.
-        HttpEvents.Subscription subscription = events.subscribeDetached(HttpEvents.FrameStyle.DASHBOARD, null);
-        try {
-            liveVitals.onSubscriberJoined();
-            // Connect hydrate: deliver current vitals to THIS subscription only (change-gate
-            // skipped) so the tab does not wait for the first 2s / 60s sampler tick — without
-            // re-broadcasting chrome to every open tab. Cache hydrate re-sends the last
-            // captured snapshot — the store walk must not delay the ": connected" write.
-            // Mid-flight catch-up is one compact run-snapshot per job delivered to
-            // THIS subscription only — never a broadcast phase replay (that filled the 256-frame
-            // queue and froze the SPA for seconds behind live ticks).
-            liveVitals.hydrateFor(subscription);
-            try {
-                onEventsConnect.accept(subscription);
-            } catch (RuntimeException e) {
-                log.accept("jk engine: sse connect rehydrate failed: " + e.getMessage());
-            }
-            // Safety net: the engine callback attaches inside its ordering lock; if it failed
-            // (or no engine is wired, e.g. tests), attach now so live events still flow.
-            events.attach(subscription);
-            out.write(": connected\n\n".getBytes(StandardCharsets.UTF_8));
-            out.flush();
-            // Batch drain: a full queue of structural+progress frames must not force one
-            // write+flush per event (that stalls the socket while the CLI TUI stays smooth).
-            List<String> batch = new ArrayList<>(64);
-            byte[] heartbeat = ": heartbeat\n\n".getBytes(StandardCharsets.UTF_8);
-            while (true) {
-                String first = subscription.next(heartbeatMillis);
-                if (first == null) {
-                    out.write(heartbeat);
-                    out.flush();
-                    continue;
-                }
-                batch.clear();
-                batch.add(first);
-                subscription.drainTo(batch, 63);
-                for (String frame : batch) {
-                    out.write(frame.getBytes(StandardCharsets.UTF_8));
-                }
-                out.flush();
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt(); // server shutting down
-        } catch (IOException e) {
-            // The client closed the tab — routine stream end, not an error.
-        } finally {
-            subscription.close();
-            liveVitals.onSubscriberLeft();
-        }
-    }
     /** Test seam: rebind rules for in-flight history rows. */
     HttpLive.Run matchLiveRun(Map<String, Object> rec) {
         return historyApi.matchLiveRun(rec);
     }
 
-    /** Test seam: shrink the SSE heartbeat so quiet-stream behavior is testable in milliseconds. */
-    void heartbeatMillis(long millis) {
-        this.heartbeatMillis = millis;
+    /** Test seam: the SSE endpoint, for its heartbeat and filter knobs. */
+    SseEndpoint sse() {
+        return sse;
     }
 
     /** How many long-lived SSE streams are attached right now (dashboard + MCP); see {@link HttpAdmission}. */
