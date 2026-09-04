@@ -69,6 +69,10 @@ final class WorkspaceFinalPhase {
             Map<Path, String> fingerprints = PreflightMemo.snapshotFingerprints(graph, request.skipTests());
             if (!fingerprints.isEmpty()) {
                 PreflightMemo.storeDirty(request.entryDir(), graph, request.skipTests(), Set.of(), fingerprints);
+                // One snapshot, two records: the memo says these inputs are clean, and this says
+                // the outputs on disk are the ones they produce. The second is what lets preflight
+                // tell "nothing to do" from "the artifacts here are from another run".
+                ModuleInputProvenance.record(request.entryDir(), graph, fingerprints);
             }
         }
     }

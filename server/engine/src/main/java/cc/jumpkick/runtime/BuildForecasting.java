@@ -170,8 +170,10 @@ public final class BuildForecasting {
                 // Memo hit: inputs validated. Empty dirty+restore → skip TaskForecaster.
                 // restoreNeeded alone → restore path (no full rebuild forecast).
                 // Non-empty dirty still needs a forecast for ETA step lists; caller walks once.
+                Set<Path> memoDirty = new HashSet<>(memo.get().dirty());
+                withStaleOutputs(graph, entryDir, memo.get().fingerprints(), memoDirty);
                 return new Preflight(
-                        memo.get().dirty(),
+                        memoDirty,
                         memo.get().restoreNeeded(),
                         memo.get().fingerprints(),
                         List.of());
@@ -201,6 +203,12 @@ public final class BuildForecasting {
                     }
                 }
             }
+            // The walk answers "is every step in the action cache?", which is not the same
+            // question as "are the outputs on disk the ones those steps produce". They part
+            // company whenever content returns to a state the cache has seen: every step is
+            // cached, nothing is missing so nothing restores, and the artifacts are the previous
+            // run's. See ModuleInputProvenance.
+            withStaleOutputs(graph, entryDir, fps, dirty);
             if (entryDir != null && memoSafe && persistMemo) {
                 // Store input-dirty only — restoreNeeded is re-derived from missing outputs on load.
                 PreflightMemo.storeDirty(entryDir, graph, skipTests, dirty, fps);
@@ -208,6 +216,28 @@ public final class BuildForecasting {
             return new Preflight(dirty, restoreNeeded, fps, modules);
         } catch (RuntimeException e) {
             return new Preflight(all, Set.of(), fps, List.of());
+        }
+    }
+
+    /**
+     * Add any module whose recorded output provenance disagrees with its current inputs.
+     *
+     * <p>Conservative on purpose: a module with no record is left alone (see
+     * {@link ModuleInputProvenance}), and a module already dirty is unaffected. Only a record that
+     * positively names other inputs forces work, so the cost is one rebuild of a module that was
+     * going to produce wrong bytes.
+     */
+    private static void withStaleOutputs(
+            BuildGraph.Result graph, Path entryDir, Map<Path, String> fingerprints, Set<Path> dirty) {
+        if (graph == null || entryDir == null || fingerprints == null || fingerprints.isEmpty()) return;
+        Path root = entryDir.toAbsolutePath().normalize();
+        for (BuildGraph.BuildUnit unit : graph.topoOrder()) {
+            Path dir = unit.dir().toAbsolutePath().normalize();
+            if (dirty.contains(dir)) continue;
+            String fp = fingerprints.get(dir);
+            if (ModuleInputProvenance.outputsFromOtherInputs(root, dir, unit.manifest(), fp)) {
+                dirty.add(dir);
+            }
         }
     }
 

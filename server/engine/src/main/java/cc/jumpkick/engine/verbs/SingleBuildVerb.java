@@ -16,6 +16,7 @@ import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.BuildPlanner;
 import cc.jumpkick.runtime.Calibration;
+import cc.jumpkick.runtime.ModuleInputProvenance;
 import cc.jumpkick.runtime.PlannerTails;
 import cc.jumpkick.runtime.PreflightMemo;
 import cc.jumpkick.runtime.TestSupport;
@@ -143,6 +144,7 @@ public final class SingleBuildVerb implements HostedVerb {
             if (result.success() && preGraph != null && preFps != null) {
                 PreflightMemo.storeDirty(entryDir, preGraph, skipTests, Set.of(), preFps);
                 PreflightMemo.storeGraph(entryDir, preGraph);
+                ModuleInputProvenance.record(entryDir, preGraph, preFps);
             }
             return outcome;
         } catch (Exception e) {
