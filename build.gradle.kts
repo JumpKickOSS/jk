@@ -140,6 +140,10 @@ tasks.register("checkNullMarkedApiPackages") {
     val sources = roots.map { root -> fileTree(root) { include("**/*.java") } }
     inputs.files(sources)
     inputs.property("excluded", NullMarking.excludedPackages)
+    inputs.property("unenforced", NullMarking.unenforcedModules)
+    val unenforcedDirs = NullMarking.unenforcedModules.keys.associateWith {
+        layout.projectDirectory.dir(it).asFile
+    }
     val stamp = layout.buildDirectory.file("guards/null-marked-api-packages.ok")
     outputs.file(stamp)
     doLast {
@@ -169,6 +173,9 @@ tasks.register("checkNullMarkedApiPackages") {
         }
         NullMarking.excludedPackages.keys.filter { it in marked }.forEach {
             faults.add("  $it is @NullMarked now — drop its exclusion registry entry")
+        }
+        unenforcedDirs.filterNot { it.value.isDirectory }.keys.forEach {
+            faults.add("  $it is registered as not-yet-enforced but is not a module directory")
         }
         if (faults.isNotEmpty()) {
             throw GradleException(
