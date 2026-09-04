@@ -1,0 +1,218 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.engine;
+
+import cc.jumpkick.config.Session;
+import cc.jumpkick.engine.http.HttpEngineServer;
+import cc.jumpkick.engine.http.StatusSnapshot;
+import cc.jumpkick.engine.jobs.JobEnvelope;
+import cc.jumpkick.engine.jobs.JobTransport;
+import cc.jumpkick.engine.verbs.HostedVerb;
+import cc.jumpkick.engine.verbs.VerbRegistry;
+import cc.jumpkick.engine.verbs.VerbShape;
+import cc.jumpkick.jsonl.BoundedLineReader;
+import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.layout.InputTrees;
+import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.protocol.ProtoLifecycle;
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.nio.channels.Channels;
+import java.nio.channels.SocketChannel;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
+import org.jspecify.annotations.Nullable;
+
+/**
+ * Serve one accepted socket: the loopback-TCP auth line, framing, and one wire request at a time to
+ * one reply — or to a job that then owns the rest of the connection. Always typed, never silence:
+ * a silently dropped request wedges a streaming client waiting for a terminal event. A client
+ * speaking a newer protocol is refused and closed; an unparseable line or an unknown type is refused
+ * and the loop continues; a guarded verb is checked against the lock's floor before it is looked up.
+ */
+final class EngineConnection {
+
+    /** The {@code shutdown} arm belongs to the lifecycle owner; the connection hands it the line and the writer. */
+    interface ShutdownHandler {
+        void handle(String line, BufferedWriter writer) throws IOException;
+    }
+
+    /**
+     * What serving a connection needs from the engine: read-only views of its identity and state,
+     * the verb registry, the job envelope, and the two lifecycle callbacks — never the lifecycle lock.
+     */
+    record Context(
+            VerbRegistry verbs,
+            JobEnvelope jobs,
+            String version,
+            long pid,
+            long startedAtMillis,
+            String buildId,
+            @Nullable String expectedToken,
+            Supplier<StatusSnapshot> status,
+            EngineHttpFront http,
+            BooleanSupplier draining,
+            DrainReporter drain,
+            ShutdownHandler shutdown) {}
+
+    private final Context ctx;
+
+    EngineConnection(Context ctx) {
+        this.ctx = ctx;
+    }
+
+    void serve(SocketChannel ch) {
+        try (ch;
+                BufferedReader reader = new BoundedLineReader(
+                        new InputStreamReader(Channels.newInputStream(ch), StandardCharsets.UTF_8));
+                BufferedWriter writer = new BufferedWriter(
+                        new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8))) {
+            if (ctx.expectedToken() != null && !authenticate(reader)) {
+                // Typed refusal (then close): a silent close is indistinguishable from a crash.
+                WireWriter.sendQuiet(writer, ProtoLifecycle.error(EngineProtocol.ERR_AUTH, "engine token rejected"));
+                return;
+            }
+            serveConnection(reader, writer, ch);
+        } catch (IOException ignored) {
+            // client disconnected / socket error mid-exchange — nothing to do
+        }
+    }
+
+    /** Loopback-TCP transport only: the connection's first line must be a matching {@link EngineProtocol#AUTH}. */
+    private boolean authenticate(BufferedReader reader) throws IOException {
+        String line = reader.readLine();
+        if (line == null || !EngineProtocol.AUTH.equals(EngineProtocol.typeOf(line))) return false;
+        String presented = Jsonl.str(line, "token");
+        if (presented == null) return false;
+        return MessageDigest.isEqual(
+                ctx.expectedToken().getBytes(StandardCharsets.UTF_8), presented.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private void serveConnection(BufferedReader reader, BufferedWriter writer, SocketChannel ch) throws IOException {
+        String line;
+        while ((line = reader.readLine()) != null) {
+            String type = EngineProtocol.typeOf(line);
+            if (type == null) {
+                // A garbled REQUEST gets a typed refusal, never silence — a silently-dropped
+                // request wedges a streaming client that is waiting for a terminal event.
+                WireWriter.sendQuiet(
+                        writer,
+                        ProtoLifecycle.error(
+                                EngineProtocol.ERR_PROTOCOL, "unparseable request line (no \"type\" discriminator)"));
+                continue;
+            }
+            // Lock floor: a jk older than the lock's jk-min refuses with the upgrade error —
+            // newer always wins, and nothing runs an older engine to satisfy a lock.
+            if (LockFloor.GUARDED.contains(type)) {
+                String dir = Jsonl.str(line, "dir");
+                String floor = dir == null ? null : LockFloor.requiredNewer(Path.of(dir), ctx.version());
+                if (floor != null) {
+                    WireWriter.send(
+                            writer,
+                            ProtoLifecycle.error(
+                                    EngineProtocol.ERR_VERSION_SKEW, LockFloor.message(floor, ctx.version())));
+                    return;
+                }
+            }
+            HostedVerb verb = ctx.verbs().find(type);
+            if (verb != null) {
+                if (dispatchVerb(verb, line, reader, writer, ch)) return;
+                continue;
+            }
+            switch (type) {
+                case EngineProtocol.HELLO -> {
+                    int clientProto = Jsonl.intValue(line, "proto", EngineProtocol.PROTOCOL);
+                    if (clientProto > EngineProtocol.PROTOCOL) {
+                        // A newer-protocol client: this engine must not serve wire semantics
+                        // it postdates — the client reacts by taking over (spawn + drain).
+                        WireWriter.send(
+                                writer,
+                                ProtoLifecycle.error(
+                                        EngineProtocol.ERR_VERSION_SKEW,
+                                        "client speaks protocol " + clientProto + " but this engine speaks "
+                                                + EngineProtocol.PROTOCOL + " — start a matching engine"));
+                        return;
+                    }
+                    WireWriter.send(
+                            writer,
+                            ProtoLifecycle.helloAck(
+                                    ctx.version(),
+                                    ctx.pid(),
+                                    ctx.startedAtMillis(),
+                                    ctx.draining().getAsBoolean(),
+                                    ctx.buildId()));
+                }
+                case EngineProtocol.PING -> WireWriter.send(writer, ProtoLifecycle.pong());
+                case EngineProtocol.STATUS -> {
+                    StatusSnapshot s = ctx.status().get();
+                    HttpEngineServer hs = ctx.http().server();
+                    String ack = ProtoLifecycle.statusAck(
+                            s.vitals(),
+                            ctx.draining().getAsBoolean(),
+                            hs != null ? hs.url() : null,
+                            ctx.http().error(),
+                            hs != null && hs.mcpEnabled());
+                    WireWriter.send(writer, InputTrees.appendToStatusAck(ack));
+                }
+                case EngineProtocol.SHUTDOWN -> {
+                    ctx.shutdown().handle(line, writer);
+                    return;
+                }
+                case EngineProtocol.DRAIN_STATUS ->
+                    ctx.drain().predecessorDraining(Jsonl.longValue(line, "pid", -1), Jsonl.intValue(line, "plans", 0));
+                case EngineProtocol.DRAIN_DONE -> ctx.drain().predecessorFinished(Jsonl.longValue(line, "pid", -1));
+                case EngineProtocol.CANCEL_REQUEST -> handleCancelRequest(line, writer);
+                default ->
+                    WireWriter.sendQuiet(
+                            writer, ProtoLifecycle.error(EngineProtocol.ERR_PROTOCOL, "unknown request type: " + type));
+            }
+        }
+    }
+
+    /**
+     * Registry dispatch. {@code true} means the verb owns the rest of this connection
+     * (async plan / cache maint).
+     */
+    private boolean dispatchVerb(
+            HostedVerb verb, String line, BufferedReader reader, BufferedWriter writer, SocketChannel ch)
+            throws IOException {
+        return switch (verb.shape()) {
+            case VerbShape.AsyncPlan() -> {
+                ctx.jobs().submit(line, verb.toJobRequest(line), new JobTransport.SocketWatch(reader, writer, ch));
+                yield true;
+            }
+            case VerbShape.CacheMaint() -> {
+                ctx.jobs().submit(line, verb.toJobRequest(line), new JobTransport.SocketWatch(reader, writer, ch));
+                yield true;
+            }
+            case VerbShape.SyncRead() -> {
+                verb.run(line, Session.defaults().cancel(), writer);
+                yield false;
+            }
+        };
+    }
+
+    private void handleCancelRequest(String requestLine, BufferedWriter writer) throws IOException {
+        long jid = Jsonl.longValue(requestLine, "jid", -1);
+        String dir = Jsonl.str(requestLine, "dir");
+        if (jid >= 0) {
+            boolean ok = ctx.jobs().cancelJob(jid);
+            WireWriter.send(writer, ProtoLifecycle.cancelAck(jid, ok, ok ? null : "unknown or already finished jid"));
+            return;
+        }
+        if (dir != null && !dir.isBlank()) {
+            int n = ctx.jobs().cancelJobsForDir(dir);
+            WireWriter.send(
+                    writer,
+                    ProtoLifecycle.cancelAck(
+                            0, n > 0, n > 0 ? ("cancelled " + n + " job(s)") : "no running jobs for dir"));
+            return;
+        }
+        WireWriter.send(writer, ProtoLifecycle.cancelAck(-1, false, "cancel-request requires jid or dir"));
+    }
+}

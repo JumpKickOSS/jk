@@ -6,24 +6,19 @@ import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.config.Jobs;
-import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.http.HttpEngineServer;
 import cc.jumpkick.engine.http.HttpEvents;
 import cc.jumpkick.engine.http.StatusSnapshot;
 import cc.jumpkick.engine.jobs.JobEnvelope;
 import cc.jumpkick.engine.jobs.JobSessions;
-import cc.jumpkick.engine.jobs.JobTransport;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.JournalWriter;
 import cc.jumpkick.engine.plugin.HeapPlan;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.PluginAot;
-import cc.jumpkick.engine.verbs.HostedVerb;
 import cc.jumpkick.engine.verbs.VerbRegistry;
 import cc.jumpkick.engine.verbs.VerbShape;
-import cc.jumpkick.jsonl.BoundedLineReader;
 import cc.jumpkick.jsonl.Jsonl;
-import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.runtime.BuildMetrics;
 import cc.jumpkick.util.JkDirs;
@@ -31,19 +26,13 @@ import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.EngineTransport;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
-import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
-import java.nio.channels.Channels;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.MessageDigest;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -226,6 +215,9 @@ public final class EngineServer implements AutoCloseable {
     /** Non-null only on the loopback-TCP transport (Windows) — see {@link EngineTransport}. */
     private String expectedToken;
 
+    /** Serves accepted sockets; built once the election has settled the token. */
+    private EngineConnection connection;
+
     /**
      * Quiet background revalidation of {@code store/libs.global.toml} and {@code store/jdks.json}
      * (every 12 h). Started only after winning the resident-engine election — never in {@code --job}
@@ -372,8 +364,8 @@ public final class EngineServer implements AutoCloseable {
                 this::liveConnectionCount,
                 jobs,
                 verbs,
-                this::cancelJob,
-                this::cancelJobsForDir,
+                jobs::cancelJob,
+                jobs::cancelJobsForDir,
                 cacheGate);
         this.vitals = new EngineVitals(
                 this.version,
@@ -401,6 +393,19 @@ public final class EngineServer implements AutoCloseable {
         if (won == null) return false; // lost the spawn race / an identical engine already serves
         serverChannel = won.listener();
         expectedToken = won.token();
+        connection = new EngineConnection(new EngineConnection.Context(
+                verbs,
+                jobs,
+                version,
+                pid,
+                startedAtMillis,
+                buildId,
+                expectedToken,
+                this::statusSnapshot,
+                http,
+                () -> draining,
+                drain,
+                this::handleShutdown));
 
         connectionExecutor = Executors.newThreadPerTaskExecutor(
                 Thread.ofVirtual().name("jk-engine-conn-", 0).factory());
@@ -541,160 +546,14 @@ public final class EngineServer implements AutoCloseable {
                 }
                 noteConnectionOpened();
             }
-            connectionExecutor.execute(() -> handleConnection(ch));
-        }
-    }
-
-    /** Loopback-TCP transport only: the connection's first line must be a matching {@link EngineProtocol#AUTH}. */
-    private boolean authenticate(BufferedReader reader) throws IOException {
-        String line = reader.readLine();
-        if (line == null || !EngineProtocol.AUTH.equals(EngineProtocol.typeOf(line))) return false;
-        String presented = Jsonl.str(line, "token");
-        if (presented == null) return false;
-        return MessageDigest.isEqual(
-                expectedToken.getBytes(StandardCharsets.UTF_8), presented.getBytes(StandardCharsets.UTF_8));
-    }
-
-    private void handleConnection(SocketChannel ch) {
-        try (ch;
-                BufferedReader reader = new BoundedLineReader(
-                        new InputStreamReader(Channels.newInputStream(ch), StandardCharsets.UTF_8));
-                BufferedWriter writer = new BufferedWriter(
-                        new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8))) {
-            if (expectedToken != null && !authenticate(reader)) {
-                // Typed refusal (then close): a silent close is indistinguishable from a crash.
-                WireWriter.sendQuiet(writer, ProtoLifecycle.error(EngineProtocol.ERR_AUTH, "engine token rejected"));
-                return;
-            }
-            serveConnection(reader, writer, ch);
-        } catch (IOException ignored) {
-            // client disconnected / socket error mid-exchange — nothing to do
-        } finally {
-            onConnectionFinished();
-        }
-    }
-
-    private void serveConnection(BufferedReader reader, BufferedWriter writer, SocketChannel ch) throws IOException {
-        String line;
-        while ((line = reader.readLine()) != null) {
-            String type = EngineProtocol.typeOf(line);
-            if (type == null) {
-                // A garbled REQUEST gets a typed refusal, never silence — a silently-dropped
-                // request wedges a streaming client that is waiting for a terminal event.
-                WireWriter.sendQuiet(
-                        writer,
-                        ProtoLifecycle.error(
-                                EngineProtocol.ERR_PROTOCOL, "unparseable request line (no \"type\" discriminator)"));
-                continue;
-            }
-            // Lock floor: a jk older than the lock's jk-min refuses with the upgrade error —
-            // newer always wins, and nothing runs an older engine to satisfy a lock.
-            if (LockFloor.GUARDED.contains(type)) {
-                String dir = Jsonl.str(line, "dir");
-                String floor = dir == null ? null : LockFloor.requiredNewer(Path.of(dir), version);
-                if (floor != null) {
-                    WireWriter.send(
-                            writer,
-                            ProtoLifecycle.error(EngineProtocol.ERR_VERSION_SKEW, LockFloor.message(floor, version)));
-                    return;
+            connectionExecutor.execute(() -> {
+                try {
+                    connection.serve(ch);
+                } finally {
+                    onConnectionFinished();
                 }
-            }
-            HostedVerb verb = verbs.find(type);
-            if (verb != null) {
-                if (dispatchVerb(verb, line, reader, writer, ch)) return;
-                continue;
-            }
-            switch (type) {
-                case EngineProtocol.HELLO -> {
-                    int clientProto = Jsonl.intValue(line, "proto", EngineProtocol.PROTOCOL);
-                    if (clientProto > EngineProtocol.PROTOCOL) {
-                        // A newer-protocol client: this engine must not serve wire semantics
-                        // it postdates — the client reacts by taking over (spawn + drain).
-                        WireWriter.send(
-                                writer,
-                                ProtoLifecycle.error(
-                                        EngineProtocol.ERR_VERSION_SKEW,
-                                        "client speaks protocol " + clientProto + " but this engine speaks "
-                                                + EngineProtocol.PROTOCOL + " — start a matching engine"));
-                        return;
-                    }
-                    WireWriter.send(writer, ProtoLifecycle.helloAck(version, pid, startedAtMillis, draining, buildId));
-                }
-                case EngineProtocol.PING -> WireWriter.send(writer, ProtoLifecycle.pong());
-                case EngineProtocol.STATUS -> {
-                    StatusSnapshot s = statusSnapshot();
-                    HttpEngineServer hs = http.server();
-                    String ack = ProtoLifecycle.statusAck(
-                            s.vitals(),
-                            draining,
-                            hs != null ? hs.url() : null,
-                            http.error(),
-                            hs != null && hs.mcpEnabled());
-                    WireWriter.send(writer, InputTrees.appendToStatusAck(ack));
-                }
-                case EngineProtocol.SHUTDOWN -> {
-                    handleShutdown(line, writer);
-                    return;
-                }
-                case EngineProtocol.DRAIN_STATUS ->
-                    drain.predecessorDraining(Jsonl.longValue(line, "pid", -1), Jsonl.intValue(line, "plans", 0));
-                case EngineProtocol.DRAIN_DONE -> drain.predecessorFinished(Jsonl.longValue(line, "pid", -1));
-                case EngineProtocol.CANCEL_REQUEST -> handleCancelRequest(line, writer);
-                default ->
-                    WireWriter.sendQuiet(
-                            writer, ProtoLifecycle.error(EngineProtocol.ERR_PROTOCOL, "unknown request type: " + type));
-            }
+            });
         }
-    }
-
-    /**
-     * Registry dispatch. {@code true} means the verb owns the rest of this connection
-     * (async plan / cache maint).
-     */
-    private boolean dispatchVerb(
-            HostedVerb verb, String line, BufferedReader reader, BufferedWriter writer, SocketChannel ch)
-            throws IOException {
-        return switch (verb.shape()) {
-            case VerbShape.AsyncPlan() -> {
-                jobs.submit(line, verb.toJobRequest(line), new JobTransport.SocketWatch(reader, writer, ch));
-                yield true;
-            }
-            case VerbShape.CacheMaint() -> {
-                jobs.submit(line, verb.toJobRequest(line), new JobTransport.SocketWatch(reader, writer, ch));
-                yield true;
-            }
-            case VerbShape.SyncRead() -> {
-                verb.run(line, Session.defaults().cancel(), writer);
-                yield false;
-            }
-        };
-    }
-
-    private void handleCancelRequest(String requestLine, BufferedWriter writer) throws IOException {
-        long jid = Jsonl.longValue(requestLine, "jid", -1);
-        String dir = Jsonl.str(requestLine, "dir");
-        if (jid >= 0) {
-            boolean ok = cancelJob(jid);
-            WireWriter.send(writer, ProtoLifecycle.cancelAck(jid, ok, ok ? null : "unknown or already finished jid"));
-            return;
-        }
-        if (dir != null && !dir.isBlank()) {
-            int n = jobs.cancelJobsForDir(dir);
-            WireWriter.send(
-                    writer,
-                    ProtoLifecycle.cancelAck(
-                            0, n > 0, n > 0 ? ("cancelled " + n + " job(s)") : "no running jobs for dir"));
-            return;
-        }
-        WireWriter.send(writer, ProtoLifecycle.cancelAck(-1, false, "cancel-request requires jid or dir"));
-    }
-
-    boolean cancelJob(long jid) {
-        return jobs.cancelJob(jid);
-    }
-
-    int cancelJobsForDir(String dir) {
-        return jobs.cancelJobsForDir(dir);
     }
 
     /**

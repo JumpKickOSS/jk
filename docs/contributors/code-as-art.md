@@ -1261,7 +1261,7 @@ Same charter, one patient at a time. Current sizes:
 
 | File | Before | Floor | Today | Cap | How |
 |---|---|---|---|---|---|
-| `EngineServer` | 3,418¹ | 1,064 | 580 | 800 | elect/accept/drain/close + composition root |
+| `EngineServer` | 3,418¹ | 1,064 | 470 | 800 | elect/accept/drain/close + composition root |
 | `JobEnvelope` | — | 683 | 241 | 800 | one submit path |
 | `HttpEngineServer` | 1,592 | 768 | 256 | 800 | router / history / project / live |
 | `EngineClient` | 2,616 | 942 | 287 | 800 | spawn, wire, hosted verbs |
