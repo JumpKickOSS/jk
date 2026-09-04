@@ -468,6 +468,19 @@ tasks.register("checkSecurityDocs") {
 // the next time; binaries are skipped by their own extensions.
 fun rootTextTree(): ConfigurableFileTree = fileTree(layout.projectDirectory) {
     val pruned = setOf("build", "target", ".git", ".gradle", ".firebase", "node_modules", ".board", ".kotlin")
+    val treeRootFile = layout.projectDirectory.asFile
+    // A nested checkout — a git worktree, which CONTRIBUTING recommends for parallel work — holds
+    // another branch's source. Recognised by what it is (a directory carrying its own `.git`)
+    // rather than by name, because a name list is exactly what let one through.
+    val nested = HashMap<File, Boolean>()
+    fun inNestedCheckout(f: File): Boolean {
+        var d: File? = f.parentFile
+        while (d != null && d != treeRootFile) {
+            if (nested.getOrPut(d) { File(d, ".git").exists() }) return true
+            d = d.parentFile
+        }
+        return false
+    }
     exclude { element ->
         var underSrc = false
         var prune = false
@@ -475,7 +488,7 @@ fun rootTextTree(): ConfigurableFileTree = fileTree(layout.projectDirectory) {
             if (segment == "src") underSrc = true
             else if (!underSrc && segment in pruned) { prune = true; break }
         }
-        prune
+        prune || inNestedCheckout(element.file)
     }
     exclude("**/*.png", "**/*.jpg", "**/*.jpeg", "**/*.gif", "**/*.webp", "**/*.ico",
             "**/*.jar", "**/*.zip", "**/*.xz", "**/*.gz", "**/*.class", "**/*.aot",

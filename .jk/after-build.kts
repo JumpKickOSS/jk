@@ -162,8 +162,13 @@ val treeFiles: List<Path> by lazy {
         // is the plugin SPI, so every guard reading this walker was silently scanning one package
         // less of the tree than it claimed; a corpus floor is what catches that, which is what
         // corpus floors are for. Anything under a `src/` directory is source, whatever it is called.
+        // A nested checkout — a git worktree, which CONTRIBUTING recommends for parallel work —
+        // holds another branch's source. Recognised by what it is (a directory carrying its own
+        // `.git`) rather than by name, because a name list is exactly what let one through.
         override fun preVisitDirectory(d: Path, a: BasicFileAttributes): FileVisitResult =
-            if (d != root && d.fileName.toString() in skipDirs && !rel(d).contains("/src/")) {
+            if (d != root && Files.exists(d.resolve(".git"))) {
+                FileVisitResult.SKIP_SUBTREE
+            } else if (d != root && d.fileName.toString() in skipDirs && !rel(d).contains("/src/")) {
                 FileVisitResult.SKIP_SUBTREE
             } else {
                 FileVisitResult.CONTINUE
