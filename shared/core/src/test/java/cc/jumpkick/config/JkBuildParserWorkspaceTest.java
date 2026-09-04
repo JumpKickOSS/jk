@@ -414,7 +414,9 @@ class JkBuildParserWorkspaceTest {
 
         var member = JkBuildParser.parse(lib.resolve("jk.toml"));
         assertThat(member.profiles().resolve("integration").includeTags()).containsExactly("member-only");
-        assertThat(member.profiles().contains("slow")).as("the root's others still arrive").isTrue();
+        assertThat(member.profiles().contains("slow"))
+                .as("the root's others still arrive")
+                .isTrue();
     }
 
     @Test
