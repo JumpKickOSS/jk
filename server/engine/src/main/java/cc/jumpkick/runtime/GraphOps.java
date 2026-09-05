@@ -79,7 +79,7 @@ public final class GraphOps {
      * Match a lockfile package name/key against a user query. Exact match, GA match (query
      * {@code g:a} vs lock {@code g:a:jar:}), artifact-only match, or substring.
      */
-    private static boolean matchesQuery(String name, String query) {
+    private static boolean matchesQuery(String name, @Nullable String query) {
         if (name.equals(query)) return true;
         String nameGa = ga(name);
         String queryGa = ga(query);

@@ -257,7 +257,7 @@ public final class OutdatedPlans {
     }
 
     /** Display string for a git dependency's currently-pinned ref. */
-    private static String gitCurrent(GitRefSpec ref) {
+    private static @Nullable String gitCurrent(GitRefSpec ref) {
         return switch (ref) {
             case GitRefSpec.Tag t -> t.name();
             case GitRefSpec.Branch b -> "tip"; // tracks the moving branch HEAD

@@ -45,9 +45,9 @@ object NullMarking {
         mapOf(
             "server/engine" to
                 "TODO: all 16 production packages now carry a package-level @NullMarked, so " +
-                    "RequireExplicitNullMarking is clean and 208 NullAway findings remain — 189 of them in " +
-                    "cc.jumpkick.runtime, the rest propagated into its callers (engine.verbs 10, task 4, " +
-                    "engine.journal 3, engine.jobs 1, engine 1). Measured by applying the plugin with -Xmaxerrs " +
+                    "RequireExplicitNullMarking is clean and 190 NullAway findings remain, nearly all of them in " +
+                    "cc.jumpkick.runtime and the callers its annotations propagate into. Measured by applying " +
+                    "the plugin with -Xmaxerrs " +
                     "raised, since javac caps at 100 and an unraised pass reads as 101. Down from 372 findings in " +
                     "the 9 originally-marked packages plus 191 marking errors in the other 7. The fixes are valid " +
                     "and green with the plugin still off, so they keep landing incrementally; the plugin applies " +

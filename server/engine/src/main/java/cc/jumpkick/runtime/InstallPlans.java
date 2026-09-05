@@ -7,6 +7,7 @@ import cc.jumpkick.config.JkM2Config;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceResolve;
 import cc.jumpkick.git.GitFetcher;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
@@ -168,7 +169,7 @@ public final class InstallPlans {
                     try {
                         cacheInstallArtifact(project, layout, cache, m2Dir);
                     } catch (IOException e) {
-                        ctx.error(TaskNames.CACHE_INSTALL, e.getMessage());
+                        ctx.error(TaskNames.CACHE_INSTALL, Errors.text(e));
                         throw new RuntimeException(e);
                     }
                     ctx.put(PRIMARY, coord);
@@ -207,7 +208,7 @@ public final class InstallPlans {
                     try {
                         fetched = fetchTagOrBranch(fetcher, url, canonicalUrl, ref, refresh);
                     } catch (IOException e) {
-                        ctx.error("fetch", e.getMessage());
+                        ctx.error("fetch", Errors.text(e));
                         throw new RuntimeException(e);
                     }
                     Path checkout = fetched.checkoutPath();

@@ -7,6 +7,7 @@ import cc.jumpkick.engine.plugin.PluginAot;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
@@ -204,7 +205,7 @@ public final class FormatPlans {
                                                         "ignored")
                                                 .classpath());
                     } catch (RuntimeException e) {
-                        ctx.error("resolve", e.getMessage());
+                        ctx.error("resolve", Errors.text(e));
                         throw e;
                     }
                     ctx.progress(1);

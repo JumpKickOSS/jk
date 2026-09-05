@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.ToolCoordSpec;
@@ -66,7 +67,7 @@ public final class ToolPlans {
                     try {
                         ctx.put(TOOL_ENV, new ToolResolver(repos).resolve(spec, bin, mainClassOverride, withSpecs));
                     } catch (RuntimeException | IOException e) {
-                        ctx.error("resolve", e.getMessage());
+                        ctx.error("resolve", Errors.text(e));
                         throw new RuntimeException(e);
                     }
                     ctx.progress(1);

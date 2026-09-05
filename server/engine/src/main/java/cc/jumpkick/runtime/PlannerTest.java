@@ -20,6 +20,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.TestSuites;
@@ -510,7 +511,7 @@ public final class PlannerTest {
                         ctx.error("test", "interrupted");
                         throw new RuntimeException(e);
                     } catch (IOException e) {
-                        ctx.error("test", e.getMessage());
+                        ctx.error("test", Errors.text(e));
                         throw e;
                     } finally {
                         if (gated) TEST_GATE.release();

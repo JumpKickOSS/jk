@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginJar;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
@@ -70,7 +71,7 @@ public final class AuditPlans {
                     try {
                         runWorker(workerJar, lockPath, osvBatchUrl, osvVulnsUrl, observer, ctx::output);
                     } catch (RuntimeException e) {
-                        ctx.error("osv", e.getMessage());
+                        ctx.error("osv", Errors.text(e));
                         throw e;
                     }
                     ctx.progress(1);

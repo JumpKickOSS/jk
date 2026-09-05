@@ -8,6 +8,7 @@ import static cc.jumpkick.runtime.PlannerSupport.storePackaged;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CycloneDxSbom;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jsonl.Jsonl;
@@ -428,7 +429,7 @@ public final class PlannerPlugin {
                     try {
                         PluginBuild.runWorker(active, in.cache(), spec, ctx::label);
                     } catch (IOException e) {
-                        ctx.error(step.name(), e.getMessage());
+                        ctx.error(step.name(), Errors.text(e));
                         throw e;
                     } finally {
                         Files.deleteIfExists(spec);
@@ -536,7 +537,7 @@ public final class PlannerPlugin {
         try {
             workerLines = PluginBuild.runWorker(active, in.cache(), specFile, ctx::label);
         } catch (IOException e) {
-            ctx.error("package", e.getMessage());
+            ctx.error("package", Errors.text(e));
             throw e;
         } finally {
             Files.deleteIfExists(specFile);

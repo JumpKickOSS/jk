@@ -249,7 +249,7 @@ public final class TrainRunner {
      * A JDK home that can load {@code -agentlib:native-image-agent}. Graal ships the agent next to
      * {@code native-image}; a stock Temurin JDK does not.
      */
-    static @Nullable Path resolveAgentJavaHome(Path graalHome, Path javaHome) {
+    static @Nullable Path resolveAgentJavaHome(@Nullable Path graalHome, Path javaHome) {
         for (Path home : new Path[] {graalHome, javaHome}) {
             if (home == null) continue;
             if (looksLikeGraal(home)) return home;

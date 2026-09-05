@@ -126,7 +126,7 @@ public final class Calibration {
      */
     static final int COLD_MAX_TEST_PARALLEL = 4;
 
-    private static final AtomicReference<Calibration> MEMO = new AtomicReference<>();
+    private static final AtomicReference<@Nullable Calibration> MEMO = new AtomicReference<>();
 
     private final double msPerWeight;
     private final long jvmForkMs;

@@ -9,6 +9,7 @@ import cc.jumpkick.engine.plugin.BuiltInPluginJars;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.host.Classpaths;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
@@ -127,7 +128,7 @@ public final class PublishPlans {
                     try {
                         ctx.put(FILES, runWorker(workerJar, projectDir, jar, req));
                     } catch (RuntimeException e) {
-                        ctx.error("publish", e.getMessage());
+                        ctx.error("publish", Errors.text(e));
                         throw e;
                     }
                     ctx.progress(1);

@@ -133,7 +133,7 @@ final class ImageWrite {
         try {
             ctx.put(ImagePlans.IMAGE_REF, fork.run(base));
         } catch (RuntimeException e) {
-            ctx.error("image", e.getMessage());
+            ctx.error("image", Errors.text(e));
             throw e;
         }
         if (useCache) {

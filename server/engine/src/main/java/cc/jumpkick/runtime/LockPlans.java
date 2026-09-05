@@ -5,6 +5,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceLocator;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
@@ -190,10 +191,10 @@ public final class LockPlans {
                                         barObserver(ctx, observer, resolveEstimate, coordLabel),
                                         LockPipeline.of(ctx)));
                     } catch (UnsatisfiableException e) {
-                        ctx.error("verbatim", e.getMessage());
+                        ctx.error("verbatim", Errors.text(e));
                         throw new RuntimeException(e);
                     } catch (Exception e) {
-                        ctx.error(TaskNames.RESOLVE_DEPS, e.getMessage());
+                        ctx.error(TaskNames.RESOLVE_DEPS, Errors.text(e));
                         throw new RuntimeException(e);
                     }
                 })
@@ -207,7 +208,7 @@ public final class LockPlans {
                     try {
                         ctx.put(LOCKFILE, pipeline.pinPlugins(ctx.require(LOCKFILE), LockPipeline.of(ctx)));
                     } catch (RuntimeException e) {
-                        ctx.error("plugin", e.getMessage());
+                        ctx.error("plugin", Errors.text(e));
                         throw e;
                     }
                 })
@@ -418,7 +419,7 @@ public final class LockPlans {
         return refreshed;
     }
 
-    private static String gitKey(GitSource s) {
+    private static String gitKey(@Nullable GitSource s) {
         return s.canonicalUrl() + "|" + s.ref().token();
     }
 

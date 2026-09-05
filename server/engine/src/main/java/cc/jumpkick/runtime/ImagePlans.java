@@ -12,6 +12,7 @@ import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.engine.JobWorkers;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginJar;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.image.ImageConfig;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
@@ -214,7 +215,7 @@ public final class ImagePlans {
                             String ref = runDockerfileBuild(ctx, config, projectDir, tarballPath, project);
                             ctx.put(IMAGE_REF, ref);
                         } catch (RuntimeException e) {
-                            ctx.error("image", e.getMessage());
+                            ctx.error("image", Errors.text(e));
                             throw e;
                         }
                         ctx.progress(1);

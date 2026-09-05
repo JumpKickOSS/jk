@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TrainConfig;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.lock.LockPaths;
@@ -109,7 +110,7 @@ public final class TrainPlans {
                                     + (result.aotWritten() ? " + AOT cache" : ""));
                         }
                     } catch (Exception e) {
-                        ctx.error("train", e.getMessage());
+                        ctx.error("train", Errors.text(e));
                         throw e instanceof RuntimeException re ? re : new RuntimeException(e);
                     }
                     ctx.progress(1);

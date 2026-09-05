@@ -358,9 +358,9 @@ public final class ExecPlans {
             try {
                 mainClass = MainClassScanner.scanUnique(layout.classesDir());
             } catch (MainClassScanner.NoMainFoundException e) {
-                return ExecPlan.error(dev ? "dev" : "run", e.getMessage(), "missing");
+                return ExecPlan.error(dev ? "dev" : "run", Errors.text(e), "missing");
             } catch (MainClassScanner.AmbiguousMainException e) {
-                return ExecPlan.error(dev ? "dev" : "run", e.getMessage(), "ambiguous");
+                return ExecPlan.error(dev ? "dev" : "run", Errors.text(e), "ambiguous");
             }
         }
 

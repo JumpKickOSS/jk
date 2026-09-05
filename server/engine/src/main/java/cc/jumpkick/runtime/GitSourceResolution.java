@@ -205,7 +205,7 @@ public final class GitSourceResolution {
      * are part of the key so two deps on the same commit that relabel it differently each get their
      * own published artifact.
      */
-    private static String sourceKey(GitSource source) {
+    private static String sourceKey(@Nullable GitSource source) {
         return String.join(
                 "|", source.canonicalUrl(), source.ref().token(), source.path() == null ? "" : source.path());
     }

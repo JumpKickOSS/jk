@@ -11,6 +11,7 @@ import cc.jumpkick.compile.WorkerCompileDriver;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.http.Http;
@@ -136,7 +137,7 @@ public final class ScriptPlans {
                         List<Path> classpath = resolveClasspath(header.deps(), repos);
                         ctx.put(CLASSPATH, classpath);
                     } catch (RuntimeException e) {
-                        ctx.error("resolve", e.getMessage());
+                        ctx.error("resolve", Errors.text(e));
                         throw e;
                     }
                     ctx.progress(1);
@@ -256,7 +257,7 @@ public final class ScriptPlans {
                         List<Path> classpath = resolveClasspath(header.deps(), repos);
                         ctx.put(CLASSPATH, classpath);
                     } catch (RuntimeException e) {
-                        ctx.error("resolve", e.getMessage());
+                        ctx.error("resolve", Errors.text(e));
                         throw e;
                     }
                     ctx.progress(1);
@@ -283,7 +284,7 @@ public final class ScriptPlans {
                         Thread.currentThread().interrupt();
                         throw new RuntimeException("interrupted resolving the Kotlin compiler", e);
                     } catch (RuntimeException e) {
-                        ctx.error("kotlin", e.getMessage());
+                        ctx.error("kotlin", Errors.text(e));
                         throw e;
                     }
                     ctx.progress(1);
@@ -391,7 +392,7 @@ public final class ScriptPlans {
                     try {
                         ctx.put(CLASSPATH, resolveClasspath(header.deps(), repos));
                     } catch (RuntimeException e) {
-                        ctx.error("resolve", e.getMessage());
+                        ctx.error("resolve", Errors.text(e));
                         throw e;
                     }
                     ctx.progress(1);
@@ -492,7 +493,7 @@ public final class ScriptPlans {
                     try {
                         classpath.addAll(resolveClasspath(declaredDeps, repos));
                     } catch (RuntimeException e) {
-                        ctx.error("resolve", e.getMessage());
+                        ctx.error("resolve", Errors.text(e));
                         throw e;
                     }
                     ctx.put(CLASSPATH, classpath);

@@ -58,7 +58,7 @@ final class PathSourceMaterializer {
         this(lockRootDir, CacheTree.PATH_ARTIFACTS.under(JkDirs.cache()), cas, buildRepos, javaHome, jkVersion);
     }
 
-    Materialized materialize(PathSource source) throws IOException, InterruptedException {
+    Materialized materialize(@Nullable PathSource source) throws IOException, InterruptedException {
         Path projectDir = lockRootDir.resolve(source.rawPath()).normalize();
         if (!Files.isDirectory(projectDir)) {
             throw new IOException(

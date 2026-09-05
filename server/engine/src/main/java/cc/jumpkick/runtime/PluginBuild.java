@@ -697,7 +697,7 @@ public final class PluginBuild {
      * The main artifact's path under the packager's declared extension ({@code
      * target/lib/<name>-<version>.apk}) — the one place the extension swap lives.
      */
-    public static Path mainArtifactPath(BuildLayout layout, Active active) {
+    public static Path mainArtifactPath(BuildLayout layout, @Nullable Active active) {
         Path jarPath = layout.mainJar();
         var packaging = active.manifest().packaging();
         if (packaging != null) packaging = packaging.resolve(active.config());

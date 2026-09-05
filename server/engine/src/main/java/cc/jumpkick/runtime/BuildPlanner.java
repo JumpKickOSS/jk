@@ -522,7 +522,7 @@ public final class BuildPlanner {
         final AtomicReference<List<Path>> javaMainSrcRef = new AtomicReference<>();
         final AtomicReference<List<Path>> kotlinMainSrcRef = new AtomicReference<>();
         final AtomicReference<List<Path>> groovyMainSrcRef = new AtomicReference<>();
-        final AtomicReference<EffortWeights.Plan> planRef = new AtomicReference<>();
+        final AtomicReference<EffortWeights.@Nullable Plan> planRef = new AtomicReference<>();
         final Supplier<EffortWeights.Plan> plan = () -> {
             EffortWeights.Plan p = planRef.get();
             if (p == null) {
@@ -538,7 +538,7 @@ public final class BuildPlanner {
                                 forceRebuild,
                                 // The caches below, not fresh walks: prediction and the plan that
                                 // follows it read the same source lists.
-                                new EffortWeights.SourceRefs(javaMainSrcRef, kotlinMainSrcRef, groovyMainSrcRef)));
+                                new SourceRefs(javaMainSrcRef, kotlinMainSrcRef, groovyMainSrcRef)));
                 p = planRef.get();
             }
             return p;
