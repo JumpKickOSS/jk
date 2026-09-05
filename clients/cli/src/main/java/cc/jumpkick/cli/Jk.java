@@ -74,6 +74,12 @@ public final class Jk {
         } catch (JkDirs.InvalidOverrideException e) {
             System.err.println("jk: invalid environment: " + e.getMessage());
             code = Exit.USAGE;
+        } catch (CliFailure.WorkingDirectoryGone e) {
+            code = CliFailure.workingDirectoryGone(args);
+        } catch (Throwable t) {
+            // Nothing below this frame handled it, so nothing below this frame can say it better:
+            // one wedge, the stack in cli.log, and the exit code the docs already promise.
+            code = CliFailure.unhandled(t, args);
         } finally {
             // Wake any JLine NonBlocking stdin reader before the JVM shutdown hooks run — also
             // on the exception path, where the JVM's default handler still runs those hooks. On
@@ -292,8 +298,17 @@ public final class Jk {
                 explicit = Optional.of(Path.of(a.substring("--config-file=".length())));
             }
         }
+        Path cwd;
         try {
-            JkConfig resolved = JkConfigLoader.load(Path.of("").toAbsolutePath(), noConfig, explicit);
+            cwd = Path.of("").toAbsolutePath();
+        } catch (Error e) {
+            // The native image answers a vanished working directory with an Error from properties
+            // initialisation; the shell is sitting in a directory that no longer exists.
+            if (CliFailure.isWorkingDirectoryGone(e)) throw new CliFailure.WorkingDirectoryGone(e);
+            throw e;
+        }
+        try {
+            JkConfig resolved = JkConfigLoader.load(cwd, noConfig, explicit);
             SessionContext.installConfig(resolved);
         } catch (IOException e) {
             // Best-effort — a broken user/project config shouldn't kill the CLI.
