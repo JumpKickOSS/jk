@@ -23,7 +23,7 @@ public final class EventRedaction {
 
     private EventRedaction() {}
 
-    public static String redactEnv(@Nullable String dir, @Nullable String text) {
+    public static @Nullable String redactEnv(@Nullable String dir, @Nullable String text) {
         if (text == null || text.isEmpty()) return text;
         SecretRedactor redactor;
         try {
@@ -151,9 +151,8 @@ public final class EventRedaction {
      * pass cannot match. When {@code text} carries the capture marker, mask a dangling
      * secret prefix at the cut point.
      */
-    private static @Nullable String redactTruncationSeam(
-            SecretRedactor redactor, @Nullable String text, String marker) {
-        if (text == null || text.isEmpty()) return text;
+    private static String redactTruncationSeam(SecretRedactor redactor, String text, String marker) {
+        if (text.isEmpty()) return text;
         try {
             int at = text.lastIndexOf(marker);
             if (at < 0) return text;
@@ -166,8 +165,8 @@ public final class EventRedaction {
         }
     }
 
-    private static @Nullable String redactSafe(SecretRedactor redactor, @Nullable String text) {
-        if (text == null || text.isEmpty()) return text;
+    private static String redactSafe(SecretRedactor redactor, String text) {
+        if (text.isEmpty()) return text;
         try {
             return redactor.redact(text);
         } catch (RuntimeException e) {

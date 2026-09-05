@@ -19,10 +19,12 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 /** Runs prepared plans through the workspace scheduler and records completed work. */
 @NullMarked
@@ -58,7 +60,12 @@ final class WorkspaceRunPhase {
                     resources.dirtyUnits(),
                     BuildGraph.BuildUnit::dir,
                     resources.preflight().graph().edges(),
-                    (unit, artifactsReady) -> runModule(prepared.plans().get(unit.dir()), listener, artifactsReady),
+                    (unit, artifactsReady) -> runModule(
+                            Objects.requireNonNull(
+                                    prepared.plans().get(unit.dir()),
+                                    () -> "admitted a unit with no prepared plan: " + unit.dir()),
+                            listener,
+                            artifactsReady),
                     (ready, results, _) ->
                             collect(request, prepared.plans(), workspaceLinks, ready, results, outcomes, observedRates),
                     request.maxModuleConcurrency(),
@@ -75,7 +82,7 @@ final class WorkspaceRunPhase {
                 SessionCancel.cancelled());
     }
 
-    private static ModuleOutcome collect(
+    private static @Nullable ModuleOutcome collect(
             WorkspaceRequest request,
             Map<Path, ModulePlan> plans,
             Map<Path, Path> workspaceLinks,
@@ -98,7 +105,7 @@ final class WorkspaceRunPhase {
     }
 
     /** Return a failing outcome only when fail-fast policy should stop admission. */
-    static ModuleOutcome stoppingFailure(boolean keepGoing, ModuleOutcome outcome) {
+    static @Nullable ModuleOutcome stoppingFailure(boolean keepGoing, ModuleOutcome outcome) {
         return !outcome.success() && !keepGoing ? outcome : null;
     }
 
@@ -145,7 +152,8 @@ final class WorkspaceRunPhase {
         AtomicInteger remaining = new AtomicInteger(artifactSteps.size());
         plan.addListener(new BuildPlanListener() {
             @Override
-            public void stepFinish(String step, String group, TaskStatus status, Duration duration, Duration waited) {
+            public void stepFinish(
+                    String step, @Nullable String group, TaskStatus status, Duration duration, Duration waited) {
                 if (!artifactSteps.contains(step)) return;
                 if (status != TaskStatus.SUCCESS && status != TaskStatus.SKIPPED) return;
                 if (remaining.decrementAndGet() == 0) artifactsReady.run();
@@ -153,7 +161,7 @@ final class WorkspaceRunPhase {
         });
     }
 
-    private static ModuleOutcome.Image imageOutcomeOf(BuildPlan plan) {
+    private static ModuleOutcome.@Nullable Image imageOutcomeOf(BuildPlan plan) {
         var config = plan.get(ImagePlans.CONFIG).orElse(null);
         Path tarball = plan.get(ImagePlans.TARBALL_PATH).orElse(null);
         String reference = plan.get(ImagePlans.IMAGE_REF).orElse(null);

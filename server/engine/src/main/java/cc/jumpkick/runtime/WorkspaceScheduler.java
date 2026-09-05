@@ -20,6 +20,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Workspace DAG scheduler: topological levels, optional {@code maxConcurrency} cap (1 = serial).
@@ -60,11 +61,12 @@ public final class WorkspaceScheduler {
          * After completed units: unbounded → once per topological level; bounded → once per unit.
          * Non-null return stops the schedule (fail-fast); {@code null} continues.
          */
+        @Nullable
         R after(List<U> justCompleted, List<R> results, List<U> remaining);
     }
 
     /** Unbounded schedule (batch-per-level). Cap {@code <= 0} form of {@link #run}. */
-    public static <U, R> R run(
+    public static <U, R> @Nullable R run(
             List<U> units,
             Function<U, Path> dirOf,
             Map<Path, Set<Path>> edges,
@@ -79,7 +81,7 @@ public final class WorkspaceScheduler {
      * {@code sink} returns non-null; otherwise {@code null} when all units finish. Stops admitting
      * (and does not join the remaining DAG) when {@link SessionCancel} is set.
      */
-    public static <U, R> R run(
+    public static <U, R> @Nullable R run(
             List<U> units,
             Function<U, Path> dirOf,
             Map<Path, Set<Path>> edges,
@@ -100,7 +102,7 @@ public final class WorkspaceScheduler {
      * cooperative — SessionCancel checks inside plans plus JobWorkers process kills — which
      * settles tasks quickly; the bound keeps cancel from ever hanging on a wedged step.
      */
-    public static <U, R> R run(
+    public static <U, R> @Nullable R run(
             List<U> units,
             Function<U, Path> dirOf,
             Map<Path, Set<Path>> edges,
@@ -112,7 +114,7 @@ public final class WorkspaceScheduler {
     }
 
     /** As {@link #run(List, Function, Map, UnitTask, LevelSink, int, BooleanSupplier)} with phase gates. */
-    public static <U, R> R run(
+    public static <U, R> @Nullable R run(
             List<U> units,
             Function<U, Path> dirOf,
             Map<Path, Set<Path>> edges,

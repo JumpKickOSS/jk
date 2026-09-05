@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Preflight dirty-forecast and explain-plan assembly for {@link BuildService}.
@@ -55,7 +56,8 @@ public final class BuildForecasting {
      * for the local preflight dirty memo. When {@code entryDir} is non-null and inputs are
      * unchanged, returns the memoized dirty set without a full {@link TaskForecaster} walk.
      */
-    public static Set<Path> forecastDirtyDirs(BuildGraph.Result graph, Path cache, boolean skipTests, Path entryDir) {
+    public static Set<Path> forecastDirtyDirs(
+            BuildGraph.Result graph, Path cache, boolean skipTests, @Nullable Path entryDir) {
         return forecastWithFingerprints(graph, cache, skipTests, entryDir).dirty();
     }
 
@@ -101,12 +103,13 @@ public final class BuildForecasting {
      * forecast walk — the only fingerprints a post-build {@link PreflightMemo#storeDirty} may use
      * (fingerprinting after the build records mid-build edits as clean).
      */
-    static Preflight forecastWithFingerprints(BuildGraph.Result graph, Path cache, boolean skipTests, Path entryDir) {
+    static Preflight forecastWithFingerprints(
+            BuildGraph.Result graph, Path cache, boolean skipTests, @Nullable Path entryDir) {
         return forecastWithFingerprints(graph, cache, skipTests, entryDir, WorkspaceTarget.PACKAGE, Set.of());
     }
 
     static Preflight forecastWithFingerprints(
-            BuildGraph.Result graph, Path cache, boolean skipTests, Path entryDir, WorkspaceTarget target) {
+            BuildGraph.Result graph, Path cache, boolean skipTests, @Nullable Path entryDir, WorkspaceTarget target) {
         return forecastWithFingerprints(graph, cache, skipTests, entryDir, target, Set.of());
     }
 
@@ -119,7 +122,7 @@ public final class BuildForecasting {
             BuildGraph.Result graph,
             Path cache,
             boolean skipTests,
-            Path entryDir,
+            @Nullable Path entryDir,
             WorkspaceTarget target,
             Set<Path> terminalDirs) {
         return forecastWithFingerprints(graph, cache, skipTests, entryDir, target, terminalDirs, true);
@@ -130,7 +133,7 @@ public final class BuildForecasting {
             BuildGraph.Result graph,
             Path cache,
             boolean skipTests,
-            Path entryDir,
+            @Nullable Path entryDir,
             WorkspaceTarget target,
             Set<Path> terminalDirs,
             boolean persistMemo) {
@@ -225,7 +228,7 @@ public final class BuildForecasting {
      * going to produce wrong bytes.
      */
     private static void withStaleOutputs(
-            BuildGraph.Result graph, Path entryDir, Map<Path, String> fingerprints, Set<Path> dirty) {
+            BuildGraph.Result graph, @Nullable Path entryDir, Map<Path, String> fingerprints, Set<Path> dirty) {
         if (graph == null || entryDir == null || fingerprints == null || fingerprints.isEmpty()) return;
         Path root = entryDir.toAbsolutePath().normalize();
         for (BuildGraph.BuildUnit unit : graph.topoOrder()) {
@@ -289,7 +292,8 @@ public final class BuildForecasting {
      * unchanged, skip the multi-second {@link TaskForecaster} walk (same shortcut as fully-cached
      * {@code jk build}). ETA is 0; the plan is "Fully Cached" for every module.
      */
-    public static ExplainPlan explainFromGraph(BuildGraph.Result graph, Path cache, boolean skipTests, Path entryDir) {
+    public static ExplainPlan explainFromGraph(
+            BuildGraph.Result graph, Path cache, boolean skipTests, @Nullable Path entryDir) {
         if (graph.hasErrors()) {
             return new ExplainPlan(List.of(), Map.of(), 1, List.copyOf(graph.errors()));
         }

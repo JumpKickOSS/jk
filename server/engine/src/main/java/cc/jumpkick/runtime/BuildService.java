@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Engine-side build facade for any front-end. Pure orchestration — nothing writes stdout/stderr;
@@ -38,7 +39,7 @@ public final class BuildService {
      * @param status process exit code — {@code 0} means the lock is fresh (or was re-locked OK)
      * @param error a bare message to surface (no command prefix), or {@code null}
      */
-    public record LockGuard(int status, String error) {
+    public record LockGuard(int status, @Nullable String error) {
         public static final LockGuard OK = new LockGuard(0, null);
     }
 
@@ -108,7 +109,8 @@ public final class BuildService {
      * for the local preflight dirty memo. When {@code entryDir} is non-null and inputs are
      * unchanged, returns the memoized dirty set without a full {@link TaskForecaster} walk.
      */
-    public static Set<Path> forecastDirtyDirs(BuildGraph.Result graph, Path cache, boolean skipTests, Path entryDir) {
+    public static Set<Path> forecastDirtyDirs(
+            BuildGraph.Result graph, Path cache, boolean skipTests, @Nullable Path entryDir) {
         return BuildForecasting.forecastDirtyDirs(graph, cache, skipTests, entryDir);
     }
 
@@ -411,7 +413,8 @@ public final class BuildService {
     }
 
     /** As {@link #forecastDirtyDirs(ResolvedGraph, Path, boolean)} with preflight memo root. */
-    public static Set<Path> forecastDirtyDirs(ResolvedGraph graph, Path cache, boolean skipTests, Path entryDir) {
+    public static Set<Path> forecastDirtyDirs(
+            ResolvedGraph graph, Path cache, boolean skipTests, @Nullable Path entryDir) {
         return forecastDirtyDirs(graph.graph(), cache, skipTests, entryDir);
     }
 

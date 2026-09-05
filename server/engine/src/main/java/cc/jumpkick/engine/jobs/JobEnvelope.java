@@ -319,7 +319,8 @@ public final class JobEnvelope {
      * concurrent writers.
      */
     private void publishNotice(long id, String dir, @Nullable BufferedWriter writer, String message) {
-        String safe = EventRedaction.redactEnv(dir, message);
+        String redacted = EventRedaction.redactEnv(dir, message);
+        String safe = redacted == null ? message : redacted;
         if (writer != null) WireWriter.sendQuiet(writer, ProtoEvents.warn(dir, "", "notice", safe));
         host.publishEvent(
                 "warn",
@@ -346,10 +347,9 @@ public final class JobEnvelope {
         String summary = t.getClass().getName() + (t.getMessage() == null ? "" : ": " + t.getMessage());
         host.log("jk engine: job " + jid + " died: " + summary + System.lineSeparator() + stackOf(t));
         if (writer == null) return;
-        WireWriter.sendQuiet(
-                writer,
-                ProtoLifecycle.requestFailed(EventRedaction.redactEnv(
-                        dir, "the build engine hit an internal error and could not finish: " + summary)));
+        String failure = "the build engine hit an internal error and could not finish: " + summary;
+        String redactedFailure = EventRedaction.redactEnv(dir, failure);
+        WireWriter.sendQuiet(writer, ProtoLifecycle.requestFailed(redactedFailure == null ? failure : redactedFailure));
     }
 
     private static String stackOf(Throwable t) {

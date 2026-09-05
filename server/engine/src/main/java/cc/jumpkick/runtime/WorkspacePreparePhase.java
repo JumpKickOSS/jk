@@ -28,6 +28,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.UnaryOperator;
 import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 /** Assembles plans for dirty modules and publishes the executable graph. */
 @NullMarked
@@ -174,7 +175,7 @@ final class WorkspacePreparePhase {
     }
 
     /** Assemble one dirty module and preserve its live over-reserved work weight. */
-    private static ModulePlan prepareModule(
+    private static @Nullable ModulePlan prepareModule(
             BuildGraph.BuildUnit unit,
             WorkspaceRequest request,
             Set<Path> moduleDirs,

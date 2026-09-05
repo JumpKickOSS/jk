@@ -59,8 +59,14 @@ public final class BridgingPlanListener implements BuildPlanListener {
         return r;
     }
 
-    private @Nullable String redact(@Nullable String text) {
-        if (text == null || text.isEmpty()) return text;
+    /** A diagnostic with no message reads as empty text; the event's message is never null. */
+    private static String message(BuildPlanResult.Diagnostic d) {
+        String m = d.message();
+        return m == null ? "" : m;
+    }
+
+    private String redact(String text) {
+        if (text.isEmpty()) return text;
         try {
             return redactor().redact(text);
         } catch (RuntimeException e) {
@@ -87,7 +93,7 @@ public final class BridgingPlanListener implements BuildPlanListener {
     }
 
     @Override
-    public void stepStart(String step, String group, int ticks) {
+    public void stepStart(String step, @Nullable String group, int ticks) {
         String phase = phaseWire(group);
         sink.emit(new EngineEvent.StepStart(dir, step, phase, ticks));
     }
@@ -139,7 +145,7 @@ public final class BridgingPlanListener implements BuildPlanListener {
 
     @Override
     public void error(String step, String code, String message) {
-        error(step, code, message, (String) null, null);
+        sink.emit(new EngineEvent.ErrorLine(dir, step, code, redact(message), null, null));
     }
 
     @Override
@@ -148,7 +154,7 @@ public final class BridgingPlanListener implements BuildPlanListener {
     }
 
     @Override
-    public void error(String step, String code, String message, TestFailureInfo failure) {
+    public void error(String step, String code, String message, @Nullable TestFailureInfo failure) {
         if (failure == null) {
             error(step, code, message);
             return;
@@ -158,16 +164,17 @@ public final class BridgingPlanListener implements BuildPlanListener {
         sink.emit(new EngineEvent.ErrorFailure(dir, step, code, msg, safe));
     }
 
-    private @Nullable TestFailureInfo redactFailureHoisted(@Nullable TestFailureInfo f) {
+    private TestFailureInfo redactFailureHoisted(TestFailureInfo f) {
         try {
-            return EventRedaction.redactFailure(redactor(), f);
+            TestFailureInfo safe = EventRedaction.redactFailure(redactor(), f);
+            return safe == null ? f : safe;
         } catch (RuntimeException e) {
             return f;
         }
     }
 
     @Override
-    public void stepFinish(String step, String group, TaskStatus status, Duration duration, Duration waited) {
+    public void stepFinish(String step, @Nullable String group, TaskStatus status, Duration duration, Duration waited) {
         long millis = duration.toMillis();
         long waitMillis = waited == null ? 0 : waited.toMillis();
         String phase = phaseWire(group);
@@ -182,10 +189,10 @@ public final class BridgingPlanListener implements BuildPlanListener {
             var tf = d.testFailure();
             if (tf != null) {
                 TestFailureInfo safe = redactFailureHoisted(tf);
-                sink.emit(new EngineEvent.PlanDiagnosticFailure(dir, d.step(), d.code(), redact(d.message()), safe));
+                sink.emit(new EngineEvent.PlanDiagnosticFailure(dir, d.step(), d.code(), redact(message(d)), safe));
             } else {
                 sink.emit(new EngineEvent.PlanDiagnostic(
-                        dir, d.step(), d.code(), redact(d.message()), d.test(), d.exceptionClass()));
+                        dir, d.step(), d.code(), redact(message(d)), d.test(), d.exceptionClass()));
             }
         }
         // Timeline + exclusive-slot release must precede the terminal plan-finish line:

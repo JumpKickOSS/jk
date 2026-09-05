@@ -23,6 +23,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * ETA / history fold for {@link BuildService}: schedule seed, cascade discounts, and
@@ -52,7 +53,7 @@ public final class BuildEta {
             Path cache,
             int workers,
             Path jdksDir,
-            String profile,
+            @Nullable String profile,
             boolean skipTests,
             boolean verbose,
             boolean parallelTests,
@@ -77,7 +78,7 @@ public final class BuildEta {
             Path cache,
             int workers,
             Path jdksDir,
-            String profile,
+            @Nullable String profile,
             boolean skipTests,
             boolean verbose,
             boolean parallelTests,
@@ -138,7 +139,7 @@ public final class BuildEta {
             Path cache,
             int workers,
             Path jdksDir,
-            String profile,
+            @Nullable String profile,
             boolean skipTests,
             boolean verbose,
             boolean serial,
@@ -235,7 +236,7 @@ public final class BuildEta {
             Path cache,
             int workers,
             Path jdksDir,
-            String profile,
+            @Nullable String profile,
             boolean skipTests,
             boolean verbose,
             int maxModuleConcurrency) {

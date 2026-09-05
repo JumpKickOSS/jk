@@ -103,7 +103,7 @@ public sealed interface EngineEvent {
             long millis,
             boolean didWork,
             boolean cancelled,
-            ModuleOutcome.Image image)
+            ModuleOutcome.@Nullable Image image)
             implements EngineEvent {}
 
     record Eta(long remainingMs) implements EngineEvent {}

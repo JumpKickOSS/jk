@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import org.jspecify.annotations.NullMarked;
@@ -43,7 +44,12 @@ final class WorkspaceFinalPhase {
             }
         }
         boolean success = firstFailure == null && !cancelled;
-        int exit = success ? 0 : cancelled ? 1 : firstFailure.exitCode();
+        // Cancel precedes failure: a cancelled run exits 1 even when a module also failed.
+        // Reaching the third arm means neither succeeded nor cancelled, which is only
+        // possible with a failure in hand.
+        int exit = success
+                ? 0
+                : cancelled ? 1 : Objects.requireNonNull(firstFailure).exitCode();
         WorkspaceResult result = new WorkspaceResult(success, exit, List.copyOf(outcomes), List.of(), cancelled);
         return new Decision(result, success);
     }
