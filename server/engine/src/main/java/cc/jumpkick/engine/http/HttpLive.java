@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.http;
 
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /** Mid-flight job shapes for history enrichment and SSE connect rehydrate. */
 public final class HttpLive {
@@ -69,7 +70,7 @@ public final class HttpLive {
     /** One module's mid-flight chain (finished modules + in-progress ones with steps so far). */
     public record Module(
             String dir,
-            String coord,
+            @Nullable String coord,
             boolean finished,
             boolean success,
             long millis,

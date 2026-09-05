@@ -20,6 +20,7 @@ import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Durable per-project build history under {@code ~/.jk/state/builds/projects/<key>/}.
@@ -86,11 +87,11 @@ public final class ProjectBuilds {
         return projectHome(buildsRoot(), ProjectIdentity.resolve(projectDir));
     }
 
-    public static Path projectHome(String coord, Path projectDir) {
+    public static Path projectHome(@Nullable String coord, Path projectDir) {
         return projectHome(projectDir);
     }
 
-    public static Path projectHome(Path buildsRoot, String coord, Path projectDir) {
+    public static Path projectHome(Path buildsRoot, @Nullable String coord, Path projectDir) {
         return projectHome(buildsRoot, ProjectIdentity.resolve(projectDir));
     }
 

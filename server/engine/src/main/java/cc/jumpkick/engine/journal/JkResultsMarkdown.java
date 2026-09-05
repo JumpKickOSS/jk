@@ -14,6 +14,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -105,7 +106,8 @@ public final class JkResultsMarkdown {
     private static void appendHeadline(StringBuilder sb, BuildRecord r, String outcome) {
         sb.append("**").append(outcome).append("**");
         if (notBlank(r.kind())) sb.append(" · ").append(r.kind());
-        if (notBlank(r.coord())) sb.append(" · `").append(r.coord()).append('`');
+        String coord = some(r.coord());
+        if (coord != null) sb.append(" · `").append(coord).append('`');
         if (r.buildNumber() > 0) sb.append(" · #").append(r.buildNumber());
         if (r.millis() > 0) sb.append(" · ").append(fmtDuration(r.millis()));
         sb.append(" · exit ").append(r.exitCode());
@@ -116,9 +118,10 @@ public final class JkResultsMarkdown {
             sb.append("trigger: ").append(r.trigger());
             meta = true;
         }
-        if (notBlank(r.commit())) {
+        String commit = some(r.commit());
+        if (commit != null) {
             if (meta) sb.append(" · ");
-            sb.append("commit: ").append(r.commit());
+            sb.append("commit: ").append(commit);
             meta = true;
         }
         if (notBlank(r.jkVersion())) {
@@ -283,7 +286,9 @@ public final class JkResultsMarkdown {
                 sb.append(" |\n");
                 break;
             }
-            long[] c = byPkg.get(key);
+            // `order` only ever holds keys computeIfAbsent put in byPkg, so a miss is a
+            // broken invariant rather than a missing row — say so instead of rendering zeros.
+            long[] c = Objects.requireNonNull(byPkg.get(key), key);
             if (multi) {
                 int split = key.indexOf('\0');
                 sb.append("| ")
@@ -352,7 +357,8 @@ public final class JkResultsMarkdown {
 
     private static String failureHeader(BuildRecord.Diag d) {
         if (isTest(d)) return "Tests";
-        String step = notBlank(d.step()) ? d.step() : "error";
+        String step = some(d.step());
+        if (step == null) step = "error";
         String where = moduleLabel(d);
         return where.isEmpty() ? step : step + " — " + where;
     }
@@ -362,9 +368,10 @@ public final class JkResultsMarkdown {
             sb.append("- ");
             String ident = testIdentity(d);
             if (!ident.isEmpty()) sb.append('`').append(ident).append("`");
-            if (notBlank(d.exceptionClass())) {
+            String thrown = some(d.exceptionClass());
+            if (thrown != null) {
                 if (!ident.isEmpty()) sb.append(" — ");
-                sb.append(d.exceptionClass());
+                sb.append(thrown);
             }
             sb.append('\n');
         }
@@ -385,8 +392,9 @@ public final class JkResultsMarkdown {
             if (snip.size() > n) body.append("\n…");
             fence(sb, body.toString());
         }
-        if (notBlank(d.stack())) {
-            fence(sb, clipLines(d.stack(), MAX_STACK_LINES));
+        String stack = some(d.stack());
+        if (stack != null) {
+            fence(sb, clipLines(stack, MAX_STACK_LINES));
         }
         sb.append('\n');
     }
@@ -395,7 +403,8 @@ public final class JkResultsMarkdown {
         // Test identity already printed; a one-line message that duplicates the exception is noise.
         if (!isTest(d)) return false;
         String one = firstLine(msg);
-        return notBlank(d.exceptionClass()) && one.equals(d.exceptionClass());
+        String thrown = some(d.exceptionClass());
+        return thrown != null && one.equals(thrown);
     }
 
     private static void appendDeliverables(StringBuilder sb, BuildRecord r) {
@@ -474,7 +483,8 @@ public final class JkResultsMarkdown {
                 break;
             }
             sb.append("- ");
-            if (notBlank(d.step())) sb.append('`').append(d.step()).append("` ");
+            String step = some(d.step());
+            if (step != null) sb.append('`').append(step).append("` ");
             String loc = locus(d, r.dir());
             if (!loc.isEmpty()) {
                 sb.append(loc);
@@ -552,30 +562,36 @@ public final class JkResultsMarkdown {
     static boolean isTest(BuildRecord.Diag d) {
         if (d == null) return false;
         if ("test-failure".equals(d.code())) return true;
-        return notBlank(d.test()) || notBlank(d.className()) || notBlank(d.method());
+        return some(d.test()) != null || some(d.className()) != null || some(d.method()) != null;
     }
 
     private static String testIdentity(BuildRecord.Diag d) {
-        if (notBlank(d.className()) || notBlank(d.method())) {
+        String className = some(d.className());
+        String method = some(d.method());
+        if (className != null || method != null) {
             StringBuilder b = new StringBuilder();
-            if (notBlank(d.className())) b.append(d.className());
-            if (notBlank(d.method())) {
-                if (notBlank(d.className())) b.append('.');
-                b.append(d.method());
+            if (className != null) b.append(className);
+            if (method != null) {
+                if (className != null) b.append('.');
+                b.append(method);
             }
+            String module = some(d.module());
             // TestFailureInfo.label owns the module separator — the markdown must not spell it itself.
-            return TestFailureInfo.label(d.module(), b.toString(), 0);
+            return TestFailureInfo.label(module == null ? "" : module, b.toString(), 0);
         }
-        return d.test() == null ? "" : d.test();
+        String test = some(d.test());
+        return test == null ? "" : test;
     }
 
     private static String moduleLabel(BuildRecord.Diag d) {
-        if (notBlank(d.module())) return d.module();
+        String module = some(d.module());
+        if (module != null) return module;
         return leaf(d.dir());
     }
 
     private static String moduleLabel(BuildRecord.Module m) {
-        if (notBlank(m.coord())) return m.coord();
+        String coord = some(m.coord());
+        if (coord != null) return coord;
         return leaf(m.dir());
     }
 
@@ -697,6 +713,15 @@ public final class JkResultsMarkdown {
     private static String escCell(String s) {
         if (s == null || s.isEmpty()) return "";
         return s.replace("|", "\\|").replace("\n", " ");
+    }
+
+    /**
+     * {@code s} when it has content, else {@code null}. A boolean emptiness predicate tells a
+     * reader the value is usable but tells the nullness checker nothing, so the checker has to be
+     * given the value back to narrow on.
+     */
+    private static @Nullable String some(@Nullable String s) {
+        return s == null || s.isBlank() ? null : s;
     }
 
     private static boolean notBlank(String s) {

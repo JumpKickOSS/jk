@@ -39,7 +39,7 @@ import org.jspecify.annotations.Nullable;
 public final class BuildAccumulator {
     private final String kind;
     private final String dir;
-    private final String coord;
+    private final @Nullable String coord;
     private final String projectId;
     private final String trigger; // how the build was started: "cli" (socket) or "web" (dashboard)
     /** Per-request chrome timeline; null when disabled. Same step millis as metrics. */
@@ -69,7 +69,7 @@ public final class BuildAccumulator {
     private volatile Map<String, Set<String>> moduleEdges = Map.of();
     private final List<BuildRecord.Diag> diagnostics = new ArrayList<>();
     private int droppedDiagnostics;
-    private volatile BuildRecord.Tests tests;
+    private volatile BuildRecord.@Nullable Tests tests;
     private @Nullable AffectedTests affected;
     private volatile boolean anyFailure;
     // Whether this run recorded anything it can be judged on: a module outcome, a finished plan,
@@ -99,31 +99,36 @@ public final class BuildAccumulator {
     private final long requestId;
 
     public BuildAccumulator(
-            String kind, String dir, String coord, String trigger, ChromeTimeline timeline, boolean rebuild) {
+            String kind,
+            String dir,
+            @Nullable String coord,
+            String trigger,
+            @Nullable ChromeTimeline timeline,
+            boolean rebuild) {
         this(kind, dir, coord, trigger, timeline, rebuild, 0L, null, 0L);
     }
 
     public BuildAccumulator(
             String kind,
             String dir,
-            String coord,
+            @Nullable String coord,
             String trigger,
-            ChromeTimeline timeline,
+            @Nullable ChromeTimeline timeline,
             boolean rebuild,
             long buildNumber,
-            String journalId) {
+            @Nullable String journalId) {
         this(kind, dir, coord, trigger, timeline, rebuild, buildNumber, journalId, 0L);
     }
 
     public BuildAccumulator(
             String kind,
             String dir,
-            String coord,
+            @Nullable String coord,
             String trigger,
-            ChromeTimeline timeline,
+            @Nullable ChromeTimeline timeline,
             boolean rebuild,
             long buildNumber,
-            String journalId,
+            @Nullable String journalId,
             long requestId) {
         this.kind = kind;
         this.dir = dir;
@@ -145,7 +150,7 @@ public final class BuildAccumulator {
         return buildNumber;
     }
 
-    public String journalId() {
+    public @Nullable String journalId() {
         return journalId;
     }
 
@@ -223,7 +228,7 @@ public final class BuildAccumulator {
                 null,
                 null,
                 null,
-                null,
+                "",
                 0,
                 0,
                 0,
@@ -255,7 +260,7 @@ public final class BuildAccumulator {
                 null,
                 null,
                 null,
-                null,
+                "",
                 0,
                 0,
                 0,
@@ -307,7 +312,7 @@ public final class BuildAccumulator {
                         null,
                         null,
                         null,
-                        null,
+                        "",
                         0,
                         0,
                         0,
@@ -339,7 +344,7 @@ public final class BuildAccumulator {
                 null,
                 null,
                 null,
-                null,
+                "",
                 0,
                 0,
                 0,
@@ -486,7 +491,8 @@ public final class BuildAccumulator {
      * a javac/kotlinc/groovyc header (and caret) when the plan row left them empty.
      */
     static BuildRecord.Diag diagFromPlan(String severity, String dir, String redactDir, BuildPlanResult.Diagnostic d) {
-        String message = redactEnv(redactDir, d.message());
+        String redacted = redactEnv(redactDir, d.message());
+        String message = redacted == null ? "" : redacted;
         String file = d.file() == null ? "" : d.file();
         int line = d.line();
         int col = 0;
@@ -615,22 +621,26 @@ public final class BuildAccumulator {
         if (!ok) anyFailure = true;
     }
 
-    public String diagnosticsText() {
+    public @Nullable String diagnosticsText() {
         List<BuildRecord.Diag> diags = diagSnapshot();
         if (diags.isEmpty()) return null;
         StringBuilder b = new StringBuilder();
         for (BuildRecord.Diag d : diags) {
             b.append('[').append(d.severity()).append("] ");
-            if (notBlank(d.step())) b.append(d.step()).append(": ");
-            if (notBlank(d.test())) b.append(d.test()).append(" — ");
-            if (notBlank(d.exceptionClass()))
-                b.append('(').append(d.exceptionClass()).append(") ");
+            String step = d.step();
+            String test = d.test();
+            String thrown = d.exceptionClass();
+            if (step != null && !step.isBlank()) b.append(step).append(": ");
+            if (test != null && !test.isBlank()) b.append(test).append(" — ");
+            if (thrown != null && !thrown.isBlank())
+                b.append('(').append(thrown).append(") ");
             b.append(d.message() == null ? "" : d.message()).append('\n');
         }
         return b.toString();
     }
 
-    public BuildRecord toRecord(long finishedAt, boolean cancelled, long millis, String jkVersion, String commit) {
+    public BuildRecord toRecord(
+            long finishedAt, boolean cancelled, long millis, String jkVersion, @Nullable String commit) {
         return toRecord(finishedAt, cancelled, millis, jkVersion, commit, null);
     }
 
@@ -639,8 +649,8 @@ public final class BuildAccumulator {
             boolean cancelled,
             long millis,
             String jkVersion,
-            String commit,
-            CacheBenefit.Result benefit) {
+            @Nullable String commit,
+            CacheBenefit.@Nullable Result benefit) {
         // A body that declined to rule leaves the verdict to its rows. With no rows and no cancel
         // there is nothing to derive from, and "no failure recorded" is the same silence a body
         // that died before its first row leaves behind — so that run is written down as a failure
@@ -711,7 +721,7 @@ public final class BuildAccumulator {
         return s != null && !s.isBlank();
     }
 
-    static String redactEnv(String dir, String text) {
+    static @Nullable String redactEnv(String dir, @Nullable String text) {
         if (text == null || text.isEmpty()) return text;
         try {
             Path root;
@@ -737,7 +747,8 @@ public final class BuildAccumulator {
      *   <li>No outcome yet (force-killed mid-job) → honour the cancel hint.
      * </ul>
      */
-    public static boolean resolveCancelledFlag(Boolean successStamp, boolean userCancelled, boolean cancelHint) {
+    public static boolean resolveCancelledFlag(
+            @Nullable Boolean successStamp, boolean userCancelled, boolean cancelHint) {
         if (Boolean.TRUE.equals(successStamp)) return false;
         if (userCancelled) return true;
         if (successStamp != null) return false; // explicit failure without a user-cancel stamp

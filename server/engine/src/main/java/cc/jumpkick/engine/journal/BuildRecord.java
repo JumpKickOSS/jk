@@ -20,13 +20,13 @@ import org.jspecify.annotations.Nullable;
  * rehydrate active builds after refresh. Finished records keep {@code running=false}.
  */
 public record BuildRecord(
-        String id,
+        @Nullable String id,
         long buildNumber,
         int schema,
         String kind,
         String dir,
-        String coord,
-        String projectId,
+        @Nullable String coord,
+        @Nullable String projectId,
         long startedAt,
         long finishedAt,
         long millis,
@@ -34,15 +34,15 @@ public record BuildRecord(
         boolean cancelled,
         int exitCode,
         String jkVersion,
-        Tests tests,
+        @Nullable Tests tests,
         List<Module> modules,
         List<Task> steps,
         List<Diag> diagnostics,
         String trigger,
-        String commit,
-        CacheBenefit benefit,
+        @Nullable String commit,
+        @Nullable CacheBenefit benefit,
         boolean running,
-        Io io,
+        @Nullable Io io,
         long requestId) {
 
     /**
@@ -281,7 +281,8 @@ public record BuildRecord(
      * build/test, whose steps sit in the record's top-level {@code steps}). {@code steps} is this
      * module's own step chain, so the dashboard shows a chain per module.
      */
-    public record Module(String coord, String dir, boolean success, int exitCode, long millis, List<Task> steps) {
+    public record Module(
+            @Nullable String coord, String dir, boolean success, int exitCode, long millis, List<Task> steps) {
         public Module {
             steps = steps == null ? List.of() : List.copyOf(steps);
         }
@@ -314,16 +315,16 @@ public record BuildRecord(
     public record Diag(
             String severity,
             String dir,
-            String step,
+            @Nullable String step,
             String code,
             String message,
-            String test,
-            String exceptionClass,
-            String module,
-            String engine,
-            String className,
-            String method,
-            String stack,
+            @Nullable String test,
+            @Nullable String exceptionClass,
+            @Nullable String module,
+            @Nullable String engine,
+            @Nullable String className,
+            @Nullable String method,
+            @Nullable String stack,
             String file,
             int line,
             int col,

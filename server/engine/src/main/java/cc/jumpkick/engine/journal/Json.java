@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Reads and writes {@link BuildRecord} as JSON for the journal's {@code record.json}. Pure
@@ -158,7 +159,7 @@ final class Json {
             Map<String, Object> mm = (Map<String, Object>) e;
             modules.add(new BuildRecord.Module(
                     str(mm, "coord"),
-                    str(mm, "dir"),
+                    text(mm, "dir"),
                     bool(mm, "success"),
                     (int) lng(mm, "exitCode"),
                     lng(mm, "millis"),
@@ -185,11 +186,11 @@ final class Json {
         for (Object e : arr(o, "diagnostics")) {
             Map<String, Object> dm = (Map<String, Object>) e;
             diagnostics.add(new BuildRecord.Diag(
-                    str(dm, "severity"),
-                    str(dm, "dir"),
+                    text(dm, "severity"),
+                    text(dm, "dir"),
                     str(dm, "task"),
-                    str(dm, "code"),
-                    str(dm, "message"),
+                    text(dm, "code"),
+                    text(dm, "message"),
                     str(dm, "test"),
                     str(dm, "exceptionClass"),
                     str(dm, "module"),
@@ -197,7 +198,7 @@ final class Json {
                     str(dm, EngineProtocol.TEST_CLASS_FIELD),
                     str(dm, "method"),
                     str(dm, "stack"),
-                    str(dm, "file"),
+                    text(dm, "file"),
                     (int) lng(dm, "line"),
                     (int) lng(dm, "col"),
                     (int) lng(dm, "snippetStart"),
@@ -209,8 +210,8 @@ final class Json {
                 str(o, "id"),
                 lng(o, "buildNumber"),
                 (int) lng(o, "schema"),
-                str(o, "kind"),
-                str(o, "dir"),
+                text(o, "kind"),
+                text(o, "dir"),
                 str(o, "coord"),
                 str(o, "projectId"),
                 lng(o, "startedAt"),
@@ -219,12 +220,12 @@ final class Json {
                 bool(o, "success"),
                 bool(o, "cancelled"),
                 (int) lng(o, "exitCode"),
-                str(o, "jkVersion"),
+                text(o, "jkVersion"),
                 tests,
                 modules,
                 steps,
                 diagnostics,
-                str(o, "trigger"),
+                text(o, "trigger"),
                 str(o, "commit"),
                 benefit,
                 bool(o, "running"),
@@ -232,7 +233,17 @@ final class Json {
                 lng(o, "requestId"));
     }
 
-    private static String str(Map<String, Object> o, String key) {
+    /**
+     * {@code key}'s string value, or {@code ""} when the field is absent. A record component that
+     * is never null reads a missing field as empty rather than carrying the absence forward — the
+     * nullable {@link #str} stays for the components that really are optional.
+     */
+    private static String text(Map<String, Object> o, String key) {
+        String s = str(o, key);
+        return s == null ? "" : s;
+    }
+
+    private static @Nullable String str(Map<String, Object> o, String key) {
         return o.get(key) instanceof String s ? s : null;
     }
 
@@ -267,9 +278,9 @@ final class Json {
             // Missing millis = unknown duration, kept as -1 — NOT 0, which is the true-no-op
             // signal the dashboard renders dashed.
             steps.add(new BuildRecord.Task(
-                    str(pm, "name"),
-                    str(pm, "stage"),
-                    str(pm, "status"),
+                    text(pm, "name"),
+                    text(pm, "stage"),
+                    text(pm, "status"),
                     pm.get("millis") instanceof Number n ? n.longValue() : -1L,
                     pm.get("waitMillis") instanceof Number w ? w.longValue() : 0L));
         }

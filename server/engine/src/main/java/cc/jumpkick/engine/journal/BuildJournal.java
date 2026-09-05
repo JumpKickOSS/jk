@@ -30,6 +30,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;
@@ -81,7 +82,7 @@ public final class BuildJournal {
         return findRunDir(locator);
     }
 
-    public Optional<Path> runDir(String coord, String projectDir, long buildNumber) {
+    public Optional<Path> runDir(@Nullable String coord, String projectDir, long buildNumber) {
         if (buildNumber <= 0) return Optional.empty();
         Path home = ProjectBuilds.projectHome(
                 buildsRoot, coord, Path.of(projectDir == null || projectDir.isBlank() ? "." : projectDir));
@@ -100,7 +101,10 @@ public final class BuildJournal {
      * Optional files copied into the run dir. {@code resultsMd} is the {@code jk-results.md} source
      * when the caller already materialised it.
      */
-    public record Snapshot(Path resultsMd, Path lockfile, String diagnosticsText) {
+    public record Snapshot(
+            @Nullable Path resultsMd,
+            @Nullable Path lockfile,
+            @Nullable String diagnosticsText) {
         public static final Snapshot NONE = new Snapshot(null, null, null);
     }
 
@@ -111,7 +115,7 @@ public final class BuildJournal {
      * locator</strong> (build-number string) for {@link #complete}, or {@code null} on failure.
      * {@link BuildRecord#id()} on disk is a UTC timestamp stamp, not the directory name.
      */
-    public String append(BuildRecord record, Snapshot snapshot) {
+    public @Nullable String append(BuildRecord record, Snapshot snapshot) {
         try {
             Path projectPath = Path.of(record.dir() == null || record.dir().isBlank() ? "." : record.dir());
             String coord = record.coord() == null || record.coord().isBlank() ? "unknown:unknown" : record.coord();
@@ -171,7 +175,7 @@ public final class BuildJournal {
      * Open an in-flight journal entry at request-start. Returns the build-number directory locator
      * for {@link #complete}, or {@code null} on failure.
      */
-    public String begin(BuildRecord running) {
+    public @Nullable String begin(BuildRecord running) {
         if (running == null) return null;
         return append(running, Snapshot.NONE);
     }
@@ -185,7 +189,7 @@ public final class BuildJournal {
         if (!validLocator(locator) || finished == null) return false;
         Path target = resolveForComplete(locator, finished).orElse(null);
         if (target == null || !Files.isDirectory(target)) return false;
-        Path parent = target.getParent();
+        Path parent = Objects.requireNonNull(target.getParent(), "journal entry has no parent");
         String dirName = target.getFileName().toString();
         Path tmp = parent.resolve("." + dirName + ".complete.tmp");
         try {
@@ -247,7 +251,7 @@ public final class BuildJournal {
      * Drop an entire project home (all runs + identity) after a synthetic optimize/calibrate pass
      * so temp fixture paths never appear in history or the web UI.
      */
-    public void purgeProject(String coord, String projectDir) {
+    public void purgeProject(@Nullable String coord, String projectDir) {
         try {
             Path projectPath = Path.of(projectDir == null || projectDir.isBlank() ? "." : projectDir);
             String c = coord == null || coord.isBlank() ? "unknown:unknown" : coord;
@@ -729,7 +733,7 @@ public final class BuildJournal {
      *. Falls back to the unscoped lookup only when the project is unknown or the number
      * does not exist under it — e.g. a history id rather than a build number.
      */
-    public boolean delete(String idOrLocator, String coord, String dir) {
+    public boolean delete(String idOrLocator, @Nullable String coord, String dir) {
         if (idOrLocator != null && !idOrLocator.isBlank() && ProjectBuilds.validRunDirName(idOrLocator)) {
             try {
                 long n = Long.parseLong(idOrLocator);
