@@ -26,6 +26,7 @@ import java.util.ServiceConfigurationError;
 import java.util.ServiceLoader;
 import java.util.Set;
 import javax.annotation.processing.Processor;
+import org.jspecify.annotations.Nullable;
 import sbt.internal.inc.Analysis;
 import sbt.internal.inc.CompileFailed;
 import sbt.internal.inc.FreshCompilerCache;
@@ -126,33 +127,16 @@ public final class ZincJavaCompiler {
      * Compile {@code sources} into {@code classOutput}, persisting Zinc analysis under {@code
      * workdir}.
      */
-    public static Result compileJava(
-            List<Path> sources,
-            List<Path> classpath,
-            Path classOutput,
-            Path workdir,
-            Path sourceOutput,
-            int release,
-            List<String> extraOptions,
-            List<Path> processorPath) {
-        return compile(
-                sources, classpath, classOutput, workdir, sourceOutput, release, extraOptions, processorPath, null);
+    public static Result compileJava(JavaCompileJob job) {
+        return compile(job, null);
     }
 
     /**
      * Forecast which sources Zinc would compile without writing outputs. Uses the previous analysis
      * under {@code workdir} plus current source/library stamps.
      */
-    public static Plan planJava(
-            List<Path> sources,
-            List<Path> classpath,
-            Path classOutput,
-            Path workdir,
-            Path sourceOutput,
-            int release,
-            List<String> extraOptions,
-            List<Path> processorPath) {
-        return plan(sources, classpath, classOutput, workdir, sourceOutput, release, extraOptions, processorPath);
+    public static Plan planJava(JavaCompileJob job) {
+        return plan(job);
     }
 
     /**
@@ -160,14 +144,7 @@ public final class ZincJavaCompiler {
      * {@code compilerClasspath} is the worker compiler closure (not the project compile CP).
      */
     public static Result compileMixed(
-            List<Path> sources,
-            List<Path> classpath,
-            Path classOutput,
-            Path workdir,
-            Path sourceOutput,
-            int release,
-            List<String> extraOptions,
-            List<Path> processorPath,
+            JavaCompileJob job,
             String scalaVersion,
             List<Path> compilerClasspath,
             Path bridgeJar,
@@ -179,28 +156,18 @@ public final class ZincJavaCompiler {
         if (compilerClasspath == null || compilerClasspath.isEmpty()) {
             throw new IllegalArgumentException("compileMixed requires a Scala compiler classpath");
         }
-        return compile(
-                sources,
-                classpath,
-                classOutput,
-                workdir,
-                sourceOutput,
-                release,
-                extraOptions,
-                processorPath,
-                new MixedScala(scalaVersion, compilerClasspath, bridgeJar, libraryJar, compilerJar));
+        return compile(job, new MixedScala(scalaVersion, compilerClasspath, bridgeJar, libraryJar, compilerJar));
     }
 
-    private static Result compile(
-            List<Path> sources,
-            List<Path> classpath,
-            Path classOutput,
-            Path workdir,
-            Path sourceOutput,
-            int release,
-            List<String> extraOptions,
-            List<Path> processorPath,
-            MixedScala mixed) {
+    private static Result compile(JavaCompileJob job, @Nullable MixedScala mixed) {
+        List<Path> sources = job.sources();
+        List<Path> classpath = job.classpath();
+        Path classOutput = job.classOutput();
+        Path workdir = job.workdir();
+        Path sourceOutput = job.sourceOutput();
+        int release = job.release();
+        List<String> extraOptions = job.extraOptions();
+        List<Path> processorPath = job.processorPath();
         RecordingJavaCompiler javac = null;
         ProcessorLoad processors = ProcessorLoad.none();
         try {
@@ -308,15 +275,15 @@ public final class ZincJavaCompiler {
         }
     }
 
-    private static Plan plan(
-            List<Path> sources,
-            List<Path> classpath,
-            Path classOutput,
-            Path workdir,
-            Path sourceOutput,
-            int release,
-            List<String> extraOptions,
-            List<Path> processorPath) {
+    private static Plan plan(JavaCompileJob job) {
+        List<Path> sources = job.sources();
+        List<Path> classpath = job.classpath();
+        Path classOutput = job.classOutput();
+        Path workdir = job.workdir();
+        Path sourceOutput = job.sourceOutput();
+        int release = job.release();
+        List<String> extraOptions = job.extraOptions();
+        List<Path> processorPath = job.processorPath();
         if (workdir == null) {
             return new Plan(true, "no zinc analysis", allSources(sources, "no zinc analysis"));
         }

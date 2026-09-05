@@ -177,14 +177,7 @@ class ZincJavaCompilerMixedTest {
                         .toList();
             }
             return ZincJavaCompiler.compileMixed(
-                    sources,
-                    compileClasspath,
-                    classes,
-                    workdir,
-                    null,
-                    25,
-                    List.of(),
-                    List.of(),
+                    new JavaCompileJob(sources, compileClasspath, classes, workdir, null, 25, List.of(), List.of()),
                     "3.8.4",
                     compilerCp,
                     null,

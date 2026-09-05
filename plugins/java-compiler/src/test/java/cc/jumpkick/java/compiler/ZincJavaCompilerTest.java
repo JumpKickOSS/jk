@@ -164,7 +164,8 @@ class ZincJavaCompilerTest {
             try (var walk = Files.walk(src)) {
                 sources = walk.filter(f -> f.toString().endsWith(".java")).toList();
             }
-            return ZincJavaCompiler.compileJava(sources, List.of(), classes, workdir, null, 25, List.of(), List.of());
+            return ZincJavaCompiler.compileJava(
+                    new JavaCompileJob(sources, List.of(), classes, workdir, null, 25, List.of(), List.of()));
         }
 
         ZincJavaCompiler.Plan plan() throws IOException {
@@ -172,7 +173,8 @@ class ZincJavaCompilerTest {
             try (var walk = Files.walk(src)) {
                 sources = walk.filter(f -> f.toString().endsWith(".java")).toList();
             }
-            return ZincJavaCompiler.planJava(sources, List.of(), classes, workdir, null, 25, List.of(), List.of());
+            return ZincJavaCompiler.planJava(
+                    new JavaCompileJob(sources, List.of(), classes, workdir, null, 25, List.of(), List.of()));
         }
     }
 }

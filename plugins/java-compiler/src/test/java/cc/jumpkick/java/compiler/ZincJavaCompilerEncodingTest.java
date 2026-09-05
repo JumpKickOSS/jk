@@ -117,7 +117,7 @@ class ZincJavaCompilerEncodingTest {
         Files.createDirectories(src.getParent());
         Files.write(src, SOURCE.getBytes(StandardCharsets.UTF_8));
         ZincJavaCompiler.Result r = ZincJavaCompiler.compileJava(
-                List.of(src), List.of(), classes, workdir, null, 25, List.of(), processorPath);
+                new JavaCompileJob(List.of(src), List.of(), classes, workdir, null, 25, List.of(), processorPath));
         if (!r.success()) throw new IllegalStateException("fixture compile failed: " + r.diagnostics());
     }
 
