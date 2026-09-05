@@ -47,6 +47,10 @@ object NullMarking {
                 "TODO: 1,140 findings across 16 production packages, over half of them in cc.jumpkick.runtime and " +
                     "cc.jumpkick.engine.verbs. Landable package by package; enforcing all of them at once also " +
                     "exhausts the compile daemon's heap.",
-            "clients/cli" to "TODO: unmeasured; sequence it behind server/engine.",
+            "clients/cli" to
+                "TODO: 1,056 findings across 11 production packages when every package is marked, 682 of them in " +
+                    "cc.jumpkick.command, 103 in cc.jumpkick.cli.tui, 97 in cc.jumpkick.cli.run; the count is a floor, " +
+                    "because the compile daemon ran out of heap on the last files of that single pass. Landable " +
+                    "package by package, sequenced behind server/engine.",
         )
 }
