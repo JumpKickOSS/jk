@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.testing.ShortTempDirs;
 import cc.jumpkick.wire.EnginePaths;
+import cc.jumpkick.wire.EngineTransport;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
 import java.io.IOException;
 import java.net.StandardProtocolFamily;
@@ -89,7 +90,11 @@ class EngineProcessControlTest {
                 .as("-1: nothing to drain")
                 .isEqualTo(-1);
 
+        // The stub listens on a Unix socket, so the client has to speak that transport whatever the
+        // tier forces for the engines it spawns; the property outranks the environment for this JVM.
         Path socket = tempDirs.create().resolve("gen1.sock");
+        String forced = System.getProperty(EngineTransport.TRANSPORT_PROPERTY);
+        System.setProperty(EngineTransport.TRANSPORT_PROPERTY, "unix");
         try (ServerSocketChannel server = ServerSocketChannel.open(StandardProtocolFamily.UNIX)) {
             server.bind(UnixDomainSocketAddress.of(socket));
             Thread answering = Thread.ofVirtual().start(() -> answerEveryRequestWith(server, ProtoLifecycle.pong()));
@@ -98,6 +103,9 @@ class EngineProcessControlTest {
                     .isFalse();
             assertThat(EngineProcessControl.drain(socket)).isEqualTo(-1);
             answering.interrupt();
+        } finally {
+            if (forced == null) System.clearProperty(EngineTransport.TRANSPORT_PROPERTY);
+            else System.setProperty(EngineTransport.TRANSPORT_PROPERTY, forced);
         }
     }
 
