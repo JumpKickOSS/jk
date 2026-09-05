@@ -137,7 +137,7 @@ public final class HistoryShowVerb implements HostedVerb {
         return JobOutcome.declined();
     }
 
-    private static String stepLine(SecretRedactor r, BuildRecord.Task p, String module) {
+    private static String stepLine(SecretRedactor r, BuildRecord.Task p, @Nullable String module) {
         return JsonOut.object()
                 .put("type", EngineProtocol.HISTORY_TASK)
                 .put("module", module)
@@ -158,7 +158,8 @@ public final class HistoryShowVerb implements HostedVerb {
 
     private static BuildRecord.Diag redactDiag(SecretRedactor r, BuildRecord.Diag d) {
         String message = redactSafe(r, d.message());
-        String stack = redactSafe(r, d.stack());
+        String rawStack = d.stack();
+        String stack = rawStack == null ? null : redactSafe(r, rawStack);
         if (Objects.equals(message, d.message()) && Objects.equals(stack, d.stack())) {
             return d;
         }
@@ -184,7 +185,7 @@ public final class HistoryShowVerb implements HostedVerb {
     }
 
     private static String redactSafe(SecretRedactor r, String text) {
-        if (text == null || text.isEmpty()) return text;
+        if (text.isEmpty()) return text;
         try {
             return r.redact(text);
         } catch (RuntimeException e) {

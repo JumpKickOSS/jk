@@ -26,11 +26,11 @@ public record BuildRequest(
         boolean ephemeralActions,
         boolean testOnly,
         @Nullable List<String> dirtyHint,
-        @Nullable TestSelection selection,
-        @Nullable List<String> modules,
+        TestSelection selection,
+        List<String> modules,
         boolean keepGoing,
         @Nullable String workspaceTarget,
-        @Nullable Map<String, String> graalHomes,
+        Map<String, String> graalHomes,
         /**
          * Install only: the client-resolved local Maven repo root ({@code --m2-dir}). Rides the
          * wire for the same reason {@code graalHomes} does — the daemon does not inherit the

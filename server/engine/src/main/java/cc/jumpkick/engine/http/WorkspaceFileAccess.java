@@ -88,7 +88,7 @@ final class WorkspaceFileAccess {
             Map.entry(".bmp", "image/bmp"),
             Map.entry(".avif", "image/avif"));
 
-    record ListedFile(String path, String lang) {}
+    record ListedFile(String path, @Nullable String lang) {}
 
     record FileList(Path root, List<ListedFile> files, boolean truncated) {}
 
@@ -102,7 +102,7 @@ final class WorkspaceFileAccess {
 
     record RawBody(Path root, String path, String lang, String contentType, byte[] bytes) {}
 
-    record WrittenBody(Path root, String path, String lang, long bytes, int lines, String etag) {}
+    record WrittenBody(Path root, String path, @Nullable String lang, long bytes, int lines, String etag) {}
 
     sealed interface ReadResult {
         record Ok(FileBody body) implements ReadResult {}
@@ -558,7 +558,7 @@ final class WorkspaceFileAccess {
             @Nullable String encoding,
             Path absRoot,
             String rel,
-            String lang) {
+            @Nullable String lang) {
         if (expectedEtag != null && !expectedEtag.isBlank()) {
             long curSize;
             try {

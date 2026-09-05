@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.plugin;
 
+import org.jspecify.annotations.Nullable;
+
 /**
  * Worker-JVM heap budget from free memory and desired concurrency: reserve
  * {@code max(10%, 96 MiB)}, shrink parallelism below {@link #MIN_PARALLEL_HEAP} per JVM, then set
@@ -22,7 +24,12 @@ public final class HeapPlan {
      * heap sizes apply to each one. {@code warning} is non-null only when forced to a sub-512 MiB
      * serial best-effort run.
      */
-    public record Plan(int parallelism, long xmsBytes, long softMaxBytes, long xmxBytes, String warning) {}
+    public record Plan(
+            int parallelism,
+            long xmsBytes,
+            long softMaxBytes,
+            long xmxBytes,
+            @Nullable String warning) {}
 
     /**
      * Desired peak worker JVMs before the memory veto: {@code modules × workers} with parallel tests,
@@ -48,7 +55,7 @@ public final class HeapPlan {
         while (jvms > 1 && usable / jvms < MIN_PARALLEL_HEAP) jvms--;
 
         long perJvm = Math.max(XMX_FLOOR, usable / jvms);
-        String warning = null;
+        @Nullable String warning = null;
         if (jvms == 1 && usable < MIN_PARALLEL_HEAP) {
             warning = "only "
                     + mib(usable)

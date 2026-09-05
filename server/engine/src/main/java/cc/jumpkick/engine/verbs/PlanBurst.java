@@ -13,6 +13,7 @@ import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoEvents;
 import java.io.BufferedWriter;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 
 /** SINGLE_PLAN_DIR-tagged plan-step burst, and the verdict a single-plan verb hands back. */
 final class PlanBurst {
@@ -22,7 +23,7 @@ final class PlanBurst {
     /** The verdict and the result it derives from, for a caller that sends its own terminal. */
     record Outcome(JobOutcome outcome, BuildPlanResult result) {}
 
-    static void announce(VerbHost host, BuildPlan plan, BufferedWriter writer) {
+    static void announce(VerbHost host, BuildPlan plan, @Nullable BufferedWriter writer) {
         announceSteps(host, plan, writer);
         plan.addListener(host.planListener(EngineProtocol.SINGLE_PLAN_DIR, writer, plan));
     }
@@ -31,7 +32,7 @@ final class PlanBurst {
             VerbHost host,
             BuildPlan plan,
             Session session,
-            BufferedWriter writer,
+            @Nullable BufferedWriter writer,
             Function<BuildPlanResult, String> finishEncoder)
             throws Exception {
         announceSteps(host, plan, writer);
@@ -45,7 +46,7 @@ final class PlanBurst {
      * the lock file in it) the moment it reads the terminal. Progress/step events still stream
      * live from inside the run.
      */
-    static Outcome streamWithoutFinish(VerbHost host, BuildPlan plan, Session session, BufferedWriter writer)
+    static Outcome streamWithoutFinish(VerbHost host, BuildPlan plan, Session session, @Nullable BufferedWriter writer)
             throws Exception {
         announceSteps(host, plan, writer);
         plan.addListener(
@@ -54,7 +55,7 @@ final class PlanBurst {
         return new Outcome(verdictOf(result), result);
     }
 
-    private static void announceSteps(VerbHost host, BuildPlan plan, BufferedWriter writer) {
+    private static void announceSteps(VerbHost host, BuildPlan plan, @Nullable BufferedWriter writer) {
         String dir = EngineProtocol.SINGLE_PLAN_DIR;
         for (Task p : plan.steps()) {
             host.sendQuiet(

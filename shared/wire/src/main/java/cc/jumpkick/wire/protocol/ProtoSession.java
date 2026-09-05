@@ -49,11 +49,11 @@ public final class ProtoSession {
     public static String planFinishScript(
             String dir,
             boolean success,
-            String mainClass,
+            @Nullable String mainClass,
             List<String> classpath,
-            String classesDir,
-            String kotlincBin,
-            String stdlib) {
+            @Nullable String classesDir,
+            @Nullable String kotlincBin,
+            @Nullable String stdlib) {
         return "{\"type\":\""
                 + EngineProtocol.BUILDPLAN_FINISH
                 + "\",\"kind\":\"script\",\"dir\":"

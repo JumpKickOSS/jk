@@ -27,6 +27,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
+import org.jspecify.annotations.Nullable;
 
 /**
  * JEP 514 AOT caches for short-lived <em>{@code java … PluginMain}</em> workers (kotlin-compiler,
@@ -181,7 +182,7 @@ public final class PluginAot {
     /**
      * Cache path for a tool/host/classpath key, or {@code null} when the host is ineligible / unreadable.
      */
-    public static Path cachePath(String tool, Path javaHome, String workerClasspath) {
+    public static @Nullable Path cachePath(@Nullable String tool, @Nullable Path javaHome, String workerClasspath) {
         if (javaHome == null) return null;
         try {
             JdkId id = jdkId(javaHome);
@@ -272,7 +273,7 @@ public final class PluginAot {
     /** What the release file says a JDK is; {@code null} when it can't be read. */
     record JdkId(Path home, JdkVendor vendor, String version) {}
 
-    static JdkId jdkId(Path javaHome) {
+    static @Nullable JdkId jdkId(Path javaHome) {
         Path release = javaHome.resolve("release");
         if (!Files.isRegularFile(release)) return null;
         Properties props = new Properties();
@@ -357,7 +358,7 @@ public final class PluginAot {
         trainAsync(what, cache, trainer, null);
     }
 
-    static void trainAsync(String what, Path cache, TrainerCommand trainer, CacheMeta meta) {
+    static void trainAsync(String what, Path cache, TrainerCommand trainer, @Nullable CacheMeta meta) {
         if (trainer == null || !TRAINING.add(cache)) return;
         Path claim = AotCacheFiles.trainingClaim(cache);
         try {
@@ -425,7 +426,8 @@ public final class PluginAot {
         }
     }
 
-    private static void runTrainer(String what, Path cache, Path claim, TrainerCommand trainer, CacheMeta meta) {
+    private static void runTrainer(
+            String what, Path cache, Path claim, TrainerCommand trainer, @Nullable CacheMeta meta) {
         Path scratch = null;
         boolean keepClaim = false;
         Process p = null;
@@ -609,7 +611,7 @@ public final class PluginAot {
         markNoAot(cache, null);
     }
 
-    private static void markNoAot(Path cache, CacheMeta meta) {
+    private static void markNoAot(Path cache, @Nullable CacheMeta meta) {
         try {
             Files.createFile(AotCacheFiles.marker(cache));
         } catch (IOException ignored) {
@@ -697,7 +699,7 @@ public final class PluginAot {
         AotManifest.upsert(aotDir, b.build());
     }
 
-    private static void recordNoAot(Path cache, CacheMeta meta) {
+    private static void recordNoAot(Path cache, @Nullable CacheMeta meta) {
         if (cache == null) return;
         Path aotDir = cache.getParent();
         if (aotDir == null) return;

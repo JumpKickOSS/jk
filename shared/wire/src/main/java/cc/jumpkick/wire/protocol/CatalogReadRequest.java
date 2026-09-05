@@ -10,7 +10,7 @@ public record CatalogReadRequest(
         @Nullable String dir,
         @Nullable String cache,
         @Nullable String query,
-        @Nullable List<String> terms,
+        List<String> terms,
         boolean offline,
         boolean includeCached,
         boolean bundledOnly) {

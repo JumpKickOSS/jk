@@ -17,6 +17,7 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
 public final class ToolResolveVerb implements HostedVerb {
@@ -58,7 +59,7 @@ public final class ToolResolveVerb implements HostedVerb {
                 String mainClass = req.mainClass();
                 URI repoUrl = req.repoUrl() == null ? null : URI.create(req.repoUrl());
                 Files.createDirectories(cache);
-                ToolCoordSpec spec = ToolCoordSpec.parse(coord);
+                ToolCoordSpec spec = ToolCoordSpec.parse(Objects.requireNonNull(coord, "coord"));
                 List<ToolCoordSpec> with =
                         req.with().stream().map(ToolCoordSpec::parse).toList();
                 Session session = Session.defaults().withCacheDir(cache).withCancel(cancelToken);

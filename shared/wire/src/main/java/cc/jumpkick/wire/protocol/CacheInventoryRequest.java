@@ -14,8 +14,8 @@ public record CacheInventoryRequest(
         @Nullable String query,
         @Nullable String cache,
         @Nullable String store,
-        @Nullable List<String> terms,
-        @Nullable List<String> coords,
+        List<String> terms,
+        List<String> coords,
         boolean dryRun) {
 
     public CacheInventoryRequest {

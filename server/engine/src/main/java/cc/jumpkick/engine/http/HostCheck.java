@@ -3,6 +3,7 @@ package cc.jumpkick.engine.http;
 
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Host-header DNS-rebinding defense: allow IP literals, {@code localhost}, and this machine's
@@ -14,7 +15,7 @@ final class HostCheck {
      * This machine's own hostname, resolved once and cached — typically a local (non-DNS) lookup.
      * {@code null} when unavailable; the localhost/IP-literal paths still work.
      */
-    private static final String LOCAL_HOSTNAME = localHostname();
+    private static final @Nullable String LOCAL_HOSTNAME = localHostname();
 
     private HostCheck() {}
 
@@ -76,7 +77,7 @@ final class HostCheck {
         return true;
     }
 
-    private static String localHostname() {
+    private static @Nullable String localHostname() {
         try {
             String name = InetAddress.getLocalHost().getHostName();
             return (name == null || name.isBlank()) ? null : name;

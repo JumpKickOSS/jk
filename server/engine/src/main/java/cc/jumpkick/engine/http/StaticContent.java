@@ -19,6 +19,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.Locale;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Static files: disk {@code web-root} first (no-cache, size-snapshotted GET so concurrent appends
@@ -116,7 +117,7 @@ final class StaticContent {
      * decoding happens before this sees the path, so {@code %2e%2e} arrives as literal {@code ..}
      * and is caught by the segment check like any other spelling.
      */
-    private static String relativize(String requestPath) {
+    private static @Nullable String relativize(String requestPath) {
         if (requestPath == null || requestPath.indexOf('\0') >= 0 || requestPath.indexOf('\\') >= 0) return null;
         String path = requestPath.startsWith("/") ? requestPath.substring(1) : requestPath;
         if (path.isEmpty() || path.endsWith("/")) path = path + "index.html";

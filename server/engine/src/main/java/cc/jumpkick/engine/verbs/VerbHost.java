@@ -38,7 +38,7 @@ public interface VerbHost {
     BuildPlanListener planListener(String dir, @Nullable BufferedWriter writer, BuildPlan plan);
 
     BuildPlanListener planListener(
-            String dir, @Nullable BufferedWriter writer, Function<BuildPlanResult, String> finishEncoder);
+            String dir, @Nullable BufferedWriter writer, @Nullable Function<BuildPlanResult, String> finishEncoder);
 
     void releaseExclusiveSlot();
 

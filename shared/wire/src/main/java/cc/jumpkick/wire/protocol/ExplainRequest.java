@@ -25,7 +25,7 @@ public record ExplainRequest(
         boolean verbose,
         boolean rebuild,
         int maxModuleConcurrency,
-        @Nullable TestSelection selection) {
+        TestSelection selection) {
 
     public ExplainRequest {
         selection = selection == null ? TestSelection.DEFAULT : selection;

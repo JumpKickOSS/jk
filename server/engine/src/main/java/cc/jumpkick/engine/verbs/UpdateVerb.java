@@ -73,7 +73,7 @@ public final class UpdateVerb implements HostedVerb {
                                 false,
                                 false,
                                 false,
-                                null)
+                                "")
                         .encode(),
                 "web");
     }

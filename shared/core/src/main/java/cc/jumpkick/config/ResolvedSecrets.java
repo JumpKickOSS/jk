@@ -56,7 +56,7 @@ public final class ResolvedSecrets {
     }
 
     /** {@link #record} against an explicit directory, for callers that hold one. */
-    public static void recordFor(Path dir, String value) {
+    public static void recordFor(@Nullable Path dir, @Nullable String value) {
         if (dir == null || value == null || value.length() < SecretRedactor.MIN_SECRET_LENGTH) return;
         Path key = scope(dir);
         if (key == null) return;

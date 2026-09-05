@@ -16,7 +16,7 @@ public record ScriptPrepareRequest(
         @Nullable String stateDir,
         @Nullable String repoUrl,
         boolean forceRecompile,
-        @Nullable List<String> with) {
+        List<String> with) {
 
     public ScriptPrepareRequest {
         with = with == null ? List.of() : List.copyOf(with);

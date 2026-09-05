@@ -18,7 +18,7 @@ public record SingleBuildRequest(
         boolean force,
         /** Client-resolved GraalVM home for an always-native module; null when the build links none. */
         @Nullable String graalHome,
-        @Nullable TestSelection selection) {
+        TestSelection selection) {
 
     public SingleBuildRequest {
         selection = selection == null ? TestSelection.DEFAULT : selection;

@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Classpath used to fork a thin plugin worker: the worker jar plus the Maven runtime closure from
@@ -58,7 +59,7 @@ public final class WorkerLaunchClasspath {
         return List.copyOf(out);
     }
 
-    static Path workspaceTarget(Path workerJar) {
+    static @Nullable Path workspaceTarget(Path workerJar) {
         // The jar has to be something jk built, not merely something sitting under a build tree.
         // A `shared/` child proves the directory is a workspace out tree; it does not prove this
         // file came out of one, and jk's own test scratch now lives inside that same tree — so a

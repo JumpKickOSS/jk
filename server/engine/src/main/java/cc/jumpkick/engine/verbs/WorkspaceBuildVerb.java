@@ -33,6 +33,7 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
@@ -143,7 +144,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
     public JobOutcome run(String requestLine, Session.CancelToken cancelToken, @Nullable BufferedWriter writer) {
         try {
             BuildRequest body = BuildRequest.decode(requestLine);
-            String entryDirStr = body.dir();
+            String entryDirStr = Objects.requireNonNull(body.dir(), "dir");
             String cacheStr = body.cache();
             String jdksDirStr = body.jdksDir();
             int workers = body.workers();

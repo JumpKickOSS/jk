@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Forks a jk plugin process and bridges its JSONL event stream back to the caller. A plugin is
@@ -67,7 +68,7 @@ public final class PluginLoader {
             String prefix,
             List<String> args,
             Consumer<String> onProtocol,
-            Consumer<String> onPassthrough)
+            @Nullable Consumer<String> onPassthrough)
             throws IOException, InterruptedException {
         return run(javaExe, classpath, jvmFlags, prefix, args, Map.of(), onProtocol, onPassthrough);
     }
@@ -88,7 +89,7 @@ public final class PluginLoader {
             List<String> args,
             Map<String, String> extraEnv,
             Consumer<String> onProtocol,
-            Consumer<String> onPassthrough)
+            @Nullable Consumer<String> onPassthrough)
             throws IOException, InterruptedException {
         return run(javaExe, classpath, jvmFlags, prefix, args, extraEnv, null, onProtocol, onPassthrough);
     }
@@ -101,9 +102,9 @@ public final class PluginLoader {
             String prefix,
             List<String> args,
             Map<String, String> extraEnv,
-            Path workDir,
+            @Nullable Path workDir,
             Consumer<String> onProtocol,
-            Consumer<String> onPassthrough)
+            @Nullable Consumer<String> onPassthrough)
             throws IOException, InterruptedException {
         // One-shot: close the child's stdin immediately so suite tests that hit Confirm /
         // System.in.readLine() see EOF instead of hanging on an open protocol pipe.
@@ -123,7 +124,7 @@ public final class PluginLoader {
             String prefix,
             List<String> args,
             BiConsumer<String, PluginProcess.Conversation> onProtocol,
-            Consumer<String> onPassthrough)
+            @Nullable Consumer<String> onPassthrough)
             throws IOException, InterruptedException {
         return converse(javaExe, classpath, jvmFlags, prefix, args, Map.of(), onProtocol, onPassthrough);
     }
@@ -140,7 +141,7 @@ public final class PluginLoader {
             List<String> args,
             Map<String, String> extraEnv,
             BiConsumer<String, PluginProcess.Conversation> onProtocol,
-            Consumer<String> onPassthrough)
+            @Nullable Consumer<String> onPassthrough)
             throws IOException, InterruptedException {
         return converse(javaExe, classpath, jvmFlags, prefix, args, extraEnv, null, onProtocol, onPassthrough);
     }
@@ -153,9 +154,9 @@ public final class PluginLoader {
             String prefix,
             List<String> args,
             Map<String, String> extraEnv,
-            Path workDir,
+            @Nullable Path workDir,
             BiConsumer<String, PluginProcess.Conversation> onProtocol,
-            Consumer<String> onPassthrough)
+            @Nullable Consumer<String> onPassthrough)
             throws IOException, InterruptedException {
         return PluginProcess.converse(
                 command(javaExe, classpath, jvmFlags, args), extraEnv, workDir, prefix, onProtocol, onPassthrough);
@@ -169,9 +170,9 @@ public final class PluginLoader {
             String prefix,
             List<String> args,
             Map<String, String> extraEnv,
-            Path workDir,
+            @Nullable Path workDir,
             BiConsumer<String, PluginProcess.Conversation> onProtocol,
-            Consumer<String> onPassthrough,
+            @Nullable Consumer<String> onPassthrough,
             long idleTimeoutMs)
             throws IOException, InterruptedException {
         return PluginProcess.converse(

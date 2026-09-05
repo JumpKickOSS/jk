@@ -9,9 +9,7 @@ import org.jspecify.annotations.Nullable;
 
 /** Run a generator engine-side; {@code params} are the scaffold inputs as a flat map. */
 public record GenerateRequest(
-        @Nullable String dir,
-        @Nullable String kind,
-        @Nullable Map<String, String> params) {
+        @Nullable String dir, @Nullable String kind, Map<String, String> params) {
 
     public GenerateRequest {
         params = params == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(params));

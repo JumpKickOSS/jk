@@ -218,7 +218,7 @@ public record Session(
      * {@code JK_GRAAL} spellings folded in by the client), plus the caller's {@code GRAALVM_HOME}.
      * Blanks normalize to null.
      */
-    public Session withToolchainSpecs(String jdk, String graal, @Nullable Path graalHome) {
+    public Session withToolchainSpecs(@Nullable String jdk, @Nullable String graal, @Nullable Path graalHome) {
         return new Session(
                 config,
                 workingDir,
@@ -239,7 +239,7 @@ public record Session(
                 io);
     }
 
-    private static @Nullable String blankToNull(String s) {
+    private static @Nullable String blankToNull(@Nullable String s) {
         return (s == null || s.isBlank()) ? null : s.trim();
     }
 

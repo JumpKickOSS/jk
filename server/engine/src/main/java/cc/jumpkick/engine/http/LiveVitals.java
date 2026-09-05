@@ -9,6 +9,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Change-gated live vitals on the dashboard SSE bus ({@link HttpEvents}).
@@ -57,8 +58,8 @@ public final class LiveVitals implements AutoCloseable {
     });
 
     private final Object scheduleLock = new Object();
-    private ScheduledFuture<?> statusTask;
-    private ScheduledFuture<?> cacheTask;
+    private @Nullable ScheduledFuture<?> statusTask;
+    private @Nullable ScheduledFuture<?> cacheTask;
 
     public LiveVitals(HttpEvents events, Supplier<StatusSnapshot> status, Supplier<CacheSnapshot> cache) {
         this.events = Objects.requireNonNull(events, "events");
@@ -197,7 +198,7 @@ public final class LiveVitals implements AutoCloseable {
         publishCache(false);
     }
 
-    private static void cancel(ScheduledFuture<?> f) {
+    private static void cancel(@Nullable ScheduledFuture<?> f) {
         if (f != null) f.cancel(false);
     }
 

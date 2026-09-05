@@ -12,11 +12,13 @@ import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
@@ -294,7 +296,7 @@ final class HttpHistoryApi {
         return null;
     }
 
-    private static long liveLong(Object v) {
+    private static long liveLong(@Nullable Object v) {
         if (v instanceof Number n) return n.longValue();
         return 0L;
     }
@@ -305,8 +307,9 @@ final class HttpHistoryApi {
      */
     void handleHistoryArtifact(HttpExchange exchange) throws IOException {
         String query = exchange.getRequestURI().getRawQuery();
-        var artifact =
-                journal.artifact(HttpQuery.queryParamLenient(query, "id"), HttpQuery.queryParamLenient(query, "name"));
+        String id = HttpQuery.queryParamLenient(query, "id");
+        String name = HttpQuery.queryParamLenient(query, "name");
+        var artifact = id == null || name == null ? Optional.<Path>empty() : journal.artifact(id, name);
         if (artifact.isEmpty()) {
             HttpResponses.sendJson(
                     exchange,

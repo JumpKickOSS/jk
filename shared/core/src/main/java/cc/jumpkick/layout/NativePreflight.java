@@ -65,7 +65,7 @@ public final class NativePreflight {
      * {@code --main} / {@code [native].main} / {@code [image].main} / {@code [application]
      * main}, else a classfile or source scan.
      */
-    public static Main resolveMain(Path moduleDir, String cliOverride) {
+    public static Main resolveMain(Path moduleDir, @Nullable String cliOverride) {
         String specified = specifiedMain(moduleDir, cliOverride);
         if (specified != null) return new Main.Unique(specified);
         return discoverMain(moduleDir);

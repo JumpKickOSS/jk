@@ -21,6 +21,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Parent-side child-JVM plugin driver: fork, split protocol lines from chatter, wait for exit.
@@ -49,7 +50,7 @@ public final class PluginProcess {
      * @param onPassthrough receives each non-protocol line verbatim; may be {@code null} to drop them
      */
     public static int run(
-            List<String> command, String prefix, Consumer<String> onProtocol, Consumer<String> onPassthrough)
+            List<String> command, String prefix, Consumer<String> onProtocol, @Nullable Consumer<String> onPassthrough)
             throws IOException, InterruptedException {
         return run(command, Map.of(), prefix, onProtocol, onPassthrough);
     }
@@ -63,7 +64,7 @@ public final class PluginProcess {
             Map<String, String> extraEnv,
             String prefix,
             Consumer<String> onProtocol,
-            Consumer<String> onPassthrough)
+            @Nullable Consumer<String> onPassthrough)
             throws IOException, InterruptedException {
         return run(command, extraEnv, null, prefix, onProtocol, onPassthrough);
     }
@@ -78,10 +79,10 @@ public final class PluginProcess {
     public static int run(
             List<String> command,
             Map<String, String> extraEnv,
-            Path workDir,
+            @Nullable Path workDir,
             String prefix,
             Consumer<String> onProtocol,
-            Consumer<String> onPassthrough)
+            @Nullable Consumer<String> onPassthrough)
             throws IOException, InterruptedException {
         return converse(
                 command,
@@ -109,7 +110,7 @@ public final class PluginProcess {
             List<String> command,
             String prefix,
             BiConsumer<String, Conversation> onProtocol,
-            Consumer<String> onPassthrough)
+            @Nullable Consumer<String> onPassthrough)
             throws IOException, InterruptedException {
         return converse(command, Map.of(), prefix, onProtocol, onPassthrough);
     }
@@ -123,7 +124,7 @@ public final class PluginProcess {
             Map<String, String> extraEnv,
             String prefix,
             BiConsumer<String, Conversation> onProtocol,
-            Consumer<String> onPassthrough)
+            @Nullable Consumer<String> onPassthrough)
             throws IOException, InterruptedException {
         return converse(command, extraEnv, null, prefix, onProtocol, onPassthrough);
     }
@@ -135,10 +136,10 @@ public final class PluginProcess {
     public static int converse(
             List<String> command,
             Map<String, String> extraEnv,
-            Path workDir,
+            @Nullable Path workDir,
             String prefix,
             BiConsumer<String, Conversation> onProtocol,
-            Consumer<String> onPassthrough)
+            @Nullable Consumer<String> onPassthrough)
             throws IOException, InterruptedException {
         return converse(command, extraEnv, workDir, prefix, onProtocol, onPassthrough, false);
     }
@@ -146,10 +147,10 @@ public final class PluginProcess {
     private static int converse(
             List<String> command,
             Map<String, String> extraEnv,
-            Path workDir,
+            @Nullable Path workDir,
             String prefix,
             BiConsumer<String, Conversation> onProtocol,
-            Consumer<String> onPassthrough,
+            @Nullable Consumer<String> onPassthrough,
             boolean closeStdinImmediately)
             throws IOException, InterruptedException {
         return converse(command, extraEnv, workDir, prefix, onProtocol, onPassthrough, closeStdinImmediately, 0L);
@@ -165,7 +166,7 @@ public final class PluginProcess {
             List<String> command,
             String prefix,
             BiConsumer<String, Conversation> onProtocol,
-            Consumer<String> onPassthrough)
+            @Nullable Consumer<String> onPassthrough)
             throws IOException, InterruptedException {
         ProcessBuilder pb = new ProcessBuilder(command).redirectErrorStream(true);
         return converse(pb, prefix, onProtocol, onPassthrough, false, 0L);
@@ -182,10 +183,10 @@ public final class PluginProcess {
     public static int converse(
             List<String> command,
             Map<String, String> extraEnv,
-            Path workDir,
+            @Nullable Path workDir,
             String prefix,
             BiConsumer<String, Conversation> onProtocol,
-            Consumer<String> onPassthrough,
+            @Nullable Consumer<String> onPassthrough,
             boolean closeStdinImmediately,
             long idleTimeoutMs)
             throws IOException, InterruptedException {
@@ -203,7 +204,7 @@ public final class PluginProcess {
             ProcessBuilder pb,
             String prefix,
             BiConsumer<String, Conversation> onProtocol,
-            Consumer<String> onPassthrough,
+            @Nullable Consumer<String> onPassthrough,
             boolean closeStdinImmediately,
             long idleTimeoutMs)
             throws IOException, InterruptedException {

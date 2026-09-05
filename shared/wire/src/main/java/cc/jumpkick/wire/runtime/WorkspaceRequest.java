@@ -16,7 +16,7 @@ import org.jspecify.annotations.Nullable;
 public record WorkspaceRequest(
         Path entryDir,
         Path cache,
-        Path jdksDir,
+        @Nullable Path jdksDir,
         int workers,
         @Nullable String profile,
         boolean skipTests,
@@ -75,7 +75,7 @@ public record WorkspaceRequest(
     public WorkspaceRequest(
             Path entryDir,
             Path cache,
-            Path jdksDir,
+            @Nullable Path jdksDir,
             int workers,
             @Nullable String profile,
             boolean skipTests,
@@ -109,7 +109,7 @@ public record WorkspaceRequest(
     public WorkspaceRequest(
             Path entryDir,
             Path cache,
-            Path jdksDir,
+            @Nullable Path jdksDir,
             int workers,
             @Nullable String profile,
             boolean skipTests,

@@ -19,6 +19,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Embedded JDK {@code jdk.httpserver}: bind/stop lifecycle, the gate chain every exchange passes
@@ -55,8 +56,8 @@ public final class HttpEngineServer implements AutoCloseable {
     private final LiveVitals liveVitals;
     private final ApiRouter api = new ApiRouter();
     private final Consumer<String> log;
-    private final McpHandler mcp;
-    private final McpFront mcpFront;
+    private final @Nullable McpHandler mcp;
+    private final @Nullable McpFront mcpFront;
     private final HttpHistoryApi historyApi;
     private final HttpProjectApi projectApi;
     private final HttpReadApi readApi;
@@ -68,8 +69,8 @@ public final class HttpEngineServer implements AutoCloseable {
      */
     private volatile Supplier<List<HttpLive.Run>> liveRuns = List::of;
 
-    private volatile HttpServer server;
-    private volatile ExecutorService executor;
+    private volatile @Nullable HttpServer server;
+    private volatile @Nullable ExecutorService executor;
 
     /**
      * Wire the engine's live-job view. Optional — tests leave the defaults (empty / no-op).
@@ -238,7 +239,7 @@ public final class HttpEngineServer implements AutoCloseable {
     }
 
     /** The served base URL, e.g. {@code http://127.0.0.1:8910/} — actual bound port, so 0 works. */
-    public String url() {
+    public @Nullable String url() {
         HttpServer s = server;
         if (s == null) return null; // stopped — e.g. a lame-duck engine that released the port at handoff
         InetSocketAddress addr = s.getAddress();
@@ -350,7 +351,8 @@ public final class HttpEngineServer implements AutoCloseable {
     private void dispatch(HttpExchange exchange) throws IOException {
         String path = exchange.getRequestURI().getPath();
         if (HttpAdmission.isMcpPath(path)) {
-            if (mcp == null) {
+            McpFront front = mcpFront;
+            if (front == null) {
                 HttpResponses.sendText(exchange, 404, "not found\n"); // [mcp] enabled = false
                 return;
             }
@@ -358,7 +360,7 @@ public final class HttpEngineServer implements AutoCloseable {
                 tokens.challenge(exchange);
                 return;
             }
-            mcpFront.handle(exchange);
+            front.handle(exchange);
             return;
         }
         if (path.equals("/api") || path.startsWith("/api/")) {
@@ -377,7 +379,7 @@ public final class HttpEngineServer implements AutoCloseable {
     }
 
     /** Test seam: rebind rules for in-flight history rows. */
-    HttpLive.Run matchLiveRun(Map<String, Object> rec) {
+    HttpLive.@Nullable Run matchLiveRun(Map<String, Object> rec) {
         return historyApi.matchLiveRun(rec);
     }
 

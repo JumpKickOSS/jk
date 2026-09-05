@@ -7,6 +7,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
+import org.jspecify.annotations.Nullable;
 
 /**
  * One long-lived SSE stream, dashboard or MCP framing: the connect-ordering contract that lets no
@@ -152,7 +153,8 @@ final class SseEndpoint {
      * progressToken}. An unknown progress token filters to a never-matching id (no wrong-job
      * leakage); open SSE after tools/call returns, or use {@code requestId} from the tool result.
      */
-    Long resolveMcpEventFilter(String query) {
+    @Nullable
+    Long resolveMcpEventFilter(@Nullable String query) {
         String rid = HttpQuery.queryParamLenient(query, "jid");
         if (rid != null && !rid.isBlank()) {
             try {

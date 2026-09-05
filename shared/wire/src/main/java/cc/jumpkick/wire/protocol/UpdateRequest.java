@@ -9,7 +9,7 @@ import org.jspecify.annotations.Nullable;
 public record UpdateRequest(
         @Nullable String dir,
         @Nullable String cache,
-        @Nullable List<String> features,
+        List<String> features,
         boolean noDefaultFeatures,
         @Nullable String repoUrl,
         boolean gitOnly,
@@ -17,7 +17,7 @@ public record UpdateRequest(
         boolean offline,
         boolean force,
         boolean verbose,
-        @Nullable String platform) {
+        String platform) {
 
     public UpdateRequest {
         features = features == null ? List.of() : List.copyOf(features);

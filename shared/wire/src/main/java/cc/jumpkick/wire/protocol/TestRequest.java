@@ -16,7 +16,7 @@ public record TestRequest(
         boolean offline,
         boolean force,
         boolean parallelTests,
-        @Nullable TestSelection selection,
+        TestSelection selection,
         /** Who started the build ({@code cli}, {@code web}, {@code ci}, …); the requester's answer, journaled as such. */
         @Nullable String trigger,
         /** Progress-bar mode the requester's environment asked for; null for auto. */
