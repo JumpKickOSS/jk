@@ -1901,19 +1901,7 @@ guard("G30", "checkPropertiesStoreOwner") {
 // other. Known drift rides the ratchet below: a NEW mismatch fails, and a listed entry that no
 // longer mismatches fails until it is removed.
 // ---------------------------------------------------------------------------
-val knownCatalogLockDrift = setOf(
-    "com.diffplug.spotless:spotless-lib",
-    "com.google.cloud.tools:jib-core",
-    "dev.sigstore:sigstore-java",
-    "org.apache.groovy:groovy",
-    "org.bouncycastle:bcpg-jdk18on",
-    "org.eclipse.jgit:org.eclipse.jgit",
-    "org.graalvm.sdk:nativeimage",
-    "org.junit.jupiter:junit-jupiter",
-    "org.junit.platform:junit-platform-engine",
-    "org.junit.platform:junit-platform-launcher",
-    "org.slf4j:slf4j-api",
-    "org.slf4j:slf4j-nop")
+val knownCatalogLockDrift = setOf<String>()
 
 guard("G33", "checkCatalogLockParity") {
     val catalogPath = at("gradle/libs.versions.toml")

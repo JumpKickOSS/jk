@@ -43,26 +43,13 @@ dependencies {
 // naming coordinate and both versions, and a listed entry that no longer mismatches fails until
 // it is removed. Self-fails when either file parses to an implausibly small table.
 // Measured 2026-08-26: 34 catalog libraries, 202 lock artifacts, 28 shared modules,
-// 12 mismatched (the list below). The OpenRewrite pair left when the lock stopped resolving a
+// zero mismatched — the catalog carries the lock's versions. The OpenRewrite pair left when the lock stopped resolving a
 // tree the manifests no longer declare (8a0abe45) — no longer shared, so no longer drift.
 //
 // jkParityCatalog exists for the guard's own revert check: it points the scan at a scratch copy
 // of the catalog so a deliberately skewed version can be seen to fail without mutating the real
 // file under concurrent builds. It is a self-test seam, not a bypass — CI never sets it.
-val knownCatalogLockDrift = setOf(
-        "com.diffplug.spotless:spotless-lib",
-        "com.google.cloud.tools:jib-core",
-        "dev.sigstore:sigstore-java",
-        "org.apache.groovy:groovy",
-        "org.bouncycastle:bcpg-jdk18on",
-        "org.eclipse.jgit:org.eclipse.jgit",
-        "org.graalvm.sdk:nativeimage",
-        "org.junit.jupiter:junit-jupiter",
-        "org.junit.platform:junit-platform-engine",
-        "org.junit.platform:junit-platform-launcher",
-        "org.slf4j:slf4j-api",
-        "org.slf4j:slf4j-nop",
-)
+val knownCatalogLockDrift = setOf<String>()
 
 // Guard G33.
 val checkCatalogLockParity = registerGuard("checkCatalogLockParity") {
