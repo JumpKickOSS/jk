@@ -13,6 +13,7 @@ import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.HistoryListRequest;
 import java.io.BufferedWriter;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 public final class HistoryListVerb implements HostedVerb {
 
@@ -43,7 +44,7 @@ public final class HistoryListVerb implements HostedVerb {
     }
 
     @Override
-    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, @Nullable BufferedWriter writer) {
         try {
             int limit = Math.max(1, HistoryListRequest.decode(requestLine).limit());
             // Truncate in the journal (synthetic fixtures are already filtered there) rather

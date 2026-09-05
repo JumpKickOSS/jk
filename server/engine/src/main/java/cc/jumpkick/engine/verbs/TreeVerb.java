@@ -12,6 +12,7 @@ import cc.jumpkick.wire.protocol.TreeRequest;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.nio.file.Path;
+import org.jspecify.annotations.Nullable;
 
 public final class TreeVerb implements HostedVerb {
 
@@ -42,7 +43,7 @@ public final class TreeVerb implements HostedVerb {
     }
 
     @Override
-    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, @Nullable BufferedWriter writer) {
         try {
             String error = null;
             String rendered = null;

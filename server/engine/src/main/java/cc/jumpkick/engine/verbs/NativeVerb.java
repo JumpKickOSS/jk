@@ -32,6 +32,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Thin adapter: Graal homes + native-eligible module dirs become a {@link WorkspaceRequest}
@@ -168,7 +169,7 @@ public final class NativeVerb implements HostedVerb {
     }
 
     @Override
-    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, @Nullable BufferedWriter writer) {
         try {
             NativeRequest body = NativeRequest.decode(requestLine);
             Path entryDir = Path.of(body.dir());

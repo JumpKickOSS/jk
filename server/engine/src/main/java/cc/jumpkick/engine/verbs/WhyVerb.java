@@ -11,6 +11,7 @@ import cc.jumpkick.wire.protocol.WhyReport;
 import cc.jumpkick.wire.protocol.WhyRequest;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
+import org.jspecify.annotations.Nullable;
 
 public final class WhyVerb implements HostedVerb {
 
@@ -41,7 +42,7 @@ public final class WhyVerb implements HostedVerb {
     }
 
     @Override
-    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, @Nullable BufferedWriter writer) {
         try {
             WhyReport report;
             try {

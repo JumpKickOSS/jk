@@ -20,6 +20,7 @@ import java.io.BufferedWriter;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 public final class PublishVerb implements HostedVerb {
 
@@ -88,7 +89,7 @@ public final class PublishVerb implements HostedVerb {
     }
 
     @Override
-    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, @Nullable BufferedWriter writer) {
         try {
             try {
                 PublishRequest body = PublishRequest.decode(requestLine);

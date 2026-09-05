@@ -14,6 +14,7 @@ import cc.jumpkick.wire.protocol.OutdatedRequest;
 import java.io.BufferedWriter;
 import java.net.URI;
 import java.nio.file.Path;
+import org.jspecify.annotations.Nullable;
 
 public final class OutdatedVerb implements HostedVerb {
 
@@ -44,7 +45,7 @@ public final class OutdatedVerb implements HostedVerb {
     }
 
     @Override
-    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, @Nullable BufferedWriter writer) {
         try {
             OutdatedReport report;
             try {

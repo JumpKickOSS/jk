@@ -19,6 +19,7 @@ import cc.jumpkick.wire.protocol.ProtoSession;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 public final class InstallVerb implements HostedVerb {
 
@@ -65,7 +66,7 @@ public final class InstallVerb implements HostedVerb {
     }
 
     @Override
-    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, @Nullable BufferedWriter writer) {
         try {
             try {
                 InstallRequest body = InstallRequest.decode(requestLine);

@@ -19,6 +19,7 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.jspecify.annotations.Nullable;
 
 /** {@code sync-request}: fetch/up-to-date counts ride plan-finish. */
 public final class SyncVerb implements HostedVerb {
@@ -50,7 +51,7 @@ public final class SyncVerb implements HostedVerb {
     }
 
     @Override
-    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, @Nullable BufferedWriter writer) {
         try {
             SyncRequest body = SyncRequest.decode(requestLine);
             boolean refresh = body.refresh();

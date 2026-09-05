@@ -15,6 +15,7 @@ import cc.jumpkick.wire.protocol.ProtoSession;
 import java.io.BufferedWriter;
 import java.net.URI;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /** {@code lock-request}: one workspace (or standalone) lock plan. */
 public final class LockVerb implements HostedVerb {
@@ -79,7 +80,7 @@ public final class LockVerb implements HostedVerb {
     }
 
     @Override
-    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, @Nullable BufferedWriter writer) {
         try {
             LockRequest body = LockRequest.decode(requestLine);
             Session session = host.resolveSession(requestLine, cancelToken, false);

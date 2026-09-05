@@ -21,6 +21,7 @@ import cc.jumpkick.wire.protocol.TestRequest;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /** Single-project {@code test-request}. */
 public final class TestVerb implements HostedVerb {
@@ -52,7 +53,7 @@ public final class TestVerb implements HostedVerb {
     }
 
     @Override
-    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, @Nullable BufferedWriter writer) {
         try {
             TestRequest body = TestRequest.decode(requestLine);
             String entryDirStr = body.dir();

@@ -12,6 +12,7 @@ import cc.jumpkick.wire.protocol.ProjectInfo;
 import cc.jumpkick.wire.protocol.ProjectInfoRequest;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
+import org.jspecify.annotations.Nullable;
 
 public final class ProjectInfoVerb implements HostedVerb {
 
@@ -42,7 +43,7 @@ public final class ProjectInfoVerb implements HostedVerb {
     }
 
     @Override
-    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, @Nullable BufferedWriter writer) {
         try {
             ProjectInfo info;
             try {

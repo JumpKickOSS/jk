@@ -13,6 +13,7 @@ import cc.jumpkick.wire.protocol.GitFetchRequest;
 import cc.jumpkick.wire.protocol.ProtoEvents;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
+import org.jspecify.annotations.Nullable;
 
 public final class GitFetchVerb implements HostedVerb {
 
@@ -43,7 +44,7 @@ public final class GitFetchVerb implements HostedVerb {
     }
 
     @Override
-    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, @Nullable BufferedWriter writer) {
         try {
             try {
                 GitFetchRequest body = GitFetchRequest.decode(requestLine);

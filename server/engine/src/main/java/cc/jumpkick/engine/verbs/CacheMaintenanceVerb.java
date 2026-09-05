@@ -16,6 +16,7 @@ import java.io.BufferedWriter;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
+import org.jspecify.annotations.Nullable;
 
 public final class CacheMaintenanceVerb implements HostedVerb {
 
@@ -57,7 +58,7 @@ public final class CacheMaintenanceVerb implements HostedVerb {
     }
 
     @Override
-    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, @Nullable BufferedWriter writer) {
         // The maintenance body runs under two locks and cannot hand its verdict back through a
         // void Runnable; this is where it lands.
         AtomicReference<PlanBurst.Outcome> finished = new AtomicReference<>();

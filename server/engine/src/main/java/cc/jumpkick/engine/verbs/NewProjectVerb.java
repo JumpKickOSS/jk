@@ -11,6 +11,7 @@ import cc.jumpkick.wire.protocol.NewProjectAck;
 import cc.jumpkick.wire.protocol.NewProjectRequest;
 import java.io.BufferedWriter;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 public final class NewProjectVerb implements HostedVerb {
 
@@ -46,7 +47,7 @@ public final class NewProjectVerb implements HostedVerb {
     }
 
     @Override
-    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, @Nullable BufferedWriter writer) {
         try {
             NewProjectAck ack;
             try {

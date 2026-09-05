@@ -9,6 +9,7 @@ import cc.jumpkick.runtime.BuildMetrics;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.MetricsRequest;
 import java.io.BufferedWriter;
+import org.jspecify.annotations.Nullable;
 
 public final class MetricsVerb implements HostedVerb {
 
@@ -39,7 +40,7 @@ public final class MetricsVerb implements HostedVerb {
     }
 
     @Override
-    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, @Nullable BufferedWriter writer) {
         try {
             String dirFilter = MetricsRequest.decode(requestLine).dir();
             int n = 0;

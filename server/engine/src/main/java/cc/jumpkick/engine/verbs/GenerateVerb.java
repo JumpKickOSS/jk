@@ -11,6 +11,7 @@ import cc.jumpkick.wire.protocol.GenerateRequest;
 import cc.jumpkick.wire.protocol.GeneratedFiles;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
+import org.jspecify.annotations.Nullable;
 
 public final class GenerateVerb implements HostedVerb {
 
@@ -41,7 +42,7 @@ public final class GenerateVerb implements HostedVerb {
     }
 
     @Override
-    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, @Nullable BufferedWriter writer) {
         try {
             GeneratedFiles files;
             try {

@@ -11,6 +11,7 @@ import cc.jumpkick.wire.protocol.CatalogReadRequest;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
+import org.jspecify.annotations.Nullable;
 
 public final class CatalogReadVerb implements HostedVerb {
 
@@ -41,7 +42,7 @@ public final class CatalogReadVerb implements HostedVerb {
     }
 
     @Override
-    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, @Nullable BufferedWriter writer) {
         try {
             CatalogReadAck ack;
             try {

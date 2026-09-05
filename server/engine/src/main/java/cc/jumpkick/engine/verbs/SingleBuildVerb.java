@@ -27,6 +27,7 @@ import java.io.BufferedWriter;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /** Single-project {@code single-build-request}. */
 public final class SingleBuildVerb implements HostedVerb {
@@ -58,7 +59,7 @@ public final class SingleBuildVerb implements HostedVerb {
     }
 
     @Override
-    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, @Nullable BufferedWriter writer) {
         try {
             SingleBuildRequest body = SingleBuildRequest.decode(requestLine);
             String entryDirStr = body.dir();

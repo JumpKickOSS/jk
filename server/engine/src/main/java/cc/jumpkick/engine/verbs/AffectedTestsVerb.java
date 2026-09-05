@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /** {@code jk test --affected} / {@code --affected-since} — ranked list, no test run. */
 public final class AffectedTestsVerb implements HostedVerb {
@@ -52,7 +53,7 @@ public final class AffectedTestsVerb implements HostedVerb {
     }
 
     @Override
-    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, @Nullable BufferedWriter writer) {
         try {
             AffectedTestsReport report;
             try {

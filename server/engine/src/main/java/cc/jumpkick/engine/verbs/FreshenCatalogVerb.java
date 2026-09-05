@@ -19,6 +19,7 @@ import java.io.BufferedWriter;
 import java.net.URI;
 import java.nio.file.Path;
 import java.time.Duration;
+import org.jspecify.annotations.Nullable;
 
 public final class FreshenCatalogVerb implements HostedVerb {
 
@@ -49,7 +50,7 @@ public final class FreshenCatalogVerb implements HostedVerb {
     }
 
     @Override
-    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, @Nullable BufferedWriter writer) {
         try {
             FreshenCatalogRequest req = FreshenCatalogRequest.decode(requestLine);
             String catalog = req.catalog();

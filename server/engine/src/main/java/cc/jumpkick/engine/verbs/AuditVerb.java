@@ -16,6 +16,7 @@ import cc.jumpkick.wire.protocol.ProtoSession;
 import java.io.BufferedWriter;
 import java.net.URI;
 import java.nio.file.Path;
+import org.jspecify.annotations.Nullable;
 
 public final class AuditVerb implements HostedVerb {
 
@@ -46,7 +47,7 @@ public final class AuditVerb implements HostedVerb {
     }
 
     @Override
-    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, @Nullable BufferedWriter writer) {
         try {
             try {
                 AuditRequest body = AuditRequest.decode(requestLine);

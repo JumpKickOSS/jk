@@ -35,6 +35,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.jspecify.annotations.Nullable;
 
 /** Workspace {@code build-request}: CLI JSONL stream. */
 public final class WorkspaceBuildVerb implements HostedVerb {
@@ -139,7 +140,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
     }
 
     @Override
-    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, @Nullable BufferedWriter writer) {
         try {
             BuildRequest body = BuildRequest.decode(requestLine);
             String entryDirStr = body.dir();

@@ -8,6 +8,7 @@ import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
 import java.io.BufferedWriter;
+import org.jspecify.annotations.Nullable;
 
 public final class OptimizeVerb implements HostedVerb {
 
@@ -39,7 +40,7 @@ public final class OptimizeVerb implements HostedVerb {
     }
 
     @Override
-    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, @Nullable BufferedWriter writer) {
         try {
             try {
                 boolean force = Jsonl.bool(requestLine, "force", false);

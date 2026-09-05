@@ -23,6 +23,7 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /** {@code update-request}: re-resolve cascade or {@code --git} splice. */
 public final class UpdateVerb implements HostedVerb {
@@ -78,7 +79,7 @@ public final class UpdateVerb implements HostedVerb {
     }
 
     @Override
-    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, @Nullable BufferedWriter writer) {
         try {
             UpdateRequest body = UpdateRequest.decode(requestLine);
             Session session = host.resolveSession(requestLine, cancelToken, false);

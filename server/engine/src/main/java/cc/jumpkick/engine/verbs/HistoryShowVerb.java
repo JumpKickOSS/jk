@@ -15,6 +15,7 @@ import cc.jumpkick.wire.protocol.HistoryShowRequest;
 import java.io.BufferedWriter;
 import java.util.Objects;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 public final class HistoryShowVerb implements HostedVerb {
 
@@ -45,7 +46,7 @@ public final class HistoryShowVerb implements HostedVerb {
     }
 
     @Override
-    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, @Nullable BufferedWriter writer) {
         try {
             String id = HistoryShowRequest.decode(requestLine).id();
             Optional<BuildRecord> found =

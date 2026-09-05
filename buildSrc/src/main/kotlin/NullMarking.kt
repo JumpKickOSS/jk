@@ -44,9 +44,14 @@ object NullMarking {
     val unenforcedModules: Map<String, String> =
         mapOf(
             "server/engine" to
-                "TODO: 1,140 findings across 16 production packages, over half of them in cc.jumpkick.runtime and " +
-                    "cc.jumpkick.engine.verbs. Landable package by package; enforcing all of them at once also " +
-                    "exhausts the compile daemon's heap.",
+                "TODO: 16 production packages, 9 of which already carry a package-level @NullMarked that nothing " +
+                    "checks because this module never applied the plugin. Re-measured by applying it with " +
+                    "-Xmaxerrs raised, since javac caps at 100 and the first pass reads as 101: 372 NullAway " +
+                    "findings in those 9, and 191 RequireExplicitNullMarking errors across the 7 unmarked ones " +
+                    "(cc.jumpkick.runtime 115, engine 30, test 19, compile 19, git 4, engine.runtime 4). Marking " +
+                    "all 16 is the 1,140 figure, and it also exhausts the compile daemon's heap. Landable package " +
+                    "by package: the fixes are valid and green with the plugin still off, so they land " +
+                    "incrementally and the plugin applies last.",
             "clients/cli" to
                 "TODO: 1,056 findings across 11 production packages when every package is marked, 682 of them in " +
                     "cc.jumpkick.command, 103 in cc.jumpkick.cli.tui, 97 in cc.jumpkick.cli.run; the count is a floor, " +

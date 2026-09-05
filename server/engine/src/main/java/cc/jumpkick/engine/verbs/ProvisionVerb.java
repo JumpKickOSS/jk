@@ -11,6 +11,7 @@ import cc.jumpkick.wire.protocol.ProtoEvents;
 import cc.jumpkick.wire.protocol.ProvisionRequest;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
+import org.jspecify.annotations.Nullable;
 
 public final class ProvisionVerb implements HostedVerb {
 
@@ -41,7 +42,7 @@ public final class ProvisionVerb implements HostedVerb {
     }
 
     @Override
-    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+    public JobOutcome run(String requestLine, Session.CancelToken cancelToken, @Nullable BufferedWriter writer) {
         try {
             try {
                 // `tool` present means an explicit `jk tool install <tool>[:<version>]`; absent
