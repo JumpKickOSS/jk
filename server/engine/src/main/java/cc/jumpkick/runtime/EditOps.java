@@ -11,6 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Engine-hosted {@code jk.toml} edits via {@link JkBuildEditor} (client never parses TOML). Ops:
@@ -27,7 +28,7 @@ public final class EditOps {
 
     private EditOps() {}
 
-    public static Result apply(Path file, String op, List<String> args) {
+    public static Result apply(Path file, @Nullable String op, List<String> args) {
         try {
             String original = Files.readString(file, StandardCharsets.UTF_8);
             String detail = "";

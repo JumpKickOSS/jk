@@ -26,11 +26,12 @@ final class SdkComponents {
         }
     }
 
-    static Path resolve(String component, String pathInside) throws IOException, InterruptedException {
+    static Path resolve(@Nullable String component, @Nullable String pathInside)
+            throws IOException, InterruptedException {
         return resolve(component, pathInside, null);
     }
 
-    static Path resolve(String component, String pathInside, String pinnedRevision)
+    static Path resolve(@Nullable String component, @Nullable String pathInside, @Nullable String pinnedRevision)
             throws IOException, InterruptedException {
         AndroidSdk sdk = AndroidSdk.resolve();
         Path base;

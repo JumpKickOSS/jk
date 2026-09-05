@@ -140,8 +140,8 @@ public final class Calibration {
     private final long engineColdStartMs;
     private final double loadAtCalibration;
     private final int cores;
-    private final String jdk;
-    private final String jkVersion;
+    private final @Nullable String jdk;
+    private final @Nullable String jkVersion;
     private final long updated;
     private final boolean measured;
     private final boolean junitPlatformUsed;
@@ -168,8 +168,8 @@ public final class Calibration {
             long engineColdStartMs,
             double loadAtCalibration,
             int cores,
-            String jdk,
-            String jkVersion,
+            @Nullable String jdk,
+            @Nullable String jkVersion,
             long updated,
             boolean measured,
             boolean junitPlatformUsed,

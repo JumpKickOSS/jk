@@ -28,7 +28,7 @@ public final class HeavyActionPolicy {
     private HeavyActionPolicy() {}
 
     /** Task name segment before {@code @} in a qualified task id, or the whole id. */
-    public static String taskName(String taskId) {
+    public static String taskName(@Nullable String taskId) {
         if (taskId == null || taskId.isBlank()) return "";
         int at = taskId.indexOf('@');
         String name = at < 0 ? taskId : taskId.substring(0, at);

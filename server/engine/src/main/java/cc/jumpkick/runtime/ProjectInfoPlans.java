@@ -46,7 +46,7 @@ public final class ProjectInfoPlans {
      * When either selector is set, {@code moduleDirs}/{@code moduleNames} are the selection
      * (empty match is success, not an error). Invalid selectors ride {@code error}.
      */
-    public static ProjectInfo projectInfo(Path dir, String modulesSpec, String affectedSince) {
+    public static ProjectInfo projectInfo(Path dir, @Nullable String modulesSpec, @Nullable String affectedSince) {
         return projectInfo(dir, modulesSpec, affectedSince, false, true);
     }
 

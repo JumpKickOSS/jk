@@ -406,7 +406,8 @@ public final class IdeOps {
      * test classpath. At most one row per sibling.
      */
     private static List<String[]> siblingModuleRefs(
-            Path moduleDir, @Nullable JkBuild module, Map<Path, JkBuild> modules) throws IOException {
+            Path moduleDir, @Nullable JkBuild declared, Map<Path, JkBuild> modules) throws IOException {
+        JkBuild module = Objects.requireNonNull(declared, "module");
         List<String[]> result = new ArrayList<>();
         WorkspaceClasspath.Result mainCp =
                 WorkspaceClasspath.resolve(moduleDir, module, EnumSet.of(Scope.EXPORT, Scope.MAIN));

@@ -130,12 +130,14 @@ public final class GitSourceMaterializer {
         return new Materialized(group, artifact, version, repo.toUri(), gitInfo);
     }
 
-    private static Path artifactJar(Path repo, String group, @Nullable String artifact, @Nullable String version) {
+    private static Path artifactJar(
+            Path repo, @Nullable String group, @Nullable String artifact, @Nullable String version) {
         return repo.resolve(
                 group.replace('.', '/') + "/" + artifact + "/" + version + "/" + artifact + "-" + version + ".jar");
     }
 
-    private static Path artifactPom(Path repo, String group, @Nullable String artifact, @Nullable String version) {
+    private static Path artifactPom(
+            Path repo, @Nullable String group, @Nullable String artifact, @Nullable String version) {
         return repo.resolve(
                 group.replace('.', '/') + "/" + artifact + "/" + version + "/" + artifact + "-" + version + ".pom");
     }

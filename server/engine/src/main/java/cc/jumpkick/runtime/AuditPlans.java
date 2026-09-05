@@ -160,7 +160,8 @@ public final class AuditPlans {
         return System.lineSeparator() + String.join(System.lineSeparator(), tail);
     }
 
-    private static Path writeSpec(Path lockPath, URI osvBatchUrl, URI osvVulnsUrl) throws IOException {
+    private static Path writeSpec(Path lockPath, @Nullable URI osvBatchUrl, @Nullable URI osvVulnsUrl)
+            throws IOException {
         SpecWriter spec = new SpecWriter()
                 .op(PluginProtocol.OP_COMMAND, "audit", "jk-auditor")
                 .configString("lockfile", lockPath.toAbsolutePath().toString());
