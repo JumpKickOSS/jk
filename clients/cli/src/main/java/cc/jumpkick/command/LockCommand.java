@@ -51,6 +51,7 @@ public final class LockCommand implements CliCommand {
     private List<String> features = List.of();
     private boolean noDefaultFeatures;
     private boolean sources;
+    private boolean conservative;
     private URI repoUrl;
     private Path cacheDir;
     private GlobalOptions global;
@@ -72,6 +73,9 @@ public final class LockCommand implements CliCommand {
                         .splitOn(","),
                 Opt.flag("Don't activate the project's default features.", "--no-default-features"),
                 Opt.flag("Pin sources JARs for all Maven deps too.", "--sources"),
+                Opt.flag(
+                        "Keep every pinned version; re-stamp and move only what a changed constraint rules out.",
+                        "--conservative"),
                 CommonOpts.cacheDir(),
                 Opt.value("<url>", "Override declared repos with a single URL.", "--repo-url")
                         .hide(),
@@ -92,6 +96,7 @@ public final class LockCommand implements CliCommand {
         this.features = in.values("features");
         this.noDefaultFeatures = in.isSet("no-default-features");
         this.sources = in.isSet("sources");
+        this.conservative = in.isSet("conservative");
         this.repoUrl = in.value("repo-url").map(URI::create).orElse(null);
         this.cacheDir = in.value("cache-dir").map(CliPaths::abs).orElse(null);
         this.libraryRegistryUrl =
@@ -137,7 +142,8 @@ public final class LockCommand implements CliCommand {
                 repoUrl,
                 session.offline(),
                 session.force(),
-                global.verbose);
+                global.verbose,
+                conservative);
     }
 
     /**

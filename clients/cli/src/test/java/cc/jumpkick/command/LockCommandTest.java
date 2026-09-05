@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.testing.MockMavenServer;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.lock.LockManifestDigest;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.LockfileWriter;
@@ -15,6 +16,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -436,6 +438,93 @@ class LockCommandTest {
     // --- helpers -----------------------------------------------------------
 
     /** Register a root -> leaf graph (metadata + pom + jar for each) on the test repo. */
+    /**
+     * A manifest edit that changes no dependency still stales the stamp. The conservative re-lock
+     * re-stamps and keeps every pin even though a newer root is published and the metadata is
+     * re-fetched; the plain re-lock is what floats.
+     */
+    @Test
+    void conservative_relock_restamps_without_moving_a_pin_that_plain_lock_floats(@TempDir Path tempDir)
+            throws Exception {
+        registerRootLeafGraph();
+        Path cache = tempDir.resolve("cache");
+        Files.createDirectories(tempDir);
+        Files.writeString(tempDir.resolve("jk.toml"), """
+                group = "com.acme"
+                name     = "app"
+                version = "0.1.0"
+
+                [dependencies]
+                root = { group = "com.foo", name = "root", version = "^1.0" }
+                """);
+        assertThat(run(
+                        "lock",
+                        "-C",
+                        tempDir.toString(),
+                        "--repo-url",
+                        maven.base().toString(),
+                        "--cache-dir",
+                        cache.toString()))
+                .isEqualTo(0);
+        assertThat(rootVersion(tempDir)).isEqualTo("1.0");
+
+        maven.registerMetadata("com.foo", "root", "1.0", "1.1");
+        maven.registerPom("com.foo", "root", "1.1", pom("com.foo", "root", "1.1", """
+                <dependency>
+                  <groupId>com.foo</groupId>
+                  <artifactId>leaf</artifactId>
+                  <version>1.0</version>
+                </dependency>
+                """));
+        maven.registerJar("com.foo", "root", "1.1", "root".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(
+                tempDir.resolve("jk.toml"), "\n# a note that changes no dependency\n", StandardOpenOption.APPEND);
+        LockfileReader.clearCache();
+        assertThat(LockfileReader.read(tempDir.resolve("jk-lock.toml")).manifestsSha256())
+                .as("the edit stales the stamp")
+                .isNotEqualTo(LockManifestDigest.compute(tempDir));
+
+        assertThat(run(
+                        "lock",
+                        "-F",
+                        "--conservative",
+                        "-C",
+                        tempDir.toString(),
+                        "--repo-url",
+                        maven.base().toString(),
+                        "--cache-dir",
+                        cache.toString()))
+                .isEqualTo(0);
+        LockfileReader.clearCache();
+        assertThat(LockfileReader.read(tempDir.resolve("jk-lock.toml")).manifestsSha256())
+                .as("re-stamped")
+                .isEqualTo(LockManifestDigest.compute(tempDir));
+        assertThat(rootVersion(tempDir)).as("the pin stays where it was").isEqualTo("1.0");
+
+        assertThat(run(
+                        "lock",
+                        "-F",
+                        "-C",
+                        tempDir.toString(),
+                        "--repo-url",
+                        maven.base().toString(),
+                        "--cache-dir",
+                        cache.toString()))
+                .isEqualTo(0);
+        assertThat(rootVersion(tempDir))
+                .as("plain lock floats to the newest compatible")
+                .isEqualTo("1.1");
+    }
+
+    private static String rootVersion(Path dir) throws IOException {
+        LockfileReader.clearCache();
+        return LockfileReader.read(dir.resolve("jk-lock.toml")).artifacts().stream()
+                .filter(a -> a.name().startsWith("com.foo:root:"))
+                .findFirst()
+                .orElseThrow()
+                .version();
+    }
+
     private void registerRootLeafGraph() {
         maven.registerMetadata("com.foo", "leaf", "1.0");
         maven.registerPom("com.foo", "leaf", "1.0", pom("com.foo", "leaf", "1.0", ""));

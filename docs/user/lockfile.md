@@ -22,6 +22,7 @@ the root lock. Never write per-module lockfiles.
 | Command | Role |
 |---------|------|
 | `jk lock` | Resolve and write the lock. Metadata warm within 24h TTL (local first) |
+| `jk lock --conservative` | Re-stamp after a manifest edit, keeping every pinned version; only what a changed constraint rules out moves |
 | `jk sync` | Materialize cache; `--offline-prepare` for offline CI |
 | `jk outdated` | Current / Compatible / Latest table (exit 0 always on success) |
 | `jk update` | Re-resolve on purpose; revalidates metadata |
@@ -32,7 +33,9 @@ Metadata indexes live under the store (`metadata/`, 24h TTL + ETag). Back-to-bac
 hits disk only; use `jk update` or `-F` when you need Central’s current version lists today.
 
 Automatic refreshes (stale lock on `jk build`) are **conservative** — pinned versions stay
-put. Only `jk lock` / `jk update` float to latest.
+put. `jk lock --conservative` is the same freshen on demand, for landing a manifest edit that
+changes no dependency without also taking upstream drift. Only plain `jk lock` / `jk update` float
+to latest.
 
 ## `jk outdated`
 
