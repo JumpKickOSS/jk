@@ -40,7 +40,9 @@ final class FormatSources {
             @Override
             public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
                 if (dir.equals(root)) return FileVisitResult.CONTINUE;
-                return WalkSkip.formatSegment(dir.getFileName().toString())
+                // A nested checkout's files are another branch's: formatting them rewrites work in
+                // progress somewhere else and reports it under this root's paths.
+                return WalkSkip.formatSegment(dir.getFileName().toString()) || WalkSkip.nestedCheckout(dir)
                         ? FileVisitResult.SKIP_SUBTREE
                         : FileVisitResult.CONTINUE;
             }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.layout;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Set;
 
@@ -36,6 +37,16 @@ public final class WalkSkip {
         if (name == null) return false;
         String s = name.toString();
         return WORKSPACE_KEY.contains(s) || s.equals("out");
+    }
+
+    /**
+     * A directory that is another checkout — a nested repository or a git worktree, either of which
+     * carries a {@code .git} entry (a directory or a pointer file). Its sources belong to the branch
+     * checked out there, not to the tree that contains it. Recognised by what it is, not by name:
+     * a name list is exactly what lets one through.
+     */
+    public static boolean nestedCheckout(Path dir) {
+        return Files.exists(dir.resolve(".git"));
     }
 
     /**

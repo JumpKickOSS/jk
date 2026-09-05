@@ -45,6 +45,30 @@ class FormatPlansCollectTest {
         assertThat(found.total()).isEqualTo(4);
     }
 
+    /**
+     * A git worktree carries a {@code .git} pointer file, a nested clone a {@code .git} directory;
+     * either holds another branch's sources, and neither is this root's to format or to report.
+     */
+    @Test
+    void a_nested_checkout_is_not_collected_whatever_its_directory_is_called(@TempDir Path tmp) throws Exception {
+        Path own = tmp.resolve("src/main/java");
+        Files.createDirectories(own);
+        Path keep = own.resolve("Keep.java");
+        Files.writeString(keep, "class Keep {}");
+
+        Path worktree = tmp.resolve(".worktrees/agent-a/src/main/java");
+        Files.createDirectories(worktree);
+        Files.writeString(tmp.resolve(".worktrees/agent-a/.git"), "gitdir: /elsewhere/.git/worktrees/agent-a\n");
+        Files.writeString(worktree.resolve("Theirs.java"), "class Theirs {}");
+
+        Path clone = tmp.resolve("vendor/other/src/main/java");
+        Files.createDirectories(clone);
+        Files.createDirectories(tmp.resolve("vendor/other/.git"));
+        Files.writeString(clone.resolve("Cloned.java"), "class Cloned {}");
+
+        assertThat(FormatSources.collectSources(tmp).javaFiles()).containsExactly(keep);
+    }
+
     @Test
     void ancestor_named_build_does_not_hide_sources(@TempDir Path tmp) throws Exception {
         Path project = tmp.resolve("build/tmp/proj");
