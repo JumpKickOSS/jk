@@ -17,6 +17,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
@@ -168,7 +169,7 @@ public final class Jk {
                     .append(nl);
             int width = visible.stream().mapToInt(String::length).max().orElse(0) + 4;
             for (String name : visible) {
-                SubcommandModel sub = byName.get(name);
+                SubcommandModel sub = Objects.requireNonNull(byName.get(name));
                 String padding = " ".repeat(width - name.length());
                 sb.append("  ")
                         .append(HelpRenderer.paint(name, Theme.active().commandName(), ansi))
@@ -189,7 +190,7 @@ public final class Jk {
                     .append(nl);
             int width = leftover.stream().mapToInt(String::length).max().orElse(0) + 4;
             for (String name : leftover) {
-                SubcommandModel sub = byName.get(name);
+                SubcommandModel sub = Objects.requireNonNull(byName.get(name));
                 String padding = " ".repeat(width - name.length());
                 sb.append("  ")
                         .append(HelpRenderer.paint(name, Theme.active().commandName(), ansi))

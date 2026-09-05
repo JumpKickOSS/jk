@@ -44,7 +44,7 @@ final class WindowTitle {
     /** True after {@link #set} until {@link #clear}. */
     private boolean active;
 
-    WindowTitle(@Nullable PrintStream out, boolean animate) {
+    WindowTitle(PrintStream out, boolean animate) {
         this.out = out;
         this.animate = animate;
     }

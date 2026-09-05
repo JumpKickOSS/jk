@@ -20,7 +20,7 @@ public record Choice(
         if (hint == null) hint = "";
     }
 
-    public Choice(String id, @Nullable String label) {
+    public Choice(String id, String label) {
         this(id, label, "", null, null);
     }
 

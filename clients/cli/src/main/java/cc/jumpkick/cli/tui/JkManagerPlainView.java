@@ -188,7 +188,7 @@ final class JkManagerPlainView {
     void emitStepDetail(String detail) {
         if (m.done || !animating()) return;
         if (!SessionContext.current().config().verboseOr(false)) return;
-        String extra = detail == null ? "" : PlainAscii.transform(detail);
+        String extra = detail == null ? "" : PlainAscii.rewrite(detail);
         if (extra.isBlank()) return;
         progressMode = true;
         printInitializing();

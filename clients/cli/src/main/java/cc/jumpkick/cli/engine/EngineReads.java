@@ -157,7 +157,7 @@ final class EngineReads {
     static CatalogReadAck catalogRead(
             EnginePaths.Paths paths,
             Path dir,
-            Path cache,
+            @Nullable Path cache,
             String query,
             List<String> terms,
             boolean offline,
@@ -389,7 +389,7 @@ final class EngineReads {
     static ExecPlan execPlan(
             EnginePaths.Paths paths,
             Path dir,
-            Path cache,
+            @Nullable Path cache,
             @Nullable String kind,
             @Nullable String mainOverride,
             @Nullable String binName,

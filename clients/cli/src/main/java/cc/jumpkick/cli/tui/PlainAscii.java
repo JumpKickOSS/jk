@@ -106,14 +106,19 @@ public final class PlainAscii {
      * idempotent by design: a second layer would re-encode the bytes as well as re-transform them.
      */
     public static @Nullable PrintStream wrap(@Nullable PrintStream out) {
-        if (out == null || Theme.active().isAnsi()) return out;
+        return out == null ? null : wrapping(out);
+    }
+
+    /** As {@link #wrap} for a stream the caller already has — present in, present out. */
+    public static @Nullable PrintStream wrapping(@Nullable PrintStream out) {
+        if (Theme.active().isAnsi()) return out;
         if (out instanceof Rewriting) return out;
         return new PlainPrintStream(out);
     }
 
     /** PrintStream that ASCII-rewrites string writes under plain mode. */
     private static final class PlainPrintStream extends PrintStream implements Rewriting {
-        PlainPrintStream(PrintStream delegate) {
+        PlainPrintStream(@Nullable PrintStream delegate) {
             super(delegate, true, StandardCharsets.UTF_8);
         }
 

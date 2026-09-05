@@ -204,7 +204,7 @@ public final class OutdatedCommand implements CliCommand {
             boolean newGroup = workspace && !r.moduleLabel().equals(prevModule);
             dividerBefore.add(!first && newGroup);
             String[] cells = new String[n];
-            Style[] styles = new Style[n];
+            @Nullable Style[] styles = new Style[n];
             int c = 0;
             if (workspace) {
                 cells[c] = newGroup ? r.moduleLabel() : "";
@@ -242,7 +242,7 @@ public final class OutdatedCommand implements CliCommand {
         for (int i = 0; i < cellRows.size(); i++) {
             if (dividerBefore.get(i)) table.row(Table.Row.separator());
             String[] cells = cellRows.get(i);
-            Style[] styles = styleRows.get(i);
+            @Nullable Style[] styles = styleRows.get(i);
             RichText[] rich = new RichText[n];
             for (int c = 0; c < n; c++) {
                 rich[c] = styledCell(cells[c], styles[c]);
@@ -252,7 +252,7 @@ public final class OutdatedCommand implements CliCommand {
         return table.render(RenderContext.current());
     }
 
-    private static RichText styledCell(String text, Style style) {
+    private static RichText styledCell(String text, @Nullable Style style) {
         if (style == null || !Theme.active().isAnsi()) return RichText.plain(text);
         return RichText.ansi(Theme.colorize(text, style));
     }

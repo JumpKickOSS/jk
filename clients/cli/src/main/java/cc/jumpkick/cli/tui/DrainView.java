@@ -23,7 +23,7 @@ import org.jspecify.annotations.Nullable;
  */
 public final class DrainView implements LiveRegion, AutoCloseable {
 
-    private final TerminalSession terminal; // null → inactive no-op
+    private final @Nullable TerminalSession terminal; // null → inactive no-op
     private final @Nullable ModeGuard mode;
     private final PrintWriter out;
     private final NerdFontCaps nerdFont;
@@ -35,9 +35,9 @@ public final class DrainView implements LiveRegion, AutoCloseable {
     private volatile boolean forceRequested;
     private volatile boolean closed;
     private int linesDrawn;
-    private Thread animator;
-    private Thread keys;
-    private Thread restoreHook;
+    private @Nullable Thread animator;
+    private @Nullable Thread keys;
+    private @Nullable Thread restoreHook;
 
     private DrainView(
             @Nullable TerminalSession terminal,

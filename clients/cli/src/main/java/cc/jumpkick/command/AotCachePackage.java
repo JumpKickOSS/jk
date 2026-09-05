@@ -24,6 +24,7 @@ import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
@@ -72,8 +73,10 @@ final class AotCachePackage {
         }
 
         // target/aot-cache next to the built artifact (mainJar sits in target/ or target/lib/).
-        Path targetDir = Path.of(plan.mainJar()).getParent();
-        if ("lib".equals(String.valueOf(targetDir.getFileName()))) targetDir = targetDir.getParent();
+        Path targetDir = Objects.requireNonNull(Path.of(plan.mainJar()).getParent(), "target dir");
+        if ("lib".equals(String.valueOf(targetDir.getFileName()))) {
+            targetDir = Objects.requireNonNull(targetDir.getParent(), "target dir");
+        }
         Path outDir = targetDir.resolve("aot-cache");
         PathUtil.deleteRecursively(outDir);
         Files.createDirectories(outDir);

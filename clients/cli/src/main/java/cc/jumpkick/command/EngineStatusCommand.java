@@ -21,6 +21,7 @@ import cc.jumpkick.wire.EnginePaths;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
@@ -159,11 +160,9 @@ public final class EngineStatusCommand implements CliCommand {
             String marker = m.current() ? "*" : " ";
             StringBuilder line = new StringBuilder(" " + marker + " " + m.id() + "  pid " + pidStyled(m.pid()));
             if (m.responsive()) {
-                long up = Math.max(0, (System.currentTimeMillis() - m.status().startedAtMillis()) / 1000);
-                line.append("  up ")
-                        .append(formatUptime(up))
-                        .append("  jobs ")
-                        .append(m.status().activeBuildPlans());
+                var status = Objects.requireNonNull(m.status(), "status");
+                long up = Math.max(0, (System.currentTimeMillis() - status.startedAtMillis()) / 1000);
+                line.append("  up ").append(formatUptime(up)).append("  jobs ").append(status.activeBuildPlans());
                 if (m.status().draining()) line.append("  draining");
             } else {
                 // Alive but not answering: yielded listeners, rebound socket, or wedged. Still
@@ -190,15 +189,16 @@ public final class EngineStatusCommand implements CliCommand {
                     .append(m.current())
                     .append(",\"responsive\":")
                     .append(m.responsive());
-            if (m.responsive()) {
+            var st = m.status();
+            if (m.responsive() && st != null) {
                 b.append(",\"startedAt\":")
-                        .append(m.status().startedAtMillis())
+                        .append(st.startedAtMillis())
                         .append(",\"activeBuildPlans\":")
-                        .append(m.status().activeBuildPlans())
+                        .append(st.activeBuildPlans())
                         .append(",\"draining\":")
-                        .append(m.status().draining())
+                        .append(st.draining())
                         .append(",\"version\":")
-                        .append(Jsonl.quote(m.status().version()));
+                        .append(Jsonl.quote(st.version()));
             }
             b.append("}");
         }

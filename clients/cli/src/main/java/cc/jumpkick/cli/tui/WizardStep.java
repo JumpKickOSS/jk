@@ -31,7 +31,7 @@ public sealed interface WizardStep
             String prompt,
             String placeholder,
             String defaultValue,
-            Function<Answers, String> initialValueFn,
+            @Nullable Function<Answers, String> initialValueFn,
             Predicate<Answers> shouldRun,
             Function<String, ValidationResult> validator)
             implements WizardStep {
@@ -54,7 +54,7 @@ public sealed interface WizardStep
             private final String prompt;
             private String placeholder = "";
             private String defaultValue = "";
-            private Function<Answers, String> initialValueFn;
+            private @Nullable Function<Answers, String> initialValueFn;
             private Predicate<Answers> shouldRun = ALWAYS;
             private Function<String, ValidationResult> validator = NO_VALIDATION;
 
@@ -103,7 +103,7 @@ public sealed interface WizardStep
             String key,
             String prompt,
             List<Choice> choices,
-            Function<Answers, List<Choice>> choicesFn,
+            @Nullable Function<Answers, List<Choice>> choicesFn,
             @Nullable String defaultChoice,
             Orientation orientation,
             String customPlaceholder,
@@ -151,7 +151,7 @@ public sealed interface WizardStep
             private final String prompt;
             private final Orientation orientation;
             private final List<Choice> choices = new ArrayList<>();
-            private Function<Answers, List<Choice>> choicesFn;
+            private @Nullable Function<Answers, List<Choice>> choicesFn;
             private String defaultChoice = "";
             private String customPlaceholder = "";
             private Predicate<Answers> shouldRun = ALWAYS;
@@ -198,7 +198,7 @@ public sealed interface WizardStep
             }
 
             public Builder defaultChoice(@Nullable String id) {
-                this.defaultChoice = id;
+                this.defaultChoice = id == null ? "" : id;
                 return this;
             }
 
@@ -221,7 +221,7 @@ public sealed interface WizardStep
             String key,
             String prompt,
             List<Choice> choices,
-            Function<Answers, List<Choice>> choicesFn,
+            @Nullable Function<Answers, List<Choice>> choicesFn,
             Set<String> defaults,
             Orientation orientation,
             String customPlaceholder,
@@ -266,7 +266,7 @@ public sealed interface WizardStep
             private final String prompt;
             private final Orientation orientation;
             private final List<Choice> choices = new ArrayList<>();
-            private Function<Answers, List<Choice>> choicesFn;
+            private @Nullable Function<Answers, List<Choice>> choicesFn;
             private final Set<String> defaults = new LinkedHashSet<>();
             private String customPlaceholder = "";
             private boolean filterable;

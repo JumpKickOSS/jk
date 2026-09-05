@@ -24,6 +24,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -90,7 +91,7 @@ public final class ImportCommand implements CliCommand {
             return Exit.USAGE;
         }
 
-        Path projectDir = source.toAbsolutePath().getParent();
+        Path projectDir = Objects.requireNonNull(source.toAbsolutePath().getParent(), "project dir");
         Path target = out != null ? out : projectDir.resolve(ManifestPaths.MANIFEST);
         if (Files.exists(target) && !force) {
             CommandWedge.printFail(

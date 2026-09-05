@@ -280,6 +280,7 @@ public final class AddCommand implements CliCommand {
         //    when cwd is the root).
         Path root = WorkspaceScan.findEnclosingWorkspace(cwd).orElse(cwd);
         Path rootToml = root.resolve(ManifestPaths.MANIFEST);
+        var rootInfo = ProjectInfos.orNull(root);
         try {
             if (!target.startsWith(root)) {
                 CommandWedge.printFail(
@@ -288,11 +289,11 @@ public final class AddCommand implements CliCommand {
                                 + " is outside the workspace root "
                                 + root
                                 + "; added the dependency but not registering it as a module.");
-            } else if (Files.exists(rootToml) && ProjectInfos.orNull(root) != null) {
+            } else if (Files.exists(rootToml) && rootInfo != null) {
                 // Adding the first local module promotes a plain project into a workspace root
                 // (Cargo/uv semantics) — without the registration the dependency names a
                 // coordinate that was never published and `jk lock` cannot resolve it.
-                boolean alreadyWorkspace = ProjectInfos.orNull(root).workspaceRoot();
+                boolean alreadyWorkspace = rootInfo.workspaceRoot();
                 String rel = root.relativize(target).toString().replace('\\', '/');
                 String op = alreadyWorkspace ? "add-workspace-module" : "register-workspace-module";
                 if (EngineEdits.apply(rootToml, op, List.of(rel))) {
@@ -529,10 +530,8 @@ public final class AddCommand implements CliCommand {
 
         /** Best-effort Coordinate for --ping. Strips any `=` selector prefix. */
         Coordinate toCoord() {
-            String v =
-                    versionLiteral.startsWith("=") || versionLiteral.startsWith("^") || versionLiteral.startsWith("~")
-                            ? versionLiteral.substring(1)
-                            : versionLiteral;
+            String raw = versionLiteral == null ? "" : versionLiteral;
+            String v = raw.startsWith("=") || raw.startsWith("^") || raw.startsWith("~") ? raw.substring(1) : raw;
             return Coordinate.of(group, name, v);
         }
     }

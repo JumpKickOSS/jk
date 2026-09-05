@@ -28,6 +28,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.TreeSet;
 import org.jspecify.annotations.Nullable;
 
@@ -153,7 +154,8 @@ public final class LibraryUpdateCommand implements CliCommand {
             List<String> added = new ArrayList<>(), removed = new ArrayList<>(), changed = new ArrayList<>();
             for (Iterator<String> it = new TreeSet<>(after.keySet()).iterator(); it.hasNext(); ) {
                 String name = it.next();
-                LibraryCatalog.Module b = before.get(name), a = after.get(name);
+                LibraryCatalog.Module b = before.get(name);
+                LibraryCatalog.Module a = Objects.requireNonNull(after.get(name));
                 if (b == null) added.add(Coords.shortName(name) + " → " + Coords.module(a.moduleKey()));
                 else if (!b.equals(a))
                     changed.add(Coords.shortName(name)

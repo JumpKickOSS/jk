@@ -89,7 +89,7 @@ final class EngineExplainDecoder {
                     case EngineProtocol.EXPLAIN_TASK -> {
                         String dir = Jsonl.str(line, "dir");
                         stepsByDir
-                                .get(dir)
+                                .computeIfAbsent(dir, k -> new ArrayList<>())
                                 .add(new TaskForecast.Task(
                                         Jsonl.str(line, "name"),
                                         TaskForecast.Status.valueOf(Jsonl.str(line, "status")),
@@ -113,8 +113,8 @@ final class EngineExplainDecoder {
                     }
                     case EngineProtocol.EXPLAIN_DONE -> {
                         for (String dir : order) {
-                            int[] counts = countsByDir.get(dir);
-                            boolean[] flags = flagsByDir.get(dir);
+                            int[] counts = countsByDir.getOrDefault(dir, new int[2]);
+                            boolean[] flags = flagsByDir.getOrDefault(dir, new boolean[2]);
                             modules.add(TaskForecast.Module.fromWire(
                                     Path.of(dir),
                                     coordByDir.get(dir),
