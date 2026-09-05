@@ -2,6 +2,7 @@
 package cc.jumpkick.command;
 
 import java.nio.file.Path;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Renders filesystem paths as shell expressions for rc / activate snippets. Prefer {@code $HOME/…}
@@ -54,7 +55,7 @@ final class ShellPathExpr {
      * Forward-slash path relative to {@code home}, or {@code null} when {@code path} is not under
      * {@code home}. Empty string means path equals home.
      */
-    static String homeRelative(Path path, Path home) {
+    static @Nullable String homeRelative(Path path, Path home) {
         if (path == null || home == null) return null;
         Path abs = path.toAbsolutePath().normalize();
         Path homeAbs = home.toAbsolutePath().normalize();

@@ -16,6 +16,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk explain}: send {@link EngineProtocol#EXPLAIN_REQUEST} and rebuild a real
@@ -42,7 +43,7 @@ final class EngineExplainDecoder {
      * array has a second slot — slot {@code [1]} the full-rebuild ETA (the rebuild-effort
      * denominator). Length-guarded, so a one-slot caller still gets the plain ETA.
      */
-    static ExplainPlan explain(EnginePaths.Paths paths, EngineRequests.ExplainRequest req, long[] etaOut)
+    static ExplainPlan explain(EnginePaths.Paths paths, EngineRequests.ExplainRequest req, long @Nullable [] etaOut)
             throws IOException {
         String request = new ExplainRequest(
                         req.entryDir().toString(),

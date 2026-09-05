@@ -40,6 +40,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk lock} — resolve declared dependencies and write {@code jk-lock.toml}. Pinned versions
@@ -54,8 +55,8 @@ public final class LockCommand implements CliCommand {
     private List<String> features = List.of();
     private boolean noDefaultFeatures;
     private boolean sources;
-    private URI repoUrl;
-    private Path cacheDir;
+    private @Nullable URI repoUrl;
+    private @Nullable Path cacheDir;
     private GlobalOptions global;
 
     @Override
@@ -87,8 +88,8 @@ public final class LockCommand implements CliCommand {
                         .hide());
     }
 
-    private URI libraryRegistryUrl;
-    private Path libraryCacheFile;
+    private @Nullable URI libraryRegistryUrl;
+    private @Nullable Path libraryCacheFile;
 
     @Override
     public int run(Invocation in) throws Exception {
@@ -205,7 +206,8 @@ public final class LockCommand implements CliCommand {
             }
 
             @Override
-            public void onModuleFinish(String moduleDir, BuildPlanResult result, EngineRequests.LockCounts counts) {
+            public void onModuleFinish(
+                    @Nullable String moduleDir, BuildPlanResult result, EngineRequests.LockCounts counts) {
                 view.stepDone(coordByDir.get(moduleDir), "lock", result.success());
                 // Authoritative package count from the written lockfile (not wire event cardinality).
                 if (counts != null && counts.packages() >= 0) {

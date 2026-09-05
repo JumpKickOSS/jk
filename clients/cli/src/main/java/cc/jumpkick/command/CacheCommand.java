@@ -43,6 +43,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.LongSupplier;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk cache} — manage the <strong>cache tier</strong> under {@code $JK_CACHE_DIR}: every
@@ -82,7 +83,7 @@ public final class CacheCommand extends GroupCommand {
 
     // --- shared helpers (accessed by Cache*Command classes) ---------------------------
 
-    static Path resolveCacheRoot(Path override) {
+    static Path resolveCacheRoot(@Nullable Path override) {
         return override != null ? override : JkDirs.cache();
     }
 

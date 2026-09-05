@@ -27,6 +27,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk audit} — scan the lockfile against OSV. Exits non-zero when any finding meets the
@@ -54,7 +55,10 @@ public final class AuditCommand implements CliCommand {
                         .hide());
     }
 
+    @Nullable
     URI osvBatchUrl;
+
+    @Nullable
     URI osvVulnsUrl;
 
     @Override

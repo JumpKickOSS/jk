@@ -30,6 +30,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The one workspace renderer. Every verb that drives an engine {@code buildWorkspace}-shaped RPC —
@@ -102,7 +103,7 @@ final class WorkspaceRunView {
 
     private final Chrome chrome;
     private final Path entryDir;
-    private final CliSessionTranscript session;
+    private final @Nullable CliSessionTranscript session;
     private final boolean toStdout;
 
     private final Map<Path, List<String>> buffers = new ConcurrentHashMap<>();
@@ -114,7 +115,7 @@ final class WorkspaceRunView {
      * @param session transcript to mirror module events into, or null when the verb keeps none
      * @param toStdout {@code --output json}: JSONL events go to stdout as well as the transcript
      */
-    WorkspaceRunView(Chrome chrome, Path entryDir, CliSessionTranscript session, boolean toStdout) {
+    WorkspaceRunView(Chrome chrome, Path entryDir, @Nullable CliSessionTranscript session, boolean toStdout) {
         this.chrome = chrome;
         this.entryDir = entryDir;
         this.session = session;
@@ -364,7 +365,7 @@ final class WorkspaceRunView {
     }
 
     /** Mirror the run's modules and errors into the transcript, once, before the ladder picks an arm. */
-    void absorb(AggregateContext agg, WorkspaceResult result) {
+    void absorb(@Nullable AggregateContext agg, WorkspaceResult result) {
         if (session == null) return;
         for (var m : result.modules()) session.module(m.coord());
         for (String err : result.errors()) session.error(err);

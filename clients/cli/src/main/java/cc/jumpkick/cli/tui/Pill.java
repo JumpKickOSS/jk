@@ -6,6 +6,7 @@ import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.terminal.Style;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A small chip label. Nerd: powerline half-circles. ANSI: padded background. Plain: {@code
@@ -31,11 +32,11 @@ public final class Pill implements Widget {
     }
 
     private final RichText label;
-    private final Style body;
-    private final Style caps;
+    private final @Nullable Style body;
+    private final @Nullable Style caps;
     private final Look look;
 
-    public Pill(RichText label) {
+    public Pill(@Nullable RichText label) {
         this(label, null, null, Look.DEFAULT);
     }
 
@@ -43,7 +44,7 @@ public final class Pill implements Widget {
         this(label, body, caps, Look.DEFAULT);
     }
 
-    private Pill(RichText label, Style body, Style caps, Look look) {
+    private Pill(@Nullable RichText label, @Nullable Style body, @Nullable Style caps, Look look) {
         this.label = label == null ? RichText.empty() : label;
         this.body = body;
         this.caps = caps;
@@ -59,11 +60,11 @@ public final class Pill implements Widget {
     }
 
     /** Name-only module chip: white on plan blue, nerd half-circle caps. */
-    public static Pill branded(String label) {
+    public static Pill branded(@Nullable String label) {
         return new Pill(RichText.plain(label == null ? "" : label), null, null, Look.BRANDED);
     }
 
-    public static Pill branded(RichText label) {
+    public static Pill branded(@Nullable RichText label) {
         return new Pill(label, null, null, Look.BRANDED);
     }
 
@@ -92,7 +93,7 @@ public final class Pill implements Widget {
     }
 
     /** Single-line form for embedding in another widget. */
-    public String renderInline(RenderContext ctx) {
+    public @Nullable String renderInline(RenderContext ctx) {
         String text = label.plainText();
         if (ctx.mode() == RenderContext.Mode.PLAIN) {
             return "[" + PlainAscii.transform(text) + "]";

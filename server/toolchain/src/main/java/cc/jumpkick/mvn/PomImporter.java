@@ -33,6 +33,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
@@ -355,7 +356,7 @@ public final class PomImporter {
         return null;
     }
 
-    private static Optional<Integer> parseInt(String s) {
+    private static Optional<Integer> parseInt(@Nullable String s) {
         try {
             return Optional.of(Integer.parseInt(s.trim()));
         } catch (NumberFormatException e) {

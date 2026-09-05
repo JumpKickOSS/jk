@@ -2,6 +2,7 @@
 package cc.jumpkick.command;
 
 import java.nio.file.Path;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Bash flavour. Uses {@code PROMPT_COMMAND} as the prompt-time hook since bash lacks a native
@@ -15,7 +16,7 @@ public final class BashShell implements Shell {
     }
 
     @Override
-    public String setEnv(String key, String value) {
+    public String setEnv(String key, @Nullable String value) {
         return "export " + key + "=" + PosixQuote.quote(value) + "\n";
     }
 

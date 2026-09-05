@@ -32,6 +32,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk add}: Maven coord, catalog name, or local workspace module ({@code :name}/path) into
@@ -40,16 +41,16 @@ import java.util.Optional;
 public final class AddCommand implements CliCommand {
 
     private String coord;
-    private String libraryFlag;
-    private String groupFlag;
-    private String nameFlag;
-    private String versionFlag;
+    private @Nullable String libraryFlag;
+    private @Nullable String groupFlag;
+    private @Nullable String nameFlag;
+    private @Nullable String versionFlag;
     private boolean test;
     private boolean runtime;
     private boolean provided;
     private boolean processor;
     private boolean ping;
-    private GlobalOptions global;
+    private @Nullable GlobalOptions global;
 
     @Override
     public String name() {
@@ -178,7 +179,7 @@ public final class AddCommand implements CliCommand {
     }
 
     /** The selected dependency scope, or {@code null} if more than one flag was given. */
-    private Scope resolveScope() {
+    private @Nullable Scope resolveScope() {
         int selected = (test ? 1 : 0) + (runtime ? 1 : 0) + (provided ? 1 : 0) + (processor ? 1 : 0);
         if (selected > 1) {
             CommandWedge.printFail("Add", "--test / --runtime / --provided / --processor are mutually exclusive");
@@ -398,7 +399,7 @@ public final class AddCommand implements CliCommand {
         return 0;
     }
 
-    private static String nonBlankOr(String first, String fallback) {
+    private static @Nullable String nonBlankOr(@Nullable String first, @Nullable String fallback) {
         return (first != null && !first.isBlank()) ? first : fallback;
     }
 
@@ -407,10 +408,19 @@ public final class AddCommand implements CliCommand {
      * {@code group}, {@code artifact}, {@code versionLiteral}) and the floating/pinned distinction
      * for round-trip display.
      */
-    record ParsedDep(String library, String group, String name, String versionLiteral, boolean floating) {
+    record ParsedDep(
+            @Nullable String library,
+            @Nullable String group,
+            @Nullable String name,
+            @Nullable String versionLiteral,
+            boolean floating) {
 
         static ParsedDep parse(
-                String coord, String libraryFlag, String groupFlag, String nameFlag, String versionFlag) {
+                String coord,
+                @Nullable String libraryFlag,
+                @Nullable String groupFlag,
+                @Nullable String nameFlag,
+                @Nullable String versionFlag) {
             if (coord == null || coord.isBlank()) {
                 throw new IllegalArgumentException("dependency argument must not be blank");
             }
@@ -513,7 +523,7 @@ public final class AddCommand implements CliCommand {
             return new ParsedDep(library, group, name, versionLiteral, floating);
         }
 
-        private static String nonBlank(String flagValue, String fallback) {
+        private static @Nullable String nonBlank(@Nullable String flagValue, @Nullable String fallback) {
             return (flagValue == null || flagValue.isBlank()) ? fallback : flagValue;
         }
 

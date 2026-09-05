@@ -11,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Stop, drain or kill an engine process, and reason about the pid file beside its socket. Every
@@ -53,7 +54,7 @@ public final class EngineProcessControl {
      * finish. Returns the in-flight job count at the moment of the request (0 → the engine is exiting
      * now), or {@code -1} when nothing was reachable (a no-op stop).
      */
-    public static int drain(Path socket) {
+    public static int drain(@Nullable Path socket) {
         try (SocketChannel ch = EngineWire.connect(socket)) {
             String bye = EngineWire.exchange(ch, ProtoLifecycle.shutdown(false));
             if (!EngineProtocol.BYE.equals(EngineProtocol.typeOf(bye))) return -1;
@@ -71,7 +72,7 @@ public final class EngineProcessControl {
      * <p>When a pid file is present for {@code socket}, waits for that process to actually die
      * so the next {@link EngineClient#ensureRunning} does not race a half-stopped generation.
      */
-    public static boolean forceStop(Path socket) {
+    public static boolean forceStop(@Nullable Path socket) {
         long pid = readPidForSocket(socket);
         SocketChannel ch;
         try {
@@ -126,7 +127,7 @@ public final class EngineProcessControl {
      * Read the engine pid from the socket's sibling {@code .pid} file (generation-scoped). {@code -1}
      * when missing or unreadable.
      */
-    static long readPidForSocket(Path socket) {
+    static long readPidForSocket(@Nullable Path socket) {
         return readPidFile(EnginePaths.pidFor(socket));
     }
 

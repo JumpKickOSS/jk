@@ -6,6 +6,7 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.wire.protocol.ProjectInfo;
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Caption above a workspace wedge when a module selection is in effect (cwd member or {@code
@@ -45,7 +46,7 @@ public final class ModuleScopeHint {
     }
 
     /** Non-blank {@code moduleNames} from a project summary. Empty when unset. */
-    public static List<String> namesFrom(ProjectInfo info) {
+    public static List<String> namesFrom(@Nullable ProjectInfo info) {
         if (info == null || info.moduleNames() == null || info.moduleNames().isEmpty()) {
             if (info != null && info.name() != null && !info.name().isBlank()) return List.of(info.name());
             return List.of();

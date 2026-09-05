@@ -21,7 +21,7 @@ public record ConsoleSpec(
         Function<BuildPlanResult, String> onFailure,
         boolean chip,
         boolean exec,
-        Function<BuildPlanResult, String> softFailure) {
+        @Nullable Function<BuildPlanResult, String> softFailure) {
 
     /** Default generic success/failure finish ({@code chip}/{@code exec} false). */
     public ConsoleSpec(
@@ -50,7 +50,7 @@ public record ConsoleSpec(
      * Duration suffix for settle lines. ANSI: dim italic {@code took Xms}. Plain ({@code
      * --no-ansi}): {@code - took Xms} so the dash substitutes for color separation.
      */
-    public static String took(Duration d) {
+    public static @Nullable String took(Duration d) {
         String body = "took " + fmtDuration(d);
         if (!Theme.active().isAnsi()) {
             return "- " + body;
@@ -77,12 +77,12 @@ public record ConsoleSpec(
     }
 
     /** Render an error diagnostic from its parts (used by live + summary paths alike). */
-    public static String renderError(String step, String code, String message) {
+    public static String renderError(String step, @Nullable String code, String message) {
         return DiagnosticReport.renderError(step, code, message, null);
     }
 
     /** Like {@link #renderError(String, String, String)} with a {@code group:artifact} module. */
-    public static String renderError(String step, String code, String message, String module) {
+    public static String renderError(String step, @Nullable String code, String message, String module) {
         return DiagnosticReport.renderError(step, code, message, module);
     }
 
@@ -147,7 +147,7 @@ public record ConsoleSpec(
     }
 
     /** Compiler diagnostics (javac/kotlinc) carry a verbatim multi-line block. */
-    public static boolean isCompilerCode(String code) {
+    public static boolean isCompilerCode(@Nullable String code) {
         return "javac".equals(code) || "kotlinc".equals(code) || "groovyc".equals(code);
     }
 

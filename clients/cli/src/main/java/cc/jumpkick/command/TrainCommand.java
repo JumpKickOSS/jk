@@ -80,7 +80,7 @@ public final class TrainCommand implements CliCommand {
 
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
         ConsoleSpec spec = new ConsoleSpec(
-                "Train", r -> Theme.colorize("Trained", Theme.active().focused()), r -> "Train failed");
+                "Train", r -> Theme.paint("Trained", Theme.active().focused()), r -> "Train failed");
         String target = BuildCommand.buildTarget(proj.buildFile(), dir);
         BuildPlanResult result;
         try {

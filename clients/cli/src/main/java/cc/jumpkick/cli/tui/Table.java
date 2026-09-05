@@ -6,6 +6,7 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.terminal.Style;
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Box-drawn table whose title line is a {@link JkWedge}. Appended tables hide their title and
@@ -120,18 +121,18 @@ public final class Table implements Widget {
     }
 
     /** Italic header text when ANSI is on (global-theme convenience for one-shot callers). */
-    public static String headerCell(String text) {
+    public static @Nullable String headerCell(String text) {
         return headerCell(text, Theme.active().isAnsi());
     }
 
     /** Like every other paint decision, the plain fallback follows the render context. */
-    static String headerCell(String text, boolean ansi) {
+    static @Nullable String headerCell(@Nullable String text, boolean ansi) {
         String s = text == null ? "" : text;
         if (s.isEmpty() || !ansi) return s;
         return Theme.colorize(s, Style.EMPTY.italic());
     }
 
-    public static int visibleWidth(String s) {
+    public static int visibleWidth(@Nullable String s) {
         return RenderContext.visibleWidth(s);
     }
 
@@ -447,7 +448,7 @@ public final class Table implements Widget {
         return RenderContext.visibleWidth(s);
     }
 
-    private static String renderCell(RichText text, RenderContext ctx, boolean plain) {
+    private static @Nullable String renderCell(RichText text, RenderContext ctx, boolean plain) {
         String s = text == null ? "" : text.render(ctx);
         return plain ? PlainAscii.transform(s) : s;
     }
@@ -557,13 +558,14 @@ public final class Table implements Widget {
         return false;
     }
 
-    private static String flatClose(RenderContext ctx, int inner) {
+    private static @Nullable String flatClose(RenderContext ctx, int inner) {
         boolean ansi = ctx.ansi();
         String s = (ansi ? "╰" : "+") + (ansi ? "─" : "-").repeat(inner) + (ansi ? "╯" : "+");
         return ansi ? Theme.colorize(s, ctx.theme().darkGray()) : s;
     }
 
-    private static String divider(RenderContext ctx, String left, String junction, String right, int[] widths) {
+    private static @Nullable String divider(
+            RenderContext ctx, String left, String junction, String right, int[] widths) {
         boolean ansi = ctx.ansi();
         var sb = new StringBuilder(ansi ? left : "+");
         for (int i = 0; i < widths.length; i++) {
@@ -578,7 +580,7 @@ public final class Table implements Widget {
      * {@code ┼}; parent rails that end become {@code ┴}; a child rail with no parent rail is
      * {@code ┬}.
      */
-    static String joinDivider(RenderContext ctx, int[] parentW, int[] childEnds) {
+    static @Nullable String joinDivider(RenderContext ctx, int[] parentW, int[] childEnds) {
         boolean ansi = ctx.ansi();
         // Parent internal rail after column i is at edge i+1. Child rail after child col k
         // is at parent column childEnds[k] (exclusive end) — i.e. the parent rail after
@@ -669,12 +671,12 @@ public final class Table implements Widget {
         return sb.toString();
     }
 
-    private static String pad(String s, int width, Align align) {
+    private static String pad(@Nullable String s, int width, Align align) {
         return pad(s, width, align, " ");
     }
 
     /** {@code fill} is one visible column (possibly styled, e.g. a band-background space). */
-    private static String pad(String s, int width, Align align, String fill) {
+    private static String pad(@Nullable String s, int width, Align align, String fill) {
         int vis = RenderContext.visibleWidth(s);
         int extra = Math.max(0, width - vis);
         if (align == Align.RIGHT) return fill.repeat(extra) + s;

@@ -88,8 +88,8 @@ final class EngineEventDecoder {
      */
     static BuildPlanResult streamSingleBuildPlanEvents(
             BufferedReader reader,
-            Function<List<Task>, BuildPlanListener> listenerFactory,
-            TestSummary[] testResultOut,
+            @Nullable Function<List<Task>, BuildPlanListener> listenerFactory,
+            TestSummary @Nullable [] testResultOut,
             String[] buildOutcomeOut,
             @Nullable SocketChannel ch)
             throws IOException {

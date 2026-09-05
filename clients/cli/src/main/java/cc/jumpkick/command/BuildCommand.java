@@ -29,6 +29,7 @@ import cc.jumpkick.cli.tui.ModuleScopeHint;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -50,6 +51,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /** {@code jk build} — orchestrates lock, sync, compile, test, and package. */
 public final class BuildCommand implements CliCommand {
@@ -94,10 +96,18 @@ public final class BuildCommand implements CliCommand {
         return opts;
     }
 
+    @Nullable
     String profileName;
+
+    @Nullable
     Integer workers;
+
+    @Nullable
     Path cacheDir;
+
+    @Nullable
     Path jdksDir;
+
     BuildOptions buildOpts;
     GlobalOptions global;
     /** Resolved concurrent module budget (from global -j / JK_JOBS / [engine] jobs). */
@@ -108,13 +118,21 @@ public final class BuildCommand implements CliCommand {
 
     boolean parallelTests;
     boolean aotCache;
+
+    @Nullable
     String variant;
+
+    @Nullable
     String affectedSince;
+
     boolean affectedWip;
+
+    @Nullable
     String modulesSpec;
+
     Map<String, String> clientEnv = Map.of();
     /** Best-effort session transcript; null when disabled / no project. */
-    private CliSessionTranscript session;
+    private @Nullable CliSessionTranscript session;
 
     // ---- Entry point ----------------------------------------------------
 
@@ -326,8 +344,8 @@ public final class BuildCommand implements CliCommand {
     }
 
     /** Resolved {@code -m/--affected-since} selection: at most one of the fields is meaningful. */
-    private record Selection(String error, boolean empty, List<String> tokens, List<String> names) {
-        Selection(String error, boolean empty, List<String> tokens) {
+    private record Selection(@Nullable String error, boolean empty, List<String> tokens, List<String> names) {
+        Selection(@Nullable String error, boolean empty, List<String> tokens) {
             this(error, empty, tokens, List.of());
         }
     }
@@ -400,7 +418,7 @@ public final class BuildCommand implements CliCommand {
             long elapsed = BuildTails.elapsedMsSince(start);
             run.finishEvent(false, elapsed);
             CommandWedge.printFail("Build", e.getMessage());
-            if (session != null) session.error(e.getMessage());
+            if (session != null) session.error(Errors.text(e));
             notifyBuild(BuildNotify.Outcome.FAILED, entryDir, 0, elapsed);
             return Exit.SOFTWARE;
         }
@@ -610,7 +628,7 @@ public final class BuildCommand implements CliCommand {
             return 1;
         } catch (IOException e) {
             CommandWedge.printFail("Build", e.getMessage());
-            if (session != null) session.error(e.getMessage());
+            if (session != null) session.error(Errors.text(e));
             return Exit.SOFTWARE;
         }
         if (session != null) {

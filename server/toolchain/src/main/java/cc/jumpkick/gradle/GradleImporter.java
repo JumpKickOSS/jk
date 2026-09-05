@@ -26,6 +26,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Best-effort string-level scanner for {@code build.gradle[.kts]} declarative idioms. Emits
@@ -727,7 +728,7 @@ public final class GradleImporter {
         return out.toString();
     }
 
-    private static Optional<Integer> parseInt(String s) {
+    private static Optional<Integer> parseInt(@Nullable String s) {
         try {
             return Optional.of(Integer.parseInt(s.trim()));
         } catch (NumberFormatException e) {

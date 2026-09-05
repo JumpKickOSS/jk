@@ -12,6 +12,7 @@ import cc.jumpkick.command.ide.IdeSupport;
 import cc.jumpkick.command.ide.IdeTarget;
 import cc.jumpkick.command.ide.IntellijIdeGenerator;
 import cc.jumpkick.command.ide.VscodeIdeGenerator;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
@@ -20,6 +21,7 @@ import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk ide} — generate IntelliJ + VS Code project files ({@code --idea}/{@code --vscode}
@@ -32,7 +34,7 @@ public final class IdeCommand implements CliCommand {
     private static final List<IdeGenerator> GENERATORS = List.of(new IntellijIdeGenerator(), new VscodeIdeGenerator());
 
     /** When non-null, the command runs exactly these targets and ignores the {@code --idea/--vscode} flags. */
-    private final Set<IdeTarget> forced;
+    private final @Nullable Set<IdeTarget> forced;
 
     public IdeCommand() {
         this.forced = null;
@@ -109,7 +111,7 @@ public final class IdeCommand implements CliCommand {
                     IdeGeneration result = gen.generate(model);
                     chrome.addDetails(result.details());
                 } catch (IdeSupport.IdeException e) {
-                    chrome.fail(e.getMessage());
+                    chrome.fail(Errors.text(e));
                     return e.code();
                 } catch (Exception e) {
                     chrome.fail(

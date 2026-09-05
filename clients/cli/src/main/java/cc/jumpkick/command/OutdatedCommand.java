@@ -31,6 +31,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk outdated} — read-only report of declared deps with newer versions than {@code jk-lock.toml}
@@ -45,9 +46,9 @@ public final class OutdatedCommand implements CliCommand {
 
     private boolean showTip;
     private boolean excludeUpToDate;
-    private URI repoUrl;
-    private Path cacheDir;
-    private GlobalOptions global;
+    private @Nullable URI repoUrl;
+    private @Nullable Path cacheDir;
+    private @Nullable GlobalOptions global;
 
     @Override
     public String name() {
@@ -132,14 +133,14 @@ public final class OutdatedCommand implements CliCommand {
     // Version comparison (normalizes git tag names like "v1.2.3")
 
     /** True when {@code a} is a strictly-higher version than {@code b} (both version-like). */
-    private static boolean ahead(String a, String b) {
+    private static boolean ahead(@Nullable String a, @Nullable String b) {
         String na = norm(a);
         String nb = norm(b);
         return na != null && nb != null && Versions.compare(na, nb) > 0;
     }
 
     /** Normalize a cell to a comparable Maven version, or null when it isn't one ("", "tip", tag text). */
-    private static String norm(String v) {
+    private static @Nullable String norm(@Nullable String v) {
         if (v == null || v.isEmpty() || v.equals("tip")) return null;
         String n = GitVersion.fromTag(v); // "v1.2.3" -> "1.2.3"; leaves Maven versions unchanged
         return (n.isEmpty() || !Character.isDigit(n.charAt(0))) ? null : n;
@@ -256,7 +257,7 @@ public final class OutdatedCommand implements CliCommand {
         return RichText.ansi(Theme.colorize(text, style));
     }
 
-    private static String disp(String v) {
+    private static String disp(@Nullable String v) {
         return v == null || v.isEmpty() ? NONE : v;
     }
 }

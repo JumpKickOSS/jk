@@ -7,6 +7,7 @@ import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.terminal.Style;
 import java.util.Locale;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Color/style provider for TUI, plan, and help renderers. Access via {@link #active()};
@@ -157,7 +158,7 @@ public interface Theme {
      * name sit on the bar gradient's left-most color, and the U+E0B0 cap pairs that same color (as
      * foreground) with the bar's lead color (as background) so it tapers the pill into the bar.
      */
-    Style withBackground(Style base, Rgb bg);
+    Style withBackground(Style base, @Nullable Rgb bg);
 
     /** Bright yellow — used for the {@code default} JDK status. */
     Style brightYellow();
@@ -165,7 +166,7 @@ public interface Theme {
     Style bright(int r, int g, int b);
 
     /** {@link Rgb} overload of {@link #bright(int, int, int)}. */
-    Style bright(Rgb c);
+    Style bright(@Nullable Rgb c);
 
     // --- help-semantic styles --------------------------------------------
 
@@ -309,7 +310,7 @@ public interface Theme {
      * red} → error). Underscores and case are ignored. Returns {@code null} for unknown names
      * (hex colors are not looked up here).
      */
-    default Style styleNamedOrNull(String name) {
+    default @Nullable Style styleNamedOrNull(String name) {
         if (name == null || name.isBlank()) return null;
         String key = name.trim().toLowerCase(Locale.ROOT).replace('_', '-');
         return switch (key) {
@@ -358,8 +359,13 @@ public interface Theme {
      * Wrap {@code text} in attribute-leading SGR. Never rewrites glyphs. {@code --no-ansi} goes
      * through {@link PlainAscii}.
      */
-    static String colorize(String text, Style style) {
-        if (!Theme.active().isAnsi()) return PlainAscii.transform(text);
+    static @Nullable String colorize(@Nullable String text, Style style) {
+        return text == null ? null : paint(text, style);
+    }
+
+    /** As {@link #colorize} for text the caller already has — present in, present out. */
+    static String paint(String text, Style style) {
+        if (!Theme.active().isAnsi()) return PlainAscii.rewrite(text);
         return style.render(text);
     }
 }

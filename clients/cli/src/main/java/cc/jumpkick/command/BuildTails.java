@@ -13,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Every line the build cluster settles on: the module completion tail, the workspace success wedge,
@@ -59,7 +60,7 @@ final class BuildTails {
     }
 
     /** Dim italic {@code "took Xms"} from a wall-clock start captured with {@link System#nanoTime}. */
-    static String elapsedSince(long startNanos) {
+    static @Nullable String elapsedSince(long startNanos) {
         return ConsoleSpec.took(Duration.ofMillis(elapsedMsSince(startNanos)));
     }
 
@@ -69,7 +70,7 @@ final class BuildTails {
     }
 
     /** The green {@code Build successful} lead that opens every build success message. */
-    static String buildOk() {
+    static @Nullable String buildOk() {
         return Theme.colorize("Build successful", Theme.active().success());
     }
 
@@ -152,7 +153,7 @@ final class BuildTails {
      * was rebuilt, else {@code Build successful. Built <artifact>} naming the headline output. No
      * duration — the framework appends it.
      */
-    static String projectTail(String buildOutcome, Path moduleRoot, ProjectInfo info) {
+    static String projectTail(String buildOutcome, Path moduleRoot, @Nullable ProjectInfo info) {
         if ("up-to-date".equals(buildOutcome)) {
             return buildOk() + ", project up to date";
         }

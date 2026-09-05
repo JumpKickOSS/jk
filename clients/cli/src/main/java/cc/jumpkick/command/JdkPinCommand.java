@@ -21,6 +21,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /** {@code jk jdk pin <spec>} — pin the project to an installed JDK. */
 public final class JdkPinCommand implements CliCommand {
@@ -76,7 +77,7 @@ public final class JdkPinCommand implements CliCommand {
     }
 
     /** {@code <vendor>-<major>} for a hit (e.g. {@code temurin-25}); null if the major is unknown. */
-    private static String pinName(JdkHit hit) {
+    private static @Nullable String pinName(JdkHit hit) {
         Integer major = JdkSelector.parseFlexible(hit.version() == null ? "" : hit.version())
                 .major();
         if (major == null) return null;

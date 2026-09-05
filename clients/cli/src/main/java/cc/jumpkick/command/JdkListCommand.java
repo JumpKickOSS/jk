@@ -43,6 +43,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk jdk list} — every JDK the probe chain finds on this machine (jk's managed dir, SDKMAN,
@@ -85,8 +86,14 @@ public final class JdkListCommand implements CliCommand {
     }
 
     boolean all;
+
+    @Nullable
     Path jdksDir;
+
+    @Nullable
     URI feedUrl;
+
+    @Nullable
     Path cacheFile;
 
     enum Status {
@@ -191,12 +198,12 @@ public final class JdkListCommand implements CliCommand {
 
     static List<Row> buildRows(
             List<JdkHit> installed,
-            Path defaultHome,
-            JdkCatalog catalog,
+            @Nullable Path defaultHome,
+            @Nullable JdkCatalog catalog,
             String os,
             String arch,
-            Path currentHome,
-            Path graalHome) {
+            @Nullable Path currentHome,
+            @Nullable Path graalHome) {
         // Index catalog entries by installFolderName, restricted to current host.
         Map<String, JdkCatalog.Entry> byInstall = new HashMap<>();
         // Latest non-preview catalog entry per (vendor, product, major) on this host.
@@ -341,7 +348,7 @@ public final class JdkListCommand implements CliCommand {
      * Same matching rules as {@code jk jdk update}.
      */
     private static Optional<JdkCatalog.Entry> latestPointRelease(
-            JdkCatalog catalog, String installedId, String os, String arch) {
+            @Nullable JdkCatalog catalog, String installedId, String os, String arch) {
         if (catalog == null) return Optional.empty();
         JdkCatalog.Entry best = null;
         for (JdkCatalog.Entry e : catalog.entries()) {
@@ -468,7 +475,7 @@ public final class JdkListCommand implements CliCommand {
         return active ? row.emphasized() : row;
     }
 
-    private static RichText painted(String text, Style base, boolean italic, boolean bold, Rgb band) {
+    private static RichText painted(String text, Style base, boolean italic, boolean bold, @Nullable Rgb band) {
         String s = text == null ? "" : text;
         if (!Theme.active().isAnsi()) return RichText.plain(s);
         Style style = deco(base, italic, bold);
@@ -477,7 +484,7 @@ public final class JdkListCommand implements CliCommand {
     }
 
     /** Layer the active-row indigo band background onto a cell style (no-op when not banded). */
-    private static Style banded(Style base, Rgb band) {
+    private static Style banded(Style base, @Nullable Rgb band) {
         return band == null ? base : Theme.active().withBackground(base, band);
     }
 
@@ -494,7 +501,7 @@ public final class JdkListCommand implements CliCommand {
      * padded to the column width. The row's italic/bold emphasis is layered on so the whole line
      * reads uniformly.
      */
-    private static String statusPainted(String label, boolean italic, boolean bold, Rgb band) {
+    private static String statusPainted(String label, boolean italic, boolean bold, @Nullable Rgb band) {
         String[] parts = label.split("/");
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < parts.length; i++) {
@@ -519,7 +526,7 @@ public final class JdkListCommand implements CliCommand {
     // Helpers / catalog plumbing
     // ---------------------------------------------------------------
 
-    private JdkCatalog fetchCatalogOrNull() {
+    private @Nullable JdkCatalog fetchCatalogOrNull() {
         if (!HostPlatform.supported()) return null;
         try {
             boolean refresh = SessionContext.current().config().forceOr(false);

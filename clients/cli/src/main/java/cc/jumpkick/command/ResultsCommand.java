@@ -18,6 +18,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk results} — print the latest run's {@code jk-results.md} (journal copy under the state
@@ -73,7 +74,7 @@ public final class ResultsCommand implements CliCommand {
      * Workspace root when {@code start} is a member, else the nearest ancestor with {@code jk.toml},
      * else {@code start}. Journal identity is keyed on that root.
      */
-    static Path projectRoot(Path start) {
+    static @Nullable Path projectRoot(Path start) {
         Path abs = start == null
                 ? Path.of("").toAbsolutePath().normalize()
                 : start.toAbsolutePath().normalize();

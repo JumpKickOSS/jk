@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.tui;
 
 import java.util.concurrent.atomic.AtomicReference;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A live, in-place terminal region — a {@link SpinnerProgressBar}, a {@link Spinner}-backed
@@ -47,7 +48,7 @@ public interface LiveRegion {
     /**
      * @return the region currently on screen, or {@code null} if none.
      */
-    static LiveRegion active() {
+    static @Nullable LiveRegion active() {
         return Holder.ACTIVE.get();
     }
 
@@ -55,6 +56,6 @@ public interface LiveRegion {
     final class Holder {
         private Holder() {}
 
-        private static final AtomicReference<LiveRegion> ACTIVE = new AtomicReference<>();
+        private static final AtomicReference<@Nullable LiveRegion> ACTIVE = new AtomicReference<>();
     }
 }

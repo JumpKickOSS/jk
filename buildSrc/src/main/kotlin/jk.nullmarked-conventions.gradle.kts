@@ -29,6 +29,12 @@ tasks.withType<JavaCompile>().configureEach {
         error("RequireExplicitNullMarking")
         nullaway {
             error()
+            // A CLI command's fields are its parsed invocation: `run(Invocation)` is where they are
+            // assigned and nothing reads them before it. Without this, NullAway reads every one of
+            // them as uninitialized, and the only way to satisfy it would be to declare fields
+            // nullable that the parse fills in on every path — putting a requireNonNull in front of
+            // each use and saying the opposite of what the lifecycle guarantees.
+            knownInitializers.add("cc.jumpkick.model.command.CliCommand.run")
         }
     }
 }

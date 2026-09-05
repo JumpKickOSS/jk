@@ -9,6 +9,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Materializes {@code jkx} next to {@code jk} in {@code <home>/bin} (hardlink → symlink → shim;
@@ -33,12 +34,12 @@ final class JkxLink {
         SKIPPED_NO_EXE
     }
 
-    record Result(Status status, Path path) {}
+    record Result(Status status, @Nullable Path path) {}
 
     private JkxLink() {}
 
     /** Ensure {@code binDir/jkx} launches {@code jkExe}'s {@code tool run}. Never throws. */
-    static Result ensure(Path binDir, Path jkExe) {
+    static Result ensure(Path binDir, @Nullable Path jkExe) {
         try {
             if (jkExe == null || !jkExe.isAbsolute() || !Files.isRegularFile(jkExe)) {
                 return new Result(Status.SKIPPED_NO_EXE, null);

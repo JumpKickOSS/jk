@@ -39,6 +39,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.stream.Collectors;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk run [<target>] [<args>…]} — universal runner, mounted as top-level {@code run} and
@@ -100,14 +101,28 @@ public final class ToolRunCommand implements CliCommand {
                 Param.of("args", Arity.ZERO_OR_MORE, "Arguments forwarded to the program."));
     }
 
+    @Nullable
     String target;
+
+    @Nullable
     String mainClass;
+
+    @Nullable
     Path cacheDirOverride;
+
+    @Nullable
     Path stateDirOverride;
+
+    @Nullable
     Path jdksDir;
+
+    @Nullable
     URI repoUrl;
+
     boolean forceRecompile;
     List<String> toolArgs = new ArrayList<>();
+
+    @Nullable
     GlobalOptions global;
     // Set by a JBang alias whose script-ref is a coordinate: the alias's dependencies and
     // java-options ride the normal coordinate flow (extra deps + exec JVM args).
@@ -120,7 +135,7 @@ public final class ToolRunCommand implements CliCommand {
      * files/coords/URLs are ignored.
      */
     // Package-visible for tests (leaf ambiguity + local-path precedence,.
-    static Path resolveWorkspaceModule(Path cwd, String name) {
+    static @Nullable Path resolveWorkspaceModule(Path cwd, String name) {
         if (name == null || name.isBlank() || ".".equals(name) || name.contains(":") || name.contains("@")) {
             return null;
         }
@@ -314,7 +329,7 @@ public final class ToolRunCommand implements CliCommand {
      * JBang {@code alias@catalog}: trust-gate the catalog origin, then run the alias's {@code
      * script-ref}. Coordinate refs rewrite {@code target}/{@code toolArgs} and return null.
      */
-    private Integer resolveJBangAlias(String command) throws IOException, InterruptedException {
+    private @Nullable Integer resolveJBangAlias(String command) throws IOException, InterruptedException {
         Path stateDir = stateDirOverride != null ? stateDirOverride : JkDirs.state();
         // Trust decides BEFORE any fetch: the catalog URL is derived from user input, and no
         // request may leave the machine for an origin the user never allowed.

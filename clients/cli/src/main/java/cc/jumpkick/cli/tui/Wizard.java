@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Interactive wizard: {@link InputMode#PROMPT}, incremental redraw of the active step only, no
@@ -371,14 +372,14 @@ public final class Wizard {
         };
     }
 
-    private static Styled answerLine(String text, Style textStyle) {
+    private static Styled answerLine(@Nullable String text, Style textStyle) {
         return new StyledBuilder()
                 .append("➜ ", Theme.active().brightGreen())
                 .append(text, textStyle)
                 .build();
     }
 
-    private static String labelFor(WizardStep.RadioStep step, Map<String, Object> answers) {
+    private static @Nullable String labelFor(WizardStep.RadioStep step, Map<String, Object> answers) {
         var snapshot = Answers.of(answers);
         var id = answers.getOrDefault(step.key(), step.defaultChoice()).toString();
         for (var c : step.choicesFor(snapshot)) {
@@ -456,7 +457,7 @@ public final class Wizard {
             return out;
         }
 
-        private static int indexOf(List<Choice> choices, String id) {
+        private static int indexOf(List<Choice> choices, @Nullable String id) {
             for (var i = 0; i < choices.size(); i++) {
                 if (choices.get(i).id().equals(id)) {
                     return i;
@@ -693,7 +694,7 @@ public final class Wizard {
             var lines = new ArrayList<>(
                     ansiLines(new RadioButtonGroup(buttons, rs.orientation()).render(RenderContext.current())));
             if (rs.hasCustomOption() && rs.orientation() == Orientation.VERTICAL && !error.isEmpty()) {
-                lines.add(Styled.of(Theme.colorize(error, Theme.active().error()), Style.EMPTY));
+                lines.add(Styled.of(Theme.paint(error, Theme.active().error()), Style.EMPTY));
             }
             return lines;
         }

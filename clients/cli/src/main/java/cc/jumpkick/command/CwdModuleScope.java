@@ -3,6 +3,7 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.wire.protocol.ProjectInfo;
 import java.nio.file.Path;
+import org.jspecify.annotations.Nullable;
 
 /**
  * When the working directory is a workspace member and the user did not pass {@code -m}/{@code
@@ -30,9 +31,9 @@ public final class CwdModuleScope {
     public record Resolved(
             Path workspaceRoot,
             Path workingDir,
-            String modulesSpec,
+            @Nullable String modulesSpec,
             boolean inferredFromCwd,
-            String focusLabel,
+            @Nullable String focusLabel,
             boolean workspaceMember) {
 
         /** True when a module selector is in effect (explicit or inferred). */
@@ -46,7 +47,7 @@ public final class CwdModuleScope {
      * {@code -m}/{@code --modules} value (nullable / blank = unset). {@code peek} may be null when
      * the engine is unavailable.
      */
-    public static Resolved resolve(Path workingDir, String modulesSpec, ProjectInfo peek) {
+    public static Resolved resolve(Path workingDir, @Nullable String modulesSpec, @Nullable ProjectInfo peek) {
         if (peek == null) {
             return resolve(workingDir, modulesSpec, false, "", null);
         }
@@ -58,7 +59,11 @@ public final class CwdModuleScope {
      * do not construct a full {@link ProjectInfo}).
      */
     public static Resolved resolve(
-            Path workingDir, String modulesSpec, boolean workspaceRoot, String workspaceRootDir, String projectName) {
+            Path workingDir,
+            @Nullable String modulesSpec,
+            boolean workspaceRoot,
+            String workspaceRootDir,
+            String projectName) {
         Path cwd = workingDir.toAbsolutePath().normalize();
         String spec = modulesSpec == null || modulesSpec.isBlank() ? null : modulesSpec;
         if (workspaceRoot) {

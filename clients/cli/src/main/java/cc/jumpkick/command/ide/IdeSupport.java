@@ -26,6 +26,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Client half of the {@code jk ide} model build. The model math — workspace + module parsing,
@@ -45,7 +46,7 @@ public final class IdeSupport {
     public static final class IdeException extends RuntimeException {
         private final int code;
 
-        public IdeException(int code, String message) {
+        public IdeException(int code, @Nullable String message) {
             super(message);
             this.code = code;
         }
@@ -73,7 +74,7 @@ public final class IdeSupport {
      * Like {@link #build(Invocation)}, driving lock + sync under {@code chrome} when present so
      * {@code jk ide} keeps a single {@code IDE} wedge (no nested Sync chip).
      */
-    public static IdeModel build(Invocation in, IdeChrome chrome) throws IOException {
+    public static IdeModel build(Invocation in, @Nullable IdeChrome chrome) throws IOException {
         Path cacheDir = in.value("cache-dir").map(Path::of).orElse(null);
         Path jdksDir = CommonOpts.jdksDirValue(in);
         Path ideConfigDir = in.value("ide-config-dir").map(Path::of).orElse(null);
@@ -93,7 +94,7 @@ public final class IdeSupport {
      * and sync stay silent (the caller already owns the {@code IDE} chip). {@code --print-model}
      * passes {@code null} and is also silent — machine stdout is the wire JSON only.
      */
-    public static IdeWireModel wireModel(Invocation in, IdeChrome chrome) throws IOException {
+    public static IdeWireModel wireModel(Invocation in, @Nullable IdeChrome chrome) throws IOException {
         GlobalOptions global = GlobalOptions.from(in);
         Path cacheDir = in.value("cache-dir").map(Path::of).orElse(null);
         Path jdksDir = CommonOpts.jdksDirValue(in);
@@ -128,7 +129,8 @@ public final class IdeSupport {
     }
 
     /** Rebuild the generator-facing {@link IdeModel} from the wire form. */
-    private static IdeModel reconstruct(IdeWireModel wire, Path cacheDir, Path jdksDir, Path ideConfigDir) {
+    private static IdeModel reconstruct(
+            IdeWireModel wire, @Nullable Path cacheDir, @Nullable Path jdksDir, @Nullable Path ideConfigDir) {
         Path wsRoot = Path.of(wire.wsRoot());
 
         List<Path> dirs = new ArrayList<>(wire.moduleDirs().size());
@@ -226,7 +228,7 @@ public final class IdeSupport {
                 ideConfigDir);
     }
 
-    private static int parseInt(String s) {
+    private static int parseInt(@Nullable String s) {
         try {
             return Integer.parseInt(s);
         } catch (NumberFormatException e) {
@@ -263,7 +265,7 @@ public final class IdeSupport {
     private static final long BEST_EFFORT_SYNC_MS = 30_000L;
 
     private static void hostedBestEffortSync(
-            Path wsRoot, Path cache, Path jdksDir, GlobalOptions global, IdeChrome chrome) {
+            Path wsRoot, Path cache, @Nullable Path jdksDir, GlobalOptions global, @Nullable IdeChrome chrome) {
         long[] fetched = new long[1];
         long[] upToDate = new long[1];
         var session = SessionContext.current();
@@ -318,7 +320,7 @@ public final class IdeSupport {
     }
 
     /** Soft sync failure: a note under the live IDE chip, or a fail wedge when there is no chrome. */
-    private static void syncWarn(IdeChrome chrome, String message) {
+    private static void syncWarn(@Nullable IdeChrome chrome, String message) {
         if (chrome != null) {
             chrome.note(RichText.plain(message));
             return;

@@ -18,6 +18,7 @@ import cc.jumpkick.cli.tui.Wizard;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.NerdFontCaps;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.jdk.DefaultGraalPolicy;
 import cc.jumpkick.jdk.HostPlatform;
@@ -53,6 +54,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk jdk install [<spec>]} — pull a JDK from the JetBrains JDK feed and unpack it into the
@@ -104,12 +106,20 @@ public final class JdkInstallCommand implements CliCommand {
                         + "  (ex: 25, lts, latest, native, temurin-25.0.3)"));
     }
 
+    @Nullable
     String spec;
+
     boolean makeDefault;
     GlobalOptions global;
     boolean showAll;
+
+    @Nullable
     Path jdksDir;
+
+    @Nullable
     URI feedUrl;
+
+    @Nullable
     Path cacheFile;
 
     private static final BuildPlanKey<JdkCatalog> CATALOG = BuildPlanKey.scalar("catalog", JdkCatalog.class);
@@ -181,7 +191,7 @@ public final class JdkInstallCommand implements CliCommand {
                     try {
                         ctx.put(CATALOG, service.fetchCatalog(feedUrl, cacheFile, refresh, ctx::output));
                     } catch (Exception e) {
-                        ctx.error("catalog", e.getMessage());
+                        ctx.error("catalog", Errors.text(e));
                         throw new RuntimeException(e);
                     }
                     ctx.progress(1);
@@ -204,7 +214,7 @@ public final class JdkInstallCommand implements CliCommand {
                         try {
                             chosen = runWizard(catalog, os, arch, showAll);
                         } catch (RuntimeException e) {
-                            ctx.error("wizard", e.getMessage());
+                            ctx.error("wizard", Errors.text(e));
                             throw e;
                         }
                         entry = chosen.entry();
@@ -265,7 +275,7 @@ public final class JdkInstallCommand implements CliCommand {
                     try (InstallView view = new InstallView(entry)) {
                         ctx.put(INSTALLED, service.install(entry, registry, refresh, view));
                     } catch (Exception e) {
-                        ctx.error("install", e.getMessage());
+                        ctx.error("install", Errors.text(e));
                         throw new RuntimeException(e);
                     }
                     ctx.progress(1);
@@ -409,7 +419,7 @@ public final class JdkInstallCommand implements CliCommand {
      * shipped at that major for this host, the flexible selector falls back to the catalog's
      * default-for-major.
      */
-    private String resolveKeyword(String raw, JdkCatalog catalog, String os, String arch) {
+    private @Nullable String resolveKeyword(String raw, JdkCatalog catalog, String os, String arch) {
         if (!JdkKeywords.isKeyword(raw)) return null;
         // Pure keyword→major resolution lives in the engine (shared with the
         // headless path); the CLI adds only the "could not resolve" message.
@@ -483,7 +493,7 @@ public final class JdkInstallCommand implements CliCommand {
     private static final class InstallView implements JdkInstallListener, AutoCloseable {
 
         private final String label;
-        private JdkDownloadBar bar;
+        private @Nullable JdkDownloadBar bar;
 
         InstallView(JdkCatalog.Entry entry) {
             this.label = JdkService.displayLabel(entry);

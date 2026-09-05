@@ -2,6 +2,7 @@
 package cc.jumpkick.cli;
 
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Optional escape hatch a command's user object MAY implement to express help details not captured
@@ -10,11 +11,11 @@ import java.util.List;
  */
 public interface DescribesUsage {
 
-    default String[] longDescription() {
+    default String @Nullable [] longDescription() {
         return null;
     }
 
-    default List<CommandGroup> commandGroups() {
+    default @Nullable List<CommandGroup> commandGroups() {
         return null;
     }
 }

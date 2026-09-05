@@ -19,6 +19,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk engine aot} — list JEP 514 AOT caches under {@code state/aot/} with human-readable
@@ -130,27 +131,27 @@ public final class EngineAotCommand implements CliCommand {
     }
 
     /** Green ● + bold path-colored filename — detail section title under the summary table. */
-    private static String cacheSectionHeader(String fileName) {
+    private static String cacheSectionHeader(@Nullable String fileName) {
         Theme t = Theme.active();
         return Theme.colorize(Glyphs.pulse(), t.success())
                 + " "
                 + Theme.colorize(fileName, t.path().bold());
     }
 
-    private static void detail(String label, String value) {
+    private static void detail(@Nullable String label, @Nullable String value) {
         CliOutput.out(" " + Theme.colorize(Glyphs.bullet(), Theme.active().dim()) + " "
                 + String.format("%-" + LABEL_FIELD + "s", label + ":") + " " + value);
     }
 
-    private static boolean notBlank(String s) {
+    private static boolean notBlank(@Nullable String s) {
         return s != null && !s.isBlank();
     }
 
-    private static String nullToDash(String s) {
+    private static @Nullable String nullToDash(@Nullable String s) {
         return notBlank(s) ? s : "—";
     }
 
-    private static String joinNonBlank(String sep, String... parts) {
+    private static String joinNonBlank(String sep, @Nullable String... parts) {
         StringBuilder sb = new StringBuilder();
         for (String p : parts) {
             if (!notBlank(p)) continue;
@@ -202,7 +203,7 @@ public final class EngineAotCommand implements CliCommand {
         return sb.toString();
     }
 
-    private static void appendJson(StringBuilder sb, String key, String value) {
+    private static void appendJson(StringBuilder sb, @Nullable String key, @Nullable String value) {
         if (value == null || value.isBlank()) return;
         sb.append(",\"").append(key).append("\":").append(Jsonl.quote(value));
     }

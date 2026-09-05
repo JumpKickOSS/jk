@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.terminal;
 
+import org.jspecify.annotations.Nullable;
+
 /**
  * Visible width: CSI/OSC strip plus wcwidth. Control = -1, combining/VS16/ZWJ = 0, CJK/Wide = 2.
  */
@@ -79,7 +81,7 @@ public final class Width {
         return sb.toString();
     }
 
-    public static int columns(String s) {
+    public static int columns(@Nullable String s) {
         if (s == null || s.isEmpty()) {
             return 0;
         }

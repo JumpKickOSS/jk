@@ -3,6 +3,7 @@ package cc.jumpkick.giter8;
 
 import java.util.Locale;
 import java.util.concurrent.ThreadLocalRandom;
+import org.jspecify.annotations.Nullable;
 import org.stringtemplate.v4.AttributeRenderer;
 
 /** Giter8 {@code $name;format="Camel,lower"$} formatters. */
@@ -11,7 +12,7 @@ final class Giter8Formats implements AttributeRenderer<Object> {
     private static final char[] RAND = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789".toCharArray();
 
     @Override
-    public String toString(Object value, String formatString, Locale locale) {
+    public String toString(@Nullable Object value, String formatString, Locale locale) {
         String s = value == null ? "" : value.toString();
         if (formatString == null || formatString.isBlank()) return s;
         for (String part : formatString.split(",")) {

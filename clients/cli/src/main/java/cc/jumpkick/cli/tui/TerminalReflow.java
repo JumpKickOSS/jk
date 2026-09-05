@@ -4,6 +4,7 @@ package cc.jumpkick.cli.tui;
 import java.util.List;
 import java.util.Locale;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Does this terminal rewrap already-painted lines when its width shrinks?
@@ -22,7 +23,7 @@ final class TerminalReflow {
 
     private TerminalReflow() {}
 
-    private static volatile Boolean cached;
+    private static volatile @Nullable Boolean cached;
 
     /** Process-wide answer for the real environment (memoized). */
     static boolean reflows() {

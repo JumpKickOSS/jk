@@ -390,7 +390,7 @@ final class EngineElection {
         }
     }
 
-    private static void deleteQuietly(Path p) {
+    private static void deleteQuietly(@Nullable Path p) {
         try {
             Files.deleteIfExists(p);
         } catch (IOException ignored) {

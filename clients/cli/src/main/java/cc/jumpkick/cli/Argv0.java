@@ -2,6 +2,7 @@
 package cc.jumpkick.cli;
 
 import java.util.Locale;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Invocation basename from argv[0] (Windows {@code .exe} stripped). {@link Jk#main} rewrites
@@ -16,7 +17,7 @@ final class Argv0 {
     private Argv0() {}
 
     /** The invocation basename (e.g. {@code "jk"}, {@code "jkx"}), or null when undeterminable. */
-    static String programName() {
+    static @Nullable String programName() {
         String override = System.getProperty(OVERRIDE_PROPERTY);
         if (override != null) return baseName(override);
         try {
@@ -31,7 +32,7 @@ final class Argv0 {
     }
 
     /** Basename of {@code path}, lowercased for comparison, {@code .exe} stripped. */
-    static String baseName(String path) {
+    static @Nullable String baseName(String path) {
         if (path == null || path.isBlank()) return null;
         String name = path;
         int slash = Math.max(name.lastIndexOf('/'), name.lastIndexOf('\\'));

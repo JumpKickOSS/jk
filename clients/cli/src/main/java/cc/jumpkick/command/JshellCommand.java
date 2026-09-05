@@ -27,6 +27,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk jshell} (alias {@code jk repl}) — open JDK jshell on the module's compile classpath
@@ -167,7 +168,7 @@ public final class JshellCommand implements CliCommand {
     }
 
     /** Prefer {@code $JAVA_HOME/bin/jshell}, then {@code java.home}/bin/jshell. */
-    static Path findJshell() {
+    static @Nullable Path findJshell() {
         List<Path> candidates = new ArrayList<>();
         String env = System.getenv("JAVA_HOME");
         if (env != null && !env.isBlank()) {

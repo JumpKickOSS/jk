@@ -30,6 +30,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk tasks} — Mill-lite task list / show / inspect.
@@ -90,7 +91,7 @@ public final class TasksCommand implements CliCommand {
      * Only meaningful once {@link #action} resolved to one of those two verbs, so {@code positionals}
      * is never empty here.
      */
-    private static String taskName(List<String> positionals) {
+    private static @Nullable String taskName(List<String> positionals) {
         String first = positionals.getFirst().trim().toLowerCase(Locale.ROOT);
         if (!first.equals("show") && !first.equals("inspect")) return first;
         return positionals.size() >= 2 ? positionals.get(1) : null;
@@ -269,7 +270,7 @@ public final class TasksCommand implements CliCommand {
     }
 
     /** Best-effort engine explain; null when engine unavailable (inspect still works offline). */
-    private static ExplainPlan explainBestEffort(Path startDir, Path cache, GlobalOptions global) {
+    private static @Nullable ExplainPlan explainBestEffort(Path startDir, Path cache, GlobalOptions global) {
         try {
             boolean serial = global != null && global.jobsEffective() == 1;
             return EngineClient.explain(
@@ -294,7 +295,7 @@ public final class TasksCommand implements CliCommand {
      * Format forecast hit/miss for a module step. Falls back when the engine is down or the step
      * is not in the forecast (side-effect / SPI-only names).
      */
-    static String cacheLine(ExplainPlan plan, Path modDir, String stepName) {
+    static String cacheLine(@Nullable ExplainPlan plan, Path modDir, String stepName) {
         if (plan == null
                 || plan.hasErrors()
                 || plan.modules() == null

@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Per-task progress with one line per task, like Cargo / uv. Activated by {@code --verbose}.
@@ -57,7 +58,7 @@ public final class VerboseListener implements BuildPlanListener {
     /** Renders a task's place in the run hierarchy as {@code group/task} (a redundant {@code group-}
      * prefix on the task name is dropped, so group {@code compile} + task {@code compile-java} →
      * {@code compile/java}); the bare task name when it has no group. */
-    static String qualified(String step, String group) {
+    static String qualified(String step, @Nullable String group) {
         if (group == null) return step;
         String pw = group;
         String shortName = step.startsWith(pw + "-") ? step.substring(pw.length() + 1) : step;
@@ -65,8 +66,8 @@ public final class VerboseListener implements BuildPlanListener {
     }
 
     @Override
-    public void stepStart(String step, String group, int ticks) {
-        out.println("  " + Theme.colorize("·", Theme.active().normalGray()) + " " + qualified(step, group) + " (ticks: "
+    public void stepStart(String step, @Nullable String group, int ticks) {
+        out.println("  " + Theme.paint("·", Theme.active().normalGray()) + " " + qualified(step, group) + " (ticks: "
                 + ticks + ")");
     }
 
@@ -118,7 +119,7 @@ public final class VerboseListener implements BuildPlanListener {
     }
 
     @Override
-    public void stepFinish(String step, String group, TaskStatus status, Duration duration, Duration waited) {
+    public void stepFinish(String step, @Nullable String group, TaskStatus status, Duration duration, Duration waited) {
         flushOutput(step);
         String glyph =
                 switch (status) {

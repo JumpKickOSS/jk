@@ -7,6 +7,7 @@ import cc.jumpkick.cli.theme.Theme;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Per-line Java stack-trace colorizer (frame / summary / "{@code … N more}"). Conservative
@@ -106,7 +107,7 @@ public final class StackTraceHighlight {
         return out.toString();
     }
 
-    private static String col(String text, Role role) {
+    private static @Nullable String col(String text, Role role) {
         return Theme.colorize(text, SyntaxHighlight.styleFor(role));
     }
 }

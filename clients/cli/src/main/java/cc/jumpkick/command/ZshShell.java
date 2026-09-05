@@ -2,6 +2,7 @@
 package cc.jumpkick.command;
 
 import java.nio.file.Path;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Zsh flavour. Uses {@code precmd} + {@code chpwd} hooks via {@code add-zsh-hook} so directory
@@ -15,7 +16,7 @@ public final class ZshShell implements Shell {
     }
 
     @Override
-    public String setEnv(String key, String value) {
+    public String setEnv(String key, @Nullable String value) {
         return "export " + key + "=" + PosixQuote.quote(value) + "\n";
     }
 

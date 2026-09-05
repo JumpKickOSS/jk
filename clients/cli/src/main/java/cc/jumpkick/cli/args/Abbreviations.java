@@ -4,6 +4,7 @@ package cc.jumpkick.cli.args;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Unique-prefix resolution for commands, subcommands, and long options: exact match wins, else a
@@ -25,7 +26,7 @@ public final class Abbreviations {
      * @param candidates the matching names (sorted) — one for an exact hit, all prefix matches for
      *     an ambiguous one, empty for none
      */
-    public record Result<T>(Kind kind, T value, List<String> candidates) {
+    public record Result<T>(Kind kind, @Nullable T value, List<String> candidates) {
         /** True when a single target was selected (exact or unique prefix). */
         public boolean resolved() {
             return kind == Kind.EXACT || kind == Kind.UNIQUE_PREFIX;

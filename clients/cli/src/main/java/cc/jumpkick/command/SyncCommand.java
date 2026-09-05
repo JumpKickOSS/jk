@@ -29,6 +29,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.function.LongSupplier;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk sync} — align local toolchain + dependency cache with {@code jk-lock.toml}. CAS/auto-lock
@@ -36,12 +37,12 @@ import java.util.function.LongSupplier;
  */
 public final class SyncCommand implements CliCommand {
 
-    private Path cacheDir;
-    private Path jdksDir;
-    private URI repoUrl;
+    private @Nullable Path cacheDir;
+    private @Nullable Path jdksDir;
+    private @Nullable URI repoUrl;
     private boolean offlinePrepare;
     private boolean sources;
-    private GlobalOptions global;
+    private @Nullable GlobalOptions global;
 
     @Override
     public String name() {
@@ -159,7 +160,7 @@ public final class SyncCommand implements CliCommand {
      * so a corrupt lock has to fail the command, not silently drop the pin. Only an unreadable
      * file degrades to null — the freshen step just rewrote the lock, so IO here is transient.
      */
-    private static Lockfile.JdkPin lockJdkPin(Path dir) {
+    private static Lockfile.@Nullable JdkPin lockJdkPin(Path dir) {
         Path lf = LockPaths.lockFile(dir);
         if (!Files.isRegularFile(lf)) return null;
         try {

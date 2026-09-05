@@ -15,6 +15,7 @@ import cc.jumpkick.wire.runtime.progress.ProgressBarMode;
 import java.io.PrintStream;
 import java.time.Duration;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Live console for long-running commands: simple pulse-circle task mode, or plan mode (header
@@ -301,7 +302,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         model.stepRunning(module, stepKey, phase);
     }
 
-    public void stepMessage(String module, String stepKey, String message) {
+    public void stepMessage(@Nullable String module, String stepKey, String message) {
         model.stepMessage(module, stepKey, message);
     }
 
@@ -311,11 +312,11 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         model.notePlainTestTick(module, stepKey, delta);
     }
 
-    public void stepDone(String module, String stepKey, boolean ok) {
+    public void stepDone(@Nullable String module, String stepKey, boolean ok) {
         model.stepDone(module, stepKey, ok);
     }
 
-    public void stepDone(String module, String stepKey, boolean ok, String phase) {
+    public void stepDone(@Nullable String module, String stepKey, boolean ok, String phase) {
         model.stepDone(module, stepKey, ok, phase);
     }
 
@@ -594,7 +595,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         }
     }
 
-    public static String coloredModule(String module) {
+    public static @Nullable String coloredModule(String module) {
         return JkManagerColor.coloredModule(module);
     }
 

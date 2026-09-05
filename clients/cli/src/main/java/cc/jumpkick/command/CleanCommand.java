@@ -29,6 +29,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk clean}: remove per-module {@code target/} ({@code --keep-artifacts} keeps final jars).
@@ -168,7 +169,7 @@ public final class CleanCommand implements CliCommand {
     }
 
     /** Invalidate this project's (+ workspace's) action-cache entries for {@code --force}. */
-    private static int clearProjectActionCache(Path projectDir, Path cacheDirOverride) {
+    private static int clearProjectActionCache(Path projectDir, @Nullable Path cacheDirOverride) {
         if (!Files.isRegularFile(projectDir.resolve(ManifestPaths.MANIFEST))) {
             // Not a project dir: nothing project-scoped to clear; the file clean already ran.
             return 0;

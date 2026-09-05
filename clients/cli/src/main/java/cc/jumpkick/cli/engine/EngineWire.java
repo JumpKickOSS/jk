@@ -22,6 +22,7 @@ import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.jspecify.annotations.Nullable;
 
 /**
  * JSONL I/O against a live engine socket. {@link #exchange} is the one-shot form (write a line,
@@ -92,7 +93,7 @@ public final class EngineWire {
      * memo is only ever wrong in the direction the next connect catches, and {@code stream} retries
      * through the full path when that happens.
      */
-    private static volatile Ensured ENSURED;
+    private static volatile @Nullable Ensured ENSURED;
 
     private record Ensured(EnginePaths.Paths paths, Path socket) {}
 
@@ -147,7 +148,7 @@ public final class EngineWire {
      * {@link EngineProtocol#AUTH} line before returning, so every caller authenticates transparently
      * without needing its own knowledge of the transport.
      */
-    static SocketChannel connect(Path socket) throws IOException {
+    static SocketChannel connect(@Nullable Path socket) throws IOException {
         if (EngineTransport.useLoopbackTcp()) {
             // A killed engine can leave this file empty or half-written. "No port here" means the
             // same thing to every caller as nothing listening, and they all handle IOException —

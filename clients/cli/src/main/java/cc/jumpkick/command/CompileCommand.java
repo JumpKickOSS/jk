@@ -31,6 +31,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk compile} — lock, sync, then compile this project's sources to {@code target/classes}
@@ -110,7 +111,7 @@ public final class CompileCommand implements CliCommand {
         var session = SessionContext.current();
         for (Path moduleDir : List.of(dir)) {
             ConsoleSpec spec = new ConsoleSpec(
-                    "Compile", r -> Theme.colorize("Compiled", Theme.active().focused()), r -> "Compilation failed");
+                    "Compile", r -> Theme.paint("Compiled", Theme.active().focused()), r -> "Compilation failed");
             String target = BuildCommand.buildTarget(moduleDir.resolve(ManifestPaths.MANIFEST), moduleDir);
             BuildPlanResult result;
             try {
@@ -140,7 +141,7 @@ public final class CompileCommand implements CliCommand {
     /** Workspace compile via {@code buildWorkspace}: aggregate TUI matches build/native/image. */
     private int runWorkspaceCompile(
             Path cache,
-            String profileName,
+            @Nullable String profileName,
             GlobalOptions global,
             Path entryDir,
             List<String> modules,

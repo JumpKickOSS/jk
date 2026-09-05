@@ -33,6 +33,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.function.Consumer;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk format} — format Java, Kotlin, Groovy, and Scala (Spotless worker, engine-hosted).
@@ -320,7 +321,7 @@ public final class FormatCommand implements CliCommand {
      * CLI tri-state for a yes/no flag pair: {@code --name} → true, {@code --no-name} → false,
      * otherwise the env var (if set), otherwise {@code null} (fall through to toml / default).
      */
-    private static Boolean triFlag(Invocation in, String on, String off, String envVar) {
+    private static @Nullable Boolean triFlag(Invocation in, String on, String off, String envVar) {
         if (in.isSet(on)) return Boolean.TRUE;
         if (in.isSet(off)) return Boolean.FALSE;
         return envBool(envVar);
@@ -347,7 +348,7 @@ public final class FormatCommand implements CliCommand {
      * ran it locally to a red CI job with no idea why. Without {@code --check},
      * reformatting files is work done, not a problem.
      */
-    static Summary summarize(boolean check, int changed, int clean, int errors, String took) {
+    static Summary summarize(boolean check, int changed, int clean, int errors, @Nullable String took) {
         if (errors > 0) {
             return new Summary(errors + " error" + (errors == 1 ? "" : "s") + " " + took, true);
         }
@@ -375,11 +376,11 @@ public final class FormatCommand implements CliCommand {
     }
 
     /** Read an env var as a Boolean; returns null when absent or empty. */
-    private static String emptyToNull(String s) {
+    private static @Nullable String emptyToNull(String s) {
         return s == null || s.isEmpty() ? null : s;
     }
 
-    private static Boolean envBool(String name) {
+    private static @Nullable Boolean envBool(String name) {
         String v = System.getenv(name);
         if (v == null || v.isBlank()) return null;
         return Boolean.parseBoolean(v.trim());

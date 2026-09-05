@@ -30,6 +30,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 
 /**
  * BSP 2.x JSON-RPC over Content-Length framing (stdio). Wire-only via {@link IdeEngineClient}.
@@ -53,10 +54,10 @@ public final class BspServer {
         return t;
     });
     private final AtomicReference<Future<?>> activeJob = new AtomicReference<>();
-    private final AtomicReference<Path> activeDir = new AtomicReference<>();
+    private final AtomicReference<@Nullable Path> activeDir = new AtomicReference<>();
 
-    private IdeWireModel cachedModel;
-    private ProjectInfo cachedInfo;
+    private @Nullable IdeWireModel cachedModel;
+    private @Nullable ProjectInfo cachedInfo;
 
     public BspServer(IdeEngineClient ide, InputStream in, OutputStream out) {
         this.ide = ide;
@@ -156,7 +157,7 @@ public final class BspServer {
      * Compile / test / run on the worker so the stdio loop can still accept {@code build/cancel}.
      * {@link #awaitActiveJob} is called on shutdown so clients still receive the response.
      */
-    private void scheduleLong(String id, String requestJson, String kind) {
+    private void scheduleLong(@Nullable String id, String requestJson, String kind) {
         if (id == null) return;
         Path moduleDir;
         try {
@@ -441,7 +442,7 @@ public final class BspServer {
         outs.add("{\"uri\":" + q(pathUri(Path.of(d))) + ",\"kind\":" + kind + "}");
     }
 
-    private String compileJson(String requestJson, Path moduleDir) throws IOException {
+    private String compileJson(String requestJson, @Nullable Path moduleDir) throws IOException {
         var outcome = ide.buildModule(moduleDir, null);
         // Unconditional: a green compile can still carry warnings the IDE should show.
         publishDiagnostics(requestJson, outcome.errors(), outcome.warnings());
@@ -463,13 +464,13 @@ public final class BspServer {
      *
      * Omitted data → default suite only (same as bare {@code jk test}).
      */
-    private String testJson(String requestJson, Path moduleDir) throws IOException {
+    private String testJson(String requestJson, @Nullable Path moduleDir) throws IOException {
         var selection = parseTestSelectionData(requestJson);
         var outcome = ide.testModule(moduleDir, null, selection);
         return statusResult(outcome, "test failed");
     }
 
-    private String runJson(Path moduleDir) throws IOException {
+    private String runJson(@Nullable Path moduleDir) throws IOException {
         // The launched app's output travels as build/logMessage notifications — the parent's
         // stdout is the frame channel and must never carry raw program bytes.
         var outcome = ide.runModule(moduleDir, null, line -> {
@@ -561,7 +562,7 @@ public final class BspServer {
         }
     }
 
-    private static List<String> stringList(Object value) {
+    private static List<String> stringList(@Nullable Object value) {
         if (!(value instanceof List<?> list)) return List.of();
         List<String> out = new ArrayList<>(list.size());
         for (Object o : list) {
@@ -589,7 +590,7 @@ public final class BspServer {
      * suffix selects a workspace module; missing/empty → project root (full workspace / single
      * project).
      */
-    private Path resolveTargetModule(String requestJson) throws IOException {
+    private @Nullable Path resolveTargetModule(String requestJson) throws IOException {
         List<String> uris = extractTargetUris(requestJson);
         if (uris.isEmpty()) return null; // whole project / workspace
         // Multiple distinct targets: build the whole workspace rather than silently honoring
@@ -642,7 +643,7 @@ public final class BspServer {
         }
     }
 
-    private synchronized void respond(String id, String resultJson) throws IOException {
+    private synchronized void respond(@Nullable String id, String resultJson) throws IOException {
         if (id == null) return;
         writeMessage("{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"result\":" + resultJson + "}");
     }
@@ -668,7 +669,7 @@ public final class BspServer {
         out.flush();
     }
 
-    private String readMessage() throws IOException {
+    private @Nullable String readMessage() throws IOException {
         int contentLength = -1;
         while (true) {
             String line = in.readLine();
@@ -711,7 +712,7 @@ public final class BspServer {
      * {@code buildTarget/run} whose {@code params.data} carried an {@code id} of its own was
      * answered under the wrong one and the IDE waited out its own request forever.
      */
-    private static String requestId(Object message) {
+    private static @Nullable String requestId(Object message) {
         Object id = MiniJson.get(message, "id");
         return id instanceof String || id instanceof Number ? MiniJson.write(id) : null;
     }

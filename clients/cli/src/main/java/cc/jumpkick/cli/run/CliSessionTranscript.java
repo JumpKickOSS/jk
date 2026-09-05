@@ -21,6 +21,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Incremental CLI session transcript as {@code details.jsonl} under the project run dir
@@ -48,7 +49,7 @@ public final class CliSessionTranscript {
     private static final String ENV = "JK_CLI_DETAILS";
 
     /** Active session for dual-write; cleared on finish. */
-    private static volatile CliSessionTranscript active;
+    private static volatile @Nullable CliSessionTranscript active;
 
     static {
         // The wire pump announces every engine job-start; whichever transcript is active at that
@@ -69,7 +70,7 @@ public final class CliSessionTranscript {
     private final ByteArrayOutputStream pending = new ByteArrayOutputStream(4096);
 
     private Path file;
-    private OutputStream out;
+    private @Nullable OutputStream out;
     private long lastFlushMs;
     private String wedgeSummary;
     private boolean closed;
@@ -87,7 +88,7 @@ public final class CliSessionTranscript {
         this.lastFlushMs = System.currentTimeMillis();
     }
 
-    public static CliSessionTranscript active() {
+    public static @Nullable CliSessionTranscript active() {
         return active;
     }
 
@@ -95,7 +96,7 @@ public final class CliSessionTranscript {
      * Open a transcript session for {@code projectDir}. Returns {@code null} when disabled or the
      * project path is unusable. Writes a {@code session-start} line into the buffer immediately.
      */
-    public static CliSessionTranscript open(Path projectDir, String command, List<String> argv) {
+    public static @Nullable CliSessionTranscript open(Path projectDir, String command, List<String> argv) {
         if (projectDir == null || command == null || command.isBlank()) return null;
         if (disabled()) return null;
         try {
@@ -111,7 +112,7 @@ public final class CliSessionTranscript {
         }
     }
 
-    public static CliSessionTranscript open(Path projectDir, String command) {
+    public static @Nullable CliSessionTranscript open(Path projectDir, String command) {
         return open(projectDir, command, List.of(command));
     }
 
@@ -135,7 +136,7 @@ public final class CliSessionTranscript {
      * {@code runs/<buildNumber>/}) and flushes buffered events. Emits a {@code job} metadata line
      * with jid / buildNumber / ETA when known.
      */
-    public void bindJob(long jid, long buildNumber, String detailsPath, long etaMs) {
+    public void bindJob(long jid, long buildNumber, @Nullable String detailsPath, long etaMs) {
         synchronized (lock) {
             if (closed) return;
             this.jid = jid;
@@ -364,7 +365,7 @@ public final class CliSessionTranscript {
         }
     }
 
-    public static int finish(CliSessionTranscript session, int exit, boolean verbose) {
+    public static int finish(@Nullable CliSessionTranscript session, int exit, boolean verbose) {
         if (session == null) return exit;
         session.finish(exit).ifPresent(p -> {
             if (verbose) {

@@ -14,6 +14,7 @@ import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk jobs} — recent and running engine jobs via the journal RPC (same backend as the web UI).
@@ -203,7 +204,7 @@ public final class ActivityCommand implements CliCommand {
         return Math.min(100, whole);
     }
 
-    static String formatCoord(String coord, String dir, Theme t) {
+    static @Nullable String formatCoord(String coord, String dir, Theme t) {
         String raw = HistoryCommand.label(coord, dir);
         if (!t.isAnsi()) return raw;
         int i = raw.indexOf(':');
@@ -215,7 +216,7 @@ public final class ActivityCommand implements CliCommand {
                 + Theme.colorize(raw.substring(i + 1), t.coordName());
     }
 
-    private static String muted(String s, Theme t) {
+    private static @Nullable String muted(String s, Theme t) {
         return t.isAnsi() ? Theme.colorize(s, t.normalGray()) : s;
     }
 

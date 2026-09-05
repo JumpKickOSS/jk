@@ -3,6 +3,7 @@ package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.terminal.Style;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A small "chip" / "pill" label — black text on a gray background, used for {@code jk tree}'s scope
@@ -19,7 +20,7 @@ public final class Badge {
     private Badge() {}
 
     /** The shared gray scope/index chip. */
-    public static String pill(String label, boolean pillCaps) {
+    public static @Nullable String pill(String label, boolean pillCaps) {
         Theme t = Theme.active();
         return pill(label, pillCaps, t.scopeBadge(), t.gray());
     }
@@ -29,7 +30,7 @@ public final class Badge {
      * caps are painted with {@code caps} — pass a style whose <em>foreground</em> matches the chip's
      * background so they read as rounded edges.
      */
-    public static String pill(String label, boolean pillCaps, Style body, Style caps) {
+    public static @Nullable String pill(String label, boolean pillCaps, Style body, Style caps) {
         if (pillCaps) {
             return Theme.colorize(Glyphs.PILL_LEFT_NERD, caps)
                     + Theme.colorize(label, body)

@@ -34,6 +34,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk image} — build an OCI image (full build plan + Jib worker, engine-hosted). This
@@ -72,13 +73,27 @@ public final class ImageCommand implements CliCommand {
         return opts;
     }
 
+    @Nullable
     String mainClass;
+
+    @Nullable
     String registry;
+
+    @Nullable
     String tag;
+
+    @Nullable
     String tarballArg;
+
+    @Nullable
     String dockerExecutableArg;
+
+    @Nullable
     Path cacheDirOverride;
+
+    @Nullable
     Path jdksDir;
+
     BuildOptions buildOpts;
     GlobalOptions global;
 
@@ -208,7 +223,12 @@ public final class ImageCommand implements CliCommand {
      * The framework appends {@code took Xs} automatically. Theming happens here, client-side — the
      * engine only ever supplies the plain field values.
      */
-    static String imageSuccessTail(String tarball, String name, String version, String daemonExe, String ref) {
+    static String imageSuccessTail(
+            @Nullable String tarball,
+            @Nullable String name,
+            @Nullable String version,
+            @Nullable String daemonExe,
+            @Nullable String ref) {
         if (tarball != null) {
             return "Wrote OCI tarball " + Theme.colorize(tarball, Theme.active().path());
         }

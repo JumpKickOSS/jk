@@ -52,10 +52,13 @@ object NullMarking {
     val unenforcedModules: Map<String, String> =
         mapOf(
             "clients/cli" to
-                "TODO: 1,056 findings across 11 production packages when every package is marked, 682 of them in " +
-                    "cc.jumpkick.command, 103 in cc.jumpkick.cli.tui, 97 in cc.jumpkick.cli.run; the count is a floor, " +
-                    "because the compile daemon ran out of heap on the last files of that single pass. Landable " +
-                    "package by package, the way server/engine was: mark a package, fix its findings with the " +
-                    "plugin applied as scaffolding, revert the scaffolding, land, repeat."
+                "TODO: 200 findings left of the 1,076 that marking every production package first reported — 700 " +
+                    "of them were in cc.jumpkick.command, 103 in cc.jumpkick.cli.tui, 97 in cc.jumpkick.cli.run. " +
+                    "Measured on a daemon with -Xmx8g: the default heap dies partway through that pass, which is " +
+                    "why the earlier 1,056 was recorded as a floor. Every package is marked and CliCommand.run is " +
+                    "a known initializer, which is what a command's parsed fields needed. The tail is per-call-" +
+                    "site judgement: a boolean guard the checker cannot connect to the value it guards, and helper " +
+                    "command bodies whose constructor does not set the fields their caller assigns. Landable the " +
+                    "way server/engine was: fix with the plugin applied as scaffolding, revert it, land, repeat."
         )
 }

@@ -4,6 +4,7 @@ package cc.jumpkick.command.ide;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The IDE-agnostic, resolved view of a workspace, computed engine-side (thin client — the model
@@ -38,6 +39,6 @@ public record IdeModel(
         Map<Path, SdkRef> sdkRefs,
         SdkRef defaultSdk,
         List<IntellijSdkRegistrar.SdkEntry> sdkEntries,
-        Path cacheDir,
-        Path jdksDir,
-        Path ideConfigDir) {}
+        @Nullable Path cacheDir,
+        @Nullable Path jdksDir,
+        @Nullable Path ideConfigDir) {}

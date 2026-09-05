@@ -18,6 +18,7 @@ import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Thin RPC over the engine's build journal and metrics store: flat JSONL reply lines collected up
@@ -53,7 +54,7 @@ public final class EngineJournalReads {
      * Running aggregate rows ({@code metrics-entry} flat JSONL) for {@code dir}'s project tiers
      * plus the global tiers; {@code null} dir asks for every row. Spawns the engine if needed.
      */
-    public static List<String> metrics(EnginePaths.Paths paths, String dir) throws IOException {
+    public static List<String> metrics(EnginePaths.Paths paths, @Nullable String dir) throws IOException {
         return streamHistory(paths, new MetricsRequest(dir).encode());
     }
 

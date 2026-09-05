@@ -24,6 +24,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk import <file>} — convert a Maven or Gradle build to {@code jk.toml} (engine-hosted
@@ -161,7 +162,7 @@ public final class ImportCommand implements CliCommand {
         }
     }
 
-    private static Path autoDetectSource(Path dir) {
+    private static @Nullable Path autoDetectSource(Path dir) {
         for (String name : AUTO_DETECT_ORDER) {
             Path c = dir.resolve(name);
             if (Files.isRegularFile(c)) return c;

@@ -15,6 +15,7 @@ import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
 import java.io.PrintStream;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.LongSupplier;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Single-line animated spinner for indeterminate CLI work. A solid circle glyph ({@value
@@ -113,7 +114,7 @@ public final class Spinner implements AutoCloseable {
     private final Object lock = new Object();
     private final boolean silent;
     /** Non-null when painting as a CommandWedge chip ({@link #showWedge}). */
-    private final String wedgeCommand;
+    private final @Nullable String wedgeCommand;
 
     private final NerdFontCaps nerdFont;
 
@@ -164,7 +165,7 @@ public final class Spinner implements AutoCloseable {
         return new Spinner(out, message, command, true);
     }
 
-    private Spinner(PrintStream out, String message, String wedgeCommand, boolean wedge) {
+    private Spinner(@Nullable PrintStream out, String message, @Nullable String wedgeCommand, boolean wedge) {
         // PlainAscii.wrap is identity under ANSI; under --no-ansi rewrites …/•/● in messages.
         this.out = PlainAscii.wrap(out);
         this.message = message == null ? "" : message;
@@ -277,11 +278,11 @@ public final class Spinner implements AutoCloseable {
     }
 
     /** {@code "jk: * Status > Message - working..."} (open spinner omits command when null). */
-    static String plainWorkingLine(String command, String message) {
+    static String plainWorkingLine(@Nullable String command, String message) {
         return JkWedge.plainStatusLine(command, message, JkWedge.PlainTail.WORKING);
     }
 
-    static String plainDoneLine(String command, String message) {
+    static String plainDoneLine(@Nullable String command, String message) {
         return JkWedge.plainStatusLine(command, message, JkWedge.PlainTail.DONE);
     }
 

@@ -5,6 +5,7 @@ import cc.jumpkick.cli.theme.JkDarkTheme;
 import cc.jumpkick.cli.theme.Theme;
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Sliding ring buffer of recent process / step output for a live plan region. Hidden by default;
@@ -175,7 +176,7 @@ public final class OutputWindow {
      * Color is {@link Theme#darkGray()} darkened by 35%. Plain/no-ansi themes still return the
      * Unicode form; {@link PlainAscii} rewrites braille and arrows at print time.
      */
-    public static String ruleLine(int cols) {
+    public static @Nullable String ruleLine(int cols) {
         int n = Math.max(1, cols);
         // Match live plan rows: keep the last column free so DEC auto-wrap does not push the
         // rule onto the next physical row.

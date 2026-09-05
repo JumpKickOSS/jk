@@ -21,9 +21,9 @@ public final class EngineRequests {
     public record TestRequest(
             Path entryDir,
             Path cache,
-            Path jdksDir,
+            @Nullable Path jdksDir,
             int workers,
-            String profile,
+            @Nullable String profile,
             boolean verbose,
             boolean offline,
             boolean force,
@@ -70,14 +70,14 @@ public final class EngineRequests {
     public record SingleBuildRequest(
             Path entryDir,
             Path cache,
-            Path jdksDir,
+            @Nullable Path jdksDir,
             int workers,
-            String profile,
+            @Nullable String profile,
             boolean skipTests,
             boolean verbose,
             boolean offline,
             boolean force,
-            String variant,
+            @Nullable String variant,
             Map<String, String> clientEnv,
             /** Client-resolved GraalVM home for an always-native module; null when none links. */
             @Nullable Path graalHome) {
@@ -86,15 +86,15 @@ public final class EngineRequests {
         public SingleBuildRequest(
                 Path entryDir,
                 Path cache,
-                Path jdksDir,
+                @Nullable Path jdksDir,
                 int workers,
-                String profile,
+                @Nullable String profile,
                 boolean skipTests,
                 boolean verbose,
                 boolean offline,
                 boolean force,
                 String variant,
-                Map<String, String> clientEnv) {
+                @Nullable Map<String, String> clientEnv) {
             this(
                     entryDir, cache, jdksDir, workers, profile, skipTests, verbose, offline, force, variant, clientEnv,
                     null);
@@ -102,11 +102,11 @@ public final class EngineRequests {
 
         /** Default variant, no client env. */
         public SingleBuildRequest(
-                Path entryDir,
+                @Nullable Path entryDir,
                 Path cache,
-                Path jdksDir,
+                @Nullable Path jdksDir,
                 int workers,
-                String profile,
+                @Nullable String profile,
                 boolean skipTests,
                 boolean verbose,
                 boolean offline,
@@ -120,8 +120,8 @@ public final class EngineRequests {
             Path cache,
             int workers,
             boolean skipTests,
-            String profile,
-            Path jdksDir,
+            @Nullable String profile,
+            @Nullable Path jdksDir,
             boolean serial,
             boolean parallelTests,
             boolean verbose,
@@ -133,8 +133,8 @@ public final class EngineRequests {
                 Path cache,
                 int workers,
                 boolean skipTests,
-                String profile,
-                Path jdksDir,
+                @Nullable String profile,
+                @Nullable Path jdksDir,
                 boolean serial,
                 boolean parallelTests,
                 boolean verbose) {
@@ -158,8 +158,8 @@ public final class EngineRequests {
                 Path cache,
                 int workers,
                 boolean skipTests,
-                String profile,
-                Path jdksDir,
+                @Nullable String profile,
+                @Nullable Path jdksDir,
                 boolean serial,
                 boolean parallelTests,
                 boolean verbose,
@@ -193,7 +193,7 @@ public final class EngineRequests {
             List<String> features,
             boolean noDefaultFeatures,
             boolean sources,
-            URI repoUrl,
+            @Nullable URI repoUrl,
             boolean offline,
             boolean force,
             boolean verbose,
@@ -205,7 +205,7 @@ public final class EngineRequests {
                 List<String> features,
                 boolean noDefaultFeatures,
                 boolean sources,
-                URI repoUrl,
+                @Nullable URI repoUrl,
                 boolean offline,
                 boolean force,
                 boolean verbose) {
@@ -219,11 +219,11 @@ public final class EngineRequests {
             Path cache,
             List<String> features,
             boolean noDefaultFeatures,
-            URI repoUrl,
+            @Nullable URI repoUrl,
             boolean offline,
             boolean force,
             boolean verbose,
-            String platform) {
+            @Nullable String platform) {
         /** No platform override. */
         public UpdateRequest(
                 Path entryDir,
@@ -242,8 +242,8 @@ public final class EngineRequests {
     public record SyncRequest(
             Path entryDir,
             Path cache,
-            Path jdksDir,
-            URI repoUrl,
+            @Nullable Path jdksDir,
+            @Nullable URI repoUrl,
             boolean sources,
             boolean offline,
             boolean force,
@@ -273,7 +273,7 @@ public final class EngineRequests {
             onPackage(dir, name, version);
         }
 
-        default void onModuleFinish(String dir, BuildPlanResult result, LockCounts counts) {}
+        default void onModuleFinish(@Nullable String dir, BuildPlanResult result, LockCounts counts) {}
     }
 
     /** A finished lock/update module's written-lockfile counts ({@code -1} when the plan failed before writing). */
@@ -288,21 +288,27 @@ public final class EngineRequests {
     public record LockOutcome(boolean success, int exitCode, List<String> errors, int refreshed) {}
 
     /** Everything an engine-hosted {@code jk outdated} needs — mirrors {@code OutdatedCommand}'s local fields. */
-    public record OutdatedRequest(Path entryDir, Path cache, URI repoUrl, boolean offline, boolean force) {}
+    public record OutdatedRequest(
+            Path entryDir, Path cache, @Nullable URI repoUrl, boolean offline, boolean force) {}
 
     // ---- hosted worker commands -------------------------------------------------------------------
 
     /** Everything an engine-hosted {@code jk audit} needs — mirrors {@code AuditCommand}'s local fields. */
     public record AuditRequest(
-            Path entryDir, Path cache, String severity, URI osvBatchUrl, URI osvVulnsUrl, boolean offline) {}
+            Path entryDir,
+            Path cache,
+            String severity,
+            @Nullable URI osvBatchUrl,
+            @Nullable URI osvVulnsUrl,
+            boolean offline) {}
 
     /** Everything an engine-hosted {@code jk format} needs — resolved styles, not raw flags. */
     public record FormatRequest(
             Path entryDir,
             Path cache,
             boolean check,
-            String javaStyle,
-            String kotlinStyle,
+            @Nullable String javaStyle,
+            @Nullable String kotlinStyle,
             boolean optimizeImports,
             boolean importOrder,
             boolean removeUnusedImports,
@@ -320,14 +326,14 @@ public final class EngineRequests {
     public record PublishRequest(
             Path entryDir,
             Path cache,
-            URI repoUrl,
-            String region,
-            String endpoint,
-            Path jarPath,
+            @Nullable URI repoUrl,
+            @Nullable String region,
+            @Nullable String endpoint,
+            @Nullable Path jarPath,
             boolean allowSnapshot,
             boolean dryRun,
-            Path keyFile,
-            String gpgPassphrase,
+            @Nullable Path keyFile,
+            @Nullable String gpgPassphrase,
             boolean sigstore,
             boolean slsa,
             boolean sbom,
@@ -342,12 +348,12 @@ public final class EngineRequests {
     public record ImageRequest(
             Path entryDir,
             Path cache,
-            Path jdksDir,
-            String mainClass,
-            String registry,
-            String tag,
-            String tarballArg,
-            String dockerExecutable,
+            @Nullable Path jdksDir,
+            @Nullable String mainClass,
+            @Nullable String registry,
+            @Nullable String tag,
+            @Nullable String tarballArg,
+            @Nullable String dockerExecutable,
             boolean skipTests,
             boolean offline,
             boolean force,
@@ -361,11 +367,22 @@ public final class EngineRequests {
      * counts.
      */
     public record ImageSummary(
-            TestSummary testResult, String ref, String tarball, String name, String version, String daemonExe) {}
+            @Nullable TestSummary testResult,
+            String ref,
+            String tarball,
+            String name,
+            String version,
+            String daemonExe) {}
 
     /** Everything an engine-hosted {@code jk import} needs — pre-flighted absolute paths. */
     public record ImportRequest(
-            Path source, Path out, Path baseDir, Path tmpDir, boolean force, Path report, Path cache) {}
+            Path source,
+            Path out,
+            @Nullable Path baseDir,
+            Path tmpDir,
+            boolean force,
+            @Nullable Path report,
+            Path cache) {}
 
     /** A hosted {@code jk import} run's summary, decoded from the terminal plan-finish. */
     public record ImportOutcome(BuildPlanResult result, int exitCode, int warnings, String error, String diag) {}
@@ -376,7 +393,7 @@ public final class EngineRequests {
     public record CompileRequest(
             Path entryDir,
             Path cache,
-            String profile,
+            @Nullable String profile,
             boolean offline,
             boolean force,
             boolean verbose,
@@ -384,7 +401,7 @@ public final class EngineRequests {
 
         /** No module selection (entry dir / whole graph). */
         public CompileRequest(
-                Path entryDir, Path cache, String profile, boolean offline, boolean force, boolean verbose) {
+                Path entryDir, Path cache, @Nullable String profile, boolean offline, boolean force, boolean verbose) {
             this(entryDir, cache, profile, offline, force, verbose, List.of());
         }
     }
@@ -393,9 +410,9 @@ public final class EngineRequests {
     public record TrainRequest(
             Path entryDir,
             Path cache,
-            Path jdksDir,
-            Path graalHome,
-            String profile,
+            @Nullable Path jdksDir,
+            @Nullable Path graalHome,
+            @Nullable String profile,
             boolean force,
             boolean skipTests,
             boolean offline,
@@ -410,15 +427,15 @@ public final class EngineRequests {
     public record NativeRequest(
             Path entryDir,
             Path cache,
-            Path jdksDir,
-            String mainClass,
+            @Nullable Path jdksDir,
+            @Nullable String mainClass,
             boolean skipTests,
             boolean offline,
             boolean force,
             boolean verbose,
             List<String> extraArgs,
             Map<Path, Path> graalByDir,
-            /** When non-null/non-empty: only these module dirs (+ their build prereqs) run. */
+            /** When non-null/non-empty: only these module dirs (+ their build prereqs) run.@Nullable  */
             List<Path> selectedModuleDirs) {}
 
     /**
@@ -430,7 +447,7 @@ public final class EngineRequests {
             Path entryDir,
             Path cache,
             Path m2Dir,
-            Path graalHome,
+            @Nullable Path graalHome,
             boolean skipTests,
             boolean offline,
             boolean force,
@@ -441,17 +458,17 @@ public final class EngineRequests {
     public record NewProjectRequest(
             String name,
             String parentDir,
-            String group,
-            String lang,
+            @Nullable String group,
+            @Nullable String lang,
             String layout,
-            String template,
+            @Nullable String template,
             boolean executable,
-            String jdk,
+            @Nullable String jdk,
             int javaRelease,
             boolean assembly,
             boolean nativeImage,
             boolean plugin,
-            String kotlinModule,
+            @Nullable String kotlinModule,
             List<String> deps,
             boolean sample,
             boolean standalone,
@@ -508,7 +525,8 @@ public final class EngineRequests {
     }
 
     /** A hosted git fetch's outcome: the plan result plus the materialized checkout + sha (null on failure). */
-    public record GitFetchOutcome(BuildPlanResult result, Path checkout, String sha) {}
+    public record GitFetchOutcome(
+            BuildPlanResult result, @Nullable Path checkout, String sha) {}
 
     // ---- hosted long-tail commands ----------------------------------------------------------------
 
@@ -518,7 +536,12 @@ public final class EngineRequests {
      * {@code null}); {@code repoUrl} overrides Maven Central (may be {@code null}).
      */
     public record ToolResolveRequest(
-            String coord, List<String> with, String bin, String mainClass, URI repoUrl, Path cache) {}
+            String coord,
+            List<String> with,
+            String bin,
+            @Nullable String mainClass,
+            @Nullable URI repoUrl,
+            Path cache) {}
 
     /**
      * A hosted tool resolution's outcome: the plan result plus the pinned {@code g:a:v} the engine
@@ -537,7 +560,7 @@ public final class EngineRequests {
             Path script,
             Path cache,
             Path stateDir,
-            URI repoUrl,
+            @Nullable URI repoUrl,
             boolean forceRecompile,
             List<String> with) {
         public ScriptPrepareRequest(
@@ -554,9 +577,9 @@ public final class EngineRequests {
             BuildPlanResult result,
             String mainClass,
             List<Path> classpath,
-            Path classesDir,
-            Path kotlincBin,
-            Path stdlib) {}
+            @Nullable Path classesDir,
+            @Nullable Path kotlincBin,
+            @Nullable Path stdlib) {}
 
     /**
      * Everything an engine-hosted cache maintenance op needs ({@code op} = {@code prune}/{@code
@@ -564,7 +587,12 @@ public final class EngineRequests {
      * clean}, {@code jk clean --force}). Ops ignore the fields they don't use; {@code projectRoot}
      * is {@code null} for everything but {@code clear}.
      */
-    public record CacheMaintRequest(String op, Path cache, boolean dryRun, boolean includeJkTmp, Path projectRoot) {}
+    public record CacheMaintRequest(
+            String op,
+            Path cache,
+            boolean dryRun,
+            boolean includeJkTmp,
+            @Nullable Path projectRoot) {}
 
     /** A hosted cache maintenance op's summary, decoded from the terminal plan-finish ({@code -1} = n/a). */
     public record CacheMaintSummary(long files, long bytes) {}

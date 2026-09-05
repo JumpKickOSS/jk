@@ -46,6 +46,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk explain} — forecast of what a build would run (cache hit/miss per module/stage). Prefer
@@ -107,7 +108,7 @@ public final class ExplainCommand implements CliCommand {
     }
 
     /** The {@code --graph} format ({@code dot} / {@code mermaid}), or null when the flag is absent. */
-    private static String graphFormat(Invocation in) {
+    private static @Nullable String graphFormat(Invocation in) {
         return in.value("graph").filter(s -> !s.isBlank()).orElse(null);
     }
 
@@ -422,7 +423,8 @@ public final class ExplainCommand implements CliCommand {
     }
 
     /** One stage token: {@code ✓ Compile} (green) or {@code □ Test ~28 tests} (blue + dim detail). */
-    private static String renderStageToken(BuildStage stage, boolean dirty, String detail, Theme t, boolean ansi) {
+    private static @Nullable String renderStageToken(
+            BuildStage stage, boolean dirty, @Nullable String detail, Theme t, boolean ansi) {
         String glyph = dirty ? Glyphs.PENDING : Glyphs.CHECK;
         String label = stage.displayName();
         if (!ansi) {
@@ -439,7 +441,7 @@ public final class ExplainCommand implements CliCommand {
      * Short detail next to a dirty stage — source/test counts for Compile/Test; nothing for
      * package/native/image (the stage name is enough).
      */
-    private static String stageDetail(BuildStage stage, boolean dirty, TaskForecast.Module m) {
+    private static @Nullable String stageDetail(BuildStage stage, boolean dirty, TaskForecast.Module m) {
         if (!dirty) return null;
         return switch (stage) {
             case COMPILE -> {
@@ -583,18 +585,18 @@ public final class ExplainCommand implements CliCommand {
         return table.render(RenderContext.current().withAnsi(ansi));
     }
 
-    private static String boldNum(int n, Theme t, boolean ansi) {
+    private static @Nullable String boldNum(int n, Theme t, boolean ansi) {
         String s = String.format("%,d", n);
         return ansi ? Theme.colorize(s, t.brightWhite().bold()) : s;
     }
 
-    private static String colorRebuild(int n, Theme t, boolean ansi) {
+    private static @Nullable String colorRebuild(int n, Theme t, boolean ansi) {
         String s = String.format("%,d", n);
         if (!ansi) return s;
         return n > 0 ? Theme.colorize(s, t.blue()) : Theme.colorize(s, t.darkGray());
     }
 
-    private static String colorDelta(int pct, Theme t, boolean ansi) {
+    private static @Nullable String colorDelta(int pct, Theme t, boolean ansi) {
         String s = pct + "%";
         // All plan percentages are bold white; only the build-time estimate stays yellow.
         return ansi ? Theme.colorize(s, t.brightWhite().bold()) : s;
@@ -714,7 +716,7 @@ public final class ExplainCommand implements CliCommand {
      * {@code jk explain --graph dot|mermaid} — module dependency DAG (engine-hosted).
      */
     private static int emitModuleGraph(
-            Path startDir, String format, String modulesSpec, String affectedSince, String outputPath)
+            Path startDir, String format, @Nullable String modulesSpec, String affectedSince, String outputPath)
             throws Exception {
         ModuleGraphAck ack;
         try {

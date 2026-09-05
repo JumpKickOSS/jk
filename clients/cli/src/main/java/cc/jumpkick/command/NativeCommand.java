@@ -44,6 +44,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk native} — GraalVM native-image for opted-in modules. Pre-fails when {@code
@@ -84,17 +85,28 @@ public final class NativeCommand implements CliCommand {
                 "native-image-args", Arity.ZERO_OR_MORE, "Extra arguments forwarded to\nnative-image (after --)."));
     }
 
+    @Nullable
     String mainClass;
+
+    @Nullable
     Path cacheDirOverride;
+
+    @Nullable
     Path jdksDir;
+
     List<String> extra = new ArrayList<>();
     BuildOptions buildOpts;
     GlobalOptions global;
+
+    @Nullable
     Path graalHome;
     /** Optional {@code -m}/{@code --affected}/{@code --affected-since} filter; null = whole workspace. */
+    @Nullable
     String modulesSpec;
 
+    @Nullable
     String affectedSince;
+
     boolean affectedWip;
     List<String> scopeHintNames = List.of();
 
@@ -167,7 +179,7 @@ public final class NativeCommand implements CliCommand {
 
     /** The engine request for {@code entryDir}, with the client-resolved GraalVM homes attached. */
     private EngineRequests.NativeRequest hostedRequest(
-            Path entryDir, Path cache, Map<Path, Path> graalHomes, List<Path> selectedModuleDirs) {
+            Path entryDir, Path cache, Map<Path, Path> graalHomes, @Nullable List<Path> selectedModuleDirs) {
         var session = SessionContext.current();
         return new EngineRequests.NativeRequest(
                 entryDir,
@@ -257,7 +269,8 @@ public final class NativeCommand implements CliCommand {
      * {@code [native]} so workspace plugin harness mains do not each start a native-image run.
      * When none declare the table, every module with a unique main is eligible.
      */
-    static Map<Path, Path> graalHomesForModules(List<Path> moduleDirs, Path graalHome, String mainOverride)
+    static Map<Path, Path> graalHomesForModules(
+            List<Path> moduleDirs, @Nullable Path graalHome, @Nullable String mainOverride)
             throws AmbiguousMainException {
         Map<Path, Path> withTable = new HashMap<>();
         Map<Path, Path> withMain = new HashMap<>();

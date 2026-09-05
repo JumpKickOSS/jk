@@ -44,6 +44,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk tool install [<target>]} — install a catalog name, Maven coord, script/jar, project dir,
@@ -101,20 +102,45 @@ public final class ToolInstallCommand implements CliCommand {
     }
 
     String coord;
+
+    @Nullable
     String binName;
+
+    @Nullable
     String mainClass;
+
     List<String> aliasDeps = List.of();
     List<String> aliasJavaOptions = List.of();
+
+    @Nullable
     String groupFlag;
+
+    @Nullable
     String nameFlag;
+
+    @Nullable
     String verFlag;
+
     boolean skipTests;
+
+    @Nullable
     Path cacheDirOverride;
+
+    @Nullable
     Path stateDirOverride;
+
+    @Nullable
     Path binDirOverride;
+
+    @Nullable
     Path libDirOverride;
+
+    @Nullable
     Path m2DirOverride;
+
+    @Nullable
     URI repoUrl;
+
     GlobalOptions global;
 
     @Override
@@ -278,7 +304,7 @@ public final class ToolInstallCommand implements CliCommand {
      * JBang {@code alias@catalog} install: trust-gate the catalog, then install the alias's
      * script-ref (coordinate refs rewrite {@code coord} and return null to fall through).
      */
-    private Integer resolveJBangAliasForInstall() throws IOException, InterruptedException {
+    private @Nullable Integer resolveJBangAliasForInstall() throws IOException, InterruptedException {
         String aliasName = coord.substring(0, coord.indexOf('@'));
         Path stateDirForTrust = stateDirOverride != null ? stateDirOverride : JkDirs.state();
         // Trust decides BEFORE any fetch — same rule as tool run: no request leaves the machine
@@ -434,7 +460,7 @@ public final class ToolInstallCommand implements CliCommand {
      * tool mid-flight — so installing ahead of time makes that build a cache hit rather than
      * seeding a second copy the engine will not look at.
      */
-    private Integer installBuildTool(String target, boolean noDiscover) throws IOException {
+    private @Nullable Integer installBuildTool(String target, boolean noDiscover) throws IOException {
         int colon = target.indexOf(':');
         String slug = colon < 0 ? target : target.substring(0, colon);
         String version = colon < 0 ? BuildTool.LATEST : target.substring(colon + 1);
@@ -492,7 +518,7 @@ public final class ToolInstallCommand implements CliCommand {
         PathUtil.copyTree(from, to);
     }
 
-    private static Integer rejectInvalidLauncherName(String name) {
+    private static @Nullable Integer rejectInvalidLauncherName(String name) {
         var error = LauncherName.validationError(name);
         if (error.isEmpty()) return null;
         CommandWedge.printFail("Tool", error.get());

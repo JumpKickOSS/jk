@@ -201,7 +201,7 @@ public final class EngineMain {
         }
     }
 
-    private static void deleteQuietly(Path p) {
+    private static void deleteQuietly(@Nullable Path p) {
         try {
             Files.deleteIfExists(p);
         } catch (IOException ignored) {

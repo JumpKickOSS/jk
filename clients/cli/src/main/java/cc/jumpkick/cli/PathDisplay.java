@@ -6,6 +6,7 @@ import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.util.DirKeys;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Renders filesystem paths for human-facing output. Virtually every path jk prints should be
@@ -22,12 +23,12 @@ public final class PathDisplay {
     private PathDisplay() {}
 
     /** {@link #of(Path, Path)} relativized and painted in the theme's {@code path} color. */
-    public static String styled(Path target, Path workingDir) {
+    public static @Nullable String styled(Path target, Path workingDir) {
         return Theme.colorize(of(target, workingDir), Theme.active().path());
     }
 
     /** {@link #of(Path)} relativized and painted in the theme's {@code path} color. */
-    public static String styled(Path target) {
+    public static @Nullable String styled(Path target) {
         return Theme.colorize(of(target), Theme.active().path());
     }
 
@@ -36,7 +37,7 @@ public final class PathDisplay {
      * relativizing — for error/context messages whose path is the working directory itself
      * (relativizing it to "." would be useless).
      */
-    public static String styledRaw(Object pathLike) {
+    public static @Nullable String styledRaw(@Nullable Object pathLike) {
         return Theme.colorize(String.valueOf(pathLike), Theme.active().path());
     }
 
@@ -59,7 +60,7 @@ public final class PathDisplay {
      * @param workingDir the command's working directory (see {@link GlobalOptions#workingDir()}); may
      *     be {@code null} to use the JVM cwd
      */
-    public static String of(Path target, Path workingDir) {
+    public static String of(Path target, @Nullable Path workingDir) {
         Path abs = target.toAbsolutePath().normalize();
         Path anchor = closestAnchor(abs, workingDir);
         // DirKeys rewrites only real Windows paths — a POSIX file named a\b displays verbatim.
@@ -69,7 +70,7 @@ public final class PathDisplay {
     }
 
     /** The deepest ancestor of {@code abs} among the working dir, workspace root, and git root. */
-    private static Path closestAnchor(Path abs, Path workingDir) {
+    private static @Nullable Path closestAnchor(Path abs, @Nullable Path workingDir) {
         Path best = null;
         for (Path anchor : new Path[] {cwd(workingDir), workspaceRoot(abs), gitRoot(abs)}) {
             if (anchor != null
@@ -85,11 +86,11 @@ public final class PathDisplay {
         return (workingDir != null ? workingDir : Path.of("")).toAbsolutePath().normalize();
     }
 
-    private static Path workspaceRoot(Path abs) {
+    private static @Nullable Path workspaceRoot(Path abs) {
         return WorkspaceScan.findEnclosingWorkspace(abs).orElse(null);
     }
 
-    private static Path gitRoot(Path abs) {
+    private static @Nullable Path gitRoot(Path abs) {
         for (Path dir = abs; dir != null; dir = dir.getParent()) {
             if (Files.exists(dir.resolve(".git"))) return dir;
         }

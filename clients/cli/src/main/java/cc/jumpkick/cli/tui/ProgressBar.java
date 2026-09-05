@@ -5,6 +5,7 @@ import cc.jumpkick.cli.theme.Gradient;
 import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.terminal.Style;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Embeddable segmented progress bar string renderer (no cursor/terminal state). Filled blocks use a
@@ -34,7 +35,7 @@ public final class ProgressBar {
         this(Theme.active().progressGradient());
     }
 
-    private static volatile ProgressBar shared;
+    private static volatile @Nullable ProgressBar shared;
 
     /**
      * Cached default-gradient instance. The constructor precomputes a {@value #SEGMENTS}-style

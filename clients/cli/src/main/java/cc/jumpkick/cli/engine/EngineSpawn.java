@@ -37,6 +37,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Spawn, takeover, and AOT-cache selection for the resident engine. Mode, artifact, and
@@ -222,7 +223,11 @@ public final class EngineSpawn {
      * HotSpot/C2 JVM (AOT is only stable there), and the AOT cache path. A refusal marker is not
      * carried here: it expires, so it is read when the mode is chosen and nowhere else.
      */
-    record EngineTarget(EngineArtifact engine, Path javaHome, boolean hotspot, Path aotCache) {}
+    record EngineTarget(
+            EngineArtifact engine,
+            @Nullable Path javaHome,
+            boolean hotspot,
+            @Nullable Path aotCache) {}
 
     /** A host JDK for the engine: home, vendor, and version (from its {@code release} file). */
     record EngineJdk(Path home, JdkVendor vendor, String version) {}
@@ -718,7 +723,7 @@ public final class EngineSpawn {
     }
 
     /** Outcome of waiting for a freshly spawned engine — lets the ladder tell a crash from a slow boot. */
-    private record StartResult(Outcome outcome, EngineProbe.Handshake handshake) {
+    private record StartResult(Outcome outcome, EngineProbe.@Nullable Handshake handshake) {
         enum Outcome {
             UP,
             CHILD_EXITED,
@@ -775,7 +780,7 @@ public final class EngineSpawn {
         }
     }
 
-    private static void deleteQuietly(Path p) {
+    private static void deleteQuietly(@Nullable Path p) {
         if (p == null) return;
         try {
             Files.deleteIfExists(p);
@@ -785,7 +790,7 @@ public final class EngineSpawn {
     }
 
     /** Remember that AOT can't apply for this cache's key, so later starts skip straight to NONE. */
-    private static void writeNoAotMarker(Path aotCache) {
+    private static void writeNoAotMarker(@Nullable Path aotCache) {
         if (aotCache == null) return;
         try {
             Files.writeString(AotCacheFiles.marker(aotCache), "");

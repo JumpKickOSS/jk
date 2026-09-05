@@ -31,6 +31,7 @@ import java.util.jar.JarFile;
 import java.util.jar.JarInputStream;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk build --aot-cache}: extract the app under {@code target/aot-cache/} and train a JVM
@@ -259,7 +260,7 @@ final class AotCachePackage {
     }
 
     /** {@code <target>/aot-cache} for a module, or null when there is none. */
-    private static Path findCacheDir(Path projectDir) {
+    private static @Nullable Path findCacheDir(Path projectDir) {
         // jk's output directory is BuildLayout.TARGET; `build/` is Gradle's and can only appear in an
         // imported tree. Probing it first on every successful build was a second ~100%-miss stat.
         // One probe, then the legacy one only if the first misses.

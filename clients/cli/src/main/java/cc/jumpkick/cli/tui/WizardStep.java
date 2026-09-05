@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Predicate;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Sealed step model. Each variant is an immutable record built via a small mutable builder
@@ -103,7 +104,7 @@ public sealed interface WizardStep
             String prompt,
             List<Choice> choices,
             Function<Answers, List<Choice>> choicesFn,
-            String defaultChoice,
+            @Nullable String defaultChoice,
             Orientation orientation,
             String customPlaceholder,
             Predicate<Answers> shouldRun)
@@ -166,12 +167,12 @@ public sealed interface WizardStep
                 return this;
             }
 
-            public Builder choice(String id, String label, String hint) {
+            public Builder choice(@Nullable String id, @Nullable String label, String hint) {
                 this.choices.add(new Choice(id, label, hint));
                 return this;
             }
 
-            public Builder choice(String id, String label, Function<Answers, String> hintFn) {
+            public Builder choice(@Nullable String id, @Nullable String label, Function<Answers, String> hintFn) {
                 this.choices.add(new Choice(id, label, hintFn));
                 return this;
             }
@@ -196,7 +197,7 @@ public sealed interface WizardStep
                 return this;
             }
 
-            public Builder defaultChoice(String id) {
+            public Builder defaultChoice(@Nullable String id) {
                 this.defaultChoice = id;
                 return this;
             }
@@ -282,12 +283,12 @@ public sealed interface WizardStep
                 return this;
             }
 
-            public Builder choice(String id, String label, String hint) {
+            public Builder choice(@Nullable String id, @Nullable String label, String hint) {
                 this.choices.add(new Choice(id, label, hint));
                 return this;
             }
 
-            public Builder choice(String id, String label, Function<Answers, String> hintFn) {
+            public Builder choice(@Nullable String id, @Nullable String label, Function<Answers, String> hintFn) {
                 this.choices.add(new Choice(id, label, hintFn));
                 return this;
             }

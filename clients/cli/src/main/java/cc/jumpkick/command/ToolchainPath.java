@@ -5,6 +5,7 @@ import cc.jumpkick.host.SearchPath;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Surgical {@code PATH} edits for {@code jk hook-env}: swap {@code JAVA_HOME/bin} and {@code
@@ -21,7 +22,11 @@ public final class ToolchainPath {
      * toGraalHome/bin}. Pass null {@code to*} homes to strip only (session leave / deactivate).
      */
     public static String swap(
-            String currentPath, String fromJavaHome, String fromGraalHome, String toJavaHome, String toGraalHome) {
+            String currentPath,
+            @Nullable String fromJavaHome,
+            @Nullable String fromGraalHome,
+            @Nullable String toJavaHome,
+            @Nullable String toGraalHome) {
         String path = currentPath == null ? "" : currentPath;
         path = removeHomeBin(fromJavaHome, path);
         path = removeHomeBin(fromGraalHome, path);
@@ -40,7 +45,7 @@ public final class ToolchainPath {
         return path;
     }
 
-    static String binOf(String home) {
+    static @Nullable String binOf(@Nullable String home) {
         if (home == null || home.isBlank()) return null;
         return Path.of(home).resolve("bin").toString();
     }
@@ -51,7 +56,7 @@ public final class ToolchainPath {
      * from {@link #binOf}. MSYS-style spellings ({@code /c/Users/...}) parse driveless and do
      * <em>not</em> match — those entries survive the swap.
      */
-    private static String removeHomeBin(String home, String path) {
+    private static String removeHomeBin(@Nullable String home, String path) {
         String bin = binOf(home);
         if (bin == null) return path;
         Path binPath = Path.of(bin);

@@ -13,6 +13,7 @@ import cc.jumpkick.cli.tui.Interactivity;
 import cc.jumpkick.cli.tui.Spinner;
 import cc.jumpkick.cli.tui.Wizard;
 import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.jdk.DefaultGraalPolicy;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.IntellijJdkDir;
@@ -46,6 +47,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk jdk uninstall <source>/<spec>} — source-qualified single-target removal. Without
@@ -124,7 +126,11 @@ public final class JdkUninstallCommand implements CliCommand {
 
     String argument;
     boolean assumeYes;
+
+    @Nullable
     Path jdksDir;
+
+    @Nullable
     GlobalOptions global;
 
     private static final BuildPlanKey<List<JdkHit>> VICTIMS = BuildPlanKey.list("victims", JdkHit.class);
@@ -297,7 +303,7 @@ public final class JdkUninstallCommand implements CliCommand {
                             uninstallOne(v, registry);
                             ctx.progress(1);
                         } catch (IOException e) {
-                            ctx.error("delete", e.getMessage());
+                            ctx.error("delete", Errors.text(e));
                             throw new RuntimeException(e);
                         }
                     }
@@ -330,7 +336,7 @@ public final class JdkUninstallCommand implements CliCommand {
                                         .toList(),
                                 m -> ctx.warn("pointer", m));
                     } catch (IOException e) {
-                        ctx.error("reconcile", e.getMessage());
+                        ctx.error("reconcile", Errors.text(e));
                         throw new RuntimeException(e);
                     }
                     ctx.progress(1);
@@ -399,7 +405,7 @@ public final class JdkUninstallCommand implements CliCommand {
      * keeping the JLine terminal open across this call (see {@link #runWizard}) — once the terminal
      * closes, the underlying {@code System.in} FD goes with it.
      */
-    private boolean confirmDeletion(JdkHit victim, TerminalSession terminal) {
+    private boolean confirmDeletion(JdkHit victim, @Nullable TerminalSession terminal) {
         if (assumeYes) return true;
         String warn = Theme.colorize(Glyphs.BANG, Theme.active().warning());
         String question = warn + " Are you sure you want to delete " + target(victim) + "?";

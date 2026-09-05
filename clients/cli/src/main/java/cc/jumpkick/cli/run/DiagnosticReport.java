@@ -51,12 +51,13 @@ public final class DiagnosticReport {
     // --- public API (ConsoleSpec / listeners) --------------------------------
 
     /** Full multi-line error report for a plan diagnostic. Empty when suppressed (test-failure). */
-    public static String renderError(String step, String code, String message) {
+    public static String renderError(String step, @Nullable String code, @Nullable String message) {
         return renderError(step, code, message, null);
     }
 
     /** Like {@link #renderError(String, String, String)} with a {@code group:artifact} module. */
-    public static String renderError(String step, String code, String message, String module) {
+    public static String renderError(
+            String step, @Nullable String code, @Nullable String message, @Nullable String module) {
         return renderError(step, code, message, module, true);
     }
 
@@ -64,7 +65,8 @@ public final class DiagnosticReport {
      * {@code showHeader} false omits the phase pill — used for later compiler errors in the same
      * module so they stack under the first report (dashboard parity).
      */
-    public static String renderError(String step, String code, String message, String module, boolean showHeader) {
+    public static String renderError(
+            String step, @Nullable String code, @Nullable String message, @Nullable String module, boolean showHeader) {
         if ("test-failure".equals(code)) return "";
         if ("verbatim".equals(code)) return message == null ? "" : message;
         String title = titleFor(step, code);
@@ -79,16 +81,16 @@ public final class DiagnosticReport {
      * Collapse key for consecutive compiler reports that share a pill. {@code null} means the
      * report always carries its own header (non-compiler diagnostics).
      */
-    public static String compilerHeaderKey(String step, String code, String module) {
+    public static @Nullable String compilerHeaderKey(String step, String code, @Nullable String module) {
         if (!ConsoleSpec.isCompilerCode(code)) return null;
         return titleFor(step, code) + "\0" + (module == null ? "" : module);
     }
 
     /** Tracks whether the next compiler diagnostic should repeat the phase pill. */
     public static final class CompilerHeaderRun {
-        private String prev;
+        private @Nullable String prev;
 
-        public boolean show(String step, String code, String module) {
+        public boolean show(String step, String code, @Nullable String module) {
             String key = compilerHeaderKey(step, code, module);
             boolean show = key == null || !key.equals(prev);
             prev = key;
@@ -97,12 +99,13 @@ public final class DiagnosticReport {
     }
 
     /** Warning report: yellow pill + rail (compiler warnings keep their body paint). */
-    public static String renderWarning(String step, String code, String message) {
+    public static String renderWarning(String step, @Nullable String code, @Nullable String message) {
         return renderWarning(step, code, message, null);
     }
 
     /** Like {@link #renderWarning(String, String, String)} with a {@code group:artifact} module. */
-    public static String renderWarning(String step, String code, String message, String module) {
+    public static String renderWarning(
+            String step, @Nullable String code, @Nullable String message, @Nullable String module) {
         String title = titleFor(step, code);
         if (ConsoleSpec.isCompilerCode(code)) {
             return header(title, Role.WARNING, module)
@@ -116,7 +119,7 @@ public final class DiagnosticReport {
      * Human title for the pill: title-cased task name ({@code parse-build} → {@code Parse Build}).
      * Falls back to the BuildStage display name when the step is blank / composite.
      */
-    public static String titleFor(String step, String code) {
+    public static String titleFor(String step, @Nullable String code) {
         String key = stepKey(step);
         if (key.isEmpty() || "composite".equals(key) || "workspace".equals(key)) {
             if (code != null && !code.isBlank() && !"workspace".equals(code)) {
@@ -157,7 +160,7 @@ public final class DiagnosticReport {
         return header(title, role, null);
     }
 
-    static String header(String title, Role role, String module) {
+    static String header(String title, Role role, @Nullable String module) {
         Theme t = Theme.active();
         String word = role == Role.ERROR ? "Failure" : "Warning";
         String in = module == null || module.isBlank() ? "" : " in " + module;
@@ -273,7 +276,7 @@ public final class DiagnosticReport {
         return out.toString();
     }
 
-    private static String paintPathToken(String tok, Theme t) {
+    private static @Nullable String paintPathToken(String tok, Theme t) {
         String display = relativizePathToken(tok);
         return Theme.colorize(display, t.path());
     }

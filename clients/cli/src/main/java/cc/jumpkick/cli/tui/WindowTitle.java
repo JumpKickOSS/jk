@@ -35,6 +35,7 @@ final class WindowTitle {
     private String base = "";
 
     /** Last glyph written; null until the first emit. Package-private: the OSC test rewinds it. */
+    @Nullable
     String lastGlyph;
 
     /** Wall time of the last glyph swap; reset by {@link #set}. Package-private for the same test. */
@@ -43,7 +44,7 @@ final class WindowTitle {
     /** True after {@link #set} until {@link #clear}. */
     private boolean active;
 
-    WindowTitle(PrintStream out, boolean animate) {
+    WindowTitle(@Nullable PrintStream out, boolean animate) {
         this.out = out;
         this.animate = animate;
     }

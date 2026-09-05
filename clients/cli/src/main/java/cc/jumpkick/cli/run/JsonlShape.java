@@ -12,6 +12,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Stable wire format for plan events as one-JSON-object-per-line text. Shared by {@link
@@ -115,7 +116,7 @@ public final class JsonlShape {
      * Engine job binding — jid (cancel), buildNumber (run dir), ETA, details path. Written into
      * details.jsonl so agents can diagnose a run without other files.
      */
-    public static String jobMeta(long jid, long buildNumber, long etaMs, String detailsPath) {
+    public static String jobMeta(long jid, long buildNumber, long etaMs, @Nullable String detailsPath) {
         StringBuilder sb = open("job");
         if (jid > 0) sb.append(",\"jid\":").append(jid);
         if (buildNumber > 0) sb.append(",\"buildNumber\":").append(buildNumber);
@@ -158,7 +159,7 @@ public final class JsonlShape {
     }
 
     /** Command session finished — exit code + wall duration (+ optional summary fields). */
-    public static String sessionFinish(int exit, long durationMs, String wedge, List<String> modules) {
+    public static String sessionFinish(int exit, long durationMs, @Nullable String wedge, List<String> modules) {
         StringBuilder sb = open("session-finish")
                 .append(",\"exit\":")
                 .append(exit)
