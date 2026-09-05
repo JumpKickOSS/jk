@@ -207,6 +207,8 @@ public final class PluginProcess {
             boolean closeStdinImmediately,
             long idleTimeoutMs)
             throws IOException, InterruptedException {
+        // Every worker forks through here, so this is where it loses the engine's terminal.
+        pb.command(WorkerSession.detached(pb.command()));
         Process process = JobWorkers.start(pb);
         final AtomicLong lastLineAt = new AtomicLong(System.currentTimeMillis());
         Thread watchdog = null;
