@@ -673,10 +673,13 @@ fun rootTextTree(): ConfigurableFileTree = fileTree(layout.projectDirectory) {
     // another branch's source. Recognised by what it is (a directory carrying its own `.git`)
     // rather than by name, because a name list is exactly what let one through.
     val nested = HashMap<File, Boolean>()
+    // CI installs jk into a home inside the checkout, and a home is a store: fetched artifacts,
+    // metadata indexes and other people's prose, none of it this tree's. Pruned by what it is.
+    val jkHome = System.getenv("JK_HOME")?.let { File(it).absoluteFile.normalize() }
     fun inNestedCheckout(f: File): Boolean {
         var d: File? = f.parentFile
         while (d != null && d != treeRootFile) {
-            if (nested.getOrPut(d) { File(d, ".git").exists() }) return true
+            if (nested.getOrPut(d) { File(d, ".git").exists() || d == jkHome || d.name == ".ci-jk-home" }) return true
             d = d.parentFile
         }
         return false

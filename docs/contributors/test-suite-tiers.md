@@ -68,10 +68,12 @@ full tier.
 
 ### Budget and escalation
 
-**8 minutes of wall clock**, enforced as `timeout-minutes` on the CI step. Measured at 1m28s,
-1m31s and 1m54s over three clean runs (`./gradlew clean` then `curatedIntegrationTest
---no-build-cache`, 20 classes / 122 tests, 24-core Linux box shared with other builds), so the
-budget is headroom for a slower runner, not the current cost.
+**8 minutes of wall clock**, enforced as `timeout-minutes` on the CI step that runs the lane. The
+step before it compiles the tree (`testClasses`) outside the budget: a cold four-core runner spends
+about six minutes on that compile, and a budget that had to absorb it would say nothing about the
+lane. Measured at 1m28s, 1m31s and 1m54s over three clean runs (`./gradlew clean` then
+`curatedIntegrationTest --no-build-cache`, 20 classes / 122 tests, 24-core Linux box shared with
+other builds), so the budget is headroom for a slower runner, not the current cost.
 
 Over budget, the answer is to **drop or split an entry**, never to raise the number: the lane
 exists because the full tier is what a branch gate cannot afford, and a lane that grows toward the

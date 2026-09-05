@@ -71,6 +71,12 @@ jobs:
           java-version: '25'
           cache: gradle
 
+      # The budget below is for the lane, not for compiling the tree: a cold runner spends six
+      # minutes on the compile alone, so it happens here, unbudgeted, and the budgeted step starts
+      # with every test class on disk.
+      - name: Compile
+        run: ./gradlew testClasses --no-daemon
+
       # Budget: 8 minutes wall clock for this step. Over it, drop or split an entry — raising the
       # number turns the lane back into the full tier the branch gate cannot afford. The elapsed
       # seconds land in the run summary so the budget is checked against a measurement.

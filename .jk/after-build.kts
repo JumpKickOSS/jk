@@ -152,6 +152,9 @@ val moduleDirs: List<Path> = children(root)
  */
 val treeFiles: List<Path> by lazy {
     val skipDirs = setOf("build", "target", ".git", ".gradle", ".firebase", "node_modules", ".board", ".kotlin")
+    // CI installs jk into a home inside the checkout, and a home is a store: fetched artifacts,
+    // metadata indexes and other people's prose, none of it this tree's. Pruned by what it is.
+    val jkHome = System.getenv("JK_HOME")?.let { Path.of(it).toAbsolutePath().normalize() }
     val skipExt = listOf(
         ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".jar", ".zip", ".xz", ".gz",
         ".class", ".aot", ".woff", ".woff2", ".ttf", ".pdf", ".so", ".dylib", ".exe")
@@ -167,6 +170,8 @@ val treeFiles: List<Path> by lazy {
         // `.git`) rather than by name, because a name list is exactly what let one through.
         override fun preVisitDirectory(d: Path, a: BasicFileAttributes): FileVisitResult =
             if (d != root && Files.exists(d.resolve(".git"))) {
+                FileVisitResult.SKIP_SUBTREE
+            } else if (d != root && (d.toAbsolutePath().normalize() == jkHome || d.fileName.toString() == ".ci-jk-home")) {
                 FileVisitResult.SKIP_SUBTREE
             } else if (d != root && d.fileName.toString() in skipDirs && !rel(d).contains("/src/")) {
                 FileVisitResult.SKIP_SUBTREE

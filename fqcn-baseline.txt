@@ -59,10 +59,6 @@
 # from stays `javax.tools.Diagnostic.Kind`.
     1  server/engine/src/main/java/cc/jumpkick/compile/CompileResult.java
 
-# This class nests a `Path` record for reverse-graph steps — its own
-# javadoc says so — so the project directory stays `java.nio.file.Path`.
-    1  shared/core/src/main/java/cc/jumpkick/resolver/Provenance.java
-
 
 ## unreachable-by-the-formatter
 # 111 of the tree's 2,088 Java files fail OpenRewrite's own print-idempotence check: its Javadoc
@@ -142,7 +138,6 @@
     1  server/engine/src/main/java/cc/jumpkick/giter8/Giter8Render.java
     1  server/engine/src/main/java/cc/jumpkick/giter8/package-info.java
     5  server/engine/src/test/java/cc/jumpkick/engine/http/McpHandlerTest.java
-    1  server/engine/src/test/java/cc/jumpkick/engine/jobs/JobEnvelopeTest.java
     1  server/engine/src/test/java/cc/jumpkick/engine/plugin/JvmOptionsTest.java
     1  server/engine/src/test/java/cc/jumpkick/engine/plugin/PluginProcessTest.java
     2  server/engine/src/test/java/cc/jumpkick/engine/runtime/CacheInventoryOpsTest.java
