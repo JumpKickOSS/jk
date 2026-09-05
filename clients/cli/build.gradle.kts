@@ -511,6 +511,7 @@ tasks.withType<Test>().matching { it.name in CuratedIntegration.integrationTasks
         val testJkHome = layout.buildDirectory.dir("test-jk-home").get().asFile.absolutePath
         environment("JK_HOME", testJkHome)
         environment("JK_JDKS_DIR", "$testJkHome/jdks")
+        environment("JK_JDK_PROBES", "java-home,jk")
         val store = file("$testJkHome/store")
         listOf(
                         ":kotlin-compiler",

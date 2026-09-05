@@ -69,4 +69,7 @@ env = [
   # files for its own explicit prune request, and eats them first. Explicit `jk cache prune`
   # requests are unaffected by this switch.
   { JK_AUTO_PRUNE = "false" },
+  # The JDK probe chain is the machine's unless narrowed. A jdk verb under test would otherwise
+  # list, default to, write pointers at or uninstall the developer's own sdkman/mise/OS installs.
+  { JK_JDK_PROBES = "java-home,jk" },
 ]

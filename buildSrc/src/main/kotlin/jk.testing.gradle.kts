@@ -24,6 +24,10 @@ tasks.withType<Test>().configureEach {
     val testJkHome = layout.buildDirectory.dir("test-jk-home").get().asFile.absolutePath
     environment("JK_HOME", testJkHome)
     environment("JK_JDKS_DIR", "$testJkHome/jdks")
+    // The probe chain is the machine's unless narrowed: sdkman, mise, IntelliJ, /usr/lib/jvm. A jdk
+    // verb under test would list, default to, write pointers at or uninstall the developer's own
+    // installs. Only the JDK this build runs on and jk's own root are visible to a test.
+    environment("JK_JDK_PROBES", "java-home,jk")
     // M2Dirs honours JK_M2_LOCAL so mock-Maven tests cannot overwrite ~/.m2.
     val testM2 = layout.buildDirectory.dir("test-m2").get().asFile.absolutePath
     environment("JK_M2_LOCAL", testM2)

@@ -1,9 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.discovery;
 
+import cc.jumpkick.util.JkDirs;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.ServiceLoader;
+import java.util.Set;
+import java.util.stream.Collectors;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The default {@link LocalToolProbe} chain, in the order callers should consult them.
@@ -12,12 +17,27 @@ import java.util.ServiceLoader;
  *
  * <p>Order rationale: explicit user intent first ({@code env}), then the version managers in rough
  * popularity order for JVM developers, then OS-level system installs as a last resort.
+ *
+ * <p>{@value #ALLOWLIST_ENV} narrows the chain to a comma-separated list of probe names ({@code
+ * java-home,jk}, …), read through {@link JkDirs#env} so a test can set it for one JVM or one test.
+ * The test tiers set it so a suite never sees the version managers' or the OS's installs on the
+ * developer's machine, only the JDK the build itself runs on and jk's own root. Unset means the
+ * full chain. A list that names no real probe leaves the chain empty rather than quietly widening
+ * to everything.
  */
 public final class Probes {
+
+    /** Names the probes a process may consult; unset is every probe. */
+    public static final String ALLOWLIST_ENV = "JK_JDK_PROBES";
 
     private Probes() {}
 
     public static List<LocalToolProbe> defaultChain() {
+        return restrict(fullChain(), JkDirs.env(ALLOWLIST_ENV));
+    }
+
+    /** The built-in order plus ServiceLoader extensions, before any allowlist applies. */
+    static List<LocalToolProbe> fullChain() {
         List<LocalToolProbe> chain = new ArrayList<>();
         chain.add(new EnvVarProbe());
         chain.add(new JkProbe()); // jk-owned installs under the shared JDK root
@@ -34,5 +54,18 @@ public final class Probes {
             chain.add(extension);
         }
         return List.copyOf(chain);
+    }
+
+    /**
+     * {@code chain} without every probe whose {@link LocalToolProbe#name()} the allowlist does not
+     * carry, in the chain's own order. A blank or absent allowlist keeps the whole chain.
+     */
+    static List<LocalToolProbe> restrict(List<LocalToolProbe> chain, @Nullable String allowlist) {
+        if (allowlist == null || allowlist.isBlank()) return chain;
+        Set<String> allowed = Arrays.stream(allowlist.split(","))
+                .map(String::trim)
+                .filter(name -> !name.isEmpty())
+                .collect(Collectors.toSet());
+        return chain.stream().filter(probe -> allowed.contains(probe.name())).toList();
     }
 }
