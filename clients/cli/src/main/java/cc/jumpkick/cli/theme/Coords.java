@@ -4,6 +4,7 @@ package cc.jumpkick.cli.theme;
 import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.terminal.Style;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Themed rendering of Maven coordinates ({@code group:artifact:version}) and library short-names.
@@ -79,7 +80,7 @@ public final class Coords {
     }
 
     /** An artifact short-name / library on its own — bright-cyan. */
-    public static String shortName(String name) {
+    public static String shortName(@Nullable String name) {
         return RichText.styled(name, "bright-cyan").render();
     }
 

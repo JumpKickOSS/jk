@@ -14,6 +14,7 @@ import cc.jumpkick.wire.protocol.CatalogReadAck;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /** {@code jk library list} — print every library known to the catalog. */
 public final class LibraryListCommand implements CliCommand {
@@ -41,7 +42,7 @@ public final class LibraryListCommand implements CliCommand {
                 Opt.flag("Group libraries under a heading per source layer.", "--group-by-layer"));
     }
 
-    private String layerFilter;
+    private @Nullable String layerFilter;
     private boolean showLayer;
     private boolean groupByLayer;
 

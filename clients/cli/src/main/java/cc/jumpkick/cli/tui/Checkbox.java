@@ -3,6 +3,7 @@ package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.theme.Theme;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /** A checked/unchecked box with a label and optional hint. */
 public final class Checkbox implements Widget {
@@ -12,7 +13,7 @@ public final class Checkbox implements Widget {
     private final boolean focused;
     private final String hint;
 
-    public Checkbox(String label, boolean checked, boolean focused, String hint) {
+    public Checkbox(@Nullable String label, boolean checked, boolean focused, String hint) {
         this.label = label == null ? "" : label;
         this.checked = checked;
         this.focused = focused;

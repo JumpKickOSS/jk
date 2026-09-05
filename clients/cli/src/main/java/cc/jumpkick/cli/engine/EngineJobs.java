@@ -31,6 +31,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The engine's job-shaped build verbs: encode a request, send it, and replay the event stream the
@@ -191,9 +192,9 @@ final class EngineJobs {
      */
     static BuildPlanResult runSingleBuild(
             EnginePaths.Paths paths,
-            EngineRequests.SingleBuildRequest req,
-            Function<List<Task>, BuildPlanListener> listenerFactory,
-            TestSummary[] testResultOut,
+            EngineRequests.@Nullable SingleBuildRequest req,
+            @Nullable Function<List<Task>, BuildPlanListener> listenerFactory,
+            TestSummary @Nullable [] testResultOut,
             String[] buildOutcomeOut)
             throws IOException {
         Session session = SessionContext.current();
@@ -389,8 +390,8 @@ final class EngineJobs {
     private static BuildPlanResult singlePlan(
             EnginePaths.Paths paths,
             String requestLine,
-            Function<List<Task>, BuildPlanListener> listenerFactory,
-            TestSummary[] testResultOut,
+            @Nullable Function<List<Task>, BuildPlanListener> listenerFactory,
+            TestSummary @Nullable [] testResultOut,
             String[] buildOutcomeOut)
             throws IOException {
         return EngineWire.stream(

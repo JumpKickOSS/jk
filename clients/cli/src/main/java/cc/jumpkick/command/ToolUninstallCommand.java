@@ -21,6 +21,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 
 /** {@code jk tool uninstall <name>} — remove an installed CLI tool. */
 public final class ToolUninstallCommand implements CliCommand {
@@ -98,7 +99,7 @@ public final class ToolUninstallCommand implements CliCommand {
      * <p>A bare {@code kotlin} is deliberately not accepted: there may be several versions
      * installed, and guessing which one to delete is not a choice this command should make.
      */
-    private Integer uninstallBuildTool(String target) throws IOException {
+    private @Nullable Integer uninstallBuildTool(String target) throws IOException {
         int colon = target.indexOf(':');
         if (colon < 0) return null;
         Optional<BuildTool> tool = BuildTool.bySlug(target.substring(0, colon));

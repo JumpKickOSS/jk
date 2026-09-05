@@ -34,6 +34,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Project run plan (not a {@code CliCommand}): build then exec. {@link ToolRunCommand}
@@ -48,12 +49,18 @@ import java.util.List;
 public final class RunCommand {
 
     List<String> positional = new ArrayList<>();
+
+    @Nullable
     Path cacheDirOverride;
+
+    @Nullable
     Path jdksDir;
+
     BuildOptions buildOpts;
     GlobalOptions global;
 
     /** Package-private: {@code jk tool run <dir>} delegates a jk-project directory here. */
+    @Nullable
     int runProject(Path projectDir, List<String> appArgs) throws IOException, InterruptedException {
         // Engine computes the exec plan (artifact preference, classpath, main-class scan)
         // after the build. Workspace roots build the whole graph, then pick a module to run.
@@ -282,7 +289,7 @@ public final class RunCommand {
         return cachedPlan;
     }
 
-    private ExecPlan cachedPlan;
+    private @Nullable ExecPlan cachedPlan;
 
     /**
      * The build succeeded but the engine's main-class scan couldn't name an entry point — {@code
@@ -365,7 +372,7 @@ public final class RunCommand {
      * streamed is the program: from that line on, stdout belongs to the child, so a parser treats
      * {@code workspace-finish} as end-of-stream for {@code jk run}.
      */
-    private WorkspaceResult runWorkspaceLive(WorkspaceRequest request, List<String> scopeNames) {
+    private @Nullable WorkspaceResult runWorkspaceLive(WorkspaceRequest request, List<String> scopeNames) {
         var view = JkManager.plan(CliOutput.stdout(), "Run", true);
         view.setPlanCoord(BuildCommand.projectGaLabel(request.entryDir()));
         ModuleScopeHint.apply(view, "building", scopeNames);

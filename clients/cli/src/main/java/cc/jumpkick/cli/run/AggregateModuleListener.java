@@ -10,6 +10,7 @@ import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskStatus;
 import java.time.Duration;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Feeds one workspace module's step/tree events into the shared {@link AggregateContext}'s {@link
@@ -109,7 +110,7 @@ public final class AggregateModuleListener implements BuildPlanListener {
         }
     }
 
-    private String paintOutputLine(String line) {
+    private @Nullable String paintOutputLine(String line) {
         if (TestFailureHighlight.isHeader(line)) {
             // A second header must not reset() away an un-flushed first block.
             flushBufferedFailure();

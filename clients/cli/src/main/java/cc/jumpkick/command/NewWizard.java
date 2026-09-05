@@ -21,6 +21,7 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 /** Wizard construction and flag/name helpers for jk new. */
 @NullMarked
@@ -28,7 +29,7 @@ public final class NewWizard {
 
     private NewWizard() {}
 
-    static Optional<String> wizardPresetName(Path directoryArg, Path cwd) {
+    static Optional<String> wizardPresetName(@Nullable Path directoryArg, Path cwd) {
         if (directoryArg == null) return Optional.empty();
         if (isCurrentDirArg(directoryArg)) {
             var leaf = cwd.getFileName();
@@ -46,7 +47,7 @@ public final class NewWizard {
      * Final target directory, given the positional arg, the cwd, and the resolved project name.
      * Package-private for unit testing.
      */
-    static Path resolveTarget(Path directoryArg, Path cwd, String projectName) {
+    static Path resolveTarget(@Nullable Path directoryArg, Path cwd, String projectName) {
         if (directoryArg != null) {
             if (isCurrentDirArg(directoryArg)) return cwd;
             return cwd.resolve(directoryArg).normalize();
@@ -76,7 +77,7 @@ public final class NewWizard {
         };
     }
 
-    static List<String> parseDeps(String csv) {
+    static List<String> parseDeps(@Nullable String csv) {
         if (csv == null || csv.isBlank()) {
             return List.of();
         }
@@ -111,9 +112,9 @@ public final class NewWizard {
 
     static Wizard buildWizard(
             List<NewJdkCandidate> candidates,
-            JdkCatalog catalog,
+            @Nullable JdkCatalog catalog,
             String groupGuess,
-            NewCommand.ParentInfo parent,
+            NewCommand.@Nullable ParentInfo parent,
             boolean hasDefaultJdk,
             boolean isInit) {
         boolean module = parent != null;
@@ -347,14 +348,14 @@ public final class NewWizard {
     }
 
     /** The newest native-image-capable (GraalVM) Java major, from the catalog or the offline cap. */
-    static int maxNativeMajor(JdkCatalog catalog) {
+    static int maxNativeMajor(@Nullable JdkCatalog catalog) {
         List<Integer> majors = orElseList(
                 SupportedJdk.offerableMajors(catalog, true, HostPlatform.currentOs(), HostPlatform.currentArch()),
                 offlineMajors(true));
         return majors.stream().mapToInt(Integer::intValue).max().orElse(JdkLts.OFFLINE_LATEST_LTS);
     }
 
-    static int jdkFloor(Answers answers, NewCommand.ParentInfo parent) {
+    static int jdkFloor(Answers answers, NewCommand.@Nullable ParentInfo parent) {
         if (parent != null) return parent.javaRelease();
         if ("kotlin".equalsIgnoreCase(answers.get("lang"))) return 0;
         String v = answers.get("javaVersion");

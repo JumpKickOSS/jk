@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.run;
 
 import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Workspace/plan aggregate progress snapshot for JSONL riders.
@@ -25,7 +26,7 @@ public final class LiveProgress {
     private static final LiveProgress INSTANCE = new LiveProgress();
 
     /** Last known percent, or {@code null} until the first meaningful denominator. */
-    private volatile Double percent;
+    private volatile @Nullable Double percent;
 
     private LiveProgress() {}
 
@@ -63,7 +64,7 @@ public final class LiveProgress {
     }
 
     /** Current percent, or {@code null} if unknown. */
-    public Double percent() {
+    public @Nullable Double percent() {
         return percent;
     }
 }

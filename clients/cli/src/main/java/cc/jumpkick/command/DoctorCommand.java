@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk doctor} — host health checklist. Prints a wedge header plus one row per subsystem
@@ -212,7 +213,11 @@ public final class DoctorCommand implements CliCommand {
     }
 
     /** One installed/linked tool, after {@link #scanTools} has already applied any repair. */
-    private record ToolRow(BuildTool tool, InstalledTool installed, ToolRowKind kind, String detail) {}
+    private record ToolRow(
+            BuildTool tool,
+            InstalledTool installed,
+            ToolRowKind kind,
+            @Nullable String detail) {}
 
     private static Check checkEngine() {
         EnginePaths.Paths paths = EnginePaths.current();
@@ -313,7 +318,7 @@ public final class DoctorCommand implements CliCommand {
      * First ancestor that is not jk/java. {@code sh}/{@code dash} are filtered later in
      * {@link Shell#live} so a script wrapper is not treated as an interactive bash.
      */
-    static String parentShellCommand() {
+    static @Nullable String parentShellCommand() {
         try {
             Optional<ProcessHandle> p = ProcessHandle.current().parent();
             int hops = 0;
@@ -428,7 +433,7 @@ public final class DoctorCommand implements CliCommand {
     }
 
     /** The leading 12 hex characters a digest is quoted by, tolerant of a short/absent value. */
-    private static String short12(String digest) {
+    private static String short12(@Nullable String digest) {
         if (digest == null) return "?";
         return digest.length() <= 12 ? digest : digest.substring(0, 12);
     }

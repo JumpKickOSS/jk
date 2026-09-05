@@ -3,6 +3,7 @@ package cc.jumpkick.cli.tui;
 
 import java.util.function.BooleanSupplier;
 import java.util.function.LongConsumer;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Run exactly one of the live region's two background loops — the ANSI frame loop, or the
@@ -26,7 +27,7 @@ final class RegionAnimator {
     private final BooleanSupplier done;
 
     private volatile boolean stopped;
-    private Thread thread;
+    private @Nullable Thread thread;
 
     /**
      * @param flushStale flushes a captured partial line that went quiet; runs outside {@code lock}

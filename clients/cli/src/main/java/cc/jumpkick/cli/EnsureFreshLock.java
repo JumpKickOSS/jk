@@ -19,6 +19,7 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Invisible lock freshen for every command that needs a current {@code jk-lock.toml}.
@@ -46,7 +47,8 @@ public final class EnsureFreshLock {
      * @return 0 when the lock is already fresh or was refreshed successfully; otherwise a non-zero
      *     exit code (and an error already printed)
      */
-    public static int ensure(Path projectDir, Path cacheDir, GlobalOptions global, String wedgeCommand) {
+    public static int ensure(
+            @Nullable Path projectDir, Path cacheDir, @Nullable GlobalOptions global, String wedgeCommand) {
         return ensure(projectDir, cacheDir, global, wedgeCommand, /* spinner */ null, /* ownSpinner */ true);
     }
 
@@ -55,7 +57,7 @@ public final class EnsureFreshLock {
      * caller owns progress UI (e.g. {@code jk explain}'s shared prep wedge). Still prints a fail
      * wedge on error.
      */
-    public static int ensureQuiet(Path projectDir, Path cacheDir, GlobalOptions global, String wedgeCommand) {
+    public static int ensureQuiet(Path projectDir, Path cacheDir, @Nullable GlobalOptions global, String wedgeCommand) {
         return ensure(projectDir, cacheDir, global, wedgeCommand, null, false);
     }
 
@@ -80,7 +82,8 @@ public final class EnsureFreshLock {
      * command will use — dropping it made `jk outdated --repo-url …` on a lockless project
      * fail its freshen against the declared repos.
      */
-    public static int ensure(Path projectDir, Path cacheDir, GlobalOptions global, String wedgeCommand, URI repoUrl) {
+    public static int ensure(
+            Path projectDir, Path cacheDir, GlobalOptions global, String wedgeCommand, @Nullable URI repoUrl) {
         return ensure(projectDir, cacheDir, global, wedgeCommand, null, true, repoUrl);
     }
 
@@ -90,7 +93,11 @@ public final class EnsureFreshLock {
      * lock at all — is a warning, never an exit.
      */
     public static void ensureBestEffort(
-            Path projectDir, Path cacheDir, GlobalOptions global, String wedgeCommand, URI repoUrl) {
+            Path projectDir,
+            Path cacheDir,
+            GlobalOptions global,
+            @Nullable String wedgeCommand,
+            @Nullable URI repoUrl) {
         int code = ensure(projectDir, cacheDir, global, wedgeCommand, null, true, repoUrl);
         if (code != Exit.SUCCESS) {
             CliOutput.err("‼ jk: lock freshen failed — continuing without jk-lock.toml");

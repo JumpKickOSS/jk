@@ -8,6 +8,7 @@ import cc.jumpkick.config.NerdFontCaps;
 import cc.jumpkick.terminal.Style;
 import java.util.List;
 import java.util.Locale;
+import org.jspecify.annotations.Nullable;
 
 /**
  * One line of command chrome: icon + title chip + optional message / progress. Nerd, ANSI, and
@@ -29,7 +30,7 @@ public final class JkWedge implements Widget {
     private final String title;
     private final RichText message;
     private final Variant variant;
-    private final Progress progress;
+    private final @Nullable Progress progress;
 
     public JkWedge(Icon icon, String title, RichText message) {
         this(icon, title, message, icon == null ? Variant.WORK : icon.defaultVariant(), null);
@@ -39,7 +40,7 @@ public final class JkWedge implements Widget {
         this(icon, title, RichText.plain(message == null ? "" : message));
     }
 
-    private JkWedge(Icon icon, String title, RichText message, Variant variant, Progress progress) {
+    private JkWedge(Icon icon, String title, RichText message, @Nullable Variant variant, @Nullable Progress progress) {
         this.icon = icon == null ? Icon.menu() : icon;
         this.title = title == null ? "" : title;
         this.message = message == null ? RichText.empty() : message;
@@ -71,7 +72,7 @@ public final class JkWedge implements Widget {
         return variant;
     }
 
-    public Progress progress() {
+    public @Nullable Progress progress() {
         return progress;
     }
 
@@ -142,7 +143,7 @@ public final class JkWedge implements Widget {
         return chip + cap + " " + tail;
     }
 
-    private String paintChip(RenderContext ctx, ChipColors colors, String glyph) {
+    private @Nullable String paintChip(RenderContext ctx, ChipColors colors, String glyph) {
         if (!(icon instanceof Icon.Spinner) || !ctx.ansi()) {
             return chip(glyph, title, colors.chip, ctx.wedge());
         }
@@ -165,7 +166,7 @@ public final class JkWedge implements Widget {
         return sb.toString();
     }
 
-    private String paintCap(RenderContext ctx, ChipColors colors) {
+    private @Nullable String paintCap(RenderContext ctx, ChipColors colors) {
         if (!ctx.wedge() || !ctx.ansi()) return "";
         if (progress != null && progress.look() == Progress.Look.PLAN) {
             // The cap blends into the bar's lead, so it must ask at the bar's OWN width: cell 0's
@@ -261,14 +262,14 @@ public final class JkWedge implements Widget {
      * Chip body + trailing pad. One trailing space when the wedge cap follows; two spaces when it
      * does not, the extra pad standing in for the missing cap.
      */
-    public static String chip(String glyph, String name, Style chip, boolean wedge) {
+    public static @Nullable String chip(String glyph, String name, Style chip, boolean wedge) {
         String body = " " + glyph + (name == null || name.isEmpty() ? "" : " " + name);
         String trail = wedge ? " " : "  ";
         return Theme.colorize(body + trail, chip);
     }
 
     /** The wedge cap {@code U+E0B0} with FG = {@code chipColor}. Empty without the wedge axis. */
-    public static String cap(Rgb chipColor, boolean wedge) {
+    public static @Nullable String cap(Rgb chipColor, boolean wedge) {
         if (!wedge) return "";
         return Theme.colorize(Glyphs.SEGMENT_END_NERD, Theme.active().bright(chipColor));
     }
@@ -296,7 +297,7 @@ public final class JkWedge implements Widget {
      * Command > message - tail"} with one. A blank message falls back to {@code "working"}
      * ({@link PlainTail#PERCENT_DONE} drops the message entirely).
      */
-    public static String plainStatusLine(String command, String message, PlainTail tail) {
+    public static String plainStatusLine(@Nullable String command, @Nullable String message, PlainTail tail) {
         String msg = message == null || message.isBlank() ? "working" : message;
         String body =
                 switch (tail) {
@@ -320,7 +321,7 @@ public final class JkWedge implements Widget {
         return head + " " + PlainAscii.transform(message);
     }
 
-    public static JkWedge cancelled(String title, boolean byUser, String tookTail) {
+    public static JkWedge cancelled(String title, boolean byUser, @Nullable String tookTail) {
         return cancelled(title, "job", byUser, tookTail);
     }
 
@@ -334,7 +335,7 @@ public final class JkWedge implements Widget {
      * parameter and not a second renderer — the JDK download had grown its own red wedge and red bar,
      * a look that appeared nowhere else in the product.
      */
-    public static JkWedge cancelled(String title, String subject, boolean byUser, String tookTail) {
+    public static JkWedge cancelled(String title, String subject, boolean byUser, @Nullable String tookTail) {
         String what = subject == null || subject.isBlank() ? "job" : subject;
         String took = tookTail == null || tookTail.isBlank() ? "" : " " + tookTail;
         String by = byUser ? " by user" : "";
@@ -358,7 +359,7 @@ public final class JkWedge implements Widget {
                 .renderLine(RenderContext.current().withCaps(caps));
     }
 
-    public static String cancelledJobLine(String name, NerdFontCaps caps, boolean byUser, String tookTail) {
+    public static String cancelledJobLine(String name, NerdFontCaps caps, boolean byUser, @Nullable String tookTail) {
         return cancelled(name, byUser, tookTail)
                 .renderLine(RenderContext.current().withCaps(caps));
     }

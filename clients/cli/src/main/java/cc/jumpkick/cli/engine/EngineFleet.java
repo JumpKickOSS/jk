@@ -13,6 +13,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Every engine running under this {@code JK_HOME} / platform product layout, and the one reliable way to stop them.
@@ -53,7 +54,12 @@ public final class EngineFleet {
      * {@code stop --pid} would answer "no running engine with pid N" about a process that is
      * running. Verified against a SIGSTOP'd engine.
      */
-    public record Member(EnginePaths.Paths paths, Path socket, EngineProbe.Status status, long pid, boolean current) {
+    public record Member(
+            EnginePaths.@Nullable Paths paths,
+            @Nullable Path socket,
+            EngineProbe.@Nullable Status status,
+            long pid,
+            boolean current) {
 
         /**
          * Short, stable handle for a human to refer to: the identity hash, or a pid-derived label for an
@@ -222,7 +228,7 @@ public final class EngineFleet {
      * Best-effort <em>home root</em> from a spawn line ({@code …/<home>/lib/jk-engine/<jar>}). Null
      * when the command line is not that shape.
      */
-    static Path homeFromCommandLine(String commandLine) {
+    static @Nullable Path homeFromCommandLine(String commandLine) {
         if (commandLine == null || commandLine.isBlank()) return null;
         String norm = commandLine.replace('\\', '/');
         int marker = norm.indexOf("/lib/jk-engine/");

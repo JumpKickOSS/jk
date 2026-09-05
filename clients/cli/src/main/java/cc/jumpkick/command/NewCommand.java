@@ -42,6 +42,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk new} — scaffold a project or workspace module (aliases: {@code init}, {@code create}).
@@ -97,22 +98,44 @@ public final class NewCommand implements CliCommand {
                 Param.of("directory", Arity.ZERO_OR_ONE, "Target directory. Default: cwd or a ./<name> subdir."));
     }
 
+    @Nullable
     String name;
+
+    @Nullable
     String group;
+
+    @Nullable
     String jdk;
+
+    @Nullable
     String lang;
+
+    @Nullable
     Boolean executable;
+
     boolean assembly;
     boolean nativeImage;
     boolean plugin;
+
+    @Nullable
     String templateRef;
+
     List<String> templateParams = List.of();
 
+    @Nullable
     String depsCsv;
+
+    @Nullable
     String layoutFlag;
+
+    @Nullable
     String kotlinModule;
+
     boolean noModule;
+
+    @Nullable
     Path directory;
+
     GlobalOptions global;
 
     private static final BuildPlanKey<List<NewJdkCandidate>> CANDIDATES =
@@ -128,10 +151,10 @@ public final class NewCommand implements CliCommand {
     /** Set during scaffold when the new project was registered as a workspace module. */
     private record Module(Path root, String rel, String projectName) {}
 
-    private volatile Module registered;
+    private volatile @Nullable Module registered;
 
     /** The enclosing project's display name when this run registered a module in it, else null. */
-    private String parentProjectName() {
+    private @Nullable String parentProjectName() {
         return registered == null ? null : registered.projectName();
     }
 
@@ -140,7 +163,7 @@ public final class NewCommand implements CliCommand {
      * we're creating a standalone project. Resolved once in {@link #call} and consumed by the
      * wizard (UX + inherited defaults), the flag path, and scaffolding.
      */
-    private ParentInfo parent;
+    private @Nullable ParentInfo parent;
 
     /** Global default JDK id from the managed inventory, or empty. */
     private Optional<String> defaultJdk = Optional.empty();
@@ -186,7 +209,7 @@ public final class NewCommand implements CliCommand {
      * Walk up from {@code startDir} for a parent {@code jk.toml}; stop at {@code .git} or
      * {@code $HOME}. {@code --no-module} → empty.
      */
-    static Optional<Path> detectParentDir(Path startDir, Path home, boolean noModule) {
+    static Optional<Path> detectParentDir(Path startDir, @Nullable Path home, boolean noModule) {
         if (noModule) return Optional.empty();
         Path normHome = home == null ? null : home.toAbsolutePath().normalize();
         for (Path dir = startDir.toAbsolutePath().normalize(); dir != null; dir = dir.getParent()) {
@@ -212,7 +235,7 @@ public final class NewCommand implements CliCommand {
     /**
      * Resolve {@link #parent} by parsing the detected parent's manifest (null if none / unparseable).
      */
-    private ParentInfo resolveParent(Path startDir) {
+    private @Nullable ParentInfo resolveParent(Path startDir) {
         Path home = Optional.ofNullable(System.getProperty("user.home"))
                 .map(Path::of)
                 .orElse(null);

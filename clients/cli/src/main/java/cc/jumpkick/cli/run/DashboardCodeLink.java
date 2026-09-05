@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Deep links from CLI failure snippets into the dashboard Monaco files pane
@@ -27,10 +28,10 @@ public final class DashboardCodeLink {
 
     private static final ThreadLocal<Scope> SCOPE = new ThreadLocal<>();
 
-    private static volatile HttpCache httpCache;
+    private static volatile @Nullable HttpCache httpCache;
 
     /** Test-only project-id override; null means resolve via {@link ProjectBuilds#key}. */
-    private static volatile String projectIdOverride;
+    private static volatile @Nullable String projectIdOverride;
 
     private DashboardCodeLink() {}
 
@@ -39,21 +40,21 @@ public final class DashboardCodeLink {
      * restore the previous binding.
      */
     public static final class Scope implements AutoCloseable {
-        private final Path checkoutDir;
-        private final Path moduleDir;
+        private final @Nullable Path checkoutDir;
+        private final @Nullable Path moduleDir;
         private final Scope previous;
 
-        private Scope(Path checkoutDir, Path moduleDir, Scope previous) {
+        private Scope(@Nullable Path checkoutDir, @Nullable Path moduleDir, Scope previous) {
             this.checkoutDir = checkoutDir;
             this.moduleDir = moduleDir;
             this.previous = previous;
         }
 
-        public Path checkoutDir() {
+        public @Nullable Path checkoutDir() {
             return checkoutDir;
         }
 
-        public Path moduleDir() {
+        public @Nullable Path moduleDir() {
             return moduleDir;
         }
 
@@ -91,7 +92,7 @@ public final class DashboardCodeLink {
      * relative snippet paths join under {@code rel(checkout, module)}; empty/null module dir leaves
      * the file as already checkout-relative. Basename-only and {@code ..} segments yield null.
      */
-    public static String codePath(Path checkoutDir, Path moduleDir, String file) {
+    public static @Nullable String codePath(Path checkoutDir, @Nullable Path moduleDir, String file) {
         if (file == null || file.isBlank()) return null;
         String f = file.replace('\\', '/').strip();
         if (f.isEmpty()) return null;
@@ -163,17 +164,17 @@ public final class DashboardCodeLink {
      * Resolve a clickable URL for a failure snippet path using the current {@link Scope} (or cwd as
      * checkout when unbound). Null when HTTP is unavailable or the path cannot be linked.
      */
-    public static String urlForSnippet(String moduleRelativePath, int line) {
+    public static @Nullable String urlForSnippet(String moduleRelativePath, int line) {
         return urlForSnippet(moduleRelativePath, line, 0, null);
     }
 
     /** Like {@link #urlForSnippet(String, int)} with a 1-based column. */
-    public static String urlForSnippet(String moduleRelativePath, int line, int col) {
+    public static @Nullable String urlForSnippet(String moduleRelativePath, int line, int col) {
         return urlForSnippet(moduleRelativePath, line, col, null);
     }
 
     /** Like {@link #urlForSnippet(String, int, int)} with a hover note. */
-    public static String urlForSnippet(String moduleRelativePath, int line, int col, String msg) {
+    public static @Nullable String urlForSnippet(String moduleRelativePath, int line, int col, String msg) {
         Scope scope = SCOPE.get();
         Path checkout = scope != null && scope.checkoutDir != null
                 ? scope.checkoutDir
@@ -201,7 +202,7 @@ public final class DashboardCodeLink {
         httpCache = new HttpCache(httpUrl, System.nanoTime() + HTTP_TTL_NANOS);
     }
 
-    static String resolveHttpBase() {
+    static @Nullable String resolveHttpBase() {
         HttpCache c = httpCache;
         long now = System.nanoTime();
         if (c != null && now - c.expiresAtNanos < 0) return c.url;
@@ -219,7 +220,7 @@ public final class DashboardCodeLink {
         return url;
     }
 
-    static String resolveProjectId(Path checkoutDir) {
+    static @Nullable String resolveProjectId(Path checkoutDir) {
         if (projectIdOverride != null) return projectIdOverride.isBlank() ? null : projectIdOverride;
         if (checkoutDir == null) return null;
         try {
@@ -230,7 +231,7 @@ public final class DashboardCodeLink {
         }
     }
 
-    private static Path normalize(Path p) {
+    private static @Nullable Path normalize(Path p) {
         return p == null ? null : p.toAbsolutePath().normalize();
     }
 
@@ -241,7 +242,7 @@ public final class DashboardCodeLink {
         return false;
     }
 
-    private static String relativizeUnder(Path root, Path abs) {
+    private static @Nullable String relativizeUnder(Path root, Path abs) {
         if (root == null || abs == null) return null;
         Path r = root.toAbsolutePath().normalize();
         Path a = abs.toAbsolutePath().normalize();
@@ -272,5 +273,5 @@ public final class DashboardCodeLink {
         return URLEncoder.encode(s, StandardCharsets.UTF_8).replace("+", "%20");
     }
 
-    private record HttpCache(String url, long expiresAtNanos) {}
+    private record HttpCache(@Nullable String url, long expiresAtNanos) {}
 }

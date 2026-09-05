@@ -97,6 +97,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Routes every command through jk's own {@link ArgParser} + {@link HelpRenderer} (picocli is long
@@ -205,7 +206,7 @@ public final class CommandDispatch {
      * needed), returning the exit code; otherwise return {@code null} so the caller falls back to
      * picocli.
      */
-    public static Integer tryDispatch(String[] args) {
+    public static @Nullable Integer tryDispatch(String[] args) {
         List<String> all = List.of(args);
         int commandAt = commandIndex(all);
         if (commandAt < 0) return null;
@@ -248,7 +249,7 @@ public final class CommandDispatch {
      * owned and ran it, else {@code null} (no jk.toml, no reachable engine, no owning plugin —
      * the normal unknown-command help follows).
      */
-    private static Integer tryPluginCommand(String command, List<String> args) {
+    private static @Nullable Integer tryPluginCommand(String command, List<String> args) {
         Path dir = Path.of("").toAbsolutePath().normalize();
         if (!Files.isRegularFile(dir.resolve(ManifestPaths.MANIFEST))) return null;
         try {

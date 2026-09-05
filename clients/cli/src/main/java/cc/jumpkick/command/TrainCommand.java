@@ -24,6 +24,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk train} — observe a full-app run under the Graal tracing agent, write
@@ -54,7 +55,7 @@ public final class TrainCommand implements CliCommand {
     }
 
     @Override
-    public int run(Invocation in) throws IOException, InterruptedException {
+    public @Nullable int run(Invocation in) throws IOException, InterruptedException {
         String profile = in.value("profile").orElse(null);
         Path cacheDir = in.value("cache-dir").map(CliPaths::abs).orElse(null);
         Path jdksDir = CommonOpts.jdksDirValue(in);

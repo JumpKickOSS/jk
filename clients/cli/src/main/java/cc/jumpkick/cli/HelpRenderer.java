@@ -8,6 +8,7 @@ import java.io.PrintStream;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The help-screen painter for jk's model-driven rendering path. Paints from a {@link CommandModel}
@@ -25,23 +26,23 @@ public final class HelpRenderer {
      * Theme#colorize(String, Style)} so the canonical attribute-leading byte order is owned
      * by the theme layer. When {@code ansi} is false the text is returned unstyled.
      */
-    static String paint(String text, Style style, boolean ansi) {
+    static @Nullable String paint(@Nullable String text, Style style, boolean ansi) {
         return ansi ? Theme.colorize(text, style) : text;
     }
 
-    private static String heading(String text, boolean ansi) {
+    private static @Nullable String heading(String text, boolean ansi) {
         return paint(text, Theme.active().sectionHeading(), ansi);
     }
 
-    private static String commandName(String text, boolean ansi) {
+    private static @Nullable String commandName(String text, boolean ansi) {
         return paint(text, Theme.active().commandName(), ansi);
     }
 
-    private static String paramLabel(String text, boolean ansi) {
+    private static @Nullable String paramLabel(String text, boolean ansi) {
         return paint(text, Theme.active().paramLabel(), ansi);
     }
 
-    private static String highlight(String text, boolean ansi) {
+    private static @Nullable String highlight(String text, boolean ansi) {
         return paint(text, Theme.active().highlight(), ansi);
     }
 

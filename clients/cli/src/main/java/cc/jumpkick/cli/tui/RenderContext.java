@@ -7,6 +7,7 @@ import cc.jumpkick.config.NerdFontCaps;
 import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.terminal.Size;
 import cc.jumpkick.terminal.Width;
+import org.jspecify.annotations.Nullable;
 
 /**
  * How to paint a widget: theme, the three human modes, terminal width, and an optional animator
@@ -100,7 +101,7 @@ public record RenderContext(Theme theme, boolean ansi, NerdFontCaps nerd, int wi
     }
 
     /** Visible terminal columns: CSI/OSC stripped, then wcwidth (CJK = 2). */
-    public static int visibleWidth(String s) {
+    public static int visibleWidth(@Nullable String s) {
         return Width.columns(s);
     }
 

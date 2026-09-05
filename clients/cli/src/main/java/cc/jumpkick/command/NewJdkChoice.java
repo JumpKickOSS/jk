@@ -18,6 +18,7 @@ import cc.jumpkick.jdk.JdkService;
 import cc.jumpkick.model.Project;
 import java.util.List;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Which JDK a new project gets, and putting it on disk if it is not there yet.
@@ -91,7 +92,7 @@ final class NewJdkChoice {
     static NewJdkCandidate pick(
             Answers answers,
             List<NewJdkCandidate> candidates,
-            NewCommand.ParentInfo parent,
+            NewCommand.@Nullable ParentInfo parent,
             Optional<String> defaultJdk) {
         if (answers.has("jdk")) {
             var pickedId = answers.get("jdk");

@@ -6,6 +6,7 @@ import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Prior {@code jk hook-env} overrides for undo: base64 {@code KEY\\0previous\\n} in {@code __JK_DIFF}.
@@ -64,7 +65,7 @@ public final class JkDiff {
      * Previous value for {@code key}; {@code null} if the diff has no entry, or the {@link
      * #UNSET_SENTINEL} when the key was unset in the original environment.
      */
-    public String previousValue(String key) {
+    public @Nullable String previousValue(String key) {
         return previous.get(key);
     }
 

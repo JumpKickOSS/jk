@@ -5,6 +5,7 @@ import cc.jumpkick.cli.tui.Rail;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.terminal.Style;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The "Jk Dark" color scheme — a neon dark palette synced from the jk web dashboard, and the default {@link Theme}
@@ -328,7 +329,7 @@ public final class JkDarkTheme implements Theme {
     }
 
     @Override
-    public Style withBackground(Style base, Rgb bg) {
+    public Style withBackground(Style base, @Nullable Rgb bg) {
         return withBg(base, bg);
     }
 
@@ -343,7 +344,7 @@ public final class JkDarkTheme implements Theme {
     }
 
     @Override
-    public Style bright(Rgb c) {
+    public Style bright(@Nullable Rgb c) {
         return withColor(Style.EMPTY, c);
     }
 

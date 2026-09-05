@@ -36,6 +36,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk jdk ensure <spec>} — install a matching JDK from the JetBrains feed if needed, then
@@ -74,10 +75,10 @@ public final class JdkEnsureCommand implements CliCommand {
                         + "  and available (ex: 25, lts, latest, temurin-25, openjdk-26)"));
     }
 
-    private String spec;
-    private Path jdksDir;
-    private URI feedUrl;
-    private Path cacheFile;
+    private @Nullable String spec;
+    private @Nullable Path jdksDir;
+    private @Nullable URI feedUrl;
+    private @Nullable Path cacheFile;
 
     @Override
     public int run(Invocation in) throws Exception {

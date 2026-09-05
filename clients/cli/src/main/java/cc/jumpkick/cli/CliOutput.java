@@ -8,6 +8,7 @@ import java.io.OutputStream;
 import java.io.PrintStream;
 import java.nio.charset.Charset;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The CLI's single user-facing output seam. Commands write results and diagnostics through here
@@ -161,7 +162,7 @@ public final class CliOutput {
      * per-command flag with {@link #out}. For stderr chrome call {@link #ensureLeadingBlankErr()} —
      * a wrapper stream cannot be recognised by reference, so this overload does not guess.
      */
-    public static void ensureLeadingBlank(PrintStream dest) {
+    public static void ensureLeadingBlank(@Nullable PrintStream dest) {
         openEnvelope(dest, false);
     }
 
@@ -216,7 +217,7 @@ public final class CliOutput {
      * write leaves the envelope untouched. Returns true when this call printed the blank, so a
      * caller whose own payload <em>is</em> a blank line does not emit a second one.
      */
-    private static boolean openEnvelope(PrintStream dest, boolean err) {
+    private static boolean openEnvelope(@Nullable PrintStream dest, boolean err) {
         if (dest == null) return false;
         if (SCRIPT_MODE.get() && !err) return false;
         LAST_WRITE_ON_ERR.set(err);
@@ -226,12 +227,12 @@ public final class CliOutput {
     }
 
     /** Rewrite {@code line} for plain consoles unless it is machine-bound stdout. */
-    private static String render(String line, boolean err) {
+    private static @Nullable String render(String line, boolean err) {
         return err || !SCRIPT_MODE.get() ? PlainAscii.apply(line) : line;
     }
 
     /** Print a line to stdout (result output). */
-    public static void out(String line) {
+    public static void out(@Nullable String line) {
         if (line == null || line.isEmpty()) {
             out();
             return;
@@ -253,7 +254,7 @@ public final class CliOutput {
     }
 
     /** Print a line to stderr (diagnostics, errors, progress). */
-    public static void err(String line) {
+    public static void err(@Nullable String line) {
         if (line == null || line.isEmpty()) {
             err();
             return;
@@ -335,12 +336,12 @@ public final class CliOutput {
         }
 
         @Override
-        public void print(String s) {
+        public void print(@Nullable String s) {
             super.print(render(s, err));
         }
 
         @Override
-        public void println(String s) {
+        public void println(@Nullable String s) {
             print(s); // subclass path: print + newline, so the rewrite runs once
             println();
         }

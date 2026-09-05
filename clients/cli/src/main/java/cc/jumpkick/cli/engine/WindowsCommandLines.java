@@ -9,6 +9,7 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Command lines of this machine's processes, on Windows.
@@ -29,7 +30,7 @@ import java.util.concurrent.TimeUnit;
 final class WindowsCommandLines {
 
     /** One query serves a whole command: {@code jk engine status} enumerates the fleet three times. */
-    private static volatile Map<Long, String> snapshot;
+    private static volatile Map<Long, @Nullable String> snapshot;
 
     private static volatile long takenAtNanos;
 

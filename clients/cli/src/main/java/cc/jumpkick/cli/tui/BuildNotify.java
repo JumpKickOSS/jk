@@ -6,6 +6,7 @@ import cc.jumpkick.cli.Osc;
 import cc.jumpkick.config.JkConfig;
 import java.io.PrintStream;
 import java.util.ArrayList;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Desktop notifications for long (or forced) builds via OSC&nbsp;99.
@@ -43,7 +44,7 @@ public final class BuildNotify {
      * Whether a notification should fire for this finish. Hard suppressors ({@code no-progress},
      * {@code no-osc}, JSONL) win; else the resolved {@link GlobalOptions#notify} policy applies.
      */
-    public static boolean shouldNotify(GlobalOptions global, long estimateMs, long elapsedMs) {
+    public static boolean shouldNotify(@Nullable GlobalOptions global, long estimateMs, long elapsedMs) {
         if (global == null) return false;
         // Suppress when progress chrome is off, OSC is off, or stdout is JSONL (OSC would corrupt
         // the machine stream).
@@ -99,7 +100,7 @@ public final class BuildNotify {
      */
     public static void maybeNotify(
             PrintStream out,
-            GlobalOptions global,
+            @Nullable GlobalOptions global,
             Outcome outcome,
             String groupArtifact,
             long estimateMs,

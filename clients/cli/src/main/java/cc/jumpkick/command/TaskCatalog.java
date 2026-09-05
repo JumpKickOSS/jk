@@ -13,6 +13,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 
 /**
  * First-party build plan tasks for {@code jk tasks} / {@code jk show} / {@code jk inspect}.
@@ -24,8 +25,8 @@ final class TaskCatalog {
     record TaskDef(
             String name,
             String stage,
-            String description,
-            Function<BuildLayout, Path> primaryOutput,
+            @Nullable String description,
+            @Nullable Function<BuildLayout, Path> primaryOutput,
             List<String> aliases) {
 
         Optional<Path> output(BuildLayout layout) {
@@ -117,7 +118,8 @@ final class TaskCatalog {
         return m;
     }
 
-    private static TaskDef def(String name, String description, Function<BuildLayout, Path> out, String... aliases) {
+    private static TaskDef def(
+            String name, @Nullable String description, @Nullable Function<BuildLayout, Path> out, String... aliases) {
         // Stage comes from the one taxonomy the whole system speaks: the catalog once
         // said `setup` where BuildStage says `resolve`, and hand-assigned stages drifted from
         // the inference (`write-stamp` is COMPILE, not package).

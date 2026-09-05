@@ -24,6 +24,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 
 /** {@code jk auth login <provider> [--host H]} — obtain and store a token for a forge. */
 public final class AuthLoginCommand implements CliCommand {
@@ -60,7 +61,7 @@ public final class AuthLoginCommand implements CliCommand {
                         "github | gitlab | gitea (forgejo/codeberg) | bitbucket.\nOmit to auto-detect from this repo's git remote."));
     }
 
-    private String scope;
+    private @Nullable String scope;
     private GlobalOptions global;
 
     @Override

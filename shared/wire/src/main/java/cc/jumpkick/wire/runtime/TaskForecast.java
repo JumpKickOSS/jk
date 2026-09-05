@@ -56,13 +56,20 @@ public final class TaskForecast {
         /** Reconstruct a forecast module client-side from wire-level data. */
         public static Module fromWire(
                 Path dir,
-                String coord,
-                List<Task> steps,
+                @Nullable String coord,
+                @Nullable List<Task> steps,
                 int sourceCount,
                 int testCount,
                 boolean producesJar,
                 boolean producesImage) {
-            return new Module(dir, coord, steps, sourceCount, testCount, producesJar, producesImage);
+            return new Module(
+                    dir,
+                    coord == null ? "" : coord,
+                    steps == null ? List.of() : steps,
+                    sourceCount,
+                    testCount,
+                    producesJar,
+                    producesImage);
         }
 
         /**

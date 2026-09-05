@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Client half of a web-URL tool target: trust gate (TTY, against the typed URL), forge rewrite,
@@ -39,7 +40,7 @@ final class UrlToolSource {
      * otherwise the exit code to return. An interactive "yes" allows this run only and prints the
      * {@code jk trust add} line for next time.
      */
-    static Integer gate(String url, Path stateDir, String command) throws IOException {
+    static @Nullable Integer gate(String url, Path stateDir, String command) throws IOException {
         TrustedSources trust = TrustedSources.load(stateDir);
         if (trust.isTrusted(url)) return null;
         String suggested = TrustedSources.suggestedPrefix(url);
@@ -160,7 +161,7 @@ final class UrlToolSource {
         return entry;
     }
 
-    private static Path pickGistEntry(Path dir) throws IOException {
+    private static @Nullable Path pickGistEntry(Path dir) throws IOException {
         List<Path> runnable = topLevelFiles(dir).stream()
                 .filter(p -> isRunnable(p.getFileName().toString()))
                 .toList();

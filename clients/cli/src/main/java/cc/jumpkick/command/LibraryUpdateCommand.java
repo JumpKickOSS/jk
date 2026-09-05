@@ -29,6 +29,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeSet;
+import org.jspecify.annotations.Nullable;
 
 /** {@code jk library update} — pull the latest library catalog. */
 public final class LibraryUpdateCommand implements CliCommand {
@@ -55,7 +56,7 @@ public final class LibraryUpdateCommand implements CliCommand {
     }
 
     private URI source = DEFAULT_SOURCE;
-    private Path cacheFileOverride;
+    private @Nullable Path cacheFileOverride;
 
     @Override
     public int run(Invocation in) throws IOException, InterruptedException {

@@ -41,6 +41,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The engine's read-only verbs: one request line out, one {@code *-ack} line back, decoded into a
@@ -119,7 +120,8 @@ final class EngineReads {
 
     /** The module DAG behind {@code jk explain --graph}. */
     static ModuleGraphAck moduleGraph(
-            EnginePaths.Paths paths, Path dir, String format, String modules, String affectedSince) throws IOException {
+            EnginePaths.Paths paths, Path dir, String format, @Nullable String modules, String affectedSince)
+            throws IOException {
         return request(
                 paths,
                 new ModuleGraphRequest(dir.toString(), format, modules, affectedSince).encode(),
@@ -129,10 +131,10 @@ final class EngineReads {
     }
 
     static CacheInventoryAck cacheInventory(
-            EnginePaths.Paths paths,
+            EnginePaths.@Nullable Paths paths,
             String query,
             Path cache,
-            Path store,
+            @Nullable Path store,
             List<String> terms,
             List<String> coords,
             boolean dryRun)
@@ -155,7 +157,7 @@ final class EngineReads {
     static CatalogReadAck catalogRead(
             EnginePaths.Paths paths,
             Path dir,
-            Path cache,
+            @Nullable Path cache,
             String query,
             List<String> terms,
             boolean offline,
@@ -187,12 +189,22 @@ final class EngineReads {
      * case) — this method itself just sends the request. Best-effort: swallows the engine's error
      * rather than throwing, since the caller falls back to whatever the local cache already holds.
      */
-    static void freshenCatalog(EnginePaths.Paths paths, String catalog, boolean offline, String url, String cacheFile) {
+    static void freshenCatalog(
+            EnginePaths.@Nullable Paths paths,
+            String catalog,
+            boolean offline,
+            @Nullable String url,
+            @Nullable String cacheFile) {
         freshenCatalog(paths, catalog, offline, url, cacheFile, false);
     }
 
     static void freshenCatalog(
-            EnginePaths.Paths paths, String catalog, boolean offline, String url, String cacheFile, boolean force) {
+            EnginePaths.@Nullable Paths paths,
+            String catalog,
+            boolean offline,
+            @Nullable String url,
+            @Nullable String cacheFile,
+            boolean force) {
         try {
             request(
                     paths,
@@ -205,7 +217,7 @@ final class EngineReads {
         }
     }
 
-    static String freshenCatalogNow(EnginePaths.Paths paths, String catalog, String url, String cacheFile)
+    static String freshenCatalogNow(EnginePaths.Paths paths, String catalog, String url, @Nullable String cacheFile)
             throws IOException {
         return request(
                 paths,
@@ -223,7 +235,12 @@ final class EngineReads {
 
     /** One engine-hosted tree render: the marker-tagged tree; throws with the engine's message. */
     static String treeRender(
-            EnginePaths.Paths paths, Path dir, int maxDepth, boolean flatten, boolean stack, List<String> scopes)
+            EnginePaths.Paths paths,
+            @Nullable Path dir,
+            int maxDepth,
+            boolean flatten,
+            boolean stack,
+            List<String> scopes)
             throws IOException {
         return request(
                 paths,
@@ -248,7 +265,8 @@ final class EngineReads {
     }
 
     /** One engine-hosted IDE model computation: the wire model back, generation stays client-side. */
-    static IdeWireModel ideModel(EnginePaths.Paths paths, Path dir, Path cache, Path jdksDir) throws IOException {
+    static IdeWireModel ideModel(EnginePaths.Paths paths, Path dir, Path cache, @Nullable Path jdksDir)
+            throws IOException {
         return request(
                 paths,
                 new IdeModelRequest(dir.toString(), cache.toString(), jdksDir == null ? null : jdksDir.toString())
@@ -331,7 +349,7 @@ final class EngineReads {
                 DenyReport::decode);
     }
 
-    static ProjectInfo projectInfo(EnginePaths.Paths paths, Path dir) throws IOException {
+    static ProjectInfo projectInfo(EnginePaths.@Nullable Paths paths, Path dir) throws IOException {
         return projectInfo(paths, dir, null, null, false);
     }
 
@@ -344,8 +362,8 @@ final class EngineReads {
     static ProjectInfo projectInfo(
             EnginePaths.Paths paths,
             Path dir,
-            String modules,
-            String affectedSince,
+            @Nullable String modules,
+            @Nullable String affectedSince,
             boolean affectedWip,
             boolean counts)
             throws IOException {
@@ -376,12 +394,12 @@ final class EngineReads {
     static ExecPlan execPlan(
             EnginePaths.Paths paths,
             Path dir,
-            Path cache,
-            String kind,
-            String mainOverride,
-            String binName,
-            Path binDir,
-            Path libDir)
+            @Nullable Path cache,
+            @Nullable String kind,
+            @Nullable String mainOverride,
+            @Nullable String binName,
+            @Nullable Path binDir,
+            @Nullable Path libDir)
             throws IOException {
         return request(
                 paths,

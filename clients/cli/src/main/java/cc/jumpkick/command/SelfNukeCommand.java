@@ -27,6 +27,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk self nuke} — wipe JumpKick product data while leaving the PATH install binaries,
@@ -81,7 +82,11 @@ public final class SelfNukeCommand implements CliCommand {
      * <em>same</em> {@link JkDirs} the rows come from, so synthetic test environments guard
      * consistently.
      */
-    record Guards(Path bin, Path jdks, Path productLib, Path creds) {
+    record Guards(
+            @Nullable Path bin,
+            @Nullable Path jdks,
+            @Nullable Path productLib,
+            @Nullable Path creds) {
         static Guards of(JkDirs dirs) {
             return new Guards(
                     abs(dirs.binDirectory()), abs(dirs.jdksDir()), abs(dirs.productLibDir()), abs(dirs.credsDir()));
@@ -396,13 +401,19 @@ public final class SelfNukeCommand implements CliCommand {
      *
      * @return whether the row was scheduled
      */
-    private static boolean addRow(Map<Path, PurgeRow> byPath, Path path, String what, Target target, Guards guards) {
+    private static boolean addRow(
+            Map<Path, PurgeRow> byPath, @Nullable Path path, String what, Target target, Guards guards) {
         return addRow(byPath, path, what, target, guards, false);
     }
 
     /** {@link #addRow} for a row the shared cache/storage nukes wipe; see {@link PurgeRow}. */
     private static boolean addRow(
-            Map<Path, PurgeRow> byPath, Path path, String what, Target target, Guards guards, boolean delegated) {
+            Map<Path, PurgeRow> byPath,
+            @Nullable Path path,
+            String what,
+            Target target,
+            Guards guards,
+            boolean delegated) {
         if (path == null) return false;
         Path norm = path.toAbsolutePath().normalize();
         if (conflicts(norm, guards.bin())
@@ -462,7 +473,7 @@ public final class SelfNukeCommand implements CliCommand {
     }
 
     /** Home-relative display form, painted with the theme path color. */
-    static String pathStyled(Path path) {
+    static @Nullable String pathStyled(Path path) {
         return PathDisplay.styledRaw(displayPath(path));
     }
 
@@ -489,7 +500,7 @@ public final class SelfNukeCommand implements CliCommand {
      * contains the other, comparing both the textual (normalized) and real (symlink-resolved)
      * forms of each side.
      */
-    private static boolean conflicts(Path candidate, Path guarded) {
+    private static boolean conflicts(Path candidate, @Nullable Path guarded) {
         if (candidate == null || guarded == null) return false;
         Path realCandidate = real(candidate);
         Path realGuarded = real(guarded);
@@ -527,7 +538,7 @@ public final class SelfNukeCommand implements CliCommand {
         return c.startsWith(a) && !c.equals(a);
     }
 
-    private static Path abs(Path p) {
+    private static @Nullable Path abs(Path p) {
         return p == null ? null : p.toAbsolutePath().normalize();
     }
 }

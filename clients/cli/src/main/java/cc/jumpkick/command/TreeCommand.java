@@ -141,7 +141,7 @@ public final class TreeCommand implements CliCommand {
      * Declared-only ({@code 0}) unless {@code -t}/{@code --transitive} expands the lockfile
      * closure, or {@code -d} caps the walk. {@code -d} wins when both are set.
      */
-    static int maxDepth(boolean transitive, Integer depth) {
+    static int maxDepth(boolean transitive, @Nullable Integer depth) {
         if (depth != null) return depth;
         return transitive ? Integer.MAX_VALUE : 0;
     }
@@ -151,7 +151,7 @@ public final class TreeCommand implements CliCommand {
      * :name} is a workspace module selector. Anything else is a filesystem path ({@code .}, {@code
      * foo}, {@code foo/bar}) that must contain {@code jk.toml}.
      */
-    static TreeDir resolveTreeDir(Path cwd, String spec) throws IOException {
+    static TreeDir resolveTreeDir(Path cwd, @Nullable String spec) throws IOException {
         Path start = cwd.toAbsolutePath().normalize();
         if (spec == null || spec.isBlank()) {
             Path project = nearestProject(start);
@@ -245,7 +245,7 @@ public final class TreeCommand implements CliCommand {
         return TreeDir.fail("`" + spec + "` is not a module directory");
     }
 
-    private static Path nearestProject(Path start) {
+    private static @Nullable Path nearestProject(Path start) {
         Path toml = ConfigSources.findProjectConfig(start);
         return toml == null ? null : toml.getParent();
     }
@@ -260,7 +260,7 @@ public final class TreeCommand implements CliCommand {
         return Files.isDirectory(dir) && Files.isRegularFile(dir.resolve(ManifestPaths.MANIFEST));
     }
 
-    record TreeDir(Path dir, String error) {
+    record TreeDir(@Nullable Path dir, @Nullable String error) {
         static TreeDir ok(Path dir) {
             return new TreeDir(dir, null);
         }
@@ -361,7 +361,7 @@ public final class TreeCommand implements CliCommand {
         return new ArrayList<>(ordered);
     }
 
-    private static List<Scope> resolveScopeToken(String token) {
+    private static @Nullable List<Scope> resolveScopeToken(String token) {
         String t = token.toLowerCase(Locale.ROOT);
         if (t.equals("all")) return DependencyTreeStyle.allScopeOrder();
         if (t.equals("exec") || t.equals("run")) return EXEC_SCOPES;
@@ -372,7 +372,7 @@ public final class TreeCommand implements CliCommand {
     /**
      * Coerce a user-supplied scope token (case-insensitive) to a {@link Scope}, or null if invalid.
      */
-    private static Scope coerceScope(String token) {
+    private static @Nullable Scope coerceScope(String token) {
         try {
             // fromCanonical handles hyphenated scopes ("test-dev"); fall back to the
             // enum-name form ("TEST_DEV") for users typing underscores.
@@ -404,7 +404,7 @@ public final class TreeCommand implements CliCommand {
      * {@code --color} / {@code NO_COLOR} / dumb terminals, so escapes are dropped cleanly when color
      * is off.
      */
-    private static DependencyTreeStyle.Styling styling(boolean pillCaps, boolean ansi) {
+    private static DependencyTreeStyle.@Nullable Styling styling(boolean pillCaps, boolean ansi) {
         if (!ansi) {
             // No-ANSI: replace all Unicode connectors with ASCII equivalents,
             // use [scope] bracket badges, * root bullet, plain uncolored coords.
@@ -449,7 +449,7 @@ public final class TreeCommand implements CliCommand {
      * escape is cancelled by every segment's color reset). Input is the plain {@code
      * group:artifact:version}.
      */
-    private static String boldCoord(String gav) {
+    private static @Nullable String boldCoord(String gav) {
         String[] p = gav.split(":", 3);
         if (p.length < 3) return Theme.colorize(gav, Coords.groupStyle().bold());
         return Theme.colorize(p[0], Coords.groupStyle().bold())

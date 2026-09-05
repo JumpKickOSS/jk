@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /** jk CLI entrypoint — routes commands through {@link CommandDispatch}. */
 public final class Jk {
@@ -338,7 +339,7 @@ public final class Jk {
      * the whole invocation is exactly {@code jk tool run …}. Any other program name (including
      * null) passes through untouched.
      */
-    static String[] rewriteForProgramName(String[] args, String programName) {
+    static String[] rewriteForProgramName(String[] args, @Nullable String programName) {
         if (!"jkx".equals(programName)) return args;
         String[] out = new String[args.length + 2];
         out[0] = "tool";

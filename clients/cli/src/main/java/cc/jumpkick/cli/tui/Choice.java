@@ -3,37 +3,43 @@ package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.terminal.Styled;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 
 /**
  * One radio/multi-select option. Optional {@code hint}/{@code hintFn} suffix; optional
  * {@code richLabelFn} for multi-style labels (focused flag in the {@code Boolean} arg).
  */
 public record Choice(
-        String id, String label, String hint, Function<Answers, String> hintFn, Function<Boolean, Styled> richLabelFn) {
+        String id,
+        @Nullable String label,
+        String hint,
+        @Nullable Function<Answers, String> hintFn,
+        Function<Boolean, Styled> richLabelFn) {
 
     public Choice {
         if (hint == null) hint = "";
     }
 
-    public Choice(String id, String label) {
+    public Choice(String id, @Nullable String label) {
         this(id, label, "", null, null);
     }
 
-    public Choice(String id, String label, String hint) {
+    public Choice(@Nullable String id, @Nullable String label, String hint) {
         this(id, label, hint, null, null);
     }
 
-    public Choice(String id, String label, Function<Answers, String> hintFn) {
+    public Choice(@Nullable String id, @Nullable String label, Function<Answers, String> hintFn) {
         this(id, label, "", hintFn, null);
     }
 
     /** Rich-label factory — caller supplies focused/unfocused renderings. */
-    public static Choice rich(String id, String fallbackLabel, Function<Boolean, Styled> richLabelFn) {
+    public static Choice rich(String id, @Nullable String fallbackLabel, Function<Boolean, Styled> richLabelFn) {
         return new Choice(id, fallbackLabel, "", null, richLabelFn);
     }
 
     /** Rich-label factory with a hint suffix. */
-    public static Choice rich(String id, String fallbackLabel, String hint, Function<Boolean, Styled> richLabelFn) {
+    public static Choice rich(
+            String id, @Nullable String fallbackLabel, String hint, Function<Boolean, Styled> richLabelFn) {
         return new Choice(id, fallbackLabel, hint, null, richLabelFn);
     }
 

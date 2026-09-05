@@ -15,6 +15,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk repo login <id>} — store credentials for an artifact repository, keyed by the
@@ -84,7 +85,7 @@ public final class RepoLoginCommand implements CliCommand {
         return 0;
     }
 
-    private static RepoCredentialStore store(Path credentialsDir) {
+    private static RepoCredentialStore store(@Nullable Path credentialsDir) {
         return credentialsDir != null ? new RepoCredentialStore(credentialsDir) : new RepoCredentialStore();
     }
 }

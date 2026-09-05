@@ -15,6 +15,7 @@ import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The last catch in the CLI. A throwable no verb handled reaches the user as one Error wedge
@@ -94,7 +95,7 @@ final class CliFailure {
         return m == null || m.isBlank() ? t.getClass().getSimpleName() : m.strip();
     }
 
-    private static String machineLine(String type, String message, String exceptionClass, int exit) {
+    private static String machineLine(String type, String message, @Nullable String exceptionClass, int exit) {
         Map<String, String> fields = new LinkedHashMap<>();
         fields.put("type", type);
         fields.put("message", message);

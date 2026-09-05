@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Best-effort upsert of {@code jk-<vendor>-<level>} SDKs into JetBrains global
@@ -202,21 +203,21 @@ public final class IntellijSdkRegistrar {
         return Element.of(tag).setAttr("value", value);
     }
 
-    private static Element rootEl(String type, String url) {
+    private static Element rootEl(String type, @Nullable String url) {
         Element e = Element.of("root");
         if (url != null) e.setAttr("url", url);
         e.setAttr("type", type);
         return e;
     }
 
-    private static Element findComponent(Element application, String name) {
+    private static @Nullable Element findComponent(Element application, String name) {
         for (Element c : application.elements("component")) {
             if (name.equals(c.attr("name"))) return c;
         }
         return null;
     }
 
-    private static Element findJdkByName(Element component, String name) {
+    private static @Nullable Element findJdkByName(Element component, String name) {
         for (Element jdk : component.elements("jdk")) {
             for (Element n : jdk.elements("name")) {
                 if (name.equals(n.attr("value"))) return jdk;

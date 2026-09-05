@@ -33,6 +33,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 
 /**
  * — Mill-style selective prepare / resolve / run over git-affected + module selectors.
@@ -188,7 +189,8 @@ public final class SelectiveCommand implements CliCommand {
         return 0;
     }
 
-    private static int runVerb(Invocation in, Path dir, Path buildFile, String since, String modules, Path planPath)
+    private static int runVerb(
+            Invocation in, Path dir, Path buildFile, @Nullable String since, @Nullable String modules, Path planPath)
             throws Exception {
         if (in.positionals().size() < 2) {
             CommandWedge.printFail("Selective", "expected build | test");
@@ -359,7 +361,7 @@ public final class SelectiveCommand implements CliCommand {
         return out;
     }
 
-    private static String gitRevParse(Path root) {
+    private static @Nullable String gitRevParse(Path root) {
         try {
             Process p = new ProcessBuilder("git", "rev-parse", "HEAD")
                     .directory(root.toFile())

@@ -56,6 +56,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * App-install plan used by {@code jk tool install} / {@code jk install}: current project, Maven
@@ -66,20 +67,42 @@ import java.util.Set;
  */
 public final class InstallCommand {
 
+    @Nullable
     String source;
+
+    @Nullable
     String groupFlag;
+
+    @Nullable
     String nameFlag;
+
+    @Nullable
     String verFlag;
+
+    @Nullable
     String binName;
+
+    @Nullable
     String mainClass;
+
+    @Nullable
     Path cacheDirOverride;
+
+    @Nullable
     Path stateDirOverride;
+
+    @Nullable
     Path binDirOverride;
     /** From {@code jk install --lib-dir} (hidden, via ToolInstallCommand); engine default is the product lib. */
+    @Nullable
     Path libDirOverride;
 
+    @Nullable
     Path m2DirOverride;
+
+    @Nullable
     URI repoUrl;
+
     BuildOptions buildOpts;
     GlobalOptions global;
 
@@ -155,7 +178,7 @@ public final class InstallCommand {
         return 0;
     }
 
-    private static String coalesce(String flag, String detected) {
+    private static @Nullable String coalesce(@Nullable String flag, @Nullable String detected) {
         return (flag != null && !flag.isBlank()) ? flag : detected;
     }
 
@@ -497,7 +520,7 @@ public final class InstallCommand {
      * assembly module is the {@code -all.jar}. {@code null} when the plan links nothing, which is
      * a plan with no packaged output to install.
      */
-    private static Path productLibSource(ExecPlan plan) {
+    private static @Nullable Path productLibSource(ExecPlan plan) {
         for (String src : plan.linkSrcs()) {
             if (src.endsWith(".jar")) return Path.of(src);
         }
@@ -541,7 +564,7 @@ public final class InstallCommand {
      * that declares {@code [install] product-lib} is materialized into jk's own product library
      * instead of linked into {@code ~/.jk/bin}.
      */
-    private Path applyInstallPlan(Path projectDir, Path cacheDir, String productLib) throws IOException {
+    private @Nullable Path applyInstallPlan(Path projectDir, Path cacheDir, String productLib) throws IOException {
         ExecPlan plan = EngineClient.execPlan(
                 EnginePaths.current(),
                 projectDir,
@@ -592,7 +615,7 @@ public final class InstallCommand {
         return bin;
     }
 
-    private static Integer rejectInvalidLauncherName(String name) {
+    private static @Nullable Integer rejectInvalidLauncherName(String name) {
         var error = LauncherName.validationError(name);
         if (error.isEmpty()) return null;
         CommandWedge.printFail("Install", error.get());
@@ -719,7 +742,7 @@ public final class InstallCommand {
     }
 
     /** Announce a project install: launcher path for an app, cache-only for a library. */
-    private void announceProjectInstall(String coord, Path launcher, Path binDir) {
+    private void announceProjectInstall(String coord, @Nullable Path launcher, Path binDir) {
         if (global.outputIsJson()) return;
         if (launcher == null) {
             CliOutput.out("Installed " + coord + " to the local cache");
@@ -757,7 +780,7 @@ public final class InstallCommand {
     }
 
     /** {@code <url>} or {@code <url>@<ref>} or {@code <url>#<ref>}. */
-    record UrlAndRef(String url, String ref) {}
+    record UrlAndRef(String url, @Nullable String ref) {}
 
     static UrlAndRef splitUrlRef(String input) {
         int hash = input.lastIndexOf('#');

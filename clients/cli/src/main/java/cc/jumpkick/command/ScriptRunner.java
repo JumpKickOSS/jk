@@ -25,6 +25,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Runs a standalone {@code .java}/{@code .kt}/{@code .kts}/{@code .jar} for {@code jk tool run
@@ -33,25 +34,29 @@ import java.util.Locale;
  */
 final class ScriptRunner {
 
-    private final GlobalOptions global;
-    private final Path cacheDirOverride;
-    private final Path stateDirOverride;
-    private final URI repoUrl;
+    private final @Nullable GlobalOptions global;
+    private final @Nullable Path cacheDirOverride;
+    private final @Nullable Path stateDirOverride;
+    private final @Nullable URI repoUrl;
     private final boolean forceRecompile;
     private final List<String> extraDeps;
     private final List<String> extraJavaOptions;
 
     ScriptRunner(
-            GlobalOptions global, Path cacheDirOverride, Path stateDirOverride, URI repoUrl, boolean forceRecompile) {
+            @Nullable GlobalOptions global,
+            @Nullable Path cacheDirOverride,
+            @Nullable Path stateDirOverride,
+            @Nullable URI repoUrl,
+            boolean forceRecompile) {
         this(global, cacheDirOverride, stateDirOverride, repoUrl, forceRecompile, List.of(), List.of());
     }
 
     /** As above with {@code --with}/alias dep injections and extra JVM options for the exec. */
     ScriptRunner(
-            GlobalOptions global,
-            Path cacheDirOverride,
-            Path stateDirOverride,
-            URI repoUrl,
+            @Nullable GlobalOptions global,
+            @Nullable Path cacheDirOverride,
+            @Nullable Path stateDirOverride,
+            @Nullable URI repoUrl,
             boolean forceRecompile,
             List<String> extraDeps,
             List<String> extraJavaOptions) {

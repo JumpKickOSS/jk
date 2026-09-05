@@ -49,6 +49,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk test} — compile main + test sources and run JUnit Platform tests.
@@ -102,22 +103,36 @@ public final class TestCommand implements CliCommand {
         return opts;
     }
 
+    @Nullable
     String profileName;
+
+    @Nullable
     Integer workers;
+
     boolean parallelTests;
 
     /** {@code --continue} / {@code [engine] continue}: finish the graph, report every failure. */
     boolean keepGoing;
 
+    @Nullable
     Path cacheDir;
+
+    @Nullable
     Path jdksDir;
+
     GlobalOptions global;
     int jobs;
+
+    @Nullable
     String affectedSince;
+
     boolean affectedWip;
+
+    @Nullable
     String modulesSpec;
+
     TestSelection testSelection = TestSelection.DEFAULT;
-    private CliSessionTranscript session;
+    private @Nullable CliSessionTranscript session;
 
     @Override
     public int run(Invocation in) throws IOException, InterruptedException {
@@ -339,7 +354,7 @@ public final class TestCommand implements CliCommand {
      * tests from {@code entryDir}. {@code rootInfo} is the unfiltered workspace peek when already
      * loaded (root invocation); null when the caller is a member dir.
      */
-    private int runSelectedWorkspaceTests(Path entryDir, ProjectInfo rootInfo, Path cache, int workerCount)
+    private int runSelectedWorkspaceTests(Path entryDir, @Nullable ProjectInfo rootInfo, Path cache, int workerCount)
             throws IOException, InterruptedException {
         List<String> tokens = ModuleSelectors.tokens(modulesSpec, affectedSince, affectedWip);
         if (!tokens.isEmpty()) {

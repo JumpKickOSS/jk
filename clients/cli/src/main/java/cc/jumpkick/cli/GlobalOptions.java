@@ -29,7 +29,7 @@ import org.jspecify.annotations.Nullable;
 public final class GlobalOptions {
     public boolean quiet;
     public boolean verbose;
-    public String color;
+    public @Nullable String color;
     public boolean offline;
 
     /**
@@ -70,11 +70,11 @@ public final class GlobalOptions {
     public boolean noTimeline;
 
     /** {@code --jdk <spec>} / {@code --graal <spec>}: the top JDK / GraalVM resolution tier. */
-    public String jdk;
+    public @Nullable String jdk;
 
-    public String graal;
+    public @Nullable String graal;
 
-    public String output;
+    public @Nullable String output;
 
     /**
      * True when the user asked for machine-readable <strong>live JSONL</strong> on stdout: {@code
@@ -106,9 +106,9 @@ public final class GlobalOptions {
         return r.equalsIgnoreCase("json") || r.equalsIgnoreCase("jsonl");
     }
 
-    public Path configFile;
+    public @Nullable Path configFile;
     public boolean noConfig;
-    public Path directory;
+    public @Nullable Path directory;
 
     /**
      * Resolve the working directory: explicit {@code -C}/{@code --dir} if set (either on this mixin
@@ -137,14 +137,14 @@ public final class GlobalOptions {
     public boolean version;
 
     /** {@code --ram-percent}: per-JVM heap cap for jk's worker JVMs, or null. */
-    public Double maxRamPercent;
+    public @Nullable Double maxRamPercent;
 
     /**
      * {@code -j}/{@code --jobs}: concurrent module/worker budget. {@code null} = use
      * env/TOML/default; {@code 0} = all cores; {@code 1} = serial; {@code N} = cap. Resolved via
      * {@link #jobsEffective}.
      */
-    public Integer jobs;
+    public @Nullable Integer jobs;
 
     /** {@code --jvm-arg}: extra raw flags for jk's worker JVMs (repeatable). */
     public List<String> jvmArgs = List.of();
@@ -322,7 +322,7 @@ public final class GlobalOptions {
     }
 
     /** First non-blank of {@code a}, {@code b}, or {@code null} — the flag beats the environment. */
-    private static String firstNonBlank(@Nullable String a, @Nullable String b) {
+    private static @Nullable String firstNonBlank(@Nullable String a, @Nullable String b) {
         if (a != null && !a.isBlank()) return a;
         return (b != null && !b.isBlank()) ? b : null;
     }

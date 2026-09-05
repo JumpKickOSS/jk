@@ -5,6 +5,7 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.terminal.Width;
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A tree of pills, labels, and hanging rich text. Title and root are optional so the same widget
@@ -44,16 +45,16 @@ public final class Tree implements Widget {
     /** Visible columns of {@code ├─}/{@code ╰─}, plus one so children line up past a flush pill. */
     private static final String CHILD_PAD = "   ";
 
-    private final JkWedge title;
+    private final @Nullable JkWedge title;
     private Node root;
     private final List<Node> children = new ArrayList<>();
     private Gap gap = Gap.CHILDREN;
 
-    public Tree(String title) {
+    public Tree(@Nullable String title) {
         this(title == null || title.isEmpty() ? null : JkWedge.menu(title));
     }
 
-    public Tree(JkWedge title) {
+    public Tree(@Nullable JkWedge title) {
         this.title = title;
     }
 
@@ -84,7 +85,7 @@ public final class Tree implements Widget {
         return this;
     }
 
-    public JkWedge title() {
+    public @Nullable JkWedge title() {
         return title;
     }
 
@@ -201,7 +202,7 @@ public final class Tree implements Widget {
         renderForest(node.children, childPrefix, ctx, gap, lines);
     }
 
-    private static String bodyPrefix(BodyFit fit, int index, RenderContext ctx) {
+    private static @Nullable String bodyPrefix(BodyFit fit, int index, RenderContext ctx) {
         return switch (fit) {
             case HANG -> index == 0 ? rail(LAST + " ", ctx) : CHILD_PAD;
             case RAIL -> index == 0 ? rail(SPINE, ctx) + " " : "  ";
@@ -221,7 +222,7 @@ public final class Tree implements Widget {
         return node.flush || node.pill != null;
     }
 
-    private static String rootHead(Node node, RenderContext ctx) {
+    private static @Nullable String rootHead(Node node, RenderContext ctx) {
         String label = nodeLabel(node, ctx);
         if (node.bullet == null) return label;
         String glyph = node.bullet.paint(ctx);
@@ -237,7 +238,7 @@ public final class Tree implements Widget {
         return sb.toString();
     }
 
-    private static String rail(String unicode, RenderContext ctx) {
+    private static @Nullable String rail(String unicode, RenderContext ctx) {
         if (!ctx.ansi()) {
             return switch (unicode) {
                 case BRANCH -> BRANCH_PLAIN;
@@ -253,7 +254,7 @@ public final class Tree implements Widget {
 
     private record Parsed(int depth, String label, boolean flush) {}
 
-    private static Parsed parsePainted(String line) {
+    private static @Nullable Parsed parsePainted(String line) {
         if (line == null || line.isEmpty()) return null;
         String vis = Width.stripAnsi(line);
         int origin = 0;
@@ -278,7 +279,7 @@ public final class Tree implements Widget {
     }
 
     /** First CSI on the line, if any — so a whole-row style (back-references) survives the slice. */
-    private static String leadingSgr(String raw) {
+    private static @Nullable String leadingSgr(String raw) {
         if (raw == null || raw.isEmpty() || raw.charAt(0) != 0x1B) return null;
         int end = skipEscape(raw, 0);
         return end > 0 ? raw.substring(0, end) : null;

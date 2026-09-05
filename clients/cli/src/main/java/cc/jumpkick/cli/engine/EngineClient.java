@@ -32,6 +32,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.function.ObjIntConsumer;
+import org.jspecify.annotations.Nullable;
 
 /**
  * CLI-side counterpart to the engine's {@code EngineServer}: ensures a live version-matched engine
@@ -102,9 +103,9 @@ public final class EngineClient {
      */
     public static BuildPlanResult runSingleBuild(
             EnginePaths.Paths paths,
-            EngineRequests.SingleBuildRequest req,
-            Function<List<Task>, BuildPlanListener> listenerFactory,
-            TestSummary[] testResultOut,
+            EngineRequests.@Nullable SingleBuildRequest req,
+            @Nullable Function<List<Task>, BuildPlanListener> listenerFactory,
+            TestSummary @Nullable [] testResultOut,
             String[] buildOutcomeOut)
             throws IOException {
         return EngineJobs.runSingleBuild(paths, req, listenerFactory, testResultOut, buildOutcomeOut);
@@ -121,10 +122,10 @@ public final class EngineClient {
     }
 
     public static CacheInventoryAck cacheInventory(
-            EnginePaths.Paths paths,
+            EnginePaths.@Nullable Paths paths,
             String query,
             Path cache,
-            Path store,
+            @Nullable Path store,
             List<String> terms,
             List<String> coords,
             boolean dryRun)
@@ -140,7 +141,8 @@ public final class EngineClient {
 
     /** Module DAG for {@code jk explain --graph}. */
     public static ModuleGraphAck moduleGraph(
-            EnginePaths.Paths paths, Path dir, String format, String modules, String affectedSince) throws IOException {
+            EnginePaths.Paths paths, Path dir, String format, @Nullable String modules, String affectedSince)
+            throws IOException {
         return EngineReads.moduleGraph(paths, dir, format, modules, affectedSince);
     }
 
@@ -148,7 +150,7 @@ public final class EngineClient {
     public static CatalogReadAck catalogRead(
             EnginePaths.Paths paths,
             Path dir,
-            Path cache,
+            @Nullable Path cache,
             String query,
             List<String> terms,
             boolean offline,
@@ -162,18 +164,18 @@ public final class EngineClient {
      * Project summary (PROJECT_INFO) — replaces client-side project-file peeks.
      * In-process twin under test/no-engine.
      */
-    public static ProjectInfo projectInfo(EnginePaths.Paths paths, Path dir) throws IOException {
+    public static ProjectInfo projectInfo(EnginePaths.@Nullable Paths paths, Path dir) throws IOException {
         return projectInfo(paths, dir, null, null);
     }
 
-    public static ProjectInfo projectInfo(EnginePaths.Paths paths, Path dir, String modules, String affectedSince)
-            throws IOException {
+    public static ProjectInfo projectInfo(
+            EnginePaths.@Nullable Paths paths, Path dir, String modules, String affectedSince) throws IOException {
         return projectInfo(paths, dir, modules, affectedSince, false);
     }
 
     /** {@code counts=true} adds the source/test tree-walk counts — jk status only. */
     public static ProjectInfo projectInfo(
-            EnginePaths.Paths paths, Path dir, String modules, String affectedSince, boolean counts)
+            EnginePaths.Paths paths, Path dir, @Nullable String modules, @Nullable String affectedSince, boolean counts)
             throws IOException {
         return projectInfo(paths, dir, modules, affectedSince, false, counts);
     }
@@ -181,8 +183,8 @@ public final class EngineClient {
     public static ProjectInfo projectInfo(
             EnginePaths.Paths paths,
             Path dir,
-            String modules,
-            String affectedSince,
+            @Nullable String modules,
+            @Nullable String affectedSince,
             boolean affectedWip,
             boolean counts)
             throws IOException {
@@ -194,7 +196,7 @@ public final class EngineClient {
      * engine-side only; one synchronous DENY_CHECK round trip returns the violations.
      */
     /** Thin-client IDE model: engine computes the workspace model, client generates the files. */
-    public static IdeWireModel ideModel(EnginePaths.Paths paths, Path dir, Path cache, Path jdksDir)
+    public static IdeWireModel ideModel(EnginePaths.Paths paths, Path dir, Path cache, @Nullable Path jdksDir)
             throws IOException {
         return EngineReads.ideModel(paths, dir, cache, jdksDir);
     }
@@ -218,7 +220,12 @@ public final class EngineClient {
 
     /** Thin-client tree render: engine walks the graph, client substitutes its Theme into the tags. */
     public static String treeRender(
-            EnginePaths.Paths paths, Path dir, int maxDepth, boolean flatten, boolean stack, List<String> scopes)
+            EnginePaths.Paths paths,
+            @Nullable Path dir,
+            int maxDepth,
+            boolean flatten,
+            boolean stack,
+            List<String> scopes)
             throws IOException {
         return EngineReads.treeRender(paths, dir, maxDepth, flatten, stack, scopes);
     }
@@ -237,7 +244,12 @@ public final class EngineClient {
      * executes.
      */
     public static ExecPlan execPlan(
-            EnginePaths.Paths paths, Path dir, Path cache, String kind, String mainOverride, String binName)
+            EnginePaths.Paths paths,
+            Path dir,
+            @Nullable Path cache,
+            @Nullable String kind,
+            @Nullable String mainOverride,
+            @Nullable String binName)
             throws IOException {
         return EngineReads.execPlan(paths, dir, cache, kind, mainOverride, binName, null, null);
     }
@@ -246,12 +258,12 @@ public final class EngineClient {
     public static ExecPlan execPlan(
             EnginePaths.Paths paths,
             Path dir,
-            Path cache,
-            String kind,
-            String mainOverride,
-            String binName,
-            Path binDir,
-            Path libDir)
+            @Nullable Path cache,
+            @Nullable String kind,
+            @Nullable String mainOverride,
+            @Nullable String binName,
+            @Nullable Path binDir,
+            @Nullable Path libDir)
             throws IOException {
         return EngineReads.execPlan(paths, dir, cache, kind, mainOverride, binName, binDir, libDir);
     }
@@ -273,8 +285,8 @@ public final class EngineClient {
      * {@code [1]} the full-rebuild ETA (the rebuild-effort denominator). Length-guarded, so a
      * one-slot caller still gets the plain ETA.
      */
-    public static ExplainPlan explain(EnginePaths.Paths paths, EngineRequests.ExplainRequest req, long[] etaOut)
-            throws IOException {
+    public static ExplainPlan explain(
+            EnginePaths.Paths paths, EngineRequests.ExplainRequest req, long @Nullable [] etaOut) throws IOException {
         return EngineExplainDecoder.explain(paths, req, etaOut);
     }
 
@@ -304,7 +316,7 @@ public final class EngineClient {
      * every git dependency) — see {@link EngineResolveAdapter#runUpdateGitOnly}.
      */
     public static EngineRequests.LockOutcome runUpdateGitOnly(
-            EnginePaths.Paths paths, EngineRequests.UpdateRequest req, String gitTarget) throws IOException {
+            EnginePaths.Paths paths, EngineRequests.UpdateRequest req, @Nullable String gitTarget) throws IOException {
         return EngineResolveAdapter.runUpdateGitOnly(paths, req, gitTarget);
     }
 
@@ -335,7 +347,11 @@ public final class EngineClient {
 
     /** Ranked tests for the working tree or {@code since...HEAD} — no compile, no run. */
     public static AffectedTestsReport runAffectedTests(
-            EnginePaths.Paths paths, Path dir, TestSelection selection, String since, String modules)
+            EnginePaths.Paths paths,
+            Path dir,
+            TestSelection selection,
+            @Nullable String since,
+            @Nullable String modules)
             throws IOException {
         return EngineResolveAdapter.runAffectedTests(paths, dir, selection, since, modules);
     }
@@ -399,7 +415,7 @@ public final class EngineClient {
 
     public static BuildPlanResult runCompile(
             EnginePaths.Paths paths,
-            EngineRequests.CompileRequest req,
+            EngineRequests.@Nullable CompileRequest req,
             Function<List<Task>, BuildPlanListener> listenerFactory)
             throws IOException {
         return EngineHosted.runCompile(paths, req, listenerFactory);
@@ -454,7 +470,7 @@ public final class EngineClient {
 
     public static BuildPlanResult runCacheMaintenance(
             EnginePaths.Paths paths,
-            EngineRequests.CacheMaintRequest req,
+            EngineRequests.@Nullable CacheMaintRequest req,
             Function<List<Task>, BuildPlanListener> listenerFactory,
             ObjIntConsumer<Boolean> onWait,
             EngineRequests.CacheMaintSummary[] summaryOut)

@@ -43,6 +43,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk jdk update [spec]} (alias {@code upgrade}) — refresh jk-managed JDKs to the latest
@@ -98,11 +99,11 @@ public final class JdkUpdateCommand implements CliCommand {
     /** A planned update: the installed JDK being superseded and the feed entry replacing it. */
     private record Update(JdkHit old, JdkCatalog.Entry target) {}
 
-    private String spec;
+    private @Nullable String spec;
     private boolean assumeYes;
-    private Path jdksDir;
-    private URI feedUrl;
-    private Path cacheFile;
+    private @Nullable Path jdksDir;
+    private @Nullable URI feedUrl;
+    private @Nullable Path cacheFile;
 
     @Override
     public int run(Invocation in) throws Exception {
@@ -303,7 +304,7 @@ public final class JdkUpdateCommand implements CliCommand {
      * suggested name encodes the major, so this never crosses majors.
      */
     private static Optional<JdkCatalog.Entry> latestPointRelease(
-            JdkCatalog catalog, String installedId, String os, String arch) {
+            @Nullable JdkCatalog catalog, String installedId, String os, String arch) {
         JdkCatalog.Entry best = null;
         for (JdkCatalog.Entry e : catalog.entries()) {
             if (e.preview()) continue;

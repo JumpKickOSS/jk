@@ -6,6 +6,7 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.run.TestFailureInfo;
 import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The {@code --no-ansi} renderer for {@link JkManager}: append-only {@code jk: * …} lines instead of
@@ -302,7 +303,7 @@ final class JkManagerPlainView {
         return !sub.equals(lastSubject) || !PlainPhase.sameFamily(st, lastStatus);
     }
 
-    private static String formatTail(String subject, int percent, String eta, String status, String detail) {
+    private static String formatTail(String subject, int percent, @Nullable String eta, String status, String detail) {
         String st = status == null || status.isBlank() ? PlainPhase.PREPARE : status;
         StringBuilder tail = new StringBuilder();
         tail.append(percent).append('%');
@@ -371,7 +372,7 @@ final class JkManagerPlainView {
     }
 
     /** Newest active row (insertion order) — the step that just started owns the status. */
-    private PlanModel.Row firstActiveRow() {
+    private PlanModel.@Nullable Row firstActiveRow() {
         PlanModel.Row last = null;
         for (PlanModel.Row r : m.model.rows().values()) {
             if (r.state == PlanModel.RowState.ACTIVE) last = r;
@@ -385,7 +386,7 @@ final class JkManagerPlainView {
         return new Progress(bd[0], bd[1]).percent();
     }
 
-    private String etaClock() {
+    private @Nullable String etaClock() {
         long remMs = m.header.countdown.remainingMs(m.elapsedMillis());
         if (remMs < 0) return null;
         return DurationText.clockMillis(remMs);

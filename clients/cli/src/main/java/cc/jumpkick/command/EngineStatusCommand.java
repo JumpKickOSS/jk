@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.util.List;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk engine status} — pings first (the same liveness authority every engine-aware command
@@ -228,7 +229,7 @@ public final class EngineStatusCommand implements CliCommand {
      * <p>When {@code value} already contains ANSI (e.g. an OSC-8 hyperlink), it is emitted as-is
      * so nested styling is not double-wrapped.
      */
-    private static void detail(String label, String value) {
+    private static void detail(String label, @Nullable String value) {
         Theme t = Theme.active();
         String field = StatusCommand.dottedLabel(label, LABEL_W);
         String name = field.substring(0, label.length());
@@ -240,7 +241,7 @@ public final class EngineStatusCommand implements CliCommand {
     }
 
     /** The engine pid in yellow on an ANSI terminal (matching the start/stop wedges). */
-    private static String pidStyled(long pid) {
+    private static @Nullable String pidStyled(long pid) {
         String s = Long.toString(pid);
         return Theme.active().isAnsi() ? Theme.colorize(s, Theme.active().warning()) : s;
     }
@@ -270,7 +271,7 @@ public final class EngineStatusCommand implements CliCommand {
      * Unobservable parts are dropped; {@code null} when nothing at all was observed (an engine
      * predating the memory fields).
      */
-    private static String formatMemory(EngineProbe.Status s) {
+    private static @Nullable String formatMemory(EngineProbe.Status s) {
         StringBuilder out = new StringBuilder();
         if (s.heapUsedBytes() >= 0 && s.heapCommittedBytes() >= 0) {
             out.append("Heap ")
@@ -298,7 +299,7 @@ public final class EngineStatusCommand implements CliCommand {
      * committed}-beyond-used in indigo, and the rest (up to {@code max}) in bright-black. {@code
      * null} when the heap max isn't observable (nothing to scale against).
      */
-    private static String memoryBar(EngineProbe.Status s) {
+    private static @Nullable String memoryBar(EngineProbe.Status s) {
         long max = s.heapMaxBytes();
         if (max <= 0 || s.heapUsedBytes() < 0 || s.heapCommittedBytes() < 0) return null;
         int width = 50;

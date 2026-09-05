@@ -27,6 +27,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk publish} — assemble, sign, and upload Maven artifacts (engine-hosted worker).
@@ -68,19 +69,37 @@ public final class PublishCommand implements CliCommand {
     }
 
     URI repoUrl;
+
+    @Nullable
     String username;
+
+    @Nullable
     String password;
+
+    @Nullable
     String region;
+
+    @Nullable
     String endpoint;
+
+    @Nullable
     Path jarPath;
+
     boolean allowSnapshot;
     boolean dryRun;
     boolean sign;
+
+    @Nullable
     Path keyFile;
+
+    @Nullable
     String keyPassphrase;
+
     boolean sigstore;
     boolean slsa;
     boolean sbom;
+
+    @Nullable
     GlobalOptions global;
 
     @Override

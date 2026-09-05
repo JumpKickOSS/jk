@@ -13,6 +13,7 @@ import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.wire.EnginePaths;
 import java.io.IOException;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk engine start} — eager, blocking start: waits for the engine to be confirmed live (or
@@ -58,7 +59,7 @@ public final class EngineStartCommand implements CliCommand {
     }
 
     /** The engine pid in yellow on an ANSI terminal (matching the status wedge), plain otherwise. */
-    private static String pidStyled(long pid) {
+    private static @Nullable String pidStyled(long pid) {
         String s = Long.toString(pid);
         return Theme.active().isAnsi() ? Theme.colorize(s, Theme.active().warning()) : s;
     }

@@ -2,6 +2,7 @@
 package cc.jumpkick.command;
 
 import java.nio.file.Path;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Fish flavour. Uses {@code --on-event fish_prompt} and {@code --on-variable PWD} for the
@@ -16,7 +17,7 @@ public final class FishShell implements Shell {
     }
 
     @Override
-    public String setEnv(String key, String value) {
+    public String setEnv(String key, @Nullable String value) {
         // Fish PATH is a list, but `set -gx PATH <colon-string>` still works and
         // is what the rest of the ecosystem (mise, asdf, direnv) emits too —
         // fish auto-splits on the colon when the variable name is PATH.

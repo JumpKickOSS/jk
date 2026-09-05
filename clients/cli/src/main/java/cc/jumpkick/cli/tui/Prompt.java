@@ -17,6 +17,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Single-keystroke prompt. Bindings map a key to a value and a settle label. Enter takes the
@@ -107,7 +108,7 @@ public final class Prompt<T> implements Widget {
      * hint carries SGR color when ANSI is active, so the rewind must count visible columns, not
      * raw chars — overshooting drags the cursor into the question text and the erase wipes it.
      */
-    static String settleOverwrite(String hint, String answer) {
+    static String settleOverwrite(String hint, @Nullable String answer) {
         return Ansi.cursorBack(RenderContext.visibleWidth(hint) + 1) + answer + Ansi.ERASE_LINE_TO_END + "\r\n";
     }
 
@@ -116,7 +117,7 @@ public final class Prompt<T> implements Widget {
         return List.of(question.render(ctx) + " " + hintText(ctx.mode() == RenderContext.Mode.PLAIN));
     }
 
-    private T interpret(Key key) {
+    private @Nullable T interpret(Key key) {
         return switch (key) {
             case Key.Char c -> {
                 char ch = Character.toLowerCase(c.c());
@@ -194,7 +195,7 @@ public final class Prompt<T> implements Widget {
         return sb.toString();
     }
 
-    private String settleLabel(T result) {
+    private @Nullable String settleLabel(T result) {
         for (Binding<T> b : bindings) {
             if (Objects.equals(b.value(), result)) {
                 boolean ok = result instanceof Boolean bool && bool;

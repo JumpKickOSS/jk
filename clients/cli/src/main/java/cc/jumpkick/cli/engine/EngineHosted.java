@@ -28,6 +28,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.function.Function;
 import java.util.function.ObjIntConsumer;
+import org.jspecify.annotations.Nullable;
 
 /** Hosted verb bodies that are more than a one-line adapter call. */
 final class EngineHosted {
@@ -268,7 +269,7 @@ final class EngineHosted {
      */
     static BuildPlanResult runCompile(
             EnginePaths.Paths paths,
-            EngineRequests.CompileRequest req,
+            EngineRequests.@Nullable CompileRequest req,
             Function<List<Task>, BuildPlanListener> listenerFactory)
             throws IOException {
         return EnginePluginAdapter.stream(
@@ -451,7 +452,7 @@ final class EngineHosted {
      */
     static BuildPlanResult runCacheMaintenance(
             EnginePaths.Paths paths,
-            EngineRequests.CacheMaintRequest req,
+            EngineRequests.@Nullable CacheMaintRequest req,
             Function<List<Task>, BuildPlanListener> listenerFactory,
             ObjIntConsumer<Boolean> onWait,
             EngineRequests.CacheMaintSummary[] summaryOut)

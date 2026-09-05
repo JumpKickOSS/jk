@@ -46,6 +46,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk jdk uninstall <source>/<spec>} — source-qualified single-target removal. Without
@@ -124,7 +125,11 @@ public final class JdkUninstallCommand implements CliCommand {
 
     String argument;
     boolean assumeYes;
+
+    @Nullable
     Path jdksDir;
+
+    @Nullable
     GlobalOptions global;
 
     private static final BuildPlanKey<List<JdkHit>> VICTIMS = BuildPlanKey.list("victims", JdkHit.class);
@@ -399,7 +404,7 @@ public final class JdkUninstallCommand implements CliCommand {
      * keeping the JLine terminal open across this call (see {@link #runWizard}) — once the terminal
      * closes, the underlying {@code System.in} FD goes with it.
      */
-    private boolean confirmDeletion(JdkHit victim, TerminalSession terminal) {
+    private boolean confirmDeletion(JdkHit victim, @Nullable TerminalSession terminal) {
         if (assumeYes) return true;
         String warn = Theme.colorize(Glyphs.BANG, Theme.active().warning());
         String question = warn + " Are you sure you want to delete " + target(victim) + "?";

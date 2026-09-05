@@ -11,6 +11,7 @@ import cc.jumpkick.config.NerdFontCaps;
 import cc.jumpkick.scaffold.NewInputs;
 import cc.jumpkick.terminal.Style;
 import cc.jumpkick.terminal.TerminalSession;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Everything {@code jk new} says out loud, and the one decision that makes it hard: <b>where</b> the
@@ -30,7 +31,7 @@ final class NewChrome {
      * {@code terminal} is the wizard's session when the wizard is what discovered the collision, and
      * null on the flag / template paths.
      */
-    static void projectExists(String coord, boolean isModule, boolean isInit, TerminalSession terminal) {
+    static void projectExists(String coord, boolean isModule, boolean isInit, @Nullable TerminalSession terminal) {
         Theme t = Theme.active();
         NerdFontCaps nerdFont = GlobalConfig.nerdFont();
         String noun = isModule ? "module" : "project";
@@ -89,7 +90,11 @@ final class NewChrome {
      * {@code parentProject} is the enclosing project's display name when the new project was
      * registered as one of its modules, else null.
      */
-    static void created(NewInputs inputs, String parentProject, boolean isInit, TerminalSession terminal) {
+    static void created(
+            @Nullable NewInputs inputs,
+            @Nullable String parentProject,
+            boolean isInit,
+            @Nullable TerminalSession terminal) {
         String line = successLine(inputs, parentProject, isInit);
         if (terminal == null) {
             CommandWedge.printLine(line);
@@ -101,7 +106,7 @@ final class NewChrome {
         writer.flush();
     }
 
-    private static String successLine(NewInputs inputs, String parentProject, boolean isInit) {
+    private static String successLine(NewInputs inputs, @Nullable String parentProject, boolean isInit) {
         NerdFontCaps nerdFont = GlobalConfig.nerdFont();
         Style accent = Theme.active().brightCyan().bold();
         if (parentProject != null) {

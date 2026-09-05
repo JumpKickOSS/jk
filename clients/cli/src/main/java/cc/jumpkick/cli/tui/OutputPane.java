@@ -5,6 +5,7 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.run.TaskNames;
 import java.util.function.BooleanSupplier;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The sliding process-output pane under the live region, its Ctrl-O key, and the stdout/stderr
@@ -30,7 +31,7 @@ public final class OutputPane {
      * — often the SIGINT handler. {@link PeekKeys} owns the terminal attributes and the atomicity of
      * giving them back.
      */
-    private volatile PeekKeys keys;
+    private volatile @Nullable PeekKeys keys;
 
     OutputPane(JkManager m, Object lock) {
         this.m = m;

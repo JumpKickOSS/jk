@@ -18,6 +18,7 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Desired {@code JAVA_HOME}/{@code GRAALVM_HOME}/{@code PATH} for a cwd (nearest project pin or
@@ -42,7 +43,7 @@ public final class JkEnv {
         this(registry, basePath, JdkInventory.current(), null, null);
     }
 
-    public JkEnv(JdkRegistry registry, String basePath, JdkInventory globalDefault) {
+    public JkEnv(JdkRegistry registry, @Nullable String basePath, JdkInventory globalDefault) {
         this(registry, basePath, globalDefault, null, null);
     }
 
@@ -141,7 +142,7 @@ public final class JkEnv {
      * GraalVM". Empty when no GraalVM is installed. An unsatisfied lock pin is a floor: later
      * defaults must still meet it.
      */
-    private Optional<Path> resolveGraalHome(String projectGraalSpec, Lockfile.GraalPin lockGraal) {
+    private Optional<Path> resolveGraalHome(@Nullable String projectGraalSpec, Lockfile.@Nullable GraalPin lockGraal) {
         for (String spec : new String[] {System.getenv("JK_GRAAL"), projectGraalSpec}) {
             if (spec == null || spec.isBlank()) continue;
             if (spec.trim().equalsIgnoreCase("native")) {
@@ -181,7 +182,7 @@ public final class JkEnv {
         return defactoGraalHome(graalFloor);
     }
 
-    private Optional<Path> defactoGraalHome(String graalFloor) {
+    private Optional<Path> defactoGraalHome(@Nullable String graalFloor) {
         var hits = registry.listHits();
         if (graalFloor != null) {
             hits = hits.stream()
@@ -191,7 +192,7 @@ public final class JkEnv {
         return DefaultGraalPolicy.choose(hits).map(JdkHit::home);
     }
 
-    private boolean graalMeetsFloor(Path home, String graalFloor) {
+    private boolean graalMeetsFloor(Path home, @Nullable String graalFloor) {
         if (graalFloor == null) return true;
         return LockPinMatch.hitFor(home, registry.listHits())
                 .map(h -> LockPinMatch.meetsFloor(h.version(), graalFloor))
@@ -209,7 +210,7 @@ public final class JkEnv {
         return Optional.empty();
     }
 
-    private JdkVendor matchVendor(Path home) {
+    private JdkVendor matchVendor(@Nullable Path home) {
         // Look first in the probe-emitted hits (cheap, already parsed); fall
         // back to reading the release file directly. Either way, UNKNOWN if
         // we can't tell — the GraalVM detection just won't fire.

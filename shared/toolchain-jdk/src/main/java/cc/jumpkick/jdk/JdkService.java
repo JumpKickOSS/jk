@@ -10,6 +10,7 @@ import java.time.Duration;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Consumer;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Non-interactive {@code jk jdk install}: catalog resolve, download, extract. Progress via
@@ -60,7 +61,7 @@ public final class JdkService {
      * host (no LTS major, no Oracle GraalVM, …). Pure over the catalog — shared by the CLI (which
      * adds its own "could not resolve" message) and headless callers.
      */
-    public static Optional<String> resolveKeyword(String raw, JdkCatalog catalog, String os, String arch) {
+    public static Optional<String> resolveKeyword(@Nullable String raw, JdkCatalog catalog, String os, String arch) {
         if (!JdkKeywords.isKeyword(raw)) return Optional.empty();
         return JdkKeywords.resolveToMajorSpec(catalog, raw, os, arch);
     }

@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk mvn ...} — passthrough to Maven. Provisioning is engine-hosted; {@code bin/mvn} execs
@@ -58,9 +59,15 @@ public final class MvnCommand implements CliCommand {
         return List.of(Param.of("args", Arity.ZERO_OR_MORE, "Arguments forwarded to Maven."));
     }
 
+    @Nullable
     Path directory;
+
+    @Nullable
     Path toolsDir;
+
+    @Nullable
     Path jdksDir;
+
     boolean noDiscover;
     List<String> args = new ArrayList<>();
 

@@ -388,7 +388,7 @@ public final class ProjectBuilds {
         return latestRunFile(buildsRoot(), projectDir, fileName);
     }
 
-    public static Optional<Path> latestRunFile(Path buildsRoot, Path projectDir, String fileName) {
+    public static Optional<Path> latestRunFile(Path buildsRoot, @Nullable Path projectDir, String fileName) {
         if (fileName == null || fileName.isBlank()) return Optional.empty();
         if (fileName.indexOf('/') >= 0 || fileName.indexOf('\\') >= 0 || fileName.contains("..")) {
             return Optional.empty();

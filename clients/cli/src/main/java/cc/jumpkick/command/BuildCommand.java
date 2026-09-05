@@ -50,6 +50,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /** {@code jk build} — orchestrates lock, sync, compile, test, and package. */
 public final class BuildCommand implements CliCommand {
@@ -94,10 +95,18 @@ public final class BuildCommand implements CliCommand {
         return opts;
     }
 
+    @Nullable
     String profileName;
+
+    @Nullable
     Integer workers;
+
+    @Nullable
     Path cacheDir;
+
+    @Nullable
     Path jdksDir;
+
     BuildOptions buildOpts;
     GlobalOptions global;
     /** Resolved concurrent module budget (from global -j / JK_JOBS / [engine] jobs). */
@@ -108,13 +117,21 @@ public final class BuildCommand implements CliCommand {
 
     boolean parallelTests;
     boolean aotCache;
+
+    @Nullable
     String variant;
+
+    @Nullable
     String affectedSince;
+
     boolean affectedWip;
+
+    @Nullable
     String modulesSpec;
+
     Map<String, String> clientEnv = Map.of();
     /** Best-effort session transcript; null when disabled / no project. */
-    private CliSessionTranscript session;
+    private @Nullable CliSessionTranscript session;
 
     // ---- Entry point ----------------------------------------------------
 
@@ -326,8 +343,8 @@ public final class BuildCommand implements CliCommand {
     }
 
     /** Resolved {@code -m/--affected-since} selection: at most one of the fields is meaningful. */
-    private record Selection(String error, boolean empty, List<String> tokens, List<String> names) {
-        Selection(String error, boolean empty, List<String> tokens) {
+    private record Selection(@Nullable String error, boolean empty, List<String> tokens, List<String> names) {
+        Selection(@Nullable String error, boolean empty, List<String> tokens) {
             this(error, empty, tokens, List.of());
         }
     }

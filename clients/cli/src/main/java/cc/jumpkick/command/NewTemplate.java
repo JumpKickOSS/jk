@@ -17,6 +17,7 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk new --template <local-path|short-name|git-uri|owner/repo>} — the third mode of
@@ -40,11 +41,11 @@ final class NewTemplate {
     record Args(
             String ref,
             List<String> params,
-            String name,
-            String group,
-            String lang,
-            String layout,
-            Path directory,
+            @Nullable String name,
+            @Nullable String group,
+            @Nullable String lang,
+            @Nullable String layout,
+            @Nullable Path directory,
             Path cwd,
             boolean plugin,
             boolean standalone,

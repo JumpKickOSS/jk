@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Styled inline text as a span list — <em>what</em> to show, not SGR. Markup is a constructor
@@ -40,7 +41,7 @@ public final class RichText {
     }
 
     /** One run of text in a named theme/CSS color. */
-    public static RichText styled(String text, String colorName) {
+    public static RichText styled(@Nullable String text, String colorName) {
         if (text == null || text.isEmpty()) return EMPTY;
         return parse("[" + colorName + "]" + escape(text) + "[/]");
     }
@@ -55,7 +56,7 @@ public final class RichText {
      * Already-styled ANSI (or OSC-8) from a leftover {@code Theme.colorize} call. Width still
      * strips CSI. Prefer {@link #parse} for new call sites. Never pass untrusted user text here.
      */
-    public static RichText ansi(String alreadyStyled) {
+    public static RichText ansi(@Nullable String alreadyStyled) {
         if (alreadyStyled == null || alreadyStyled.isEmpty()) return EMPTY;
         return new RichText(List.of(new Span(alreadyStyled, MarkupStyle.EMPTY, null, true)));
     }
@@ -108,7 +109,7 @@ public final class RichText {
         return sb.toString();
     }
 
-    private static String paint(Span span, RenderContext ctx) {
+    private static @Nullable String paint(Span span, RenderContext ctx) {
         String text = span.text;
         if (span.prestyled) {
             if (!ctx.ansi()) return PlainAscii.transform(Width.stripAnsi(text));
@@ -236,9 +237,13 @@ public final class RichText {
         return Integer.parseInt(hex, 16);
     }
 
-    private record Span(String text, MarkupStyle style, String linkUrl, boolean prestyled) {}
+    private record Span(
+            String text, MarkupStyle style, @Nullable String linkUrl, boolean prestyled) {}
 
-    private record Tag(String raw, MarkupStyle style, String linkUrl) {}
+    private record Tag(
+            @Nullable String raw,
+            MarkupStyle style,
+            @Nullable String linkUrl) {}
 
     private sealed interface Color permits NamedColor, HexColor {}
 
@@ -246,7 +251,8 @@ public final class RichText {
 
     private record HexColor(int rgb) implements Color {}
 
-    private record MarkupStyle(Color fg, boolean bold, boolean italic, boolean underline, boolean dim, boolean strike) {
+    private record MarkupStyle(
+            @Nullable Color fg, boolean bold, boolean italic, boolean underline, boolean dim, boolean strike) {
 
         static final MarkupStyle EMPTY = new MarkupStyle(null, false, false, false, false, false);
 
@@ -302,9 +308,9 @@ public final class RichText {
 
     public static final class ParseException extends IllegalArgumentException {
         private final int index;
-        private final String token;
+        private final @Nullable String token;
 
-        ParseException(int index, String token, String message) {
+        ParseException(int index, @Nullable String token, String message) {
             super(message + " at " + index + " (" + token + ")");
             this.index = index;
             this.token = token;
@@ -314,7 +320,7 @@ public final class RichText {
             return index;
         }
 
-        public String token() {
+        public @Nullable String token() {
             return token;
         }
     }

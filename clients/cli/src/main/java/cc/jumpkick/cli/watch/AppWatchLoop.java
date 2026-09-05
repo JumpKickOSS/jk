@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk watch run} / {@code jk dev}: build, start the app from classes, recompile on change.
@@ -170,7 +171,7 @@ public final class AppWatchLoop {
         return report.exit();
     }
 
-    private boolean build(Path projectDir, Path cache) throws IOException, InterruptedException {
+    private @Nullable boolean build(Path projectDir, Path cache) throws IOException, InterruptedException {
         String target = BuildCommand.buildTarget(projectDir.resolve(ManifestPaths.MANIFEST), projectDir);
         ConsoleSpec spec = new ConsoleSpec(
                 "Watch", r -> Theme.colorize("Built", Theme.active().focused()), r -> "Build failed");
@@ -196,7 +197,7 @@ public final class AppWatchLoop {
         return result.success();
     }
 
-    private boolean compile(Path projectDir, Path cache) throws IOException, InterruptedException {
+    private @Nullable boolean compile(Path projectDir, Path cache) throws IOException, InterruptedException {
         String target = BuildCommand.buildTarget(projectDir.resolve(ManifestPaths.MANIFEST), projectDir);
         ConsoleSpec spec = new ConsoleSpec(
                 "Watch", r -> Theme.colorize("Recompiled", Theme.active().focused()), r -> "Compile failed");
@@ -234,7 +235,7 @@ public final class AppWatchLoop {
     }
 
     /** Resolve cache dir from override or defaults. */
-    public static Path cache(Path override) {
+    public static Path cache(@Nullable Path override) {
         return override != null ? override : JkDirs.cache();
     }
 }

@@ -3,6 +3,7 @@ package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.terminal.Terminals;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Interactive probes split: {@link #canPrompt()} (controlling TTY for input) vs {@link
@@ -15,7 +16,7 @@ public final class Interactivity {
 
     private Interactivity() {}
 
-    private static volatile Boolean canPromptCache;
+    private static volatile @Nullable Boolean canPromptCache;
 
     /** {@code true} when {@code CI} is truthy ({@code 1}/{@code true}/{@code yes}), {@code JK_NONINTERACTIVE} is set, or {@code TERM=dumb}. */
     private static boolean forcedNonInteractive() {

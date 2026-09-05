@@ -29,6 +29,7 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk update} — re-resolve dependencies and overwrite {@code jk-lock.toml} (unlike {@code lock},
@@ -39,11 +40,11 @@ public final class UpdateCommand implements CliCommand {
 
     private List<String> features = List.of();
     private boolean noDefaultFeatures;
-    private URI repoUrl;
-    private Path cacheDir;
+    private @Nullable URI repoUrl;
+    private @Nullable Path cacheDir;
     private GlobalOptions global;
     /** Optional {@code enforced}|{@code floor}; null = project {@code [resolve] platform}. */
-    private String platform;
+    private @Nullable String platform;
 
     @Override
     public String name() {
@@ -150,7 +151,7 @@ public final class UpdateCommand implements CliCommand {
     }
 
     /** Hosted {@code --git} splice: no plan events — the terminal carries the refreshed count. */
-    private int runHostedGitOnly(Path dir, Path cache, String gitTarget) {
+    private int runHostedGitOnly(Path dir, Path cache, @Nullable String gitTarget) {
         EngineRequests.LockOutcome outcome;
         try {
             outcome = EngineClient.runUpdateGitOnly(EnginePaths.current(), updateRequest(dir, cache), gitTarget);

@@ -11,6 +11,7 @@ import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.GroupCommand;
 import java.nio.file.Path;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk auth} parent command — authenticate jk against a git forge so it can call that forge's
@@ -42,7 +43,7 @@ public final class AuthCommand extends GroupCommand {
                         + "'. Expected one of: github, gitlab, gitea (forgejo/codeberg), bitbucket."));
     }
 
-    static ForgeAuth authFor(Path credentialsDir) {
+    static ForgeAuth authFor(@Nullable Path credentialsDir) {
         return credentialsDir != null
                 ? new ForgeAuth(new TokenStore(credentialsDir), System::getenv, CliTokenProbe.REAL)
                 : new ForgeAuth();
@@ -50,7 +51,7 @@ public final class AuthCommand extends GroupCommand {
 
     record Target(ForgeKind kind, String host) {}
 
-    static Target resolveTarget(String provider, String host, Path workingDir) {
+    static Target resolveTarget(@Nullable String provider, @Nullable String host, Path workingDir) {
         if (provider != null) return new Target(requireKind(provider), host);
         ForgeRemote detected = GitForgeDetector.detect(workingDir)
                 .orElseThrow(() -> new IllegalArgumentException("Could not detect a forge from this repo's git remote. "

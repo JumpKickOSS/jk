@@ -6,6 +6,7 @@ import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.NerdFontCaps;
 import java.io.PrintStream;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Human-facing settled command result chrome.
@@ -84,7 +85,7 @@ public final class CommandWedge {
      * {@link Spinner#showWedge} opens the envelope on the stream it is handed, and the one-argument
      * {@link CliOutput#ensureLeadingBlank(PrintStream)} records the stdout side by contract.
      */
-    public static Spinner analyzingStdout(String command, String message) {
+    public static @Nullable Spinner analyzingStdout(String command, String message) {
         return CliOutput.scriptMode() ? null : analyzing(CliOutput.stdout(), command, message);
     }
 
@@ -132,7 +133,7 @@ public final class CommandWedge {
      * before the envelope opened. {@code out} must be stdout-side; stderr chrome calls
      * {@link #envelopeStartErr()}.
      */
-    public static void envelopeStart(PrintStream out) {
+    public static void envelopeStart(@Nullable PrintStream out) {
         CliOutput.ensureLeadingBlank(out);
     }
 
@@ -157,7 +158,7 @@ public final class CommandWedge {
      * Print a failure settle with leading blank only on stderr when this is first chrome; then
      * {@link #fail}.
      */
-    public static void printFail(String command, String message) {
+    public static void printFail(String command, @Nullable String message) {
         CliOutput.err(fail(command, message));
     }
 

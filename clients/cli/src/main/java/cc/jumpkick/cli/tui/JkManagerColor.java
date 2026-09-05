@@ -11,6 +11,7 @@ import cc.jumpkick.terminal.Style;
 import java.util.Locale;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Token colouring and label vocabulary for the live tree and header rows: what a step's detail text
@@ -87,7 +88,7 @@ public final class JkManagerColor {
      * Paint {@code downloading Temurin 25 ▰▰▰▰▰▱▱▱▱▱ 50%} / {@code installing … 100%}: verb and
      * percent mid-gray, product name cyan, filled bar cells blue, empty cells dark gray.
      */
-    private static String colorJdkProgressDetail(String detail, Theme t) {
+    private static @Nullable String colorJdkProgressDetail(String detail, Theme t) {
         JdkProgressLabel.Parsed p = JdkProgressLabel.tryParse(detail);
         if (p == null) return null;
         StringBuilder out = new StringBuilder(detail.length() + 64);
@@ -111,7 +112,7 @@ public final class JkManagerColor {
      * (periwinkle), size number bold bright-white, prose mid-gray. Returns null when the detail
      * is not this shape so the generic prose painter handles it.
      */
-    private static String colorNativeClasspathSizeDetail(String detail, Theme t) {
+    private static @Nullable String colorNativeClasspathSizeDetail(String detail, Theme t) {
         if (detail == null) return null;
         final String marker = " · classpath input size: ~";
         int sep = detail.indexOf(marker);
@@ -430,7 +431,7 @@ public final class JkManagerColor {
     }
 
     /** Paint {@code g:a} / {@code g:a:v} with the same colors as dependency trees. */
-    private static String colorCoord(String tok) {
+    private static @Nullable String colorCoord(String tok) {
         String[] parts = tok.split(":", -1);
         if (parts.length == 2) return Coords.ga(parts[0], parts[1]);
         if (parts.length >= 3) {
@@ -500,7 +501,7 @@ public final class JkManagerColor {
      * {@code group:artifact} → cyan group + bold bright-cyan artifact (plan tree / failure
      * tails). Plain settled style if no colon.
      */
-    public static String coloredModule(String module) {
+    public static @Nullable String coloredModule(String module) {
         int colon = module.indexOf(':');
         if (colon < 0) return Theme.colorize(module, Theme.active().settled());
         Theme t = Theme.active();

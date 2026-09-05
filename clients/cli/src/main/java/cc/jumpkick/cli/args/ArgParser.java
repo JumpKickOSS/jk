@@ -9,6 +9,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Recursive-descent parser of argv against a {@link Command}'s {@link Opt}s/{@link Param}s (long
@@ -150,7 +151,7 @@ public final class ArgParser {
 
     // --- shared value/flag consumption ---------------------------------------
 
-    private static int consume(Invocation.Builder out, Opt opt, List<String> args, int i, String inline)
+    private static int consume(Invocation.Builder out, Opt opt, List<String> args, int i, @Nullable String inline)
             throws ParseException {
         if (!opt.takesValue()) {
             out.flag(opt.canonicalName(), true);

@@ -15,6 +15,7 @@ import cc.jumpkick.terminal.Terminals;
 import java.io.PrintWriter;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Live two-line TUI for {@code jk engine stop} drain (job count + elapsed; Ctrl-X forces kill via
@@ -23,7 +24,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class DrainView implements LiveRegion, AutoCloseable {
 
     private final TerminalSession terminal; // null → inactive no-op
-    private final ModeGuard mode;
+    private final @Nullable ModeGuard mode;
     private final PrintWriter out;
     private final NerdFontCaps nerdFont;
     private final long startNanos;
@@ -38,7 +39,12 @@ public final class DrainView implements LiveRegion, AutoCloseable {
     private Thread keys;
     private Thread restoreHook;
 
-    private DrainView(TerminalSession terminal, ModeGuard mode, int jobs, NerdFontCaps nerdFont, long startNanos) {
+    private DrainView(
+            @Nullable TerminalSession terminal,
+            @Nullable ModeGuard mode,
+            int jobs,
+            NerdFontCaps nerdFont,
+            long startNanos) {
         this.terminal = terminal;
         this.mode = mode;
         this.out = terminal == null ? null : terminal.ttyOut();

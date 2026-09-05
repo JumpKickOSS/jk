@@ -12,6 +12,7 @@ import cc.jumpkick.util.JkDirs;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Single entry point CLI commands use to run a {@link BuildPlan} against the right set of console
@@ -92,7 +93,7 @@ public final class BuildPlanConsole {
      * <p>{@code --output json} wins over the visualization flags because it's an explicit "I want
      * machine-readable output" — the user's other preferences don't override that.
      */
-    public static Mode modeFor(GlobalOptions opts) {
+    public static Mode modeFor(@Nullable GlobalOptions opts) {
         if (opts == null) return Mode.AUTO;
         if (opts.outputIsJson()) return Mode.JSON;
         if (opts.quiet) return Mode.QUIET;

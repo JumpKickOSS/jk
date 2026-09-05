@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Console listener for plan-oriented commands ({@code jk build} and friends): drives a {@link
@@ -34,7 +35,7 @@ public final class CommandManagerListener implements BuildPlanListener {
 
     private final PrintStream out;
     /** May be {@code null} — use {@link #command} as the display name and dismiss on completion. */
-    private final ConsoleSpec spec;
+    private final @Nullable ConsoleSpec spec;
 
     private final String command;
     private final String module;

@@ -44,7 +44,11 @@ final class EngineResolveAdapter {
      * one {@code affected-tests-ack}. Read-only — no compile, no test run.
      */
     static AffectedTestsReport runAffectedTests(
-            EnginePaths.Paths paths, Path dir, TestSelection selection, String since, String modules)
+            EnginePaths.Paths paths,
+            Path dir,
+            TestSelection selection,
+            @Nullable String since,
+            @Nullable String modules)
             throws IOException {
         return EngineReads.request(
                 paths,
@@ -109,11 +113,12 @@ final class EngineResolveAdapter {
      * {@code errors} the command renders.
      */
     static EngineRequests.LockOutcome runUpdateGitOnly(
-            EnginePaths.Paths paths, EngineRequests.UpdateRequest req, String gitTarget) throws IOException {
+            EnginePaths.Paths paths, EngineRequests.UpdateRequest req, @Nullable String gitTarget) throws IOException {
         return streamCascade(paths, updateRequestLine(req, true, gitTarget), NOOP_HANDLER, "update");
     }
 
-    private static String updateRequestLine(EngineRequests.UpdateRequest req, boolean gitOnly, String gitTarget) {
+    private static String updateRequestLine(
+            EngineRequests.UpdateRequest req, boolean gitOnly, @Nullable String gitTarget) {
         return new UpdateRequest(
                         req.entryDir().toString(),
                         req.cache().toString(),

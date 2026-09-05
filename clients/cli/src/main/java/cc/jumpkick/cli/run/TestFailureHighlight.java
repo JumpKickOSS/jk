@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Styles the plain-text test-failure block emitted by the engine ({@code TestSupport.renderFailures})
@@ -100,7 +101,7 @@ public final class TestFailureHighlight {
     public static final class Stream {
         private final List<String> buf = new ArrayList<>();
 
-        public String line(String raw) {
+        public @Nullable String line(String raw) {
             buf.add(raw);
             return null;
         }
@@ -127,7 +128,7 @@ public final class TestFailureHighlight {
      * @param count failure count
      * @param plural {@code true} when count != 1
      */
-    public static String paintHeaderLine(String module, int count, boolean plural) {
+    public static String paintHeaderLine(@Nullable String module, int count, boolean plural) {
         Theme t = Theme.active();
         if (!t.isAnsi()) {
             String m = module == null || module.isBlank() ? "" : " in " + module;
@@ -469,7 +470,7 @@ public final class TestFailureHighlight {
      * Path color + underline; when the dashboard HTTP surface and project id are known, wrap in an
      * OSC-8 deep link ({@code [link url][path underline]…[/][/]}) to the Monaco files pane.
      */
-    static String paintSourcePath(String path, String sourceHeader, Theme t) {
+    static @Nullable String paintSourcePath(String path, String sourceHeader, Theme t) {
         int line = parsePositiveInt(attr(sourceHeader, "line"));
         return paintSourcePath(path, line, 0, t);
     }
@@ -478,15 +479,15 @@ public final class TestFailureHighlight {
      * Path color + underline; when the dashboard HTTP surface and project id are known, wrap in an
      * OSC-8 deep link to the Monaco files pane ({@code ?line=N} and {@code &col=C} when set).
      */
-    static String paintSourcePath(String path, int line, int col, Theme t) {
+    static @Nullable String paintSourcePath(String path, int line, int col, Theme t) {
         return paintSourcePath(path, path, line, col, t);
     }
 
-    static String paintSourcePath(String display, String linkPath, int line, int col, Theme t) {
+    static @Nullable String paintSourcePath(String display, String linkPath, int line, int col, Theme t) {
         return paintSourcePath(display, linkPath, line, col, t, null);
     }
 
-    static String paintSourcePath(String display, String linkPath, int line, int col, Theme t, String note) {
+    static @Nullable String paintSourcePath(String display, String linkPath, int line, int col, Theme t, String note) {
         if (display == null || display.isEmpty()) return "";
         String label = locusLabel(display, line, col);
         String url = DashboardCodeLink.urlForSnippet(linkPath != null ? linkPath : display, line, col, note);
@@ -597,7 +598,7 @@ public final class TestFailureHighlight {
         }
     }
 
-    private static SrcRow parseSrcRow(String marker) {
+    private static @Nullable SrcRow parseSrcRow(String marker) {
         int sp = marker.indexOf(' ');
         int bar = marker.indexOf('|');
         if (sp < 0 || bar < 0) return null;
@@ -772,7 +773,7 @@ public final class TestFailureHighlight {
     }
 
     /** {@code SimpleClass.method()} / {@code SimpleClass.method(Path)} — type + function roles. */
-    static String paintShortLabel(String rest, Theme t) {
+    static @Nullable String paintShortLabel(String rest, Theme t) {
         if (rest == null || rest.isEmpty()) return "";
         String shortened = shortDisplayLabel(rest);
         String worker = "";
@@ -805,7 +806,7 @@ public final class TestFailureHighlight {
     }
 
     /** {@code name(Path, String)} — function name + type-colored simple param names. */
-    private static String paintMethodWithParams(String method, Theme t) {
+    private static @Nullable String paintMethodWithParams(String method, Theme t) {
         if (method == null || method.isEmpty()) return "";
         int open = method.indexOf('(');
         int close = method.lastIndexOf(')');
@@ -840,7 +841,7 @@ public final class TestFailureHighlight {
         return sb.toString();
     }
 
-    private static String paintThrownAt(String raw, Theme t) {
+    private static @Nullable String paintThrownAt(String raw, Theme t) {
         String s = raw.strip().replaceFirst("^[›\\s]+", "");
         Matcher m = THROWN_AT.matcher(s);
         if (!m.matches()) {
@@ -884,7 +885,7 @@ public final class TestFailureHighlight {
         return out;
     }
 
-    static List<String> tryPaintAssertJ(String joined) {
+    static @Nullable List<String> tryPaintAssertJ(String joined) {
         String desc = null;
         String rest = joined.strip();
         if (rest.startsWith("[")) {
@@ -905,7 +906,7 @@ public final class TestFailureHighlight {
         return paintExpectedButWas(desc, m.group(1).strip(), m.group(2).strip());
     }
 
-    private static List<String> paintExpectedButWas(String desc, String expected, String actual) {
+    private static List<String> paintExpectedButWas(@Nullable String desc, String expected, String actual) {
         List<String> out = new ArrayList<>();
         if (desc != null && !desc.isEmpty()) out.add("\"" + desc + "\"");
         out.add(" Expected: " + stripValueQuotes(expected));

@@ -6,6 +6,7 @@ import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import java.nio.file.Path;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Shared CLI option definitions so help text stays consistent across commands.
@@ -90,7 +91,7 @@ public final class CommonOpts {
     }
 
     /** The {@code --jdks-dir} override as a path, or {@code null} when the user gave none. */
-    public static Path jdksDirValue(Invocation in) {
+    public static @Nullable Path jdksDirValue(Invocation in) {
         return in.value(JDKS_DIR).map(Path::of).orElse(null);
     }
 

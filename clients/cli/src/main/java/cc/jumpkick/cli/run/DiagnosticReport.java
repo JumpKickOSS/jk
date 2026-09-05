@@ -51,12 +51,12 @@ public final class DiagnosticReport {
     // --- public API (ConsoleSpec / listeners) --------------------------------
 
     /** Full multi-line error report for a plan diagnostic. Empty when suppressed (test-failure). */
-    public static String renderError(String step, String code, String message) {
+    public static String renderError(String step, @Nullable String code, String message) {
         return renderError(step, code, message, null);
     }
 
     /** Like {@link #renderError(String, String, String)} with a {@code group:artifact} module. */
-    public static String renderError(String step, String code, String message, String module) {
+    public static String renderError(String step, @Nullable String code, String message, String module) {
         return renderError(step, code, message, module, true);
     }
 
@@ -79,16 +79,16 @@ public final class DiagnosticReport {
      * Collapse key for consecutive compiler reports that share a pill. {@code null} means the
      * report always carries its own header (non-compiler diagnostics).
      */
-    public static String compilerHeaderKey(String step, String code, String module) {
+    public static @Nullable String compilerHeaderKey(String step, String code, @Nullable String module) {
         if (!ConsoleSpec.isCompilerCode(code)) return null;
         return titleFor(step, code) + "\0" + (module == null ? "" : module);
     }
 
     /** Tracks whether the next compiler diagnostic should repeat the phase pill. */
     public static final class CompilerHeaderRun {
-        private String prev;
+        private @Nullable String prev;
 
-        public boolean show(String step, String code, String module) {
+        public boolean show(String step, String code, @Nullable String module) {
             String key = compilerHeaderKey(step, code, module);
             boolean show = key == null || !key.equals(prev);
             prev = key;
@@ -273,7 +273,7 @@ public final class DiagnosticReport {
         return out.toString();
     }
 
-    private static String paintPathToken(String tok, Theme t) {
+    private static @Nullable String paintPathToken(String tok, Theme t) {
         String display = relativizePathToken(tok);
         return Theme.colorize(display, t.path());
     }

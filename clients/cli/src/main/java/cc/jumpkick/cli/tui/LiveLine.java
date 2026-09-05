@@ -8,6 +8,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.terminal.Ansi;
 import java.io.PrintStream;
 import java.util.function.Supplier;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The mechanics of a one-row live terminal region: decide whether to animate at all, open the
@@ -60,7 +61,7 @@ final class LiveLine implements AutoCloseable, LiveRegion {
     private int tick;
     private boolean drawn;
     private boolean closed;
-    private Thread animator;
+    private @Nullable Thread animator;
 
     private LiveLine(
             PrintStream out,

@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk env} — print the effective build environment for the current directory with source
@@ -205,5 +206,10 @@ public final class EnvCommand implements CliCommand {
     }
 
     /** One printed / JSON row. */
-    record Row(String name, String effective, String source, boolean secret, String shadowed) {}
+    record Row(
+            String name,
+            String effective,
+            @Nullable String source,
+            boolean secret,
+            @Nullable String shadowed) {}
 }

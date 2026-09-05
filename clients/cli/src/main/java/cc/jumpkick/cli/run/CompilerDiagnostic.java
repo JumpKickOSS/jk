@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Renders a javac / kotlinc / groovyc diagnostic block as a test-failure-shaped report: aligned
@@ -191,14 +192,14 @@ public final class CompilerDiagnostic {
     static final long MAX_SOURCE_BYTES = 1 << 20;
 
     /** Lines of {@code file}, memoized per render pass — failed reads are memoized too. */
-    static List<String> readSource(String file, Map<String, List<String>> memo) {
+    static @Nullable List<String> readSource(String file, Map<String, List<String>> memo) {
         if (memo.containsKey(file)) return memo.get(file);
         List<String> lines = readSource(file);
         memo.put(file, lines);
         return lines;
     }
 
-    static List<String> readSource(String file) {
+    static @Nullable List<String> readSource(String file) {
         Path p = resolveSource(file);
         if (p == null) return null;
         try {
@@ -209,7 +210,7 @@ public final class CompilerDiagnostic {
         }
     }
 
-    static Path resolveSource(String file) {
+    static @Nullable Path resolveSource(String file) {
         if (file == null || file.isBlank()) return null;
         String f = file;
         if (f.startsWith("file:")) {

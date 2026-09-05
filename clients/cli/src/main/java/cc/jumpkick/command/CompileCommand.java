@@ -31,6 +31,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk compile} — lock, sync, then compile this project's sources to {@code target/classes}
@@ -64,7 +65,7 @@ public final class CompileCommand implements CliCommand {
     }
 
     @Override
-    public int run(Invocation in) throws IOException, InterruptedException {
+    public @Nullable int run(Invocation in) throws IOException, InterruptedException {
         String profileName = in.value("profile").orElse(null);
         Path cacheDir = in.value("cache-dir").map(CliPaths::abs).orElse(null);
         GlobalOptions global = GlobalOptions.from(in);
@@ -140,7 +141,7 @@ public final class CompileCommand implements CliCommand {
     /** Workspace compile via {@code buildWorkspace}: aggregate TUI matches build/native/image. */
     private int runWorkspaceCompile(
             Path cache,
-            String profileName,
+            @Nullable String profileName,
             GlobalOptions global,
             Path entryDir,
             List<String> modules,

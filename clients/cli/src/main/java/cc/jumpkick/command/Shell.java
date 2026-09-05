@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Per-shell syntax for environment-modification commands emitted by {@code jk hook-env}. Each
@@ -29,7 +30,7 @@ public sealed interface Shell permits BashShell, ZshShell, FishShell, PwshShell,
     String name();
 
     /** Render {@code export FOO=bar} (or the shell's equivalent). */
-    String setEnv(String key, String value);
+    String setEnv(String key, @Nullable String value);
 
     /** Render the {@code unset FOO} statement (or the shell's equivalent). */
     String unsetEnv(String key);
@@ -178,7 +179,7 @@ public sealed interface Shell permits BashShell, ZshShell, FishShell, PwshShell,
      * parent process, if that parent is a supported interactive shell. Script hosts ({@code sh},
      * {@code dash}) are ignored as parents so an installer or CI wrapper is not treated as bash.
      */
-    static List<Shell> live(String shellEnv, String passwdShell, String parentCommand) {
+    static List<Shell> live(String shellEnv, @Nullable String passwdShell, @Nullable String parentCommand) {
         LinkedHashMap<String, Shell> out = new LinkedHashMap<>();
         addLive(out, detect(shellEnv));
         addLive(out, detect(passwdShell));

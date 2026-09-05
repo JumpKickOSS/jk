@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.args;
 
+import org.jspecify.annotations.Nullable;
+
 /**
  * Raised by {@link ArgParser} when the argument vector doesn't match a command's declared
  * options/parameters. Carries a {@link Kind} and the offending token so the error renderer can
@@ -19,9 +21,9 @@ public final class ParseException extends Exception {
     }
 
     private final transient Kind kind;
-    private final transient String token;
+    private final transient @Nullable String token;
 
-    public ParseException(Kind kind, String token, String message) {
+    public ParseException(Kind kind, @Nullable String token, String message) {
         super(message);
         this.kind = kind;
         this.token = token;
@@ -32,7 +34,7 @@ public final class ParseException extends Exception {
     }
 
     /** The offending token (an option/argument), or the name of the missing parameter. */
-    public String token() {
+    public @Nullable String token() {
         return token;
     }
 }

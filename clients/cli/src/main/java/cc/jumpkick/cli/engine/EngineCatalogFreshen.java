@@ -5,6 +5,7 @@ import cc.jumpkick.cli.Jk;
 import cc.jumpkick.wire.EnginePaths;
 import java.io.IOException;
 import java.nio.file.Path;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The three engine-start policies for refreshing a network-backed catalog. {@link #freshenCatalog}
@@ -29,7 +30,11 @@ public final class EngineCatalogFreshen {
      * #freshenCatalogIfRunning} instead, which never starts an engine.
      */
     public static void freshenCatalog(
-            EnginePaths.Paths paths, String catalog, boolean offline, String url, Path cacheFile) {
+            EnginePaths.@Nullable Paths paths,
+            String catalog,
+            boolean offline,
+            @Nullable String url,
+            @Nullable Path cacheFile) {
         if (offline) return; // nothing to freshen without a network
         try {
             EngineSpawn.ensure(paths, Jk.VERSION);
@@ -43,8 +48,8 @@ public final class EngineCatalogFreshen {
      * As {@link #freshenCatalog} but always hits the network and returns the engine error (or
      * {@code null} on success). Used by {@code jk library update}.
      */
-    public static String freshenCatalogNow(EnginePaths.Paths paths, String catalog, String url, Path cacheFile)
-            throws IOException {
+    public static String freshenCatalogNow(
+            EnginePaths.Paths paths, String catalog, String url, @Nullable Path cacheFile) throws IOException {
         EngineSpawn.ensure(paths, Jk.VERSION);
         return EngineReads.freshenCatalogNow(paths, catalog, url, cacheFile == null ? null : cacheFile.toString());
     }
@@ -61,7 +66,8 @@ public final class EngineCatalogFreshen {
      * installs through it the same way the web dashboard and MCP always do, so there is one place
      * that actually touches the JDK feed's network when the engine is available.
      */
-    public static boolean freshenCatalogIfRunning(EnginePaths.Paths paths, String catalog, String url, Path cacheFile) {
+    public static boolean freshenCatalogIfRunning(
+            EnginePaths.Paths paths, String catalog, @Nullable String url, @Nullable Path cacheFile) {
         if (!EngineProbe.reachable(EnginePaths.activeSocket(paths))) return false;
         EngineReads.freshenCatalog(paths, catalog, false, url, cacheFile == null ? null : cacheFile.toString());
         return true;

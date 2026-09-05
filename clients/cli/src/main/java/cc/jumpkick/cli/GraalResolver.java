@@ -28,6 +28,7 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Resolves the GraalVM home that owns {@code native-image} for {@code jk native} / native {@code jk
@@ -42,7 +43,7 @@ public final class GraalResolver {
     private final boolean assumeYes; // --yes: install without prompting
     private final Map<String, Path> memo = new HashMap<>();
 
-    public GraalResolver(Path jdksDir, boolean assumeYes) {
+    public GraalResolver(@Nullable Path jdksDir, boolean assumeYes) {
         this.jdksDir = jdksDir;
         this.assumeYes = assumeYes;
     }
@@ -62,14 +63,14 @@ public final class GraalResolver {
         return Optional.ofNullable(home);
     }
 
-    private static String firstNonBlank(String... values) {
+    private static @Nullable String firstNonBlank(String... values) {
         for (String v : values) {
             if (v != null && !v.isBlank()) return v;
         }
         return null;
     }
 
-    private Path resolveUncached(Path projectDir, String graalSpec) {
+    private @Nullable Path resolveUncached(Path projectDir, String graalSpec) {
         JdkRegistry registry = jdksDir != null ? new JdkRegistry(jdksDir) : new JdkRegistry();
 
         // 1. Explicit spec: --graal switch (jk.graal) > project.graal > JK_GRAAL env.
@@ -164,11 +165,11 @@ public final class GraalResolver {
      * {@code $GRAALVM_HOME} and {@code $PATH} when the home it is handed turns out not to hold a
      * launcher.
      */
-    static Path graalHomeOf(Path launcher, Path fallback) {
+    static @Nullable Path graalHomeOf(Path launcher, @Nullable Path fallback) {
         return GraalLauncher.homeOf(launcher).orElse(fallback);
     }
 
-    private Path offerOracleGraalVm(Path searchedJavaHome, JdkRegistry registry) {
+    private @Nullable Path offerOracleGraalVm(Path searchedJavaHome, JdkRegistry registry) {
         if (!assumeYes && !Confirm.isInteractiveTerminal()) {
             // Can't prompt — fail with the same actionable hint as the driver.
             CliOutput.err(NativeImageDriver.notFoundError(searchedJavaHome).getMessage());
@@ -192,7 +193,7 @@ public final class GraalResolver {
     }
 
     /** Resolve {@code spec} (keyword-aware) to a catalog entry and install it. */
-    private Path install(String spec, JdkRegistry registry, String announce) {
+    private @Nullable Path install(String spec, JdkRegistry registry, String announce) {
         String os = HostPlatform.currentOs();
         String arch = HostPlatform.currentArch();
         if (!HostPlatform.supported()) {

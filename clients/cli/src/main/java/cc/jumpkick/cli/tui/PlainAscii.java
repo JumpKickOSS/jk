@@ -4,6 +4,7 @@ package cc.jumpkick.cli.tui;
 import cc.jumpkick.cli.theme.Theme;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Unicode → ASCII rewrites for {@code --no-ansi} / plain human chrome.
@@ -40,7 +41,7 @@ public final class PlainAscii {
      * Rewrite known Unicode chrome to ASCII when the active theme is plain; otherwise return
      * {@code text} unchanged. Null-safe.
      */
-    public static String apply(String text) {
+    public static @Nullable String apply(String text) {
         if (text == null || text.isEmpty()) return text;
         if (Theme.active().isAnsi()) return text;
         return transform(text);
@@ -50,7 +51,7 @@ public final class PlainAscii {
      * Unconditional rewrite (for tests and for call sites that already know they are in plain
      * mode). Null-safe.
      */
-    public static String transform(String text) {
+    public static @Nullable String transform(@Nullable String text) {
         if (text == null || text.isEmpty()) return text;
         // Fast path: most lines are already pure ASCII.
         if (isAscii(text)) return text;
@@ -99,7 +100,7 @@ public final class PlainAscii {
      * {@code println(String)} so JkManager and Spinner do not need per-call transforms. Wrapping is
      * idempotent by design: a second layer would re-encode the bytes as well as re-transform them.
      */
-    public static PrintStream wrap(PrintStream out) {
+    public static @Nullable PrintStream wrap(@Nullable PrintStream out) {
         if (out == null || Theme.active().isAnsi()) return out;
         if (out instanceof Rewriting) return out;
         return new PlainPrintStream(out);
@@ -112,12 +113,12 @@ public final class PlainAscii {
         }
 
         @Override
-        public void print(String s) {
+        public void print(@Nullable String s) {
             super.print(apply(s));
         }
 
         @Override
-        public void println(String s) {
+        public void println(@Nullable String s) {
             // Subclass path: print + newline (avoid double-apply via super.println → print).
             print(s);
             println();

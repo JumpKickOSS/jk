@@ -35,6 +35,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk status} — project + machine build dashboard: engine vitals, project identity,
@@ -132,7 +133,8 @@ public final class StatusCommand implements CliCommand {
 
     // ── sections ─────────────────────────────────────────────────────────────
 
-    private static void printProjectSection(ProjectSnapshot project, Forecast forecast, String lastHistory) {
+    private static void printProjectSection(
+            @Nullable ProjectSnapshot project, @Nullable Forecast forecast, @Nullable String lastHistory) {
         if (project == null) {
             sectionHeader("Project", "(no jk.toml in this directory)");
             return;
@@ -152,7 +154,11 @@ public final class StatusCommand implements CliCommand {
     }
 
     private static void printProjectBuildSection(
-            ProjectSnapshot project, List<String> rows, Path cwd, String lastHistory, Forecast forecast) {
+            @Nullable ProjectSnapshot project,
+            List<String> rows,
+            Path cwd,
+            @Nullable String lastHistory,
+            @Nullable Forecast forecast) {
         String titleCoord = project != null ? project.coord : "—";
         sectionHeader("Project Build", titleCoord);
 
@@ -299,7 +305,7 @@ public final class StatusCommand implements CliCommand {
                 + "[/])";
     }
 
-    private static void sectionHeader(String title, String suffix) {
+    private static void sectionHeader(String title, @Nullable String suffix) {
         Theme t = Theme.active();
         String bullet = Theme.colorize("●", t.blue());
         String head = Theme.colorize(title, t.brightWhite());
@@ -311,7 +317,7 @@ public final class StatusCommand implements CliCommand {
         CliOutput.out(bullet + " " + head + ":" + " " + styleCoord(suffix));
     }
 
-    private static String styleCoord(String coord) {
+    private static @Nullable String styleCoord(String coord) {
         if (coord == null || coord.isBlank() || "—".equals(coord) || coord.startsWith("(")) {
             return Theme.colorize(coord == null ? "—" : coord, Theme.active().normalGray());
         }
@@ -435,7 +441,7 @@ public final class StatusCommand implements CliCommand {
     record Forecast(
             long etaMillis, int moduleTotal, int modulesCached, int sourceCount, int testCount, int artifactsCached) {}
 
-    private static ProjectSnapshot loadProject(Path cwd) {
+    private static @Nullable ProjectSnapshot loadProject(Path cwd) {
         Path buildFile = cwd.resolve(ManifestPaths.MANIFEST);
         if (!Files.isRegularFile(buildFile)) return null;
         try {
@@ -472,7 +478,7 @@ public final class StatusCommand implements CliCommand {
         }
     }
 
-    private static String findLastHistory(EnginePaths.Paths paths, Path cwd) {
+    private static @Nullable String findLastHistory(EnginePaths.Paths paths, Path cwd) {
         try {
             String base = cwd.toString();
             List<String> lines = EngineJournalReads.historyList(paths, 50);
@@ -490,7 +496,7 @@ public final class StatusCommand implements CliCommand {
         return null;
     }
 
-    private static Forecast tryForecast(EnginePaths.Paths paths, Path cwd) {
+    private static @Nullable Forecast tryForecast(EnginePaths.Paths paths, Path cwd) {
         try {
             long[] etaOut = new long[1];
             ExplainPlan plan = EngineClient.explain(

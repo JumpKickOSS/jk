@@ -43,6 +43,7 @@ import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk verify} — rebuild into a scratch copy and SHA-256-diff artifacts against {@code
@@ -66,14 +67,17 @@ public final class VerifyBuildCommand implements CliCommand {
         return List.of(CommonOpts.cacheDir());
     }
 
-    private Path cacheDir;
-    private GlobalOptions global;
+    private @Nullable Path cacheDir;
+    private @Nullable GlobalOptions global;
 
     /** What parse-build decided to verify: the module dirs whose artifacts get compared. */
     private record VerifyPlan(List<Path> moduleDirs) {}
 
     /** One artifact's hash comparison; a {@code null} hash means the file does not exist. */
-    private record Comparison(String artifact, String existingHash, String rebuiltHash) {
+    private record Comparison(
+            String artifact,
+            @Nullable String existingHash,
+            @Nullable String rebuiltHash) {
         boolean match() {
             return existingHash != null && existingHash.equals(rebuiltHash);
         }
@@ -330,12 +334,12 @@ public final class VerifyBuildCommand implements CliCommand {
         return out;
     }
 
-    private static String hashIfPresent(Path file) throws IOException {
+    private static @Nullable String hashIfPresent(Path file) throws IOException {
         // Streamed (64 KiB buffer) — a large artifact never lands in the CLI's small heap.
         return Files.isRegularFile(file) ? Hashing.sha256Hex(file) : null;
     }
 
-    private static String hashOrMissing(String hash) {
+    private static String hashOrMissing(@Nullable String hash) {
         return hash == null ? "(missing)" : hash;
     }
 
