@@ -21,6 +21,23 @@ jackson = "2.18.2"          # bare version means caret: ^2.18.2
 junit = "5.11.0"
 ```
 
+### Editor support
+
+`docs/user/jk.toml.schema.json` is a JSON Schema of the manifest vocabulary — the identity and
+language keys, every core table, the dependency scopes, and the `[application]` keys. It is
+generated from nothing: the parser's own key sets are the truth and a test fails when the two
+disagree. Associate it with `jk.toml` and a stock editor completes table names and flags an unknown
+`[application]` key:
+
+- **IntelliJ IDEA** — Settings → Languages & Frameworks → Schemas and DTDs → JSON Schema Mappings:
+  add the schema file and map the file name `jk.toml` to it (TOML support comes with the bundled
+  TOML plugin).
+- **VS Code** with Even Better TOML — put `#:schema ./docs/user/jk.toml.schema.json` on the first
+  line of the manifest, or add the mapping under `evenBetterToml.schema.associations`.
+
+Plugin-owned tables (`[micronaut]`, `[android]`, …) are allowed by the schema and documented by
+their plugins.
+
 ## Identity and language
 
 | Field | Meaning |

@@ -1,0 +1,384 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jumpkick.cc/schema/jk.toml.schema.json",
+  "title": "jk.toml",
+  "description": "JumpKick project manifest. Top-level identity and language keys, the core tables, and the dependency scopes. Plugin-owned tables ([micronaut], [android], ...) are allowed and documented by their plugins.",
+  "type": "object",
+  "required": [
+    "name"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Module identity; never inherited from the workspace."
+    },
+    "group": {
+      "description": "Maven groupId, or { workspace = true } in a member.",
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#/$defs/inherit"
+        }
+      ]
+    },
+    "version": {
+      "description": "Version string, or { workspace = true } in a member.",
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#/$defs/inherit"
+        }
+      ]
+    },
+    "jdk": {
+      "description": "JDK pin: a major (25) or <vendor>-<major> (temurin-25).",
+      "oneOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#/$defs/inherit"
+        }
+      ]
+    },
+    "jdk-vendor": {
+      "type": "string"
+    },
+    "jdk-version": {
+      "type": "string"
+    },
+    "java": {
+      "description": "Java release the sources target.",
+      "oneOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#/$defs/inherit"
+        }
+      ]
+    },
+    "kotlin": {
+      "description": "Kotlin compiler version.",
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#/$defs/inherit"
+        }
+      ]
+    },
+    "groovy": {
+      "description": "Groovy version.",
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#/$defs/inherit"
+        }
+      ]
+    },
+    "scala": {
+      "description": "Scala version.",
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#/$defs/inherit"
+        }
+      ]
+    },
+    "sources": {
+      "description": "Source roots beyond the standard layout.",
+      "type": [
+        "array",
+        "object",
+        "string"
+      ]
+    },
+    "description": {
+      "type": "string"
+    },
+    "layout": {
+      "description": "Directory layout profile.",
+      "type": [
+        "string",
+        "object"
+      ]
+    },
+    "repositories": {
+      "type": "object",
+      "description": "[repositories] table; keys are documented in docs/user."
+    },
+    "profiles": {
+      "type": "object",
+      "description": "[profiles] table; keys are documented in docs/user."
+    },
+    "features": {
+      "type": "object",
+      "description": "[features] table; keys are documented in docs/user."
+    },
+    "workspace": {
+      "type": "object",
+      "description": "[workspace] table; keys are documented in docs/user."
+    },
+    "manifest": {
+      "type": "object",
+      "description": "[manifest] table; keys are documented in docs/user."
+    },
+    "plugins": {
+      "type": "object",
+      "description": "[plugins] table; keys are documented in docs/user."
+    },
+    "application": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "main": {
+          "type": "string",
+          "description": "Fully qualified main class."
+        },
+        "assembly": {
+          "type": "boolean",
+          "description": "Package a fat (assembly) jar."
+        },
+        "minified": {
+          "type": [
+            "boolean",
+            "object"
+          ],
+          "description": "Package a minified (R8) jar."
+        },
+        "native": {
+          "type": [
+            "boolean",
+            "object"
+          ],
+          "description": "Native-image settings for this application."
+        },
+        "config": {
+          "type": [
+            "string",
+            "object"
+          ],
+          "description": "Runtime configuration source."
+        }
+      }
+    },
+    "native": {
+      "type": "object",
+      "description": "[native] table; keys are documented in docs/user."
+    },
+    "image": {
+      "type": "object",
+      "description": "[image] table; keys are documented in docs/user."
+    },
+    "train": {
+      "type": "object",
+      "description": "[train] table; keys are documented in docs/user."
+    },
+    "build": {
+      "type": "object",
+      "description": "[build] table; keys are documented in docs/user."
+    },
+    "test": {
+      "type": "object",
+      "description": "[test] table; keys are documented in docs/user."
+    },
+    "format": {
+      "type": "object",
+      "description": "[format] table; keys are documented in docs/user."
+    },
+    "resolve": {
+      "type": "object",
+      "description": "[resolve] table; keys are documented in docs/user."
+    },
+    "variants": {
+      "type": "object",
+      "description": "[variants] table; keys are documented in docs/user."
+    },
+    "jvm": {
+      "type": "object",
+      "description": "[jvm] table; keys are documented in docs/user."
+    },
+    "deny": {
+      "type": "object",
+      "description": "[deny] table; keys are documented in docs/user."
+    },
+    "config": {
+      "type": "object",
+      "description": "[config] table; keys are documented in docs/user."
+    },
+    "forge": {
+      "type": "object",
+      "description": "[forge] table; keys are documented in docs/user."
+    },
+    "kotlin-plugins": {
+      "type": "object",
+      "description": "[kotlin-plugins] table; keys are documented in docs/user."
+    },
+    "m2": {
+      "type": "object",
+      "description": "[m2] table; keys are documented in docs/user."
+    },
+    "install": {
+      "type": "object",
+      "description": "[install] table; keys are documented in docs/user."
+    },
+    "export-dependencies": {
+      "type": "object",
+      "description": "[export-dependencies]: one dependency per key \u2014 a version string, or { group, name, version, features, ... }.",
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "object"
+          }
+        ]
+      }
+    },
+    "dependencies": {
+      "type": "object",
+      "description": "[dependencies]: one dependency per key \u2014 a version string, or { group, name, version, features, ... }.",
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "object"
+          }
+        ]
+      }
+    },
+    "provided-dependencies": {
+      "type": "object",
+      "description": "[provided-dependencies]: one dependency per key \u2014 a version string, or { group, name, version, features, ... }.",
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "object"
+          }
+        ]
+      }
+    },
+    "runtime-dependencies": {
+      "type": "object",
+      "description": "[runtime-dependencies]: one dependency per key \u2014 a version string, or { group, name, version, features, ... }.",
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "object"
+          }
+        ]
+      }
+    },
+    "test-dependencies": {
+      "type": "object",
+      "description": "[test-dependencies]: one dependency per key \u2014 a version string, or { group, name, version, features, ... }.",
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "object"
+          }
+        ]
+      }
+    },
+    "processor-dependencies": {
+      "type": "object",
+      "description": "[processor-dependencies]: one dependency per key \u2014 a version string, or { group, name, version, features, ... }.",
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "object"
+          }
+        ]
+      }
+    },
+    "platform-dependencies": {
+      "type": "object",
+      "description": "[platform-dependencies]: one dependency per key \u2014 a version string, or { group, name, version, features, ... }.",
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "object"
+          }
+        ]
+      }
+    },
+    "dev-dependencies": {
+      "type": "object",
+      "description": "[dev-dependencies]: one dependency per key \u2014 a version string, or { group, name, version, features, ... }.",
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "object"
+          }
+        ]
+      }
+    },
+    "test-dev-dependencies": {
+      "type": "object",
+      "description": "[test-dev-dependencies]: one dependency per key \u2014 a version string, or { group, name, version, features, ... }.",
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "object"
+          }
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "inherit": {
+      "type": "object",
+      "required": [
+        "workspace"
+      ],
+      "properties": {
+        "workspace": {
+          "const": true
+        }
+      },
+      "additionalProperties": false,
+      "description": "Cargo-style inheritance from the workspace root."
+    }
+  }
+}

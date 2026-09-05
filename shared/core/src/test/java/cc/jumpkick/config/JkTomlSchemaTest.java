@@ -1,0 +1,94 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.config;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.model.Scope;
+import cc.jumpkick.testing.RepoRoot;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import org.junit.jupiter.api.Test;
+
+/**
+ * The published schema is a second copy of the manifest vocabulary, so it is gated like every other
+ * copy: the parser's key sets are the truth and the schema must name exactly them.
+ */
+class JkTomlSchemaTest {
+
+    private static final Path SCHEMA = RepoRoot.find(JkTomlSchemaTest.class).resolve("docs/user/jk.toml.schema.json");
+
+    @Test
+    void top_level_properties_are_exactly_the_identity_keys_the_core_tables_and_the_scopes() throws Exception {
+        String schema = Files.readString(SCHEMA);
+        Set<String> expected = new HashSet<>(ManifestProject.PROJECT_KEYS);
+        expected.addAll(ManifestBuild.CORE_TABLES);
+        for (Scope s : Scope.values()) expected.add(s.tomlSection());
+        assertThat(keysOf(Jsonl.nested(schema, "properties")))
+                .as(
+                        "docs/user/jk.toml.schema.json top-level properties vs ManifestProject.PROJECT_KEYS + CORE_TABLES + scopes")
+                .containsExactlyInAnyOrderElementsOf(expected);
+    }
+
+    @Test
+    void application_properties_are_exactly_the_parser_s_application_keys() throws Exception {
+        String schema = Files.readString(SCHEMA);
+        String application = Jsonl.nested(Jsonl.nested(schema, "properties"), "application");
+        assertThat(keysOf(Jsonl.nested(application, "properties")))
+                .containsExactlyInAnyOrderElementsOf(ManifestTables.APPLICATION_KEYS);
+        assertThat(Jsonl.bool(application, "additionalProperties", true))
+                .as("an unknown key under [application] is what an editor should flag")
+                .isFalse();
+    }
+
+    @Test
+    void the_schema_names_the_dependency_scope_tables_the_parser_reads() throws Exception {
+        String schema = Files.readString(SCHEMA);
+        for (Scope s : Scope.values()) {
+            assertThat(Jsonl.nested(Jsonl.nested(schema, "properties"), s.tomlSection()))
+                    .as(s.tomlSection())
+                    .isNotNull();
+        }
+    }
+
+    /** Keys of one JSON object: the names at brace depth one, in order. */
+    private static List<String> keysOf(String object) {
+        List<String> keys = new ArrayList<>();
+        int depth = 0;
+        boolean inString = false;
+        StringBuilder current = new StringBuilder();
+        boolean expectingKey = true;
+        for (int i = 0; i < object.length(); i++) {
+            char c = object.charAt(i);
+            if (inString) {
+                if (c == '"') {
+                    inString = false;
+                    if (depth == 1 && expectingKey) keys.add(current.toString());
+                } else {
+                    current.append(c);
+                }
+                continue;
+            }
+            switch (c) {
+                case '"' -> {
+                    inString = true;
+                    current.setLength(0);
+                }
+                case '{', '[' -> depth++;
+                case '}', ']' -> depth--;
+                case ':' -> {
+                    if (depth == 1) expectingKey = false;
+                }
+                case ',' -> {
+                    if (depth == 1) expectingKey = true;
+                }
+                default -> {}
+            }
+        }
+        return keys;
+    }
+}

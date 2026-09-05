@@ -19,6 +19,12 @@ On project open, if `jk.toml` is present, the plugin offers Sync (and **auto-Syn
 files are applied via the shared `jk ide --idea` generator so layout/classpath stay aligned with
 CLI export. BSP remains dual-path for JetBrains BSP clients and VS Code.
 
+## Distribution
+
+Not on the JetBrains Marketplace: `publishPlugin` is not wired and no release runs it. Install from
+the zip `buildPlugin` produces, or run from source. Editor intelligence for `jk.toml` does not
+depend on this plugin — see the JSON Schema note in `docs/user/projects.md`.
+
 ## Requirements
 
 - IntelliJ IDEA 2024.1+ (Community or Ultimate)

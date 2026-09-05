@@ -437,7 +437,7 @@ public final class ManifestTables {
      * Every key that belongs to {@code [application]}. Written down so a misplacement is caught as
      * a class rather than one key at a time.
      */
-    private static final List<String> APPLICATION_KEYS = List.of("main", "assembly", "minified", "native", "config");
+    static final List<String> APPLICATION_KEYS = List.of("main", "assembly", "minified", "native", "config");
 
     /**
      * Reject an {@code [application]} key written at the top level.
