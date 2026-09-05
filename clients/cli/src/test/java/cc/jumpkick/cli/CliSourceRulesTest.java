@@ -87,6 +87,32 @@ class CliSourceRulesTest {
     }
 
     /**
+     * {@code cc.jumpkick.cli.engine} is the client half of the wire and depends on nothing that
+     * depends on it. The two imports that would close a package cycle are {@code cli.run} (the
+     * timeline options live on the engine side of that line) and {@code cc.jumpkick.command} (the
+     * transcript hook and the project-info memo sit below it); each arm names its edge, so a
+     * reintroduction is reported as the edge it is.
+     */
+    @Test
+    void cli_engine_imports_neither_cli_run_nor_command() throws IOException {
+        List<Path> engine = SourceText.javaUnder(MAIN.resolve("cc/jumpkick/cli/engine"));
+        assertThat(engine.size())
+                .as("scan of clients/cli/src/main/java/cc/jumpkick/cli/engine; measured against 27 files")
+                .isGreaterThanOrEqualTo(20);
+        Pattern edge = Pattern.compile(
+                "^import (?:static )?cc\\.jumpkick\\.(cli\\.run|command)\\.[\\w.]+;", Pattern.MULTILINE);
+        List<String> hits = new ArrayList<>();
+        for (Path f : engine) {
+            Matcher m = edge.matcher(Files.readString(f));
+            while (m.find()) hits.add(SourceText.rel(ROOT, f) + ": " + m.group());
+        }
+        assertThat(hits)
+                .as("cli.engine -> cli.run and cli.engine -> command are the two edges that close a"
+                        + " package cycle; whatever needs them belongs on the other side of the line")
+                .isEmpty();
+    }
+
+    /**
      * The slim client links no plugin SPI and no test framework.
      *
      * <p>Gradle asks the resolved {@code runtimeClasspath}; the manifest is where the mistake is
