@@ -49,6 +49,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Client exec plans: {@link #execPlan} decides the command line; the client runs it verbatim.
@@ -79,9 +80,9 @@ public final class ExecPlans {
     public static ExecPlan execPlan(
             Path dir,
             Path cache,
-            String kind,
-            String mainOverride,
-            String binName,
+            @Nullable String kind,
+            @Nullable String mainOverride,
+            @Nullable String binName,
             Path binDir,
             Path libDir,
             String variant,
@@ -528,8 +529,8 @@ public final class ExecPlans {
             Path cache,
             JkBuild project,
             BuildLayout layout,
-            String mainOverride,
-            String binName,
+            @Nullable String mainOverride,
+            @Nullable String binName,
             Path binDirOverride,
             Path libDirOverride)
             throws IOException {
@@ -708,7 +709,8 @@ public final class ExecPlans {
 
     // ------------------------------------------------------------- helpers
 
-    private static String resolveMain(JkBuild project, BuildLayout layout, String mainOverride) throws IOException {
+    private static String resolveMain(JkBuild project, BuildLayout layout, @Nullable String mainOverride)
+            throws IOException {
         if (mainOverride != null && !mainOverride.isBlank()) return mainOverride;
         if (project.mainClass() != null) return project.mainClass();
         return MainClassScanner.scanUnique(layout.classesDir());
@@ -725,7 +727,7 @@ public final class ExecPlans {
         }
     }
 
-    private static Path fetchDevtools(JkBuild project, Path cache) {
+    private static @Nullable Path fetchDevtools(JkBuild project, Path cache) {
         try {
             String bootVersion = project.pluginConfig("spring-boot")
                     .flatMap(c -> c.stringOpt("version"))

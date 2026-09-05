@@ -33,6 +33,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Project-local <strong>build logic</strong>. Convention directories are {@code jk/} (visible,
@@ -90,7 +91,10 @@ public final class BuildLogicSupport {
     }
 
     static void rejectMisplacedStems(
-            List<BuildLogicScripts.ScriptTask> scripts, boolean workspaceRoot, Path logicDir, Path projectDir) {
+            List<BuildLogicScripts.ScriptTask> scripts,
+            boolean workspaceRoot,
+            Path logicDir,
+            @Nullable Path projectDir) {
         boolean member =
                 projectDir != null && WorkspaceScan.findRoot(projectDir).isPresent();
         for (BuildLogicScripts.ScriptTask s : scripts) {

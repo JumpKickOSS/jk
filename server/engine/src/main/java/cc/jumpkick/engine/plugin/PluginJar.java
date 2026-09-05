@@ -263,7 +263,7 @@ public enum PluginJar {
     }
 
     /** The plugin whose {@code artifactId} (e.g. {@code jk-git-client}) matches, if any. */
-    public static Optional<PluginJar> byArtifactId(String artifactId) {
+    public static Optional<PluginJar> byArtifactId(@Nullable String artifactId) {
         for (PluginJar w : values()) {
             if (w.artifactId.equals(artifactId)) return Optional.of(w);
         }

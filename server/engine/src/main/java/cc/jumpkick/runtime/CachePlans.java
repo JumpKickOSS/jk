@@ -31,6 +31,7 @@ import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Cache-maintenance plans for {@code jk cache clean}, {@code jk cache nuke}, {@code jk storage
@@ -367,7 +368,7 @@ public final class CachePlans {
     }
 
     /** First {@code TASK <id>} line of an action record, or {@code null}. */
-    private static String taskIdOf(String recordContent) {
+    private static @Nullable String taskIdOf(String recordContent) {
         for (String line : recordContent.split("\n", -1)) {
             if (line.startsWith("TASK "))
                 return line.substring("TASK ".length()).trim();

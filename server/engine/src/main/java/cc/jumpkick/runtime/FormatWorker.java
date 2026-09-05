@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The {@code jk-formatter} worker fork: streams per-file results to a {@link FileObserver}, keeps
@@ -79,7 +80,7 @@ public final class FormatWorker {
             int preClean,
             int total,
             boolean check,
-            FormatFreshnessIndex freshness,
+            @Nullable FormatFreshnessIndex freshness,
             FileObserver observer)
             throws IOException, InterruptedException {
         AtomicInteger changed = new AtomicInteger();
@@ -134,7 +135,7 @@ public final class FormatWorker {
      * <em>after</em> the last file event, tallies balanced. Without it the wedge prints green while
      * the CLI hands the shell a 139 — the same contradiction, one file later.
      */
-    static String reconcile(int reported, int total, int exit) {
+    static @Nullable String reconcile(int reported, int total, int exit) {
         if (reported < total) {
             return "format worker reported on " + reported + " of " + total + " files — " + (total - reported)
                     + " were never visited (worker exit " + exit

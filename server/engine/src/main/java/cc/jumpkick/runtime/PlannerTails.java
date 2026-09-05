@@ -37,6 +37,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Declared packaging tails (assembly / minified / sources) and terminal re-root.
@@ -50,7 +51,7 @@ public final class PlannerTails {
     }
 
     /** As {@link #appendDeclaredTails(BuildPlan.Builder, Inputs)} with an explicit Graal home. */
-    public static void appendDeclaredTails(BuildPlan.Builder b, BuildPlanner.Inputs in, Path graalHome) {
+    public static void appendDeclaredTails(BuildPlan.Builder b, BuildPlanner.Inputs in, @Nullable Path graalHome) {
         appendDeclaredTails(b, in, graalHome, true);
     }
 
@@ -65,7 +66,7 @@ public final class PlannerTails {
      * and fat jars / native images never run on {@code jk build}.
      */
     public static void appendDeclaredTails(
-            BuildPlan.Builder b, BuildPlanner.Inputs in, Path graalHome, boolean allowNative) {
+            BuildPlan.Builder b, BuildPlanner.Inputs in, @Nullable Path graalHome, boolean allowNative) {
         // Test and compile plans stop at run-tests / write-stamp: package-jar is not in the
         // plan for tails to hang off, and re-rooting the terminal would run packaging (or
         // fail validation) under `jk test` / `jk compile`.
@@ -143,7 +144,7 @@ public final class PlannerTails {
      * deliberate — a minified jar can be silently wrong for an application that resolves types by
      * runtime generic matching, and the fat jar beside it is what makes that testable.
      */
-    static Task minifiedStep(BuildPlanner.Inputs in, Path graalHome) {
+    static Task minifiedStep(BuildPlanner.Inputs in, @Nullable Path graalHome) {
         return Task.builder(TaskNames.PACKAGE_MINIFIED)
                 .stage(BuildStage.PACKAGE)
                 .label("Minify")

@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Set;
 import java.util.TreeSet;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Stable exclusivity key for concurrent build-like jobs.
@@ -125,7 +126,7 @@ public final class BuildJobFingerprint {
         return String.join(",", parts);
     }
 
-    private static String nullToEmpty(String s) {
+    private static String nullToEmpty(@Nullable String s) {
         return s == null ? "" : s;
     }
 }

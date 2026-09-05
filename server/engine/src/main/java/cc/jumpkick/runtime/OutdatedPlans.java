@@ -40,6 +40,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Read-only {@code jk outdated} report: locked / selector-compatible / latest-stable / tip per
@@ -51,7 +52,7 @@ public final class OutdatedPlans {
     private OutdatedPlans() {}
 
     /** Produce the report for the project (or workspace) rooted at {@code dir}. */
-    public static OutdatedReport compute(Path dir, Path cache, URI repoUrl) {
+    public static OutdatedReport compute(Path dir, Path cache, @Nullable URI repoUrl) {
         LinkedHashMap<Path, JkBuild> scopes = new LinkedHashMap<>();
         try {
             JkBuild root = JkBuildParser.parse(dir.resolve(ManifestPaths.MANIFEST));
@@ -109,7 +110,8 @@ public final class OutdatedPlans {
      * can see is a pin nobody bumps: for as long as the release was a constant in the engine there
      * was no way to learn that a newer repository existed short of reading jk's source.
      */
-    private static Optional<OutdatedReport.Row> nativeMetadataRow(Path dir, Path cache, URI repoUrl, JkBuild build) {
+    private static Optional<OutdatedReport.Row> nativeMetadataRow(
+            Path dir, Path cache, @Nullable URI repoUrl, JkBuild build) {
         Optional<VersionSelector> declared;
         try {
             declared = LockNativePin.selector(dir);
@@ -160,7 +162,12 @@ public final class OutdatedPlans {
     // ---- Maven --------------------------------------------------------------
 
     private static OutdatedReport.Row mavenRow(
-            Dependency dep, String moduleLabel, String display, String scope, String current, RepoGroup repos) {
+            Dependency dep,
+            String moduleLabel,
+            String display,
+            String scope,
+            @Nullable String current,
+            RepoGroup repos) {
         final List<String> available = enumerate(dep, repos);
         VersionSet set = VersionSelectors.toVersionSet(dep.version());
         String compatible = available.stream()

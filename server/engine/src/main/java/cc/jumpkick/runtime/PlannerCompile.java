@@ -50,6 +50,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Main-language compile steps (Java / Kotlin / Groovy) and their require edges.
@@ -112,7 +113,7 @@ public final class PlannerCompile {
      * this union as {@code JAVA_SOURCES} so write-stamp records the set the compile checked.
      */
     public static List<Path> mainJavaSources(
-            List<Path> javaAndScala, BuildLayout layout, PluginBuild.Declarations decls) throws IOException {
+            List<Path> javaAndScala, BuildLayout layout, PluginBuild.@Nullable Declarations decls) throws IOException {
         List<Path> generated = pluginContributedSources(layout, decls, ".java");
         List<Path> kspGenerated = kspGeneratedSources(layout, ".java");
         List<Path> logicGenerated = BuildLogicSupport.generatedSources(layout, ".java");
@@ -168,8 +169,8 @@ public final class PlannerCompile {
             Path javaHome,
             boolean mixedKotlin,
             boolean mixedGroovy,
-            Path groovyJar,
-            ScalaCompile.Setup scala) {}
+            @Nullable Path groovyJar,
+            ScalaCompile.@Nullable Setup scala) {}
 
     /** compile-main's request — the build's javac invocation and the forecast's key, from one body. */
     public static CompileRequest mainCompileRequest(MainCompile in) {
@@ -229,8 +230,8 @@ public final class PlannerCompile {
             boolean mixedKotlin,
             boolean mixedGroovy,
             BuildLayout layout,
-            Path groovyJar,
-            ScalaCompile.Setup scala) {
+            @Nullable Path groovyJar,
+            ScalaCompile.@Nullable Setup scala) {
         List<Path> inputs = mainStampClasspath(compileCp, processorCp, mixedKotlin, mixedGroovy, layout, groovyJar);
         if (scala == null) return inputs;
         List<Path> withScala = new ArrayList<>(inputs);
@@ -238,7 +239,7 @@ public final class PlannerCompile {
         return withScala;
     }
 
-    static Task compileJavaStep(BuildPlanner.Ctx cx, PluginBuild.Declarations pluginDecls) {
+    static Task compileJavaStep(BuildPlanner.Ctx cx, PluginBuild.@Nullable Declarations pluginDecls) {
         BuildPlanner.Inputs in = cx.in();
         Cas cas = cx.cas();
         ActionCache actionCache = cx.actionCache();
@@ -437,7 +438,7 @@ public final class PlannerCompile {
                 .build();
     }
 
-    static String[] kotlinCompileRequires(PluginBuild.Declarations decls, boolean ksp) {
+    static String[] kotlinCompileRequires(PluginBuild.@Nullable Declarations decls, boolean ksp) {
         List<String> requires = new ArrayList<>(List.of(
                 TaskNames.PARSE_BUILD,
                 TaskNames.RESOLVE_DEPS,
@@ -449,7 +450,7 @@ public final class PlannerCompile {
     }
 
     static String[] javaCompileRequires(
-            boolean mixed, boolean mixedGroovy, PluginBuild.Declarations decls, boolean ksp) {
+            boolean mixed, boolean mixedGroovy, PluginBuild.@Nullable Declarations decls, boolean ksp) {
         List<String> requires = new ArrayList<>(List.of(
                 TaskNames.PARSE_BUILD,
                 TaskNames.RESOLVE_DEPS,
@@ -462,7 +463,7 @@ public final class PlannerCompile {
         return requires.toArray(new String[0]);
     }
 
-    static String[] groovyCompileRequires(PluginBuild.Declarations decls) {
+    static String[] groovyCompileRequires(PluginBuild.@Nullable Declarations decls) {
         List<String> requires = new ArrayList<>(List.of(
                 TaskNames.PARSE_BUILD,
                 TaskNames.RESOLVE_DEPS,
@@ -478,7 +479,7 @@ public final class PlannerCompile {
         return procs != null && !procs.isEmpty();
     }
 
-    static Task compileKotlinStep(BuildPlanner.Ctx cx, PluginBuild.Declarations pluginDecls) {
+    static Task compileKotlinStep(BuildPlanner.Ctx cx, PluginBuild.@Nullable Declarations pluginDecls) {
         BuildPlanner.Inputs in = cx.in();
         Cas cas = cx.cas();
         ActionCache actionCache = cx.actionCache();
@@ -614,7 +615,7 @@ public final class PlannerCompile {
                 .build();
     }
 
-    static Task compileGroovyStep(BuildPlanner.Ctx cx, PluginBuild.Declarations pluginDecls) {
+    static Task compileGroovyStep(BuildPlanner.Ctx cx, PluginBuild.@Nullable Declarations pluginDecls) {
         BuildPlanner.Inputs in = cx.in();
         Cas cas = cx.cas();
         ActionCache actionCache = cx.actionCache();

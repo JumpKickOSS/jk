@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.stream.Stream;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Materializes a local-path dependency into a locally-published Maven artifact — the path-source
@@ -106,7 +107,8 @@ final class PathSourceMaterializer {
         return new Materialized(built.group(), built.artifact(), built.version(), repo.toUri());
     }
 
-    private static Path artifactPath(Path repo, String group, String artifact, String version, String ext) {
+    private static Path artifactPath(
+            Path repo, String group, @Nullable String artifact, @Nullable String version, String ext) {
         return repo.resolve(
                 group.replace('.', '/') + "/" + artifact + "/" + version + "/" + artifact + "-" + version + "." + ext);
     }

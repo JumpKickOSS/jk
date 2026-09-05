@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Shared Kotlin / Groovy compiler invocation used by main and test compile steps.
@@ -44,7 +45,7 @@ public final class PlannerLang {
             Path outputDir,
             String taskId,
             Path workingDir,
-            List<Path> javaSourceRoots)
+            @Nullable List<Path> javaSourceRoots)
             throws IOException {
         String kotlinVersion = CompileToolchain.kotlinVersionFor(ctx.require(LOCKFILE), ctx.require(PROJECT));
         KotlinPluginSetup.Prepared kt;
@@ -182,8 +183,8 @@ public final class PlannerLang {
             List<Path> classpath,
             Path outputDir,
             String taskId,
-            List<Path> javaSourceRoots,
-            Path stubsOut)
+            @Nullable List<Path> javaSourceRoots,
+            @Nullable Path stubsOut)
             throws IOException {
         String groovyVersion = CompileToolchain.groovyVersionFor(ctx.require(LOCKFILE), ctx.require(PROJECT));
         GroovyPluginSetup.Prepared gv;

@@ -13,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The registry credentials one image build needs, resolved by the engine and handed to the worker
@@ -79,7 +80,7 @@ final class ImageCredentials {
      * is not a URI authority: a malformed base image belongs to Jib's error message, not to a
      * {@code URISyntaxException} thrown while writing a spec.
      */
-    private static URI registryUrl(String host) {
+    private static @Nullable URI registryUrl(String host) {
         try {
             return URI.create("https://" + host);
         } catch (IllegalArgumentException malformed) {

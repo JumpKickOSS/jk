@@ -25,6 +25,7 @@ import java.util.jar.JarFile;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Fat/uber (assembly) jar: project classes first (win on conflict), custom manifest, drop
@@ -182,7 +183,7 @@ public final class AssemblyPackager {
             Path classesDir,
             List<Path> dependencyJars,
             Path outputJar,
-            String mainClass,
+            @Nullable String mainClass,
             Map<String, String> attributes,
             Map<String, byte[]> extraEntries,
             long timestampEpochSeconds) {

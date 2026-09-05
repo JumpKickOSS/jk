@@ -111,8 +111,8 @@ public final class TestEnvValues {
      * @throws JkBuildParseException if a {@link JkBuild.TestEnvDecl.Set} value references an
      * environment variable that is not set — in both modes, which is the whole point of this type
      */
-    public static @Nullable Map<String, String> resolve(
-            List<JkBuild.TestEnvDecl> declared, Path moduleDir, Path target, Mode mode) {
+    public static Map<String, String> resolve(
+            List<JkBuild.TestEnvDecl> declared, @Nullable Path moduleDir, @Nullable Path target, Mode mode) {
         Map<String, String> out = new LinkedHashMap<>();
         for (JkBuild.TestEnvDecl decl : declared) {
             String where = "[test].env." + decl.name();
@@ -184,7 +184,7 @@ public final class TestEnvValues {
         return masked;
     }
 
-    private static String absolute(Path path, String token) {
+    private static String absolute(@Nullable Path path, String token) {
         Objects.requireNonNull(path, token);
         return path.toAbsolutePath().toString();
     }

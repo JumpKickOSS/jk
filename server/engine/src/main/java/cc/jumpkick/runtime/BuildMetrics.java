@@ -27,6 +27,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Best-effort machine build history (global/project/task tiers) at {@code ~/.jk/state/builds/metrics.json}.
@@ -86,10 +87,10 @@ public final class BuildMetrics {
      * primary project key ({@code ""} = the global tier); {@code coord} is a display label only.
      */
     public record Entry(
-            String kind,
+            @Nullable String kind,
             String dir,
-            String coord,
-            String step,
+            @Nullable String coord,
+            @Nullable String step,
             Stats ok,
             Stats failed,
             Stats cancelled,
@@ -122,7 +123,7 @@ public final class BuildMetrics {
     public record Outcome(
             String kind,
             String dir,
-            String coord,
+            @Nullable String coord,
             boolean success,
             boolean cancelled,
             long millis,
@@ -270,9 +271,9 @@ public final class BuildMetrics {
         return agg;
     }
 
-    private record AggMemo(Path builds, Path work, long atMillis, AggregatedMetrics agg) {}
+    private record AggMemo(Path builds, @Nullable Path work, long atMillis, AggregatedMetrics agg) {}
 
-    private static final AtomicReference<AggMemo> AGG_MEMO = new AtomicReference<>();
+    private static final AtomicReference<@Nullable AggMemo> AGG_MEMO = new AtomicReference<>();
     private static final long AGG_MEMO_TTL_MS = 3_000;
 
     /** Test seam: drop the session-aggregate memo (tests repoint JK_STATE_DIR between cases). */
@@ -381,7 +382,7 @@ public final class BuildMetrics {
     }
 
     /** The invocation aggregate for {@code (kind, dir)}; {@code dir ""} = the global tier. */
-    public Optional<Entry> invocation(String kind, String dir) {
+    public Optional<Entry> invocation(String kind, @Nullable String dir) {
         return Optional.ofNullable(invocations.get(kind + SEP + slashKey(dir)));
     }
 
@@ -390,7 +391,7 @@ public final class BuildMetrics {
      * ({@code dir} itself plus {@code dir#dN} rows). shaped the write side, which made
      * exact bare-path lookups read a key that is never written.
      */
-    public Stats okAcrossShapes(String kind, String dir) {
+    public Stats okAcrossShapes(String kind, @Nullable String dir) {
         long count = 0, total = 0, min = Long.MAX_VALUE, max = 0;
         for (Entry e : invocations.values()) {
             if (!kind.equals(e.kind()) || !sameBaseDir(dir, e.dir())) continue;
@@ -405,14 +406,14 @@ public final class BuildMetrics {
     }
 
     /** True when {@code candidate} is {@code dir} or a {@code dir#dN} shape of it. */
-    public static boolean sameBaseDir(String dir, String candidate) {
+    public static boolean sameBaseDir(@Nullable String dir, @Nullable String candidate) {
         String a = slashKey(dir);
         String b = slashKey(candidate);
         return a.equals(b) || a.equals(baseDir(b));
     }
 
     /** Strip a trailing {@code #dN} shape suffix{@code path#d3} → {@code path}. */
-    public static String baseDir(String dir) {
+    public static String baseDir(@Nullable String dir) {
         if (dir == null) return "";
         String s = slashKey(dir);
         int i = s.lastIndexOf("#d");
@@ -424,8 +425,9 @@ public final class BuildMetrics {
     }
 
     /** Canonical metrics dir key: forward slashes + folded drive-letter case (see DirKeys). */
-    public static String slashKey(String dir) {
-        return dir == null ? "" : DirKeys.key(dir);
+    public static String slashKey(@Nullable String dir) {
+        String key = dir == null ? null : DirKeys.key(dir);
+        return key == null ? "" : key;
     }
 
     /**
@@ -531,7 +533,7 @@ public final class BuildMetrics {
     }
 
     private static void foldInvocation(
-            Map<String, Entry> inv, String kind, String dir, String coord, Outcome o, long nowMillis) {
+            Map<String, Entry> inv, String kind, String dir, @Nullable String coord, Outcome o, long nowMillis) {
         String d = slashKey(dir);
         String k = kind + SEP + d;
         Entry e =
@@ -562,7 +564,7 @@ public final class BuildMetrics {
     }
 
     /** Maps a {@code TaskStatus} name to a stats bucket; null = don't record (SKIPPED, non-terminal). */
-    private static String bucketOf(String status) {
+    private static @Nullable String bucketOf(@Nullable String status) {
         if (status == null) return null;
         return switch (status) {
             case "SUCCESS" -> "ok";
@@ -694,7 +696,7 @@ public final class BuildMetrics {
         return new BuildMetrics(inv, ph);
     }
 
-    private static Entry readEntry(Object row, boolean invocation) {
+    private static @Nullable Entry readEntry(@Nullable Object row, boolean invocation) {
         if (!(row instanceof Map<?, ?> o)) return null;
         String kind = str(o.get("kind"));
         String rawDir = str(o.get("dir"));
@@ -712,7 +714,7 @@ public final class BuildMetrics {
                 lng(o.get("updated")));
     }
 
-    private static Stats stats(Object v) {
+    private static Stats stats(@Nullable Object v) {
         if (!(v instanceof Map<?, ?> o)) return Stats.EMPTY;
         return new Stats(
                 lng(o.get("count")), lng(o.get("totalMillis")), lng(o.get("minMillis")), lng(o.get("maxMillis")));
@@ -762,19 +764,19 @@ public final class BuildMetrics {
         AtomicWrites.replace(file, MiniJson.writePretty(render(inv, ph)));
     }
 
-    private static List<?> list(Object v) {
+    private static List<?> list(@Nullable Object v) {
         return v instanceof List<?> l ? l : List.of();
     }
 
-    private static String str(Object v) {
+    private static @Nullable String str(@Nullable Object v) {
         return v instanceof String s ? s : null;
     }
 
-    private static long lng(Object v) {
+    private static long lng(@Nullable Object v) {
         return v instanceof Number n ? n.longValue() : 0L;
     }
 
-    private static OptionalLong envLong(Function<String, String> env, String name) {
+    private static OptionalLong envLong(Function<String, @Nullable String> env, String name) {
         Optional<Long> v = EnvValues.longValue(env, name);
         return v.isPresent() ? OptionalLong.of(v.get()) : OptionalLong.empty();
     }

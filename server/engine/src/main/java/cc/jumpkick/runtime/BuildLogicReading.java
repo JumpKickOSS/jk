@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A cold price in milliseconds for a build-logic script nothing has timed yet, read from the
@@ -98,7 +99,7 @@ final class BuildLogicReading {
     private record Shape(long codeBytes, int dependencies) {}
 
     /** One streamed pass; {@code null} when the file cannot be read. */
-    private static Shape scan(Path script) {
+    private static @Nullable Shape scan(Path script) {
         long codeBytes = 0;
         int dependencies = 0;
         boolean inBlockComment = false;

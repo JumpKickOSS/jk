@@ -44,14 +44,14 @@ object NullMarking {
     val unenforcedModules: Map<String, String> =
         mapOf(
             "server/engine" to
-                "TODO: 16 production packages, 9 of which already carry a package-level @NullMarked that nothing " +
-                    "checks because this module never applied the plugin. Re-measured by applying it with " +
-                    "-Xmaxerrs raised, since javac caps at 100 and the first pass reads as 101: 372 NullAway " +
-                    "findings in those 9, and 191 RequireExplicitNullMarking errors across the 7 unmarked ones " +
-                    "(cc.jumpkick.runtime 115, engine 30, test 19, compile 19, git 4, engine.runtime 4). Marking " +
-                    "all 16 is the 1,140 figure, and it also exhausts the compile daemon's heap. Landable package " +
-                    "by package: the fixes are valid and green with the plugin still off, so they land " +
-                    "incrementally and the plugin applies last.",
+                "TODO: all 16 production packages now carry a package-level @NullMarked, so " +
+                    "RequireExplicitNullMarking is clean and 208 NullAway findings remain — 189 of them in " +
+                    "cc.jumpkick.runtime, the rest propagated into its callers (engine.verbs 10, task 4, " +
+                    "engine.journal 3, engine.jobs 1, engine 1). Measured by applying the plugin with -Xmaxerrs " +
+                    "raised, since javac caps at 100 and an unraised pass reads as 101. Down from 372 findings in " +
+                    "the 9 originally-marked packages plus 191 marking errors in the other 7. The fixes are valid " +
+                    "and green with the plugin still off, so they keep landing incrementally; the plugin applies " +
+                    "last, when the count reaches zero.",
             "clients/cli" to
                 "TODO: 1,056 findings across 11 production packages when every package is marked, 682 of them in " +
                     "cc.jumpkick.command, 103 in cc.jumpkick.cli.tui, 97 in cc.jumpkick.cli.run; the count is a floor, " +

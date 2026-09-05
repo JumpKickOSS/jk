@@ -31,6 +31,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.jar.JarFile;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Runs {@code jk train}: observe one or more profiles under the Graal tracing agent, merge into a
@@ -59,7 +60,7 @@ public final class TrainRunner {
             BuildLayout layout,
             Path cache,
             Path lockFile,
-            Path graalHome,
+            @Nullable Path graalHome,
             Path javaHome,
             TrainConfig config,
             String profileFilter,
@@ -179,7 +180,7 @@ public final class TrainRunner {
      * When {@code [train] require-fresh = true}, refuse if train outputs are missing or the
      * fingerprint no longer matches. Returns null when fresh (or require-fresh is off).
      */
-    public static String staleReason(
+    public static @Nullable String staleReason(
             Path moduleDir, JkBuild project, BuildLayout layout, Path lockFile, Path javaHome, TrainConfig config)
             throws IOException {
         if (!config.requireFresh()) return null;
@@ -248,7 +249,7 @@ public final class TrainRunner {
      * A JDK home that can load {@code -agentlib:native-image-agent}. Graal ships the agent next to
      * {@code native-image}; a stock Temurin JDK does not.
      */
-    static Path resolveAgentJavaHome(Path graalHome, Path javaHome) {
+    static @Nullable Path resolveAgentJavaHome(Path graalHome, Path javaHome) {
         for (Path home : new Path[] {graalHome, javaHome}) {
             if (home == null) continue;
             if (looksLikeGraal(home)) return home;
@@ -284,7 +285,7 @@ public final class TrainRunner {
         return JdkFingerprint.java(JavaHomes.runningJavaHome());
     }
 
-    private static List<String> shell(String command) {
+    private static List<String> shell(@Nullable String command) {
         String os = Os.name().toLowerCase(Locale.ROOT);
         if (os.contains("win")) {
             return List.of("cmd", "/c", command);

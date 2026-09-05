@@ -16,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Resolves/fetches the KSP2 tool closure for {@code KSPJvmMain} (Maven via {@link PubGrubResolver}),
@@ -94,7 +95,7 @@ public final class KspResolver {
         return cas.root().resolve("tools").resolve("ksp").resolve(version).resolve("closure.shas");
     }
 
-    private static List<Path> readCachedClosure(Path cacheFile, Cas cas) {
+    private static @Nullable List<Path> readCachedClosure(Path cacheFile, Cas cas) {
         if (!Files.isRegularFile(cacheFile)) return null;
         try {
             List<Path> out = new ArrayList<>();

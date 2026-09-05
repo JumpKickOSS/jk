@@ -51,6 +51,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Read-only step forecast for each module in a {@link BuildGraph}, using the same cache keys as the
@@ -125,7 +126,7 @@ public final class TaskForecaster {
             boolean skipTests,
             WorkspaceTarget target,
             Set<Path> terminalDirs,
-            Path workerJar) {
+            @Nullable Path workerJar) {
         List<TaskForecast.Module> out = new ArrayList<>();
         // --force/--rerun bypasses jk's build caches, so every step runs — the forecast must say
         // so too (otherwise the plan tree renders "Fully Cached" while the ETA, which honors force,
@@ -270,8 +271,8 @@ public final class TaskForecaster {
             Path dir,
             Path cache,
             int workers,
-            Path jdksDir,
-            String profile,
+            @Nullable Path jdksDir,
+            @Nullable String profile,
             boolean skipTests,
             boolean verbose,
             Set<Path> projectModules) {
@@ -286,8 +287,8 @@ public final class TaskForecaster {
             Path dir,
             Path cache,
             int workers,
-            Path jdksDir,
-            String profile,
+            @Nullable Path jdksDir,
+            @Nullable String profile,
             boolean skipTests,
             boolean verbose,
             Set<Path> projectModules,
@@ -331,7 +332,7 @@ public final class TaskForecaster {
             Map<Path, String> restoredJarShas,
             WorkspaceTarget target,
             Set<Path> terminalDirs,
-            Path workerJar) {
+            @Nullable Path workerJar) {
         if (dep == null) dep = DepDirtiness.NONE;
         boolean compileDepDirty = dep.compileDepDirty();
         boolean testDepDirty = dep.testDepDirty();
@@ -1113,7 +1114,7 @@ public final class TaskForecaster {
      *
      * <p>Presence check only ({@code pathFor} + {@code isRegularFile}); never hashes bytes.
      */
-    static boolean present(ActionCache ac, String key) {
+    static boolean present(ActionCache ac, @Nullable String key) {
         return presentRecord(ac, key).isPresent();
     }
 

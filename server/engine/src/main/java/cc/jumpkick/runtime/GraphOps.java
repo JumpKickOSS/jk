@@ -19,6 +19,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Engine-hosted {@code jk tree} / {@code jk why} (thin-client contract): both need the parsed
@@ -42,7 +43,7 @@ public final class GraphOps {
                 project, lock, dir, maxDepth, DependencyTreeStyle.Styling.markers(), flatten, scopes, stack);
     }
 
-    public static WhyReport why(Path dir, String query) {
+    public static WhyReport why(Path dir, @Nullable String query) {
         try {
             JkBuild project = JkBuildParser.parse(dir.resolve(ManifestPaths.MANIFEST));
             Lockfile lock = LockfileReader.read(LockPaths.lockFile(dir));
@@ -92,7 +93,7 @@ public final class GraphOps {
         return name.contains(query) || nameGa.contains(query);
     }
 
-    private static String ga(String nameOrKey) {
+    private static String ga(@Nullable String nameOrKey) {
         return LockGraph.ga(nameOrKey);
     }
 }

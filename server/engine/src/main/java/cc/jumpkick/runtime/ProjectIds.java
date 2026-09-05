@@ -5,6 +5,7 @@ import cc.jumpkick.builds.ProjectBuilds;
 import java.nio.file.Path;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Process-wide memo of checkout dir → durable project id.
@@ -26,7 +27,7 @@ public final class ProjectIds {
     private ProjectIds() {}
 
     /** The durable project id for {@code dir}, or null when it cannot be resolved. */
-    public static String idOf(String dir) {
+    public static @Nullable String idOf(String dir) {
         if (dir == null || dir.isBlank()) return null;
         Entry e = CACHE.get(dir);
         if (e != null && System.nanoTime() - e.expiresAtNanos() < 0) return e.id();
@@ -34,7 +35,7 @@ public final class ProjectIds {
     }
 
     /** Recompute and re-memoize {@code dir}'s id (build admission resolves identity anyway). */
-    public static String refresh(String dir) {
+    public static @Nullable String refresh(String dir) {
         if (dir == null || dir.isBlank()) return null;
         try {
             String id = ProjectBuilds.key(Path.of(dir));

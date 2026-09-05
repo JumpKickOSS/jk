@@ -42,7 +42,7 @@ public final class McpReads {
 
     private McpReads() {}
 
-    public static Map<String, Object> why(String dir, String query) {
+    public static Map<String, Object> why(String dir, @Nullable String query) {
         Path root = PathUtil.resolveUserPath(dir);
         return GraphOps.why(root, query).toStructured();
     }

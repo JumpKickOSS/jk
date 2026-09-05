@@ -647,8 +647,15 @@ public record JkBuild(
                 List<String> args,
                 @Nullable String graal,
                 NativeMode enabled,
-                VersionSelector metadataRepository) {
-            this(mainClass, name, args, graal, enabled, metadataRepository, ToolchainSpec.NONE);
+                @Nullable VersionSelector metadataRepository) {
+            this(
+                    mainClass,
+                    name,
+                    args,
+                    graal,
+                    enabled,
+                    metadataRepository == null ? METADATA_REPOSITORY_DEFAULT : metadataRepository,
+                    ToolchainSpec.NONE);
         }
 
         /**

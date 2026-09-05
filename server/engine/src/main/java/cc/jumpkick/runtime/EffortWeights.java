@@ -42,6 +42,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.function.ToDoubleFunction;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Predicts each build step's progress-bar weight from on-disk state at plan start. Skip
@@ -973,7 +974,7 @@ public final class EffortWeights {
     }
 
     /** Main jar will be rewritten this run (or dirty-module over-reserve). */
-    public static boolean jarWillChange(Path dir) {
+    public static boolean jarWillChange(@Nullable Path dir) {
         return overReserveTails() || mainJarWillChange(dir);
     }
 
@@ -1019,7 +1020,7 @@ public final class EffortWeights {
      * reserve full weight when this is true — even if their outputs still look newer than the
      * pre-build jar.
      */
-    static boolean mainJarWillChange(Path dir) {
+    static boolean mainJarWillChange(@Nullable Path dir) {
         try {
             var cfg = SessionContext.current().config();
             if (cfg.rebuildOr(false) || cfg.forceOr(false)) return true;

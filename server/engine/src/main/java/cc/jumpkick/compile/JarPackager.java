@@ -113,7 +113,7 @@ public final class JarPackager {
         public JarRequest(
                 Path inputDir,
                 Path outputJar,
-                String mainClass,
+                @Nullable String mainClass,
                 long timestampEpochSeconds,
                 Map<String, String> attributes) {
             this(inputDir, outputJar, mainClass, timestampEpochSeconds, attributes, Map.of());

@@ -160,7 +160,7 @@ public final class BuildPlanner {
             Path lockDir,
             int workerCount,
             int estimatedTestCount,
-            String profileName,
+            @Nullable String profileName,
             Path jdksDir,
             boolean skipTests,
             boolean verbose,
@@ -182,11 +182,11 @@ public final class BuildPlanner {
                 Path cache,
                 Path buildFile,
                 Path lockFile,
-                Path lockDir,
+                @Nullable Path lockDir,
                 int workerCount,
                 int estimatedTestCount,
-                String profileName,
-                Path jdksDir,
+                @Nullable String profileName,
+                @Nullable Path jdksDir,
                 boolean skipTests,
                 boolean verbose,
                 boolean testOnly,
@@ -252,7 +252,7 @@ public final class BuildPlanner {
         }
 
         /** This request with a variant selection + client-resolved env attached. */
-        public Inputs withVariant(String variant, Map<String, String> clientEnv) {
+        public Inputs withVariant(@Nullable String variant, @Nullable Map<String, String> clientEnv) {
             return new Inputs(
                     dir,
                     cache,
@@ -298,7 +298,7 @@ public final class BuildPlanner {
         }
 
         /** Copy with {@link #profileName()} set (request-level {@code --profile}). */
-        public Inputs withProfileName(String profileName) {
+        public Inputs withProfileName(@Nullable String profileName) {
             return new Inputs(
                     dir,
                     cache,

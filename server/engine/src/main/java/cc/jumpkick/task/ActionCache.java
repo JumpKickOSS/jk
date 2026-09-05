@@ -314,8 +314,8 @@ public final class ActionCache {
 
     /** As above, recording which outputs were executable so a restore can put the bit back. */
     public ActionRecord storeWithOutputs(
-            String taskId,
-            String actionKey,
+            @Nullable String taskId,
+            @Nullable String actionKey,
             Map<String, String> inputs,
             Map<String, String> outputs,
             Map<String, List<String>> units,
@@ -348,7 +348,8 @@ public final class ActionCache {
      * current pointer + {@code tasks/<taskId>.gens} (newest first). Older key files are deleted so
      * {@link CasSweep} can reclaim their blobs.
      */
-    private void trimGenerations(String taskId, String newKey, @Nullable String previousKey) throws IOException {
+    private void trimGenerations(@Nullable String taskId, @Nullable String newKey, @Nullable String previousKey)
+            throws IOException {
         int keep = HeavyActionPolicy.generations(taskId);
         if (keep == Integer.MAX_VALUE) return; // not Class-C
         Path gens = HeavyActionPolicy.gensFile(tasksDir(), taskId);
@@ -594,7 +595,11 @@ public final class ActionCache {
      * persisting one would look like a hit and then rebuild anyway.
      */
     public ActionRecord storeArtifacts(
-            String taskId, String actionKey, Map<String, String> inputs, Path baseDir, List<Path> artifacts)
+            @Nullable String taskId,
+            @Nullable String actionKey,
+            Map<String, String> inputs,
+            @Nullable Path baseDir,
+            List<Path> artifacts)
             throws IOException {
         Map<String, String> outputs = new TreeMap<>();
         Set<String> executables = new TreeSet<>();
@@ -661,8 +666,8 @@ public final class ActionCache {
     // --- record + serialization --------------------------------------------
 
     public record ActionRecord(
-            String taskId,
-            String actionKey,
+            @Nullable String taskId,
+            @Nullable String actionKey,
             Map<String, String> inputs,
             Map<String, String> outputs,
             Map<String, List<String>> units,
@@ -687,8 +692,8 @@ public final class ActionCache {
         }
 
         public ActionRecord(
-                String taskId,
-                String actionKey,
+                @Nullable String taskId,
+                @Nullable String actionKey,
                 Map<String, String> inputs,
                 Map<String, String> outputs,
                 Map<String, List<String>> units) {

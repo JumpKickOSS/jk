@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.wire.runtime;
 
+import org.jspecify.annotations.Nullable;
+
 /**
  * The small per-command event/result contracts a front-end consumes from hosted commands, extracted from
  * the engine's plan factories ({@code AuditPlans}/{@code FormatPlans}/{@code CompatPlans}) for the
@@ -27,5 +29,10 @@ public final class HostedEvents {
     }
 
     /** A provisioned Maven/Gradle distribution ({@code jk mvn}/{@code jk gradle}). */
-    public record Provision(String bin, String version, String source, String error, int exit) {}
+    public record Provision(
+            @Nullable String bin,
+            @Nullable String version,
+            @Nullable String source,
+            @Nullable String error,
+            int exit) {}
 }

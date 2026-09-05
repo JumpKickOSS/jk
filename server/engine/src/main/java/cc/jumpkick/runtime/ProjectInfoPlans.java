@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Client project summary: parse, select, and describe. Failures ride {@code error}; this never
@@ -233,7 +234,7 @@ public final class ProjectInfoPlans {
         return value;
     }
 
-    private static String sanitizeJdk(String jdk) {
+    private static String sanitizeJdk(@Nullable String jdk) {
         if (jdk == null || jdk.isBlank() || Project.VERSION_FROM_WORKSPACE.equals(jdk)) return "";
         return jdk;
     }
@@ -333,7 +334,7 @@ public final class ProjectInfoPlans {
         }
     }
 
-    private static String orEmpty(String s) {
+    private static String orEmpty(@Nullable String s) {
         return s == null ? "" : s;
     }
 }

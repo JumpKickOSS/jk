@@ -303,7 +303,7 @@ public final class ClassAbi {
         return (access & Opcodes.ACC_STATIC) != 0 && (access & Opcodes.ACC_FINAL) != 0;
     }
 
-    private static String nullToEmpty(String s) {
+    private static String nullToEmpty(@Nullable String s) {
         return s == null ? "" : s;
     }
 

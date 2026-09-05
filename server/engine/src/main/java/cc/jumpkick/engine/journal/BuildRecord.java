@@ -222,7 +222,7 @@ public record BuildRecord(
             String kind,
             String dir,
             @Nullable String coord,
-            String projectId,
+            @Nullable String projectId,
             long startedAt,
             String jkVersion,
             @Nullable String trigger,

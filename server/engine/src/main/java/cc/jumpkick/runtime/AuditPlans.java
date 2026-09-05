@@ -20,6 +20,7 @@ import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.function.Consumer;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk audit} plan: scan {@code jk-lock.toml} against OSV via {@code jk-auditor}. Findings
@@ -44,9 +45,9 @@ public final class AuditPlans {
     public static BuildPlan auditBuildPlan(
             Path lockPath,
             Path cache,
-            String thresholdLabel,
-            URI osvBatchUrl,
-            URI osvVulnsUrl,
+            @Nullable String thresholdLabel,
+            @Nullable URI osvBatchUrl,
+            @Nullable URI osvVulnsUrl,
             FindingObserver observer) {
         Path workerJar = PluginJar.AUDITOR.locate(JkStores.storeCas());
 
@@ -105,8 +106,8 @@ public final class AuditPlans {
     private static void runWorker(
             Path workerJar,
             Path lockPath,
-            URI osvBatchUrl,
-            URI osvVulnsUrl,
+            @Nullable URI osvBatchUrl,
+            @Nullable URI osvVulnsUrl,
             FindingObserver observer,
             Consumer<String> onOutput) {
         try {

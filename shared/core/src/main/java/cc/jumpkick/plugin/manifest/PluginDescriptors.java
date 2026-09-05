@@ -579,7 +579,7 @@ public final class PluginDescriptors {
     }
 
     /** Numeric core of a {@code >=x.y} spec, or null when unset. */
-    public static @Nullable String jkCompatFloor(String jkCompat) {
+    public static @Nullable String jkCompatFloor(@Nullable String jkCompat) {
         if (jkCompat == null || jkCompat.isBlank()) return null;
         String spec = jkCompat.trim();
         if (!spec.startsWith(">=")) return null;
@@ -588,7 +588,7 @@ public final class PluginDescriptors {
     }
 
     /** Higher of two {@code x.y[.z]} floors; nulls sort as lowest. */
-    public static String maxFloor(String a, String b) {
+    public static @Nullable String maxFloor(@Nullable String a, @Nullable String b) {
         if (a == null || a.isBlank()) return b;
         if (b == null || b.isBlank()) return a;
         return compareNumericCore(a, b) >= 0 ? a : b;

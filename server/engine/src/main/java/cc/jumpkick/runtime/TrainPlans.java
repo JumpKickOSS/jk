@@ -15,6 +15,7 @@ import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskNames;
 import java.nio.file.Path;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk train} plan: core build through package-jar, then a single train observation task.
@@ -28,8 +29,8 @@ public final class TrainPlans {
             Path moduleDir,
             JkBuild module,
             Path cache,
-            Path jdksDir,
-            Path graalHome,
+            @Nullable Path jdksDir,
+            @Nullable Path graalHome,
             Path javaHome,
             String profileFilter,
             boolean force,
@@ -66,7 +67,7 @@ public final class TrainPlans {
             JkBuild module,
             Path cache,
             Path lockFile,
-            Path graalHome,
+            @Nullable Path graalHome,
             Path javaHome,
             String profileFilter,
             boolean force) {

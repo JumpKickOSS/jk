@@ -8,6 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Which inputs the outputs sitting in a module's target dir were built from.
@@ -50,7 +51,8 @@ public final class ModuleInputProvenance {
      * caller is deciding whether to force work, and only a record that positively disagrees is
      * evidence of a stale artifact.
      */
-    static boolean outputsFromOtherInputs(Path workspaceRoot, Path moduleDir, JkBuild build, String fingerprint) {
+    static boolean outputsFromOtherInputs(
+            Path workspaceRoot, Path moduleDir, JkBuild build, @Nullable String fingerprint) {
         if (fingerprint == null || fingerprint.isBlank()) return false;
         try {
             Path file = recordFile(workspaceRoot, moduleDir, build);

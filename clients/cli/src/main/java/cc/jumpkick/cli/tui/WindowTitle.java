@@ -4,6 +4,7 @@ package cc.jumpkick.cli.tui;
 import cc.jumpkick.cli.Osc;
 import cc.jumpkick.cli.theme.Theme;
 import java.io.PrintStream;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The terminal window/tab title (OSC 0) for the life of a live region, prefixed with a half-circle
@@ -48,7 +49,7 @@ final class WindowTitle {
     }
 
     /** Set the title and emit it now with the first glyph; cleared on settle / dismiss / cancel / close. */
-    void set(String title) {
+    void set(@Nullable String title) {
         if (!animate || !Theme.active().isAnsi() || !Osc.oscEnabled()) return;
         base = title == null ? "" : title;
         active = !base.isEmpty();

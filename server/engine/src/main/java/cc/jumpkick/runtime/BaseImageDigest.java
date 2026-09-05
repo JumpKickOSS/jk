@@ -17,6 +17,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The digest a registry serves for a base image reference <em>right now</em>.
@@ -59,7 +60,7 @@ final class BaseImageDigest {
     private static final Pattern CHALLENGE_PARAM = Pattern.compile("([a-zA-Z_]+)=\"([^\"]*)\"");
 
     /** True when {@code reference} already names its digest, so {@link #pin} needs no registry. */
-    static boolean pinned(String reference) {
+    static boolean pinned(@Nullable String reference) {
         return reference != null && reference.contains("@sha256:");
     }
 
@@ -72,7 +73,7 @@ final class BaseImageDigest {
      * {@code reference} with its tag replaced by the digest the registry serves for it, or empty
      * when the registry cannot be asked. An already-pinned reference is returned unchanged.
      */
-    static Optional<String> pin(String reference, Http http, RepoCredential cred) {
+    static Optional<String> pin(@Nullable String reference, Http http, RepoCredential cred) {
         if (reference == null || reference.isBlank()) return Optional.empty();
         if (pinned(reference)) return Optional.of(reference);
         Ref ref = parse(reference);
@@ -164,7 +165,7 @@ final class BaseImageDigest {
      * one to anyone who asks, which is how an anonymous pull of a public image works at all; a
      * private repository issues one only to a realm request carrying {@code realmAuth}.
      */
-    private static String bearerToken(Http http, String challenge, Ref ref, Map<String, String> realmAuth)
+    private static @Nullable String bearerToken(Http http, String challenge, Ref ref, Map<String, String> realmAuth)
             throws InterruptedException {
         Map<String, String> params = new HashMap<>();
         Matcher m = CHALLENGE_PARAM.matcher(challenge);

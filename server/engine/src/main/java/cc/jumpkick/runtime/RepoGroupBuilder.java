@@ -76,7 +76,7 @@ public final class RepoGroupBuilder {
                 RepositoryToml.interpolate(cfg.sessionToken(), strict, where, env));
     }
 
-    public static RepoGroup buildFor(JkBuild project, URI overrideUrl, Cas cas) {
+    public static RepoGroup buildFor(JkBuild project, @Nullable URI overrideUrl, Cas cas) {
         return buildFor(project, overrideUrl, cas, System::getenv);
     }
 
@@ -90,7 +90,7 @@ public final class RepoGroupBuilder {
      * environment; the three-argument overload keeps ambient behaviour for tooling and tests.
      */
     public static RepoGroup buildFor(
-            JkBuild project, URI overrideUrl, Cas cas, Function<String, @Nullable String> env) {
+            JkBuild project, @Nullable URI overrideUrl, Cas cas, Function<String, @Nullable String> env) {
         Http http = new Http();
         List<MavenRepo> repos = new ArrayList<>();
         boolean mirrorToM2 = project.project().m2integration();

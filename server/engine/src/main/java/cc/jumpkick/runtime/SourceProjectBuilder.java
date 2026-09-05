@@ -22,6 +22,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 import org.w3c.dom.Element;
 
 /**
@@ -33,7 +34,12 @@ final class SourceProjectBuilder {
     private SourceProjectBuilder() {}
 
     /** The built artifact: coordinate/version plus the on-disk jar path and POM text. */
-    record Built(String group, String artifact, String version, Path jar, String pomXml) {
+    record Built(
+            @Nullable String group,
+            @Nullable String artifact,
+            @Nullable String version,
+            Path jar,
+            String pomXml) {
         String coordinate() {
             return group + ":" + artifact + ":" + version;
         }
@@ -104,7 +110,7 @@ final class SourceProjectBuilder {
     }
 
     /** Parse a `key: value` line from `gradle properties` output; null if absent/blank/unspecified. */
-    static String gradleProperty(String propertiesOutput, String key) {
+    static @Nullable String gradleProperty(String propertiesOutput, String key) {
         String prefix = key + ":";
         for (String line : propertiesOutput.split("\n")) {
             String trimmed = line.strip();
@@ -118,7 +124,7 @@ final class SourceProjectBuilder {
     }
 
     /** Strip a trailing {@code -<version>} and {@code .jar} to recover the archive base name. */
-    static String artifactFromJar(String jarFileName, String version) {
+    static String artifactFromJar(String jarFileName, @Nullable String version) {
         String base = jarFileName.endsWith(".jar") ? jarFileName.substring(0, jarFileName.length() - 4) : jarFileName;
         String suffix = "-" + version;
         if (base.endsWith(suffix)) {
@@ -151,7 +157,10 @@ final class SourceProjectBuilder {
                 gav.group(), gav.artifact(), gav.version(), jar, leafPom(gav.group(), gav.artifact(), gav.version()));
     }
 
-    record Gav(String group, String artifact, String version) {}
+    record Gav(
+            @Nullable String group,
+            @Nullable String artifact,
+            @Nullable String version) {}
 
     /** Read groupId/artifactId/version from a {@code pom.xml}, inheriting group/version from {@code <parent>}. */
     static Gav parseMavenGav(Path pomXml) throws IOException {
@@ -177,7 +186,7 @@ final class SourceProjectBuilder {
     }
 
     /** Text of the first direct child element named {@code tag}, or null when absent or blank. */
-    private static String childText(Element parent, String tag) {
+    private static @Nullable String childText(Element parent, String tag) {
         Element child = DomXml.childElement(parent, tag);
         if (child == null) return null;
         String text = child.getTextContent();
@@ -187,7 +196,7 @@ final class SourceProjectBuilder {
     // ---- shared helpers --------------------------------------------------------
 
     /** GAV-only POM (no {@code <dependencies>}): the foreign jar is a leaf dependency. */
-    static String leafPom(String group, String artifact, String version) {
+    static String leafPom(@Nullable String group, @Nullable String artifact, @Nullable String version) {
         return """
                 <?xml version="1.0" encoding="UTF-8"?>
                 <project xmlns="http://maven.apache.org/POM/4.0.0">
@@ -200,7 +209,7 @@ final class SourceProjectBuilder {
                 """.formatted(group, artifact, version);
     }
 
-    private static void requireGav(String value, String what, Path projectDir) throws IOException {
+    private static void requireGav(@Nullable String value, String what, Path projectDir) throws IOException {
         if (value == null || value.isBlank()) {
             throw new IOException(projectDir + ": could not determine " + what + " for the dependency target");
         }
@@ -267,7 +276,7 @@ final class SourceProjectBuilder {
                 + "` on PATH — cannot build this dependency target");
     }
 
-    private static Path findOnPath(String bin) {
+    private static @Nullable Path findOnPath(String bin) {
         String path = System.getenv("PATH");
         if (path == null) return null;
         List<String> names = Os.isWindows() ? List.of(bin + ".bat", bin + ".cmd", bin + ".exe", bin) : List.of(bin);

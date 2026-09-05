@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Tool-resolution plan for {@code jk tool install/run} and {@code jk install <g:a:v>}.
@@ -48,9 +49,9 @@ public final class ToolPlans {
     public static BuildPlan resolveBuildPlan(
             ToolCoordSpec spec,
             List<ToolCoordSpec> withSpecs,
-            String bin,
-            String mainClassOverride,
-            URI repoUrl,
+            @Nullable String bin,
+            @Nullable String mainClassOverride,
+            @Nullable URI repoUrl,
             Path cache,
             String coordLabel) {
         Task resolve = Task.builder(TaskNames.RESOLVE_COORD)

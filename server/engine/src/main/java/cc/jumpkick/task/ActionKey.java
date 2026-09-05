@@ -276,7 +276,7 @@ public final class ActionKey {
      * hashes module-relative paths and content, so two modules with identical inputs share one key
      * on purpose, and the tag is what keeps their {@code tasks/} pointers apart.
      */
-    public static String qualifiedTaskId(String base, Path moduleDir) {
+    public static String qualifiedTaskId(String base, @Nullable Path moduleDir) {
         return base + "@" + taskTag(moduleDir);
     }
 

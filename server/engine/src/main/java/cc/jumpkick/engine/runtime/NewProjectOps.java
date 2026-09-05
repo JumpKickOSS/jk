@@ -603,7 +603,7 @@ public final class NewProjectOps {
         return Layout.parse(layout);
     }
 
-    private static String nullToEmpty(String s) {
+    private static String nullToEmpty(@Nullable String s) {
         return s == null ? "" : s;
     }
 }

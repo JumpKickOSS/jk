@@ -38,11 +38,11 @@ public final class AggregatedMetrics {
     }
 
     /** Load project metrics for {@code coord}+{@code projectDir} plus host means. */
-    public static AggregatedMetrics load(String coord, Path projectDir) {
+    public static AggregatedMetrics load(@Nullable String coord, Path projectDir) {
         return load(ProjectBuilds.buildsRoot(), coord, projectDir);
     }
 
-    public static AggregatedMetrics load(Path buildsRoot, String coord, Path projectDir) {
+    public static AggregatedMetrics load(Path buildsRoot, @Nullable String coord, Path projectDir) {
         Path home = ProjectBuilds.projectHome(buildsRoot, coord, projectDir);
         Map<String, Double> mean = new LinkedHashMap<>();
         Map<String, Double> last = new LinkedHashMap<>();
