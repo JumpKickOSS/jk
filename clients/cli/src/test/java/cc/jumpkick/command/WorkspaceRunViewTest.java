@@ -35,7 +35,7 @@ class WorkspaceRunViewTest {
     }
 
     private static WorkspaceRunView headlessView() {
-        return new WorkspaceRunView(new WorkspaceRunView.Chrome("Build", true, true), Path.of("/ws"), null, false);
+        return new WorkspaceRunView(new WorkspaceRunView.Chrome("Build", true), Path.of("/ws"), null, false);
     }
 
     @Test
@@ -102,10 +102,9 @@ class WorkspaceRunViewTest {
 
     @Test
     void non_buffered_chrome_prints_nothing_of_its_own() {
-        // `jk compile` / `jk image` / `jk native` open a JkManager region that is dormant under
-        // --output json; anything written above it would land in the JSON stream.
-        var run =
-                new WorkspaceRunView(new WorkspaceRunView.Chrome("Compile", false, false), Path.of("/ws"), null, false);
+        // `jk compile` / `jk image` / `jk native` own no output of their own: the live region
+        // paints every line, so nothing may be written above it.
+        var run = new WorkspaceRunView(new WorkspaceRunView.Chrome("Compile", false), Path.of("/ws"), null, false);
         Path dir = Path.of("/ws/a");
         String out = Capture.stdout(() -> {
             var mod = run.headless().onModuleStart(module("g:a", dir));
@@ -115,6 +114,52 @@ class WorkspaceRunViewTest {
         // listener reads. What must hold either way is that module chatter is never echoed live.
         assertThat(out).doesNotContain("chatter");
         assertThat(run.deferredOutput()).isEmpty();
+    }
+
+    /**
+     * The envelope a stream parser relies on, from the one renderer every build-kind verb uses:
+     * exactly one {@code workspace-start}, a {@code module-start}/{@code module-finish} pair per
+     * module, and exactly one terminal {@code workspace-finish}. Asserted on counts, not presence —
+     * a second start or a missing terminal is what makes a stream unparseable.
+     */
+    @Test
+    void the_json_stream_opens_once_pairs_each_module_and_terminates_once() {
+        var run = new WorkspaceRunView(new WorkspaceRunView.Chrome("Build", true), Path.of("/ws"), null, true);
+        WorkspaceBuildListener lis = run.headless();
+        Path a = Path.of("/ws/a");
+        Path b = Path.of("/ws/b");
+        String out = Capture.stdout(() -> {
+            lis.onPlan(List.of(module("g:a", a), module("g:b", b)));
+            lis.onModuleStart(module("g:a", a));
+            lis.onModuleFinish(new ModuleOutcome("g:a", a, true, 0, 5, true));
+            lis.onModuleStart(module("g:b", b));
+            lis.onModuleFinish(new ModuleOutcome("g:b", b, true, 0, 7, true));
+            run.finishEvent(true, 12);
+        });
+        assertThat(countType(out, "workspace-start")).isEqualTo(1);
+        assertThat(countType(out, "module-start")).isEqualTo(2);
+        assertThat(countType(out, "module-finish")).isEqualTo(2);
+        assertThat(countType(out, "workspace-finish")).isEqualTo(1);
+        // The terminal is last, or a parser that stops there loses the rest.
+        assertThat(out.trim().lines().reduce((f, l) -> l).orElseThrow()).contains("\"type\":\"workspace-finish\"");
+    }
+
+    /**
+     * A verb on the live arm emits the same vocabulary, to the transcript rather than stdout:
+     * {@code toStdout} is the output-mode flag, not an on/off switch for events.
+     */
+    @Test
+    void live_chrome_emits_no_events_to_stdout() {
+        var run = new WorkspaceRunView(new WorkspaceRunView.Chrome("Compile", false), Path.of("/ws"), null, false);
+        String out = Capture.stdout(() -> run.finishEvent(true, 3));
+        assertThat(out).doesNotContain("workspace-finish");
+    }
+
+    private static int countType(String stream, String type) {
+        String needle = "\"type\":\"" + type + "\"";
+        int n = 0;
+        for (int i = stream.indexOf(needle); i >= 0; i = stream.indexOf(needle, i + needle.length())) n++;
+        return n;
     }
 
     @Test

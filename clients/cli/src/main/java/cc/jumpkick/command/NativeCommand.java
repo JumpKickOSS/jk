@@ -13,9 +13,6 @@ import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.AggregateContext;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ConsoleSpec;
-import cc.jumpkick.cli.run.JsonlListener;
-import cc.jumpkick.cli.run.JsonlShape;
-import cc.jumpkick.cli.run.LiveProgress;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Coord;
@@ -39,7 +36,6 @@ import cc.jumpkick.wire.protocol.ProjectInfo;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.ModulePlan;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
-import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -319,62 +315,33 @@ public final class NativeCommand implements CliCommand {
         var req = hostedRequest(wsRoot, cache, graalHomes, selectedModuleDirs);
         var paths = EnginePaths.current();
 
-        // JSON / verbose: append-only per-module listeners. JSON must not print human banners and
-        // must not let module-local num/den clobber the engine aggregate rider.
+        // JSON / verbose: the shared append-only renderer, exactly as `jk build` drives it. This
+        // arm used to hand-roll a listener that emitted `workspace-progress` and no terminal —
+        // the one orphan copy of the vocabulary left outside WorkspaceRunView.
         if (mode != BuildPlanConsole.Mode.AUTO && mode != BuildPlanConsole.Mode.QUIET) {
-            int[] idx = {0};
-            // Engine-corrected denominator: with -m the engine adds transitive prereqs the client
-            // never counted, so the plan's modulesTotal wins over the client-side guess.
-            int[] total = {totalModules};
             boolean json = mode == BuildPlanConsole.Mode.JSON;
-            var listener = new WorkspaceBuildListener() {
-                @Override
-                public void onWorkspaceProgress(WorkspaceProgressTracker.Snapshot snap) {
-                    if (snap.modulesTotal() > 0) total[0] = snap.modulesTotal();
-                    if (!json) return;
-                    LiveProgress.get().apply(snap);
-                    JsonlShape.emitJsonl(
-                            JsonlShape.workspaceProgress(
-                                    wsRoot.toString(),
-                                    snap.numerator(),
-                                    snap.denominator(),
-                                    snap.phase(),
-                                    snap.modulesComplete(),
-                                    snap.modulesTotal()),
-                            true);
-                }
-
-                @Override
-                public BuildPlanListener onModuleStart(ModulePlan m) {
-                    if (!json) {
-                        CliOutput.out();
-                        CliOutput.out("══ " + wsRoot.relativize(m.dir()) + " (" + (++idx[0]) + "/"
-                                + Math.max(total[0], idx[0]) + ") ══");
-                    }
-                    // JSON: workspace member listener (no aggregate-rider writes). Verbose: full console.
-                    var console = json
-                            ? new JsonlListener(System.out, false)
-                            : BuildPlanConsole.chooseConsoleListener(
-                                    m.plan().name(), m.plan().steps(), mode);
-                    return console;
-                }
-
-                @Override
-                public void onModuleFinish(ModuleOutcome o) {
-                    if (!o.success() && !json) {
-                        CommandWedge.printFail(
-                                "Native", wsRoot.relativize(o.dir()) + " failed (exit " + o.exitCode() + ")");
-                    }
-                }
-            };
+            var run = new WorkspaceRunView(new WorkspaceRunView.Chrome("Build", false), wsRoot, null, json);
+            // Client-side pre-count; the engine corrects it upward when -m pulls in prereqs.
+            run.seedPlanned(totalModules);
+            long headlessStart = System.nanoTime();
             WorkspaceResult result;
             try {
-                result = EngineClient.runNative(paths, req, listener);
+                result = EngineClient.runNative(paths, req, run.headless());
             } catch (IOException e) {
-                CommandWedge.printFail("Native", e.getMessage());
+                run.finishEvent(false, BuildTails.elapsedMsSince(headlessStart));
+                if (!json) CommandWedge.printFail("Native", e.getMessage());
                 return Exit.SOFTWARE;
             }
-            for (String err : result.errors()) CommandWedge.printFail("Native", err);
+            long headlessElapsed = BuildTails.elapsedMsSince(headlessStart);
+            if (result.cancelled()) {
+                run.finishEvent(false, headlessElapsed);
+                if (!json) CommandWedge.printFail("Native", "Native job was cancelled");
+                return 1;
+            }
+            run.finishEvent(result.success(), headlessElapsed);
+            if (!json) {
+                for (String err : result.errors()) CommandWedge.printFail("Native", err);
+            }
             return result.exitCode();
         }
 
@@ -386,9 +353,8 @@ public final class NativeCommand implements CliCommand {
         ModuleScopeHint.apply(view, "building", scopeHintNames);
         AggregateContext agg = new AggregateContext(view);
         int[] built = {0};
-        // Not buffered and no JSONL: the JSON / verbose arm above is this verb's headless renderer,
-        // so nothing may be written above this region.
-        var run = new WorkspaceRunView(new WorkspaceRunView.Chrome("Build", false, false), wsRoot, null, false);
+        // Not buffered: the live region owns every line, so nothing is written above it.
+        var run = new WorkspaceRunView(new WorkspaceRunView.Chrome("Build", false), wsRoot, null, false);
         // Client-side pre-count; the engine corrects it upward when -m pulls in transitive prereqs.
         run.seedPlanned(totalModules);
         WorkspaceResult result;
@@ -397,10 +363,17 @@ public final class NativeCommand implements CliCommand {
                 if (o.success()) built[0]++;
             }));
         } catch (IOException e) {
+            run.finishEvent(false, BuildTails.elapsedMsSince(buildStart));
             view.finishBuildPlanFailure(String.valueOf(e.getMessage()));
             return Exit.SOFTWARE;
         }
+        if (result.cancelled()) {
+            run.finishEvent(false, BuildTails.elapsedMsSince(buildStart));
+            view.finishBuildPlanCancelled(List.of());
+            return 1;
+        }
         if (!result.errors().isEmpty()) {
+            run.finishEvent(false, BuildTails.elapsedMsSince(buildStart));
             view.finishBuildPlanFailure("dependency resolution failed");
             for (String err : result.errors()) CliOutput.err(ConsoleSpec.errorLine("composite", err));
             return result.exitCode();

@@ -51,6 +51,23 @@ export JK_OUTPUT=json
 - For whole-job % without task spam, subscribe to **`type=workspace-progress`**.
 - Terminal human chrome is **suppressed** in this mode.
 
+### One vocabulary for every build-kind verb
+
+`jk build`, `jk test`, `jk compile`, `jk image`, `jk native`, `jk install` and `jk run` emit the
+**same** workspace envelope. The verb selects which stages the build includes; it is not a
+different kind of job, so a parser written against one works against all of them:
+
+- exactly one **`workspace-start`**,
+- a **`module-start`** / **`module-finish`** pair for every module entered,
+- exactly one terminal **`workspace-finish`** — on *every* outcome, including failure,
+  cancellation and a wire error. A stream that ends without it means jk died, not that the build
+  is still running.
+
+**`jk run` is the one exception, and only at its tail.** It streams the workspace pre-build in
+full and terminates it with `workspace-finish` *before* it execs your program. jk writes nothing
+more to stdout after that line: from there the stream is the program's. Treat `workspace-finish`
+as end-of-stream for `jk run`.
+
 Illustrative lines:
 
 ```json
@@ -90,8 +107,8 @@ differs; field **names** match.
 | User/compiler output | `output` |
 | Warning / error | `warn` / `error` (+ `test`, `exceptionClass`) |
 | Plan / ETA | `plan`, `eta` (web; CLI via explain) |
-| Module | `module-start` / `module-finish` |
-| Workspace end | `workspace-finish` |
+| Module | `module-start` / `module-finish` (paired) |
+| Workspace end | `workspace-finish` (exactly one, on every outcome) |
 
 `stage` is a **closed** set, in pipeline order: `resolve`, `generate`, `compile`, `test`,
 `package`, `train`, `native`, `image`, `publish`, `other`. The field is always present, but a

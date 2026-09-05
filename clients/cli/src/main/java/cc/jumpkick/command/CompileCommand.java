@@ -150,34 +150,87 @@ public final class CompileCommand implements CliCommand {
         var req = new EngineRequests.CompileRequest(
                 entryDir, cache, profileName, session.offline(), session.force(), global.verbose, modules);
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
+        boolean live = mode == BuildPlanConsole.Mode.AUTO || mode == BuildPlanConsole.Mode.QUIET;
+        if (!live) return runWorkspaceHeadless(req, global, entryDir, scopeNames);
+
         boolean animate = mode == BuildPlanConsole.Mode.AUTO && BuildPlanConsole.isInteractiveTerminal();
         JkManager view = JkManager.plan(CliOutput.stdout(), "Compile", animate);
         view.setPlanCoord(BuildCommand.projectGaLabel(entryDir));
-        ModuleScopeHint.show("compiling", scopeNames, global != null && global.outputIsJson(), view);
+        ModuleScopeHint.show("compiling", scopeNames, false, view);
         AggregateContext agg = new AggregateContext(view);
         long start = System.nanoTime();
-        // Not buffered and no JSONL: `jk compile` has no headless renderer of its own, so under
-        // `--output json` this same region is opened dormant and must write nothing.
-        var run = new WorkspaceRunView(new WorkspaceRunView.Chrome("Compile", false, false), entryDir, null, false);
+        // Not buffered: the live region owns every line, so nothing is written above it.
+        var run = new WorkspaceRunView(new WorkspaceRunView.Chrome("Compile", false), entryDir, null, false);
         WorkspaceResult result;
         try {
             result = EngineClient.runCompileWorkspace(EnginePaths.current(), req, run.live(view, agg));
         } catch (EngineWireException e) {
+            run.finishEvent(false, BuildTails.elapsedMsSince(start));
             view.finishBuildPlanFailure(String.valueOf(e.getMessage()));
             return Exit.CONFIG;
         } catch (IOException e) {
+            run.finishEvent(false, BuildTails.elapsedMsSince(start));
             view.finishBuildPlanFailure(String.valueOf(e.getMessage()));
             return Exit.SOFTWARE;
+        }
+        if (result.cancelled()) {
+            run.finishEvent(false, BuildTails.elapsedMsSince(start));
+            view.finishBuildPlanCancelled(List.of());
+            return 1;
         }
         if (!result.success()) {
             String detail = result.errors().isEmpty()
                     ? "compilation failed " + BuildTails.elapsedSince(start)
                     : result.errors().getFirst();
+            run.finishEvent(false, BuildTails.elapsedMsSince(start));
             view.finishBuildPlanFailure(detail);
             return result.exitCode() == 0 ? 1 : result.exitCode();
         }
+        run.finishEvent(true, BuildTails.elapsedMsSince(start));
         view.finishBuildPlanSuccess(
                 Theme.colorize("Compiled", Theme.active().focused()) + " " + BuildTails.elapsedSince(start));
+        return 0;
+    }
+
+    /**
+     * Non-animated workspace compile ({@code --output json} / {@code --verbose}), rendering through
+     * {@link WorkspaceRunView#headless} exactly as {@code jk build} does — same events, same
+     * per-module block, no {@link JkManager} region.
+     */
+    private int runWorkspaceHeadless(
+            EngineRequests.CompileRequest req, GlobalOptions global, Path entryDir, List<String> scopeNames) {
+        boolean json = global.outputIsJson();
+        ModuleScopeHint.print("compiling", scopeNames, json);
+        var run = new WorkspaceRunView(new WorkspaceRunView.Chrome("Compile", false), entryDir, null, json);
+        long start = System.nanoTime();
+        WorkspaceResult result;
+        try {
+            result = EngineClient.runCompileWorkspace(EnginePaths.current(), req, run.headless());
+        } catch (EngineWireException e) {
+            run.finishEvent(false, BuildTails.elapsedMsSince(start));
+            if (!json) CommandWedge.printFail("Compile", e.getMessage());
+            return Exit.CONFIG;
+        } catch (IOException e) {
+            run.finishEvent(false, BuildTails.elapsedMsSince(start));
+            if (!json) CommandWedge.printFail("Compile", e.getMessage());
+            return Exit.SOFTWARE;
+        }
+        long elapsed = BuildTails.elapsedMsSince(start);
+        if (result.cancelled()) {
+            run.finishEvent(false, elapsed);
+            if (!json) CommandWedge.printFail("Compile", "Compile job was cancelled");
+            return 1;
+        }
+        if (!result.success()) {
+            run.finishEvent(false, elapsed);
+            if (!json) {
+                for (String err : result.errors()) CliOutput.err(ConsoleSpec.errorLine("composite", err));
+                CommandWedge.printFail("Compile", "compilation failed");
+            }
+            return result.exitCode() == 0 ? 1 : result.exitCode();
+        }
+        run.finishEvent(true, elapsed);
+        if (!json) CommandWedge.printOk("Compile", "Compiled " + BuildTails.elapsedSince(start));
         return 0;
     }
 }

@@ -409,7 +409,7 @@ public final class InstallCommand {
         // place. A hand-rolled listener here is what made a failed workspace install print
         // nothing at all on either stream.
         boolean json = global.outputIsJson();
-        var run = new WorkspaceRunView(new WorkspaceRunView.Chrome(planName, true, true), wsRoot, null, json);
+        var run = new WorkspaceRunView(new WorkspaceRunView.Chrome(planName, true), wsRoot, null, json);
         long start = System.nanoTime();
         WorkspaceResult result;
         try {
@@ -417,11 +417,11 @@ public final class InstallCommand {
         } catch (JobCancelledException e) {
             return cancelled(run, start, json);
         } catch (IOException e) {
-            run.finishEvent(false, elapsedMs(start));
+            run.finishEvent(false, BuildTails.elapsedMsSince(start));
             CommandWedge.printFail("Install", e.getMessage());
             return Exit.SOFTWARE;
         }
-        long elapsed = elapsedMs(start);
+        long elapsed = BuildTails.elapsedMsSince(start);
         // A cancel is not a failure: it names no module and deserves no error list.
         if (result.cancelled()) return cancelled(run, start, json);
         if (!result.success()) {
@@ -478,7 +478,7 @@ public final class InstallCommand {
     }
 
     private static int cancelled(WorkspaceRunView run, long startNanos, boolean json) {
-        run.finishEvent(false, elapsedMs(startNanos));
+        run.finishEvent(false, BuildTails.elapsedMsSince(startNanos));
         if (!json) CommandWedge.printFail("Install", "job was cancelled");
         return Exit.FAILURE;
     }
@@ -490,10 +490,6 @@ public final class InstallCommand {
     private static String installFailureTail(WorkspaceResult result, long elapsedMs) {
         return WorkspaceRunView.failedCoord(result, "install") + " — failed "
                 + ConsoleSpec.took(Duration.ofMillis(elapsedMs));
-    }
-
-    private static long elapsedMs(long startNanos) {
-        return (System.nanoTime() - startNanos) / 1_000_000;
     }
 
     /**

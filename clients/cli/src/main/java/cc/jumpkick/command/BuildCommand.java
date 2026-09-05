@@ -388,7 +388,7 @@ public final class BuildCommand implements CliCommand {
      */
     private int runWorkspaceHeadless(Path entryDir, Path cache, List<String> modules) {
         boolean json = global.outputIsJson();
-        var run = new WorkspaceRunView(new WorkspaceRunView.Chrome("Build", true, true), entryDir, session, json);
+        var run = new WorkspaceRunView(new WorkspaceRunView.Chrome("Build", true), entryDir, session, json);
         long start = System.nanoTime();
         WorkspaceResult result;
         try {
@@ -397,14 +397,14 @@ public final class BuildCommand implements CliCommand {
         } catch (JobCancelledException e) {
             return headlessCancelled(run, entryDir, start, json);
         } catch (IOException e) {
-            long elapsed = elapsedMs(start);
+            long elapsed = BuildTails.elapsedMsSince(start);
             run.finishEvent(false, elapsed);
             CommandWedge.printFail("Build", e.getMessage());
             if (session != null) session.error(e.getMessage());
             notifyBuild(BuildNotify.Outcome.FAILED, entryDir, 0, elapsed);
             return Exit.SOFTWARE;
         }
-        long elapsed = elapsedMs(start);
+        long elapsed = BuildTails.elapsedMsSince(start);
         run.absorb(null, result);
         if (result.cancelled()) {
             return headlessCancelled(run, entryDir, start, json);
@@ -451,7 +451,7 @@ public final class BuildCommand implements CliCommand {
     }
 
     private int headlessCancelled(WorkspaceRunView run, Path entryDir, long start, boolean json) {
-        long elapsed = elapsedMs(start);
+        long elapsed = BuildTails.elapsedMsSince(start);
         run.finishEvent(false, elapsed);
         if (!json) {
             String took = ConsoleSpec.took(Duration.ofMillis(elapsed));
@@ -471,7 +471,7 @@ public final class BuildCommand implements CliCommand {
      */
     private int runGraphLive(
             JkManager view, AggregateContext agg, Path entryDir, Path cache, long start, List<String> modules) {
-        var run = new WorkspaceRunView(new WorkspaceRunView.Chrome("Build", true, true), entryDir, session, false);
+        var run = new WorkspaceRunView(new WorkspaceRunView.Chrome("Build", true), entryDir, session, false);
         WorkspaceResult result;
         try {
             result = EngineClient.buildWorkspace(
@@ -479,7 +479,8 @@ public final class BuildCommand implements CliCommand {
         } catch (JobCancelledException e) {
             view.finishBuildPlanCancelled(List.of());
             if (session != null) session.wedge("Build job was cancelled");
-            notifyBuild(BuildNotify.Outcome.CANCELLED, entryDir, view.etaEstimateMs(), elapsedMs(start));
+            notifyBuild(
+                    BuildNotify.Outcome.CANCELLED, entryDir, view.etaEstimateMs(), BuildTails.elapsedMsSince(start));
             return 1;
         } catch (IOException e) {
             // finishBuildPlanFailure's own `tail` already gets wrapped in JkWedge.failureLine(planName,
@@ -487,10 +488,10 @@ public final class BuildCommand implements CliCommand {
             // (passing one double-wraps it into a garbled "‼ Build ‼ Build..." chip).
             view.finishBuildPlanFailure(String.valueOf(e.getMessage()), List.of());
             if (session != null) session.error(String.valueOf(e.getMessage()));
-            notifyBuild(BuildNotify.Outcome.FAILED, entryDir, view.etaEstimateMs(), elapsedMs(start));
+            notifyBuild(BuildNotify.Outcome.FAILED, entryDir, view.etaEstimateMs(), BuildTails.elapsedMsSince(start));
             return Exit.SOFTWARE;
         }
-        long elapsed = elapsedMs(start);
+        long elapsed = BuildTails.elapsedMsSince(start);
         long estimateMs = view.etaEstimateMs();
         var tails = new WorkspaceRunView.Tails(
                 (r, planned) -> BuildTails.successTail(r.modules(), planned, start),
@@ -510,10 +511,6 @@ public final class BuildCommand implements CliCommand {
                         entryDir,
                         estimateMs,
                         elapsed));
-    }
-
-    private static long elapsedMs(long startNanos) {
-        return (System.nanoTime() - startNanos) / 1_000_000;
     }
 
     /**

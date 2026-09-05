@@ -39,17 +39,25 @@ import java.util.function.Consumer;
  * four-arm cancel/errors/failure/success ladder exist once.
  *
  * <p><b>Two renderers, not one.</b> {@link #live} paints into a {@link JkManager} region;
- * {@link #headless} appends blocks under a print mutex and never opens a region. They are siblings on
- * the <em>mode</em> axis, and a caller picks one — which is why {@code buffered} chrome may flush a
- * block with {@link JkManager#writeAbove} while non-buffered chrome must not: a verb with no headless
- * renderer of its own (today {@code compile} and {@code image}) hands us a dormant region under
- * {@code --output json}, and anything written above it lands in the JSON stream.
+ * {@link #headless} appends blocks under a print mutex and never opens a region. They are siblings
+ * on the <em>mode</em> axis: every verb picks {@code headless} for {@code --output json} /
+ * {@code --verbose} and {@code live} for a TTY, so no region is ever opened dormant with a JSON
+ * stream running through it. {@code buffered} chrome may flush a block with
+ * {@link JkManager#writeAbove}; non-buffered chrome owns no output of its own and must not.
+ *
+ * <p><b>One vocabulary.</b> Every verb here emits the same {@code workspace-*} / {@code module-*}
+ * events: exactly one {@code workspace-start}, a {@code module-start}/{@code module-finish} pair per
+ * module, and exactly one terminal {@code workspace-finish} on every exit path — success, failure,
+ * cancel or a wire exception. The verb is a hint about which stages the build includes, not a
+ * different kind of job, so a parser gets one envelope from all of them. {@code jk run} is the one
+ * outlier and only at its tail: it emits the full vocabulary for the workspace pre-build,
+ * terminates it before the exec, and writes no further stdout of its own — the child owns the
+ * stream from there, so {@code workspace-finish} is end-of-stream for {@code run}.
  *
  * <p>What stays with the caller is <b>policy</b>: the tails ({@link Tails}), whatever it wants to
  * observe per module ({@code observer}), and whatever it does after the ladder picks an arm
- * ({@link Settled}). What lives here is <b>mechanism</b>. Nine hand-written copies of that mechanism
- * had already drifted into three defects — {@code [01 of 01]} denominators, an unpainted test failure
- * under {@code jk run}, and two verbs that emit no {@code workspace-*} events at all.
+ * ({@link Settled}). What lives here is <b>mechanism</b>, once — a denominator, a painted test
+ * failure and the event vocabulary are rules of the renderer, not of the verb.
  */
 final class WorkspaceRunView {
 
@@ -57,12 +65,11 @@ final class WorkspaceRunView {
      * Per-verb rendering policy.
      *
      * @param planName the wedge/region name ({@code Build}, {@code Test}, …)
-     * @param events whether the JSONL {@code workspace-*} / {@code module-*} vocabulary is emitted
      * @param buffered whether module output is captured per module and flushed as one block on
      *     completion — also the flag that says this verb owns append-only output when the region is
      *     not animating
      */
-    record Chrome(String planName, boolean events, boolean buffered) {}
+    record Chrome(String planName, boolean buffered) {}
 
     /** Which arm of the settle ladder fired. */
     enum Settled {
@@ -213,7 +220,7 @@ final class WorkspaceRunView {
                     if (chrome.buffered()) deferred.addAll(paint(o.dir()));
                     return;
                 }
-                if (!chrome.buffered()) return; // see the class javadoc: dormant region, JSON stream
+                if (!chrome.buffered()) return; // this verb owns no output of its own
                 StringBuilder block = new StringBuilder();
                 for (String l : paint(o.dir())) block.append(l).append('\n');
                 block.append(completion);
@@ -433,8 +440,13 @@ final class WorkspaceRunView {
         if (session != null) session.appendRaw(JsonlShape.withProgress(line, null), false);
     }
 
+    /**
+     * One {@code workspace-*} / {@code module-*} event. {@code toStdout} decides whether it also
+     * reaches stdout; either way {@link JsonlShape#emitJsonl} appends it to whatever
+     * {@link CliSessionTranscript} is active, so a verb that keeps no transcript of its own still
+     * contributes to the session record.
+     */
     private void event(String line) {
-        if (!chrome.events()) return;
         JsonlShape.emitJsonl(line, toStdout);
     }
 }

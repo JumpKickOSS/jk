@@ -137,10 +137,18 @@ public final class RunCommand {
                     if (wr == null) return 1; // failure already settled on the view
                 } else {
                     // Quiet / JSON / non-tty: the same append-only block + `✓ [k of N]` line
-                    // `jk build --verbose` prints. No JSONL — see runWorkspaceLive.
+                    // `jk build --verbose` prints, and the same event vocabulary.
                     var run = new WorkspaceRunView(
-                            new WorkspaceRunView.Chrome("Run", false, true), request.entryDir(), null, false);
-                    wr = EngineClient.buildWorkspace(EnginePaths.current(), request, run.headless());
+                            new WorkspaceRunView.Chrome("Run", true), request.entryDir(), null, global.outputIsJson());
+                    long preBuildStart = System.nanoTime();
+                    try {
+                        wr = EngineClient.buildWorkspace(EnginePaths.current(), request, run.headless());
+                    } catch (IOException e) {
+                        run.finishEvent(false, BuildTails.elapsedMsSince(preBuildStart));
+                        throw e;
+                    }
+                    // The pre-build's terminal, before the exec: see runWorkspaceLive.
+                    run.finishEvent(wr.success(), BuildTails.elapsedMsSince(preBuildStart));
                 }
                 if (wr != null && !wr.success()) {
                     CommandWedge.printFail("Run", "workspace build failed");
@@ -351,23 +359,29 @@ public final class RunCommand {
      * engine-tracked aggregate bar, per-module step chips, buffered module output, completion
      * lines. Settles the region itself on failure/cancel and returns {@code null}; on success the
      * region settles to an exec-style chip so the run banner follows cleanly.
+     *
+     * <p>The pre-build <em>is</em> streamed — same {@code workspace-*} vocabulary as {@code jk
+     * build} — and it terminates with {@code workspace-finish} before the exec. What is not
+     * streamed is the program: from that line on, stdout belongs to the child, so a parser treats
+     * {@code workspace-finish} as end-of-stream for {@code jk run}.
      */
     private WorkspaceResult runWorkspaceLive(WorkspaceRequest request, List<String> scopeNames) {
         var view = JkManager.plan(CliOutput.stdout(), "Run", true);
         view.setPlanCoord(BuildCommand.projectGaLabel(request.entryDir()));
         ModuleScopeHint.apply(view, "building", scopeNames);
         var agg = new AggregateContext(view);
-        // No JSONL: `jk run`'s workspace pre-build is not a job an agent streams, it is the prologue
-        // to an exec, and the event stream belongs to the program that is about to start.
-        var run =
-                new WorkspaceRunView(new WorkspaceRunView.Chrome("Run", false, true), request.entryDir(), null, false);
+        // Live arm only (never --output json), so events reach the transcript and not stdout.
+        var run = new WorkspaceRunView(new WorkspaceRunView.Chrome("Run", true), request.entryDir(), null, false);
+        long start = System.nanoTime();
         WorkspaceResult wr;
         try {
             wr = EngineClient.buildWorkspace(EnginePaths.current(), request, run.live(view, agg));
         } catch (JobCancelledException e) {
+            run.finishEvent(false, BuildTails.elapsedMsSince(start));
             view.finishBuildPlanCancelled(run.deferredOutput());
             return null;
         } catch (IOException e) {
+            run.finishEvent(false, BuildTails.elapsedMsSince(start));
             view.finishBuildPlanFailure(String.valueOf(e.getMessage()), run.deferredOutput());
             return null;
         }
@@ -375,9 +389,11 @@ public final class RunCommand {
             String tail = wr.errors().isEmpty()
                     ? "workspace build failed"
                     : wr.errors().get(0);
+            run.finishEvent(false, BuildTails.elapsedMsSince(start));
             view.finishBuildPlanFailure(tail, run.deferredOutput());
             return null;
         }
+        run.finishEvent(true, BuildTails.elapsedMsSince(start));
         // Exec, not success: the region hands off to the program instead of settling to a chip.
         int n = Math.max(run.planned(), wr.modules().size());
         view.finishBuildPlanExec(n + (n == 1 ? " module ready" : " modules ready"), run.deferredOutput());

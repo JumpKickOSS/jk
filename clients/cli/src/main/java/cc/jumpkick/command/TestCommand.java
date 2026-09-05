@@ -397,7 +397,7 @@ public final class TestCommand implements CliCommand {
         view.setWindowTitle("JumpKick - Testing " + BuildCommand.projectGavLabel(entryDir) + "...");
         ModuleScopeHint.show("testing", scopeNames, global != null && global.outputIsJson(), view);
         AggregateContext agg = new AggregateContext(view);
-        var run = new WorkspaceRunView(new WorkspaceRunView.Chrome("Test", true, true), entryDir, session, false);
+        var run = new WorkspaceRunView(new WorkspaceRunView.Chrome("Test", true), entryDir, session, false);
         var request = workspaceTestRequest(entryDir, cache, workerCount, modules);
         WorkspaceResult result;
         try {
@@ -422,7 +422,7 @@ public final class TestCommand implements CliCommand {
     private int runWorkspaceTestsHeadless(Path entryDir, Path cache, int workerCount, List<String> modules) {
         boolean json = global != null && global.outputIsJson();
         long start = System.nanoTime();
-        var run = new WorkspaceRunView(new WorkspaceRunView.Chrome("Test", true, true), entryDir, session, json);
+        var run = new WorkspaceRunView(new WorkspaceRunView.Chrome("Test", true), entryDir, session, json);
         var request = workspaceTestRequest(entryDir, cache, workerCount, modules);
         WorkspaceResult result;
         try {

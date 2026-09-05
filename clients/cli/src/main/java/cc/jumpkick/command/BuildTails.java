@@ -60,8 +60,12 @@ final class BuildTails {
 
     /** Dim italic {@code "took Xms"} from a wall-clock start captured with {@link System#nanoTime}. */
     static String elapsedSince(long startNanos) {
-        long ms = (System.nanoTime() - startNanos) / 1_000_000;
-        return ConsoleSpec.took(Duration.ofMillis(ms));
+        return ConsoleSpec.took(Duration.ofMillis(elapsedMsSince(startNanos)));
+    }
+
+    /** Milliseconds since a {@link System#nanoTime} start — the unit every workspace event uses. */
+    static long elapsedMsSince(long startNanos) {
+        return (System.nanoTime() - startNanos) / 1_000_000;
     }
 
     /** The green {@code Build successful} lead that opens every build success message. */

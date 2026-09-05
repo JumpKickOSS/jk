@@ -244,37 +244,93 @@ public final class ImageCommand implements CliCommand {
                 session.config().rebuildOr(false),
                 global.verbose);
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
+        boolean live = mode == BuildPlanConsole.Mode.AUTO || mode == BuildPlanConsole.Mode.QUIET;
+        var moduleInfo = ProjectInfos.orNull(moduleDir);
+        if (!live) return runWorkspaceHeadless(imageReq, moduleDir, ModuleScopeHint.namesFrom(moduleInfo));
+
         boolean animate = mode == BuildPlanConsole.Mode.AUTO && BuildPlanConsole.isInteractiveTerminal();
         JkManager view = JkManager.plan(CliOutput.stdout(), "Image", animate);
         view.setPlanCoord(BuildCommand.projectGaLabel(moduleDir));
-        var moduleInfo = ProjectInfos.orNull(moduleDir);
-        ModuleScopeHint.show(
-                "building", ModuleScopeHint.namesFrom(moduleInfo), global != null && global.outputIsJson(), view);
+        ModuleScopeHint.show("building", ModuleScopeHint.namesFrom(moduleInfo), false, view);
         AggregateContext agg = new AggregateContext(view);
         ModuleOutcome.Image[] imageOut = {null};
         long start = System.nanoTime();
-        // Not buffered and no JSONL: like `jk compile`, this region is opened dormant under
-        // `--output json` and must write nothing above it.
-        var run = new WorkspaceRunView(new WorkspaceRunView.Chrome("Image", false, false), moduleDir, null, false);
+        // Not buffered: the live region owns every line, so nothing is written above it.
+        var run = new WorkspaceRunView(new WorkspaceRunView.Chrome("Image", false), moduleDir, null, false);
         WorkspaceResult result;
         try {
             result = EngineClient.runImageWorkspace(EnginePaths.current(), imageReq, run.live(view, agg, o -> {
                 if (o.success() && o.image() != null) imageOut[0] = o.image();
             }));
         } catch (IOException e) {
+            run.finishEvent(false, BuildTails.elapsedMsSince(start));
             view.finishBuildPlanFailure(String.valueOf(e.getMessage()));
             return Exit.SOFTWARE;
         }
+        if (result.cancelled()) {
+            run.finishEvent(false, BuildTails.elapsedMsSince(start));
+            view.finishBuildPlanCancelled(List.of());
+            return 1;
+        }
         if (!result.success()) {
+            run.finishEvent(false, BuildTails.elapsedMsSince(start));
             view.finishBuildPlanFailure("image failed " + BuildTails.elapsedSince(start));
             return result.exitCode() == 0 ? 1 : result.exitCode();
         }
+        run.finishEvent(true, BuildTails.elapsedMsSince(start));
         // Same Pushed/Wrote/Loaded tail as the single-project chip.
         var img = imageOut[0];
         String tail = img != null
                 ? imageSuccessTail(img.tarball(), img.name(), img.version(), img.daemonExe(), img.ref())
                 : "image built";
         view.finishBuildPlanSuccess(tail + " " + BuildTails.elapsedSince(start));
+        return 0;
+    }
+
+    /**
+     * Non-animated workspace image ({@code --output json} / {@code --verbose}), rendering through
+     * {@link WorkspaceRunView#headless} exactly as {@code jk build} does — same events, same
+     * per-module block, no {@link JkManager} region.
+     */
+    private int runWorkspaceHeadless(EngineRequests.ImageRequest imageReq, Path moduleDir, List<String> scopeNames) {
+        boolean json = global.outputIsJson();
+        ModuleScopeHint.print("building", scopeNames, json);
+        var run = new WorkspaceRunView(new WorkspaceRunView.Chrome("Image", false), moduleDir, null, json);
+        ModuleOutcome.Image[] imageOut = {null};
+        long start = System.nanoTime();
+        WorkspaceResult result;
+        try {
+            result = EngineClient.runImageWorkspace(EnginePaths.current(), imageReq, run.headless());
+        } catch (IOException e) {
+            run.finishEvent(false, BuildTails.elapsedMsSince(start));
+            if (!json) CommandWedge.printFail("Image", e.getMessage());
+            return Exit.SOFTWARE;
+        }
+        long elapsed = BuildTails.elapsedMsSince(start);
+        for (var o : result.modules()) {
+            if (o.success() && o.image() != null) imageOut[0] = o.image();
+        }
+        if (result.cancelled()) {
+            run.finishEvent(false, elapsed);
+            if (!json) CommandWedge.printFail("Image", "Image job was cancelled");
+            return 1;
+        }
+        if (!result.success()) {
+            run.finishEvent(false, elapsed);
+            if (!json) {
+                for (String err : result.errors()) CliOutput.err(ConsoleSpec.errorLine("composite", err));
+                CommandWedge.printFail("Image", "image failed");
+            }
+            return result.exitCode() == 0 ? 1 : result.exitCode();
+        }
+        run.finishEvent(true, elapsed);
+        if (!json) {
+            var img = imageOut[0];
+            String tail = img != null
+                    ? imageSuccessTail(img.tarball(), img.name(), img.version(), img.daemonExe(), img.ref())
+                    : "image built";
+            CommandWedge.printOk("Image", tail + " " + BuildTails.elapsedSince(start));
+        }
         return 0;
     }
 }
