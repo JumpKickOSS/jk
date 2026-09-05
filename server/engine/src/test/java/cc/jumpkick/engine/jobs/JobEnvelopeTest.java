@@ -9,6 +9,7 @@ import cc.jumpkick.config.JobLimits;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.InFlightBuilds;
+import cc.jumpkick.engine.JobWorkers;
 import cc.jumpkick.engine.JsonOut;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.journal.BuildJournal;
@@ -23,9 +24,11 @@ import cc.jumpkick.wire.runtime.progress.ProgressBarMode;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.PrintStream;
 import java.io.StringReader;
 import java.io.StringWriter;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -35,10 +38,12 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.LongSupplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -240,6 +245,60 @@ class JobEnvelopeTest {
         assertThat(record.diagnostics())
                 .as("the reason rides the record, so a job with no wire writer still says who")
                 .anyMatch(d -> "cancelled".equals(d.code()) && d.message().contains("Ctrl-C"));
+    }
+
+    /**
+     * The SIGTERM-to-SIGKILL window a cancel gives forked workers comes from the limits the
+     * envelope was built with, not from anything read at cancel time: a zero grace forces the kill
+     * at once and the cancel log names that grace.
+     */
+    @Test
+    @Tag("integration")
+    void the_cancel_grace_the_envelope_was_given_is_the_one_the_worker_shutdown_uses() throws Exception {
+        FakeHost host = new FakeHost();
+        host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "cli");
+        JobEnvelope env = new JobEnvelope(host, new JobLimits(0L, 0L, 0L, 0L));
+        AtomicReference<Process> worker = new AtomicReference<>();
+        CountDownLatch release = new CountDownLatch(1);
+
+        long jid = env.submit(
+                "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
+                JobRequest.plan("build", "jk-test-", (line, tok, w) -> {
+                    try {
+                        worker.set(JobWorkers.start(new ProcessBuilder("sleep", "60")));
+                        release.await(10, TimeUnit.SECONDS);
+                    } catch (IOException e) {
+                        throw new UncheckedIOException(e);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                    return JobOutcome.declined();
+                }),
+                new JobTransport.FireAndForget());
+        try {
+            long deadline = System.currentTimeMillis() + 10_000;
+            while (worker.get() == null && System.currentTimeMillis() < deadline) {
+                Thread.sleep(10);
+            }
+            assertThat(worker.get())
+                    .as("the runner forked its worker inside the job's scope")
+                    .isNotNull();
+
+            assertThat(env.live().cancelJob(jid)).isTrue();
+
+            while (host.logs.stream().noneMatch(l -> l.contains("cancel job"))
+                    && System.currentTimeMillis() < deadline) {
+                Thread.sleep(10);
+            }
+            assertThat(host.logs)
+                    .as("the shutdown ran with the envelope's zero grace and reaped the one worker")
+                    .anyMatch(l -> l.contains("shut down 1 worker process(es) (grace 0ms)"));
+            assertThat(worker.get().waitFor(5, TimeUnit.SECONDS)).isTrue();
+        } finally {
+            release.countDown();
+            Process p = worker.get();
+            if (p != null && p.isAlive()) p.destroyForcibly();
+        }
     }
 
     /**

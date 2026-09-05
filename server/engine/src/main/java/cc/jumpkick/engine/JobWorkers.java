@@ -24,8 +24,8 @@ import java.util.concurrent.TimeUnit;
  *
  * <p><strong>Cancel contract</strong> {@link #shutdownForRequest} signals <em>all</em>
  * live workers first (tight loop — effectively simultaneous), then waits one shared wall-clock
- * grace (the caller's configured {@code JK_CANCEL_GRACE_MS}, one window for the whole set, not per
- * process), then force-kills survivors. Cancel never hangs. Plugins must treat that shared
+ * grace (the caller's configured shared window for the whole set, not per process), then
+ * force-kills survivors. Cancel never hangs. Plugins must treat that shared
  * sub-second window as all they get.
  *
  * <p><strong>Windows:</strong> {@link Process#destroy} is <em>not</em> SIGTERM. On the HotSpot
