@@ -32,6 +32,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /** Cache/store inventory for {@code jk cache usage}, {@code jk storage usage}, and {@code jk repo}. */
 public final class CacheInventoryOps {
@@ -39,7 +40,12 @@ public final class CacheInventoryOps {
     private CacheInventoryOps() {}
 
     public record Request(
-            String query, Path cache, Path store, List<String> terms, List<String> coords, boolean dryRun) {}
+            @Nullable String query,
+            @Nullable Path cache,
+            @Nullable Path store,
+            List<String> terms,
+            List<String> coords,
+            boolean dryRun) {}
 
     public static CacheInventoryAck run(Request req) throws IOException {
         String query = req.query() == null ? "" : req.query();
@@ -406,7 +412,7 @@ public final class CacheInventoryOps {
         return true;
     }
 
-    private static long[] bucketCounters(
+    private static long @Nullable [] bucketCounters(
             String taskName,
             long[] classFiles,
             long[] testResults,

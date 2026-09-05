@@ -20,6 +20,7 @@ import java.util.jar.Attributes;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Packages classes + resources into a reproducible jar: sorted entries, {@code SOURCE_DATE_EPOCH}
@@ -96,7 +97,7 @@ public final class JarPackager {
     public record JarRequest(
             Path inputDir,
             Path outputJar,
-            String mainClass,
+            @Nullable String mainClass,
             long timestampEpochSeconds,
             Map<String, String> attributes,
             Map<String, byte[]> extraEntries) {

@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.stream.Collectors;
+import org.jspecify.annotations.Nullable;
 
 /**
  * What a compile returned: the outcome plus one entry per compiler diagnostic. One type for every
@@ -31,7 +32,7 @@ public record CompileResult(boolean success, List<Diagnostic> diagnostics) {
         return diagnostics.stream().map(Diagnostic::describe).collect(Collectors.joining("\n"));
     }
 
-    public record Diagnostic(Severity severity, Path source, long line, long column, String message) {
+    public record Diagnostic(Severity severity, @Nullable Path source, long line, long column, String message) {
 
         public Diagnostic {
             Objects.requireNonNull(severity, "severity");

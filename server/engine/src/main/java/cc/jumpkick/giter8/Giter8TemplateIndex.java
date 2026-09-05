@@ -84,7 +84,7 @@ public final class Giter8TemplateIndex {
      *
      * @throws IllegalArgumentException when {@code ref} names a framework rather than a template
      */
-    public static Optional<TemplateSpec> resolve(String ref, @Nullable String lang, List<Path> roots) {
+    public static Optional<TemplateSpec> resolve(@Nullable String ref, @Nullable String lang, List<Path> roots) {
         if (ref == null || ref.isBlank()) return Optional.empty();
         String r = ref.strip();
         if (r.contains("\\") || r.startsWith(".") || r.startsWith("/")) return Optional.empty();

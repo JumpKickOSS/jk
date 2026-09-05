@@ -29,6 +29,7 @@ import org.eclipse.jgit.transport.RefSpec;
 import org.eclipse.jgit.transport.TagOpt;
 import org.eclipse.jgit.transport.URIish;
 import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Pure-Java {@link GitBackend} backed by JGit. Always available; the fallback when no {@code git}
@@ -51,7 +52,7 @@ public final class JGitExtension implements GitBackend {
     }
 
     /** Build a per-URL credentials provider from the resolved forge token, or null for anonymous. */
-    private CredentialsProvider providerFor(String url) {
+    private @Nullable CredentialsProvider providerFor(String url) {
         String[] c = credentials.resolveCredentials(url);
         if (c == null || c[0] == null || c[0].isBlank()) return null;
         return new UsernamePasswordCredentialsProvider(c[0], c[1] != null ? c[1] : "");
@@ -168,7 +169,10 @@ public final class JGitExtension implements GitBackend {
             Repository repo = git.getRepository();
             Ref r = repo.findRef(refName);
             if (r == null) throw new IOException("ref " + refName + " not found");
-            ObjectId target = r.getPeeledObjectId() != null ? r.getPeeledObjectId() : r.getObjectId();
+            ObjectId peeled = r.getPeeledObjectId();
+            ObjectId target = peeled != null ? peeled : r.getObjectId();
+            // A symbolic ref that points at nothing resolves to no object at all.
+            if (target == null) throw new IOException("ref " + refName + " resolves to no object");
             return target.getName();
         }
     }

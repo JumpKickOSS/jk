@@ -20,7 +20,6 @@ import cc.jumpkick.util.JkDirs;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -33,6 +32,7 @@ import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Forks {@code TestRunner} child JVM(s): one-shot when {@code workers=1}, else discovery + N
@@ -105,7 +105,7 @@ public final class JUnitLauncher {
      * Worker JVM flags: the heap/GC tuning, the {@code jk.plugin.class} selector for the runner, and
      * any {@code jk.<worker>.plugin.jar} / {@code jk.engine.jar} overrides.
      */
-    private List<String> runnerFlags(int concurrency, Path tmpDir) {
+    private List<String> runnerFlags(int concurrency, @Nullable Path tmpDir) {
         List<String> flags = new ArrayList<>(JvmOptions.workerFlags(concurrency));
         flags.add("-Djk.plugin.class=" + RUNNER_PLUGIN_CLASS);
         // The Java half of the TMPDIR TestEnv sandboxes: @TempDir reads the property, not the
@@ -136,8 +136,10 @@ public final class JUnitLauncher {
             String jkHome = testEnv.get("JK_HOME");
             if (jkHome != null && !jkHome.isBlank()) {
                 // Sibling of test-jk-home: <module>/target/test-shared-cache (SharedTestCache).
-                Path shared = Path.of(jkHome).getParent().resolve("test-shared-cache");
-                flags.add("-Djk.test.cache.dir=" + shared);
+                Path jkHomeParent = Path.of(jkHome).getParent();
+                if (jkHomeParent != null) {
+                    flags.add("-Djk.test.cache.dir=" + jkHomeParent.resolve("test-shared-cache"));
+                }
                 // Sandbox JK_HOME hides the product store; first-party workers still resolve
                 // Zinc from the host engine's store.
                 flags.add("-D"
@@ -156,10 +158,10 @@ public final class JUnitLauncher {
     }
 
     /** Set when {@link #run} starts — module root inferred from testClassesDir layout. */
-    private Path inferredModuleDir;
+    private @Nullable Path inferredModuleDir;
 
     /** Set when {@link #run} starts — the sandboxed temp root; see {@link TestTmpDir}. */
-    private Path testTmpDir;
+    private @Nullable Path testTmpDir;
 
     /**
      * Set when {@link #run} starts — whether jk-cli's {@code @TempDir} factory and deletion
@@ -172,7 +174,7 @@ public final class JUnitLauncher {
     /**
      * {@code .../target/classes/test} → module root ({@code .../}). Null when layout is nonstandard.
      */
-    static Path inferModuleDir(Path testClassesDir) {
+    static @Nullable Path inferModuleDir(@Nullable Path testClassesDir) {
         if (testClassesDir == null) return null;
         Path p = testClassesDir.toAbsolutePath().normalize();
         // .../target/classes/test
@@ -182,6 +184,16 @@ public final class JUnitLauncher {
         p = p.getParent(); // target
         if (p == null || !BuildLayout.TARGET.equals(name(p))) return null;
         return p.getParent();
+    }
+
+    /** The XML report exists exactly when there is a directory to write it into. */
+    private static void writeXml(@Nullable XmlTestReport xml, @Nullable Path testResultsDir) {
+        if (testResultsDir == null || xml == null) return;
+        try {
+            xml.writeAll(testResultsDir);
+        } catch (IOException e) {
+            // Non-fatal: the tests ran; only the report failed to land.
+        }
     }
 
     private static String name(Path p) {
@@ -277,7 +289,7 @@ public final class JUnitLauncher {
             int workers,
             Map<String, String> workerJarProps,
             TestProgressListener listener,
-            Path testResultsDir)
+            @Nullable Path testResultsDir)
             throws IOException, InterruptedException {
         return run(
                 javaHome,
@@ -305,7 +317,7 @@ public final class JUnitLauncher {
             Map<String, String> workerJarProps,
             Map<String, String> testEnv,
             TestProgressListener listener,
-            Path testResultsDir)
+            @Nullable Path testResultsDir)
             throws IOException, InterruptedException {
         Objects.requireNonNull(javaHome, "javaHome");
         Objects.requireNonNull(testClassesDir, "testClassesDir");
@@ -379,7 +391,11 @@ public final class JUnitLauncher {
     // -------- single-worker ---------------------------------------------
 
     private TestSummary runSingle(
-            Path javaBinary, String classpath, Path testClassesDir, TestProgressListener listener, Path testResultsDir)
+            Path javaBinary,
+            String classpath,
+            Path testClassesDir,
+            TestProgressListener listener,
+            @Nullable Path testResultsDir)
             throws IOException, InterruptedException {
         XmlTestReport xml = testResultsDir != null ? new XmlTestReport() : null;
         MarkdownTestReport md = new MarkdownTestReport();
@@ -402,13 +418,7 @@ public final class JUnitLauncher {
                     listener.onUserOutput(0, line);
                 });
         TestSummary result = aggregator.toResult(exit, crash.text());
-        if (xml != null) {
-            try {
-                xml.writeAll(testResultsDir);
-            } catch (IOException e) {
-                /* non-fatal: tests ran, just report writing failed */
-            }
-        }
+        writeXml(xml, testResultsDir);
         publishTests(md, testClassesDir);
         return result;
     }
@@ -421,7 +431,7 @@ public final class JUnitLauncher {
             Path testClassesDir,
             int workers,
             TestProgressListener listener,
-            Path testResultsDir)
+            @Nullable Path testResultsDir)
             throws IOException, InterruptedException {
         return runParallel(javaBinary, classpath, testClassesDir, workers, listener, testResultsDir, null);
     }
@@ -432,8 +442,8 @@ public final class JUnitLauncher {
             Path testClassesDir,
             int workers,
             TestProgressListener listener,
-            Path testResultsDir,
-            List<String> preDiscovered)
+            @Nullable Path testResultsDir,
+            @Nullable List<String> preDiscovered)
             throws IOException, InterruptedException {
         // 1. Discovery — one fork, list-only mode, harvest class FQCNs (skip if auto already did).
         List<String> classes = preDiscovered != null
@@ -472,13 +482,7 @@ public final class JUnitLauncher {
                     runPool(javaBinary, classpath, testClassesDir, 1, listener, serialClasses, xml, md, workers);
             summary = merge(summary, serial);
         }
-        if (xml != null) {
-            try {
-                xml.writeAll(testResultsDir);
-            } catch (IOException e) {
-                /* non-fatal: tests ran, just report writing failed */
-            }
-        }
+        writeXml(xml, testResultsDir);
         publishTests(md, testClassesDir);
         return summary;
     }
@@ -531,7 +535,7 @@ public final class JUnitLauncher {
             int workers,
             TestProgressListener listener,
             List<String> classes,
-            XmlTestReport xml,
+            @Nullable XmlTestReport xml,
             MarkdownTestReport md,
             int workerIdBase)
             throws IOException, InterruptedException {
@@ -811,8 +815,8 @@ public final class JUnitLauncher {
 
         private final TestProgressListener listener;
         private final int workerId;
-        private final XmlTestReport xmlReport;
-        private final MarkdownTestReport mdReport;
+        private final @Nullable XmlTestReport xmlReport;
+        private final @Nullable MarkdownTestReport mdReport;
         private final String moduleLabel;
         private long succeeded;
         private long failed;
@@ -841,16 +845,19 @@ public final class JUnitLauncher {
         }
 
         ResultAggregator(
-                TestProgressListener listener, int workerId, XmlTestReport xmlReport, MarkdownTestReport mdReport) {
+                TestProgressListener listener,
+                int workerId,
+                @Nullable XmlTestReport xmlReport,
+                @Nullable MarkdownTestReport mdReport) {
             this(listener, workerId, xmlReport, mdReport, "");
         }
 
         ResultAggregator(
                 TestProgressListener listener,
                 int workerId,
-                XmlTestReport xmlReport,
-                MarkdownTestReport mdReport,
-                String moduleLabel) {
+                @Nullable XmlTestReport xmlReport,
+                @Nullable MarkdownTestReport mdReport,
+                @Nullable String moduleLabel) {
             this.listener = listener;
             this.workerId = workerId;
             this.xmlReport = xmlReport;
@@ -1165,30 +1172,5 @@ public final class JUnitLauncher {
     /** Engine id from {@code [engine:junit-jupiter]} — the shared {@link JUnitUniqueIds} walk. */
     public static String engineFromUniqueId(String id) {
         return id == null ? "" : JUnitUniqueIds.engineOf(id);
-    }
-
-    /**
-     * Bounded, thread-safe tail of a worker's non-protocol output. Kept so a hard crash (uncaught
-     * throwable / {@code System.exit} before any test event) can be explained — the runner prints the
-     * stack to stderr, which is otherwise dropped unless {@code --verbose}. Capped to the last {@link
-     * #MAX_LINES} lines so a chatty-then-crashing worker can't blow up memory.
-     */
-    static final class CaptureBuffer {
-        private static final int MAX_LINES = 400;
-        private final ArrayDeque<String> lines = new ArrayDeque<>();
-
-        synchronized void add(String line) {
-            if (line == null) return;
-            lines.addLast(line);
-            if (lines.size() > MAX_LINES) lines.removeFirst();
-        }
-
-        synchronized boolean isEmpty() {
-            return lines.isEmpty();
-        }
-
-        synchronized String text() {
-            return String.join("\n", lines);
-        }
     }
 }

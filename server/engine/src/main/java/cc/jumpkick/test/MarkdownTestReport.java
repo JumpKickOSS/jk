@@ -7,6 +7,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Thread-safe per-launch accumulator of JUnit method results. After workers join, {@link
@@ -20,9 +21,9 @@ public final class MarkdownTestReport {
             String className,
             String displayName,
             long durationMs,
-            String failureMessage,
-            String failureStack,
-            String skipReason) {
+            @Nullable String failureMessage,
+            @Nullable String failureStack,
+            @Nullable String skipReason) {
         public boolean isFail() {
             return failureMessage != null || failureStack != null;
         }

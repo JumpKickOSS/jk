@@ -29,6 +29,7 @@ import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import org.jspecify.annotations.Nullable;
 
 /**
  * One Zinc {@code jk-java-compiler} JVM per job ({@link JobWorkers} request scope). Compile and
@@ -106,7 +107,7 @@ public final class JavaCompilerHost {
     }
 
     private static final class Work {
-        final ForkedJavac.Request req;
+        final ForkedJavac.@Nullable Request req;
         final boolean plan;
         final CompletableFuture<ForkedJavac.Result> compile = new CompletableFuture<>();
         final CompletableFuture<ForkedJavac.Plan> forecast = new CompletableFuture<>();
@@ -114,16 +115,24 @@ public final class JavaCompilerHost {
         final Map<Path, Set<Path>> generated = new TreeMap<>();
         final List<Path> compiledSources = new ArrayList<>();
         final List<String> whys = new ArrayList<>();
+
+        @Nullable
         Path spec;
+
+        @Nullable
         String status;
+
+        @Nullable
         String outcome;
+
+        @Nullable
         String reason;
         /** nanoTime at enqueue and the queue wait measured at dispatch — the step's wait, not its work. */
         long enqueuedNanos;
 
         long waitNanos;
 
-        private Work(ForkedJavac.Request req, boolean plan) {
+        private Work(ForkedJavac.@Nullable Request req, boolean plan) {
             this.req = req;
             this.plan = plan;
         }
@@ -142,11 +151,11 @@ public final class JavaCompilerHost {
     private static final class Session {
         private final BlockingQueue<Work> queue = new LinkedBlockingQueue<>();
         private final Thread io;
-        private volatile Work inflight;
+        private volatile @Nullable Work inflight;
         private volatile boolean dead;
         // Held only while a COMPILE/PLAN is in flight, so the resident worker does not pin a
         // PluginSlots permit while idle. Touched only by the io thread.
-        private PluginSlots.Lease slot;
+        private PluginSlots.@Nullable Lease slot;
         // Bounded record of the worker's non-protocol lines, surfaced on a crash: the first lines
         // (where a stack trace names its exception) and the most recent ones (where it ends). A
         // tail alone kept fifty frames of scalac internals and dropped the one line that said why.

@@ -273,7 +273,7 @@ class JUnitLauncherAggregatorTest {
 
     @Test
     void capture_buffer_keeps_only_the_last_lines() {
-        var buf = new JUnitLauncher.CaptureBuffer();
+        var buf = new CaptureBuffer();
         for (int i = 0; i < 1000; i++) buf.add("line " + i);
         String text = buf.text();
         assertThat(text).contains("line 999").doesNotContain("line 0\n");

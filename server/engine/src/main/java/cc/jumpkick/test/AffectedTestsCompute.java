@@ -24,13 +24,15 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /** Rank tests from sources and on-disk classes. Does not compile or run. */
 public final class AffectedTestsCompute {
 
     private AffectedTestsCompute() {}
 
-    public static AffectedTests fromDisk(Path root, TestSelection selection, Set<Path> onlyModules) throws Exception {
+    public static AffectedTests fromDisk(Path root, TestSelection selection, @Nullable Set<Path> onlyModules)
+            throws Exception {
         return fromDisk(root, selection, onlyModules, null);
     }
 
@@ -38,7 +40,8 @@ public final class AffectedTestsCompute {
      * {@code since} null/blank is the working-tree cone ({@code --affected}); otherwise
      * {@code since...HEAD} ({@code --affected-since}).
      */
-    public static AffectedTests fromDisk(Path root, TestSelection selection, Set<Path> onlyModules, String since)
+    public static AffectedTests fromDisk(
+            Path root, TestSelection selection, @Nullable Set<Path> onlyModules, @Nullable String since)
             throws Exception {
         JkBuild build = JkBuildParser.parse(root.resolve(ManifestPaths.MANIFEST));
         List<String> dirty;
@@ -163,7 +166,7 @@ public final class AffectedTestsCompute {
      * {@code null} when every dirty class file is at least as fresh as its source (or absent —
      * ranking from sources is honest, stale bytecode is not).
      */
-    static String staleDirtyMain(Path root, Path moduleDir, List<String> dirty, Path classesDir) {
+    static @Nullable String staleDirtyMain(Path root, Path moduleDir, List<String> dirty, Path classesDir) {
         Path module = moduleDir.toAbsolutePath().normalize();
         Path base = root.toAbsolutePath().normalize();
         SourceFqcs fqcs = SourceFqcs.of(module, Set.of(TestSuites.DEFAULT));

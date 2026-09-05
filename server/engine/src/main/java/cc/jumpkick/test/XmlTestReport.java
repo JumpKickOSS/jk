@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Thread-safe accumulator for per-test results that writes one Gradle-compatible {@code
@@ -31,10 +32,10 @@ public final class XmlTestReport {
             String className,
             String displayName,
             long durationMs,
-            String failureType,
-            String failureMessage,
-            String failureStack,
-            String skipReason) {}
+            @Nullable String failureType,
+            @Nullable String failureMessage,
+            @Nullable String failureStack,
+            @Nullable String skipReason) {}
 
     private final List<Entry> entries = new ArrayList<>();
     private final String timestamp;

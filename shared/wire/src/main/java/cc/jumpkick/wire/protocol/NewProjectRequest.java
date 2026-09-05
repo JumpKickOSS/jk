@@ -26,7 +26,7 @@ public record NewProjectRequest(
         List<String> deps,
         boolean sample,
         boolean standalone,
-        @Nullable Map<String, String> templateParams,
+        Map<String, String> templateParams,
         boolean relaxParent,
         @Nullable String targetDir) {
 

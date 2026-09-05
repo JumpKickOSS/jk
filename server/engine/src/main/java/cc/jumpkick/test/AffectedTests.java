@@ -34,7 +34,7 @@ public record AffectedTests(
 
     public record Row(String module, String className, String reason, int score) {}
 
-    public record Refuse(String code, String message) {}
+    public record Refuse(String code, @Nullable String message) {}
 
     public static AffectedTests ranked(
             List<ModuleRow> modules, List<ChangedType> changed, List<Row> ranked, int candidates) {

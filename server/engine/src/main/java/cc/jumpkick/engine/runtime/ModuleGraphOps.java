@@ -14,13 +14,15 @@ import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /** Module DAG for {@code jk explain --graph}. */
 public final class ModuleGraphOps {
 
     private ModuleGraphOps() {}
 
-    public static ModuleGraphAck render(Path startDir, String format, String modulesSpec, String affectedSince) {
+    public static ModuleGraphAck render(
+            Path startDir, @Nullable String format, @Nullable String modulesSpec, @Nullable String affectedSince) {
         String fmt = format == null ? "" : format.trim().toLowerCase(Locale.ROOT);
         if (!ModuleDotGraph.isSupportedFormat(fmt)) {
             return ModuleGraphAck.error("unsupported --graph format '" + format + "' (supported: "

@@ -11,8 +11,8 @@ public record NewProjectAck(@Nullable String error, String path, String projectI
         return new NewProjectAck(message, "", "", 0);
     }
 
-    public static NewProjectAck of(String path, String projectId, int filesWritten) {
-        return new NewProjectAck(null, path, projectId, filesWritten);
+    public static NewProjectAck of(String path, @Nullable String projectId, int filesWritten) {
+        return new NewProjectAck(null, path, projectId == null ? "" : projectId, filesWritten);
     }
 
     public String encode() {

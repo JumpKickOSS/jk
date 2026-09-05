@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Writes the minimal {@code pom.xml} a {@code @QuarkusTest} bootstrap insists on.
@@ -33,7 +34,7 @@ final class QuarkusToolingPom {
      * project root. JK owns resolve via {@code jk-lock.toml}; when the module has {@code [quarkus]} but
      * no {@code pom.xml}, write a minimal tooling POM (coordinates + platform BOM import only).
      */
-    static void ensure(Path moduleDir) {
+    static void ensure(@Nullable Path moduleDir) {
         if (moduleDir == null || !Files.isDirectory(moduleDir)) return;
         Path pom = moduleDir.resolve("pom.xml");
         Path jkToml = moduleDir.resolve(ManifestPaths.MANIFEST);
@@ -142,7 +143,7 @@ final class QuarkusToolingPom {
      * The Quarkus line {@code jk-lock.toml} pinned. The platform BOM and {@code io.quarkus:*}
      * share one version, so any locked core artifact answers it.
      */
-    private static String lockedQuarkusVersion(Path moduleDir) {
+    private static @Nullable String lockedQuarkusVersion(Path moduleDir) {
         try {
             Path lockFile = LockPaths.lockFile(moduleDir);
             if (!Files.isRegularFile(lockFile)) return null;
@@ -169,7 +170,7 @@ final class QuarkusToolingPom {
         return v.indexOf('.') != v.lastIndexOf('.'); // at least major.minor.patch
     }
 
-    private static String quarkusVersion(String toml, String def) {
+    private static @Nullable String quarkusVersion(String toml, @Nullable String def) {
         Matcher table = Pattern.compile("(?m)^\\s*\\[quarkus]\\s*$").matcher(toml);
         if (!table.find()) return def;
         // Scan only until the next table header — a `version` in a later table (e.g.

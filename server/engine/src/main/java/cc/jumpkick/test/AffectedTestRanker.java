@@ -14,6 +14,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /** Pure ranking: dirty types × test index → capped {@link AffectedTests}. */
 public final class AffectedTestRanker {
@@ -316,7 +317,7 @@ public final class AffectedTestRanker {
         return simple;
     }
 
-    static String fqcFromSource(String rel) {
+    static @Nullable String fqcFromSource(String rel) {
         String s = rel.replace('\\', '/');
         int src = s.indexOf("src/");
         if (src < 0) return null;

@@ -649,9 +649,9 @@ class EngineProtocolTest {
         assertThat(Jsonl.bool(json, "serial", false)).isTrue();
         assertThat(Jsonl.bool(json, "parallelTests", false)).isTrue();
 
-        String defaults =
-                new ExplainRequest("/w", "/c", 1, false, null, null, false, false, false, false, 0, TestSelection.DEFAULT)
-                        .encode();
+        String defaults = new ExplainRequest(
+                        "/w", "/c", 1, false, null, null, false, false, false, false, 0, TestSelection.DEFAULT)
+                .encode();
         assertThat(Jsonl.str(defaults, "profile")).isNull();
         assertThat(Jsonl.str(defaults, "jdksDir")).isNull();
     }

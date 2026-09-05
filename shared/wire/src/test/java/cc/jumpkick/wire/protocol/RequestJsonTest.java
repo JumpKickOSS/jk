@@ -86,8 +86,29 @@ class RequestJsonTest {
     @Test
     void default_optional_fields_stay_omitted() {
         String build = new BuildRequest(
-                        null, null, null, 0, null, false, false, 0, false, false, false, false, false, false, null,
-                        TestSelection.DEFAULT, List.of(), false, null, Map.of(), null, null, null)
+                        null,
+                        null,
+                        null,
+                        0,
+                        null,
+                        false,
+                        false,
+                        0,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        null,
+                        TestSelection.DEFAULT,
+                        List.of(),
+                        false,
+                        null,
+                        Map.of(),
+                        null,
+                        null,
+                        null)
                 .encode();
         assertThat(build)
                 .doesNotContain(
@@ -101,9 +122,9 @@ class RequestJsonTest {
                         "\"graalHomes\"",
                         "\"m2Dir\"");
 
-        String single =
-                new SingleBuildRequest(null, null, null, 0, null, false, false, false, false, null, TestSelection.DEFAULT)
-                        .encode();
+        String single = new SingleBuildRequest(
+                        null, null, null, 0, null, false, false, false, false, null, TestSelection.DEFAULT)
+                .encode();
         assertThat(single).doesNotContain("\"allSuites\"", "\"suites\"", "\"includeTags\"");
 
         String provision = new ProvisionRequest(null, null, false, false, null, null).encode();
