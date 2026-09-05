@@ -33,7 +33,7 @@ public final class TrainPlans {
             @Nullable Path jdksDir,
             @Nullable Path graalHome,
             Path javaHome,
-            String profileFilter,
+            @Nullable String profileFilter,
             boolean force,
             boolean skipTests,
             boolean verbose) {
@@ -70,7 +70,7 @@ public final class TrainPlans {
             Path lockFile,
             @Nullable Path graalHome,
             Path javaHome,
-            String profileFilter,
+            @Nullable String profileFilter,
             boolean force) {
         return Task.builder(TaskNames.TRAIN)
                 .stage(BuildStage.TRAIN)

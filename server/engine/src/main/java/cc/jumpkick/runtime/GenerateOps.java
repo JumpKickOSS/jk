@@ -41,7 +41,7 @@ public final class GenerateOps {
 
     public static GeneratedFiles generate(Path dir, @Nullable String kind, Map<String, String> params) {
         try {
-            return switch (kind) {
+            return switch (kind == null ? "" : kind) {
                 case "export-maven" -> exportMaven(dir);
                 case "export-gradle" -> exportGradle(dir);
                 case "export-bom" -> exportBom(dir, params);

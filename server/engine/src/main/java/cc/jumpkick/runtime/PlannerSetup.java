@@ -41,6 +41,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
@@ -120,7 +121,7 @@ public final class PlannerSetup {
                                     result.error() != null ? result.error() : "dependency resolution failed");
                             throw new RuntimeException("lock failed");
                         }
-                        ctx.put(LOCKFILE, result.lockfile());
+                        ctx.put(LOCKFILE, Objects.requireNonNull(result.lockfile(), "lockfile"));
                     } else if (AutoLock.isStale(in.dir(), in.lockFile())) {
                         ctx.label("jk.toml changed — updating lock");
                         Lockfile existing = LockfileReader.read(in.lockFile());

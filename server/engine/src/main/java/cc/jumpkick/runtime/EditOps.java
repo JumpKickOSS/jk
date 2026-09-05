@@ -20,7 +20,7 @@ import org.jspecify.annotations.Nullable;
 public final class EditOps {
 
     /** {@code changed} false = the edit was a no-op (content already as requested). */
-    public record Result(boolean changed, String error, String detail) {
+    public record Result(boolean changed, @Nullable String error, String detail) {
         public Result(boolean changed, String error) {
             this(changed, error, "");
         }
@@ -38,7 +38,7 @@ public final class EditOps {
                 updated = fd.toml();
                 detail = fd.sha256();
             } else {
-                updated = switch (op) {
+                updated = switch (op == null ? "" : op) {
                     case "add-dependency" ->
                         JkBuildEditor.addDependency(
                                 original,

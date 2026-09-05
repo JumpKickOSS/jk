@@ -32,7 +32,15 @@ object NullMarking {
         mapOf(
             "core:compileTestJava" to
                 "TODO: core's unit suite feeds null through parsers on purpose to assert they reject it; " +
-                    "its production and test-fixture sources are enforced."
+                    "its production and test-fixture sources are enforced.",
+            "engine:compileTestJava" to
+                "TODO: 101 findings, and roughly half of them are one idiom: the MCP and HTTP suites read a " +
+                    "decoded JSON response as Map<String, Object> and assert on its contents, so every " +
+                    "result.get(\"x\") is nullable by Map's contract and non-null by the protocol the test " +
+                    "exists to pin. Annotating those would put a requireNonNull between the reader and the " +
+                    "assertion in fifty places. The rest is the same shape as core's: null fed in on purpose " +
+                    "(an absent [http] table, a job with no module selector) to assert the engine handles it. " +
+                    "Production is enforced.",
         )
 
     /**
@@ -43,19 +51,11 @@ object NullMarking {
      */
     val unenforcedModules: Map<String, String> =
         mapOf(
-            "server/engine" to
-                "TODO: all 16 production packages now carry a package-level @NullMarked, so " +
-                    "RequireExplicitNullMarking is clean and 88 NullAway findings remain, nearly all of them in " +
-                    "cc.jumpkick.runtime and the callers its annotations propagate into. Measured by applying " +
-                    "the plugin with -Xmaxerrs " +
-                    "raised, since javac caps at 100 and an unraised pass reads as 101. Down from 372 findings in " +
-                    "the 9 originally-marked packages plus 191 marking errors in the other 7. The fixes are valid " +
-                    "and green with the plugin still off, so they keep landing incrementally; the plugin applies " +
-                    "last, when the count reaches zero.",
             "clients/cli" to
                 "TODO: 1,056 findings across 11 production packages when every package is marked, 682 of them in " +
                     "cc.jumpkick.command, 103 in cc.jumpkick.cli.tui, 97 in cc.jumpkick.cli.run; the count is a floor, " +
                     "because the compile daemon ran out of heap on the last files of that single pass. Landable " +
-                    "package by package, sequenced behind server/engine.",
+                    "package by package, the way server/engine was: mark a package, fix its findings with the " +
+                    "plugin applied as scaffolding, revert the scaffolding, land, repeat."
         )
 }

@@ -264,7 +264,7 @@ public final class StepTimings {
         static final long DEFAULT_MAX_AGE_DAYS = 730; // 2 years
 
         /** Env → user config → defaults (100 MB / 2 years). */
-        public static Limits resolve(Path userConfig, Function<String, String> env) {
+        public static Limits resolve(Path userConfig, Function<String, @Nullable String> env) {
             long mb = envLong(env, "JK_TIMINGS_MAX_SIZE_MB")
                     .orElseGet(() -> tomlLong(userConfig, "timings-max-size-mb").orElse(DEFAULT_MAX_MB));
             long days = envLong(env, "JK_TIMINGS_MAX_AGE_DAYS")

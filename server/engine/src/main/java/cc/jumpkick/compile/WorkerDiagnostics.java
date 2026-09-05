@@ -4,6 +4,7 @@ package cc.jumpkick.compile;
 import cc.jumpkick.diagnostic.CompilerLocus;
 import java.nio.file.Path;
 import java.util.Locale;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Rebuilds worker JSONL diagnostics as {@link CompileResult.Diagnostic}s whose message text
@@ -19,7 +20,7 @@ final class WorkerDiagnostics {
      * Structured worker diagnostic (groovyc, javac): when the worker supplied a file+line and the
      * message does not already start with its own header, synthesize one.
      */
-    static CompileResult.Diagnostic located(String sev, String file, long line, long col, String msg) {
+    static CompileResult.Diagnostic located(String sev, @Nullable String file, long line, long col, String msg) {
         CompileResult.Severity severity = CompileResult.Severity.fromName(sev);
         String text = msg == null ? "" : msg;
         if (file != null && !file.isBlank() && line > 0 && CompilerLocus.parse(text) == null) {

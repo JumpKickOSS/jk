@@ -64,7 +64,7 @@ public final class IdeOps {
 
     private IdeOps() {}
 
-    public static IdeWireModel ideModel(Path startDir, Path cache, Path jdksDir, boolean fetchMissing) {
+    public static IdeWireModel ideModel(Path startDir, Path cache, @Nullable Path jdksDir, boolean fetchMissing) {
         try {
             return build(startDir, cache, jdksDir, fetchMissing);
         } catch (IOException | RuntimeException e) {
@@ -72,7 +72,7 @@ public final class IdeOps {
         }
     }
 
-    private static IdeWireModel build(Path startDir, Path cache, Path jdksDir, boolean fetchMissing)
+    private static IdeWireModel build(Path startDir, Path cache, @Nullable Path jdksDir, boolean fetchMissing)
             throws IOException {
         Cas cas = JkStores.storeCas();
 

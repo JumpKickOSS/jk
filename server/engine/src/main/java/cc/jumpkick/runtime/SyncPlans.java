@@ -29,6 +29,7 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 import org.jspecify.annotations.Nullable;
@@ -106,7 +107,7 @@ public final class SyncPlans {
                                             : "lockfile resolution failed (exit " + result.status() + ")");
                             throw new RuntimeException("lock-flow failed");
                         }
-                        ctx.put(LOCKFILE, result.lockfile());
+                        ctx.put(LOCKFILE, Objects.requireNonNull(result.lockfile(), "lockfile"));
                         if (result.build() != null) ctx.put(BUILD, result.build());
                         ctx.put(LOCKFILE_CREATED, true);
                     } else if (AutoLock.isStale(dir, lockFile)) {

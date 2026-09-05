@@ -2,7 +2,6 @@
 package cc.jumpkick.model;
 
 import java.util.Objects;
-import org.jspecify.annotations.Nullable;
 
 /**
  * Git ref to resolve: {@link Tag}, {@link Branch}, or {@link Rev}. All pin in {@code jk-lock.toml};
@@ -19,7 +18,7 @@ public sealed interface GitRefSpec {
         return false;
     }
 
-    record Tag(@Nullable String name) implements GitRefSpec {
+    record Tag(String name) implements GitRefSpec {
         public Tag {
             Objects.requireNonNull(name, "name");
         }
@@ -30,7 +29,7 @@ public sealed interface GitRefSpec {
         }
     }
 
-    record Branch(@Nullable String name) implements GitRefSpec {
+    record Branch(String name) implements GitRefSpec {
         public Branch {
             Objects.requireNonNull(name, "name");
         }

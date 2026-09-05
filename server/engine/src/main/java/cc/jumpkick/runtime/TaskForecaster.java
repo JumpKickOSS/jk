@@ -1121,6 +1121,7 @@ public final class TaskForecaster {
     /** The record behind {@link #present}, for callers that read its markers. */
     static Optional<ActionCache.ActionRecord> presentRecord(ActionCache ac, @Nullable String key) {
         try {
+            if (key == null) return Optional.empty();
             var rec = ac.lookup(key);
             if (rec.isEmpty()) return Optional.empty();
             for (String sha : rec.get().outputs().values()) {

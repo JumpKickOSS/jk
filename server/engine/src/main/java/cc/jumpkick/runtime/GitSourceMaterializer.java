@@ -132,14 +132,18 @@ public final class GitSourceMaterializer {
 
     private static Path artifactJar(
             Path repo, @Nullable String group, @Nullable String artifact, @Nullable String version) {
-        return repo.resolve(
-                group.replace('.', '/') + "/" + artifact + "/" + version + "/" + artifact + "-" + version + ".jar");
+        return repo.resolve(artifactRel(group, artifact, version) + ".jar");
     }
 
     private static Path artifactPom(
             Path repo, @Nullable String group, @Nullable String artifact, @Nullable String version) {
-        return repo.resolve(
-                group.replace('.', '/') + "/" + artifact + "/" + version + "/" + artifact + "-" + version + ".pom");
+        return repo.resolve(artifactRel(group, artifact, version) + ".pom");
+    }
+
+    /** {@code <group as dirs>/<artifact>/<version>/<artifact>-<version>}, extension-less. */
+    private static String artifactRel(@Nullable String group, @Nullable String artifact, @Nullable String version) {
+        String groupPath = group == null ? "" : group.replace('.', '/');
+        return groupPath + "/" + artifact + "/" + version + "/" + artifact + "-" + version;
     }
 
     /** The coordinate a foreign (Gradle/Maven) target only reveals once it has been built. */
@@ -190,7 +194,8 @@ public final class GitSourceMaterializer {
         // free-form text and reaches the version string verbatim (GitVersion.fromTag returns a
         // non-version-like tag unchanged, and keeps a coercible tag's suffix), so a tag carrying
         // `&` or `<` must be escaped here or the resolver cannot parse what we just wrote.
-        Path metaPath = repo.resolve(group.replace('.', '/') + "/" + artifact + "/maven-metadata.xml");
+        String groupPath = group == null ? "" : group.replace('.', '/');
+        Path metaPath = repo.resolve(groupPath + "/" + artifact + "/maven-metadata.xml");
         Files.createDirectories(metaPath.getParent());
         Files.write(
                 metaPath,

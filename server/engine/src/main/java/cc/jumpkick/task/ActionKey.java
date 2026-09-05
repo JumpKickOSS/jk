@@ -287,7 +287,7 @@ public final class ActionKey {
      * belongs to it, regardless of the base task name.
      */
     public static String taskTag(@Nullable Path moduleDir) {
-        Path p = moduleDir.toAbsolutePath().normalize();
+        Path p = (moduleDir == null ? Path.of("") : moduleDir).toAbsolutePath().normalize();
         Path probe = p;
         while (probe != null && !Files.exists(probe)) {
             probe = probe.getParent();

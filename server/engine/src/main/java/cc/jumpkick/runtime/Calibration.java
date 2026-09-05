@@ -282,11 +282,11 @@ public final class Calibration {
         return cores;
     }
 
-    public String jdk() {
+    public @Nullable String jdk() {
         return jdk;
     }
 
-    public String jkVersion() {
+    public @Nullable String jkVersion() {
         return jkVersion;
     }
 
@@ -735,7 +735,7 @@ public final class Calibration {
 
     // --- the host probe ------------------------------------------------------
 
-    private static @Nullable Calibration probe(Path jdksDir, boolean allowNetwork) {
+    private static @Nullable Calibration probe(@Nullable Path jdksDir, boolean allowNetwork) {
         try {
             Optional<Path> javaHome = resolveJavaHome(jdksDir);
             if (javaHome.isEmpty()) return null;
@@ -822,7 +822,7 @@ public final class Calibration {
         return Math.max(lo, Math.min(hi, v));
     }
 
-    private static Optional<Path> resolveJavaHome(Path jdksDir) {
+    private static Optional<Path> resolveJavaHome(@Nullable Path jdksDir) {
         try {
             JdkRegistry registry = jdksDir != null ? new JdkRegistry(jdksDir) : new JdkRegistry();
             // No module context here, so the ambient layer: request env, then this process's.

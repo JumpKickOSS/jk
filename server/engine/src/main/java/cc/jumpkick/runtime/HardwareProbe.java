@@ -390,7 +390,7 @@ final class HardwareProbe {
      */
     @FunctionalInterface
     interface CentralFetch {
-        byte[] get(String url) throws IOException, InterruptedException;
+        byte @Nullable [] get(String url) throws IOException, InterruptedException;
     }
 
     /** Locate or fetch the minimal Jupiter + Platform jars needed to run one test. */

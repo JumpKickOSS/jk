@@ -10,6 +10,7 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.layout.BuildLayout;
@@ -41,7 +42,7 @@ public final class PlannerNative {
             Path dir,
             Path cache,
             Path lockFile,
-            Path jdksDir,
+            @Nullable Path jdksDir,
             @Nullable Path graalHome,
             @Nullable String mainOverride,
             List<String> extraArgs) {
@@ -84,9 +85,7 @@ public final class PlannerNative {
                     if (cc.jumpkick.tool.NativeImageDriver.resolve(javaHomeEarly)
                             .isEmpty()) {
                         ctx.error(
-                                "native",
-                                cc.jumpkick.tool.NativeImageDriver.notFoundError(javaHomeEarly)
-                                        .getMessage());
+                                "native", Errors.text(cc.jumpkick.tool.NativeImageDriver.notFoundError(javaHomeEarly)));
                         throw new RuntimeException("native-image not found");
                     }
 

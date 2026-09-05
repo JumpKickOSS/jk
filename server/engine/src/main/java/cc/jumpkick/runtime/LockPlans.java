@@ -35,6 +35,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
@@ -376,7 +377,7 @@ public final class LockPlans {
         Lockfile newLock = pipeline.resolve(null, ResolveObserver.NOOP, LockPipeline.Progress.SILENT);
 
         Set<String> targetKeys = new LinkedHashSet<>();
-        for (Dependency d : targeted) targetKeys.add(gitKey(d.gitSource()));
+        for (Dependency d : targeted) targetKeys.add(gitKey(Objects.requireNonNull(d.gitSource())));
 
         Map<String, Lockfile.Artifact> oldByName = new LinkedHashMap<>();
         if (oldLock != null) for (Lockfile.Artifact a : oldLock.artifacts()) oldByName.put(a.name(), a);

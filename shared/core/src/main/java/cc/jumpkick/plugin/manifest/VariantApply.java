@@ -42,7 +42,8 @@ public final class VariantApply {
         return apply(build, moduleDir, Selection.DEFAULTS, Map.of()).build();
     }
 
-    public static Applied apply(JkBuild build, Path moduleDir, Selection selection, Map<String, String> clientEnv) {
+    public static Applied apply(
+            JkBuild build, Path moduleDir, Selection selection, @Nullable Map<String, String> clientEnv) {
         return apply(build, moduleDir, selection, clientEnv, false);
     }
 
@@ -53,12 +54,16 @@ public final class VariantApply {
      * this: silently building "no variant" is exactly what the mandatory check prevents.
      */
     public static Applied applyLenient(
-            JkBuild build, Path moduleDir, Selection selection, Map<String, String> clientEnv) {
+            JkBuild build, Path moduleDir, Selection selection, @Nullable Map<String, String> clientEnv) {
         return apply(build, moduleDir, selection, clientEnv, true);
     }
 
     private static Applied apply(
-            JkBuild build, Path moduleDir, Selection selection, Map<String, String> clientEnv, boolean lenient) {
+            JkBuild build,
+            Path moduleDir,
+            Selection selection,
+            @Nullable Map<String, String> clientEnv,
+            boolean lenient) {
         Variants decl = build.variants();
 
         // Resolve the selection: (dimension, value name, overlay) per declared dimension — custom
@@ -142,7 +147,7 @@ public final class VariantApply {
             PluginDescriptor manifest,
             PluginConfig config,
             List<Chosen> chosen,
-            Map<String, String> clientEnv,
+            @Nullable Map<String, String> clientEnv,
             Path moduleDir,
             Map<String, String> secrets) {
         Map<String, Object> values = new LinkedHashMap<>();
@@ -199,7 +204,8 @@ public final class VariantApply {
      * empty credential. Values that came from {@code .env} land on the secrets side channel when
      * the schema marks them secret, and are redacted/hashed by.
      */
-    private static String resolveEnv(String raw, Map<String, String> clientEnv, Path moduleDir, String where) {
+    private static String resolveEnv(
+            String raw, @Nullable Map<String, String> clientEnv, Path moduleDir, String where) {
         if (!raw.startsWith("env:")) return raw;
         String name = raw.substring("env:".length()).trim();
         // Prefer the client-shipped map (caller's shell) then BuildEnv (.env + session + process).

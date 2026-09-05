@@ -201,7 +201,7 @@ public final class AssemblyPackager {
                 Path classesDir,
                 List<Path> dependencyJars,
                 Path outputJar,
-                String mainClass,
+                @Nullable String mainClass,
                 Map<String, String> attributes,
                 long timestampEpochSeconds) {
             this(classesDir, dependencyJars, outputJar, mainClass, attributes, Map.of(), timestampEpochSeconds);

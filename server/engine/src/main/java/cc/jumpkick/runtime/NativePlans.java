@@ -110,7 +110,7 @@ public final class NativePlans {
             boolean skipTests,
             boolean verbose,
             boolean allowNative,
-            UnaryOperator<BuildPlanner.Inputs> decorate) {
+            @Nullable UnaryOperator<BuildPlanner.Inputs> decorate) {
         Path buildFile = moduleDir.resolve(ManifestPaths.MANIFEST);
         Path lockFile = LockPaths.lockFile(moduleDir);
         boolean compact = ModuleLayout.isCompact(moduleDir);

@@ -66,11 +66,11 @@ public final class ProtoReads {
                 + "}";
     }
 
-    public static String editAck(boolean changed, String error) {
+    public static String editAck(boolean changed, @Nullable String error) {
         return editAck(changed, error, "");
     }
 
-    public static String editAck(boolean changed, String error, String detail) {
+    public static String editAck(boolean changed, @Nullable String error, @Nullable String detail) {
         return "{\"type\":\"" + EngineProtocol.EDIT_ACK + "\",\"changed\":" + changed + ",\"error\":"
                 + Jsonl.quote(error)
                 + ((detail == null || detail.isBlank()) ? "" : ",\"detail\":" + Jsonl.quote(detail))

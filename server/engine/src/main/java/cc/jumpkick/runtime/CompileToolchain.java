@@ -112,7 +112,7 @@ public final class CompileToolchain {
      * ("Linked/Installed Kotlin …") to {@code notice} instead of a stream — the caller (the CLI view,
      * or a step's {@code TaskContext::output}) decides how to surface it.
      */
-    public static Path resolveKotlinHome(Path cacheDir, String versionOverride, Consumer<String> notice) {
+    public static Path resolveKotlinHome(Path cacheDir, @Nullable String versionOverride, Consumer<String> notice) {
         // ToolProvisioning already runs the EnvVarProbe (which reads
         // KOTLIN_HOME), so we don't need a separate fast-path. Going
         // through the full plan guarantees we leave a symlink under

@@ -56,7 +56,11 @@ public final class ProjectInfoPlans {
      * {@code affectedWip} is {@code --affected}.
      */
     public static ProjectInfo projectInfo(
-            Path dir, String modulesSpec, String affectedSince, boolean affectedWip, boolean counts) {
+            Path dir,
+            @Nullable String modulesSpec,
+            @Nullable String affectedSince,
+            boolean affectedWip,
+            boolean counts) {
         try {
             Path buildFile = dir.resolve(ManifestPaths.MANIFEST);
             if (!Files.exists(buildFile)) {

@@ -40,7 +40,7 @@ public final class BuildAccumulator {
     private final String kind;
     private final String dir;
     private final @Nullable String coord;
-    private final String projectId;
+    private final @Nullable String projectId;
     private final String trigger; // how the build was started: "cli" (socket) or "web" (dashboard)
     /** Per-request chrome timeline; null when disabled. Same step millis as metrics. */
     private final @Nullable ChromeTimeline timeline;

@@ -40,15 +40,16 @@ public final class StepTimingsRecorder implements BuildPlanListener {
     private final Map<String, Integer> ticksByStep = new ConcurrentHashMap<>();
     private final Map<String, Long> durationByStep = new ConcurrentHashMap<>();
     /** Optional supplier of the plan's test summary after run-tests (may be null). */
-    private final Supplier<TestSummary> testSummary;
+    private final @Nullable Supplier<TestSummary> testSummary;
     /** Optional continuous host calibration samples (may be null). */
-    private final List<HostLearnedRates.HostSample> hostSink;
+    private final @Nullable List<HostLearnedRates.HostSample> hostSink;
 
     public StepTimingsRecorder(String moduleKey, List<StepTimings.Sample> sink) {
         this(moduleKey, sink, null, null);
     }
 
-    public StepTimingsRecorder(String moduleKey, List<StepTimings.Sample> sink, Supplier<TestSummary> testSummary) {
+    public StepTimingsRecorder(
+            String moduleKey, List<StepTimings.Sample> sink, @Nullable Supplier<TestSummary> testSummary) {
         this(moduleKey, sink, testSummary, null);
     }
 
@@ -171,8 +172,10 @@ public final class StepTimingsRecorder implements BuildPlanListener {
     }
 
     private void perSource(String key, long wallMs, int count, double maxSane) {
+        List<HostLearnedRates.HostSample> sink = hostSink;
+        if (sink == null) return;
         int n = Math.max(1, count);
-        hostSink.add(new HostLearnedRates.HostSample(key, wallMs / (double) n, maxSane));
+        sink.add(new HostLearnedRates.HostSample(key, wallMs / (double) n, maxSane));
     }
 
     private static int distinctClassCount(TestSummary sum) {

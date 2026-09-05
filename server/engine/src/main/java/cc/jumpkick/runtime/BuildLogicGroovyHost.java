@@ -19,6 +19,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Evaluates project build-logic {@code .groovy} scripts in a forked JVM ({@code groovy.ui.GroovyMain}).
@@ -168,7 +169,7 @@ final class BuildLogicGroovyHost {
      * alone is ~8 MB), and a truncated download only needs catching on the first touch; before
      * this every script evaluation on a cache miss re-hashed all seven.
      */
-    private static volatile Path[] verifiedJars;
+    private static volatile Path @Nullable [] verifiedJars;
 
     static Path[] ensureJars() throws IOException {
         Path[] known = verifiedJars;

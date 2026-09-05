@@ -191,7 +191,7 @@ public final class HttpEvents {
      * — so it cannot ride on a numeric default, which is why this is a presence check and a read
      * rather than one call.
      */
-    static @Nullable Long extractRequestId(String data) {
+    static @Nullable Long extractRequestId(@Nullable String data) {
         return Jsonl.has(data, "jid") ? Jsonl.longValue(data, "jid", 0L) : null;
     }
 

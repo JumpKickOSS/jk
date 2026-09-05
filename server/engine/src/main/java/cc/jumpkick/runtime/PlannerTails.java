@@ -37,6 +37,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -192,7 +193,7 @@ public final class PlannerTails {
                 .label("Assembly")
                 .kind(TaskKind.CPU)
                 .requires(TaskNames.PACKAGE_JAR)
-                .weight(() -> EffortWeights.assemblyWeight(lockFile.getParent()))
+                .weight(() -> EffortWeights.assemblyWeight(Objects.requireNonNull(lockFile.getParent(), "lock dir")))
                 .ticks(1)
                 .execute(ctx -> {
                     JkBuild project = ctx.require(PROJECT);

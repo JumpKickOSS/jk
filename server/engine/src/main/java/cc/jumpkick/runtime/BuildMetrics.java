@@ -265,8 +265,9 @@ public final class BuildMetrics {
                 && now - memo.atMillis() < AGG_MEMO_TTL_MS) {
             return memo.agg();
         }
-        AggregatedMetrics agg =
-                projectSession ? AggregatedMetrics.load(builds, null, work) : AggregatedMetrics.loadAll(builds);
+        AggregatedMetrics agg = work != null && projectSession
+                ? AggregatedMetrics.load(builds, null, work)
+                : AggregatedMetrics.loadAll(builds);
         AGG_MEMO.set(new AggMemo(builds, memoKey, now, agg));
         return agg;
     }

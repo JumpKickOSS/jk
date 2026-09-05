@@ -40,6 +40,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
@@ -85,7 +86,8 @@ public final class PlannerPackage {
                     Path jarPath = layout.mainJar();
                     if (pluginDecls != null && pluginDecls.packager() != null && ownsMainArtifact(pluginActive)) {
                         // The packager's declared artifact extension replaces.jar (an APK, …).
-                        jarPath = PluginBuild.mainArtifactPath(layout, pluginActive);
+                        PluginBuild.Active owner = Objects.requireNonNull(pluginActive, "active plugin");
+                        jarPath = PluginBuild.mainArtifactPath(layout, owner);
                         Files.createDirectories(jarPath.getParent());
                         packagePlugin(
                                 ctx, in, cas, project, classes, jarPath, pluginActive, pluginDecls, variantSecrets);

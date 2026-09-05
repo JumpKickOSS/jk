@@ -76,7 +76,7 @@ public record TrainConfig(
     }
 
     /** Filter to one profile by name, or all when {@code name} is null/blank. */
-    public List<Profile> select(String name) {
+    public List<Profile> select(@Nullable String name) {
         if (name == null || name.isBlank()) return effectiveProfiles();
         List<Profile> out = new ArrayList<>();
         for (Profile p : effectiveProfiles()) {

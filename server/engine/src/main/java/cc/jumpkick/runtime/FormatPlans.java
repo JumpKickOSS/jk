@@ -350,7 +350,7 @@ public final class FormatPlans {
                 : Coordinate.of("com.google.googlejavaformat", "google-java-format", GOOGLE_VERSION);
     }
 
-    private static String javaVersion(String style) {
+    private static String javaVersion(@Nullable String style) {
         return "palantir".equals(style) ? PALANTIR_VERSION : GOOGLE_VERSION;
     }
 
