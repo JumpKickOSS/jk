@@ -21,8 +21,8 @@ public record OutdatedReport(@Nullable String error, boolean workspace, List<Row
             String coordinate,
             String display,
             String scope,
-            String current,
-            String compatible,
+            @Nullable String current,
+            @Nullable String compatible,
             String latest,
             @Nullable String tip) {}
 

@@ -6,6 +6,8 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
 import lombok.Builder;
+import org.jspecify.annotations.NullUnmarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Input to Java / mixed Java+Scala compile: sources, classpath, release, and optional {@code .class}
@@ -15,16 +17,16 @@ import lombok.Builder;
 public record CompileRequest(
         List<Path> sources,
         List<Path> classpath,
-        Path outputDir,
+        @Nullable Path outputDir,
         int release,
         List<String> extraOptions,
-        Path javaHome,
+        @Nullable Path javaHome,
         List<Path> processorPath,
-        String scalaVersion,
+        @Nullable String scalaVersion,
         List<Path> compilerClasspath,
-        Path scalaLibraryJar,
-        Path scalaCompilerJar,
-        Path scalaBridgeJar) {
+        @Nullable Path scalaLibraryJar,
+        @Nullable Path scalaCompilerJar,
+        @Nullable Path scalaBridgeJar) {
 
     public CompileRequest {
         Objects.requireNonNull(sources, "sources");
@@ -42,6 +44,12 @@ public record CompileRequest(
         }
     }
 
+    /**
+     * Lombok fills the staged fields in; the class is declared here only to give the collection and
+     * scalar defaults. Unmarked because those generated fields are write-once builder state, not the
+     * record's contract.
+     */
+    @NullUnmarked
     public static class CompileRequestBuilder {
         private List<Path> sources = List.of();
         private List<Path> classpath = List.of();
@@ -55,10 +63,10 @@ public record CompileRequest(
     public CompileRequest(
             List<Path> sources,
             List<Path> classpath,
-            Path outputDir,
+            @Nullable Path outputDir,
             int release,
             List<String> extraOptions,
-            Path javaHome,
+            @Nullable Path javaHome,
             List<Path> processorPath) {
         this(
                 sources,

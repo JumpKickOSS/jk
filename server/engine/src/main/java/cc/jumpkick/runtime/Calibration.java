@@ -22,6 +22,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import lombok.AccessLevel;
 import lombok.Builder;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Machine-scoped cold ETA priors + continuous host learning).
@@ -125,7 +126,7 @@ public final class Calibration {
      */
     static final int COLD_MAX_TEST_PARALLEL = 4;
 
-    private static final AtomicReference<Calibration> MEMO = new AtomicReference<>();
+    private static final AtomicReference<@Nullable Calibration> MEMO = new AtomicReference<>();
 
     private final double msPerWeight;
     private final long jvmForkMs;
@@ -734,7 +735,7 @@ public final class Calibration {
 
     // --- the host probe ------------------------------------------------------
 
-    private static Calibration probe(Path jdksDir, boolean allowNetwork) {
+    private static @Nullable Calibration probe(Path jdksDir, boolean allowNetwork) {
         try {
             Optional<Path> javaHome = resolveJavaHome(jdksDir);
             if (javaHome.isEmpty()) return null;
@@ -847,7 +848,7 @@ public final class Calibration {
         }
     }
 
-    public static boolean stale(String version, long updated, long nowMillis) {
+    public static boolean stale(@Nullable String version, long updated, long nowMillis) {
         if (!JkVersion.VERSION.equals(version)) return true;
         return updated > 0 && nowMillis - updated > MAX_AGE_MILLIS;
     }

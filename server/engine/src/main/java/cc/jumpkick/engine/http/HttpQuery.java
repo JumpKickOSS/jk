@@ -3,6 +3,7 @@ package cc.jumpkick.engine.http;
 
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import org.jspecify.annotations.Nullable;
 
 /** Percent-decode one raw query parameter, strictly or leniently. */
 final class HttpQuery {
@@ -14,7 +15,7 @@ final class HttpQuery {
      * Split first, then decode each value once. Decoding never maps {@code +} to space (matches
      * the SPA's {@code encodeURIComponent}).
      */
-    static String queryParam(String rawQuery, String name) {
+    static @Nullable String queryParam(@Nullable String rawQuery, String name) {
         if (rawQuery == null) return null;
         for (String pair : rawQuery.split("&")) {
             int eq = pair.indexOf('=');
@@ -24,7 +25,7 @@ final class HttpQuery {
     }
 
     /** Percent-decode without the {@code application/x-www-form-urlencoded} {@code +}→space rule. */
-    private static String decodeOnce(String raw) {
+    private static @Nullable String decodeOnce(String raw) {
         return URLDecoder.decode(raw.replace("+", "%2B"), StandardCharsets.UTF_8);
     }
 
@@ -34,7 +35,7 @@ final class HttpQuery {
      * unfiltered), not a 500 from the generic handler. Handlers that owe the client a
      * message keep the throwing form and map it to 400 themselves.
      */
-    static String queryParamLenient(String rawQuery, String name) {
+    static @Nullable String queryParamLenient(@Nullable String rawQuery, String name) {
         try {
             return queryParam(rawQuery, name);
         } catch (IllegalArgumentException e) {

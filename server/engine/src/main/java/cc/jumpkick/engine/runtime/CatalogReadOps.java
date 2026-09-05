@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 /** Layered library catalog + optional cached-version walk for {@code jk library list}/{@code search}. */
 public final class CatalogReadOps {
@@ -20,11 +21,11 @@ public final class CatalogReadOps {
 
     public record Request(
             Path dir,
-            Path cache,
+            @Nullable Path cache,
             // Store root for cached-version lookups (repos/ lives there); null =
             // derive from the ambient store. Explicit so tests can isolate.
-            Path store,
-            String query,
+            @Nullable Path store,
+            @Nullable String query,
             List<String> terms,
             boolean offline,
             boolean includeCached,

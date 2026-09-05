@@ -24,6 +24,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Registry of jk's child-JVM plugin jars. Locates each by Maven coordinate
@@ -128,7 +129,7 @@ public enum PluginJar {
      * mass-downloads every plugin on a cold store and turns an offline start into sixteen failed
      * fetches.
      */
-    public Path locateStored(Cas cas) {
+    public @Nullable Path locateStored(Cas cas) {
         String override = System.getProperty(jarProperty);
         if (override != null && !override.isBlank()) {
             Path jar = Path.of(override);
@@ -147,7 +148,7 @@ public enum PluginJar {
      * official Maven repo into {@code repos/jumpkick/}. Returns the local jar path, {@code null} if
      * the jar 404s, or throws if the jar exists without a POM.
      */
-    public static Path fetchOfficial(Cas cas, String relPath) throws IOException, InterruptedException {
+    public static @Nullable Path fetchOfficial(Cas cas, String relPath) throws IOException, InterruptedException {
         if (!relPath.endsWith(".jar")) {
             throw new IOException("official fetch expected a jar path, got " + relPath);
         }
@@ -253,7 +254,7 @@ public enum PluginJar {
     }
 
     /** As {@link #locate(Cas)} but {@code null} (not throwing) when the plugin can't be located. */
-    public Path locateOrNull(Cas cas) {
+    public @Nullable Path locateOrNull(Cas cas) {
         try {
             return locate(cas);
         } catch (RuntimeException e) {
@@ -262,7 +263,7 @@ public enum PluginJar {
     }
 
     /** The plugin whose {@code artifactId} (e.g. {@code jk-git-client}) matches, if any. */
-    public static Optional<PluginJar> byArtifactId(String artifactId) {
+    public static Optional<PluginJar> byArtifactId(@Nullable String artifactId) {
         for (PluginJar w : values()) {
             if (w.artifactId.equals(artifactId)) return Optional.of(w);
         }

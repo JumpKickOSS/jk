@@ -39,9 +39,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Callable;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.function.ToDoubleFunction;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Predicts each build step's progress-bar weight from on-disk state at plan start. Skip
@@ -681,38 +681,6 @@ public final class EffortWeights {
         return predict(in, cas, compact, useJava, useKotlin, useGroovy, forceRebuild, SourceRefs.unshared());
     }
 
-    /**
-     * Per-language source lists shared between this prediction and the plan that follows it.
-     *
-     * <p>{@code BuildPlanner} declares exactly these caches, with a comment saying they exist so
-     * "parse-build execute reuses the result instead of walking the same directories again" — and
-     * {@code predict} was called thirteen lines above their declaration, so it could not capture them
-     * and walked every source tree a second time. Moving the declarations up and threading them here
-     * is the whole fix.
-     */
-    public record SourceRefs(
-            AtomicReference<List<Path>> java, AtomicReference<List<Path>> kotlin, AtomicReference<List<Path>> groovy) {
-
-        /** Refs nobody else shares — for a caller that predicts without a plan behind it. */
-        public static SourceRefs unshared() {
-            return new SourceRefs(new AtomicReference<>(), new AtomicReference<>(), new AtomicReference<>());
-        }
-
-        /** {@code ref}'s value, computing and storing it on first use. */
-        static List<Path> get(AtomicReference<List<Path>> ref, IoSupplier<List<Path>> compute) throws IOException {
-            List<Path> hit = ref.get();
-            if (hit != null) return hit;
-            List<Path> fresh = compute.get();
-            ref.compareAndSet(null, fresh);
-            return ref.get();
-        }
-    }
-
-    /** A supplier that may fail on the filesystem. */
-    interface IoSupplier<T> {
-        T get() throws IOException;
-    }
-
     public static Plan predict(
             BuildPlanner.Inputs in,
             Cas cas,
@@ -973,7 +941,7 @@ public final class EffortWeights {
     }
 
     /** Main jar will be rewritten this run (or dirty-module over-reserve). */
-    public static boolean jarWillChange(Path dir) {
+    public static boolean jarWillChange(@Nullable Path dir) {
         return overReserveTails() || mainJarWillChange(dir);
     }
 
@@ -1019,7 +987,7 @@ public final class EffortWeights {
      * reserve full weight when this is true — even if their outputs still look newer than the
      * pre-build jar.
      */
-    static boolean mainJarWillChange(Path dir) {
+    static boolean mainJarWillChange(@Nullable Path dir) {
         try {
             var cfg = SessionContext.current().config();
             if (cfg.rebuildOr(false) || cfg.forceOr(false)) return true;

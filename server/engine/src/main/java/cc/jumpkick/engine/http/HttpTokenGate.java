@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.security.MessageDigest;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The owner-only bearer token and the rules that consult it. Every {@code /api/*} exchange needs it
@@ -22,7 +23,7 @@ import java.security.MessageDigest;
 final class HttpTokenGate {
 
     private final Path tokenFile;
-    private byte[] token;
+    private byte @Nullable [] token;
 
     /** @param tokenFile where the minted token persists, owner-only, so the CLI can hand out a tokenized URL */
     HttpTokenGate(Path tokenFile) {
@@ -53,7 +54,7 @@ final class HttpTokenGate {
     }
 
     /** The persisted token if the file exists and holds a non-blank value, else {@code null}. */
-    private String readPersistedToken() {
+    private @Nullable String readPersistedToken() {
         try {
             if (!Files.isRegularFile(tokenFile)) return null;
             String value = Files.readString(tokenFile, StandardCharsets.UTF_8).trim();
@@ -96,12 +97,12 @@ final class HttpTokenGate {
         HttpResponses.sendText(exchange, 401, "missing or invalid bearer token\n");
     }
 
-    private static String bearerToken(String authorization) {
+    private static @Nullable String bearerToken(@Nullable String authorization) {
         if (authorization == null || !authorization.startsWith("Bearer ")) return null;
         return authorization.substring("Bearer ".length()).trim();
     }
 
-    private boolean tokenValid(String presented) {
+    private boolean tokenValid(@Nullable String presented) {
         if (presented == null || presented.isEmpty()) return false;
         // Constant-time, immune to length/prefix probing.
         return MessageDigest.isEqual(presented.getBytes(StandardCharsets.UTF_8), token);

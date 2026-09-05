@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Properties;
+import org.jspecify.annotations.Nullable;
 
 /**
  * JVM flags for forked worker processes (compilers, test runners, …). Concurrent workers share a
@@ -174,7 +175,7 @@ public final class JvmOptions {
         }
     }
 
-    private static Integer featureFromRelease(Path javaHome) {
+    private static @Nullable Integer featureFromRelease(@Nullable Path javaHome) {
         if (javaHome == null) return null;
         Path release = javaHome.resolve("release");
         if (!Files.isRegularFile(release)) return null;
@@ -204,7 +205,7 @@ public final class JvmOptions {
     }
 
     /** Process-wide heap budget from {@link #planAndApply}, or null when explicit tuning wins. */
-    private static volatile HeapPlan.Plan heapPlan;
+    private static volatile HeapPlan.@Nullable Plan heapPlan;
 
     /**
      * Probe memory, compute the heap budget for {@code requestedJvms} desired forks, and apply it:
@@ -212,7 +213,7 @@ public final class JvmOptions {
      * parallelism run at once. A no-op (returns {@code null}, opens the worker gate) when the request
      * supplied explicit heap tuning — those settings then drive sizing as before.
      */
-    public static HeapPlan.Plan planAndApply(int requestedJvms) {
+    public static HeapPlan.@Nullable Plan planAndApply(int requestedJvms) {
         if (!autoHeapEnabled(tuning())) {
             PluginSlots.configure(0); // unbounded: honour the user's relative/explicit sizing
             heapPlan = null;
@@ -225,7 +226,7 @@ public final class JvmOptions {
     }
 
     /** The applied heap budget, or {@code null} if none (explicit tuning / not yet planned). */
-    public static HeapPlan.Plan processHeapPlan() {
+    public static HeapPlan.@Nullable Plan processHeapPlan() {
         return heapPlan;
     }
 

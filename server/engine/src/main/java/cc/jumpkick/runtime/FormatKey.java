@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Everything that can change a formatted byte, in one digest — the sole owner of what {@code jk
@@ -25,9 +26,9 @@ import java.util.List;
  * the configuration, exactly as the compile classpath was before it.
  */
 public record FormatKey(
-        String javaStyle,
+        @Nullable String javaStyle,
         String javaVersion,
-        String kotlinStyle,
+        @Nullable String kotlinStyle,
         String kotlinVersion,
         int kotlinMaxWidth,
         boolean optimizeImports,
@@ -134,7 +135,7 @@ public record FormatKey(
         }
     }
 
-    private static String nullToEmpty(String s) {
+    private static String nullToEmpty(@Nullable String s) {
         return s == null ? "" : s;
     }
 }

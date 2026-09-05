@@ -12,6 +12,7 @@ import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.jobs.JobRequest;
 import cc.jumpkick.engine.jobs.JobSelect;
 import cc.jumpkick.engine.jobs.JobSpec;
+import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.ManifestPaths;
@@ -33,6 +34,7 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
@@ -143,7 +145,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
     public JobOutcome run(String requestLine, Session.CancelToken cancelToken, @Nullable BufferedWriter writer) {
         try {
             BuildRequest body = BuildRequest.decode(requestLine);
-            String entryDirStr = body.dir();
+            String entryDirStr = Objects.requireNonNull(body.dir(), "dir");
             String cacheStr = body.cache();
             String jdksDirStr = body.jdksDir();
             int workers = body.workers();
@@ -274,7 +276,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                 host.sendQuiet(writer, ProtoEvents.workspaceFinish(false, Exit.FAILURE, List.of(), true));
                 return JobOutcome.declined();
             }
-            String msg = host.redactEnv(dir, Errors.text(e));
+            String msg = EventRedaction.redactText(dir, Errors.text(e));
             host.sendQuiet(writer, host.requestFailedLine(dir, e));
             host.publishRequestError(rid, dir, msg);
             return JobOutcome.failed(Exit.FAILURE);

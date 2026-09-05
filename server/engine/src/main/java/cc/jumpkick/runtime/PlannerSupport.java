@@ -56,6 +56,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Classpath, packaging cache, nested-engine test isolation, and contribution staging.
@@ -206,7 +207,7 @@ public final class PlannerSupport {
             boolean mixedKotlin,
             boolean mixedGroovy,
             BuildLayout layout,
-            Path groovyCompileJar) {
+            @Nullable Path groovyCompileJar) {
         List<Path> inputs = new ArrayList<>(baseClasspath);
         if (mixedKotlin) inputs.add(layout.kotlinClassesDir());
         if (mixedGroovy) {
@@ -327,7 +328,7 @@ public final class PlannerSupport {
         Path root = rootOpt.get();
         JkBuild rootManifest = JkBuildParser.parse(root.resolve(ManifestPaths.MANIFEST));
         if (!rootManifest.isWorkspaceRoot()) return out;
-        for (String module : rootManifest.workspace().modules()) {
+        for (String module : rootManifest.workspaceModules()) {
             Path dir = root.resolve(module);
             Path manifest = dir.resolve(ManifestPaths.MANIFEST);
             if (!Files.exists(manifest)) continue;
@@ -373,7 +374,7 @@ public final class PlannerSupport {
      * {@link #storePackaged store} — same contract as {@link cc.jumpkick.task.JavaCompile}: the next
      * {@code jk explain} / incremental build must see a CACHE_HIT, not a phantom repackage.
      */
-    static boolean restorePackaged(Path cacheRoot, String key, Path baseDir) throws IOException {
+    static boolean restorePackaged(Path cacheRoot, String key, @Nullable Path baseDir) throws IOException {
         // rebuildOr already subsumes force (JkConfig: force implies rebuild).
         if (SessionContext.current().config().rebuildOr(false)) {
             return false;
@@ -396,7 +397,7 @@ public final class PlannerSupport {
             String taskId,
             String key,
             List<String> tokens,
-            Path baseDir,
+            @Nullable Path baseDir,
             List<Path> artifacts,
             boolean persist)
             throws IOException {
@@ -493,7 +494,7 @@ public final class PlannerSupport {
      * Engine jar for nested CLI suites: workspace assembly when present, else the host process's
      * fat jar / installed EngineInstall materialization.
      */
-    static Path resolveEngineJarForNestedTests(Map<String, Path> siblings) {
+    static @Nullable Path resolveEngineJarForNestedTests(Map<String, Path> siblings) {
         Path engine = siblings != null ? siblings.get("jk-engine") : null;
         if (engine == null && siblings != null) engine = siblings.get("engine");
         if (engine != null && Files.isRegularFile(engine)) return engine.normalize();
@@ -512,7 +513,7 @@ public final class PlannerSupport {
      * outputs, and makes fallback assertions deterministic on warm developer trees
      * where the process/EngineInstall probes would otherwise win.
      */
-    static Path locateHostEngineJar() {
+    static @Nullable Path locateHostEngineJar() {
         Path override = BuildPlanner.hostEngineSearchOverride;
         if (override != null) return findMonorepoEngineJar(override);
         try {
@@ -550,7 +551,7 @@ public final class PlannerSupport {
     }
 
     /** Prefer fat assembly, then dist/shadow, then thin main jar under known layout roots. */
-    static Path findMonorepoEngineJar(Path start) {
+    static @Nullable Path findMonorepoEngineJar(Path start) {
         String ver = JkVersion.VERSION;
         Path walk = start;
         for (int up = 0; up < 5 && walk != null; up++, walk = walk.getParent()) {
@@ -704,7 +705,7 @@ public final class PlannerSupport {
      * build's runtime classpath for the stamp (lock deps + workspace sibling jars; plugin
      * contributions optional for non-plugin modules).
      */
-    public static String runTestsStampKey(
+    public static @Nullable String runTestsStampKey(
             Path dir, JkBuild project, boolean compact, Path mainClasses, Path lockFile, List<Path> testRuntimeCp)
             throws IOException {
         return runTestsStampKey(dir, project, compact, mainClasses, null, lockFile, testRuntimeCp);
@@ -714,7 +715,7 @@ public final class PlannerSupport {
      * {@code mainClassesFingerprint} overrides the on-disk main-classes tree when non-null (post-
      * {@code jk clean} projection from the compile action record).
      */
-    public static String runTestsStampKey(
+    public static @Nullable String runTestsStampKey(
             Path dir,
             JkBuild project,
             boolean compact,
@@ -815,7 +816,7 @@ public final class PlannerSupport {
     }
 
     /** Package-private for {@link TaskForecaster} package-jar key parity with the live step. */
-    static PluginBuild.Declarations pluginDeclarationsFor(JkBuild project, BuildLayout layout, Path cache)
+    static PluginBuild.@Nullable Declarations pluginDeclarationsFor(JkBuild project, BuildLayout layout, Path cache)
             throws IOException, InterruptedException {
         var active = PluginBuild.activeCodePlugin(project, layout.moduleRoot());
         if (active.isEmpty()) return null;
@@ -831,7 +832,7 @@ public final class PlannerSupport {
      * declaration order. Listing is cheap; {@link #stageClassesWithContributions} is the copy.
      */
     // Package-private for BuildPlannerStagedClassesTest.
-    static List<Path> existingContributedDirs(PluginBuild.Declarations decls, BuildLayout layout) {
+    static List<Path> existingContributedDirs(PluginBuild.@Nullable Declarations decls, BuildLayout layout) {
         if (decls == null) return List.of();
         List<Path> out = new ArrayList<>();
         for (Path pth : PluginBuild.contributedDirs(decls, layout)) {
@@ -866,7 +867,7 @@ public final class PlannerSupport {
         Map<String, Path> dirByName = new LinkedHashMap<>();
         Map<String, Path> dirByCoord = new LinkedHashMap<>();
         Map<Path, JkBuild> byDir = new LinkedHashMap<>();
-        for (String module : rootManifest.workspace().modules()) {
+        for (String module : rootManifest.workspaceModules()) {
             Path dir = root.resolve(module);
             Path manifest = dir.resolve(ManifestPaths.MANIFEST);
             if (!Files.isRegularFile(manifest)) continue;
@@ -916,7 +917,8 @@ public final class PlannerSupport {
     }
 
     /** Resolve a MAIN dep to a workspace sibling dir (placeholder or rewritten coordinate). */
-    private static Path workerSiblingDir(Dependency d, Map<String, Path> dirByName, Map<String, Path> dirByCoord) {
+    private static @Nullable Path workerSiblingDir(
+            Dependency d, Map<String, Path> dirByName, Map<String, Path> dirByCoord) {
         String ws = d.workspaceName();
         if (ws != null) {
             Path dir = dirByName.get(ws);

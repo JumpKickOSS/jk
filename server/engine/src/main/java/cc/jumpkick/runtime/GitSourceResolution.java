@@ -21,6 +21,7 @@ import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Pre-solve bridge for git deps: materialize via {@link GitSourceMaterializer}, add the {@code
@@ -154,7 +155,7 @@ public final class GitSourceResolution {
         return lock.withArtifacts(out);
     }
 
-    private static String ga(String nameOrKey) {
+    private static String ga(@Nullable String nameOrKey) {
         if (nameOrKey == null) return "";
         if (PackageId.isMavenPackageKey(nameOrKey)) {
             try {
@@ -172,7 +173,8 @@ public final class GitSourceResolution {
      * ref → nothing to check.
      */
     private static void verifyImmutableRef(
-            GitSourceMaterializer materializer, GitSource source, Map<String, String> lockedShas) throws IOException {
+            GitSourceMaterializer materializer, @Nullable GitSource source, Map<String, String> lockedShas)
+            throws IOException {
         if (lockedShas.isEmpty()) return;
         GitRefSpec ref = source.ref();
         if (!(ref instanceof GitRefSpec.Tag) && !(ref instanceof GitRefSpec.Rev)) return;
@@ -203,12 +205,12 @@ public final class GitSourceResolution {
      * are part of the key so two deps on the same commit that relabel it differently each get their
      * own published artifact.
      */
-    private static String sourceKey(GitSource source) {
+    private static String sourceKey(@Nullable GitSource source) {
         return String.join(
                 "|", source.canonicalUrl(), source.ref().token(), source.path() == null ? "" : source.path());
     }
 
-    private static String provenanceKey(String coordinate, String version) {
+    private static String provenanceKey(String coordinate, @Nullable String version) {
         return coordinate + "@" + version;
     }
 }

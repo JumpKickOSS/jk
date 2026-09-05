@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Path → (mtime, size) index so {@code jk format} can skip the formatter JVM when nothing on disk
@@ -30,7 +31,7 @@ public final class FormatFreshnessIndex {
     private final Path projectDir;
     private final Map<String, Entry> entries;
 
-    private FormatFreshnessIndex(Path file, Path projectDir, Map<String, Entry> entries) {
+    private FormatFreshnessIndex(@Nullable Path file, Path projectDir, Map<String, Entry> entries) {
         this.file = file;
         this.projectDir = projectDir.toAbsolutePath().normalize();
         this.entries = entries;
@@ -159,7 +160,7 @@ public final class FormatFreshnessIndex {
         }
     }
 
-    private static Entry stat(Path file) {
+    private static @Nullable Entry stat(Path file) {
         try {
             BasicFileAttributes attrs = Files.readAttributes(file, BasicFileAttributes.class);
             var instant = attrs.lastModifiedTime().toInstant();

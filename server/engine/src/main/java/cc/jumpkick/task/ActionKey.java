@@ -14,6 +14,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Builds {@code SHA-256(action) → outputs} keys for the {@link ActionCache}.
@@ -239,7 +240,7 @@ public final class ActionKey {
      * — a request that names no project JDK — keys the literal {@code none}, which is a value no
      * real home can produce, rather than silently collapsing onto whichever JDK ran last.
      */
-    public static String jdkToken(Path javaHome) throws IOException {
+    public static String jdkToken(@Nullable Path javaHome) throws IOException {
         if (javaHome == null) return "none";
         Path abs = javaHome.toAbsolutePath().normalize();
         Path release = abs.resolve("release");
@@ -275,7 +276,7 @@ public final class ActionKey {
      * hashes module-relative paths and content, so two modules with identical inputs share one key
      * on purpose, and the tag is what keeps their {@code tasks/} pointers apart.
      */
-    public static String qualifiedTaskId(String base, Path moduleDir) {
+    public static String qualifiedTaskId(String base, @Nullable Path moduleDir) {
         return base + "@" + taskTag(moduleDir);
     }
 
@@ -285,7 +286,7 @@ public final class ActionKey {
      * the tags for a project's output dirs and match every {@code tasks/<base>@<tag>} pointer that
      * belongs to it, regardless of the base task name.
      */
-    public static String taskTag(Path moduleDir) {
+    public static String taskTag(@Nullable Path moduleDir) {
         Path p = moduleDir.toAbsolutePath().normalize();
         Path probe = p;
         while (probe != null && !Files.exists(probe)) {

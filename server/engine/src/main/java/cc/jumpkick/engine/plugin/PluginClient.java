@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Host-side driver for a forked plugin's JSONL protocol ({@code ##PREFIX:{"t":…}}). Registers
@@ -20,8 +21,8 @@ public final class PluginClient {
 
     private final String prefix;
     private final Map<String, Consumer<String>> handlers = new HashMap<>();
-    private Consumer<String> onOther;
-    private Consumer<String> passthrough;
+    private @Nullable Consumer<String> onOther;
+    private @Nullable Consumer<String> passthrough;
 
     /** A client for a plugin using the canonical {@code "t"} discriminator and the given prefix. */
     public PluginClient(String prefix) {

@@ -21,6 +21,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The write-image verdict once {@link ImagePlans} has resolved the inputs: restore the tarball
@@ -52,11 +53,11 @@ final class ImageWrite {
             BuildLayout layout,
             ImageConfig config,
             Path cache,
-            Path tarballPath,
+            @Nullable Path tarballPath,
             List<Path> depJars,
             List<Path> snapshotJars,
-            Path classesDir,
-            String chosen,
+            @Nullable Path classesDir,
+            @Nullable String chosen,
             Path workerJar,
             WorkerFork fork)
             throws IOException {
@@ -132,7 +133,7 @@ final class ImageWrite {
         try {
             ctx.put(ImagePlans.IMAGE_REF, fork.run(base));
         } catch (RuntimeException e) {
-            ctx.error("image", e.getMessage());
+            ctx.error("image", Errors.text(e));
             throw e;
         }
         if (useCache) {

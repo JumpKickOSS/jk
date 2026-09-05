@@ -156,7 +156,7 @@ public final class EngineEnvelopeHost implements JobEnvelope.Host {
     }
 
     @Override
-    public void writeJournal(long id, boolean cancelled, long millis, BufferedWriter writer) {
+    public void writeJournal(long id, boolean cancelled, long millis, @Nullable BufferedWriter writer) {
         journalWriter.write(id, cancelled, millis, writer);
     }
 
@@ -191,7 +191,7 @@ public final class EngineEnvelopeHost implements JobEnvelope.Host {
     }
 
     @Override
-    public String coordOf(String dir) {
+    public @Nullable String coordOf(String dir) {
         return JournalWriter.coordOf(dir);
     }
 }

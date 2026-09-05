@@ -3,6 +3,7 @@ package cc.jumpkick.engine.http;
 
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Maps MCP {@code _meta.progressToken} values to engine HTTP job {@code requestId}s so a later
@@ -31,7 +32,7 @@ public final class ProgressTokenRegistry {
     }
 
     /** Resolve a progress token to a request id, or {@code null} if unknown. */
-    public Long resolve(String progressToken) {
+    public @Nullable Long resolve(String progressToken) {
         if (progressToken == null || progressToken.isBlank()) return null;
         return tokens.get(canonicalText(progressToken));
     }

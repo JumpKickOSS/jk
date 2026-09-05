@@ -17,6 +17,7 @@ import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskKind;
 import java.io.IOException;
 import java.nio.file.Path;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Foreign-ecosystem drivers: {@code jk import} conversion and {@code jk mvn}/{@code jk gradle}
@@ -50,7 +51,13 @@ public final class CompatPlans {
      * {@code [[import.gradle-plugin]]} rules come from the engine registry, not a worker catalog.
      */
     public static BuildPlan importBuildPlan(
-            Path source, Path out, Path baseDir, Path tmpDir, boolean force, Path report, NoteObserver observer) {
+            Path source,
+            Path out,
+            Path baseDir,
+            Path tmpDir,
+            boolean force,
+            @Nullable Path report,
+            NoteObserver observer) {
         Task convert = Task.builder("import")
                 .kind(TaskKind.IO)
                 .ticks(1)
@@ -81,7 +88,12 @@ public final class CompatPlans {
     }
 
     /** A provisioning call's outcome — the flat fields {@code jk mvn}/{@code jk gradle} render from. */
-    public record Provision(String bin, String version, String source, String error, int exit) {}
+    public record Provision(
+            @Nullable String bin,
+            @Nullable String version,
+            @Nullable String source,
+            @Nullable String error,
+            int exit) {}
 
     /**
      * Provision a Maven/Gradle distribution: link a discovered install or download one, and return
@@ -117,7 +129,8 @@ public final class CompatPlans {
      * CompileToolchain.resolveKotlinHome} use, so an ahead-of-time install is a cache hit for the
      * build that later needs it rather than a second copy under a second layout.
      */
-    public static Provision provisionTool(String toolSlug, String version, Path toolsRoot, boolean noDiscover) {
+    public static Provision provisionTool(
+            String toolSlug, @Nullable String version, Path toolsRoot, boolean noDiscover) {
         ToolDistribution dist = null;
         try {
             BuildTool tool = BuildTool.bySlug(toolSlug)

@@ -15,6 +15,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
 import java.util.function.UnaryOperator;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk native} plan: {@link BuildPlanner} plus {@link PlannerNative#nativeStep} for
@@ -29,7 +30,7 @@ public final class NativePlans {
      * module (unique main + {@code GRAALVM_HOME}). {@code [native] enabled = "always"} is {@code jk
      * build}'s tail, not this gate.
      */
-    public static boolean isNativeEligible(Path graalHome) {
+    public static boolean isNativeEligible(@Nullable Path graalHome) {
         return graalHome != null;
     }
 
@@ -37,7 +38,7 @@ public final class NativePlans {
      * The native-image main class: {@code --main}, then {@code [native].main}, then {@code
      * [image].main}, then {@code [application] main}.
      */
-    public static String resolveMain(Path buildFile, String mainOverride) {
+    public static @Nullable String resolveMain(Path buildFile, @Nullable String mainOverride) {
         Path dir = buildFile.getParent();
         return dir == null ? mainOverride : NativePreflight.specifiedMain(dir, mainOverride);
     }
@@ -72,8 +73,8 @@ public final class NativePlans {
             Path moduleDir,
             JkBuild module,
             Path cache,
-            Path jdksDir,
-            Path graalHome,
+            @Nullable Path jdksDir,
+            @Nullable Path graalHome,
             String mainOverride,
             List<String> extraArgs,
             boolean skipTests,
@@ -102,9 +103,9 @@ public final class NativePlans {
             Path moduleDir,
             JkBuild module,
             Path cache,
-            Path jdksDir,
-            Path graalHome,
-            String mainOverride,
+            @Nullable Path jdksDir,
+            @Nullable Path graalHome,
+            @Nullable String mainOverride,
             List<String> extraArgs,
             boolean skipTests,
             boolean verbose,

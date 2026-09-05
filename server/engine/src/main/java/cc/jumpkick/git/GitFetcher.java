@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Git resolver facade over {@link GitBackend}: prefer {@code git} on PATH, else JGit ({@code
@@ -70,7 +71,7 @@ public final class GitFetcher {
     }
 
     /** A remote's advertised refs: tag names + the {@code HEAD} sha (null when the remote has none). */
-    public record RemoteRefs(List<String> tags, String headSha) {
+    public record RemoteRefs(List<String> tags, @Nullable String headSha) {
         public RemoteRefs {
             tags = List.copyOf(Objects.requireNonNull(tags, "tags"));
         }

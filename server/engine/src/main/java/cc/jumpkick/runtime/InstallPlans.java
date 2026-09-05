@@ -7,6 +7,7 @@ import cc.jumpkick.config.JkM2Config;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceResolve;
 import cc.jumpkick.git.GitFetcher;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
@@ -46,6 +47,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk install} heavy halves: {@link #projectInstallBuildPlan} (build + cache-install into
@@ -67,7 +69,7 @@ public final class InstallPlans {
      * {@code --m2-dir} override).
      */
     public static BuildPlan projectInstallBuildPlan(
-            Path projectDir, Path cache, Path m2Dir, boolean skipTests, boolean verbose, Path graalHome)
+            Path projectDir, Path cache, Path m2Dir, boolean skipTests, boolean verbose, @Nullable Path graalHome)
             throws IOException {
         JkBuild proj = JkBuildParser.parse(projectDir.resolve(ManifestPaths.MANIFEST));
 
@@ -167,7 +169,7 @@ public final class InstallPlans {
                     try {
                         cacheInstallArtifact(project, layout, cache, m2Dir);
                     } catch (IOException e) {
-                        ctx.error(TaskNames.CACHE_INSTALL, e.getMessage());
+                        ctx.error(TaskNames.CACHE_INSTALL, Errors.text(e));
                         throw new RuntimeException(e);
                     }
                     ctx.put(PRIMARY, coord);
@@ -190,7 +192,12 @@ public final class InstallPlans {
 
     /** Like {@link #gitFetchBuildPlan(String, String, String, Path, boolean)} with optional jk.toml gate. */
     public static BuildPlan gitFetchBuildPlan(
-            String url, String canonicalUrl, String ref, Path cacheDir, boolean refresh, boolean requireJkToml) {
+            @Nullable String url,
+            @Nullable String canonicalUrl,
+            @Nullable String ref,
+            Path cacheDir,
+            boolean refresh,
+            boolean requireJkToml) {
         Task fetch = Task.builder(TaskNames.FETCH_GIT)
                 .kind(TaskKind.IO)
                 .ticks(1)
@@ -201,7 +208,7 @@ public final class InstallPlans {
                     try {
                         fetched = fetchTagOrBranch(fetcher, url, canonicalUrl, ref, refresh);
                     } catch (IOException e) {
-                        ctx.error("fetch", e.getMessage());
+                        ctx.error("fetch", Errors.text(e));
                         throw new RuntimeException(e);
                     }
                     Path checkout = fetched.checkoutPath();
@@ -222,7 +229,12 @@ public final class InstallPlans {
 
     /** Try the user's ref as a tag first, then a branch. */
     private static GitFetcher.Fetched fetchTagOrBranch(
-            GitFetcher fetcher, String expanded, String canonical, String refStr, boolean refresh) throws IOException {
+            GitFetcher fetcher,
+            @Nullable String expanded,
+            @Nullable String canonical,
+            @Nullable String refStr,
+            boolean refresh)
+            throws IOException {
         IOException tagFailure;
         try {
             GitSource asTag = new GitSource(canonical, expanded, new GitRefSpec.Tag(refStr), null, true, false);
@@ -395,7 +407,7 @@ public final class InstallPlans {
      * best-effort posture {@link WorkspaceResolve#siblingCoordinates} takes.
      */
     private static void hoistVendored(
-            JkBuild sibling,
+            @Nullable JkBuild sibling,
             Set<String> siblings,
             Map<String, JkBuild> manifests,
             Set<String> seen,
@@ -419,7 +431,7 @@ public final class InstallPlans {
     }
 
     /** The member {@code d} names, resolved through either spelling; {@code null} when it names none. */
-    private static JkBuild siblingOf(Dependency d, Set<String> siblings, Map<String, JkBuild> manifests) {
+    private static @Nullable JkBuild siblingOf(Dependency d, Set<String> siblings, Map<String, JkBuild> manifests) {
         if (!isSibling(d, siblings)) return null;
         JkBuild byCoord = manifests.get(d.module());
         return byCoord != null ? byCoord : manifests.get(d.library());

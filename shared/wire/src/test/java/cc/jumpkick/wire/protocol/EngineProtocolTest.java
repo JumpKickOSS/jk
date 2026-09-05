@@ -5,6 +5,7 @@ import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.build.InvocationPhase;
 import cc.jumpkick.run.TestSummary;
@@ -278,7 +279,7 @@ class EngineProtocolTest {
     @Test
     void update_request_round_trips_the_git_splice_fields() {
         String json = new UpdateRequest(
-                        "/work", "/cache", List.of(), false, null, true, "mylib", false, true, false, null)
+                        "/work", "/cache", List.of(), false, null, true, "mylib", false, true, false, "")
                 .encode();
         assertThat(EngineProtocol.typeOf(json)).isEqualTo(EngineProtocol.UPDATE_REQUEST);
         assertThat(Jsonl.bool(json, "gitOnly", false)).isTrue();
@@ -636,7 +637,8 @@ class EngineProtocolTest {
 
     @Test
     void explain_request_carries_the_eta_inputs() {
-        String json = new ExplainRequest("/work", "/cache", 4, true, "ci", "/jdks", true, true, false, false, 1, null)
+        String json = new ExplainRequest(
+                        "/work", "/cache", 4, true, "ci", "/jdks", true, true, false, false, 1, TestSelection.DEFAULT)
                 .encode();
         assertThat(EngineProtocol.typeOf(json)).isEqualTo(EngineProtocol.EXPLAIN_REQUEST);
         assertThat(Jsonl.str(json, "dir")).isEqualTo("/work");
@@ -647,8 +649,9 @@ class EngineProtocolTest {
         assertThat(Jsonl.bool(json, "serial", false)).isTrue();
         assertThat(Jsonl.bool(json, "parallelTests", false)).isTrue();
 
-        String defaults =
-                new ExplainRequest("/w", "/c", 1, false, null, null, false, false, false, false, 0, null).encode();
+        String defaults = new ExplainRequest(
+                        "/w", "/c", 1, false, null, null, false, false, false, false, 0, TestSelection.DEFAULT)
+                .encode();
         assertThat(Jsonl.str(defaults, "profile")).isNull();
         assertThat(Jsonl.str(defaults, "jdksDir")).isNull();
     }
@@ -744,7 +747,7 @@ class EngineProtocolTest {
                         false,
                         testOnly,
                         dirtyHint,
-                        null,
+                        TestSelection.DEFAULT,
                         List.of(),
                         false,
                         null,

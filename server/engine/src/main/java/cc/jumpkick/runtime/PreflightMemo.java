@@ -33,6 +33,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Machine-local preflight memos: dirty-set, graph structure, and plan shape. Written under
@@ -110,7 +111,7 @@ public final class PreflightMemo {
     }
 
     /** Prefer durable memo (survives clean), else the in-tree target memo. */
-    static Path resolveDirtyMemoFile(Path entryDir) {
+    static @Nullable Path resolveDirtyMemoFile(Path entryDir) {
         Path durable = durableMemoFile(entryDir);
         if (Files.isRegularFile(durable)) return durable;
         Path local = memoFile(entryDir);

@@ -31,6 +31,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk sync} plan: align the local JDK and dependency CAS with {@code jk-lock.toml}. Engine
@@ -62,12 +63,12 @@ public final class SyncPlans {
     public static BuildPlan syncBuildPlan(
             Path dir,
             Path cache,
-            Path jdksDir,
-            URI repoUrl,
+            @Nullable Path jdksDir,
+            @Nullable URI repoUrl,
             boolean sources,
             AtomicInteger totalFetched,
             AtomicInteger totalUpToDate,
-            BiFunction<String, String, String> coordLabel,
+            @Nullable BiFunction<String, String, String> coordLabel,
             boolean allowJdkInstall) {
         Path lockFile = LockPaths.lockFile(dir);
         // Plain engine path uses Artifact.displayCoord() (g:a:v, or g:a:v!aar / :classifier when
@@ -220,7 +221,7 @@ public final class SyncPlans {
                             }
 
                             @Override
-                            public void missing(String artifact, String detail) {
+                            public void missing(String artifact, @Nullable String detail) {
                                 // Empty code → diagnostic render omits [step/code] brackets.
                                 ctx.warn("", artifact + " " + detail + ".");
                             }
@@ -388,7 +389,7 @@ public final class SyncPlans {
     }
 
     /** Progress/diagnostic coordinate: themed label when provided, else {@link Lockfile.Artifact#displayCoord()}. */
-    private static String formatCoord(BiFunction<String, String, String> coordLabel, Lockfile.Artifact pkg) {
+    private static String formatCoord(@Nullable BiFunction<String, String, String> coordLabel, Lockfile.Artifact pkg) {
         return coordLabel != null ? coordLabel.apply(pkg.displayIdentity(), pkg.version()) : pkg.displayCoord();
     }
 
@@ -413,7 +414,13 @@ public final class SyncPlans {
      * not reach it warns rather than failing the whole materialization.
      */
     private static void materializeNativeMetadata(
-            TaskContext ctx, Lockfile lock, JkBuild build, Path cache, URI repoUrl, Path dir, Cas cas) {
+            TaskContext ctx,
+            Lockfile lock,
+            @Nullable JkBuild build,
+            Path cache,
+            @Nullable URI repoUrl,
+            Path dir,
+            Cas cas) {
         Lockfile.NativeMetadata pin = lock.nativeMetadata();
         if (pin == null) return;
         ctx.label("sync reachability metadata " + pin.version());
@@ -445,7 +452,7 @@ public final class SyncPlans {
     }
 
     /** Parse {@code dir/jk.toml} if it exists and is valid; {@code null} otherwise. */
-    public static JkBuild parseBuildIfPresent(Path dir) {
+    public static @Nullable JkBuild parseBuildIfPresent(Path dir) {
         Path buildFile = dir.resolve(ManifestPaths.MANIFEST);
         if (!Files.exists(buildFile)) return null;
         try {

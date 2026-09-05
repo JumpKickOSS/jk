@@ -11,6 +11,7 @@ import cc.jumpkick.compile.WorkerCompileDriver;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.http.Http;
@@ -48,6 +49,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Script/jar preparation for {@code jk tool run <file>}: parse header, resolve deps, compile (or
@@ -95,7 +97,12 @@ public final class ScriptPlans {
 
     /** As above with {@code extraDeps} — alias/{@code --with} injections joining the header's deps. */
     public static BuildPlan javaScriptBuildPlan(
-            Path script, Path cacheDir, Path stateDir, URI repoUrl, boolean forceRecompile, List<Dependency> extraDeps)
+            Path script,
+            Path cacheDir,
+            Path stateDir,
+            @Nullable URI repoUrl,
+            boolean forceRecompile,
+            List<Dependency> extraDeps)
             throws IOException {
         byte[] bytes = Files.readAllBytes(script);
         ScriptHeader header =
@@ -130,7 +137,7 @@ public final class ScriptPlans {
                         List<Path> classpath = resolveClasspath(header.deps(), repos);
                         ctx.put(CLASSPATH, classpath);
                     } catch (RuntimeException e) {
-                        ctx.error("resolve", e.getMessage());
+                        ctx.error("resolve", Errors.text(e));
                         throw e;
                     }
                     ctx.progress(1);
@@ -207,7 +214,12 @@ public final class ScriptPlans {
 
     /** As above with {@code extraDeps} — alias/{@code --with} injections joining the header's deps. */
     public static BuildPlan kotlinScriptBuildPlan(
-            Path script, Path cacheDir, Path stateDir, URI repoUrl, boolean forceRecompile, List<Dependency> extraDeps)
+            Path script,
+            Path cacheDir,
+            Path stateDir,
+            @Nullable URI repoUrl,
+            boolean forceRecompile,
+            List<Dependency> extraDeps)
             throws IOException {
         byte[] bytes = Files.readAllBytes(script);
         // parseKotlin: // directives + @file:DependsOn/@file:Repository annotations.
@@ -245,7 +257,7 @@ public final class ScriptPlans {
                         List<Path> classpath = resolveClasspath(header.deps(), repos);
                         ctx.put(CLASSPATH, classpath);
                     } catch (RuntimeException e) {
-                        ctx.error("resolve", e.getMessage());
+                        ctx.error("resolve", Errors.text(e));
                         throw e;
                     }
                     ctx.progress(1);
@@ -272,7 +284,7 @@ public final class ScriptPlans {
                         Thread.currentThread().interrupt();
                         throw new RuntimeException("interrupted resolving the Kotlin compiler", e);
                     } catch (RuntimeException e) {
-                        ctx.error("kotlin", e.getMessage());
+                        ctx.error("kotlin", Errors.text(e));
                         throw e;
                     }
                     ctx.progress(1);
@@ -363,8 +375,8 @@ public final class ScriptPlans {
     }
 
     /** As above with {@code extraDeps} — alias/{@code --with} injections joining the header's deps. */
-    public static BuildPlan ktsScriptBuildPlan(Path script, Path cacheDir, URI repoUrl, List<Dependency> extraDeps)
-            throws IOException {
+    public static BuildPlan ktsScriptBuildPlan(
+            Path script, Path cacheDir, @Nullable URI repoUrl, List<Dependency> extraDeps) throws IOException {
         ScriptHeader header = withExtras(
                 ScriptHeaderParser.parseKotlin(new String(Files.readAllBytes(script), StandardCharsets.UTF_8)),
                 extraDeps);
@@ -380,7 +392,7 @@ public final class ScriptPlans {
                     try {
                         ctx.put(CLASSPATH, resolveClasspath(header.deps(), repos));
                     } catch (RuntimeException e) {
-                        ctx.error("resolve", e.getMessage());
+                        ctx.error("resolve", Errors.text(e));
                         throw e;
                     }
                     ctx.progress(1);
@@ -413,7 +425,7 @@ public final class ScriptPlans {
     // --- .jar ------------------------------------------------------------
 
     /** {@code inspect-jar → resolve-jar-deps} for a prebuilt jar (manifest main + embedded-POM deps). */
-    public static BuildPlan jarBuildPlan(Path jar, Path cacheDir, URI repoUrl) {
+    public static BuildPlan jarBuildPlan(Path jar, Path cacheDir, @Nullable URI repoUrl) {
         Task inspect = Task.builder(TaskNames.INSPECT_JAR)
                 .stage(BuildStage.RESOLVE)
                 .ticks(1)
@@ -481,7 +493,7 @@ public final class ScriptPlans {
                     try {
                         classpath.addAll(resolveClasspath(declaredDeps, repos));
                     } catch (RuntimeException e) {
-                        ctx.error("resolve", e.getMessage());
+                        ctx.error("resolve", Errors.text(e));
                         throw e;
                     }
                     ctx.put(CLASSPATH, classpath);
@@ -574,7 +586,7 @@ public final class ScriptPlans {
                 : name;
     }
 
-    private static RepoGroup buildRepos(ScriptHeader header, URI repoUrl, Http http, Cas cas) {
+    private static RepoGroup buildRepos(ScriptHeader header, @Nullable URI repoUrl, Http http, Cas cas) {
         List<MavenRepo> list = new ArrayList<>();
         if (repoUrl != null) {
             list.add(new MavenRepo(RepositorySpec.CENTRAL, repoUrl, http, cas));

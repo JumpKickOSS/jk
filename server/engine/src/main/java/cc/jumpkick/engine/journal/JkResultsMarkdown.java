@@ -724,7 +724,7 @@ public final class JkResultsMarkdown {
         return s == null || s.isBlank() ? null : s;
     }
 
-    private static boolean notBlank(String s) {
+    private static boolean notBlank(@Nullable String s) {
         return s != null && !s.isBlank();
     }
 

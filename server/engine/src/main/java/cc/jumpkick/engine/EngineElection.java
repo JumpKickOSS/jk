@@ -27,7 +27,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.Objects;
 import java.util.function.Consumer;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The engine's identity on disk: the startup mutex, the incumbent probe, the generation claim, the
@@ -67,7 +69,11 @@ final class EngineElection {
      * secret ({@code null} on the Unix-domain transport), and the socket of the engine being
      * displaced ({@code null} when nothing was live).
      */
-    record Won(EnginePaths.Paths active, ServerSocketChannel listener, String token, Path displaced) {}
+    record Won(
+            EnginePaths.Paths active,
+            ServerSocketChannel listener,
+            @Nullable String token,
+            @Nullable Path displaced) {}
 
     private final EnginePaths.Paths paths;
     private final String version;
@@ -76,13 +82,13 @@ final class EngineElection {
     private final long startedAtMillis;
     private final Consumer<String> log;
 
-    private FileChannel lockChannel;
-    private FileLock lock;
-    private FileLock genLock;
-    private FileChannel genLockChannel;
+    private @Nullable FileChannel lockChannel;
+    private @Nullable FileLock lock;
+    private @Nullable FileLock genLock;
+    private @Nullable FileChannel genLockChannel;
 
     /** The generation this engine bound (socket/lock/pid/token) — see EnginePaths.generation. */
-    private EnginePaths.Paths active;
+    private EnginePaths.@Nullable Paths active;
 
     EngineElection(
             EnginePaths.Paths paths,
@@ -105,6 +111,7 @@ final class EngineElection {
      * identity already serves; the caller is then a losing spawn-race participant and should treat
      * that as success-by-proxy, not an error.
      */
+    @Nullable
     Won win() throws IOException {
         Files.createDirectories(paths.dir());
         // Startup mutex: serializes concurrent spawns/takeovers through bind + endpoint write.
@@ -185,7 +192,8 @@ final class EngineElection {
             // This token gates every engine RPC — i.e. arbitrary code execution as the engine
             // owner. It must be owner-only, like the HTTP bearer token, not left to the ambient
             // umask on a shared machine.
-            OwnerOnlyFiles.write(active.token().getParent(), active.token(), token);
+            OwnerOnlyFiles.write(
+                    Objects.requireNonNull(active.token().getParent(), "token dir"), active.token(), token);
             Files.writeString(active.socket(), Integer.toString(port));
         } else {
             listener = ServerSocketChannel.open(StandardProtocolFamily.UNIX);
@@ -203,8 +211,8 @@ final class EngineElection {
      * Tell a displaced predecessor to yield its listeners and drain. Blocks until {@code bye} so
      * HTTP / the old UDS are free before this engine binds HTTP.
      */
-    void askPredecessorToYield(Path previousActive) {
-        if (previousActive == null || previousActive.equals(active.socket())) return;
+    void askPredecessorToYield(@Nullable Path previousActive) {
+        if (previousActive == null || previousActive.equals(bound().socket())) return;
         if (!Files.exists(previousActive)) return;
         if (namesSelf(previousActive)) return; // a stale flat pointer we just re-claimed — never self-drain
         try (SocketChannel ch = openClient(previousActive)) {
@@ -303,9 +311,9 @@ final class EngineElection {
             if (EngineTransport.useLoopbackTcp()) {
                 return Files.readString(candidate)
                         .trim()
-                        .equals(Files.readString(active.socket()).trim());
+                        .equals(Files.readString(bound().socket()).trim());
             }
-            return candidate.toRealPath().equals(active.socket().toRealPath());
+            return candidate.toRealPath().equals(bound().socket().toRealPath());
         } catch (IOException e) {
             return false; // unreadable/vanished — the connect attempt sorts it out
         }
@@ -322,8 +330,13 @@ final class EngineElection {
         lockChannel = null;
     }
 
+    /** The generation this election claimed. Only callable after {@link #win} returned non-null. */
+    private EnginePaths.Paths bound() {
+        return Objects.requireNonNull(active, "election has not bound a generation");
+    }
+
     /** The identity a live engine at {@code socket} answers with, or {@code null}. */
-    static Incumbent helloProbe(Path socket, String probeVersion) {
+    static @Nullable Incumbent helloProbe(@Nullable Path socket, String probeVersion) {
         if (socket == null || !Files.exists(socket)) return null;
         try (SocketChannel ch = openClient(socket)) {
             BufferedWriter w =

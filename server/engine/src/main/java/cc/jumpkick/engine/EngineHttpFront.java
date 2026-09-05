@@ -74,7 +74,9 @@ public final class EngineHttpFront {
 
     /** Start when {@code [http]} is present; bind failure is advisory only. */
     public void start() {
-        if (config == null) return;
+        // The hub and the config are created together: no [http] table, neither of them.
+        HttpEvents hub = events;
+        if (config == null || hub == null) return;
         HttpEngineServer candidate = new HttpEngineServer(
                 config,
                 config.webRootPath(),
@@ -82,7 +84,7 @@ public final class EngineHttpFront {
                 paths.log(),
                 version,
                 status,
-                events,
+                hub,
                 httpJobs(),
                 journal,
                 () -> BuildMetrics.load(metricsFile.get()).entries(),

@@ -14,6 +14,7 @@ import java.nio.file.Path;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Human-facing failure / warning reports for plan diagnostics: a colored phase pill (same language
@@ -316,7 +317,7 @@ public final class DiagnosticReport {
         return s;
     }
 
-    private static String nullToEmpty(String s) {
+    private static String nullToEmpty(@Nullable String s) {
         return s == null ? "" : s;
     }
 }

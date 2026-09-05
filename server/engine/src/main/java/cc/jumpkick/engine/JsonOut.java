@@ -5,6 +5,7 @@ import cc.jumpkick.jsonl.MiniJson;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Fluent sugar for the flat JSON objects the REST surface emits — the same deliberate
@@ -31,13 +32,13 @@ public final class JsonOut {
         return o;
     }
 
-    public JsonOut put(String key, String value) {
+    public JsonOut put(String key, @Nullable String value) {
         fields.put(key, value);
         return this;
     }
 
     /** Nested object/array (maps/lists) — MiniJson serializes them recursively. */
-    public JsonOut putObject(String key, Object value) {
+    public JsonOut putObject(String key, @Nullable Object value) {
         fields.put(key, value);
         return this;
     }
@@ -59,7 +60,7 @@ public final class JsonOut {
     }
 
     /** Put a nullable number (e.g. {@code progress: null} until known). */
-    public JsonOut putNullable(String key, Double value) {
+    public JsonOut putNullable(String key, @Nullable Double value) {
         fields.put(key, value);
         return this;
     }

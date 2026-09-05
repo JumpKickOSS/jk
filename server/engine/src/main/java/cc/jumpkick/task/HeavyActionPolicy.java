@@ -4,6 +4,7 @@ package cc.jumpkick.task;
 import cc.jumpkick.run.TaskNames;
 import java.nio.file.Path;
 import java.util.Locale;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Generation policy for Class-C ("heavy ship") outputs: native images, OCI tarballs, and fat
@@ -38,7 +39,7 @@ public final class HeavyActionPolicy {
      * How many action-key generations to keep for this task (including the current pointer).
      * Non-Class-C returns {@link Integer#MAX_VALUE} (no generation trim).
      */
-    public static int generations(String taskId) {
+    public static int generations(@Nullable String taskId) {
         return switch (taskName(taskId)) {
             case TaskNames.NATIVE_IMAGE -> NATIVE_GENERATIONS;
             case TaskNames.WRITE_IMAGE -> IMAGE_GENERATIONS;
@@ -48,7 +49,7 @@ public final class HeavyActionPolicy {
     }
 
     /** Generation-list sidecar for {@code taskId} under {@code tasksDir} ({@code <taskId>.gens}). */
-    public static Path gensFile(Path tasksDir, String taskId) {
+    public static Path gensFile(Path tasksDir, @Nullable String taskId) {
         return tasksDir.resolve(taskId + ".gens");
     }
 }

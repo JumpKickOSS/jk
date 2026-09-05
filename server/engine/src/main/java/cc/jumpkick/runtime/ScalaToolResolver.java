@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Resolves/fetches the Scala 3 compiler + published sbt bridge (and transitives) into the CAS
@@ -98,7 +99,7 @@ public final class ScalaToolResolver {
      * completion marker exists (written last, so a crashed resolve has none) and the lib dir holds
      * exactly as many jars as it records. A partial lib dir returns {@code null} → re-resolve.
      */
-    static List<Path> readValidatedClosure(Path libDir, Path cacheFile) throws IOException {
+    static @Nullable List<Path> readValidatedClosure(Path libDir, Path cacheFile) throws IOException {
         if (!Files.isRegularFile(cacheFile)) return null;
         int recorded = recordedShaCount(cacheFile);
         List<Path> jars = listLibJars(libDir);
@@ -163,7 +164,7 @@ public final class ScalaToolResolver {
         return out;
     }
 
-    static Path findJar(List<Path> jars, String artifactPrefix) {
+    static @Nullable Path findJar(List<Path> jars, String artifactPrefix) {
         for (Path p : jars) {
             String n = p.getFileName().toString();
             if (n.startsWith(artifactPrefix + "-") || n.startsWith(artifactPrefix + ".")) return p;
@@ -213,7 +214,7 @@ public final class ScalaToolResolver {
                 .resolve("lib");
     }
 
-    private static List<Path> listLibJars(Path libDir) throws IOException {
+    private static @Nullable List<Path> listLibJars(Path libDir) throws IOException {
         if (!Files.isDirectory(libDir)) return null;
         List<Path> jars = new ArrayList<>();
         try (var stream = Files.list(libDir)) {

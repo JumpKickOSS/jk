@@ -24,7 +24,12 @@ public final class EventRedaction {
     private EventRedaction() {}
 
     public static @Nullable String redactEnv(@Nullable String dir, @Nullable String text) {
-        if (text == null || text.isEmpty()) return text;
+        return text == null ? null : redactText(dir, text);
+    }
+
+    /** As {@link #redactEnv} for text the caller already has — present in, present out. */
+    public static String redactText(@Nullable String dir, String text) {
+        if (text.isEmpty()) return text;
         SecretRedactor redactor;
         try {
             redactor = redactorFor(dir);

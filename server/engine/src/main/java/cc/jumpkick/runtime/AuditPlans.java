@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginJar;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
@@ -20,6 +21,7 @@ import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.function.Consumer;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk audit} plan: scan {@code jk-lock.toml} against OSV via {@code jk-auditor}. Findings
@@ -44,9 +46,9 @@ public final class AuditPlans {
     public static BuildPlan auditBuildPlan(
             Path lockPath,
             Path cache,
-            String thresholdLabel,
-            URI osvBatchUrl,
-            URI osvVulnsUrl,
+            @Nullable String thresholdLabel,
+            @Nullable URI osvBatchUrl,
+            @Nullable URI osvVulnsUrl,
             FindingObserver observer) {
         Path workerJar = PluginJar.AUDITOR.locate(JkStores.storeCas());
 
@@ -69,7 +71,7 @@ public final class AuditPlans {
                     try {
                         runWorker(workerJar, lockPath, osvBatchUrl, osvVulnsUrl, observer, ctx::output);
                     } catch (RuntimeException e) {
-                        ctx.error("osv", e.getMessage());
+                        ctx.error("osv", Errors.text(e));
                         throw e;
                     }
                     ctx.progress(1);
@@ -105,8 +107,8 @@ public final class AuditPlans {
     private static void runWorker(
             Path workerJar,
             Path lockPath,
-            URI osvBatchUrl,
-            URI osvVulnsUrl,
+            @Nullable URI osvBatchUrl,
+            @Nullable URI osvVulnsUrl,
             FindingObserver observer,
             Consumer<String> onOutput) {
         try {

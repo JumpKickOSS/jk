@@ -72,7 +72,8 @@ final class EngineConnection {
                         new InputStreamReader(Channels.newInputStream(ch), StandardCharsets.UTF_8));
                 BufferedWriter writer = new BufferedWriter(
                         new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8))) {
-            if (ctx.expectedToken() != null && !authenticate(reader)) {
+            String expected = ctx.expectedToken();
+            if (expected != null && !authenticate(reader, expected)) {
                 // Typed refusal (then close): a silent close is indistinguishable from a crash.
                 WireWriter.sendQuiet(writer, ProtoLifecycle.error(EngineProtocol.ERR_AUTH, "engine token rejected"));
                 return;
@@ -84,13 +85,13 @@ final class EngineConnection {
     }
 
     /** Loopback-TCP transport only: the connection's first line must be a matching {@link EngineProtocol#AUTH}. */
-    private boolean authenticate(BufferedReader reader) throws IOException {
+    private boolean authenticate(BufferedReader reader, String expected) throws IOException {
         String line = reader.readLine();
         if (line == null || !EngineProtocol.AUTH.equals(EngineProtocol.typeOf(line))) return false;
         String presented = Jsonl.str(line, "token");
         if (presented == null) return false;
         return MessageDigest.isEqual(
-                ctx.expectedToken().getBytes(StandardCharsets.UTF_8), presented.getBytes(StandardCharsets.UTF_8));
+                expected.getBytes(StandardCharsets.UTF_8), presented.getBytes(StandardCharsets.UTF_8));
     }
 
     private void serveConnection(BufferedReader reader, BufferedWriter writer, SocketChannel ch) throws IOException {

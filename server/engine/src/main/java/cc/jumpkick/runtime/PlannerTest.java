@@ -20,6 +20,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.TestSuites;
@@ -48,6 +49,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
+import org.jspecify.annotations.Nullable;
 
 /**
  * compile-test and run-tests steps, including the process-wide test gate.
@@ -303,7 +305,8 @@ public final class PlannerTest {
                 .build();
     }
 
-    static Task runTestsStep(BuildPlanner.Ctx cx, PluginBuild.Declarations pluginDecls, List<String> extraRequires) {
+    static Task runTestsStep(
+            BuildPlanner.Ctx cx, PluginBuild.@Nullable Declarations pluginDecls, List<String> extraRequires) {
         BuildPlanner.Inputs in = cx.in();
         Cas cas = cx.cas();
         ActionCache actionCache = cx.actionCache();
@@ -508,7 +511,7 @@ public final class PlannerTest {
                         ctx.error("test", "interrupted");
                         throw new RuntimeException(e);
                     } catch (IOException e) {
-                        ctx.error("test", e.getMessage());
+                        ctx.error("test", Errors.text(e));
                         throw e;
                     } finally {
                         if (gated) TEST_GATE.release();
@@ -556,7 +559,7 @@ public final class PlannerTest {
 
     /** The green run's counts replayed off a run-tests marker; {@code null} for markers written
      * before counts were stored (or with unparseable ones) — the caller then replays nothing. */
-    static TestSummary stampedSummary(ActionCache.ActionRecord record) {
+    static @Nullable TestSummary stampedSummary(ActionCache.ActionRecord record) {
         try {
             String total = record.outputs().get(TestStamp.TOTAL);
             if (total == null) return null;

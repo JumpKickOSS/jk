@@ -27,6 +27,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Host micro-benchmarks for {@link Calibration} follow-ups).
@@ -99,11 +100,11 @@ final class HardwareProbe {
 
     private HardwareProbe() {}
 
-    static Result run(Path javaHome) {
+    static @Nullable Result run(Path javaHome) {
         return run(javaHome, Options.offline());
     }
 
-    static Result run(Path javaHome, Options opts) {
+    static @Nullable Result run(Path javaHome, Options opts) {
         try {
             if (javaHome == null) return null;
             Path javaExe = JdkFingerprint.java(javaHome);
@@ -267,7 +268,8 @@ final class HardwareProbe {
 
     private record WorkerTimes(long forkMs, long runMs) {}
 
-    private static WorkerTimes measureWorkerJvm(Path javaExe, Path javacExe) throws IOException, InterruptedException {
+    private static @Nullable WorkerTimes measureWorkerJvm(Path javaExe, Path javacExe)
+            throws IOException, InterruptedException {
         Path dir = Files.createTempDirectory("jk-calib-worker");
         try {
             Path out = Files.createDirectory(dir.resolve("out"));
@@ -314,7 +316,7 @@ final class HardwareProbe {
      * LauncherFactory so cold ETA can separate suite startup from per-method cost. Requires Jupiter
      * jars locally or {@code allowNetwork} to pull them from Central.
      */
-    private static JunitPlatformTimes measureJunitPlatform(Path javaExe, Path javacExe, Options opts) {
+    private static @Nullable JunitPlatformTimes measureJunitPlatform(Path javaExe, Path javacExe, Options opts) {
         try {
             List<Path> jars = resolveJunitClasspath(opts);
             if (jars.isEmpty()) return null;
@@ -457,7 +459,7 @@ final class HardwareProbe {
         return roots;
     }
 
-    private static Path findLocal(List<Path> roots, String relativeMavenPath) {
+    private static @Nullable Path findLocal(List<Path> roots, String relativeMavenPath) {
         for (Path root : roots) {
             Path jar = root.resolve(relativeMavenPath);
             if (Files.isRegularFile(jar)) return jar;
@@ -465,7 +467,7 @@ final class HardwareProbe {
         return null;
     }
 
-    private static Path findAnyVersion(List<Path> roots, String groupPath, String artifact) {
+    private static @Nullable Path findAnyVersion(List<Path> roots, String groupPath, String artifact) {
         for (Path root : roots) {
             Path artDir = root.resolve(groupPath).resolve(artifact);
             if (!Files.isDirectory(artDir)) continue;
@@ -495,7 +497,7 @@ final class HardwareProbe {
         return null;
     }
 
-    private static Path fetchFromCentral(Path storeRoot, String relativeMavenPath, CentralFetch fetch) {
+    private static @Nullable Path fetchFromCentral(Path storeRoot, String relativeMavenPath, CentralFetch fetch) {
         try {
             byte[] body = fetch.get(CENTRAL_BASE + relativeMavenPath);
             if (body == null || body.length == 0) return null;
@@ -517,7 +519,8 @@ final class HardwareProbe {
      * plus the {@code .jk} memo, written through {@link RepoArtifactStore} exactly as a resolve
      * would, so a later resolve can hash-verify and reuse the artifact.
      */
-    private static Path storeCentralJar(Path storeRoot, String relativeMavenPath, byte[] body) throws IOException {
+    private static @Nullable Path storeCentralJar(Path storeRoot, String relativeMavenPath, byte[] body)
+            throws IOException {
         if (storeRoot == null) return null;
         Path tmp = Files.createTempFile("jk-calib-artifact", ".jar");
         try {
@@ -558,7 +561,7 @@ final class HardwareProbe {
      * hit again without warning. When the host is already cooling, {@link Http} refuses and the
      * probe reports "unavailable" rather than adding to the pile.
      */
-    private static byte[] httpGet(String url) throws IOException, InterruptedException {
+    private static byte @Nullable [] httpGet(String url) throws IOException, InterruptedException {
         HttpResponse<byte[]> resp = HTTP.get(URI.create(url));
         if (resp.statusCode() >= 400) return null;
         return resp.body();

@@ -70,7 +70,7 @@ public final class ClassAbi {
      * Compare a dirty FQC's current bytes to the pre-compile fingerprint. Matching hashes still
      * yield {@link Kind#BODY} so a git-dirty source name-matches.
      */
-    public static Kind classify(Fingerprint previous, Fingerprint current) {
+    public static Kind classify(@Nullable Fingerprint previous, Fingerprint current) {
         if (previous == null) return Kind.ABI;
         if (!previous.apiHex().equals(current.apiHex())) return Kind.ABI;
         return Kind.BODY;
@@ -303,7 +303,7 @@ public final class ClassAbi {
         return (access & Opcodes.ACC_STATIC) != 0 && (access & Opcodes.ACC_FINAL) != 0;
     }
 
-    private static String nullToEmpty(String s) {
+    private static String nullToEmpty(@Nullable String s) {
         return s == null ? "" : s;
     }
 

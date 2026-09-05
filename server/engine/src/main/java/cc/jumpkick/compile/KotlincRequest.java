@@ -6,6 +6,8 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
 import lombok.Builder;
+import org.jspecify.annotations.NullUnmarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Input to {@link WorkerCompileDriver}'s Kotlin arm (forks {@code jk-kotlin-compiler} / Build
@@ -22,15 +24,15 @@ public record KotlincRequest(
         int jvmTarget,
         List<Path> workerClasspath,
         Path javaHome,
-        Path workingDir,
-        Path snapshotDir,
+        @Nullable Path workingDir,
+        @Nullable Path snapshotDir,
         List<String> extraArgs,
         List<Plugin> plugins,
         /**
          * {@code -module-name}, or null for the default. Must match KSP: internal-member mangling
          * embeds it in call sites that generated Java may emit.
          */
-        String moduleName) {
+        @Nullable String moduleName) {
 
     /** One compiler plugin: id, jar, and {@code key=value} options. */
     public record Plugin(String id, Path jar, List<String> options) {
@@ -62,6 +64,12 @@ public record KotlincRequest(
         }
     }
 
+    /**
+     * Lombok fills the staged fields in; the class is declared here only to give the collection and
+     * scalar defaults. Unmarked because those generated fields are write-once builder state, not the
+     * record's contract.
+     */
+    @NullUnmarked
     public static class KotlincRequestBuilder {
         private List<Path> sources = List.of();
         private List<Path> classpath = List.of();

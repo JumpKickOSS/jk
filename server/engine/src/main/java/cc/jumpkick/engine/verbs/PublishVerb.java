@@ -20,6 +20,7 @@ import java.io.BufferedWriter;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
 public final class PublishVerb implements HostedVerb {
@@ -98,8 +99,10 @@ public final class PublishVerb implements HostedVerb {
                 RepoCredential credential =
                         switch (String.valueOf(body.authType())) {
                             case "basic" ->
-                                new RepoCredential.Basic(body.user(), body.pass() != null ? body.pass() : "");
-                            case "bearer" -> new RepoCredential.Bearer(body.token());
+                                new RepoCredential.Basic(
+                                        Objects.requireNonNull(body.user(), "user"),
+                                        body.pass() != null ? body.pass() : "");
+                            case "bearer" -> new RepoCredential.Bearer(Objects.requireNonNull(body.token(), "token"));
                             default -> RepoCredential.ANONYMOUS;
                         };
                 // The one credential the engine does not resolve: the CLI resolved it (env,

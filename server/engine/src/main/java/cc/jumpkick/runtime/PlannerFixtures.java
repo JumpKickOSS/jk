@@ -36,6 +36,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code compile-test-fixtures}: a test-scoped source root compiled to a directory that is never an
@@ -119,7 +120,7 @@ public final class PlannerFixtures {
             Path javaHome,
             Path cache,
             ActionCache actionCache,
-            Path workerJar,
+            @Nullable Path workerJar,
             List<Path> testCompileCp)
             throws IOException {
         if (!declared(project) || skipTests) return false;

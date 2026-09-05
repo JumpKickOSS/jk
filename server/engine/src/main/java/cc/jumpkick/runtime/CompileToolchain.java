@@ -16,6 +16,7 @@ import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.function.Consumer;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Resolves the Kotlin distribution for {@code kotlinc}: {@code KOTLIN_HOME}, else auto-install
@@ -43,7 +44,7 @@ public final class CompileToolchain {
      * by {@code jk lock}) if present, else an exact {@code kotlin} pin, else {@code null}
      * which falls back to the bundled default distribution.
      */
-    public static String kotlinVersionFor(Lockfile lock, JkBuild project) {
+    public static @Nullable String kotlinVersionFor(Lockfile lock, JkBuild project) {
         if (lock != null && lock.kotlin() != null && !lock.kotlin().isBlank()) {
             return lock.kotlin();
         }
@@ -59,7 +60,7 @@ public final class CompileToolchain {
      * actually ships (caret/tilde pins and BOM-managed grails floats resolve here,
      * else an exact {@code groovy} pin, else {@code null} (bundled default).
      */
-    public static String groovyVersionFor(Lockfile lock, JkBuild project) {
+    public static @Nullable String groovyVersionFor(Lockfile lock, JkBuild project) {
         if (lock != null) {
             for (Lockfile.Artifact a : lock.artifacts()) {
                 String name = a.name();
@@ -78,7 +79,7 @@ public final class CompileToolchain {
      * Pick the Scala 3 compiler version: lock pin first, else the locked {@code scala3-library_3}
      * artifact, else an exact {@code scala} pin, else {@code null} (bundled default).
      */
-    public static String scalaVersionFor(Lockfile lock, JkBuild project) {
+    public static @Nullable String scalaVersionFor(Lockfile lock, JkBuild project) {
         if (lock != null && lock.scala() != null && !lock.scala().isBlank()) {
             return lock.scala();
         }

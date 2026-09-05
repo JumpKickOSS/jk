@@ -82,7 +82,7 @@ public final class SsePublisher {
         return r == null ? "" : r;
     }
 
-    private RemainingWork remaining(long id) {
+    private @Nullable RemainingWork remaining(long id) {
         JobSession s = get(id);
         return s == null ? null : s.remaining();
     }
@@ -104,7 +104,7 @@ public final class SsePublisher {
         return s.tracker();
     }
 
-    private WorkspaceProgressTracker trackerOrNull(long requestId) {
+    private @Nullable WorkspaceProgressTracker trackerOrNull(long requestId) {
         JobSession s = get(requestId);
         return s == null ? null : s.existingTracker();
     }
@@ -114,7 +114,7 @@ public final class SsePublisher {
         return s == null ? new Object() : s.emitLock();
     }
 
-    private long[] emitState(long requestId) {
+    private long @Nullable [] emitState(long requestId) {
         JobSession s = get(requestId);
         return s == null ? null : s.emitState();
     }
@@ -124,7 +124,7 @@ public final class SsePublisher {
         if (s != null) s.emitState(state);
     }
 
-    private BuildAccumulator accumulator(long requestId) {
+    private @Nullable BuildAccumulator accumulator(long requestId) {
         JobSession s = get(requestId);
         return s == null ? null : s.accumulator();
     }
@@ -196,7 +196,7 @@ public final class SsePublisher {
      * {@code workspace-progress} + updated remaining ETA.
      */
     public void trackModuleBuildPlan(
-            long requestId, String dir, BuildPlanView view, BufferedWriter writer, boolean forceEmit) {
+            long requestId, String dir, BuildPlanView view, @Nullable BufferedWriter writer, boolean forceEmit) {
         if (requestId <= 0 || view == null) return;
         double frac = view.denominator() > 0
                 ? Math.min(1.0, Math.max(0.0, (double) view.numerator() / (double) view.denominator()))
@@ -218,7 +218,7 @@ public final class SsePublisher {
         emitWorkspaceProgress(requestId, writer, forceEmit);
     }
 
-    public void trackModuleComplete(long requestId, String dir, long lastDen, BufferedWriter writer) {
+    public void trackModuleComplete(long requestId, String dir, long lastDen, @Nullable BufferedWriter writer) {
         if (requestId <= 0) return;
         RemainingWork rw = remaining(requestId);
         if (rw != null && dir != null) {
@@ -235,11 +235,12 @@ public final class SsePublisher {
      * Emit filterable {@code workspace-progress} on the socket (when {@code writer} non-null) and SSE
      * hub. Throttled unless {@code force} (stage boundaries, module complete, finish).
      */
-    public void emitWorkspaceProgress(long requestId, BufferedWriter writer, boolean force) {
+    public void emitWorkspaceProgress(long requestId, @Nullable BufferedWriter writer, boolean force) {
         emitWorkspaceProgress(requestId, writer, force, false);
     }
 
-    public void emitWorkspaceProgress(long requestId, BufferedWriter writer, boolean force, boolean dashboardOnly) {
+    public void emitWorkspaceProgress(
+            long requestId, @Nullable BufferedWriter writer, boolean force, boolean dashboardOnly) {
         if (requestId <= 0) return;
         // A straggler from an abandoned job must not re-register the maps teardown just cleared,
         // nor take a fresh emit lock that no longer serializes against anything.
@@ -528,7 +529,7 @@ public final class SsePublisher {
     }
 
     /** A single request-level failure line (bad jk.toml, workspace orchestration error, …). */
-    public void publishRequestError(long requestId, String dir, String message) {
+    public void publishRequestError(long requestId, @Nullable String dir, String message) {
         if (!eventsWanted() || message == null || message.isBlank()) return;
         publishEvent(
                 "error",
@@ -618,11 +619,11 @@ public final class SsePublisher {
         return events != null && events.hasSubscribers();
     }
 
-    public void publishModuleStart(long requestId, String dir, String coord) {
+    public void publishModuleStart(long requestId, String dir, @Nullable String coord) {
         publishModuleStart(requestId, dir, coord, false);
     }
 
-    public void publishModuleStart(long requestId, String dir, String coord, boolean dashboardOnly) {
+    public void publishModuleStart(long requestId, String dir, @Nullable String coord, boolean dashboardOnly) {
         if (!eventsWanted()) return;
         publishEvent(
                 EngineProtocol.MODULE_START,

@@ -90,9 +90,9 @@ public final class AffectedTestsVerb implements HostedVerb {
     }
 
     static AffectedTestsReport toReport(AffectedTests ranked) {
-        if (ranked.refused()) {
-            return AffectedTestsReport.error(
-                    ranked.refuse().code(), ranked.refuse().message());
+        AffectedTests.Refuse refuse = ranked.refuse();
+        if (refuse != null) {
+            return AffectedTestsReport.error(refuse.code(), refuse.message());
         }
         List<AffectedTestsReport.Row> rows = new ArrayList<>();
         for (AffectedTests.Row r : ranked.ranked()) {

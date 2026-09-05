@@ -293,7 +293,8 @@ public final class WorkspaceScheduler {
     static final long CANCEL_DRAIN_MS = 2_000L;
 
     /** Admission gate: a queued task starting after cancel must do nothing (and emit nothing). */
-    private static <U, R> R gated(BooleanSupplier stop, PhasedUnitTask<U, R> task, U unit, Runnable artifactsReady) {
+    private static <U, R> @Nullable R gated(
+            BooleanSupplier stop, PhasedUnitTask<U, R> task, U unit, Runnable artifactsReady) {
         if (stop.getAsBoolean()) return null;
         return task.run(unit, artifactsReady);
     }

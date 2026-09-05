@@ -58,7 +58,7 @@ public final class JournalWriter {
             boolean noTimeline,
             boolean rebuild,
             long buildNumber,
-            String journalId) {
+            @Nullable String journalId) {
         Path projectDir = null;
         try {
             if (dir != null && !dir.isBlank()) projectDir = Path.of(dir);
@@ -108,7 +108,7 @@ public final class JournalWriter {
         if (a != null) a.addTask(dir, step, phase, status, millis, waitMillis);
     }
 
-    public void accTests(long requestId, TestSummary tests) {
+    public void accTests(long requestId, @Nullable TestSummary tests) {
         BuildAccumulator a = sessions.accumulator(requestId);
         if (a != null && tests != null) a.addTests(tests);
     }

@@ -22,6 +22,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Materializes a git dep into a per-commit {@code file://} Maven repo via {@link
@@ -31,7 +32,12 @@ import lombok.RequiredArgsConstructor;
 public final class GitSourceMaterializer {
 
     /** Outcome: the published coordinate, the {@code file://} repo, and lock provenance. */
-    record Materialized(String group, String artifact, String version, URI repoUrl, Lockfile.Artifact.GitInfo gitInfo) {
+    record Materialized(
+            @Nullable String group,
+            @Nullable String artifact,
+            @Nullable String version,
+            URI repoUrl,
+            Lockfile.Artifact.GitInfo gitInfo) {
         String coordinate() {
             return group + ":" + artifact;
         }
@@ -65,7 +71,7 @@ public final class GitSourceMaterializer {
         new GitFetcher(gitRoot, credentials).verifyLocked(source, expectedSha);
     }
 
-    Materialized materialize(GitSource source) throws IOException, InterruptedException {
+    Materialized materialize(@Nullable GitSource source) throws IOException, InterruptedException {
         GitFetcher fetcher = new GitFetcher(gitRoot, credentials);
         GitFetcher.Fetched fetched = fetcher.fetch(source);
         String sha = fetched.sha();
@@ -124,18 +130,23 @@ public final class GitSourceMaterializer {
         return new Materialized(group, artifact, version, repo.toUri(), gitInfo);
     }
 
-    private static Path artifactJar(Path repo, String group, String artifact, String version) {
+    private static Path artifactJar(
+            Path repo, @Nullable String group, @Nullable String artifact, @Nullable String version) {
         return repo.resolve(
                 group.replace('.', '/') + "/" + artifact + "/" + version + "/" + artifact + "-" + version + ".jar");
     }
 
-    private static Path artifactPom(Path repo, String group, String artifact, String version) {
+    private static Path artifactPom(
+            Path repo, @Nullable String group, @Nullable String artifact, @Nullable String version) {
         return repo.resolve(
                 group.replace('.', '/') + "/" + artifact + "/" + version + "/" + artifact + "-" + version + ".pom");
     }
 
     /** The coordinate a foreign (Gradle/Maven) target only reveals once it has been built. */
-    record Gav(String group, String artifact, String version) {}
+    record Gav(
+            @Nullable String group,
+            @Nullable String artifact,
+            @Nullable String version) {}
 
     /**
      * Cache a foreign target's coordinate beside its built artifacts. Both source materializers
@@ -159,7 +170,13 @@ public final class GitSourceMaterializer {
     }
 
     /** Copy the built jar + POM into the {@code file://} repo and (re)write maven-metadata.xml. */
-    static void installArtifact(Path repo, String group, String artifact, String version, Path builtJar, String pomXml)
+    static void installArtifact(
+            Path repo,
+            @Nullable String group,
+            @Nullable String artifact,
+            @Nullable String version,
+            Path builtJar,
+            String pomXml)
             throws IOException {
         Path jarPath = artifactJar(repo, group, artifact, version);
         Path pomPath = artifactPom(repo, group, artifact, version);

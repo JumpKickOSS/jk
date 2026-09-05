@@ -3,6 +3,7 @@ package cc.jumpkick.wire.protocol;
 
 import cc.jumpkick.jsonl.Jsonl;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Server → client lines of the sync reads: the explain burst ({@code explain-module} / {@code
@@ -33,7 +34,7 @@ public final class ProtoReads {
                 + "}";
     }
 
-    public static String explainStep(String dir, String name, String status, String text, String key) {
+    public static String explainStep(String dir, String name, String status, String text, @Nullable String key) {
         return "{\"type\":\""
                 + EngineProtocol.EXPLAIN_TASK
                 + "\",\"dir\":"
@@ -59,7 +60,7 @@ public final class ProtoReads {
                 + "}";
     }
 
-    public static String treeAck(String error, String rendered) {
+    public static String treeAck(@Nullable String error, @Nullable String rendered) {
         return "{\"type\":\"" + EngineProtocol.TREE_ACK + "\",\"error\":" + Jsonl.quote(error)
                 + ",\"rendered\":" + Jsonl.quote(rendered == null ? "" : rendered)
                 + "}";
@@ -76,7 +77,7 @@ public final class ProtoReads {
                 + "}";
     }
 
-    public static String freshenCatalogAck(boolean ok, String error) {
+    public static String freshenCatalogAck(boolean ok, @Nullable String error) {
         return "{\"type\":\"" + EngineProtocol.FRESHEN_CATALOG_ACK + "\",\"ok\":" + ok + ",\"error\":"
                 + Jsonl.quote(error) + "}";
     }

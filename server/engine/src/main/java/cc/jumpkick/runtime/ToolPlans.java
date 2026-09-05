@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.ToolCoordSpec;
@@ -20,6 +21,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Tool-resolution plan for {@code jk tool install/run} and {@code jk install <g:a:v>}.
@@ -48,9 +50,9 @@ public final class ToolPlans {
     public static BuildPlan resolveBuildPlan(
             ToolCoordSpec spec,
             List<ToolCoordSpec> withSpecs,
-            String bin,
-            String mainClassOverride,
-            URI repoUrl,
+            @Nullable String bin,
+            @Nullable String mainClassOverride,
+            @Nullable URI repoUrl,
             Path cache,
             String coordLabel) {
         Task resolve = Task.builder(TaskNames.RESOLVE_COORD)
@@ -65,7 +67,7 @@ public final class ToolPlans {
                     try {
                         ctx.put(TOOL_ENV, new ToolResolver(repos).resolve(spec, bin, mainClassOverride, withSpecs));
                     } catch (RuntimeException | IOException e) {
-                        ctx.error("resolve", e.getMessage());
+                        ctx.error("resolve", Errors.text(e));
                         throw new RuntimeException(e);
                     }
                     ctx.progress(1);

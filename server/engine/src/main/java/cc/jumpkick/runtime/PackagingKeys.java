@@ -29,6 +29,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Every packaging action key that both the build and {@code jk explain} have to agree on, derived
@@ -71,7 +72,7 @@ public final class PackagingKeys {
      * a worker's {@code -all.jar} and its thin jar now agree on their entry point instead of the
      * fat one silently shipping none.
      */
-    public static String mainClass(Path moduleDir, JkBuild project) {
+    public static @Nullable String mainClass(Path moduleDir, JkBuild project) {
         return PluginModule.mainClass(moduleDir, project);
     }
 
@@ -113,9 +114,9 @@ public final class PackagingKeys {
             Path lockFile,
             ActionCache actionCache,
             Path cache,
-            String compileMainKey,
+            @Nullable String compileMainKey,
             Map<Path, String> restoredJarShas,
-            Boolean knownResourceDrift)
+            @Nullable Boolean knownResourceDrift)
             throws IOException {
         String classesTok = classesTokenForPackage(
                 dir,
@@ -195,7 +196,7 @@ public final class PackagingKeys {
             Path classes,
             Path artifact,
             Path javaHome,
-            PluginBuild.Active active,
+            PluginBuild.@Nullable Active active,
             PluginBuild.Declarations decls,
             Map<String, String> secrets) {}
 
@@ -293,8 +294,8 @@ public final class PackagingKeys {
             BuildLayout layout,
             JkBuild project,
             ActionCache actionCache,
-            String compileMainKey,
-            Boolean knownResourceDrift)
+            @Nullable String compileMainKey,
+            @Nullable Boolean knownResourceDrift)
             throws IOException {
         Path classesDir = layout.classesDir();
         if (TaskForecaster.classesDirHasContent(classesDir)) {
@@ -366,7 +367,7 @@ public final class PackagingKeys {
             Path lockFile,
             Cas cas,
             Path javaHome,
-            PackagingKeys.Owner plugin,
+            PackagingKeys.@Nullable Owner plugin,
             ActionCache actionCache) {
         Path artifact = PluginBuild.mainArtifactPath(layout, plugin.active());
         String packager = plugin.decls().packager().name();
@@ -399,7 +400,8 @@ public final class PackagingKeys {
     public record Owner(PluginBuild.Active active, PluginBuild.Declarations decls) {}
 
     /** The active code plugin with its declarations, or null when the module has none. */
-    static Owner pluginFor(JkBuild project, BuildLayout layout, Path cache) throws IOException, InterruptedException {
+    static @Nullable Owner pluginFor(JkBuild project, BuildLayout layout, Path cache)
+            throws IOException, InterruptedException {
         var active = PluginBuild.activeCodePlugin(project, layout.moduleRoot());
         if (active.isEmpty()) return null;
         return new Owner(
@@ -413,14 +415,14 @@ public final class PackagingKeys {
      * asks exactly the question the build answers — the gap survived because the
      * forecast had no way to take the branch and the guard's exemption said so accurately.
      */
-    static boolean ownsPackaging(Owner owner) {
+    static boolean ownsPackaging(@Nullable Owner owner) {
         return owner != null
                 && owner.decls() != null
                 && owner.decls().packager() != null
                 && PlannerPackage.ownsMainArtifact(owner.active());
     }
 
-    private static String orEmpty(String s) {
+    private static String orEmpty(@Nullable String s) {
         return s == null ? "" : s;
     }
 }

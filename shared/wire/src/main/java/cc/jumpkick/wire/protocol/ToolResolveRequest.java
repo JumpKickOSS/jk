@@ -15,7 +15,7 @@ import org.jspecify.annotations.Nullable;
  */
 public record ToolResolveRequest(
         @Nullable String coord,
-        @Nullable List<String> with,
+        List<String> with,
         @Nullable String bin,
         @Nullable String mainClass,
         @Nullable String repoUrl,

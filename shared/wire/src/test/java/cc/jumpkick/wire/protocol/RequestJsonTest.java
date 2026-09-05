@@ -3,6 +3,7 @@ package cc.jumpkick.wire.protocol;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.testing.RepoRoot;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.RecordComponent;
@@ -30,13 +31,15 @@ class RequestJsonTest {
      */
     @Test
     void trigger_and_progress_mode_are_components_not_environment_reads() {
-        TestRequest cli = new TestRequest("/p", "/c", null, 0, null, false, false, false, true, null, "ci", "plain");
+        TestRequest cli = new TestRequest(
+                "/p", "/c", null, 0, null, false, false, false, true, TestSelection.DEFAULT, "ci", "plain");
         String json = cli.encode();
         assertThat(json).contains("\"trigger\":\"ci\"").contains("\"progressMode\":\"plain\"");
         TestRequest back = TestRequest.decode(json);
         assertThat(back.trigger()).isEqualTo("ci");
         assertThat(back.progressMode()).isEqualTo("plain");
-        TestRequest bare = new TestRequest("/p", "/c", null, 0, null, false, false, false, true, null, null, null);
+        TestRequest bare = new TestRequest(
+                "/p", "/c", null, 0, null, false, false, false, true, TestSelection.DEFAULT, null, null);
         assertThat(bare.encode()).doesNotContain("trigger").doesNotContain("progressMode");
     }
 
@@ -83,8 +86,29 @@ class RequestJsonTest {
     @Test
     void default_optional_fields_stay_omitted() {
         String build = new BuildRequest(
-                        null, null, null, 0, null, false, false, 0, false, false, false, false, false, false, null,
-                        null, null, false, null, null, null, null, null)
+                        null,
+                        null,
+                        null,
+                        0,
+                        null,
+                        false,
+                        false,
+                        0,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        null,
+                        TestSelection.DEFAULT,
+                        List.of(),
+                        false,
+                        null,
+                        Map.of(),
+                        null,
+                        null,
+                        null)
                 .encode();
         assertThat(build)
                 .doesNotContain(
@@ -98,8 +122,9 @@ class RequestJsonTest {
                         "\"graalHomes\"",
                         "\"m2Dir\"");
 
-        String single =
-                new SingleBuildRequest(null, null, null, 0, null, false, false, false, false, null, null).encode();
+        String single = new SingleBuildRequest(
+                        null, null, null, 0, null, false, false, false, false, null, TestSelection.DEFAULT)
+                .encode();
         assertThat(single).doesNotContain("\"allSuites\"", "\"suites\"", "\"includeTags\"");
 
         String provision = new ProvisionRequest(null, null, false, false, null, null).encode();

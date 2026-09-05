@@ -34,6 +34,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import org.jspecify.annotations.Nullable;
 
 /**
  * KSP round, generated-source unions, and plugin source-contribution helpers.
@@ -43,7 +44,7 @@ public final class PlannerKsp {
     private PlannerKsp() {}
 
     /** The step names of every source-generating plugin step the compilers must wait for. */
-    static List<String> sourceGenStepSteps(PluginBuild.Declarations decls) {
+    static List<String> sourceGenStepSteps(PluginBuild.@Nullable Declarations decls) {
         List<String> out = new ArrayList<>();
         if (decls != null) {
             for (PluginBuild.TaskDecl step : decls.steps()) {
@@ -58,8 +59,8 @@ public final class PlannerKsp {
      * files with {@code suffix} under each contributed scratch dir. They join the compiler's
      * source list, so the freshness stamp and the javac action key see them like any source.
      */
-    static List<Path> pluginContributedSources(BuildLayout layout, PluginBuild.Declarations decls, String suffix)
-            throws IOException {
+    static List<Path> pluginContributedSources(
+            BuildLayout layout, PluginBuild.@Nullable Declarations decls, String suffix) throws IOException {
         List<Path> out = new ArrayList<>();
         if (decls == null) return out;
         for (PluginBuild.TaskDecl step : decls.steps()) {
@@ -77,7 +78,7 @@ public final class PlannerKsp {
     }
 
     /** Plugin steps' declared source-contribution dirs (existing ones only). */
-    static List<Path> pluginContributedSourceDirs(BuildLayout layout, PluginBuild.Declarations decls) {
+    static List<Path> pluginContributedSourceDirs(BuildLayout layout, PluginBuild.@Nullable Declarations decls) {
         List<Path> out = new ArrayList<>();
         if (decls == null) return out;
         for (PluginBuild.TaskDecl step : decls.steps()) {
@@ -90,7 +91,7 @@ public final class PlannerKsp {
     }
 
     /** Plugin steps' declared test-classpath contribution dirs (existing ones only). */
-    static List<Path> pluginTestClasspath(BuildLayout layout, PluginBuild.Declarations decls) {
+    static List<Path> pluginTestClasspath(BuildLayout layout, PluginBuild.@Nullable Declarations decls) {
         List<Path> out = new ArrayList<>();
         if (decls == null) return out;
         for (PluginBuild.TaskDecl step : decls.steps()) {
@@ -169,7 +170,7 @@ public final class PlannerKsp {
      * KSP2 round: fork {@code KSPJvmMain} with KSP processor jars ({@link
      * cc.jumpkick.compile.KspProcessors}); outputs under {@code target/ksp/} join compile sources.
      */
-    static Task kspStep(BuildPlanner.Ctx cx, PluginBuild.Declarations pluginDecls) {
+    static Task kspStep(BuildPlanner.Ctx cx, PluginBuild.@Nullable Declarations pluginDecls) {
         BuildPlanner.Inputs in = cx.in();
         Cas cas = cx.cas();
         boolean compact = cx.compact();
@@ -365,8 +366,12 @@ public final class PlannerKsp {
      * root plus the KSP round's generated-Java dir (Hilt components are Java — a Kotlin class
      * extending a generated base must resolve it during Kotlin analysis).
      */
-    static List<Path> kotlinJavaSourceRoots(
-            boolean mixedWithJava, boolean compact, Path dir, BuildLayout layout, PluginBuild.Declarations decls) {
+    static @Nullable List<Path> kotlinJavaSourceRoots(
+            boolean mixedWithJava,
+            boolean compact,
+            Path dir,
+            BuildLayout layout,
+            PluginBuild.@Nullable Declarations decls) {
         if (!mixedWithJava) return null;
         List<Path> roots = new ArrayList<>();
         roots.add(compact ? dir.resolve("src") : dir.resolve("src/main/java"));

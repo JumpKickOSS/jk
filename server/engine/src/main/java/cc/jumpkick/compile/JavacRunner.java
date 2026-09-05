@@ -160,29 +160,29 @@ public final class JavacRunner {
         List<CompileResult.Diagnostic> diagnostics = new ArrayList<>();
         try (BufferedReader reader =
                 new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-            CompileResult.Severity sev = null;
-            Path file = null;
-            long lineNo = -1;
-            StringBuilder block = null;
+            // Header and body travel together: a block under construction always has the
+            // severity, file and line its header carried, and nothing else does.
+            Block block = null;
             String line;
             while ((line = reader.readLine()) != null) {
                 Matcher m = DIAGNOSTIC.matcher(line);
                 Matcher bare;
                 if (m.matches()) {
                     if (block != null) {
-                        diagnostics.add(new CompileResult.Diagnostic(sev, file, lineNo, -1, block.toString()));
+                        diagnostics.add(block.diagnostic());
                     }
-                    sev = parseSeverity(m.group("sev"));
-                    file = Path.of(m.group("file"));
-                    lineNo = Long.parseLong(m.group("line"));
-                    block = new StringBuilder(line);
+                    block = new Block(
+                            parseSeverity(m.group("sev")),
+                            Path.of(m.group("file")),
+                            Long.parseLong(m.group("line")),
+                            new StringBuilder(line));
                 } else if (block != null && SUMMARY.matcher(line).matches()) {
                     // Tally line ends the current block and the diagnostic stream's body.
-                    diagnostics.add(new CompileResult.Diagnostic(sev, file, lineNo, -1, block.toString()));
+                    diagnostics.add(block.diagnostic());
                     block = null;
                 } else if (block != null) {
                     // Snippet, caret, symbol:/location:, or wrapped message — keep verbatim.
-                    block.append('\n').append(line);
+                    block.text().append('\n').append(line);
                 } else if ((bare = BARE_DIAGNOSTIC.matcher(line)).matches()) {
                     // HotSpot JEP 498 banners (lombok.permit, KSP IntelliJ containers, …) look
                     // like "WARNING: …" and would otherwise flood the warning channel. Real
@@ -200,10 +200,17 @@ public final class JavacRunner {
                 }
             }
             if (block != null) {
-                diagnostics.add(new CompileResult.Diagnostic(sev, file, lineNo, -1, block.toString()));
+                diagnostics.add(block.diagnostic());
             }
         }
         return diagnostics;
+    }
+
+    /** One javac diagnostic being accumulated: its header's facts plus the verbatim text so far. */
+    private record Block(CompileResult.Severity severity, Path file, long line, StringBuilder text) {
+        CompileResult.Diagnostic diagnostic() {
+            return new CompileResult.Diagnostic(severity, file, line, -1, text.toString());
+        }
     }
 
     private static CompileResult.Severity parseSeverity(String token) {

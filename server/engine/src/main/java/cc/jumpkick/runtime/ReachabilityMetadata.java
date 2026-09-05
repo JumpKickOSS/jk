@@ -18,6 +18,7 @@ import java.util.Map;
 import java.util.function.Consumer;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The GraalVM reachability-metadata repository for {@code jk native}: extract the locked release,
@@ -72,7 +73,7 @@ public final class ReachabilityMetadata {
     static List<Path> configDirs(
             Path storeRoot,
             RepoGroup repos,
-            Lockfile.NativeMetadata pin,
+            Lockfile.@Nullable NativeMetadata pin,
             List<Lockfile.Artifact> artifacts,
             Consumer<String> log) {
         if (pin == null) {
@@ -103,7 +104,8 @@ public final class ReachabilityMetadata {
      * The config dir for one coordinate, or null. Exact tested-version match wins; the
      * {@code latest} entry is the best-effort fallback.
      */
-    private static Path match(Path repoRoot, String group, String artifact, String version, Consumer<String> log) {
+    private static @Nullable Path match(
+            Path repoRoot, String group, String artifact, String version, Consumer<String> log) {
         Path artifactDir = repoRoot.resolve(group).resolve(artifact);
         Path index = artifactDir.resolve("index.json");
         if (!Files.isRegularFile(index)) return null;

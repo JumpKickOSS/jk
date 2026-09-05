@@ -28,6 +28,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Maven-backed PubGrub {@link PackageSource}. Caches versions/deps per solve; prefetches transitive
@@ -241,7 +242,7 @@ public final class MavenPackageSource implements PackageSource {
         return Optional.empty();
     }
 
-    private static String firstNonBlank(String a, String b) {
+    private static String firstNonBlank(@Nullable String a, @Nullable String b) {
         if (a != null && !a.isBlank()) return a;
         if (b != null && !b.isBlank()) return b;
         return null;

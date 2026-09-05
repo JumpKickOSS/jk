@@ -13,7 +13,7 @@ public record CompileRequest(
         boolean offline,
         boolean force,
         boolean verbose,
-        @Nullable List<String> moduleDirs) {
+        List<String> moduleDirs) {
 
     public CompileRequest {
         moduleDirs = moduleDirs == null ? List.of() : List.copyOf(moduleDirs);

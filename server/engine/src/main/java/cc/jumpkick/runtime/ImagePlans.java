@@ -12,6 +12,7 @@ import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.engine.JobWorkers;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginJar;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.image.ImageConfig;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
@@ -51,6 +52,7 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.TimeUnit;
 import java.util.function.UnaryOperator;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk image} plan: full build plus OCI tail (Jib plugin or docker/podman Dockerfile
@@ -85,14 +87,14 @@ public final class ImagePlans {
     public static BuildPlan imageBuildPlan(
             Path projectDir,
             Path cache,
-            Path jdksDir,
+            @Nullable Path jdksDir,
             boolean skipTests,
             boolean verbose,
-            String mainClass,
-            String registry,
-            String tag,
-            String tarballArg,
-            String dockerExecutableArg) {
+            @Nullable String mainClass,
+            @Nullable String registry,
+            @Nullable String tag,
+            @Nullable String tarballArg,
+            @Nullable String dockerExecutableArg) {
         return imageBuildPlan(
                 projectDir,
                 cache,
@@ -115,14 +117,14 @@ public final class ImagePlans {
     public static BuildPlan imageBuildPlan(
             Path projectDir,
             Path cache,
-            Path jdksDir,
+            @Nullable Path jdksDir,
             boolean skipTests,
             boolean verbose,
-            String mainClass,
-            String registry,
-            String tag,
-            String tarballArg,
-            String dockerExecutableArg,
+            @Nullable String mainClass,
+            @Nullable String registry,
+            @Nullable String tag,
+            @Nullable String tarballArg,
+            @Nullable String dockerExecutableArg,
             UnaryOperator<BuildPlanner.Inputs> decorate) {
         Path jkBuildPath = projectDir.resolve(ManifestPaths.MANIFEST);
         Path lockFile = LockPaths.lockFile(projectDir);
@@ -213,7 +215,7 @@ public final class ImagePlans {
                             String ref = runDockerfileBuild(ctx, config, projectDir, tarballPath, project);
                             ctx.put(IMAGE_REF, ref);
                         } catch (RuntimeException e) {
-                            ctx.error("image", e.getMessage());
+                            ctx.error("image", Errors.text(e));
                             throw e;
                         }
                         ctx.progress(1);
@@ -268,7 +270,7 @@ public final class ImagePlans {
         return builder.terminal(TaskNames.WRITE_IMAGE).build();
     }
 
-    private static Path resolveTarballPath(String tarballArg, BuildLayout layout) {
+    private static @Nullable Path resolveTarballPath(@Nullable String tarballArg, BuildLayout layout) {
         if (tarballArg == null) return null;
         if (tarballArg.isBlank()) return layout.ociImageTar();
         return Path.of(tarballArg);
@@ -287,7 +289,12 @@ public final class ImagePlans {
      * </ol>
      */
     private static ImageConfig buildConfig(
-            Path jkBuild, JkBuild project, String registry, String tag, String dockerExecutableArg) throws IOException {
+            Path jkBuild,
+            JkBuild project,
+            @Nullable String registry,
+            @Nullable String tag,
+            @Nullable String dockerExecutableArg)
+            throws IOException {
         // Merge user-global [image] from ~/.jk/config.toml underneath the project layer.
         ManifestImage.ImageConfigData data =
                 ManifestImage.merge(JkBuildParser.imageConfig(jkBuild), GlobalConfig.image());
@@ -331,11 +338,11 @@ public final class ImagePlans {
             BuildLayout layout,
             ImageConfig config,
             String base,
-            String chosen,
+            @Nullable String chosen,
             List<Path> depJars,
             List<Path> snapshotJars,
-            Path classesDir,
-            Path tarballPath)
+            @Nullable Path classesDir,
+            @Nullable Path tarballPath)
             throws IOException {
         boolean daemonMode = tarballPath == null
                 && (config.registry() == null || config.registry().isBlank());
@@ -424,11 +431,11 @@ public final class ImagePlans {
             BuildLayout layout,
             ImageConfig config,
             String base,
-            String chosen,
+            @Nullable String chosen,
             List<Path> depJars,
             List<Path> snapshotJars,
-            Path classesDir,
-            Path tarballPath) {
+            @Nullable Path classesDir,
+            @Nullable Path tarballPath) {
         try {
             SpecWriter sw = imageWorkerSpec(
                     cache, project, layout, config, base, chosen, depJars, snapshotJars, classesDir, tarballPath);
@@ -468,7 +475,7 @@ public final class ImagePlans {
      * engine-hosted case).
      */
     private static String runDockerfileBuild(
-            TaskContext ctx, ImageConfig config, Path projectDir, Path tarballPath, JkBuild project)
+            TaskContext ctx, ImageConfig config, Path projectDir, @Nullable Path tarballPath, JkBuild project)
             throws IOException, InterruptedException {
         String exe = config.dockerExecutable() != null ? config.dockerExecutable() : "docker";
         Path dockerfile = projectDir.resolve(config.dockerFile()).normalize();
@@ -524,7 +531,7 @@ public final class ImagePlans {
      * downstream made the trainer's carefully written no-runtime diagnostic unreachable — the
      * plugin auto-detects (docker/podman/nerdctl) when nothing is configured.
      */
-    private static String detectDockerExecutable() {
+    private static @Nullable String detectDockerExecutable() {
         for (String candidate : new String[] {"docker", "podman"}) {
             try {
                 Process p = new ProcessBuilder(candidate, "--version")
@@ -554,9 +561,9 @@ public final class ImagePlans {
             Path mainJar,
             List<Path> depJars,
             List<Path> snapshotJars,
-            Path classesDir,
-            String mainClass,
-            String base,
+            @Nullable Path classesDir,
+            @Nullable String mainClass,
+            @Nullable String base,
             ImageConfig config,
             String appTree,
             Path workerJar)
@@ -604,7 +611,8 @@ public final class ImagePlans {
      * Returns {@code null} when no main class can be determined. Error text is plain — the client
      * renders (and themes) it.
      */
-    private static String resolveMainClass(String cliMain, ImageConfig config, JkBuild project, Path projectDir) {
+    private static @Nullable String resolveMainClass(
+            @Nullable String cliMain, ImageConfig config, JkBuild project, Path projectDir) {
         if (cliMain != null && !cliMain.isBlank()) return cliMain;
         if (config.main() != null && !config.main().isBlank()) return config.main();
         if (project.mainClass() != null) {

@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TrainConfig;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.lock.LockPaths;
@@ -15,6 +16,7 @@ import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskNames;
 import java.nio.file.Path;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk train} plan: core build through package-jar, then a single train observation task.
@@ -28,8 +30,8 @@ public final class TrainPlans {
             Path moduleDir,
             JkBuild module,
             Path cache,
-            Path jdksDir,
-            Path graalHome,
+            @Nullable Path jdksDir,
+            @Nullable Path graalHome,
             Path javaHome,
             String profileFilter,
             boolean force,
@@ -66,7 +68,7 @@ public final class TrainPlans {
             JkBuild module,
             Path cache,
             Path lockFile,
-            Path graalHome,
+            @Nullable Path graalHome,
             Path javaHome,
             String profileFilter,
             boolean force) {
@@ -108,7 +110,7 @@ public final class TrainPlans {
                                     + (result.aotWritten() ? " + AOT cache" : ""));
                         }
                     } catch (Exception e) {
-                        ctx.error("train", e.getMessage());
+                        ctx.error("train", Errors.text(e));
                         throw e instanceof RuntimeException re ? re : new RuntimeException(e);
                     }
                     ctx.progress(1);

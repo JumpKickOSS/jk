@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
@@ -89,7 +90,7 @@ public final class JavaCompile {
             @Nullable Path workerJar,
             @Nullable Path generatedSourceDir)
             throws IOException {
-        Path out = request.outputDir();
+        Path out = Objects.requireNonNull(request.outputDir(), "outputDir");
         Files.createDirectories(out);
         if (request.sources().isEmpty()) {
             return new Result(true, "no-sources", "", List.of(), List.of(), 0L);
@@ -120,7 +121,7 @@ public final class JavaCompile {
         try {
             wr = ForkedJavac.compile(new ForkedJavac.Request(
                     request.javaHome(),
-                    workerJar,
+                    Objects.requireNonNull(workerJar, "workerJar"),
                     request.sources(),
                     request.classpath(),
                     request.processorPath(),
@@ -194,7 +195,7 @@ public final class JavaCompile {
                     request.sources(),
                     request.classpath(),
                     request.processorPath(),
-                    request.outputDir(),
+                    Objects.requireNonNull(request.outputDir(), "outputDir"),
                     gen,
                     request.release(),
                     request.extraOptions(),

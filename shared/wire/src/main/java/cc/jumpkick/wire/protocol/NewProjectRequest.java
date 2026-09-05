@@ -23,10 +23,10 @@ public record NewProjectRequest(
         boolean nativeImage,
         boolean plugin,
         @Nullable String kotlinModule,
-        @Nullable List<String> deps,
+        List<String> deps,
         boolean sample,
         boolean standalone,
-        @Nullable Map<String, String> templateParams,
+        Map<String, String> templateParams,
         boolean relaxParent,
         @Nullable String targetDir) {
 

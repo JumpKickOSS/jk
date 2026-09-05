@@ -11,6 +11,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 import org.objectweb.asm.AnnotationVisitor;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
@@ -75,7 +76,9 @@ public final class TestClassIndex {
     }
 
     private static final class Collector extends ClassVisitor {
+        @Nullable
         String className;
+
         final Set<String> refs = new LinkedHashSet<>();
         final Set<String> tags = new LinkedHashSet<>();
 
@@ -94,7 +97,7 @@ public final class TestClassIndex {
         }
 
         @Override
-        public AnnotationVisitor visitAnnotation(String descriptor, boolean visible) {
+        public @Nullable AnnotationVisitor visitAnnotation(String descriptor, boolean visible) {
             return annotation(descriptor);
         }
 
@@ -103,7 +106,7 @@ public final class TestClassIndex {
             addDesc(descriptor);
             return new FieldVisitor(Opcodes.ASM9) {
                 @Override
-                public AnnotationVisitor visitAnnotation(String desc, boolean vis) {
+                public @Nullable AnnotationVisitor visitAnnotation(String desc, boolean vis) {
                     return annotation(desc);
                 }
             };
@@ -115,7 +118,7 @@ public final class TestClassIndex {
             addDesc(descriptor);
             return new MethodVisitor(Opcodes.ASM9) {
                 @Override
-                public AnnotationVisitor visitAnnotation(String desc, boolean vis) {
+                public @Nullable AnnotationVisitor visitAnnotation(String desc, boolean vis) {
                     return annotation(desc);
                 }
 
@@ -138,7 +141,7 @@ public final class TestClassIndex {
             };
         }
 
-        private AnnotationVisitor annotation(String descriptor) {
+        private @Nullable AnnotationVisitor annotation(String descriptor) {
             addDesc(descriptor);
             if ("Lorg/junit/jupiter/api/Tag;".equals(descriptor)) {
                 return new AnnotationVisitor(Opcodes.ASM9) {
@@ -156,7 +159,7 @@ public final class TestClassIndex {
                     }
 
                     @Override
-                    public AnnotationVisitor visitAnnotation(String name, String desc) {
+                    public @Nullable AnnotationVisitor visitAnnotation(String name, String desc) {
                         return annotation(desc);
                     }
                 };

@@ -7,6 +7,7 @@ import cc.jumpkick.engine.plugin.PluginAot;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
@@ -27,6 +28,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk format} plan: collect sources ({@link FormatSources}), resolve formatter jars, fork
@@ -68,8 +70,8 @@ public final class FormatPlans {
             Path projectDir,
             Path cache,
             boolean check,
-            String javaStyle,
-            String kotlinStyle,
+            @Nullable String javaStyle,
+            @Nullable String kotlinStyle,
             boolean optimizeImports,
             boolean importOrder,
             boolean removeUnusedImports,
@@ -203,7 +205,7 @@ public final class FormatPlans {
                                                         "ignored")
                                                 .classpath());
                     } catch (RuntimeException e) {
-                        ctx.error("resolve", e.getMessage());
+                        ctx.error("resolve", Errors.text(e));
                         throw e;
                     }
                     ctx.progress(1);
@@ -342,7 +344,7 @@ public final class FormatPlans {
                 .build();
     }
 
-    private static Coordinate javaCoord(String style) {
+    private static Coordinate javaCoord(@Nullable String style) {
         return "palantir".equals(style)
                 ? Coordinate.of("com.palantir.javaformat", "palantir-java-format", PALANTIR_VERSION)
                 : Coordinate.of("com.google.googlejavaformat", "google-java-format", GOOGLE_VERSION);
@@ -355,8 +357,8 @@ public final class FormatPlans {
     // Package-private so FormatKeyTest can assert the worker is actually told the key.
     static Path writeSpec(
             boolean check,
-            String javaStyle,
-            String kotlinStyle,
+            @Nullable String javaStyle,
+            @Nullable String kotlinStyle,
             List<Path> javaFiles,
             List<Path> javaJars,
             List<Path> removeUnusedJars,
@@ -370,8 +372,8 @@ public final class FormatPlans {
             boolean removeUnusedImports,
             List<Path> indexFiles,
             Path cacheDir,
-            String configKey,
-            Path dest)
+            @Nullable String configKey,
+            @Nullable Path dest)
             throws IOException {
         if (groovyFiles == null) groovyFiles = List.of();
         if (scalaFiles == null) scalaFiles = List.of();
@@ -447,8 +449,8 @@ public final class FormatPlans {
             String workerCp,
             Path aotOutput,
             Path scratch,
-            String javaStyle,
-            String kotlinStyle,
+            @Nullable String javaStyle,
+            @Nullable String kotlinStyle,
             List<Path> javaJars,
             List<Path> removeUnusedJars,
             List<Path> kotlinJars,
@@ -593,10 +595,10 @@ public final class FormatPlans {
      * <p>Package-private so {@code FormatKeyTest} can assert the jk-pinned width and
      * google-java-format version actually reach the key.
      */
-    static String configKey(
+    static @Nullable String configKey(
             Path cache,
-            String javaStyle,
-            String kotlinStyle,
+            @Nullable String javaStyle,
+            @Nullable String kotlinStyle,
             boolean optimizeImports,
             boolean importOrder,
             boolean removeUnusedImports,

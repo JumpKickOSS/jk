@@ -16,6 +16,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Pure source-set helpers shared by the build plan and the git-source builder. Extracted out of
@@ -195,7 +196,7 @@ public final class CompileSupport {
      * Pick the active profile. Explicit {@code explicitName} wins; otherwise the {@code ci} profile
      * is auto-selected when running on CI. Returns null when no profile applies.
      */
-    public static Profile resolveProfile(Profiles profiles, String explicitName) {
+    public static @Nullable Profile resolveProfile(Profiles profiles, @Nullable String explicitName) {
         if (explicitName != null && !explicitName.isBlank()) {
             return profiles.resolve(explicitName);
         }

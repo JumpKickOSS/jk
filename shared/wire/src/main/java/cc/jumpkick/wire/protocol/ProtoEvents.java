@@ -691,7 +691,7 @@ public final class ProtoEvents {
      * One resolved package (or a coalesced sample). {@code totalSeen} ≥ 0 is the cumulative package
      * count at emit time (human-paced coalescing,; {@code -1} means “one package, no total”.
      */
-    public static String lockPackage(String dir, String name, String version, int totalSeen) {
+    public static String lockPackage(@Nullable String dir, String name, @Nullable String version, int totalSeen) {
         StringBuilder sb = new StringBuilder(128);
         sb.append("{\"type\":\"")
                 .append(EngineProtocol.LOCK_PACKAGE)

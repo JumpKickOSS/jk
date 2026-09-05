@@ -330,7 +330,7 @@ public final class ProtoLifecycle {
     }
 
     /** {@link EngineProtocol#CANCEL_ACK}. */
-    public static String cancelAck(long jid, boolean cancelled, String note) {
+    public static String cancelAck(long jid, boolean cancelled, @Nullable String note) {
         StringBuilder b = new StringBuilder("{\"type\":\"")
                 .append(EngineProtocol.CANCEL_ACK)
                 .append("\",\"jid\":")

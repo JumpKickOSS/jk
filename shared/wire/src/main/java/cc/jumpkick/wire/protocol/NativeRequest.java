@@ -18,9 +18,9 @@ public record NativeRequest(
         boolean offline,
         boolean force,
         boolean verbose,
-        @Nullable List<String> extraArgs,
-        @Nullable Map<String, String> graalHomes,
-        @Nullable List<String> moduleDirs) {
+        List<String> extraArgs,
+        Map<String, String> graalHomes,
+        List<String> moduleDirs) {
 
     public NativeRequest {
         extraArgs = extraArgs == null ? List.of() : List.copyOf(extraArgs);

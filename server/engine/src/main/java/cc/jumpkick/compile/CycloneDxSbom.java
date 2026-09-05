@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Minimal CycloneDX 1.5 SBOM from lockfile coordinates + SHA-256 (deterministic; no serial numbers
@@ -20,7 +21,11 @@ import java.util.Objects;
 public final class CycloneDxSbom {
 
     /** One resolved dependency: exact coordinates + the locked jar SHA-256 (nullable). */
-    public record Component(String group, String artifact, String version, String sha256) {
+    public record Component(
+            String group,
+            String artifact,
+            String version,
+            @Nullable String sha256) {
 
         public Component {
             Objects.requireNonNull(group, "group");

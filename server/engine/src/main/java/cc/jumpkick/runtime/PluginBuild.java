@@ -57,6 +57,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.function.Consumer;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Engine build-plugin code layer: describe-protocol discovery (file-cached), execution specs, and
@@ -73,7 +74,10 @@ public final class PluginBuild {
      * null for built-ins — it carries the coordinate the trust gate and jar lookup key on.
      */
     public record Active(
-            PluginDescriptor manifest, PluginConfig config, Path moduleDir, PluginDeclaration declaration) {}
+            PluginDescriptor manifest,
+            PluginConfig config,
+            Path moduleDir,
+            @Nullable PluginDeclaration declaration) {}
 
     public static Optional<Active> activeCodePlugin(JkBuild project, Path moduleDir) {
         for (PluginDescriptor m : PluginTableRegistry.manifestsFor(moduleDir, project.plugins())) {
@@ -115,12 +119,12 @@ public final class PluginBuild {
             List<String> contributesSources,
             List<String> contributesTestClasspath,
             /** The classes-replacing output dir ({@code TaskSpec.transformsClasses}), or null. */
-            String transformsClasses,
+            @Nullable String transformsClasses,
             /**
              * Optional product stage wire ({@code generate}, {@code compile}, …). Empty/null → engine
              * infers from contributions / name.
              */
-            String stage) {
+            @Nullable String stage) {
 
         /** True when this task replaces the module's classes dir downstream. */
         public boolean transforms() {
@@ -164,21 +168,22 @@ public final class PluginBuild {
     /** One registered plugin command, as declared. */
     public record CommandDecl(String name, String description) {}
 
-    public record Declarations(List<TaskDecl> steps, PackagerDecl packager, List<CommandDecl> commands) {
+    public record Declarations(
+            List<TaskDecl> steps, @Nullable PackagerDecl packager, List<CommandDecl> commands) {
 
-        public TaskDecl step(String name) {
+        public @Nullable TaskDecl step(String name) {
             for (TaskDecl s : steps) if (s.name().equals(name)) return s;
             return null;
         }
 
-        public CommandDecl command(String name) {
+        public @Nullable CommandDecl command(String name) {
             for (CommandDecl v : commands) if (v.name().equals(name)) return v;
             return null;
         }
     }
 
     /** A step's scratch root — its declared output dirs resolve under this. */
-    public static Path taskScratch(BuildLayout layout, String stepName) {
+    public static Path taskScratch(BuildLayout layout, @Nullable String stepName) {
         return layout.moduleTargetDir().resolve("plugin").resolve(stepName);
     }
 
@@ -475,7 +480,7 @@ public final class PluginBuild {
      * readable; long ones hash.
      */
     // Package-private for ToolClosureCacheKeyTest.
-    static String toolClosureCacheKey(List<Coordinate> roots, String managedByResolved) {
+    static String toolClosureCacheKey(List<Coordinate> roots, @Nullable String managedByResolved) {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < roots.size(); i++) {
             if (i > 0) sb.append("__");
@@ -570,7 +575,8 @@ public final class PluginBuild {
      * {@code group:artifact:version[:classifier]} where the version segment may float. Bare is
      * exact — see {@link #resolveToolVersion} for why.
      */
-    static Coordinate resolveCoordinate(RepoGroup repos, String gav) throws IOException, InterruptedException {
+    static Coordinate resolveCoordinate(RepoGroup repos, @Nullable String gav)
+            throws IOException, InterruptedException {
         Coordinate raw = Coordinate.parse(gav);
         String resolved = resolveToolVersion(repos, raw.module(), raw.version());
         if (resolved.equals(raw.version())) return raw;
@@ -632,14 +638,14 @@ public final class PluginBuild {
      */
     public record ProdEntry(
             String fileName,
-            Path jar,
+            @Nullable Path jar,
             boolean snapshot,
-            Path container,
+            @Nullable Path container,
             String group,
             String artifact,
             String version) {
 
-        public ProdEntry(String fileName, Path jar, boolean snapshot, Path container) {
+        public ProdEntry(String fileName, @Nullable Path jar, boolean snapshot, @Nullable Path container) {
             this(fileName, jar, snapshot, container, "", "", "");
         }
     }
@@ -691,7 +697,7 @@ public final class PluginBuild {
      * The main artifact's path under the packager's declared extension ({@code
      * target/lib/<name>-<version>.apk}) — the one place the extension swap lives.
      */
-    public static Path mainArtifactPath(BuildLayout layout, Active active) {
+    public static Path mainArtifactPath(BuildLayout layout, @Nullable Active active) {
         Path jarPath = layout.mainJar();
         var packaging = active.manifest().packaging();
         if (packaging != null) packaging = packaging.resolve(active.config());
@@ -704,7 +710,7 @@ public final class PluginBuild {
     }
 
     /** The fact set a plugin body sees; {@link ProjectFacts#token()} is the same set as a key. */
-    public static ProjectFacts facts(JkBuild project, String resolvedMain) {
+    public static ProjectFacts facts(JkBuild project, @Nullable String resolvedMain) {
         return new ProjectFacts(
                 project.project().group(),
                 project.project().name(),
@@ -764,7 +770,8 @@ public final class PluginBuild {
      * cannot be honored is a loud error — never a silent fall-through to whatever
      * {@code locate()} finds, which would run different bytes than the lock recorded.
      */
-    static Path lockedFirstPartyJar(Path moduleDir, String workerArtifact, Path cache) throws IOException {
+    static @Nullable Path lockedFirstPartyJar(Path moduleDir, @Nullable String workerArtifact, Path cache)
+            throws IOException {
         Path lockFile = LockPaths.lockFile(moduleDir);
         if (!Files.isRegularFile(lockFile)) return null;
         Lockfile lock;
@@ -821,7 +828,7 @@ public final class PluginBuild {
         return null;
     }
 
-    private static String blankToNull(String s) {
+    private static @Nullable String blankToNull(String s) {
         return (s == null || s.isBlank()) ? null : s;
     }
 
@@ -829,7 +836,7 @@ public final class PluginBuild {
      * Fork the plugin on the spec and collect its protocol lines. Throws with the
      * plugin's own error message when it reports one (or exits non-zero without reporting).
      */
-    public static List<String> runWorker(Active active, Path cache, Path spec, Consumer<String> onLabel)
+    public static List<String> runWorker(Active active, Path cache, Path spec, @Nullable Consumer<String> onLabel)
             throws IOException, InterruptedException {
         Path jar = workerJarFor(active, cache);
         List<String> collected = new ArrayList<>();

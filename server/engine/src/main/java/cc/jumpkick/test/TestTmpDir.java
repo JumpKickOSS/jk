@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Where a forked test JVM writes its temporary files: under the module's build output, not the
@@ -31,7 +32,7 @@ final class TestTmpDir {
      * would be worse than the JVM default it is trying to replace. A failure to create is the same
      * answer: fall back to the default, which is where these files went before this existed.
      */
-    static Path ensure(String configured) {
+    static @Nullable Path ensure(@Nullable String configured) {
         if (configured == null || configured.isBlank()) return null;
         try {
             return Files.createDirectories(Path.of(configured));
@@ -51,7 +52,7 @@ final class TestTmpDir {
      * best-effort: when the subdirectory cannot be made, the shared module root is still the better
      * of the two answers available, so it is the one the worker gets.
      */
-    static Path forWorker(Path moduleTmp, int workerId, int totalWorkers) {
+    static @Nullable Path forWorker(@Nullable Path moduleTmp, int workerId, int totalWorkers) {
         if (moduleTmp == null || totalWorkers <= 1) return moduleTmp;
         try {
             return Files.createDirectories(moduleTmp.resolve("w" + workerId));

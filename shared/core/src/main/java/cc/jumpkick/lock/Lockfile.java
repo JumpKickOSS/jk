@@ -342,7 +342,7 @@ public record Lockfile(
     }
 
     /** This lock with the jk floor set. */
-    public Lockfile withJkMin(String floor) {
+    public Lockfile withJkMin(@Nullable String floor) {
         return new Lockfile(
                 version,
                 generatedBy,

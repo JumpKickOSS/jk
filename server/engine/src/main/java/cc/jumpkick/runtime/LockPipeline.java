@@ -498,7 +498,7 @@ public final class LockPipeline {
     }
 
     /** Resolve a plugin path relative to the lock directory (or absolute). */
-    private Path resolvePluginPath(String raw) {
+    private Path resolvePluginPath(@Nullable String raw) {
         Path p = Path.of(raw);
         return p.isAbsolute() ? p.normalize() : lockDir.resolve(p).normalize();
     }

@@ -16,6 +16,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Human-paced wire events: coalesces high-frequency {@link #progress}, {@link #tickUpdate},
@@ -48,16 +49,16 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
     private final long cadenceMs;
     private final Object lock = new Object();
 
-    private String progressStep;
+    private @Nullable String progressStep;
     private int progressDelta;
-    private BuildPlanView progressView;
+    private @Nullable BuildPlanView progressView;
 
-    private String tickStep;
+    private @Nullable String tickStep;
     private int tickDelta;
-    private BuildPlanView tickView;
+    private @Nullable BuildPlanView tickView;
 
-    private String labelStep;
-    private String labelText;
+    private @Nullable String labelStep;
+    private @Nullable String labelText;
 
     /** Pending output lines in arrival order — bounded FIFO, never latest-wins. */
     private final ArrayDeque<PendingOutput> outputQueue = new ArrayDeque<>();
@@ -74,7 +75,7 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
     private record PendingOutput(String step, String line) {}
 
     private long lastFlushNanos;
-    private ScheduledFuture<?> scheduled;
+    private @Nullable ScheduledFuture<?> scheduled;
     private final AtomicBoolean closed = new AtomicBoolean();
 
     /**
@@ -127,7 +128,7 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
     }
 
     @Override
-    public void stepStart(String step, String group, int ticks) {
+    public void stepStart(String step, @Nullable String group, int ticks) {
         flush();
         delegate.stepStart(step, group, ticks);
     }
@@ -211,13 +212,13 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
     }
 
     @Override
-    public void error(String step, String code, String message, TestFailureInfo failure) {
+    public void error(String step, String code, String message, @Nullable TestFailureInfo failure) {
         flush();
         delegate.error(step, code, message, failure);
     }
 
     @Override
-    public void stepFinish(String step, String group, TaskStatus status, Duration duration, Duration waited) {
+    public void stepFinish(String step, @Nullable String group, TaskStatus status, Duration duration, Duration waited) {
         flush();
         delegate.stepFinish(step, group, status, duration, waited);
     }

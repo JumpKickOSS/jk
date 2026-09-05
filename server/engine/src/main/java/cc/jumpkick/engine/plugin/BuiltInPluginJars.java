@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Loads first-party table plugins from self-describing worker jars ({@code jk-plugin.toml} at
@@ -57,7 +58,7 @@ public final class BuiltInPluginJars {
     }
 
     /** Fetch + install the built-in whose worker is {@code jk-<table>}; failure detail or null. */
-    private static String fetchAndInstall(String table) {
+    private static @Nullable String fetchAndInstall(String table) {
         var plugin = PluginJar.byArtifactId("jk-" + table);
         if (plugin.isEmpty()) return null; // not a first-party table — the plain error stands
         try {
@@ -128,11 +129,11 @@ public final class BuiltInPluginJars {
         return out;
     }
 
-    public static String manifestToml(Path jar) throws IOException {
+    public static @Nullable String manifestToml(Path jar) throws IOException {
         return zipText(jar, ManifestPaths.PLUGIN_MANIFEST);
     }
 
-    private static String zipText(Path jar, String entry) throws IOException {
+    private static @Nullable String zipText(Path jar, String entry) throws IOException {
         try (ZipFile zip = new ZipFile(jar.toFile())) {
             ZipEntry e = zip.getEntry(entry);
             if (e == null) return null;

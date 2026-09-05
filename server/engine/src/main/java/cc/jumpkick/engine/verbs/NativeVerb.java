@@ -137,7 +137,7 @@ public final class NativeVerb implements HostedVerb {
      * with a unique main are eligible. Never falls back to "every module" — an empty result is
      * the caller's cue to refuse the job.
      */
-    static Set<Path> nativeEligibleTargets(Map<Path, JkBuild> allModules, Set<Path> selected) {
+    static Set<Path> nativeEligibleTargets(Map<Path, JkBuild> allModules, @Nullable Set<Path> selected) {
         boolean anyNativeTable = false;
         for (JkBuild b : allModules.values()) {
             if (b.nativeImage()) {

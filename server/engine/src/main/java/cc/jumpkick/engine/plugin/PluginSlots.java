@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.plugin;
 
 import java.util.concurrent.Semaphore;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A process-wide cap on how many worker JVMs run concurrently. jk forks all workers — compilers,
@@ -19,7 +20,7 @@ public final class PluginSlots {
     private PluginSlots() {}
 
     /** {@code null} ⇒ unbounded (open gate). */
-    private static volatile Semaphore slots;
+    private static volatile @Nullable Semaphore slots;
 
     /** Bound concurrent worker JVMs to {@code permits}; {@code permits <= 0} reopens the gate. */
     public static void configure(int permits) {

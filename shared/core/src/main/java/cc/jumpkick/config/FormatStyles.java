@@ -65,13 +65,13 @@ public final class FormatStyles {
      * @throws IllegalArgumentException on an unknown style or alias (message is user-facing)
      */
     public static Resolved resolve(
-            String cliJava,
-            String cliKotlin,
-            String cliAlias,
-            Boolean cliOptimizeImports,
-            Boolean cliImportOrder,
-            Boolean cliRemoveUnusedImports,
-            JkBuild.FormatConfig cfg) {
+            @Nullable String cliJava,
+            @Nullable String cliKotlin,
+            @Nullable String cliAlias,
+            @Nullable Boolean cliOptimizeImports,
+            @Nullable Boolean cliImportOrder,
+            @Nullable Boolean cliRemoveUnusedImports,
+            JkBuild.@Nullable FormatConfig cfg) {
         JkBuild.FormatConfig fmt = cfg == null ? JkBuild.FormatConfig.EMPTY : cfg;
         StylePair cliAliasPair = alias(cliAlias, "--style");
         StylePair tomlAliasPair = alias(fmt.style(), "format.style");

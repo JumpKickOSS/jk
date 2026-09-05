@@ -6,6 +6,7 @@ import cc.jumpkick.androidsdk.AndroidSdkInstaller;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Resolves {@code sdk-component} step-dependencies under the managed SDK root (Android SDK today;
@@ -16,7 +17,7 @@ final class SdkComponents {
     private SdkComponents() {}
 
     /** The installed revision of {@code component}, or null (root pseudo-component, not installed). */
-    static String installedRevision(String component) {
+    static @Nullable String installedRevision(String component) {
         if ("root".equals(component)) return null;
         try {
             return AndroidSdk.resolve().installedRevision(component);

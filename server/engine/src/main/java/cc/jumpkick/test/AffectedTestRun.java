@@ -20,6 +20,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Orchestrates ranking inside {@code run-tests}: scan, rank, refuse or filter the launcher. The
@@ -36,7 +37,8 @@ public final class AffectedTestRun {
      * @return {@code null} when {@code session.affected()} is false (caller runs the full
      *     selection). Throws {@link RankingRefused} when ranking cannot be honest.
      */
-    public static Outcome apply(TaskContext ctx, BuildPlanner.Inputs in, TestSelection effectiveSel) throws Exception {
+    public static @Nullable Outcome apply(TaskContext ctx, BuildPlanner.Inputs in, TestSelection effectiveSel)
+            throws Exception {
         if (!in.session().affected()) return null;
         Path moduleDir = in.dir();
         Path wsRoot = WorkspaceLocator.findRoot(moduleDir).orElse(moduleDir);
@@ -96,9 +98,11 @@ public final class AffectedTestRun {
                 List.of(coneRow),
                 foreign));
         ctx.put(BuildPlanner.AFFECTED_TESTS, report);
-        if (report.refused()) {
-            ctx.error("affected-refuse", report.refuse().message());
-            throw new RankingRefused(report.refuse().message());
+        AffectedTests.Refuse refuse = report.refuse();
+        if (refuse != null) {
+            String refusal = refuse.message() == null ? "" : refuse.message();
+            ctx.error("affected-refuse", refusal);
+            throw new RankingRefused(refusal);
         }
         if (report.ranked().isEmpty()) {
             ctx.label("nothing affected");

@@ -6,12 +6,7 @@ import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /** Render the dependency tree ({@code jk tree}). */
-public record TreeRequest(
-        @Nullable String dir,
-        int maxDepth,
-        boolean flatten,
-        boolean stack,
-        @Nullable List<String> scopes) {
+public record TreeRequest(@Nullable String dir, int maxDepth, boolean flatten, boolean stack, List<String> scopes) {
 
     public TreeRequest {
         scopes = scopes == null ? List.of() : List.copyOf(scopes);

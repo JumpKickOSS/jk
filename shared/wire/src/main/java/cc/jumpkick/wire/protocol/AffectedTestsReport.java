@@ -31,7 +31,7 @@ public record AffectedTestsReport(
 
     public record Row(int score, String className, String reason) {}
 
-    public static AffectedTestsReport error(String code, String message) {
+    public static AffectedTestsReport error(String code, @Nullable String message) {
         return new AffectedTestsReport(true, message, code, 20, 0, List.of());
     }
 

@@ -7,7 +7,7 @@ import org.jspecify.annotations.Nullable;
 /** Terminal for {@link EngineProtocol#MODULE_GRAPH_REQUEST}. */
 public record ModuleGraphAck(@Nullable String error, String graph) {
 
-    public static ModuleGraphAck error(String message) {
+    public static ModuleGraphAck error(@Nullable String message) {
         return new ModuleGraphAck(message, "");
     }
 

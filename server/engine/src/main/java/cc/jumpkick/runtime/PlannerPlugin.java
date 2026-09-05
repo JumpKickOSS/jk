@@ -8,6 +8,7 @@ import static cc.jumpkick.runtime.PlannerSupport.storePackaged;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CycloneDxSbom;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jsonl.Jsonl;
@@ -39,6 +40,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Plugin task wiring, packager invocation, and application SBOM.
@@ -59,7 +61,7 @@ public final class PlannerPlugin {
      * The single classes-dir-replacing task ({@code transformsClasses}), if any. Two transforms are
      * an error; validated at BuildPlan construction.
      */
-    static PluginBuild.TaskDecl transformStep(PluginBuild.Declarations decls) {
+    static PluginBuild.@Nullable TaskDecl transformStep(PluginBuild.Declarations decls) {
         if (decls == null) return null;
         PluginBuild.TaskDecl transform = null;
         for (PluginBuild.TaskDecl s : decls.steps()) {
@@ -154,7 +156,7 @@ public final class PlannerPlugin {
      * {@link PluginBuild.TaskDecl#testOnly()} split with {@link #pluginWindow} so stage and edges
      * cannot disagree.
      */
-    static List<String> pluginRequires(PluginBuild.TaskDecl step, PluginBuild.TaskDecl transform) {
+    static List<String> pluginRequires(PluginBuild.TaskDecl step, PluginBuild.@Nullable TaskDecl transform) {
         boolean beforeCompile = beforeCompile(step);
         if (beforeCompile && step.inputs().contains("classes")) {
             throw new IllegalStateException("plugin task " + step.name()
@@ -312,7 +314,10 @@ public final class PlannerPlugin {
      * One declared build-plugin task: engine fingerprints inputs, restores on hit, forks on miss.
      */
     static Task pluginTask(
-            BuildPlanner.Ctx cx, PluginBuild.Active active, PluginBuild.TaskDecl step, PluginBuild.TaskDecl transform) {
+            BuildPlanner.Ctx cx,
+            PluginBuild.@Nullable Active active,
+            PluginBuild.TaskDecl step,
+            PluginBuild.@Nullable TaskDecl transform) {
         BuildPlanner.Inputs in = cx.in();
         boolean beforeCompile = beforeCompile(step);
         List<String> requires = pluginRequires(step, transform);
@@ -424,7 +429,7 @@ public final class PlannerPlugin {
                     try {
                         PluginBuild.runWorker(active, in.cache(), spec, ctx::label);
                     } catch (IOException e) {
-                        ctx.error(step.name(), e.getMessage());
+                        ctx.error(step.name(), Errors.text(e));
                         throw e;
                     } finally {
                         Files.deleteIfExists(spec);
@@ -452,7 +457,7 @@ public final class PlannerPlugin {
             JkBuild project,
             Path classes,
             Path jarPath,
-            PluginBuild.Active active,
+            PluginBuild.@Nullable Active active,
             PluginBuild.Declarations decls,
             Map<String, String> secrets)
             throws Exception {
@@ -532,7 +537,7 @@ public final class PlannerPlugin {
         try {
             workerLines = PluginBuild.runWorker(active, in.cache(), specFile, ctx::label);
         } catch (IOException e) {
-            ctx.error("package", e.getMessage());
+            ctx.error("package", Errors.text(e));
             throw e;
         } finally {
             Files.deleteIfExists(specFile);
@@ -586,7 +591,7 @@ public final class PlannerPlugin {
     }
 
     /** The resolved application entry point: declared, else the unique compiled main (when scannable). */
-    static String resolvedMain(JkBuild project, Path moduleDir, Path classes) throws IOException {
+    static @Nullable String resolvedMain(JkBuild project, Path moduleDir, Path classes) throws IOException {
         String main = project.mainClass();
         if ((main == null || main.isBlank())
                 && PluginBuild.shape(project, moduleDir)

@@ -6,10 +6,7 @@ import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /** Apply one structured edit ({@code op} with {@code args}) to {@code file}. */
-public record EditRequest(
-        @Nullable String file,
-        @Nullable String op,
-        @Nullable List<String> args) {
+public record EditRequest(@Nullable String file, @Nullable String op, List<String> args) {
 
     public EditRequest {
         args = args == null ? List.of() : List.copyOf(args);

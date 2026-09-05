@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import org.jspecify.annotations.Nullable;
 
 /**
  * copy-resources and stem-script build-logic anchors around compile / package.
@@ -371,7 +372,7 @@ public final class PlannerResources {
      * Append the GATE step when this unit is the invocation root and the session asked for
      * scripts. Returns the terminal name, or {@code null} when GATE is not on this plan.
      */
-    static String appendGate(
+    static @Nullable String appendGate(
             BuildPlan.Builder b, BuildPlanner.Ctx cx, boolean includeTests, boolean testOnly, boolean afterBuild) {
         BuildPlanner.Inputs in = cx.in();
         if (!runGateScripts(in) || !invocationRoot(in.dir())) return null;

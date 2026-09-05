@@ -9,6 +9,7 @@ import cc.jumpkick.scala.ScalaResolver;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Resolves the Scala 3 compiler closure for a mixed Java+Scala {@code compile-java} (or test)
@@ -20,7 +21,7 @@ public final class ScalaCompile {
     public record Setup(
             String version, List<Path> compilerClasspath, List<Path> libraryJars, Path compilerJar, Path bridgeJar) {
         /** Preferred stdlib jar ({@code scala-library} on 3.8+, else {@code scala3-library_3}). */
-        public Path libraryJar() {
+        public @Nullable Path libraryJar() {
             return libraryJars == null || libraryJars.isEmpty() ? null : libraryJars.getFirst();
         }
     }

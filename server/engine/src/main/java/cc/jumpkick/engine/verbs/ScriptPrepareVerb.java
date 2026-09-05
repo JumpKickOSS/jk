@@ -18,6 +18,7 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
 public final class ScriptPrepareVerb implements HostedVerb {
@@ -62,7 +63,8 @@ public final class ScriptPrepareVerb implements HostedVerb {
                 boolean forceRecompile = req.forceRecompile();
                 Files.createDirectories(cache);
                 Session session = Session.defaults()
-                        .withWorkingDir(script.toAbsolutePath().getParent())
+                        .withWorkingDir(
+                                Objects.requireNonNull(script.toAbsolutePath().getParent(), "script dir"))
                         .withCacheDir(cache)
                         .withCancel(cancelToken);
                 List<Dependency> extraDeps = req.with().stream()

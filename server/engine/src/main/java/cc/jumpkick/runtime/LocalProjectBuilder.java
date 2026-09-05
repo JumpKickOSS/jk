@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Builds a {@code jk.toml} project on disk into a jar + POM headlessly — composing the standalone
@@ -50,7 +51,12 @@ public final class LocalProjectBuilder {
      * referenced by path (not bytes) so consumers copy/hash it streaming — a large jar never has to
      * fit in the heap.
      */
-    record Built(String group, String artifact, String version, Path jar, String pomXml) {
+    record Built(
+            @Nullable String group,
+            @Nullable String artifact,
+            @Nullable String version,
+            Path jar,
+            String pomXml) {
         String coordinate() {
             return group + ":" + artifact + ":" + version;
         }

@@ -10,7 +10,7 @@ public record PluginCommandRequest(
         @Nullable String dir,
         @Nullable String cache,
         @Nullable String command,
-        @Nullable List<String> args) {
+        List<String> args) {
 
     public PluginCommandRequest {
         args = args == null ? List.of() : List.copyOf(args);

@@ -29,10 +29,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Shared project creation used by {@code POST /api/projects}. Uses the same
@@ -46,33 +48,33 @@ public final class NewProjectOps {
     private NewProjectOps() {}
 
     public record Request(
-            String name,
-            String parentDir,
-            String group,
-            String lang,
-            String layout,
-            String template,
+            @Nullable String name,
+            @Nullable String parentDir,
+            @Nullable String group,
+            @Nullable String lang,
+            @Nullable String layout,
+            @Nullable String template,
             boolean executable,
-            String jdk,
+            @Nullable String jdk,
             int javaRelease,
             boolean assembly,
             boolean nativeImage,
             boolean plugin,
-            String kotlinModule,
+            @Nullable String kotlinModule,
             List<String> deps,
             boolean sample,
             boolean standalone,
             Map<String, String> templateParams,
             boolean relaxParent,
-            String targetDir) {
+            @Nullable String targetDir) {
         /** HTTP/MCP compact shape. */
         public Request(
-                String name,
-                String parentDir,
-                String group,
-                String lang,
-                String layout,
-                String template,
+                @Nullable String name,
+                @Nullable String parentDir,
+                @Nullable String group,
+                @Nullable String lang,
+                @Nullable String layout,
+                @Nullable String template,
                 boolean executable) {
             this(
                     name,
@@ -100,14 +102,14 @@ public final class NewProjectOps {
     public record Result(Path path) {}
 
     /** Creation plus the durable project id (identity.toml materialized under the project home). */
-    public record Created(Path path, String projectId, int filesWritten) {
-        public Created(Path path, String projectId) {
+    public record Created(Path path, @Nullable String projectId, int filesWritten) {
+        public Created(Path path, @Nullable String projectId) {
             this(path, projectId, 0);
         }
     }
 
     /** What a create would write: target path and template-or-scaffold file list. Writes nothing. */
-    public record Preview(String path, String template, List<String> files) {}
+    public record Preview(String path, @Nullable String template, List<String> files) {}
 
     /** Validated inputs shared by {@link #create} and {@link #preview}. */
     private record Prepared(
@@ -117,7 +119,7 @@ public final class NewProjectOps {
             String group,
             NewInputs.Language lang,
             Layout layout,
-            String template,
+            @Nullable String template,
             boolean executable,
             Request req) {}
 
@@ -226,7 +228,8 @@ public final class NewProjectOps {
             var spec = resolveIndexed(prep.template(), langName, prep.parent());
             if (spec.isPresent() && TemplateSpec.SOURCE_PLUGIN.equals(spec.get().source())) {
                 var s = spec.get();
-                extracted = PluginTemplates.materialize(s.pluginId(), s.language(), s.framework(), s.name());
+                extracted = PluginTemplates.materialize(
+                        Objects.requireNonNull(s.pluginId(), "pluginId"), s.language(), s.framework(), s.name());
                 templateRoot = extracted;
             } else if (spec.isPresent() && spec.get().root() != null) {
                 templateRoot = spec.get().root();
@@ -360,7 +363,7 @@ public final class NewProjectOps {
         return new Prepared(name, parent, target, group, lang, layout, template, req.executable(), req);
     }
 
-    private static Optional<TemplateSpec> resolveIndexed(String ref, String lang, Path cwd) {
+    private static Optional<TemplateSpec> resolveIndexed(@Nullable String ref, @Nullable String lang, Path cwd) {
         try {
             return Giter8TemplateIndex.resolve(ref, lang, Giter8TemplateIndex.searchRoots(cwd));
         } catch (IllegalArgumentException e) {
@@ -368,7 +371,8 @@ public final class NewProjectOps {
         }
     }
 
-    private static Optional<Path> indexedRoot(String ref, String lang, Path cwd) throws IOException {
+    private static Optional<Path> indexedRoot(@Nullable String ref, @Nullable String lang, Path cwd)
+            throws IOException {
         Optional<TemplateSpec> spec = resolveIndexed(ref, lang, cwd);
         if (spec.isEmpty()) {
             try {
@@ -393,7 +397,7 @@ public final class NewProjectOps {
         return resolveTemplate(ref, null, cwd);
     }
 
-    static Path resolveTemplate(String ref, String lang, Path cwd) throws IOException {
+    static Path resolveTemplate(String ref, @Nullable String lang, Path cwd) throws IOException {
         Path asPath = Path.of(ref);
         if (asPath.isAbsolute() && isTemplateRoot(asPath)) {
             return asPath.normalize();
@@ -582,7 +586,7 @@ public final class NewProjectOps {
         return path;
     }
 
-    private static NewInputs.Language parseLang(String lang) {
+    private static NewInputs.Language parseLang(@Nullable String lang) {
         if (lang == null || lang.isBlank()) return NewInputs.Language.JAVA;
         return switch (lang.strip().toLowerCase(Locale.ROOT)) {
             case "java" -> NewInputs.Language.JAVA;
@@ -594,12 +598,12 @@ public final class NewProjectOps {
     }
 
     /** Scaffold default is traditional placement; blank → {@link Layout#TRADITIONAL}. */
-    private static Layout parseLayout(String layout) {
+    private static Layout parseLayout(@Nullable String layout) {
         if (layout == null || layout.isBlank()) return Layout.TRADITIONAL;
         return Layout.parse(layout);
     }
 
-    private static String nullToEmpty(String s) {
+    private static String nullToEmpty(@Nullable String s) {
         return s == null ? "" : s;
     }
 }

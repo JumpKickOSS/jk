@@ -15,6 +15,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Resolve and CAS-cache the jar closure of a compiler toolchain, for every language that forks one.
@@ -104,7 +105,7 @@ final class ToolClosure {
      * Reconstruct a previously resolved closure from its recorded hashes, or {@code null} if there's
      * no record or any blob has been evicted from the CAS (forcing a fresh resolve).
      */
-    static List<Path> readCachedClosure(Path cacheFile, Cas cas) throws IOException {
+    static @Nullable List<Path> readCachedClosure(Path cacheFile, Cas cas) throws IOException {
         if (!Files.isRegularFile(cacheFile)) return null;
         List<Path> jars = new ArrayList<>();
         for (String line : Files.readAllLines(cacheFile, StandardCharsets.UTF_8)) {

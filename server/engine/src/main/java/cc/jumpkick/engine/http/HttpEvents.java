@@ -13,6 +13,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
+import org.jspecify.annotations.Nullable;
 
 /**
  * SSE fan-out for {@code GET /api/events} and MCP progress streams ({@code GET /mcp} with {@code
@@ -113,7 +114,7 @@ public final class HttpEvents {
      * requestIdFilter} is non-null, only events whose payload carries that {@code requestId} are
      * delivered (events without a requestId are dropped for filtered subscriptions).
      */
-    Subscription subscribe(FrameStyle style, Long requestIdFilter) {
+    Subscription subscribe(FrameStyle style, @Nullable Long requestIdFilter) {
         Subscription s = subscribeDetached(style, requestIdFilter);
         attach(s);
         return s;
@@ -126,7 +127,7 @@ public final class HttpEvents {
      * event is either reflected in the snapshot or delivered to the queue, never lost in the
      * subscribe→snapshot window.
      */
-    Subscription subscribeDetached(FrameStyle style, Long requestIdFilter) {
+    Subscription subscribeDetached(FrameStyle style, @Nullable Long requestIdFilter) {
         return new Subscription(this, style == null ? FrameStyle.DASHBOARD : style, requestIdFilter);
     }
 
@@ -190,7 +191,7 @@ public final class HttpEvents {
      * — so it cannot ride on a numeric default, which is why this is a presence check and a read
      * rather than one call.
      */
-    static Long extractRequestId(String data) {
+    static @Nullable Long extractRequestId(String data) {
         return Jsonl.has(data, "jid") ? Jsonl.longValue(data, "jid", 0L) : null;
     }
 
@@ -199,7 +200,7 @@ public final class HttpEvents {
         private final HttpEvents hub;
         private final FrameStyle style;
         /** {@code null} = all events; non-null = only matching {@code requestId}. */
-        private final Long requestIdFilter;
+        private final @Nullable Long requestIdFilter;
 
         private final ReentrantLock lock = new ReentrantLock();
         private final Condition notEmpty = lock.newCondition();
@@ -208,18 +209,19 @@ public final class HttpEvents {
 
         private record Queued(boolean critical, String wire) {}
 
-        private Subscription(HttpEvents hub, FrameStyle style, Long requestIdFilter) {
+        private Subscription(HttpEvents hub, FrameStyle style, @Nullable Long requestIdFilter) {
             this.hub = hub;
             this.style = style;
             this.requestIdFilter = requestIdFilter;
         }
 
-        boolean accepts(Long eventRequestId) {
+        boolean accepts(@Nullable Long eventRequestId) {
             if (requestIdFilter == null) return true;
             return eventRequestId != null && requestIdFilter.equals(eventRequestId);
         }
 
         /** The next frame, or {@code null} after {@code timeoutMillis} of quiet (heartbeat time). */
+        @Nullable
         String next(long timeoutMillis) throws InterruptedException {
             long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(Math.max(0, timeoutMillis));
             lock.lock();

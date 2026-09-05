@@ -13,6 +13,7 @@ import java.lang.invoke.MethodHandle;
 import java.lang.management.ManagementFactory;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Container-aware host memory from the OS (not a JVM bean), so native and hosted jk agree.
@@ -50,7 +51,7 @@ public final class MemoryProbe {
     /** {@code total} = physical/limit RAM; {@code available} = what we can still allocate. */
     public record Memory(long totalBytes, long availableBytes) {}
 
-    private static volatile Memory cached;
+    private static volatile @Nullable Memory cached;
 
     /** Probe once and cache — memory headroom is read at planning time and reused. */
     public static Memory probe() {
@@ -164,7 +165,7 @@ public final class MemoryProbe {
      * text parsing. {@code null} on any failure (missing symbol, non-zero {@code kern_return_t}, no
      * native access), so the caller falls back to {@link #fromBean()}.
      */
-    private static Memory fromMachHostStatistics64() {
+    private static @Nullable Memory fromMachHostStatistics64() {
         try {
             Linker linker = Linker.nativeLinker();
             var lookup = linker.defaultLookup();

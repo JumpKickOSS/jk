@@ -6,6 +6,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Dependency-free JSONL field codec for engine and plugin wire lines: readers return defaults on missing/bad
@@ -447,7 +448,7 @@ public final class Jsonl {
      * literal {@code null} (not a quoted string), so {@code "msg":} + {@code quote(maybeNull)} is
      * always valid JSON.
      */
-    public static String quote(String s) {
+    public static String quote(@Nullable String s) {
         if (s == null) return "null";
         StringBuilder b = new StringBuilder(s.length() + 2);
         b.append('"');

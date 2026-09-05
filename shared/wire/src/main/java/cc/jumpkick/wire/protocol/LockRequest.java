@@ -14,7 +14,7 @@ import org.jspecify.annotations.Nullable;
 public record LockRequest(
         @Nullable String dir,
         @Nullable String cache,
-        @Nullable List<String> features,
+        List<String> features,
         boolean noDefaultFeatures,
         boolean sources,
         @Nullable String repoUrl,

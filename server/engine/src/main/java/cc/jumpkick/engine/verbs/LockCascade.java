@@ -46,7 +46,7 @@ final class LockCascade {
             boolean withDefaults,
             LockMode mode,
             boolean skipWhenFresh,
-            BufferedWriter writer)
+            @Nullable BufferedWriter writer)
             throws Exception {
         Files.createDirectories(cache);
         Path lockDir;

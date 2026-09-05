@@ -33,6 +33,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Project-local <strong>build logic</strong>. Convention directories are {@code jk/} (visible,
@@ -90,7 +91,10 @@ public final class BuildLogicSupport {
     }
 
     static void rejectMisplacedStems(
-            List<BuildLogicScripts.ScriptTask> scripts, boolean workspaceRoot, Path logicDir, Path projectDir) {
+            List<BuildLogicScripts.ScriptTask> scripts,
+            boolean workspaceRoot,
+            Path logicDir,
+            @Nullable Path projectDir) {
         boolean member =
                 projectDir != null && WorkspaceScan.findRoot(projectDir).isPresent();
         for (BuildLogicScripts.ScriptTask s : scripts) {
@@ -169,7 +173,7 @@ public final class BuildLogicSupport {
             Path classesDir,
             BuildLogicAnchor anchor,
             Consumer<String> label,
-            AtomicReference<List<String>> inputTokensRef)
+            AtomicReference<@Nullable List<String>> inputTokensRef)
             throws IOException, InterruptedException {
         return run(projectDir, layout, actionCache, classesDir, anchor, label, line -> {}, inputTokensRef);
     }
@@ -191,7 +195,7 @@ public final class BuildLogicSupport {
             BuildLogicAnchor anchor,
             Consumer<String> label,
             Consumer<String> output,
-            AtomicReference<List<String>> inputTokensRef)
+            AtomicReference<@Nullable List<String>> inputTokensRef)
             throws IOException, InterruptedException {
         Optional<Logic> cfg = BuildLogicToml.resolve(projectDir);
         if (cfg.isEmpty()) return false;
@@ -235,7 +239,7 @@ public final class BuildLogicSupport {
             Logic c,
             List<BuildLogicScripts.ScriptTask> scripts,
             Map<BuildLogicAnchor, List<RegisteredTask>> byAnchor,
-            AtomicReference<List<String>> inputTokensRef)
+            AtomicReference<@Nullable List<String>> inputTokensRef)
             throws IOException, InterruptedException {
 
         List<RegisteredTask> tasks = byAnchor.getOrDefault(anchor, List.of());

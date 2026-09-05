@@ -44,6 +44,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Engine-hosted {@code jk ide} model math (thin-client contract): resolving the workspace, its
@@ -316,7 +317,7 @@ public final class IdeOps {
     }
 
     /** The resolved JDK pin stamped in the workspace {@code jk-lock.toml}, or null. */
-    private static Lockfile.JdkPin readLockJdk(Path moduleDir) {
+    private static Lockfile.@Nullable JdkPin readLockJdk(Path moduleDir) {
         Path lf = LockPaths.lockFile(moduleDir);
         if (!Files.exists(lf)) return null;
         try {
@@ -403,8 +404,8 @@ public final class IdeOps {
      * ({@code kind = "tests"}) — IDE generators must also put the sibling's test classes on the
      * test classpath. At most one row per sibling.
      */
-    private static List<String[]> siblingModuleRefs(Path moduleDir, JkBuild module, Map<Path, JkBuild> modules)
-            throws IOException {
+    private static List<String[]> siblingModuleRefs(
+            Path moduleDir, @Nullable JkBuild module, Map<Path, JkBuild> modules) throws IOException {
         List<String[]> result = new ArrayList<>();
         WorkspaceClasspath.Result mainCp =
                 WorkspaceClasspath.resolve(moduleDir, module, EnumSet.of(Scope.EXPORT, Scope.MAIN));
@@ -466,7 +467,8 @@ public final class IdeOps {
     }
 
     /** Resolve a workspace/tests-kind edge to the sibling project name. */
-    private static String siblingNameForDep(Dependency d, Map<String, Path> nameToDir, Map<Path, JkBuild> modules) {
+    private static @Nullable String siblingNameForDep(
+            Dependency d, Map<String, Path> nameToDir, Map<Path, JkBuild> modules) {
         if (d.isWorkspace()) {
             String n = d.workspaceName();
             return nameToDir.containsKey(n) ? n : null;
@@ -485,7 +487,7 @@ public final class IdeOps {
 
     /** External library references for one module as {@code {libName, "MAIN,TEST"}} — processor-only deps excluded. */
     private static List<String[]> moduleLibEntries(
-            Path moduleDir, JkBuild module, Map<Path, JkBuild> allModules, Map<String, String[]> allLibs)
+            Path moduleDir, @Nullable JkBuild module, Map<Path, JkBuild> allModules, Map<String, String[]> allLibs)
             throws IOException {
         Path lockFile = LockPaths.lockFile(moduleDir);
         if (!Files.exists(lockFile)) return List.of();
@@ -512,7 +514,7 @@ public final class IdeOps {
 
     /** The processor-scoped dependency JARs of a module — fed into the IDE's annotation-processing config. */
     private static List<String> processorLibFiles(
-            Path moduleDir, JkBuild module, Map<Path, JkBuild> modules, Map<String, String[]> allLibs)
+            Path moduleDir, @Nullable JkBuild module, Map<Path, JkBuild> modules, Map<String, String[]> allLibs)
             throws IOException {
         Path lockFile = LockPaths.lockFile(moduleDir);
         if (!Files.exists(lockFile)) return List.of();
@@ -550,7 +552,7 @@ public final class IdeOps {
                 || siblingCoords.contains(pkg.moduleGroup() + ":" + pkg.moduleArtifact());
     }
 
-    private static Set<String> siblingCoordinates(JkBuild module, Map<Path, JkBuild> allModules) {
+    private static Set<String> siblingCoordinates(@Nullable JkBuild module, Map<Path, JkBuild> allModules) {
         Set<String> coords = new LinkedHashSet<>();
         for (JkBuild sib : allModules.values()) {
             if (sib != module) {

@@ -38,7 +38,7 @@ public interface VerbHost {
     BuildPlanListener planListener(String dir, @Nullable BufferedWriter writer, BuildPlan plan);
 
     BuildPlanListener planListener(
-            String dir, @Nullable BufferedWriter writer, Function<BuildPlanResult, String> finishEncoder);
+            String dir, @Nullable BufferedWriter writer, @Nullable Function<BuildPlanResult, String> finishEncoder);
 
     void releaseExclusiveSlot();
 
@@ -74,6 +74,7 @@ public interface VerbHost {
      */
     void sendQuiet(@Nullable BufferedWriter writer, String line);
 
+    @Nullable
     String redactEnv(@Nullable String dir, @Nullable String text);
 
     /**
@@ -98,7 +99,7 @@ public interface VerbHost {
     String requestFailedLine(@Nullable String dir, Throwable e);
 
     default String requestFailedLine(@Nullable String dir, String message) {
-        return ProtoLifecycle.requestFailed(redactEnv(dir, message));
+        return ProtoLifecycle.requestFailed(EventRedaction.redactText(dir, message));
     }
 
     void publishRequestError(long rid, @Nullable String dir, String message);

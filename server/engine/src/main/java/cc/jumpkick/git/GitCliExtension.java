@@ -22,6 +22,7 @@ import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@link GitBackend} that shells out to a locally installed {@code git} command via {@code
@@ -53,7 +54,7 @@ public final class GitCliExtension implements GitBackend {
         }
     }
 
-    private static volatile Optional<GitCli> cached;
+    private static volatile @Nullable Optional<GitCli> cached;
 
     /** Locate and memoize a usable {@code git} once per process. */
     public static Optional<GitCli> detect() {
@@ -288,7 +289,8 @@ public final class GitCliExtension implements GitBackend {
      * https URL with resolvable forge credentials, inject an {@code Authorization: Basic} header
      * scoped to that URL through the environment (never argv).
      */
-    private ProcResult exec(Path cwd, String credUrl, List<String> args, long timeoutSec) throws IOException {
+    private ProcResult exec(@Nullable Path cwd, @Nullable String credUrl, List<String> args, long timeoutSec)
+            throws IOException {
         List<String> lead = new ArrayList<>();
         Map<String, String> credEnv = new HashMap<>();
         if (credUrl != null) prepareCredentials(credUrl, lead, credEnv);

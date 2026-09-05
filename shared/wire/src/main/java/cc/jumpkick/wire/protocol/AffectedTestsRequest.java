@@ -11,7 +11,7 @@ import org.jspecify.annotations.Nullable;
  */
 public record AffectedTestsRequest(
         @Nullable String dir,
-        @Nullable TestSelection selection,
+        TestSelection selection,
         @Nullable String affectedSince,
         @Nullable String modules) {
 

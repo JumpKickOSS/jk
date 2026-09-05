@@ -29,6 +29,7 @@ import java.nio.channels.SocketChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -38,6 +39,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Resident engine: election, accept loop, drain/close, and four-arm {@link VerbShape} dispatch.
@@ -70,7 +72,7 @@ public final class EngineServer implements AutoCloseable {
      * The {@code [http]} table when present, else {@code null} — the embedded HTTP server's enable
      * switch. The dashboard it serves is why the engine stays resident until an explicit stop.
      */
-    private final JkHttpConfig httpConfig;
+    private final @Nullable JkHttpConfig httpConfig;
 
     private final String version;
     /** Content identity for -SNAPSHOT builds (see BuildIdentity); "" = version rule only. */
@@ -151,7 +153,7 @@ public final class EngineServer implements AutoCloseable {
     }
 
     /** Dashboard SSE fan-out; non-null only when {@link #httpConfig} is set. */
-    private final HttpEvents httpEvents;
+    private final @Nullable HttpEvents httpEvents;
 
     /** Ids for {@code request-start}/{@code request-finish} events and {@code POST /api/build} acks. */
     private final AtomicLong requestIds = new AtomicLong();
@@ -201,14 +203,14 @@ public final class EngineServer implements AutoCloseable {
     /** The {@code drain-status} channel to a successor, and the record of our own predecessors. */
     private final DrainReporter drain;
 
-    private ServerSocketChannel serverChannel;
-    private ExecutorService connectionExecutor;
+    private @Nullable ServerSocketChannel serverChannel;
+    private @Nullable ExecutorService connectionExecutor;
 
     /** Non-null only on the loopback-TCP transport (Windows) — see {@link EngineTransport}. */
-    private String expectedToken;
+    private @Nullable String expectedToken;
 
     /** Serves accepted sockets; built once the election has settled the token. */
-    private EngineConnection connection;
+    private @Nullable EngineConnection connection;
 
     /** Decides, once a second, whether this engine is primary, displaced or orphaned. */
     private final DisplacementWatchdog watchdog;
@@ -218,10 +220,10 @@ public final class EngineServer implements AutoCloseable {
      * (every 12 h). Started only after winning the resident-engine election — never in {@code --job}
      * mode.
      */
-    private StoreFeedRefresh storeFeedRefresh;
+    private @Nullable StoreFeedRefresh storeFeedRefresh;
 
     /** One-minute chore loop (config mtime + wall-clock 12 h maintenance). */
-    private EngineMaintenance engineMaintenance;
+    private @Nullable EngineMaintenance engineMaintenance;
 
     public EngineServer(EnginePaths.Paths paths, JkEngineConfig config, String version, Consumer<String> log) {
         this(paths, config, null, version, BuildIdentity.buildId(), log);
@@ -231,7 +233,7 @@ public final class EngineServer implements AutoCloseable {
     public EngineServer(
             EnginePaths.Paths paths,
             JkEngineConfig config,
-            JkHttpConfig httpConfig,
+            @Nullable JkHttpConfig httpConfig,
             String version,
             Consumer<String> log) {
         this(paths, config, httpConfig, version, BuildIdentity.buildId(), log);
@@ -246,7 +248,7 @@ public final class EngineServer implements AutoCloseable {
     public EngineServer(
             EnginePaths.Paths paths,
             JkEngineConfig config,
-            JkHttpConfig httpConfig,
+            @Nullable JkHttpConfig httpConfig,
             String version,
             String buildId,
             Consumer<String> log) {
@@ -428,10 +430,13 @@ public final class EngineServer implements AutoCloseable {
     }
 
     private void acceptLoop() {
+        ServerSocketChannel listener = Objects.requireNonNull(serverChannel, "serverChannel");
+        ExecutorService executor = Objects.requireNonNull(connectionExecutor, "connectionExecutor");
+        EngineConnection conn = Objects.requireNonNull(connection, "connection");
         while (!shuttingDown) {
             SocketChannel ch;
             try {
-                ch = serverChannel.accept();
+                ch = listener.accept();
             } catch (ClosedChannelException e) {
                 break; // close / drain-complete / shutdown message closed the listener
             } catch (IOException e) {
@@ -446,9 +451,9 @@ public final class EngineServer implements AutoCloseable {
                 }
                 noteConnectionOpened();
             }
-            connectionExecutor.execute(() -> {
+            executor.execute(() -> {
                 try {
-                    connection.serve(ch);
+                    conn.serve(ch);
                 } finally {
                     onConnectionFinished();
                 }
@@ -477,7 +482,7 @@ public final class EngineServer implements AutoCloseable {
         activeConnections.decrementAndGet();
     }
 
-    private HttpEngineServer httpServer() {
+    private @Nullable HttpEngineServer httpServer() {
         return http.server();
     }
 

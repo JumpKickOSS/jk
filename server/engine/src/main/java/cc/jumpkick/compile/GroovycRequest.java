@@ -6,6 +6,8 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
 import lombok.Builder;
+import org.jspecify.annotations.NullUnmarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Input to {@link WorkerCompileDriver}'s Groovy arm (forks {@code jk-groovy-compiler}). Unlike
@@ -23,10 +25,10 @@ public record GroovycRequest(
         List<Path> classpath,
         List<Path> processorPath,
         Path outputDir,
-        Path stubsOut,
+        @Nullable Path stubsOut,
         int jvmTarget,
         List<Path> workerClasspath,
-        Path workDir,
+        @Nullable Path workDir,
         List<String> extraArgs) {
 
     public GroovycRequest {
@@ -49,6 +51,12 @@ public record GroovycRequest(
         }
     }
 
+    /**
+     * Lombok fills the staged fields in; the class is declared here only to give the collection and
+     * scalar defaults. Unmarked because those generated fields are write-once builder state, not the
+     * record's contract.
+     */
+    @NullUnmarked
     public static class GroovycRequestBuilder {
         private List<Path> sources = List.of();
         private List<Path> javaSourceRoots = List.of();

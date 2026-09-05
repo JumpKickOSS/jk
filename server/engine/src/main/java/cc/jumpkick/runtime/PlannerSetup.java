@@ -11,6 +11,7 @@ import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.JavacLint;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceClasspath;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JavaHomes;
@@ -95,7 +96,7 @@ public final class PlannerSetup {
                                         in.clientEnv())
                                 .build();
                     } catch (RuntimeException e) {
-                        ctx.error("toml", e.getMessage());
+                        ctx.error("toml", Errors.text(e));
                         throw e;
                     }
                     ctx.put(PROJECT, project);
@@ -109,7 +110,7 @@ public final class PlannerSetup {
                             // noDefaultFeatures=false — same feature selection as `jk lock`.
                             result = LockFlow.run(in.lockDir(), in.cache(), List.of(), false, null);
                         } catch (UnsatisfiableException e) {
-                            ctx.error("verbatim", e.getMessage());
+                            ctx.error("verbatim", Errors.text(e));
                             throw new RuntimeException("dependency resolution failed");
                         }
                         if (result.status() != 0) {
@@ -255,7 +256,7 @@ public final class PlannerSetup {
                     try {
                         publishClasspaths(ctx, in, cas);
                     } catch (RuntimeException e) {
-                        ctx.error("classpath", e.getMessage());
+                        ctx.error("classpath", Errors.text(e));
                         throw e;
                     } catch (Exception e) {
                         ctx.error("classpath", e.getMessage() == null ? e.toString() : e.getMessage());

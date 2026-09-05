@@ -28,6 +28,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * native-image tail and Graal home resolution.
@@ -41,8 +42,8 @@ public final class PlannerNative {
             Path cache,
             Path lockFile,
             Path jdksDir,
-            Path graalHome,
-            String mainOverride,
+            @Nullable Path graalHome,
+            @Nullable String mainOverride,
             List<String> extraArgs) {
         return nativeStep(dir, cache, lockFile, jdksDir, graalHome, mainOverride, extraArgs, true);
     }
@@ -55,9 +56,9 @@ public final class PlannerNative {
             Path dir,
             Path cache,
             Path lockFile,
-            Path jdksDir,
-            Path graalHome,
-            String mainOverride,
+            @Nullable Path jdksDir,
+            @Nullable Path graalHome,
+            @Nullable String mainOverride,
             List<String> extraArgs,
             boolean allowShared) {
         // Install / native plans never run under verify's ephemeral scratch — persist.
@@ -434,7 +435,7 @@ public final class PlannerNative {
         }
     }
 
-    static Path nativeImageSourcesDir(JkBuild project, Path dir, Path cache, BuildLayout layout)
+    static @Nullable Path nativeImageSourcesDir(JkBuild project, Path dir, Path cache, BuildLayout layout)
             throws IOException, InterruptedException {
         var active = PluginBuild.activeCodePlugin(project, dir);
         if (active.isEmpty()) return null;
@@ -496,7 +497,7 @@ public final class PlannerNative {
     }
 
     /** The executable native-image left in {@code sources} (the args name it, jk does not). */
-    static Path frameworkBinary(Path sources) throws IOException {
+    static @Nullable Path frameworkBinary(Path sources) throws IOException {
         try (var list = Files.list(sources)) {
             // Cheapest rejection first, most expensive last. The name tests are free; isRegularFile
             // re-resolves the path for a stat (10.3 us on NTFS); isExecutable is the worst operation
@@ -527,7 +528,7 @@ public final class PlannerNative {
      * and spellings count. Order: client-resolved home first, then {@code $GRAALVM_HOME}, then
      * the project JDK, then the running JVM.
      */
-    static Path resolveNativeImageHome(Path graalHome, Path projectDir, Path jdksDir) {
+    static Path resolveNativeImageHome(@Nullable Path graalHome, Path projectDir, @Nullable Path jdksDir) {
         if (graalHome != null
                 && cc.jumpkick.tool.NativeImageDriver.resolve(graalHome).isPresent()) {
             return graalHome;

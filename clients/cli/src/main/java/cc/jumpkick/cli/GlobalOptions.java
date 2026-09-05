@@ -322,7 +322,7 @@ public final class GlobalOptions {
     }
 
     /** First non-blank of {@code a}, {@code b}, or {@code null} — the flag beats the environment. */
-    private static String firstNonBlank(String a, String b) {
+    private static String firstNonBlank(@Nullable String a, @Nullable String b) {
         if (a != null && !a.isBlank()) return a;
         return (b != null && !b.isBlank()) ? b : null;
     }

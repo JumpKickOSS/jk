@@ -41,8 +41,7 @@ public record Session(
         /**
          * The caller's {@code GRAALVM_HOME}, when they set one.
          *
-         * <p>A home path, not a spec, which is why it cannot ride {@link #graalSpec}. It carries here
-         * for the reason the specs do: the engine is a daemon, so a {@code System.getenv} inside it
+         * <p>A home path, not a spec, which is why it cannot ride {@link #graalSpec}.@Nullable  It carries here * for the reason the specs do: the engine is a daemon, so a {@code System.getenv} inside it
          * answers from whichever shell started it, and a resident engine was picking the Graal that
          * shell knew about rather than the one the caller named.
          */
@@ -78,7 +77,7 @@ public record Session(
     }
 
     /** A copy carrying the given variant selection + client-resolved env — two components, one fact. */
-    public Session withVariant(String variant, Map<String, String> clientEnv) {
+    public Session withVariant(@Nullable String variant, @Nullable Map<String, String> clientEnv) {
         return new Session(
                 config,
                 workingDir,
@@ -90,7 +89,7 @@ public record Session(
                 graalHome,
                 parallelTests,
                 cancel,
-                variant,
+                variant == null ? "" : variant,
                 clientEnv,
                 assemblyOverride,
                 testSelection,
@@ -218,7 +217,7 @@ public record Session(
      * {@code JK_GRAAL} spellings folded in by the client), plus the caller's {@code GRAALVM_HOME}.
      * Blanks normalize to null.
      */
-    public Session withToolchainSpecs(String jdk, String graal, @Nullable Path graalHome) {
+    public Session withToolchainSpecs(@Nullable String jdk, @Nullable String graal, @Nullable Path graalHome) {
         return new Session(
                 config,
                 workingDir,
@@ -239,7 +238,7 @@ public record Session(
                 io);
     }
 
-    private static @Nullable String blankToNull(String s) {
+    private static @Nullable String blankToNull(@Nullable String s) {
         return (s == null || s.isBlank()) ? null : s.trim();
     }
 

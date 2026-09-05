@@ -42,6 +42,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
+import org.jspecify.annotations.Nullable;
 
 /**
  * package-jar, freshness stamps, and mixed-module class assembly.
@@ -52,8 +53,8 @@ public final class PlannerPackage {
 
     static Task packageJarStep(
             BuildPlanner.Ctx cx,
-            PluginBuild.Active pluginActive,
-            PluginBuild.Declarations pluginDecls,
+            PluginBuild.@Nullable Active pluginActive,
+            PluginBuild.@Nullable Declarations pluginDecls,
             Map<String, String> variantSecrets) {
         BuildPlanner.Inputs in = cx.in();
         Cas cas = cx.cas();
@@ -171,7 +172,7 @@ public final class PlannerPackage {
      */
     static String[] packageRequires(
             BuildPlanner.Inputs in,
-            PluginBuild.Declarations decls,
+            PluginBuild.@Nullable Declarations decls,
             boolean useJava,
             boolean useKotlin,
             boolean useGroovy) {
@@ -382,7 +383,7 @@ public final class PlannerPackage {
         return outcome.equals("up-to-date") || outcome.equals("no-sources");
     }
 
-    static boolean ownsMainArtifact(PluginBuild.Active active) {
+    static boolean ownsMainArtifact(PluginBuild.@Nullable Active active) {
         if (active == null) return true;
         var packaging = active.manifest().packaging();
         if (packaging == null) return true;

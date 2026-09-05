@@ -9,6 +9,7 @@ import cc.jumpkick.engine.plugin.BuiltInPluginJars;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.host.Classpaths;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
@@ -31,6 +32,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk publish} plan: validate, then assemble/sign/upload via {@code jk-publisher}.
@@ -48,13 +50,13 @@ public final class PublishPlans {
      */
     public record Request(
             URI repoUrl,
-            String region,
-            String endpoint,
-            Path jarPath,
+            @Nullable String region,
+            @Nullable String endpoint,
+            @Nullable Path jarPath,
             boolean allowSnapshot,
             boolean dryRun,
-            Path keyFile,
-            String gpgPassphrase,
+            @Nullable Path keyFile,
+            @Nullable String gpgPassphrase,
             boolean sigstore,
             boolean slsa,
             boolean sbom,
@@ -126,7 +128,7 @@ public final class PublishPlans {
                     try {
                         ctx.put(FILES, runWorker(workerJar, projectDir, jar, req));
                     } catch (RuntimeException e) {
-                        ctx.error("publish", e.getMessage());
+                        ctx.error("publish", Errors.text(e));
                         throw e;
                     }
                     ctx.progress(1);
@@ -230,7 +232,7 @@ public final class PublishPlans {
      * lockfile pin moves whenever the branch tip is re-resolved, so it cannot appear in a published
      * POM. A tag/rev git dep is materialized to a real, stable coordinate and is fine.
      */
-    private static Dependency firstBranchGitDep(JkBuild project) {
+    private static @Nullable Dependency firstBranchGitDep(JkBuild project) {
         for (List<Dependency> deps : project.dependencies().byScope().values()) {
             for (Dependency d : deps) {
                 if (d.isGit() && d.gitSource().ref() instanceof GitRefSpec.Branch) {

@@ -87,8 +87,12 @@ public final class LangCompile {
         // dir is (now) empty of classes while IC state survives (a cleaned target/, a fresh
         // checkout with a warm cache), BTA would compile "only what changed" into the void
         // and report success with a near-empty dir. Start the IC state over instead.
-        if (request.incremental() && Files.isDirectory(request.workingDir()) && !hasClasses(request.outputDir())) {
-            PathUtil.deleteRecursively(request.workingDir());
+        Path workingDir = request.workingDir();
+        if (request.incremental()
+                && workingDir != null
+                && Files.isDirectory(workingDir)
+                && !hasClasses(request.outputDir())) {
+            PathUtil.deleteRecursively(workingDir);
         }
         return forkAndStore(
                 taskId,

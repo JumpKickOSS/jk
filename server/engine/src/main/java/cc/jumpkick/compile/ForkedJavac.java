@@ -23,6 +23,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Drives the {@code jk-java-compiler} plugin. Inside a job request the same pull-mode JVM is
@@ -76,7 +77,7 @@ public final class ForkedJavac {
     }
 
     public record Request(
-            Path javaHome,
+            @Nullable Path javaHome,
             Path workerJar,
             List<Path> sources,
             List<Path> classpath,
@@ -85,14 +86,14 @@ public final class ForkedJavac {
             Path sourceOutput,
             int release,
             List<String> extraArgs,
-            Path workdir,
-            String scalaVersion,
+            @Nullable Path workdir,
+            @Nullable String scalaVersion,
             List<Path> compilerClasspath,
-            Path scalaLibraryJar,
-            Path scalaCompilerJar,
-            Path scalaBridgeJar) {
+            @Nullable Path scalaLibraryJar,
+            @Nullable Path scalaCompilerJar,
+            @Nullable Path scalaBridgeJar) {
         public Request(
-                Path javaHome,
+                @Nullable Path javaHome,
                 Path workerJar,
                 List<Path> sources,
                 List<Path> classpath,
@@ -101,7 +102,7 @@ public final class ForkedJavac {
                 Path sourceOutput,
                 int release,
                 List<String> extraArgs,
-                Path workdir) {
+                @Nullable Path workdir) {
             this(
                     javaHome,
                     workerJar,
@@ -121,7 +122,7 @@ public final class ForkedJavac {
         }
 
         public Request(
-                Path javaHome,
+                @Nullable Path javaHome,
                 Path workerJar,
                 List<Path> sources,
                 List<Path> classpath,

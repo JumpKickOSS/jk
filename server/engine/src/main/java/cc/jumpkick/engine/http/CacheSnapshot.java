@@ -15,6 +15,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Storage breakdown for {@code GET /api/cache} and live {@code cache} SSE — the same two surfaces
@@ -104,7 +105,7 @@ public record CacheSnapshot(
         private final Supplier<CacheSnapshot> loader;
         private final long ttlNanos;
         private final Object lock = new Object();
-        private CacheSnapshot cached;
+        private @Nullable CacheSnapshot cached;
         private long deadlineNanos;
         /**
          * Explicit staleness flag. {@code System.nanoTime()} has an arbitrary — possibly
@@ -132,9 +133,6 @@ public record CacheSnapshot(
                 }
                 usedBefore = rt.totalMemory() - rt.freeMemory();
                 snap = loader.get();
-                if (snap == null) {
-                    return cached; // keep last good; callers tolerate null
-                }
                 cached = snap;
                 deadlineNanos = System.nanoTime() + ttlNanos;
                 stale = false;

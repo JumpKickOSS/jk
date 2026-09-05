@@ -13,6 +13,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Ensures jk's own child-JVM plugin jars ({@code jk-test-runner}, {@code jk-kotlin-compiler}, …)
@@ -38,7 +39,7 @@ public final class JkPluginSync {
 
         default void fetched(String artifact) {}
 
-        default void missing(String artifact, String detail) {}
+        default void missing(String artifact, @Nullable String detail) {}
     }
 
     public record Result(int present, int fetched, int missing) {}
