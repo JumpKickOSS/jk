@@ -648,6 +648,15 @@ tasks.register("checkCiCadence") {
                 problems.add("ci.yml's self-host job must run `$verb`")
             }
         }
+    // The lane's authority, pinned. A `continue-on-error: true` on this job would leave every
+    // other assertion here green while turning the only evidence that jk builds jk into a
+    // courtesy run — the exact demotion this ticket's decision rejects, and one nothing else
+    // would catch. `wall-measure.yml` keeps its own flag: a wall time is a record, not a verdict.
+        if (branchText.contains("continue-on-error")) {
+            problems.add("ci.yml must not carry continue-on-error — the self-host job is a merge"
+                    + " requirement, and a flag that makes it advisory retires the oracle without"
+                    + " deleting the job (docs/contributors/self-host.md, \"Which build is the oracle\")")
+        }
         if (!wallScript.asFile.isFile) {
             problems.add("scripts/dogfood-wall-measure.sh is missing")
         }

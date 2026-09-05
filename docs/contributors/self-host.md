@@ -32,9 +32,28 @@ break reads as `G51 checkGuardParity` rather than as build output.
 | What proves the graph is honest | `jk build` must not rewrite the committed `jk-lock.toml` |
 | Wall-clock comparison | `.github/workflows/wall-measure.yml`, weekly, informational |
 
-Guard **G57** (`checkCiCadence`, both builds) keeps the self-host job, its isolated `JK_HOME`, and
-the scheduled wall measurement in place: removing any of them fails the build rather than quietly
-retiring the oracle.
+Guard **G57** (`checkCiCadence`, both builds) keeps the self-host job, its isolated `JK_HOME`, both
+verbs it runs, and the scheduled wall measurement in place: removing any of them fails the build
+rather than quietly retiring the oracle. It also rejects `continue-on-error` anywhere in `ci.yml`.
+That flag is how a merge requirement becomes a courtesy run without anyone deleting a job, and it
+is the one demotion no other assertion here would notice. The weekly wall measurement keeps its own
+`continue-on-error` in `wall-measure.yml`, where a wall time is a record rather than a verdict.
+
+### What the lane has actually caught
+
+Blocking is the measured position, not a default. Since the job landed it has produced exactly one
+change-attributable failure, and Gradle's gate was green throughout it: CI installs jk into
+`.ci-jk-home` **inside the checkout**, and both tree walkers read that store as source, so the
+house-rule gate failed on a metadata index's prose. Gradle never saw it because its `JK_HOME` is
+outside the checkout. That is the whole argument for the lane in one bug.
+
+The failures to expect are neither that nor the network. Sonatype 429s appear in every run (3–17 of
+them) and retries have absorbed all of them so far — none has failed the job. What does fail it is
+the shared test suite's timing-sensitive population, because the lane runs `jk test` on the same
+four-core runner: an interrupt-ordering assertion or a cache-freshness assertion that holds on a
+quiet machine and loses under load. Those block the Gradle gate identically, so demoting self-host
+would not buy a single unblocked merge — it would only remove the evidence. Fix the flakes, not the
+lane.
 
 ### Cache and home isolation
 
