@@ -46,6 +46,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -62,13 +63,20 @@ public final class ExecPlans {
     // ------------------------------------------------------------- exec plans
 
     /** Compute the plan for {@code kind} — never throws; failures ride {@code error}. */
-    public static ExecPlan execPlan(Path dir, Path cache, String kind, String mainOverride, String binName) {
+    public static ExecPlan execPlan(
+            Path dir, Path cache, String kind, @Nullable String mainOverride, @Nullable String binName) {
         return execPlan(dir, cache, kind, mainOverride, binName, null, null, "", Map.of());
     }
 
     /** As above with install-destination overrides ({@code --bin-dir}/{@code --lib-dir}). */
     public static ExecPlan execPlan(
-            Path dir, Path cache, String kind, String mainOverride, String binName, Path binDir, Path libDir) {
+            Path dir,
+            Path cache,
+            String kind,
+            @Nullable String mainOverride,
+            @Nullable String binName,
+            @Nullable Path binDir,
+            @Nullable Path libDir) {
         return execPlan(dir, cache, kind, mainOverride, binName, binDir, libDir, "", Map.of());
     }
 
@@ -83,8 +91,8 @@ public final class ExecPlans {
             @Nullable String kind,
             @Nullable String mainOverride,
             @Nullable String binName,
-            Path binDir,
-            Path libDir,
+            @Nullable Path binDir,
+            @Nullable Path libDir,
             String variant,
             Map<String, String> clientEnv) {
         try {
@@ -92,7 +100,7 @@ public final class ExecPlans {
             project = VariantApply.applyLenient(project, dir, Variants.Selection.parse(variant), clientEnv)
                     .build();
             BuildLayout layout = BuildLayout.of(dir, project);
-            return switch (kind) {
+            return switch (kind == null ? "" : kind) {
                 case "run" -> runPlan(dir, cache, project, layout, false);
                 case "dev" -> runPlan(dir, cache, project, layout, true);
                 case "install" -> installPlan(dir, cache, project, layout, mainOverride, binName, binDir, libDir);
@@ -417,7 +425,7 @@ public final class ExecPlans {
         }
         if (declaredApps.size() == 1) {
             Path modDir = declaredApps.get(0);
-            JkBuild mod = modules.get(modDir);
+            JkBuild mod = Objects.requireNonNull(modules.get(modDir));
             return runPlan(modDir, cache, mod, BuildLayout.of(modDir, mod), dev);
         }
         if (declaredApps.size() > 1) {
@@ -478,7 +486,7 @@ public final class ExecPlans {
                     "ambiguous");
         }
         Path modDir = scannedModules.iterator().next();
-        JkBuild mod = modules.get(modDir);
+        JkBuild mod = Objects.requireNonNull(modules.get(modDir));
         return runPlan(modDir, cache, mod, BuildLayout.of(modDir, mod), dev);
     }
 
@@ -610,7 +618,7 @@ public final class ExecPlans {
                 launcherPath.toString());
     }
 
-    private static String firstNonBlank(String... values) {
+    private static String firstNonBlank(@Nullable String... values) {
         for (String v : values) {
             if (v != null && !v.isBlank()) return LauncherName.requireValid(v);
         }

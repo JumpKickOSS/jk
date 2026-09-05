@@ -129,7 +129,7 @@ final class HardwareProbe {
             boolean junitUsed = junit != null;
 
             // Prefer real JUnit Platform wall for the test slot when available.
-            long testFork = junitUsed ? junit.wallMs : synthFork;
+            long testFork = junit != null ? junit.wallMs : synthFork;
             long testRun = junitUsed ? 0 : synthRun;
 
             long resolveMs = 0;
@@ -459,6 +459,13 @@ final class HardwareProbe {
         return roots;
     }
 
+    /** The version directory a store jar sits in — {@code .../<artifact>/<version>/<jar>}. */
+    private static String versionDirName(Path jar) {
+        Path parent = jar.getParent();
+        Path name = parent == null ? null : parent.getFileName();
+        return name == null ? "" : name.toString();
+    }
+
     private static @Nullable Path findLocal(List<Path> roots, String relativeMavenPath) {
         for (Path root : roots) {
             Path jar = root.resolve(relativeMavenPath);
@@ -478,14 +485,7 @@ final class HardwareProbe {
                     Path jar = verDir.resolve(artifact + "-" + verDir.getFileName() + ".jar");
                     if (!Files.isRegularFile(jar)) continue;
                     // Prefer highest path name lexicographically (rough newest for dotted versions).
-                    if (best == null
-                            || jar.getParent()
-                                            .getFileName()
-                                            .toString()
-                                            .compareTo(best.getParent()
-                                                    .getFileName()
-                                                    .toString())
-                                    > 0) {
+                    if (best == null || versionDirName(jar).compareTo(versionDirName(best)) > 0) {
                         best = jar;
                     }
                 }

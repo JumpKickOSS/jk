@@ -150,7 +150,7 @@ public final class ProjectBuilds {
         return new RunDir(identity.id(), home, runDir, n, identity.coord(), abs);
     }
 
-    public static void writeIdentity(Path home, String coord, Path projectDir) throws IOException {
+    public static void writeIdentity(Path home, @Nullable String coord, Path projectDir) throws IOException {
         Path abs = projectDir.toAbsolutePath().normalize();
         ProjectIdentity identity = ProjectIdentity.resolve(abs);
         if ((identity.coord() == null || identity.coord().startsWith("unknown:"))

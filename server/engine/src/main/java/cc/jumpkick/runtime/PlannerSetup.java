@@ -44,6 +44,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Parse / resolve-deps / ensure-jdk steps for {@link BuildPlanner#coreBuilder}.
@@ -57,9 +58,9 @@ public final class PlannerSetup {
         Cas cas = cx.cas();
         ActionCache actionCache = cx.actionCache();
         Supplier<EffortWeights.Plan> plan = cx.plan();
-        AtomicReference<List<Path>> javaMainSrcRef = cx.javaMainSrcRef();
-        AtomicReference<List<Path>> kotlinMainSrcRef = cx.kotlinMainSrcRef();
-        AtomicReference<List<Path>> groovyMainSrcRef = cx.groovyMainSrcRef();
+        AtomicReference<@Nullable List<Path>> javaMainSrcRef = cx.javaMainSrcRef();
+        AtomicReference<@Nullable List<Path>> kotlinMainSrcRef = cx.kotlinMainSrcRef();
+        AtomicReference<@Nullable List<Path>> groovyMainSrcRef = cx.groovyMainSrcRef();
         Path javaMainSrcDir = cx.javaMainSrcDir();
         boolean compact = cx.compact();
         boolean mixed = cx.mixed();
@@ -195,8 +196,8 @@ public final class PlannerSetup {
         Cas cas = cx.cas();
         ActionCache actionCache = cx.actionCache();
         Supplier<EffortWeights.Plan> plan = cx.plan();
-        AtomicReference<List<Path>> javaMainSrcRef = cx.javaMainSrcRef();
-        AtomicReference<List<Path>> kotlinMainSrcRef = cx.kotlinMainSrcRef();
+        AtomicReference<@Nullable List<Path>> javaMainSrcRef = cx.javaMainSrcRef();
+        AtomicReference<@Nullable List<Path>> kotlinMainSrcRef = cx.kotlinMainSrcRef();
         Path javaMainSrcDir = cx.javaMainSrcDir();
         boolean compact = cx.compact();
         boolean mixed = cx.mixed();
@@ -366,8 +367,8 @@ public final class PlannerSetup {
         Cas cas = cx.cas();
         ActionCache actionCache = cx.actionCache();
         Supplier<EffortWeights.Plan> plan = cx.plan();
-        AtomicReference<List<Path>> javaMainSrcRef = cx.javaMainSrcRef();
-        AtomicReference<List<Path>> kotlinMainSrcRef = cx.kotlinMainSrcRef();
+        AtomicReference<@Nullable List<Path>> javaMainSrcRef = cx.javaMainSrcRef();
+        AtomicReference<@Nullable List<Path>> kotlinMainSrcRef = cx.kotlinMainSrcRef();
         Path javaMainSrcDir = cx.javaMainSrcDir();
         boolean compact = cx.compact();
         boolean mixed = cx.mixed();

@@ -519,9 +519,9 @@ public final class BuildPlanner {
         // run (skipped/cached steps collapse to ~1; real work dominates). Computed
         // once, lazily, when the first weight supplier fires during plan-start
         // estimation — so the prediction (stamps/lock/CAS) is read off disk once.
-        final AtomicReference<List<Path>> javaMainSrcRef = new AtomicReference<>();
-        final AtomicReference<List<Path>> kotlinMainSrcRef = new AtomicReference<>();
-        final AtomicReference<List<Path>> groovyMainSrcRef = new AtomicReference<>();
+        final AtomicReference<@Nullable List<Path>> javaMainSrcRef = new AtomicReference<>();
+        final AtomicReference<@Nullable List<Path>> kotlinMainSrcRef = new AtomicReference<>();
+        final AtomicReference<@Nullable List<Path>> groovyMainSrcRef = new AtomicReference<>();
         final AtomicReference<EffortWeights.@Nullable Plan> planRef = new AtomicReference<>();
         final Supplier<EffortWeights.Plan> plan = () -> {
             EffortWeights.Plan p = planRef.get();
@@ -552,7 +552,7 @@ public final class BuildPlanner {
         // other side finds the value already set.
         // Build-logic anchors each call BuildLogicSupport.run() independently; share one lazy
         // source-tree hash across anchors (same pattern as javaMainSrcRef).
-        final AtomicReference<List<String>> buildLogicInputTokensRef = new AtomicReference<>();
+        final AtomicReference<@Nullable List<String>> buildLogicInputTokensRef = new AtomicReference<>();
         final Path javaMainSrcDir = compact ? in.dir().resolve("src") : in.dir().resolve("src/main/java");
 
         // ---- parse-build ------------------------------------------------
@@ -782,10 +782,10 @@ public final class BuildPlanner {
             Cas cas,
             ActionCache actionCache,
             Supplier<EffortWeights.Plan> plan,
-            AtomicReference<List<Path>> javaMainSrcRef,
-            AtomicReference<List<Path>> kotlinMainSrcRef,
-            AtomicReference<List<Path>> groovyMainSrcRef,
-            AtomicReference<List<String>> buildLogicInputTokensRef,
+            AtomicReference<@Nullable List<Path>> javaMainSrcRef,
+            AtomicReference<@Nullable List<Path>> kotlinMainSrcRef,
+            AtomicReference<@Nullable List<Path>> groovyMainSrcRef,
+            AtomicReference<@Nullable List<String>> buildLogicInputTokensRef,
             Path javaMainSrcDir,
             boolean compact,
             boolean mixed,
@@ -812,7 +812,7 @@ public final class BuildPlanner {
     static final String NATIVE_IMAGE_ARGS = PlannerNative.NATIVE_IMAGE_ARGS;
 
     /** Test hook: restrict host-engine-jar discovery to this monorepo root. */
-    static volatile Path hostEngineSearchOverride;
+    static volatile @Nullable Path hostEngineSearchOverride;
 
     /** Apply CLI {@code --fat}/{@code --minified} over the parsed manifest for this invocation. */
     static JkBuild applyAssemblyOverride(JkBuild build, Session session) {

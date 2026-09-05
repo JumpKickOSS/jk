@@ -32,6 +32,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Test-step building blocks shared by the build plan and the {@code test} command. Coupled only
@@ -230,12 +231,13 @@ public final class TestSupport {
     }
 
     /** As {@link #renderFailures(TestSummary)} with module-dir source resolution. */
-    public static List<String> renderFailures(TestSummary result, Path moduleDir) {
+    public static List<String> renderFailures(TestSummary result, @Nullable Path moduleDir) {
         return renderFailures(result, moduleDir, null);
     }
 
     /** Share {@code cache} with {@link #bridgeListener} so each failure is resolved once. */
-    public static List<String> renderFailures(TestSummary result, Path moduleDir, TestFailureSource.Cache cache) {
+    public static List<String> renderFailures(
+            TestSummary result, @Nullable Path moduleDir, TestFailureSource.@Nullable Cache cache) {
         List<String> out = new ArrayList<>();
         List<TestFailureInfo> failures = result.failures();
         if (failures.isEmpty()) return out;
@@ -434,7 +436,7 @@ public final class TestSupport {
      * diagnostics (web Activity / details.jsonl).
      */
     public static TestProgressListener bridgeListener(
-            TaskContext ctx, int workerCount, boolean verbose, String moduleLabel, Path moduleDir) {
+            TaskContext ctx, int workerCount, boolean verbose, @Nullable String moduleLabel, @Nullable Path moduleDir) {
         return bridgeListener(ctx, workerCount, verbose, moduleLabel, moduleDir, null);
     }
 
@@ -443,9 +445,9 @@ public final class TestSupport {
             TaskContext ctx,
             int workerCount,
             boolean verbose,
-            String moduleLabel,
-            Path moduleDir,
-            TestFailureSource.Cache cache) {
+            @Nullable String moduleLabel,
+            @Nullable Path moduleDir,
+            TestFailureSource.@Nullable Cache cache) {
         String module = moduleLabel == null ? "" : moduleLabel.trim();
         Path dir = moduleDir;
         TestFailureSource.Cache snippets = cache != null ? cache : new TestFailureSource.Cache();

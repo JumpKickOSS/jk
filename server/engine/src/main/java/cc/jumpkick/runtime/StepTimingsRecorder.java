@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Records per-unit {@link StepTimings.Sample}s from one module's real (non-skip) step runs into a
@@ -52,12 +53,12 @@ public final class StepTimingsRecorder implements BuildPlanListener {
     }
 
     @Override
-    public void stepStart(String step, String group, int ticks) {
+    public void stepStart(String step, @Nullable String group, int ticks) {
         ticksByStep.put(step, ticks);
     }
 
     @Override
-    public void stepFinish(String step, String group, TaskStatus status, Duration duration, Duration waited) {
+    public void stepFinish(String step, @Nullable String group, TaskStatus status, Duration duration, Duration waited) {
         // Only successful real work teaches the ledger — CANCELLED / FAIL / SKIPPED never do.
         if (status != TaskStatus.SUCCESS || !learnable(step)) return;
         // The step's own work: a wall that is mostly queue wait behind a shared compiler worker

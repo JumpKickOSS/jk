@@ -60,8 +60,8 @@ public final class PlannerPackage {
         Cas cas = cx.cas();
         ActionCache actionCache = cx.actionCache();
         Supplier<EffortWeights.Plan> plan = cx.plan();
-        AtomicReference<List<Path>> javaMainSrcRef = cx.javaMainSrcRef();
-        AtomicReference<List<Path>> kotlinMainSrcRef = cx.kotlinMainSrcRef();
+        AtomicReference<@Nullable List<Path>> javaMainSrcRef = cx.javaMainSrcRef();
+        AtomicReference<@Nullable List<Path>> kotlinMainSrcRef = cx.kotlinMainSrcRef();
         Path javaMainSrcDir = cx.javaMainSrcDir();
         boolean compact = cx.compact();
         boolean mixed = cx.mixed();
@@ -199,8 +199,8 @@ public final class PlannerPackage {
         Cas cas = cx.cas();
         ActionCache actionCache = cx.actionCache();
         Supplier<EffortWeights.Plan> plan = cx.plan();
-        AtomicReference<List<Path>> javaMainSrcRef = cx.javaMainSrcRef();
-        AtomicReference<List<Path>> kotlinMainSrcRef = cx.kotlinMainSrcRef();
+        AtomicReference<@Nullable List<Path>> javaMainSrcRef = cx.javaMainSrcRef();
+        AtomicReference<@Nullable List<Path>> kotlinMainSrcRef = cx.kotlinMainSrcRef();
         Path javaMainSrcDir = cx.javaMainSrcDir();
         boolean compact = cx.compact();
         boolean mixed = cx.mixed();
@@ -255,8 +255,8 @@ public final class PlannerPackage {
         Cas cas = cx.cas();
         ActionCache actionCache = cx.actionCache();
         Supplier<EffortWeights.Plan> plan = cx.plan();
-        AtomicReference<List<Path>> javaMainSrcRef = cx.javaMainSrcRef();
-        AtomicReference<List<Path>> kotlinMainSrcRef = cx.kotlinMainSrcRef();
+        AtomicReference<@Nullable List<Path>> javaMainSrcRef = cx.javaMainSrcRef();
+        AtomicReference<@Nullable List<Path>> kotlinMainSrcRef = cx.kotlinMainSrcRef();
         Path javaMainSrcDir = cx.javaMainSrcDir();
         boolean compact = cx.compact();
         boolean mixed = cx.mixed();
@@ -334,8 +334,8 @@ public final class PlannerPackage {
         Cas cas = cx.cas();
         ActionCache actionCache = cx.actionCache();
         Supplier<EffortWeights.Plan> plan = cx.plan();
-        AtomicReference<List<Path>> javaMainSrcRef = cx.javaMainSrcRef();
-        AtomicReference<List<Path>> kotlinMainSrcRef = cx.kotlinMainSrcRef();
+        AtomicReference<@Nullable List<Path>> javaMainSrcRef = cx.javaMainSrcRef();
+        AtomicReference<@Nullable List<Path>> kotlinMainSrcRef = cx.kotlinMainSrcRef();
         Path javaMainSrcDir = cx.javaMainSrcDir();
         boolean compact = cx.compact();
         boolean mixed = cx.mixed();

@@ -388,7 +388,7 @@ public final class BuildLogicSupport {
                 }
             };
             String kindLabel = kind == BuildLogicScripts.ScriptKind.KTS ? "script-kts" : "script";
-            byAnchor.get(s.anchor())
+            byAnchor.computeIfAbsent(s.anchor(), k -> new ArrayList<>())
                     .add(new RegisteredTask(
                             s.name(),
                             kindLabel,

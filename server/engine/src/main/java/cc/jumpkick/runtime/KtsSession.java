@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import org.jspecify.annotations.Nullable;
 
 /**
  * One child JVM that runs every {@code .kts} of a build, reusing compiled scripts across runs.
@@ -47,7 +48,7 @@ import java.util.concurrent.TimeUnit;
 final class KtsSession {
 
     private static final Object LOCK = new Object();
-    private static KtsSession current;
+    private static @Nullable KtsSession current;
     private static boolean hookRegistered;
 
     private final Process process;

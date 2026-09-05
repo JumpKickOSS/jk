@@ -5,6 +5,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.PathSource;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.MavenRepo;
@@ -18,6 +19,7 @@ import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Pre-solve path-source bridge (analogue of {@link GitSourceResolution}): materialize each
@@ -63,10 +65,11 @@ public final class PathSourceResolution {
         List<MavenRepo> extraRepos = new ArrayList<>();
         for (List<Dependency> list : byScope.values()) {
             for (Dependency d : list) {
-                if (!d.isPath()) continue;
-                String key = d.pathSource().rawPath();
+                PathSource path = d.pathSource();
+                if (path == null) continue;
+                String key = path.rawPath();
                 if (bySource.containsKey(key)) continue;
-                PathSourceMaterializer.Materialized m = materializer.materialize(d.pathSource());
+                PathSourceMaterializer.Materialized m = materializer.materialize(path);
                 bySource.put(key, m);
                 extraRepos.add(new MavenRepo(
                         RepoArtifactResolver.GIT_SOURCE_PREFIX + m.coordinate() + ":" + m.version(),
@@ -82,12 +85,13 @@ public final class PathSourceResolution {
         byScope.forEach((scope, list) -> {
             List<Dependency> out = new ArrayList<>(list.size());
             for (Dependency d : list) {
-                if (!d.isPath()) {
+                PathSource path = d.pathSource();
+                if (path == null) {
                     out.add(d);
                     continue;
                 }
-                PathSourceMaterializer.Materialized m =
-                        bySource.get(d.pathSource().rawPath());
+                // Every path dep was materialized by the loop above, keyed on this same raw path.
+                PathSourceMaterializer.Materialized m = Objects.requireNonNull(bySource.get(path.rawPath()));
                 out.add(Dependency.of(d.library(), m.coordinate(), VersionSelector.parse("=" + m.version())));
                 List<String> features = cross.activatedFeaturesByModule().get(d.module());
                 if (features != null && !features.isEmpty()) activated.put(m.coordinate(), features);

@@ -486,7 +486,7 @@ public final class ActionCache {
      * target/}) holds unrelated files. Overwrites a stale artifact already at the path. Returns
      * {@code false} (restoring nothing) if any cached blob is missing, so the caller rebuilds.
      */
-    public boolean restoreArtifacts(ActionRecord record, @Nullable Path baseDir) throws IOException {
+    public boolean restoreArtifacts(ActionRecord record, Path baseDir) throws IOException {
         if (record.outputs().isEmpty()) return false;
         for (String sha : record.outputs().values()) {
             if (!hasBlob(sha)) return false;

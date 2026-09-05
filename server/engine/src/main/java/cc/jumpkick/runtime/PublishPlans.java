@@ -15,6 +15,7 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.GitRefSpec;
+import cc.jumpkick.model.GitSource;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
@@ -235,7 +236,8 @@ public final class PublishPlans {
     private static @Nullable Dependency firstBranchGitDep(JkBuild project) {
         for (List<Dependency> deps : project.dependencies().byScope().values()) {
             for (Dependency d : deps) {
-                if (d.isGit() && d.gitSource().ref() instanceof GitRefSpec.Branch) {
+                GitSource git = d.gitSource();
+                if (git != null && git.ref() instanceof GitRefSpec.Branch) {
                     return d;
                 }
             }

@@ -103,7 +103,7 @@ public final class CompileToolchain {
      * //KOTLIN 2.1.0} directive). Passes {@code null} to fall back to the bundled default
      * distribution.
      */
-    public static Path resolveKotlinHome(Path cacheDir, String versionOverride) {
+    public static Path resolveKotlinHome(Path cacheDir, @Nullable String versionOverride) {
         return resolveKotlinHome(cacheDir, versionOverride, NO_NOTICE);
     }
 
