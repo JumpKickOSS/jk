@@ -381,7 +381,8 @@ public final class Wizard {
 
     private static @Nullable String labelFor(WizardStep.RadioStep step, Map<String, Object> answers) {
         var snapshot = Answers.of(answers);
-        var id = answers.getOrDefault(step.key(), step.defaultChoice()).toString();
+        Object chosen = answers.getOrDefault(step.key(), step.defaultChoice());
+        var id = chosen == null ? "" : chosen.toString();
         for (var c : step.choicesFor(snapshot)) {
             if (c.id().equals(id)) {
                 return c.label();

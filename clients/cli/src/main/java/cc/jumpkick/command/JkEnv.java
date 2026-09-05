@@ -35,8 +35,8 @@ public final class JkEnv {
 
     private final JdkRegistry registry;
     private final String basePath;
-    private final String liveJavaHome;
-    private final String liveGraalHome;
+    private final @Nullable String liveJavaHome;
+    private final @Nullable String liveGraalHome;
     private final JdkInventory globalDefault;
 
     public JkEnv(JdkRegistry registry, String basePath) {

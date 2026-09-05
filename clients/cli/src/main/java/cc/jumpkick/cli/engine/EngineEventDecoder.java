@@ -107,7 +107,8 @@ final class EngineEventDecoder {
             public @Nullable BuildPlanResult onLine(String type, String line) throws IOException {
                 switch (type) {
                     case EngineProtocol.PLAN_TASK -> steps.add(readTask(line));
-                    case EngineProtocol.PLAN_DONE -> listener = listenerFactory.apply(steps);
+                    case EngineProtocol.PLAN_DONE ->
+                        listener = listenerFactory == null ? null : listenerFactory.apply(steps);
                     case EngineProtocol.BUILDPLAN_FINISH -> {
                         TestSummary counts = TestSummary.readCounts(line);
                         if (counts != null && testResultOut != null) testResultOut[0] = counts;

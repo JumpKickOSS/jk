@@ -50,7 +50,7 @@ public final class IdeChrome implements AutoCloseable, LiveRegion {
     private Thread animator;
 
     private IdeChrome(PrintStream out, boolean animate) {
-        this.out = PlainAscii.wrap(out);
+        this.out = PlainAscii.wrapping(out);
         this.animate = animate;
     }
 

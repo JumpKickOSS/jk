@@ -415,7 +415,7 @@ public final class ExplainCommand implements CliCommand {
         StringBuilder sb = new StringBuilder();
         for (BuildStage stage : order) {
             if (!sb.isEmpty()) sb.append(sep);
-            List<TaskForecast.Task> steps = byStage.get(stage);
+            List<TaskForecast.Task> steps = byStage.getOrDefault(stage, List.of());
             boolean dirty = steps.stream().anyMatch(s -> !s.cached());
             sb.append(renderStageToken(stage, dirty, stageDetail(stage, dirty, m), t, ansi));
         }

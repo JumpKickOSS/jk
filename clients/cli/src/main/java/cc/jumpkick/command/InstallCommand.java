@@ -54,6 +54,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
@@ -403,7 +404,7 @@ public final class InstallCommand {
         for (Path mod : moduleDirs) infoByDir.put(mod, projectInfo(mod));
         List<AlwaysNativeGraal.Module> alwaysNative = new ArrayList<>();
         for (Path mod : moduleDirs) {
-            var info = infoByDir.get(mod);
+            var info = Objects.requireNonNull(infoByDir.get(mod));
             if (info.error() != null || !"ALWAYS".equals(info.nativeMode())) continue;
             alwaysNative.add(new AlwaysNativeGraal.Module(mod, info.graal()));
         }

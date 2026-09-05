@@ -490,7 +490,7 @@ public final class ToolInstallCommand implements CliCommand {
         CliOutput.out(slug + " " + p.version() + " "
                 + ("CACHED".equals(p.source())
                         ? "already installed"
-                        : p.source().toLowerCase(Locale.ROOT))
+                        : String.valueOf(p.source()).toLowerCase(Locale.ROOT))
                 + " — " + p.bin());
         return Exit.SUCCESS;
     }

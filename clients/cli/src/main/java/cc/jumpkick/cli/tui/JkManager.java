@@ -135,7 +135,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
 
     JkManager(PrintStream out, boolean animate, boolean planMode, int width, ProgressBarMode progressMode) {
         // PlainAscii.wrap is identity under ANSI; under --no-ansi rewrites …/•/● in messages.
-        this.out = PlainAscii.wrap(out);
+        this.out = PlainAscii.wrapping(out);
         this.animate = animate;
         this.planMode = planMode;
         this.width = width <= 0 ? DEFAULT_WIDTH : width;

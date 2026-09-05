@@ -8,6 +8,7 @@ import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.config.WorkspaceScan;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.command.Arity;
@@ -124,7 +125,7 @@ public final class RemoveCommand implements CliCommand {
             }
         }
         if (removed == null) {
-            CommandWedge.printFail("Remove", firstError.getMessage());
+            CommandWedge.printFail("Remove", Errors.text(firstError));
             return 1;
         }
         CommandWedge.printOk(
