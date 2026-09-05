@@ -3,6 +3,7 @@ package cc.jumpkick.repo;
 
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.task.RunNotices;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -281,8 +282,23 @@ public final class RepoGroup {
         List<MavenRepo> eligible = eligibleRepos(coord);
         List<MavenRepo> asked = new ArrayList<>(eligible);
         asked.addAll(lastResortRepos(coord, eligible));
+        IOException firstFailure = null;
         for (MavenRepo repo : asked) {
-            List<String> found = repo.availableVersions(coord);
+            List<String> found;
+            try {
+                found = repo.availableVersions(coord);
+            } catch (IOException transport) {
+                // One remote's 429, 5xx or reset is that remote's problem, not an answer about the
+                // coordinate: the remaining candidates are still asked. Said once per run per
+                // repository, because a warm multi-repo lock asks this hundreds of times.
+                if (firstFailure == null) firstFailure = transport;
+                RunNotices.warnOnce(
+                        "repo-unreachable:" + repo.name(),
+                        () -> "jk: warning: repository " + repo.name() + " is unreachable ("
+                                + transport.getClass().getSimpleName() + ": " + transport.getMessage()
+                                + "); trying the remaining repositories");
+                continue;
+            }
             if (!found.isEmpty()) {
                 List<String> immutable = List.copyOf(found);
                 if (memoable && VERSIONS_CACHE.size() < VERSIONS_CACHE_MAX) {
@@ -291,6 +307,9 @@ public final class RepoGroup {
                 return immutable;
             }
         }
+        // Every candidate failed to answer: that is the failure, not an empty catalog, and an
+        // empty answer must not be memoised over it.
+        if (firstFailure != null) throw firstFailure;
         // Cache empty only after a full miss — rare; avoids re-statting empty GAs every expand.
         // Expires like any other entry: an artifact that does not exist yet may exist later.
         List<String> empty = List.of();
@@ -383,6 +402,7 @@ public final class RepoGroup {
     private Optional<RepoFetched> tryFetchFrom(
             List<MavenRepo> candidates, Coordinate coord, LocalProbe localProbe, Fetcher fetcher, BooleanSupplier abort)
             throws IOException, InterruptedException {
+        IOException firstFailure = null;
         for (MavenRepo repo : candidates) {
             Optional<MavenRepo.Fetched> local = localProbe.probe(repo, coord);
             if (local.isPresent()) {
@@ -399,8 +419,16 @@ public final class RepoGroup {
                 return Optional.of(new RepoFetched(repo, f));
             } catch (MavenRepo.ArtifactNotFoundException ignored) {
                 // try next eligible repo
+            } catch (MavenRepo.FetchAbortedException aborted) {
+                throw aborted;
+            } catch (IOException transport) {
+                // A failed remote falls through to the next candidate silently: the artifact that
+                // arrives is still checked against the lock's sha256, so where it came from does
+                // not change what is accepted. If nobody answers, the first failure is the reason.
+                if (firstFailure == null) firstFailure = transport;
             }
         }
+        if (firstFailure != null) throw firstFailure;
         return Optional.empty();
     }
 
