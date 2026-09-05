@@ -206,7 +206,7 @@ public final class PublishCommand implements CliCommand {
             String basePrefix = base.endsWith("/") ? base : base + "/";
             if (target.equals(base) || target.startsWith(basePrefix)) {
                 matchedName = repo.name();
-                inline = repo.credential();
+                inline = repo.credentialOpt();
                 break;
             }
         }

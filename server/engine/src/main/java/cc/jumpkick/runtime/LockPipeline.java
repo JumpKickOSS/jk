@@ -300,7 +300,10 @@ public final class LockPipeline {
                 javaHome,
                 jdkRegistry,
                 pathPrep.project().project().jdkSpec(),
-                pathPrep.project().nativeConfig().map(NativeConfig::graalSpec).orElse(ToolchainSpec.NONE),
+                pathPrep.project()
+                        .nativeConfigOpt()
+                        .map(NativeConfig::graalSpec)
+                        .orElse(ToolchainSpec.NONE),
                 pathPrep.project().graal() != null);
         if (profile) {
             ResolveProfile.phasePost(System.nanoTime() - postT0);

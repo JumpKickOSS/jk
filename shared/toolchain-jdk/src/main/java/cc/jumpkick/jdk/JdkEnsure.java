@@ -30,10 +30,13 @@ public final class JdkEnsure {
         INSTALLED
     }
 
-    public record Outcome(Optional<InstalledJdk> jdk, Source source, String specUsed) {
+    public record Outcome(@Nullable InstalledJdk jdk, Source source, String specUsed) {
         public Outcome {
-            Objects.requireNonNull(jdk, "jdk");
             Objects.requireNonNull(source, "source");
+        }
+
+        public Optional<InstalledJdk> jdkOpt() {
+            return Optional.ofNullable(jdk);
         }
     }
 
@@ -150,12 +153,12 @@ public final class JdkEnsure {
                 env::apply);
         JdkResolution.Resolved r = JdkResolution.resolve(req, registry, defaults, latestLts);
 
-        if (r.jdk().isPresent()) {
+        if (r.jdkOpt().isPresent()) {
             return new Outcome(r.jdk(), mapSource(r.tier()), r.specUsed());
         }
         if (!r.wouldInstall()) {
             // Nothing pinned and nothing to install (resolution found no spec).
-            return new Outcome(Optional.empty(), Source.ALREADY_PINNED, null);
+            return new Outcome(null, Source.ALREADY_PINNED, null);
         }
         if (!allowInstall) {
             // Engine-hosted sync: the client should have pre-flighted this install before sending
@@ -177,7 +180,7 @@ public final class JdkEnsure {
         if (r.tier() == JdkResolution.Tier.DEFAULT && defaults.defaultId().isEmpty()) {
             defaults.setDefault(installed);
         }
-        return new Outcome(Optional.of(installed), Source.INSTALLED, spec);
+        return new Outcome(installed, Source.INSTALLED, spec);
     }
 
     /** Map a resolution tier to the coarse {@link Source} used for status wording. */

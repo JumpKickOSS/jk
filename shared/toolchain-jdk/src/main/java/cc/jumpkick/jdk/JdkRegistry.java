@@ -274,7 +274,7 @@ public final class JdkRegistry {
             if (matchesSpec(hit, query)) matches.add(hit);
         }
         if (matches.isEmpty()) return Optional.empty();
-        if (query.lowerBound().isPresent()) {
+        if (query.lowerBoundOpt().isPresent()) {
             // Range (">=21"): the LOWEST installed major satisfying the bound
             // wins; ties break on vendor preference, then newest version.
             matches.sort(Comparator.comparingInt((JdkHit h) -> {
@@ -372,16 +372,16 @@ public final class JdkRegistry {
     }
 
     private static boolean matchesSpec(JdkHit hit, JdkSelector.FlexibleQuery query) {
-        if (query.lowerBound().isPresent()) {
+        if (query.lowerBoundOpt().isPresent()) {
             Integer hitMajor = JdkKeywords.leadingMajor(hit.version());
-            if (hitMajor == null || !query.lowerBound().get().satisfiedBy(hitMajor)) return false;
-        } else if (query.major().isPresent()) {
+            if (hitMajor == null || !query.lowerBoundOpt().get().satisfiedBy(hitMajor)) return false;
+        } else if (query.majorOpt().isPresent()) {
             Integer hitMajor = JdkKeywords.leadingMajor(hit.version());
-            if (hitMajor == null || !hitMajor.equals(query.major().get())) return false;
+            if (hitMajor == null || !hitMajor.equals(query.majorOpt().get())) return false;
         }
-        if (query.exactVersion().isPresent()) {
+        if (query.exactVersionOpt().isPresent()) {
             if (hit.version() == null) return false;
-            String exact = query.exactVersion().get();
+            String exact = query.exactVersionOpt().get();
             if (!hit.version().equals(exact)
                     && !hit.version().startsWith(exact + ".")
                     && !hit.version().startsWith(exact + "-")

@@ -77,11 +77,11 @@ public final class JdkPinCommand implements CliCommand {
 
     /** {@code <vendor>-<major>} for a hit (e.g. {@code temurin-25}); null if the major is unknown. */
     private static String pinName(JdkHit hit) {
-        Optional<Integer> major = JdkSelector.parseFlexible(hit.version() == null ? "" : hit.version())
+        Integer major = JdkSelector.parseFlexible(hit.version() == null ? "" : hit.version())
                 .major();
-        if (major.isEmpty()) return null;
+        if (major == null) return null;
         String vendor =
                 hit.vendor().jbPrefix().orElseGet(() -> hit.vendor().vendor().toLowerCase(Locale.ROOT));
-        return vendor + "-" + major.get();
+        return vendor + "-" + major;
     }
 }

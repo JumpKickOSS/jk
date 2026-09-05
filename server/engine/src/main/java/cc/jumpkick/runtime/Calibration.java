@@ -829,7 +829,7 @@ public final class Calibration {
             var req = new JdkResolution.Request(
                     null, SessionContext.current().jdkSpec(), null, null, null, 0, env::apply);
             var r = JdkResolution.resolve(req, registry, JdkInventory.current(), JdkLts.OFFLINE_LATEST_LTS);
-            return r.jdk().map(InstalledJdk::home);
+            return r.jdkOpt().map(InstalledJdk::home);
         } catch (Exception e) {
             return Optional.empty();
         }

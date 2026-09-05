@@ -21,7 +21,7 @@ class JkBuildParserRepositoryTest {
         assertThat(parsed.repositories()).extracting(r -> r.name()).containsExactlyInAnyOrder("central", "internal");
         // No inline credential on either repo.
         assertThat(parsed.repositories())
-                .allSatisfy(r -> assertThat(r.credential()).isEmpty());
+                .allSatisfy(r -> assertThat(r.credentialOpt()).isEmpty());
     }
 
     @Test
@@ -80,13 +80,13 @@ class JkBuildParserRepositoryTest {
                 .filter(r -> r.name().equals("ghp"))
                 .findFirst()
                 .orElseThrow();
-        assertThat(ghp.credential()).contains(new RepoCredential.Bearer("ghp_literaltoken"));
+        assertThat(ghp.credentialOpt()).contains(new RepoCredential.Bearer("ghp_literaltoken"));
 
         var nexus = parsed.repositories().stream()
                 .filter(r -> r.name().equals("nexus"))
                 .findFirst()
                 .orElseThrow();
-        assertThat(nexus.credential()).contains(new RepoCredential.Basic("deployer", "s3cr3t"));
+        assertThat(nexus.credentialOpt()).contains(new RepoCredential.Basic("deployer", "s3cr3t"));
     }
 
     @Test
@@ -100,7 +100,7 @@ class JkBuildParserRepositoryTest {
                 secret-key = "SEKRIT"
                 """);
         var spec = parsed.repositories().get(0);
-        assertThat(spec.objectStore()).hasValueSatisfying(c -> {
+        assertThat(spec.objectStoreOpt()).hasValueSatisfying(c -> {
             assertThat(c.region()).isEqualTo("us-west-2");
             assertThat(c.endpoint()).isEqualTo("https://minio.internal:9000");
             assertThat(c.accessKey()).isEqualTo("AKID");
@@ -115,7 +115,7 @@ class JkBuildParserRepositoryTest {
                 [repositories.plain]
                 url = "https://repo.example/maven"
                 """);
-        assertThat(parsed.repositories().get(0).objectStore()).isEmpty();
+        assertThat(parsed.repositories().get(0).objectStoreOpt()).isEmpty();
     }
 
     @Test
@@ -129,7 +129,7 @@ class JkBuildParserRepositoryTest {
                 access-key = "${AWS_KEY}"
                 secret-key = "literal-secret"
                 """);
-        assertThat(parsed.repositories().get(0).objectStore()).hasValueSatisfying(c -> {
+        assertThat(parsed.repositories().get(0).objectStoreOpt()).hasValueSatisfying(c -> {
             assertThat(c.accessKey()).isEqualTo("${AWS_KEY}");
             assertThat(c.secretKey()).isEqualTo("literal-secret");
         });
@@ -147,7 +147,7 @@ class JkBuildParserRepositoryTest {
                 url = "https://nexus.example/repo/"
                 token = "${PATH}"
                 """);
-        assertThat(parsed.repositories().get(0).credential()).contains(new RepoCredential.Bearer("${PATH}"));
+        assertThat(parsed.repositories().get(0).credentialOpt()).contains(new RepoCredential.Bearer("${PATH}"));
     }
 
     @Test
@@ -159,7 +159,7 @@ class JkBuildParserRepositoryTest {
                 url = "https://nexus.example/repo/"
                 token = "${JK_DEFINITELY_UNSET_VAR_XYZ}"
                 """);
-        assertThat(parsed.repositories().get(0).credential())
+        assertThat(parsed.repositories().get(0).credentialOpt())
                 .contains(new RepoCredential.Bearer("${JK_DEFINITELY_UNSET_VAR_XYZ}"));
     }
 }

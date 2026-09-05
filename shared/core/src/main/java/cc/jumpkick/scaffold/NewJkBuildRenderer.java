@@ -33,15 +33,15 @@ public final class NewJkBuildRenderer {
             case GROOVY -> sb.append("groovy   = \"").append(LATEST).append("\"\n");
             case SCALA -> sb.append("scala    = \"").append(LATEST).append("\"\n");
         }
-        inputs.kotlinModuleName()
+        inputs.kotlinModuleNameOpt()
                 .ifPresent(m ->
                         sb.append("module   = ").append(MinimalToml.quote(m)).append('\n'));
 
-        if (!inputs.plugin() && (inputs.main().isPresent() || inputs.assembly())) {
+        if (!inputs.plugin() && (inputs.mainOpt().isPresent() || inputs.assembly())) {
             sb.append("\n[application]\n");
-            if (inputs.main().isPresent()) {
+            if (inputs.mainOpt().isPresent()) {
                 sb.append("main       = ")
-                        .append(MinimalToml.quote(inputs.main().get()))
+                        .append(MinimalToml.quote(inputs.mainOpt().get()))
                         .append('\n');
             }
             if (inputs.assembly()) {

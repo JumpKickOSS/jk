@@ -31,7 +31,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.Nullable;
 import org.tomlj.Toml;
@@ -324,18 +323,21 @@ public final class JkBuildParser {
         Features features = ManifestTables.parseFeatures(result);
         Map<String, String> manifest = ManifestTables.parseManifest(result);
         List<PluginDeclaration> plugins = ManifestBuild.parsePlugins(result);
-        Optional<JkBuild.Application> application = ManifestTables.parseApplication(result);
-        if (application.isPresent() && PluginModule.isWorker(moduleDir)) {
+        JkBuild.Application application =
+                ManifestTables.parseApplication(result).orElse(null);
+        if (application != null && PluginModule.isWorker(moduleDir)) {
             throw new JkBuildParseException(
                     "[application] is for apps — a plugin worker (jk-plugin.toml or Plugin service)"
                             + " already implies main "
                             + PluginModule.WORKER_MAIN
                             + "; drop the [application] table");
         }
-        Optional<JkBuild.NativeConfig> nativeConfig = ManifestBuild.parseNativeConfig(result);
-        if (application.map(JkBuild.Application::nativeImage).orElse(false)
-                && nativeConfig.isPresent()
-                && nativeConfig.get().enabled() == JkBuild.NativeMode.DISABLED) {
+        JkBuild.NativeConfig nativeConfig =
+                ManifestBuild.parseNativeConfig(result).orElse(null);
+        if (application != null
+                && application.nativeImage()
+                && nativeConfig != null
+                && nativeConfig.enabled() == JkBuild.NativeMode.DISABLED) {
             throw new JkBuildParseException("[application].native = true conflicts with [native] enabled = false");
         }
         // Cold-store engines install built-ins lazily: fetch owners of referenced tables before
@@ -344,11 +346,9 @@ public final class JkBuildParser {
         List<PluginDescriptor> installedManifests = PluginTableRegistry.manifestsFor(moduleDir, plugins);
         Map<String, PluginConfig> pluginConfigs = ManifestTables.parsePluginTables(result, installedManifests);
         // minified = true enables the minified packager without requiring an empty [minified] table.
-        pluginConfigs = ManifestTables.ensureMinifiedPluginConfigured(
-                application.orElse(null), pluginConfigs, installedManifests);
+        pluginConfigs = ManifestTables.ensureMinifiedPluginConfigured(application, pluginConfigs, installedManifests);
         ManifestBuild.checkUnownedTables(result, moduleDir, plugins, installedManifests, builtInFetchFailures);
-        boolean nativeDeclared = nativeConfig.isPresent()
-                || application.map(JkBuild.Application::nativeImage).orElse(false);
+        boolean nativeDeclared = nativeConfig != null || (application != null && application.nativeImage());
         deps = ManifestBuild.withPlatformContributions(
                 deps, project, nativeDeclared, pluginConfigs, installedManifests);
         JkBuild.Build build = ManifestBuild.parseBuild(result);
@@ -389,7 +389,7 @@ public final class JkBuildParser {
                     testEnv);
         }
         JkBuild.FormatConfig format = ManifestTables.parseFormat(result);
-        Optional<JkBuild.Install> install = ManifestTables.parseInstall(result);
+        JkBuild.Install install = ManifestTables.parseInstall(result).orElse(null);
         Variants variants = ManifestTables.parseVariants(result, workspace, effective, installedManifests);
         // *.workspace = true is for members only — the root is the inheritance source.
         if (project.inheritsFromWorkspace() && workspace != null && !workspace.isEmpty()) {

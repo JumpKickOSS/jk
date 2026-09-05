@@ -284,7 +284,7 @@ class BuildLayoutTest {
                 enabled = "always"
                 name = "jk"
                 """);
-        assertThat(withExe.nativeConfig().orElseThrow().name()).isEqualTo("jk");
+        assertThat(withExe.nativeConfigOpt().orElseThrow().name()).isEqualTo("jk");
         assertThat(BuildLayout.of(dir, withExe).nativeBinary())
                 .isEqualTo(BuildLayout.of(dir, bare).nativeBinary());
     }

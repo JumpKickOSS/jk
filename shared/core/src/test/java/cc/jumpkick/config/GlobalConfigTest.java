@@ -274,7 +274,7 @@ class GlobalConfigTest {
                 token = "${JK_TEST_DEFINITELY_UNSET_TOKEN}"
                 """);
         // Read through secret(), not toString(): a credential no longer prints what it holds.
-        assertThat(GlobalConfig.repositories(config).getFirst().credential())
+        assertThat(GlobalConfig.repositories(config).getFirst().credentialOpt())
                 .get()
                 .extracting(c -> ((RepoCredential) c).secret())
                 .isEqualTo("${JK_TEST_DEFINITELY_UNSET_TOKEN}");
@@ -285,7 +285,7 @@ class GlobalConfigTest {
                 url = "https://nexus.example.com/repo"
                 token = "${JK_TEST_DEFINITELY_UNSET_TOKEN}"
                 """);
-        assertThat(manifest.repositories().getFirst().credential())
+        assertThat(manifest.repositories().getFirst().credentialOpt())
                 .get()
                 .extracting(c -> ((RepoCredential) c).secret())
                 .isEqualTo("${JK_TEST_DEFINITELY_UNSET_TOKEN}");

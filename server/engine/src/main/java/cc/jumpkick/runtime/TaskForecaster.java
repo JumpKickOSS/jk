@@ -962,7 +962,7 @@ public final class TaskForecaster {
      */
     static Path forecastJavaHome(Path dir, JkBuild project, Lockfile lock) throws IOException, InterruptedException {
         return JdkEnsure.ensure(dir, null, project, lock, m -> {}, false)
-                .jdk()
+                .jdkOpt()
                 .map(InstalledJdk::home)
                 .orElseGet(() -> JavaHomes.resolveJavaHome(dir));
     }

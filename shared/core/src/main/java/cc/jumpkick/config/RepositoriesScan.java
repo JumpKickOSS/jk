@@ -30,7 +30,11 @@ import org.jspecify.annotations.Nullable;
 public final class RepositoriesScan {
 
     /** One {@code [repositories]} entry: name, url, and the inline credential when present. */
-    public record Repo(String name, String url, Optional<RepoCredential> credential) {}
+    public record Repo(String name, String url, @Nullable RepoCredential credential) {
+        public Optional<RepoCredential> credentialOpt() {
+            return Optional.ofNullable(credential);
+        }
+    }
 
     private static final Pattern PAIR = Pattern.compile("([A-Za-z0-9_-]+)\\s*=\\s*\"((?:[^\"\\\\]|\\\\.)*)\"");
 
@@ -127,8 +131,9 @@ public final class RepositoriesScan {
                 name,
                 url,
                 RepositoryToml.credentialOf(
-                        RepositoryToml.interpolate(token, STRICT, where),
-                        RepositoryToml.interpolate(username, STRICT, where),
-                        RepositoryToml.interpolate(password, STRICT, where))));
+                                RepositoryToml.interpolate(token, STRICT, where),
+                                RepositoryToml.interpolate(username, STRICT, where),
+                                RepositoryToml.interpolate(password, STRICT, where))
+                        .orElse(null)));
     }
 }

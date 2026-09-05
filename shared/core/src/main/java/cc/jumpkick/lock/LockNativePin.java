@@ -77,7 +77,7 @@ public final class LockNativePin {
      */
     private static void collect(Map<String, String> byRaw, String where, JkBuild build) {
         if (!build.nativeImage()) return;
-        VersionSelector selector = build.nativeConfig()
+        VersionSelector selector = build.nativeConfigOpt()
                 .map(JkBuild.NativeConfig::metadataRepository)
                 .orElse(JkBuild.NativeConfig.METADATA_REPOSITORY_DEFAULT);
         byRaw.putIfAbsent(selector.raw(), where);

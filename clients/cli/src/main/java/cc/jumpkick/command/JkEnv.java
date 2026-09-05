@@ -103,8 +103,8 @@ public final class JkEnv {
                 javaRelease,
                 System::getenv);
         var resolved = JdkResolution.resolveForHook(req, registry, globalDefault);
-        if (resolved.jdk().isEmpty()) return Target.empty();
-        var home = resolved.jdk().get().home();
+        if (resolved.jdkOpt().isEmpty()) return Target.empty();
+        var home = resolved.jdkOpt().get().home();
         var jdk = new ResolvedJdk(home, matchVendor(home));
         return targetFor(root, jdk, resolveGraalHome(projectGraal, lockPins.graal()));
     }

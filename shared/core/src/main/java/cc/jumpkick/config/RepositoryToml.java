@@ -115,7 +115,7 @@ public final class RepositoryToml {
                     "repositories." + name + " must be a URL string or an inline table with `url`");
         }
         try {
-            return new RepositorySpec(name, URI.create(url), credential, objectStore, groups);
+            return new RepositorySpec(name, URI.create(url), credential.orElse(null), objectStore.orElse(null), groups);
         } catch (IllegalArgumentException e) {
             if (onBad == OnBad.SKIP) return null;
             throw new JkBuildParseException("repositories." + name + " has malformed URL: " + url, e);

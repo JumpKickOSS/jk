@@ -93,7 +93,7 @@ public final class PluginContributions {
                         root.when(),
                         config,
                         build.project(),
-                        build.nativeConfig().isPresent(),
+                        build.nativeConfigOpt().isPresent(),
                         null,
                         manifest.id())) {
                     continue;
@@ -127,7 +127,7 @@ public final class PluginContributions {
                         plugin.when(),
                         config,
                         build.project(),
-                        build.nativeConfig().isPresent(),
+                        build.nativeConfigOpt().isPresent(),
                         classpathModules,
                         manifest.id())) {
                     continue;
@@ -164,7 +164,7 @@ public final class PluginContributions {
                         args.when(),
                         config,
                         build.project(),
-                        build.nativeConfig().isPresent(),
+                        build.nativeConfigOpt().isPresent(),
                         classpathModules,
                         manifest.id())) {
                     continue;
@@ -198,7 +198,7 @@ public final class PluginContributions {
                         contributed.when(),
                         config,
                         build.project(),
-                        build.nativeConfig().isPresent(),
+                        build.nativeConfigOpt().isPresent(),
                         null,
                         manifest.id())) {
                     continue;
@@ -280,7 +280,12 @@ public final class PluginContributions {
             if (config == null) continue;
             for (PluginDescriptor.StepDependency sd : lane.apply(manifest.contributions())) {
                 if (!holds(
-                        sd.when(), config, build.project(), build.nativeConfig().isPresent(), null, manifest.id())) {
+                        sd.when(),
+                        config,
+                        build.project(),
+                        build.nativeConfigOpt().isPresent(),
+                        null,
+                        manifest.id())) {
                     continue;
                 }
                 if (sd.sdkComponent() != null) {
@@ -326,7 +331,12 @@ public final class PluginContributions {
             for (PluginDescriptor.ProvidedClasspath pc :
                     manifest.contributions().providedClasspath()) {
                 if (!holds(
-                        pc.when(), config, build.project(), build.nativeConfig().isPresent(), null, manifest.id())) {
+                        pc.when(),
+                        config,
+                        build.project(),
+                        build.nativeConfigOpt().isPresent(),
+                        null,
+                        manifest.id())) {
                     continue;
                 }
                 out.add(pc.dependency());
@@ -395,7 +405,12 @@ public final class PluginContributions {
             for (PluginDescriptor.PackagerDependency pd :
                     manifest.contributions().packagerDependencies()) {
                 if (!holds(
-                        pd.when(), config, build.project(), build.nativeConfig().isPresent(), null, manifest.id())) {
+                        pd.when(),
+                        config,
+                        build.project(),
+                        build.nativeConfigOpt().isPresent(),
+                        null,
+                        manifest.id())) {
                     continue;
                 }
                 String coordinate = Interpolation.resolve(pd.coordinate(), config, build.project(), null);

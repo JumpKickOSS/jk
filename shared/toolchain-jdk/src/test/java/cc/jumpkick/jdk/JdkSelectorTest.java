@@ -202,37 +202,37 @@ class JdkSelectorTest {
     @Test
     void parse_flexible_extracts_major_and_hints() {
         var q = JdkSelector.parseFlexible("25-graal");
-        assertThat(q.major()).contains(25);
+        assertThat(q.majorOpt()).contains(25);
         assertThat(q.hints()).containsExactly("graal");
-        assertThat(q.exactVersion()).isEmpty();
+        assertThat(q.exactVersionOpt()).isEmpty();
     }
 
     @Test
     void parse_flexible_drops_java_noise_word() {
         var q = JdkSelector.parseFlexible("java-17-openjdk");
-        assertThat(q.major()).contains(17);
+        assertThat(q.majorOpt()).contains(17);
         assertThat(q.hints()).containsExactly("openjdk");
     }
 
     @Test
     void parse_flexible_captures_dotted_version() {
         var q = JdkSelector.parseFlexible("17.0.19");
-        assertThat(q.major()).contains(17);
-        assertThat(q.exactVersion()).contains("17.0.19");
+        assertThat(q.majorOpt()).contains(17);
+        assertThat(q.exactVersionOpt()).contains("17.0.19");
         assertThat(q.hints()).isEmpty();
     }
 
     @Test
     void parse_flexible_handles_vendor_prefix() {
         var q = JdkSelector.parseFlexible("temurin-25");
-        assertThat(q.major()).contains(25);
+        assertThat(q.majorOpt()).contains(25);
         assertThat(q.hints()).containsExactly("temurin");
     }
 
     @Test
     void parse_flexible_handles_dropped_jdk_token() {
         var q = JdkSelector.parseFlexible("jdk-21");
-        assertThat(q.major()).contains(21);
+        assertThat(q.majorOpt()).contains(21);
         assertThat(q.hints()).isEmpty();
     }
 
@@ -547,17 +547,17 @@ class JdkSelectorTest {
     @Test
     void parse_flexible_extracts_lower_bound() {
         var inclusive = JdkSelector.parseFlexible(">=21");
-        assertThat(inclusive.lowerBound()).isPresent();
-        assertThat(inclusive.lowerBound().get().major()).isEqualTo(21);
-        assertThat(inclusive.lowerBound().get().inclusive()).isTrue();
-        assertThat(inclusive.major()).isEmpty();
+        assertThat(inclusive.lowerBoundOpt()).isPresent();
+        assertThat(inclusive.lowerBoundOpt().get().major()).isEqualTo(21);
+        assertThat(inclusive.lowerBoundOpt().get().inclusive()).isTrue();
+        assertThat(inclusive.majorOpt()).isEmpty();
 
         var exclusive = JdkSelector.parseFlexible(">25");
-        assertThat(exclusive.lowerBound().get().major()).isEqualTo(25);
-        assertThat(exclusive.lowerBound().get().inclusive()).isFalse();
+        assertThat(exclusive.lowerBoundOpt().get().major()).isEqualTo(25);
+        assertThat(exclusive.lowerBoundOpt().get().inclusive()).isFalse();
 
         var vendored = JdkSelector.parseFlexible("temurin->=21");
-        assertThat(vendored.lowerBound().get().major()).isEqualTo(21);
+        assertThat(vendored.lowerBoundOpt().get().major()).isEqualTo(21);
         assertThat(vendored.hints()).containsExactly("temurin");
     }
 

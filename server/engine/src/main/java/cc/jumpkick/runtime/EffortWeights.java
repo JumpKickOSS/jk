@@ -906,7 +906,7 @@ public final class EffortWeights {
                     project.project() != null ? project.project().javaRelease() : 0,
                     env::apply);
             var r = JdkResolution.resolve(req, registry, JdkInventory.current(), JdkLts.OFFLINE_LATEST_LTS);
-            return (r.jdk().isEmpty() && r.wouldInstall()) ? JDK_DOWNLOAD : SKIP;
+            return (r.jdkOpt().isEmpty() && r.wouldInstall()) ? JDK_DOWNLOAD : SKIP;
         } catch (Exception e) {
             return SKIP;
         }

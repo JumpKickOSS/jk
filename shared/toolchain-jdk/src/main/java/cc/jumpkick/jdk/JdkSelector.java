@@ -6,6 +6,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Picks the best {@link JdkCatalog.Entry} for a {@link JdkSpec} on a given host. Strategy:
@@ -43,7 +44,7 @@ public final class JdkSelector {
         if (rawSpec == null || rawSpec.isBlank()) return Optional.empty();
         FlexibleQuery q = parseFlexible(rawSpec);
         // Bias only when the user named no vendor AND gave a concrete major/version.
-        if (q.hints().isEmpty() && q.lowerBound().isEmpty() && q.major().isPresent()) {
+        if (q.hints().isEmpty() && q.lowerBoundOpt().isEmpty() && q.majorOpt().isPresent()) {
             for (JdkVendor v : JdkVendor.PREFERENCE) {
                 String prefix = v.jbPrefix().orElse(null);
                 if (prefix == null) continue;
@@ -106,14 +107,14 @@ public final class JdkSelector {
             // A range bound (">=21") is a hard filter; otherwise an exact major
             // (when present) is hard — else we'd offer a JDK 21 for input "graal"
             // which the user almost certainly didn't ask for. Exact-version too.
-            if (query.lowerBound().isPresent()) {
-                if (!query.lowerBound().get().satisfiedBy(entry.majorVersion())) continue;
-            } else if (query.major().isPresent()
-                    && entry.majorVersion() != query.major().get()) {
+            if (query.lowerBoundOpt().isPresent()) {
+                if (!query.lowerBoundOpt().get().satisfiedBy(entry.majorVersion())) continue;
+            } else if (query.majorOpt().isPresent()
+                    && entry.majorVersion() != query.majorOpt().get()) {
                 continue;
             }
-            if (query.exactVersion().isPresent()
-                    && !entry.version().startsWith(query.exactVersion().get())) continue;
+            if (query.exactVersionOpt().isPresent()
+                    && !entry.version().startsWith(query.exactVersionOpt().get())) continue;
             int score = scoreHints(entry, query.hints());
             // Reject entries that satisfy zero hints when the user supplied any
             // — they're meaningfully off-target.
@@ -123,7 +124,7 @@ public final class JdkSelector {
         if (scored.isEmpty()) return Optional.empty();
 
         Comparator<Scored> order;
-        if (query.lowerBound().isPresent()) {
+        if (query.lowerBoundOpt().isPresent()) {
             // Range: the LOWEST major satisfying the bound wins (">=21" → 21, not
             // the newest), then vendor preference, default-for-major, GA, version.
             order = Comparator.comparingInt((Scored s) -> s.entry.majorVersion())
@@ -156,11 +157,26 @@ public final class JdkSelector {
 
     /** Outcome of {@link #parseFlexible} — the tokens we extracted from raw input. */
     public record FlexibleQuery(
-            Optional<Integer> major, Optional<String> exactVersion, List<String> hints, Optional<Bound> lowerBound) {
+            @Nullable Integer major,
+            @Nullable String exactVersion,
+            List<String> hints,
+            @Nullable Bound lowerBound) {
 
         /** Three-arg form (no range bound). */
-        public FlexibleQuery(Optional<Integer> major, Optional<String> exactVersion, List<String> hints) {
-            this(major, exactVersion, hints, Optional.empty());
+        public FlexibleQuery(@Nullable Integer major, @Nullable String exactVersion, List<String> hints) {
+            this(major, exactVersion, hints, null);
+        }
+
+        public Optional<Integer> majorOpt() {
+            return Optional.ofNullable(major);
+        }
+
+        public Optional<String> exactVersionOpt() {
+            return Optional.ofNullable(exactVersion);
+        }
+
+        public Optional<Bound> lowerBoundOpt() {
+            return Optional.ofNullable(lowerBound);
         }
 
         /** A {@code >N} / {@code >=N} lower bound on the major version. */
@@ -178,7 +194,7 @@ public final class JdkSelector {
      * "jdk"} gets the same treatment.
      */
     public static FlexibleQuery parseFlexible(String raw) {
-        if (raw == null) return new FlexibleQuery(Optional.empty(), Optional.empty(), List.of());
+        if (raw == null) return new FlexibleQuery(null, null, List.of());
         var tokens = raw.toLowerCase(Locale.ROOT).split("[-_]");
         Integer major = null;
         String exact = null;
@@ -222,8 +238,7 @@ public final class JdkSelector {
                 hints.add(tok);
             }
         }
-        return new FlexibleQuery(
-                Optional.ofNullable(major), Optional.ofNullable(exact), List.copyOf(hints), Optional.ofNullable(bound));
+        return new FlexibleQuery(major, exact, List.copyOf(hints), bound);
     }
 
     /**

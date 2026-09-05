@@ -10,7 +10,6 @@ import cc.jumpkick.model.Layout;
 import cc.jumpkick.scaffold.NewInputs;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Optional;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,14 +34,14 @@ class NewChromeTest {
                 "25",
                 25,
                 25,
-                Optional.empty(),
-                Optional.empty(),
+                null,
+                null,
                 false,
                 false,
                 false,
                 NewInputs.Language.JAVA,
                 Layout.TRADITIONAL,
-                Optional.empty(),
+                null,
                 List.of(),
                 true,
                 Path.of("/tmp").resolve(name));

@@ -225,8 +225,8 @@ public final class PomImporter {
                 .workspace(module.workspace())
                 .manifest(module.manifest())
                 .plugins(module.plugins())
-                .application(module.application().orElse(null))
-                .nativeConfig(module.nativeConfig().orElse(null))
+                .application(module.applicationOpt().orElse(null))
+                .nativeConfig(module.nativeConfigOpt().orElse(null))
                 .build(module.build())
                 .format(module.format())
                 .variants(module.variants());

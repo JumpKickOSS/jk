@@ -6,6 +6,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /** Answers for {@link NewScaffolder} from flags or the interactive wizard. */
 public record NewInputs(
@@ -14,27 +15,36 @@ public record NewInputs(
         String jdk,
         int jdkMajor,
         int javaRelease,
-        Optional<String> jdkIdentifier,
-        Optional<String> main,
+        @Nullable String jdkIdentifier,
+        @Nullable String main,
         boolean assembly,
         boolean nativeImage,
         boolean plugin,
         Language lang,
         Layout layout,
-        Optional<String> kotlinModuleName,
+        @Nullable String kotlinModuleName,
         List<String> deps,
         boolean sample,
         Path directory) {
+
+    public Optional<String> jdkIdentifierOpt() {
+        return Optional.ofNullable(jdkIdentifier);
+    }
+
+    public Optional<String> mainOpt() {
+        return Optional.ofNullable(main);
+    }
+
+    public Optional<String> kotlinModuleNameOpt() {
+        return Optional.ofNullable(kotlinModuleName);
+    }
 
     public NewInputs {
         Objects.requireNonNull(group, "group");
         Objects.requireNonNull(name, "name");
         Objects.requireNonNull(jdk, "jdk");
-        Objects.requireNonNull(jdkIdentifier, "jdkIdentifier");
-        Objects.requireNonNull(main, "main");
         Objects.requireNonNull(lang, "lang");
         Objects.requireNonNull(layout, "layout");
-        Objects.requireNonNull(kotlinModuleName, "kotlinModuleName");
         Objects.requireNonNull(directory, "directory");
         deps = List.copyOf(deps);
     }
@@ -46,13 +56,13 @@ public record NewInputs(
             String jdk,
             int jdkMajor,
             int javaRelease,
-            Optional<String> jdkIdentifier,
-            Optional<String> main,
+            @Nullable String jdkIdentifier,
+            @Nullable String main,
             boolean assembly,
             boolean nativeImage,
             Language lang,
             Layout layout,
-            Optional<String> kotlinModuleName,
+            @Nullable String kotlinModuleName,
             List<String> deps,
             boolean sample,
             Path directory) {
@@ -81,13 +91,13 @@ public record NewInputs(
             String name,
             String jdk,
             int jdkMajor,
-            Optional<String> jdkIdentifier,
-            Optional<String> main,
+            @Nullable String jdkIdentifier,
+            @Nullable String main,
             boolean assembly,
             boolean nativeImage,
             Language lang,
             Layout layout,
-            Optional<String> kotlinModuleName,
+            @Nullable String kotlinModuleName,
             List<String> deps,
             boolean sample,
             Path directory) {
@@ -141,6 +151,6 @@ public record NewInputs(
     }
 
     public boolean isRunnable() {
-        return main.isPresent();
+        return main != null;
     }
 }

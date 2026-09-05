@@ -50,7 +50,7 @@ public final class JavaHomes {
             // installed any pin during sync, so this just locates it. Falls back
             // to the running JVM when nothing resolves.
             JdkResolution.Resolved r = JdkResolution.resolveForHook(req, registry, JdkInventory.current());
-            if (r.jdk().isPresent()) return r.jdk().get().home();
+            if (r.jdkOpt().isPresent()) return r.jdkOpt().get().home();
         } catch (RuntimeException ignored) {
             // fall through to the running JVM
         }

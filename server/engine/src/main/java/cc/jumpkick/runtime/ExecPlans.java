@@ -546,7 +546,7 @@ public final class ExecPlans {
         Path binDir = binDirOverride != null ? binDirOverride : JkDirs.binDir();
         Path libRoot = libDirOverride != null ? libDirOverride : JkDirs.productLib();
         String nativeName =
-                project.nativeConfig().map(JkBuild.NativeConfig::name).orElse(null);
+                project.nativeConfigOpt().map(JkBuild.NativeConfig::name).orElse(null);
 
         if (InstallPlans.installsNativeBinary(project, layout)) {
             Path nativeBin = layout.nativeBinary();

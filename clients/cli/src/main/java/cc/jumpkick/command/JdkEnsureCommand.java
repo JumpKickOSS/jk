@@ -104,12 +104,12 @@ public final class JdkEnsureCommand implements CliCommand {
 
     private int ensureVersion(JdkRegistry registry, JdkInstaller installer) throws IOException, InterruptedException {
         JdkSelector.FlexibleQuery q = JdkSelector.parseFlexible(spec);
-        String min = q.exactVersion().orElse(null);
+        String min = q.exactVersionOpt().orElse(null);
 
         // Fast path: when the major is known we can answer from installed JDKs
         // without touching the network.
-        if (q.major().isPresent()
-                && reportIfPresent(registry.findHitAtLeast(q.major().get(), min, q.hints()))) {
+        if (q.majorOpt().isPresent()
+                && reportIfPresent(registry.findHitAtLeast(q.majorOpt().get(), min, q.hints()))) {
             return 0;
         }
 
@@ -125,14 +125,14 @@ public final class JdkEnsureCommand implements CliCommand {
         // when the feed has moved past the requested one. selectPreferred adds
         // the Temurin bias when no vendor was named.
         String selectInput =
-                q.major().isPresent() ? hintsAndMajor(q.hints(), q.major().get()) : spec;
+                q.majorOpt().isPresent() ? hintsAndMajor(q.hints(), q.majorOpt().get()) : spec;
         Optional<JdkCatalog.Entry> candidate = JdkSelector.selectPreferred(catalog, selectInput, os, arch);
 
         if (candidate.isPresent()) {
             JdkCatalog.Entry e = candidate.get();
             // Hint-only spec (no major typed): now that the feed told us the
             // major, re-check installed before downloading.
-            if (q.major().isEmpty() && reportIfPresent(registry.findHitAtLeast(e.majorVersion(), min, q.hints()))) {
+            if (q.majorOpt().isEmpty() && reportIfPresent(registry.findHitAtLeast(e.majorVersion(), min, q.hints()))) {
                 return 0;
             }
             if (min == null || atLeast(e.version(), min)) {

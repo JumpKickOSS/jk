@@ -331,7 +331,7 @@ public final class PomExporter {
 
     private static void appendNativePlugin(StringBuilder sb, JkBuild jkBuild) {
         String main =
-                jkBuild.nativeConfig().map(JkBuild.NativeConfig::mainClass).orElseGet(jkBuild::mainClass);
+                jkBuild.nativeConfigOpt().map(JkBuild.NativeConfig::mainClass).orElseGet(jkBuild::mainClass);
         sb.append("      <plugin>\n");
         sb.append("        <groupId>org.graalvm.buildtools</groupId>\n");
         sb.append("        <artifactId>native-maven-plugin</artifactId>\n");

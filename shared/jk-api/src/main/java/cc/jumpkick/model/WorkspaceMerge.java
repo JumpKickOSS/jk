@@ -95,8 +95,8 @@ public final class WorkspaceMerge {
                 .workspace(module.workspace())
                 .manifest(module.manifest())
                 .plugins(module.plugins())
-                .application(module.application().orElse(null))
-                .nativeConfig(module.nativeConfig().orElse(null))
+                .application(module.applicationOpt().orElse(null))
+                .nativeConfig(module.nativeConfigOpt().orElse(null))
                 .build(module.build())
                 .format(module.format())
                 .variants(module.variants())
@@ -159,8 +159,8 @@ public final class WorkspaceMerge {
                 .workspace(module.workspace())
                 .manifest(module.manifest())
                 .plugins(module.plugins())
-                .application(module.application().orElse(null))
-                .nativeConfig(module.nativeConfig().orElse(null))
+                .application(module.applicationOpt().orElse(null))
+                .nativeConfig(module.nativeConfigOpt().orElse(null))
                 .build(module.build())
                 .format(module.format())
                 .variants(module.variants())
@@ -224,8 +224,8 @@ public final class WorkspaceMerge {
                 .workspace(root.workspace())
                 .manifest(root.manifest())
                 .plugins(root.plugins())
-                .application(root.application().orElse(null))
-                .nativeConfig(root.nativeConfig().orElse(null))
+                .application(root.applicationOpt().orElse(null))
+                .nativeConfig(root.nativeConfigOpt().orElse(null))
                 .build();
     }
 

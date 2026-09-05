@@ -9,7 +9,6 @@ import cc.jumpkick.testing.RepoRoot;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
@@ -41,14 +40,14 @@ class PluginSdkScaffoldVersionTest {
                 "temurin-25",
                 25,
                 25,
-                Optional.empty(),
-                Optional.empty(),
+                null,
+                null,
                 false,
                 false,
                 true,
                 NewInputs.Language.JAVA,
                 Layout.SIMPLE,
-                Optional.empty(),
+                null,
                 List.of(),
                 false,
                 Path.of("."));

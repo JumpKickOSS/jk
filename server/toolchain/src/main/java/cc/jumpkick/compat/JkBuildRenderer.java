@@ -29,8 +29,8 @@ public final class JkBuildRenderer {
         StringBuilder sb = new StringBuilder();
         renderProject(sb, jkBuild.project());
         renderPluginTables(sb, jkBuild);
-        renderApplication(sb, jkBuild.application().orElse(null));
-        renderNative(sb, jkBuild.nativeConfig().orElse(null));
+        renderApplication(sb, jkBuild.applicationOpt().orElse(null));
+        renderNative(sb, jkBuild.nativeConfigOpt().orElse(null));
         renderManifest(sb, jkBuild.manifest());
         renderWorkspace(sb, jkBuild);
         renderRepositories(sb, jkBuild.repositories());

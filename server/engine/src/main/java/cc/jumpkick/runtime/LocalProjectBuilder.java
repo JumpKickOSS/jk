@@ -196,8 +196,8 @@ public final class LocalProjectBuilder {
                 .features(project.features())
                 .workspace(project.workspace())
                 .manifest(project.manifest())
-                .application(project.application().orElse(null))
-                .nativeConfig(project.nativeConfig().orElse(null))
+                .application(project.applicationOpt().orElse(null))
+                .nativeConfig(project.nativeConfigOpt().orElse(null))
                 .build();
     }
 

@@ -8,7 +8,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -43,14 +42,14 @@ class NewScaffolderSampleTest {
                 "25",
                 25,
                 25,
-                Optional.empty(),
-                Optional.empty(),
+                null,
+                null,
                 false,
                 false,
                 true,
                 NewInputs.Language.JAVA,
                 Layout.TRADITIONAL,
-                Optional.empty(),
+                null,
                 List.of(),
                 true,
                 dir);
@@ -75,13 +74,13 @@ class NewScaffolderSampleTest {
                 "widget",
                 "25",
                 25,
-                Optional.empty(),
-                Optional.empty(),
+                null,
+                null,
                 false,
                 false,
                 NewInputs.Language.JAVA,
                 Layout.TRADITIONAL,
-                Optional.empty(),
+                null,
                 deps,
                 true,
                 dir);

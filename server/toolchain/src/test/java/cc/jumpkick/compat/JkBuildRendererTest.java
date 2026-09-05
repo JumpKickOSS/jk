@@ -93,7 +93,7 @@ class JkBuildRendererTest {
                 .build();
         String rendered = JkBuildRenderer.render(pinned);
         assertThat(rendered).contains("metadata-repository = \"=1.1.4\"");
-        assertThat(JkBuildParser.parse(rendered).nativeConfig().orElseThrow().metadataRepository())
+        assertThat(JkBuildParser.parse(rendered).nativeConfigOpt().orElseThrow().metadataRepository())
                 .isEqualTo(VersionSelector.parseFloating("=1.1.4"));
 
         JkBuild dflt = JkBuild.builder(Project.builder("com.example", "widget", "1.0.0")

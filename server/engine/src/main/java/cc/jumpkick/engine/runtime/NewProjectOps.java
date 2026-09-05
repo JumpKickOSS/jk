@@ -291,16 +291,14 @@ public final class NewProjectOps {
                 jdk,
                 jdkMajor,
                 jdkMajor,
-                Optional.empty(),
-                main,
+                null,
+                main.orElse(null),
                 req.assembly(),
                 req.nativeImage(),
                 req.plugin(),
                 prep.lang(),
                 prep.layout(),
-                req.kotlinModule() == null || req.kotlinModule().isBlank()
-                        ? Optional.empty()
-                        : Optional.of(req.kotlinModule()),
+                req.kotlinModule() == null || req.kotlinModule().isBlank() ? null : req.kotlinModule(),
                 req.deps() == null ? List.of() : req.deps(),
                 req.sample(),
                 target);

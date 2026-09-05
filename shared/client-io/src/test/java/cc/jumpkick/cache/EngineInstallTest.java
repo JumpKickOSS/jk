@@ -37,7 +37,7 @@ class EngineInstallTest {
                 tmp.resolve("jk.toml"),
                 "name = \"m\"\ngroup = \"g\"\nversion = \"1.0\"\n[install]\nproduct-lib = \"" + EngineInstall.BIN_NAME
                         + "\"\n");
-        assertThat(JkBuildParser.parse(f).install())
+        assertThat(JkBuildParser.parse(f).installOpt())
                 .hasValueSatisfying(i -> assertThat(i.productLib()).isEqualTo(EngineInstall.BIN_NAME));
     }
 

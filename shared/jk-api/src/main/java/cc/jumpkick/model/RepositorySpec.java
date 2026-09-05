@@ -6,6 +6,7 @@ import java.net.URI;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Declared repository: name, URL, optional inline credential, object-store config, and optional
@@ -14,8 +15,8 @@ import java.util.Optional;
 public record RepositorySpec(
         String name,
         URI url,
-        Optional<RepoCredential> credential,
-        Optional<ObjectStoreConfig> objectStore,
+        @Nullable RepoCredential credential,
+        @Nullable ObjectStoreConfig objectStore,
         /** When non-empty, matching {@code groupId}s resolve only from this repo (and other repos
          * that also bind the same group). Patterns: exact, {@code prefix.*} (group or subpackages). */
         List<String> groups) {
@@ -83,8 +84,8 @@ public record RepositorySpec(
     public static final RepositorySpec GOOGLE_MAVEN = new RepositorySpec(
             GOOGLE,
             URI.create("https://dl.google.com/dl/android/maven2/"),
-            Optional.empty(),
-            Optional.empty(),
+            null,
+            null,
             GOOGLE_ANDROID_EXCLUSIVE_GROUPS);
 
     /**
@@ -102,8 +103,8 @@ public record RepositorySpec(
     public static final RepositorySpec JUMPKICK = new RepositorySpec(
             JUMPKICK_NAME,
             URI.create("https://jumpkick.build/repo/"),
-            Optional.empty(),
-            Optional.empty(),
+            null,
+            null,
             List.of("cc.jumpkick", "cc.jumpkick.*", "build.jumpkick", "build.jumpkick.*"));
 
     /**
@@ -131,30 +132,36 @@ public record RepositorySpec(
     public static RepositorySpec officialJumpKick() {
         URI url = officialUrl();
         if (url.equals(JUMPKICK.url())) return JUMPKICK;
-        return new RepositorySpec(JUMPKICK.name(), url, Optional.empty(), Optional.empty(), JUMPKICK.groups());
+        return new RepositorySpec(JUMPKICK.name(), url, null, null, JUMPKICK.groups());
     }
 
     /** Convenience: a repository with no inline credential, object-store, or exclusive groups. */
     public RepositorySpec(String name, URI url) {
-        this(name, url, Optional.empty(), Optional.empty(), List.of());
+        this(name, url, null, null, List.of());
     }
 
     /** Convenience: a repository with a credential but no object-store or exclusive groups. */
-    public RepositorySpec(String name, URI url, Optional<RepoCredential> credential) {
-        this(name, url, credential, Optional.empty(), List.of());
+    public RepositorySpec(String name, URI url, @Nullable RepoCredential credential) {
+        this(name, url, credential, null, List.of());
     }
 
     /** Convenience: full auth/object-store without exclusive groups. */
     public RepositorySpec(
-            String name, URI url, Optional<RepoCredential> credential, Optional<ObjectStoreConfig> objectStore) {
+            String name, URI url, @Nullable RepoCredential credential, @Nullable ObjectStoreConfig objectStore) {
         this(name, url, credential, objectStore, List.of());
+    }
+
+    public Optional<RepoCredential> credentialOpt() {
+        return Optional.ofNullable(credential);
+    }
+
+    public Optional<ObjectStoreConfig> objectStoreOpt() {
+        return Optional.ofNullable(objectStore);
     }
 
     public RepositorySpec {
         Objects.requireNonNull(name, "name");
         Objects.requireNonNull(url, "url");
-        Objects.requireNonNull(credential, "credential");
-        Objects.requireNonNull(objectStore, "objectStore");
         if (name.isBlank()) throw new IllegalArgumentException("repo name must not be blank");
         groups = groups == null || groups.isEmpty() ? List.of() : List.copyOf(groups);
     }

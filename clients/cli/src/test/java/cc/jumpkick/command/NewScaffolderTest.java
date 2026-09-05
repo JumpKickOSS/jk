@@ -9,7 +9,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -182,13 +182,13 @@ class NewScaffolderTest {
                 tempDir,
                 NewInputs.Language.JAVA,
                 "widget",
-                Optional.empty(),
+                null,
                 false,
                 false,
                 List.of("commons-io", "guava"),
                 25,
                 false,
-                Optional.empty());
+                null);
         NewScaffolder.write(inputs);
 
         var build = Files.readString(tempDir.resolve("jk.toml"));
@@ -203,16 +203,7 @@ class NewScaffolderTest {
     @Test
     void lombok_adds_processor_and_provided_blocks(@TempDir Path tempDir) throws IOException {
         var inputs = inputs(
-                tempDir,
-                NewInputs.Language.JAVA,
-                "widget",
-                Optional.empty(),
-                false,
-                false,
-                List.of("lombok"),
-                25,
-                false,
-                Optional.empty());
+                tempDir, NewInputs.Language.JAVA, "widget", null, false, false, List.of("lombok"), 25, false, null);
         NewScaffolder.write(inputs);
 
         var build = Files.readString(tempDir.resolve("jk.toml"));
@@ -239,16 +230,7 @@ class NewScaffolderTest {
     @Test
     void jspecify_renders_into_main_scope(@TempDir Path tempDir) throws IOException {
         var inputs = inputs(
-                tempDir,
-                NewInputs.Language.JAVA,
-                "widget",
-                Optional.empty(),
-                false,
-                false,
-                List.of("jspecify"),
-                25,
-                false,
-                Optional.empty());
+                tempDir, NewInputs.Language.JAVA, "widget", null, false, false, List.of("jspecify"), 25, false, null);
         NewScaffolder.write(inputs);
 
         var build = Files.readString(tempDir.resolve("jk.toml"));
@@ -259,16 +241,7 @@ class NewScaffolderTest {
     @Test
     void kotest_renders_into_test_scope(@TempDir Path tempDir) throws IOException {
         var inputs = inputs(
-                tempDir,
-                NewInputs.Language.KOTLIN,
-                "widget",
-                Optional.empty(),
-                false,
-                false,
-                List.of("kotest"),
-                25,
-                false,
-                Optional.empty());
+                tempDir, NewInputs.Language.KOTLIN, "widget", null, false, false, List.of("kotest"), 25, false, null);
         NewScaffolder.write(inputs);
 
         var build = Files.readString(tempDir.resolve("jk.toml"));
@@ -282,13 +255,13 @@ class NewScaffolderTest {
                 tempDir,
                 NewInputs.Language.KOTLIN,
                 "widget",
-                Optional.of("MainKt"),
+                "MainKt",
                 false,
                 false,
                 List.of(),
                 25,
                 true,
-                Optional.of("widget-core"));
+                "widget-core");
         NewScaffolder.write(inputs);
 
         var build = Files.readString(tempDir.resolve("jk.toml"));
@@ -308,60 +281,31 @@ class NewScaffolderTest {
                 tempDir,
                 NewInputs.Language.JAVA,
                 "widget",
-                Optional.of("com.example.Main"),
+                "com.example.Main",
                 false,
                 false,
                 List.of(),
                 25,
                 false,
-                Optional.empty());
+                null);
         NewScaffolder.write(off);
         assertThat(Files.readString(tempDir.resolve("jk.toml"))).doesNotContain("assembly = true");
 
         var sub = Files.createDirectories(tempDir.resolve("on"));
         var on = inputs(
-                sub,
-                NewInputs.Language.JAVA,
-                "widget",
-                Optional.of("com.example.Main"),
-                true,
-                false,
-                List.of(),
-                25,
-                false,
-                Optional.empty());
+                sub, NewInputs.Language.JAVA, "widget", "com.example.Main", true, false, List.of(), 25, false, null);
         NewScaffolder.write(on);
         assertThat(Files.readString(sub.resolve("jk.toml"))).contains("assembly   = true");
     }
 
     @Test
     void native_only_set_when_true(@TempDir Path tempDir) throws IOException {
-        var off = inputs(
-                tempDir,
-                NewInputs.Language.JAVA,
-                "widget",
-                Optional.empty(),
-                false,
-                false,
-                List.of(),
-                25,
-                false,
-                Optional.empty());
+        var off = inputs(tempDir, NewInputs.Language.JAVA, "widget", null, false, false, List.of(), 25, false, null);
         NewScaffolder.write(off);
         assertThat(Files.readString(tempDir.resolve("jk.toml"))).doesNotContain("native");
 
         var sub = Files.createDirectories(tempDir.resolve("on"));
-        var on = inputs(
-                sub,
-                NewInputs.Language.JAVA,
-                "widget",
-                Optional.empty(),
-                false,
-                true,
-                List.of(),
-                25,
-                false,
-                Optional.empty());
+        var on = inputs(sub, NewInputs.Language.JAVA, "widget", null, false, true, List.of(), 25, false, null);
         NewScaffolder.write(on);
         assertThat(Files.readString(sub.resolve("jk.toml")))
                 .contains("[native]")
@@ -484,14 +428,14 @@ class NewScaffolderTest {
                 "25",
                 25,
                 25,
-                Optional.empty(),
-                Optional.empty(),
+                null,
+                null,
                 false,
                 false,
                 true,
                 lang,
                 Layout.TRADITIONAL,
-                Optional.empty(),
+                null,
                 List.of(),
                 true,
                 dir);
@@ -512,13 +456,13 @@ class NewScaffolderTest {
                 "widget",
                 String.valueOf(major),
                 major,
-                Optional.empty(),
-                Optional.empty(),
+                null,
+                null,
                 false,
                 false,
                 lang,
                 Layout.TRADITIONAL,
-                Optional.empty(),
+                null,
                 deps,
                 sample,
                 dir);
@@ -530,13 +474,13 @@ class NewScaffolderTest {
                 "widget",
                 String.valueOf(major),
                 major,
-                Optional.empty(),
-                Optional.of(main),
+                null,
+                main,
                 false,
                 false,
                 lang,
                 simple ? Layout.SIMPLE : Layout.TRADITIONAL,
-                Optional.empty(),
+                null,
                 List.of(),
                 true,
                 dir);
@@ -546,19 +490,19 @@ class NewScaffolderTest {
             Path dir,
             NewInputs.Language lang,
             String name,
-            Optional<String> main,
+            @Nullable String main,
             boolean assembly,
             boolean nativeImage,
             List<String> deps,
             int major,
             boolean simple,
-            Optional<String> kotlinModule) {
+            @Nullable String kotlinModule) {
         return new NewInputs(
                 "com.example",
                 name,
                 String.valueOf(major),
                 major,
-                Optional.empty(),
+                null,
                 main,
                 assembly,
                 nativeImage,

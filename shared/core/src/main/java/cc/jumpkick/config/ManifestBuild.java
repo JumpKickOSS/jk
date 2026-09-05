@@ -146,7 +146,7 @@ public final class ManifestBuild {
             return module.withDependencies(withPlatformContributions(
                     module.dependencies(),
                     module.project(),
-                    module.nativeConfig().isPresent(),
+                    module.nativeConfigOpt().isPresent(),
                     module.pluginConfigs(),
                     manifests));
         } catch (RuntimeException e) {

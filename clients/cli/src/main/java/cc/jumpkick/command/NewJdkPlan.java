@@ -36,7 +36,7 @@ final class NewJdkPlan {
                     + "(e.g. \"temurin-25\" or \"25\"); jk keeps the patch current.");
         }
         JdkSelector.FlexibleQuery q = JdkSelector.parseFlexible(arg);
-        int major = q.major().orElse(0);
+        int major = q.majorOpt().orElse(0);
         if (major == 0) {
             throw new IllegalArgumentException("--jdk "
                     + arg

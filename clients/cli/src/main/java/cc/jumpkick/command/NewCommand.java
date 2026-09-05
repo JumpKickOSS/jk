@@ -457,7 +457,7 @@ public final class NewCommand implements CliCommand {
             CommandWedge.printFail("New", e.getMessage());
             return Exit.USAGE;
         }
-        if (assembly && inputs.main().isEmpty()) {
+        if (assembly && inputs.mainOpt().isEmpty()) {
             CommandWedge.printFail("New", "--assembly requires --executable");
             return Exit.USAGE;
         }
@@ -546,7 +546,7 @@ public final class NewCommand implements CliCommand {
                         inputs.assembly(),
                         inputs.nativeImage(),
                         inputs.plugin(),
-                        inputs.kotlinModuleName().orElse(null),
+                        inputs.kotlinModuleNameOpt().orElse(null),
                         inputs.deps(),
                         inputs.sample(),
                         parent == null,
@@ -647,14 +647,14 @@ public final class NewCommand implements CliCommand {
                 resolvedJdk,
                 resolvedJdkMajor,
                 resolvedJavaRelease,
-                Optional.<String>empty(), // flag path doesn't resolve to a specific install
-                resolvedMain,
+                null, // flag path doesn't resolve to a specific install
+                resolvedMain.orElse(null),
                 assembly,
                 nativeImage,
                 plugin,
                 resolvedLang,
                 resolvedLayout,
-                resolvedKotlinModule,
+                resolvedKotlinModule.orElse(null),
                 resolvedDeps,
                 true,
                 target);
@@ -733,13 +733,13 @@ public final class NewCommand implements CliCommand {
                 resolvedJdk,
                 resolvedJdkMajor,
                 resolvedJavaRelease,
-                resolvedJdkIdentifier,
-                resolvedMain,
+                resolvedJdkIdentifier.orElse(null),
+                resolvedMain.orElse(null),
                 resolvedAssembly,
                 resolvedNative,
                 resolvedLang,
                 resolvedLayout,
-                resolvedKotlinModule,
+                resolvedKotlinModule.orElse(null),
                 deps,
                 true,
                 target);

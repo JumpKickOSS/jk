@@ -11,6 +11,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.function.Function;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Resolves a {@link JdkSpec} to an already-on-disk {@link InstalledJdk}, without downloading.
@@ -91,17 +92,17 @@ public final class JdkProvisioning {
         if (release.isEmpty()) return Optional.empty();
         String version = stripQuotes(release.getProperty("JAVA_VERSION", ""));
         String implementor = stripQuotes(release.getProperty("IMPLEMENTOR", ""));
-        if (!matchesSpec(spec, entry, version, implementor)) return Optional.empty();
+        if (!matchesSpec(spec, entry.orElse(null), version, implementor)) return Optional.empty();
 
         String identifier = home.getFileName() != null ? home.getFileName().toString() : "java-home";
         return Optional.of(new InstalledJdk(identifier, home));
     }
 
     private static boolean matchesSpec(
-            JdkSpec spec, Optional<JdkCatalog.Entry> entry, String version, String implementor) {
+            JdkSpec spec, JdkCatalog.@Nullable Entry entry, String version, String implementor) {
         if (version.isEmpty()) return false;
-        if (entry.isPresent()) {
-            JdkCatalog.Entry e = entry.get();
+        if (entry != null) {
+            JdkCatalog.Entry e = entry;
             return version.startsWith(String.valueOf(e.majorVersion()))
                     && (implementor.isEmpty()
                             || implementor

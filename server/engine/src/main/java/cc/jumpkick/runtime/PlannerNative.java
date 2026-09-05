@@ -90,7 +90,7 @@ public final class PlannerNative {
                     }
 
                     JkBuild project = ctx.require(PROJECT);
-                    JkBuild.NativeConfig nativeCfg = project.nativeConfig()
+                    JkBuild.NativeConfig nativeCfg = project.nativeConfigOpt()
                             .orElseGet(() -> new JkBuild.NativeConfig(
                                     null, null, List.of(), null, JkBuild.NativeMode.SUPPORTED, null));
                     BuildLayout layout = ctx.require(LAYOUT);

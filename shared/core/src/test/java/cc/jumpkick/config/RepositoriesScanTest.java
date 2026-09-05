@@ -34,14 +34,14 @@ class RepositoriesScanTest {
         var plain = repos.get(0);
         assertThat(plain.name()).isEqualTo("plain");
         assertThat(plain.url()).isEqualTo("https://plain.example/maven2");
-        assertThat(plain.credential()).isEmpty();
+        assertThat(plain.credentialOpt()).isEmpty();
 
         var inline = repos.get(1);
-        assertThat(inline.credential()).containsInstanceOf(RepoCredential.Basic.class);
+        assertThat(inline.credentialOpt()).containsInstanceOf(RepoCredential.Basic.class);
 
         var sectioned = repos.get(2);
         assertThat(sectioned.name()).isEqualTo("sectioned");
-        assertThat(sectioned.credential()).containsInstanceOf(RepoCredential.Bearer.class);
+        assertThat(sectioned.credentialOpt()).containsInstanceOf(RepoCredential.Bearer.class);
     }
 
     @Test

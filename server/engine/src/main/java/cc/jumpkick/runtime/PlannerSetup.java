@@ -400,7 +400,7 @@ public final class PlannerSetup {
                         // authoritative; the walk is only the no-pin fallback.
                         ctx.put(
                                 JAVA_HOME,
-                                outcome.jdk()
+                                outcome.jdkOpt()
                                         .map(InstalledJdk::home)
                                         .orElseGet(() -> JavaHomes.resolveJavaHome(in.dir())));
                         // Already on disk / locked — no download work this run.

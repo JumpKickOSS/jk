@@ -19,7 +19,9 @@ import org.junit.jupiter.api.Test;
 class ManifestNativeTest {
 
     private static JkBuild.NativeConfig nativeConfig(String toml) {
-        return JkBuildParser.parse("name = \"widget\"\n" + toml).nativeConfig().orElseThrow();
+        return JkBuildParser.parse("name = \"widget\"\n" + toml)
+                .nativeConfigOpt()
+                .orElseThrow();
     }
 
     @Test
@@ -63,6 +65,6 @@ class ManifestNativeTest {
     /** No {@code [native]} table means no repository to lock and nothing to fetch. */
     @Test
     void no_native_table_declares_no_repository() {
-        assertThat(JkBuildParser.parse("name = \"widget\"\n").nativeConfig()).isEmpty();
+        assertThat(JkBuildParser.parse("name = \"widget\"\n").nativeConfigOpt()).isEmpty();
     }
 }

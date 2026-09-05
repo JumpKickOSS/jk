@@ -181,7 +181,7 @@ public final class ProjectInfoPlans {
                     build.isApplication(),
                     build.mainClass() == null ? "" : build.mainClass(),
                     build.assembly(),
-                    build.application()
+                    build.applicationOpt()
                             .map(JkBuild.Application::config)
                             .filter(c -> c != null && !c.isBlank())
                             .orElse(""),
@@ -222,7 +222,7 @@ public final class ProjectInfoPlans {
                             ? ""
                             : build.project().scala().raw(),
                     CompileSupport.coordinatorOnly(build, dir),
-                    build.install().map(JkBuild.Install::productLib).orElse(""));
+                    build.installOpt().map(JkBuild.Install::productLib).orElse(""));
         } catch (RuntimeException | IOException e) {
             return ProjectInfo.error(Errors.text(e));
         }

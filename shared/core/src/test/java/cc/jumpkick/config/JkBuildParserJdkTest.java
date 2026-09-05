@@ -67,7 +67,7 @@ class JkBuildParserJdkTest {
     @Test
     void accepts_a_graal_point_release_as_a_suggestion() {
         JkBuild parsed = JkBuildParser.parse(graal("\"graalvm-25.0.3\""));
-        ToolchainSpec spec = parsed.nativeConfig().orElseThrow().graalSpec();
+        ToolchainSpec spec = parsed.nativeConfigOpt().orElseThrow().graalSpec();
         assertThat(spec.suggestedVendor()).isEqualTo("graalvm");
         assertThat(spec.suggestedVersion()).isEqualTo("25.0.3");
         assertThat(spec.requiredVersion()).isEmpty();
@@ -76,7 +76,7 @@ class JkBuildParserJdkTest {
     @Test
     void an_equals_graal_spec_is_required() {
         JkBuild parsed = JkBuildParser.parse(graal("\"=25.2.4-graalce\""));
-        ToolchainSpec spec = parsed.nativeConfig().orElseThrow().graalSpec();
+        ToolchainSpec spec = parsed.nativeConfigOpt().orElseThrow().graalSpec();
         assertThat(spec.requiredVendor()).isEqualTo("graalce");
         assertThat(spec.requiredVersion()).isEqualTo("25.2.4");
     }

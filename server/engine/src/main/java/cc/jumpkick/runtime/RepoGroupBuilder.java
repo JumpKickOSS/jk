@@ -118,7 +118,7 @@ public final class RepoGroupBuilder {
             RepoCredentialResolver creds = RepoCredentialResolver.withEnv(env::apply);
             List<List<String>> exclusiveGroups = new ArrayList<>(effective.size());
             for (RepositorySpec spec : effective) {
-                RepoCredential cred = creds.resolve(spec.name(), spec.url(), spec.credential());
+                RepoCredential cred = creds.resolve(spec.name(), spec.url(), spec.credentialOpt());
                 maybeWarnUrlUserInfo(spec, cred);
                 // Per-repo object-store config (region/endpoint/keys) flows to the
                 // transport; HTTP credentials still ride the MavenRepo credential.
@@ -128,7 +128,7 @@ public final class RepoGroupBuilder {
                 RepoTransport transport = RepoTransports.forUrl(
                         spec.url(),
                         http,
-                        expandObjectStore(spec.name(), spec.objectStore().orElse(ObjectStoreConfig.EMPTY), env));
+                        expandObjectStore(spec.name(), spec.objectStoreOpt().orElse(ObjectStoreConfig.EMPTY), env));
                 // Hand the client through, not just the transport: the transport-only constructor nulls it,
                 // which silently disabled the metadata TTL cache and the ~/.m2 probe for every real
                 // build.

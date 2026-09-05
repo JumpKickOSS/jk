@@ -91,8 +91,8 @@ public final class StableJdkPointer {
      */
     public static Optional<String> pointerNameFor(String identifier) {
         JdkSelector.FlexibleQuery q = JdkSelector.parseFlexible(identifier);
-        if (q.major().isEmpty() || q.hints().isEmpty()) return Optional.empty();
-        return Optional.of(q.hints().get(0) + "-" + q.major().get());
+        if (q.majorOpt().isEmpty() || q.hints().isEmpty()) return Optional.empty();
+        return Optional.of(q.hints().get(0) + "-" + q.majorOpt().get());
     }
 
     /**

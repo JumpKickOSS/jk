@@ -29,12 +29,12 @@ class ManifestInstallTest {
 
     @Test
     void an_ordinary_module_declares_nothing() throws Exception {
-        assertThat(parse("").install()).isEmpty();
+        assertThat(parse("").installOpt()).isEmpty();
     }
 
     @Test
     void product_lib_is_read() throws Exception {
-        assertThat(parse("[install]\nproduct-lib = \"jk-engine\"\n").install())
+        assertThat(parse("[install]\nproduct-lib = \"jk-engine\"\n").installOpt())
                 .hasValueSatisfying(i -> assertThat(i.productLib()).isEqualTo("jk-engine"));
     }
 

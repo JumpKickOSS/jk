@@ -58,7 +58,7 @@ class JkBuildParserApplicationTest {
                 native = true
                 """);
         assertThat(parsed.isApplication()).isTrue();
-        assertThat(parsed.application().orElseThrow().nativeImage()).isTrue();
+        assertThat(parsed.applicationOpt().orElseThrow().nativeImage()).isTrue();
         assertThat(parsed.nativeMode()).isEqualTo(JkBuild.NativeMode.ALWAYS);
         assertThat(parsed.graal()).isEqualTo("graalvm");
     }
@@ -172,8 +172,8 @@ class JkBuildParserApplicationTest {
                 name       = "myapp"
                 args       = ["-O3", "--gc=serial"]
                 """);
-        assertThat(parsed.nativeConfig()).isPresent();
-        JkBuild.NativeConfig nc = parsed.nativeConfig().orElseThrow();
+        assertThat(parsed.nativeConfigOpt()).isPresent();
+        JkBuild.NativeConfig nc = parsed.nativeConfigOpt().orElseThrow();
         assertThat(nc.mainClass()).isEqualTo("com.example.NativeMain");
         assertThat(nc.name()).isEqualTo("myapp");
         assertThat(nc.args()).containsExactly("-O3", "--gc=serial");
@@ -190,10 +190,10 @@ class JkBuildParserApplicationTest {
                 enabled = false
                 name = "myapp"
                 """);
-        assertThat(parsed.nativeConfig()).isPresent();
+        assertThat(parsed.nativeConfigOpt()).isPresent();
         assertThat(parsed.nativeMode()).isEqualTo(JkBuild.NativeMode.DISABLED);
         assertThat(parsed.nativeImage()).isFalse();
-        assertThat(parsed.nativeConfig().orElseThrow().name()).isEqualTo("myapp");
+        assertThat(parsed.nativeConfigOpt().orElseThrow().name()).isEqualTo("myapp");
     }
 
     @Test
@@ -203,13 +203,13 @@ class JkBuildParserApplicationTest {
                 [native]
                 name = "jk.exe"
                 """);
-        assertThat(parsed.nativeConfig().orElseThrow().name()).isEqualTo("jk");
+        assertThat(parsed.nativeConfigOpt().orElseThrow().name()).isEqualTo("jk");
         parsed = JkBuildParser.parse(PROJECT + """
 
                 [native]
                 name = "JK.EXE"
                 """);
-        assertThat(parsed.nativeConfig().orElseThrow().name()).isEqualTo("JK");
+        assertThat(parsed.nativeConfigOpt().orElseThrow().name()).isEqualTo("JK");
     }
 
     @Test

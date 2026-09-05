@@ -29,8 +29,8 @@ public record JkBuild(
         @Nullable Workspace workspace,
         Map<String, String> manifest,
         List<PluginDeclaration> plugins,
-        Optional<Application> application,
-        Optional<NativeConfig> nativeConfig,
+        @Nullable Application application,
+        @Nullable NativeConfig nativeConfig,
         Map<String, PluginConfig> pluginConfigs,
         Build build,
         FormatConfig format,
@@ -40,7 +40,7 @@ public record JkBuild(
          * for every ordinary target — a library, an executable, a native binary, a script, an
          * external jar — which is the point: those five shapes are complete as they are.
          */
-        Optional<Install> install) {
+        @Nullable Install install) {
 
     public JkBuild {
         Objects.requireNonNull(project, "project");
@@ -55,8 +55,6 @@ public record JkBuild(
                 ? Map.of()
                 : Collections.unmodifiableMap(new LinkedHashMap<>(manifest));
         plugins = plugins == null ? List.of() : List.copyOf(plugins);
-        application = application == null ? Optional.empty() : application;
-        nativeConfig = nativeConfig == null ? Optional.empty() : nativeConfig;
         // Plugin-owned tables ([spring-boot], …), keyed by plugin id.
         pluginConfigs = pluginConfigs == null || pluginConfigs.isEmpty()
                 ? Map.of()
@@ -64,7 +62,6 @@ public record JkBuild(
         build = build == null ? Build.EMPTY : build;
         format = format == null ? FormatConfig.EMPTY : format;
         variants = variants == null ? Variants.EMPTY : variants;
-        install = install == null ? Optional.empty() : install;
     }
 
     /** Project + deps only; anything richer uses {@link #builder(Project)}. */
@@ -78,13 +75,13 @@ public record JkBuild(
                 null,
                 Map.of(),
                 List.of(),
-                Optional.empty(),
-                Optional.empty(),
+                null,
+                null,
                 Map.of(),
                 Build.EMPTY,
                 FormatConfig.EMPTY,
                 Variants.EMPTY,
-                Optional.empty());
+                null);
     }
 
     /** Project + deps + repos; anything richer uses {@link #builder(Project)}. */
@@ -98,18 +95,18 @@ public record JkBuild(
                 null,
                 Map.of(),
                 List.of(),
-                Optional.empty(),
-                Optional.empty(),
+                null,
+                null,
                 Map.of(),
                 Build.EMPTY,
                 FormatConfig.EMPTY,
                 Variants.EMPTY,
-                Optional.empty());
+                null);
     }
 
     /** {@code [application].main}, or {@code null} when {@code [application]} is absent or unset. */
     public @Nullable String mainClass() {
-        return application.map(Application::main).orElse(null);
+        return application == null ? null : application.main();
     }
 
     /** True when a {@code main} class is set — the {@code [application]} table declares one. */
@@ -119,7 +116,19 @@ public record JkBuild(
 
     /** True when {@code [application]} is declared. */
     public boolean isApplication() {
-        return application.isPresent();
+        return application != null;
+    }
+
+    public Optional<Application> applicationOpt() {
+        return Optional.ofNullable(application);
+    }
+
+    public Optional<NativeConfig> nativeConfigOpt() {
+        return Optional.ofNullable(nativeConfig);
+    }
+
+    public Optional<Install> installOpt() {
+        return Optional.ofNullable(install);
     }
 
     /** The schema-validated config for the plugin-owned table {@code id}, when declared. */
@@ -179,7 +188,7 @@ public record JkBuild(
      * {@code JkBuildParser.ensureShrinkForMinified}).
      */
     public JkBuild withArtifacts(boolean assembly, boolean minified) {
-        Application app = application.orElse(new Application(null, false, false, false, null));
+        Application app = application != null ? application : new Application(null, false, false, false, null);
         if (app.assembly() == (assembly || minified) && app.minified() == minified) return this;
         return new JkBuild(
                 project,
@@ -190,7 +199,7 @@ public record JkBuild(
                 workspace,
                 manifest,
                 plugins,
-                Optional.of(new Application(app.main(), assembly, minified, app.nativeImage(), app.config())),
+                new Application(app.main(), assembly, minified, app.nativeImage(), app.config()),
                 nativeConfig,
                 pluginConfigs,
                 build,
@@ -277,17 +286,18 @@ public record JkBuild(
 
     /** True when a fat jar is requested — implied by {@link #minified()}. */
     public boolean assembly() {
-        return application.map(Application::assembly).orElse(false);
+        return application != null && application.assembly();
     }
 
     /** True when an R8-minified jar is requested alongside the fat jar. */
     public boolean minified() {
-        return application.map(Application::minified).orElse(false);
+        return application != null && application.minified();
     }
 
     /** {@code [native].graal} — the GraalVM spec {@code jk native} uses, or {@code null} if unset. */
     public @Nullable String graal() {
-        return nativeConfig.map(NativeConfig::graal).orElse(nativeMode() != NativeMode.DISABLED ? "graalvm" : null);
+        if (nativeConfig != null && nativeConfig.graal() != null) return nativeConfig.graal();
+        return nativeMode() != NativeMode.DISABLED ? "graalvm" : null;
     }
 
     /**
@@ -298,10 +308,10 @@ public record JkBuild(
      * NativeMode#DISABLED}.
      */
     public NativeMode nativeMode() {
-        if (application.map(Application::nativeImage).orElse(false)) {
+        if (application != null && application.nativeImage()) {
             return NativeMode.ALWAYS;
         }
-        return nativeConfig.map(NativeConfig::enabled).orElse(NativeMode.DISABLED);
+        return nativeConfig == null ? NativeMode.DISABLED : nativeConfig.enabled();
     }
 
     /** True when {@code jk native} should build this module ({@link NativeMode} not DISABLED). */
@@ -315,7 +325,7 @@ public record JkBuild(
      * modules, but must never pick up an explicitly disabled one.
      */
     public boolean nativeExplicitlyDisabled() {
-        return nativeConfig.isPresent() && nativeMode() == NativeMode.DISABLED;
+        return nativeConfig != null && nativeMode() == NativeMode.DISABLED;
     }
 
     public static JkBuild of(Project project) {
@@ -342,8 +352,8 @@ public record JkBuild(
                 .workspace(workspace)
                 .manifest(manifest)
                 .plugins(plugins)
-                .application(application.orElse(null))
-                .nativeConfig(nativeConfig.orElse(null))
+                .application(application)
+                .nativeConfig(nativeConfig)
                 .build(build)
                 .format(format)
                 .variants(variants)
@@ -369,8 +379,8 @@ public record JkBuild(
                 .workspace(workspace)
                 .manifest(manifest)
                 .plugins(plugins)
-                .application(application.orElse(null))
-                .nativeConfig(nativeConfig.orElse(null))
+                .application(application)
+                .nativeConfig(nativeConfig)
                 .build(build)
                 .format(format)
                 .variants(variants)
@@ -391,13 +401,13 @@ public record JkBuild(
         private @Nullable Workspace workspace;
         private Map<String, String> manifest = Map.of();
         private List<PluginDeclaration> plugins = List.of();
-        private Optional<Application> application = Optional.empty();
-        private Optional<NativeConfig> nativeConfig = Optional.empty();
+        private @Nullable Application application;
+        private @Nullable NativeConfig nativeConfig;
         private final Map<String, PluginConfig> pluginConfigs = new LinkedHashMap<>();
         private Build build = Build.EMPTY;
         private FormatConfig format = FormatConfig.EMPTY;
         private Variants variants = Variants.EMPTY;
-        private Optional<Install> install = Optional.empty();
+        private @Nullable Install install;
 
         private Builder(Project project) {
             this.project = project;
@@ -439,12 +449,12 @@ public record JkBuild(
         }
 
         public Builder application(@Nullable Application application) {
-            this.application = Optional.ofNullable(application);
+            this.application = application;
             return this;
         }
 
         public Builder nativeConfig(@Nullable NativeConfig nativeConfig) {
-            this.nativeConfig = Optional.ofNullable(nativeConfig);
+            this.nativeConfig = nativeConfig;
             return this;
         }
 
@@ -468,8 +478,8 @@ public record JkBuild(
             return this;
         }
 
-        public Builder install(Optional<Install> install) {
-            this.install = install == null ? Optional.empty() : install;
+        public Builder install(@Nullable Install install) {
+            this.install = install;
             return this;
         }
 

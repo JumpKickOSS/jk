@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Canonical JDK resolution shared by the build plan and {@code jk activate}. Order: {@code --jdk},
@@ -48,17 +49,21 @@ public final class JdkResolution {
     }
 
     public record Resolved(
-            Optional<InstalledJdk> jdk, Tier tier, String specUsed, boolean wouldInstall, String installSpec) {
+            @Nullable InstalledJdk jdk, Tier tier, String specUsed, boolean wouldInstall, String installSpec) {
 
         static Resolved found(InstalledJdk jdk, Tier tier, String spec) {
-            return new Resolved(Optional.of(jdk), tier, spec, false, null);
+            return new Resolved(jdk, tier, spec, false, null);
         }
 
         static Resolved install(Tier tier, String spec) {
-            return new Resolved(Optional.empty(), tier, spec, true, spec);
+            return new Resolved(null, tier, spec, true, spec);
         }
 
-        public static final Resolved NONE = new Resolved(Optional.empty(), Tier.NONE, null, false, null);
+        public Optional<InstalledJdk> jdkOpt() {
+            return Optional.ofNullable(jdk);
+        }
+
+        public static final Resolved NONE = new Resolved(null, Tier.NONE, null, false, null);
     }
 
     private JdkResolution() {}

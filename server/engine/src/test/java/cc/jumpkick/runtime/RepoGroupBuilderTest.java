@@ -24,7 +24,6 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -188,11 +187,7 @@ class RepoGroupBuilderTest {
                     List.of(List.of(), RepositorySpec.GOOGLE_ANDROID_EXCLUSIVE_GROUPS));
             RepoGroupBuilder.maybeWarnMultiRepoWithoutBindings(
                     List.of(new RepositorySpec(
-                            "internal",
-                            URI.create("https://i.example/"),
-                            Optional.empty(),
-                            Optional.empty(),
-                            List.of("com.acme"))),
+                            "internal", URI.create("https://i.example/"), null, null, List.of("com.acme"))),
                     List.of(List.of("com.acme")));
         });
         assertThat(out).doesNotContain(UNBOUND_MARKER);

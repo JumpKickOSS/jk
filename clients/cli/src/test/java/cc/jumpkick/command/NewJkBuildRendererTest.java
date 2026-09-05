@@ -10,7 +10,6 @@ import cc.jumpkick.scaffold.NewInputs;
 import cc.jumpkick.scaffold.NewJkBuildRenderer;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 class NewJkBuildRendererTest {
@@ -23,13 +22,13 @@ class NewJkBuildRendererTest {
                 "25",
                 25,
                 25,
-                Optional.empty(),
-                Optional.of("com.example.Main"),
+                null,
+                "com.example.Main",
                 false,
                 false,
                 NewInputs.Language.JAVA,
                 Layout.SIMPLE,
-                Optional.empty(),
+                null,
                 List.of("guava", "com.google.code.gson:gson"),
                 true,
                 Path.of("/tmp/demo"));
@@ -48,13 +47,13 @@ class NewJkBuildRendererTest {
                 "25",
                 25,
                 25,
-                Optional.empty(),
-                Optional.empty(),
+                null,
+                null,
                 false,
                 false,
                 NewInputs.Language.JAVA,
                 Layout.TRADITIONAL,
-                Optional.empty(),
+                null,
                 List.of(),
                 true,
                 Path.of("/tmp/demo"));
@@ -70,13 +69,13 @@ class NewJkBuildRendererTest {
                 "25",
                 25,
                 25,
-                Optional.empty(),
-                Optional.empty(),
+                null,
+                null,
                 false,
                 false,
                 NewInputs.Language.JAVA,
                 Layout.TRADITIONAL,
-                Optional.empty(),
+                null,
                 List.of(),
                 true,
                 Path.of("/tmp/demo"));
@@ -92,13 +91,13 @@ class NewJkBuildRendererTest {
                 "25",
                 25,
                 25,
-                Optional.empty(),
-                Optional.of("com.example.Main"),
+                null,
+                "com.example.Main",
                 false,
                 false,
                 NewInputs.Language.SCALA,
                 Layout.TRADITIONAL,
-                Optional.empty(),
+                null,
                 List.of(),
                 true,
                 Path.of("/tmp/demo"));
@@ -121,13 +120,13 @@ class NewJkBuildRendererTest {
                 "25",
                 25,
                 25,
-                Optional.empty(),
-                Optional.of(main),
+                null,
+                main,
                 false,
                 false,
                 NewInputs.Language.JAVA,
                 Layout.SIMPLE,
-                Optional.empty(),
+                null,
                 List.of(),
                 true,
                 Path.of("/tmp/demo"));

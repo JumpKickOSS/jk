@@ -6,7 +6,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.model.RepositorySpec;
 import java.net.URI;
 import java.util.List;
-import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 class RepoGroupBuilderGoogleExclusiveTest {
@@ -32,8 +31,8 @@ class RepoGroupBuilderGoogleExclusiveTest {
         RepositorySpec custom = new RepositorySpec(
                 "google",
                 URI.create("https://dl.google.com/dl/android/maven2/"),
-                Optional.empty(),
-                Optional.empty(),
+                null,
+                null,
                 List.of("com.google.gms", "androidx.*"));
         assertThat(RepoGroupBuilder.exclusiveGroupsFor(custom))
                 .containsAll(RepositorySpec.GOOGLE_ANDROID_EXCLUSIVE_GROUPS)

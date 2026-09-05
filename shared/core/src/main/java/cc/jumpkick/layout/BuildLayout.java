@@ -142,7 +142,7 @@ public final class BuildLayout {
     }
 
     private static @Nullable String nativeName(JkBuild project) {
-        return project.nativeConfig().map(JkBuild.NativeConfig::name).orElse(null);
+        return project.nativeConfigOpt().map(JkBuild.NativeConfig::name).orElse(null);
     }
 
     private static boolean hasMain(JkBuild project) {

@@ -137,7 +137,7 @@ public final class ModuleOutputRestore {
     private static boolean nativePresent(BuildLayout layout, JkBuild build) {
         // nativeBinary() already applies [native].name and the Windows .exe suffix.
         if (Files.isRegularFile(layout.nativeBinary())) return true;
-        String named = build.nativeConfig()
+        String named = build.nativeConfigOpt()
                 .map(JkBuild.NativeConfig::name)
                 .filter(n -> n != null && !n.isBlank())
                 .orElse(null);

@@ -42,7 +42,9 @@ public final class JdkResolver {
     static String validatePin(String raw) {
         String pin = raw.trim();
         JdkSelector.FlexibleQuery q = JdkSelector.parseFlexible(pin);
-        if (q.major().isEmpty() || q.exactVersion().isPresent() || q.hints().isEmpty()) {
+        if (q.majorOpt().isEmpty()
+                || q.exactVersionOpt().isPresent()
+                || q.hints().isEmpty()) {
             throw new IllegalArgumentException(".jdk-version must be <vendor>-<major> (e.g. \"temurin-25\"), not \""
                     + pin
                     + "\". Pin a vendor and major release — jk keeps the patch version current.");

@@ -28,7 +28,7 @@ class JdkResolutionTest {
 
         var r = JdkResolution.resolve(req, reg(jdks), gdj(tmp), LATEST_LTS);
         assertThat(r.tier()).isEqualTo(JdkResolution.Tier.SWITCH);
-        assertThat(r.jdk().get().home().getFileName().toString()).isEqualTo("temurin-21.0.5");
+        assertThat(r.jdkOpt().get().home().getFileName().toString()).isEqualTo("temurin-21.0.5");
     }
 
     @Test
@@ -41,7 +41,7 @@ class JdkResolutionTest {
 
         var r = JdkResolution.resolve(req, reg(jdks), gdj(tmp), LATEST_LTS);
         assertThat(r.tier()).isEqualTo(JdkResolution.Tier.JDK_VERSION_FILE);
-        assertThat(r.jdk().get().home().getFileName().toString()).isEqualTo("temurin-25.0.3");
+        assertThat(r.jdkOpt().get().home().getFileName().toString()).isEqualTo("temurin-25.0.3");
     }
 
     @Test
@@ -53,7 +53,7 @@ class JdkResolutionTest {
 
         var r = JdkResolution.resolve(req, reg(jdks), gdj(tmp), LATEST_LTS);
         assertThat(r.tier()).isEqualTo(JdkResolution.Tier.LOCKFILE);
-        assertThat(r.jdk().get().home().getFileName().toString()).isEqualTo("temurin-21.0.5");
+        assertThat(r.jdkOpt().get().home().getFileName().toString()).isEqualTo("temurin-21.0.5");
     }
 
     @Test
@@ -66,7 +66,7 @@ class JdkResolutionTest {
         // No pins, no persisted default → policy picks 26 (25 not installed).
         var r = JdkResolution.resolve(req(tmp).build(), reg(jdks), gdj(tmp), LATEST_LTS);
         assertThat(r.tier()).isEqualTo(JdkResolution.Tier.DEFAULT);
-        assertThat(r.jdk().get().home()).isEqualTo(j26);
+        assertThat(r.jdkOpt().get().home()).isEqualTo(j26);
     }
 
     @Test
@@ -76,7 +76,7 @@ class JdkResolutionTest {
         var req = req(tmp).switchSpec("26").build();
 
         var r = JdkResolution.resolve(req, reg(jdks), gdj(tmp), LATEST_LTS);
-        assertThat(r.jdk()).isEmpty();
+        assertThat(r.jdkOpt()).isEmpty();
         assertThat(r.wouldInstall()).isTrue();
         assertThat(r.installSpec()).isEqualTo("26");
         assertThat(r.tier()).isEqualTo(JdkResolution.Tier.SWITCH);
@@ -94,7 +94,7 @@ class JdkResolutionTest {
 
         var r = JdkResolution.resolveForHook(req, reg(jdks), gdj);
         assertThat(r.wouldInstall()).isFalse();
-        assertThat(r.jdk().get().home()).isEqualTo(j25);
+        assertThat(r.jdkOpt().get().home()).isEqualTo(j25);
     }
 
     @Test
@@ -106,7 +106,7 @@ class JdkResolutionTest {
 
         var r = JdkResolution.resolve(req, reg(jdks), gdj(tmp), LATEST_LTS);
         assertThat(r.tier()).isEqualTo(JdkResolution.Tier.JAVA_RELEASE_FLOOR);
-        assertThat(r.jdk().get().home()).isEqualTo(j26);
+        assertThat(r.jdkOpt().get().home()).isEqualTo(j26);
     }
 
     @Test
@@ -123,7 +123,7 @@ class JdkResolutionTest {
         gdj.setDefault(new InstalledJdk("java-25-openjdk", jre));
         // default points at a JRE → skipped; de-facto default should pick the real JDK.
         var r = JdkResolution.resolve(req(tmp).build(), reg(jdks), gdj, LATEST_LTS);
-        assertThat(r.jdk().get().home()).isEqualTo(real);
+        assertThat(r.jdkOpt().get().home()).isEqualTo(real);
         assertThat(r.tier()).isEqualTo(JdkResolution.Tier.DEFAULT);
     }
 
@@ -135,7 +135,7 @@ class JdkResolutionTest {
 
         var r = JdkResolution.resolve(req, reg(jdks), gdj(tmp), LATEST_LTS);
         assertThat(r.tier()).isEqualTo(JdkResolution.Tier.LOCKFILE);
-        assertThat(r.jdk().get().home()).isEqualTo(j26);
+        assertThat(r.jdkOpt().get().home()).isEqualTo(j26);
         assertThat(r.wouldInstall()).isFalse();
     }
 
@@ -149,7 +149,7 @@ class JdkResolutionTest {
                 .build();
 
         var r = JdkResolution.resolve(req, reg(jdks), gdj(tmp), LATEST_LTS);
-        assertThat(r.jdk()).isEmpty();
+        assertThat(r.jdkOpt()).isEmpty();
         assertThat(r.wouldInstall()).isTrue();
         assertThat(r.tier()).isEqualTo(JdkResolution.Tier.LOCKFILE);
         assertThat(r.installSpec()).isEqualTo("temurin-25.0.4");
@@ -170,7 +170,7 @@ class JdkResolutionTest {
         var r = JdkResolution.resolve(req, reg(jdks), gdj(tmp), LATEST_LTS);
         assertThat(r.wouldInstall()).isFalse();
         assertThat(r.tier()).isEqualTo(JdkResolution.Tier.JAVA_HOME);
-        assertThat(r.jdk().orElseThrow().home()).isEqualTo(ambient);
+        assertThat(r.jdkOpt().orElseThrow().home()).isEqualTo(ambient);
     }
 
     @Test
@@ -185,7 +185,7 @@ class JdkResolutionTest {
 
         var r = JdkResolution.resolve(req, reg(jdks), gdj(tmp), LATEST_LTS);
         assertThat(r.tier()).isNotEqualTo(JdkResolution.Tier.JAVA_HOME);
-        assertThat(r.jdk().map(InstalledJdk::home)).isNotEqualTo(Optional.of(ambient));
+        assertThat(r.jdkOpt().map(InstalledJdk::home)).isNotEqualTo(Optional.of(ambient));
     }
 
     @Test
@@ -197,7 +197,7 @@ class JdkResolutionTest {
         var r = JdkResolution.resolve(req, reg(jdks), gdj(tmp), LATEST_LTS);
         assertThat(r.wouldInstall()).isFalse();
         assertThat(r.tier()).isEqualTo(JdkResolution.Tier.DEFAULT);
-        assertThat(r.jdk().orElseThrow().home()).isEqualTo(j25);
+        assertThat(r.jdkOpt().orElseThrow().home()).isEqualTo(j25);
     }
 
     @Test
@@ -210,7 +210,7 @@ class JdkResolutionTest {
 
         var r = JdkResolution.resolveForHook(req, reg(jdks), gdj);
         assertThat(r.wouldInstall()).isFalse();
-        assertThat(r.jdk()).isEmpty();
+        assertThat(r.jdkOpt()).isEmpty();
         assertThat(r.tier()).isEqualTo(JdkResolution.Tier.NONE);
     }
 
