@@ -33,19 +33,68 @@ import org.junit.jupiter.api.extension.RegisterExtension;
  * the actual OS-process spawn ({@link EngineClient#ensureRunning}'s cold-start path needs a real
  * {@code jk} binary to exec, which a JVM test run doesn't have; that path is covered by manual
  * verification per the Step 1 plan, not a unit test).
+ *
+ * <p>{@link IsolatedState} because a real engine <em>writes</em> the state root even when no test
+ * here reads it: started at the product version with a job driven through it, one trains worker AOT
+ * caches under {@code state/aot} and calibrates worker memory under {@code state/builds}. Those
+ * landed in the tier's shared {@code JK_HOME}, where a later class's compiler worker inherited them
+ * and a build failed with {@code zinc worker exited} in two runs out of three while passing alone.
+ * The socket paths here were already per-test temp dirs; the state root was the ambient part.
  */
 @Tag("integration")
+@IsolatedState
 class EngineClientTest {
 
     @RegisterExtension
     final ShortTempDirs tempDirs = new ShortTempDirs("jkc-");
 
+    /** Grace for {@code run()} to unwind through {@code cleanup()} once the listener is closed. */
+    private static final Duration TEARDOWN = Duration.ofSeconds(30);
+
+    /** One in-process engine and the thread serving it, so teardown can prove it is gone. */
+    private record Engine(EngineServer server, Thread thread) {}
+
+    private final List<Engine> engines = new ArrayList<>();
+
+    /**
+     * Every engine this class starts, stopped and <em>joined</em> before the next test.
+     *
+     * <p>Joining is the part that matters. {@link EngineServer#close} only closes the listening
+     * channel; the teardown that frees process-global state — the connection pool, the HTTP
+     * listener, the election registration, and {@code PluginAot.quiesceTrainers} — runs in the
+     * server's own {@code cleanup()} as {@code run()} unwinds, on the background thread. A server
+     * closed but never joined leaves its AOT trainer processes alive, and the old code did not even
+     * close one when an assertion above the {@code close()} call threw.
+     */
     @AfterEach
-    void cleanup() {
+    void stopAndJoinEveryEngineStarted() {
+        List<String> leaked = new ArrayList<>();
+        for (Engine e : engines) {
+            e.server().close();
+            try {
+                e.thread().join(TEARDOWN.toMillis());
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            }
+            if (e.thread().isAlive()) leaked.add(e.thread().getName());
+        }
+        engines.clear();
         // Every test that gets a real EngineServer to run triggers planSharedWorkerMemoryOnce,
         // which mutates JvmOptions' process-wide static heap plan — reset it so it doesn't leak into
         // unrelated tests sharing this test JVM.
         JvmOptions.resetSharedPlanForTests();
+        assertThat(leaked)
+                .as("engine server threads still serving after teardown: their worker pool and AOT"
+                        + " trainers outlive this class")
+                .isEmpty();
+    }
+
+    /** Start an engine on {@code p} and register it for teardown. */
+    private Engine startEngine(EnginePaths.Paths p, String version) {
+        EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, version, null);
+        Engine e = new Engine(server, startInBackground(server));
+        engines.add(e);
+        return e;
     }
 
     private static Thread startInBackground(EngineServer server) {
@@ -72,8 +121,7 @@ class EngineClientTest {
     @Test
     void ping_handshake_and_status_round_trip_against_a_real_engine() throws Exception {
         EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
-        EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "7.7.7", null);
-        startInBackground(server);
+        startEngine(p, "7.7.7");
         // Endpoint is written before acceptLoop (AOT plan / HTTP / warmup still run first).
         // Wait for a real pong — cold CI can take longer than the 2s connect timeout between
         // writeEndpoint and the accept loop, so "endpoint exists" alone races.
@@ -90,15 +138,12 @@ class EngineClientTest {
         assertThat(status.get().heapUsedBytes()).isPositive(); // best-effort memory made it across the wire
         assertThat(status.get().heapCommittedBytes())
                 .isGreaterThanOrEqualTo(status.get().heapUsedBytes());
-
-        server.close();
     }
 
     @Test
     void stop_gracefully_shuts_a_running_engine_down() throws Exception {
         EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
-        EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0", null);
-        Thread serverThread = startInBackground(server);
+        Thread serverThread = startEngine(p, "1.0").thread();
         Await.until(Duration.ofSeconds(30), () -> EngineProbe.ping(EnginePaths.activeSocket(p)));
 
         assertThat(EngineProcessControl.stop(EnginePaths.activeSocket(p))).isTrue();
@@ -115,8 +160,7 @@ class EngineClientTest {
     @Test
     void a_normal_engine_reports_not_draining_and_zero_plans() throws Exception {
         EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
-        EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0", null);
-        startInBackground(server);
+        startEngine(p, "1.0");
         Await.until(Duration.ofSeconds(30), () -> EngineProbe.ping(EnginePaths.activeSocket(p)));
 
         assertThat(EngineProbe.handshake(EnginePaths.activeSocket(p), "1.0")
@@ -126,15 +170,12 @@ class EngineClientTest {
         var s = EngineProbe.status(EnginePaths.activeSocket(p)).orElseThrow();
         assertThat(s.draining()).isFalse();
         assertThat(s.activeBuildPlans()).isZero();
-
-        server.close();
     }
 
     @Test
     void drain_of_an_idle_engine_reports_zero_jobs_and_shuts_it_down() throws Exception {
         EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
-        EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0", null);
-        Thread serverThread = startInBackground(server);
+        Thread serverThread = startEngine(p, "1.0").thread();
         Await.until(Duration.ofSeconds(30), () -> EngineProbe.ping(EnginePaths.activeSocket(p)));
 
         assertThat(EngineProcessControl.drain(EnginePaths.activeSocket(p)))
@@ -146,8 +187,7 @@ class EngineClientTest {
     @Test
     void force_stop_shuts_a_running_engine_down() throws Exception {
         EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
-        EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0", null);
-        Thread serverThread = startInBackground(server);
+        Thread serverThread = startEngine(p, "1.0").thread();
         Await.until(Duration.ofSeconds(30), () -> EngineProbe.ping(EnginePaths.activeSocket(p)));
 
         long pid = EngineProcessControl.readPidForSocket(EnginePaths.activeSocket(p));
@@ -218,8 +258,7 @@ class EngineClientTest {
         System.setProperty("os.name", "Windows 11");
         try {
             EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
-            EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "7.7.7", null);
-            startInBackground(server);
+            startEngine(p, "7.7.7");
             Await.until(Duration.ofSeconds(30), () -> EngineProbe.ping(EnginePaths.activeSocket(p)));
 
             var hs = EngineProbe.handshake(EnginePaths.activeSocket(p), "7.7.7");
@@ -288,8 +327,7 @@ class EngineClientTest {
         // path: Ctrl-C's dir-scoped cancel can never match it and the jid from job-start is the
         // only handle that reaches the job. Same for jk tool resolve and jk tool run <script>.
         EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
-        EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, Jk.VERSION, null);
-        startInBackground(server);
+        startEngine(p, Jk.VERSION);
         Await.until(Duration.ofSeconds(30), () -> EngineProbe.ping(EnginePaths.activeSocket(p)));
         ActiveJobs.forgetAll();
 
@@ -311,20 +349,15 @@ class EngineClientTest {
         // …and the handle is dropped once the stream ends, so the next Ctrl-C does not pay a
         // cancel RPC for a job that is already over.
         assertThat(ActiveJobs.snapshot()).isEmpty();
-
-        server.close();
     }
 
     @Test
     void ensure_running_returns_immediately_when_a_matching_version_engine_is_already_up() throws Exception {
         EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
-        EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "3.3.3", null);
-        startInBackground(server);
+        startEngine(p, "3.3.3");
         Await.until(Duration.ofSeconds(30), () -> EngineProbe.ping(EnginePaths.activeSocket(p)));
 
         EngineProbe.Handshake hs = EngineClient.ensureRunning(p, "3.3.3");
         assertThat(hs.version()).isEqualTo("3.3.3");
-
-        server.close();
     }
 }

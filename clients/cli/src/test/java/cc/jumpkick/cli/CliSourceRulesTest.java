@@ -236,4 +236,44 @@ class CliSourceRulesTest {
                         + " Annotate the class with @IsolatedState")
                 .isEmpty();
     }
+
+    /**
+     * A test that runs a real engine declares the same isolation — reading the state root is not the
+     * only way to depend on it.
+     *
+     * <p>An {@code EngineServer} <em>writes</em> {@code state/} whatever the test asserts on: at the
+     * product version, driving a job through one trains worker AOT caches under {@code state/aot}
+     * and calibrates worker memory under {@code state/builds}. Both landed in the shared
+     * {@code JK_HOME}, and a build two classes later failed with {@code zinc worker exited} in two
+     * runs out of three while passing alone. Per-test socket paths are not enough; the state root is
+     * the shared part, so the rule covers the write as well as the read.
+     */
+    @Test
+    void a_cli_test_running_a_real_engine_declares_isolation() throws IOException {
+        List<Path> tests = SourceText.javaUnder(TEST);
+        assertThat(tests)
+                .as("no tests under clients/cli/src/test/java, so this verified nothing")
+                .isNotEmpty();
+
+        List<String> hits = new ArrayList<>();
+        for (Path f : tests) {
+            // This file carries the needle as a literal; matching itself would make the rule
+            // unsatisfiable rather than enforced.
+            if (f.getFileName().toString().equals("CliSourceRulesTest.java")) continue;
+            String raw = Files.readString(f);
+            if (!raw.contains("new EngineServer(")) continue;
+            // The annotation on a line of its own, not the word anywhere: a mention in prose — or a
+            // commented-out `// @IsolatedState` — must not satisfy the rule.
+            if (raw.lines().anyMatch(l -> l.strip().equals("@IsolatedState"))) continue;
+            hits.add(SourceText.rel(ROOT, f));
+        }
+        assertThat(tests.stream().anyMatch(f -> f.getFileName().toString().equals("EngineClientTest.java")))
+                .as("the scan never reached the class this rule exists for")
+                .isTrue();
+        assertThat(hits)
+                .as("an in-process EngineServer writes the shared state root (state/aot worker AOT"
+                        + " caches, state/builds memory calibration) and the next class's compiler"
+                        + " worker inherits it. Annotate the class with @IsolatedState")
+                .isEmpty();
+    }
 }
