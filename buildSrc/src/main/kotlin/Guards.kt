@@ -658,6 +658,14 @@ object Guards {
                     "Fail when a production package is declared by more than one module without an allowlist row",
             ),
             spec(
+                67,
+                "checkPackageCycleBand",
+                "a module's production packages sitting in a package-import cycle growing past its `cycle-baseline.txt` band — and a module that improves without tightening its line, because a number nobody banks stops meaning anything. Reports component membership, never cycle paths: a 15-package component has thousands of elementary cycles and none of them says which edge to cut",
+                "ratchet, both directions (`cycle-baseline.txt`)",
+                GuardHome.ROOT,
+                description = "Fail when a module's package-cycle count leaves its cycle-baseline.txt band",
+            ),
+            spec(
                 61,
                 "checkInstallTestsRedirectM2",
                 "a test that runs the install verb without `--m2-dir`, which publishes the fixture into the developer's real `~/.m2`",

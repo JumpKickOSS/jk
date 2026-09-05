@@ -1,0 +1,44 @@
+# cycle-baseline.txt — the ratchet behind `checkPackageCycleBand` (G67).
+#
+# One line per module that has a package cycle:
+#
+#     <module-rel> <packages sitting in a cycle>
+#
+# An absent module means 0, the convention `walk-baseline.txt` already uses. A count is the number
+# of that module's production packages inside a non-trivial strongly-connected component of its own
+# package-import graph — not a number of cycles. A 15-package component has thousands of elementary
+# cycles and naming them would tell nobody which edge to cut.
+#
+# BOTH DIRECTIONS FAIL. Over the band is a regression: cut an edge, or widen the line and say why.
+# Under the band means this file is loose — the commit that improved the structure must bank it, and
+# the guard prints the tightened line to paste in. A number nobody tightens stops meaning anything.
+#
+# A ban would be the better rule and is unwinnable today: 49 of 95 production packages sit in a
+# cycle, and two components are 15 and 10 packages inside the two largest modules in the tree.
+# The charter's order is a ban, else a ratchet, else nothing.
+#
+# Measured at landing: 1,432 main sources, 95 packages, 29 module source roots, 195 resolved
+# package edges. Method: per module, resolve each `import cc.jumpkick.*` to the longest declared
+# package prefix WITHIN that module, then Tarjan over the resulting package graph. Imports that
+# leave the module are dropped — a cross-module edge cannot close a cycle the module graph already
+# forbids. `clients/intellij` is outside the scan (see PackageGraph.outsideTree).
+#
+# Shrinking any of these is per-module follow-up work. This file makes the number one the build
+# defends.
+
+server/engine 15
+clients/cli 10
+shared/core 8
+clients/cli-terminal 3
+server/resolver 3
+server/toolchain 3
+# shared/plugin-sdk is 3, not 2: the component is {plugin, plugin.build, plugin.protocol}, closed by
+# plugin -> plugin.protocol -> plugin and plugin.protocol -> plugin.build -> plugin.protocol. The
+# edge plugin.build -> plugin.protocol is carried as ordinary imports by
+# shared/plugin-sdk/src/main/java/cc/jumpkick/plugin/build/BuildPluginHarness.java lines 6-7; that
+# file also holds an in-code fully-qualified reference, which is why it has fqcn-baseline.txt
+# entries and why an earlier scan read this module as 2. plugin.process reaches both but has no
+# inbound edge, so it is correctly outside the component.
+shared/plugin-sdk 3
+shared/client-io 2
+shared/toolchain-jdk 2

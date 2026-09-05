@@ -273,50 +273,30 @@ tasks.register("checkPluginSdkBoundary") {
 tasks.register("checkPackageModuleOwnership") {
     group = "verification"
     description = "Fail when a production package is declared by more than one module without an allowlist row"
-    val tiers = listOf("shared", "server", "clients", "plugins")
-    // `clients/intellij` is a standalone IntelliJ plugin build that must never see a jk jar, so
-    // jk's own vocabulary rules do not reach it — the self-hosted gate excludes it by name and
-    // this side must scan the same corpus or the two report different counts for one rule. It
-    // declares `cc.jumpkick.idea` and nothing else does, so the exclusion hides no split.
-    val outside = setOf("clients/intellij")
-    val sources = tiers.map { tier ->
+    val repoRoot = layout.projectDirectory.asFile
+    val sourceTrees = PackageGraph.tiers.map { tier ->
         fileTree(layout.projectDirectory.dir(tier)) {
             include("*/src/main/java/**/*.java")
-            outside.filter { it.startsWith("$tier/") }
+            PackageGraph.outsideTree.keys.filter { it.startsWith("$tier/") }
                 .forEach { exclude("${it.removePrefix("$tier/")}/**") }
         }
     }
     val owners = layout.projectDirectory.file("package-owners.txt")
-    inputs.files(sources).withPropertyName("mainSources")
+    inputs.files(sourceTrees).withPropertyName("mainSources")
     inputs.file(owners).withPropertyName("packageOwners")
     val stamp = layout.buildDirectory.file("guards/package-module-ownership.ok")
     outputs.file(stamp)
     doLast {
-        // Corpus floors, measured at this commit: 1,432 main sources, 95 distinct packages,
-        // 29 module source roots. Floors rather than equalities — the corpus grows every week —
-        // but a broken glob or a parser that stops matching lands far below them, so a green
-        // result can be told apart from a blind one.
-        val measured = "measured at landing: 1,432 main sources, 95 packages, 29 module roots"
-        val packagePattern = Regex("""(?m)^\s*package\s+([A-Za-z_][\w.]*)\s*;""")
-        val files = sources.flatMap { it.files }.sorted()
-        val roots = sortedSetOf<String>()
-        val ownersByPackage = sortedMapOf<String, MutableSet<String>>()
-        var parsed = 0
-        files.forEach { file ->
-            val rel = file.relativeTo(layout.projectDirectory.asFile).invariantSeparatorsPath
-            val marker = rel.indexOf("/src/main/java/")
-            if (marker < 0) return@forEach
-            val module = rel.substring(0, marker)
-            roots.add(module)
-            val pkg = packagePattern.find(file.readText())?.groupValues?.get(1) ?: return@forEach
-            parsed++
-            ownersByPackage.getOrPut(pkg) { sortedSetOf() }.add(module)
-        }
-        val corpus = "${files.size} main sources, ${ownersByPackage.size} packages, ${roots.size} module roots"
-        if (files.size < 1_200 || ownersByPackage.size < 80 || roots.size < 25 || parsed == 0) {
+        val sources = PackageGraph.scan(repoRoot)
+        val ownersByPackage = PackageGraph.owners(sources)
+        val roots = PackageGraph.modules(sources)
+        val corpus = "${sources.size} main sources, ${ownersByPackage.size} packages, ${roots.size} module roots"
+        if (sources.size < PackageGraph.MIN_SOURCES
+            || ownersByPackage.size < PackageGraph.MIN_PACKAGES
+            || roots.size < PackageGraph.MIN_ROOTS) {
             throw GradleException(
-                "The package-ownership guard scanned $corpus ($measured), so do not trust a green"
-                    + " result — the source-root glob or the package-declaration parser drifted.")
+                "The package-ownership guard scanned $corpus (${PackageGraph.MEASURED}), so do not"
+                    + " trust a green result — the source-root glob or the package parser drifted.")
         }
         val allowed = sortedMapOf<String, List<String>>()
         val malformed = mutableListOf<String>()
@@ -356,6 +336,107 @@ tasks.register("checkPackageModuleOwnership") {
                 "One module owns each production package ($corpus):\n" + faults.sorted().joinToString("\n"))
         }
         logger.lifecycle("checkPackageModuleOwnership: $corpus, ${split.size} allowlisted split packages")
+        stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
+    }
+}
+
+// Guard G67: a module's package cycles are held at a per-module band.
+//
+// A ban is unwinnable today — 49 production packages of 95 sit in a cycle, across 9 modules, and
+// two of those components are 15 and 10 packages inside the largest modules in the tree. The
+// charter's order is a ban, else a ratchet, else nothing, and a ratchet converts an unwinnable rule
+// into a monotonic one on day one. A per-MODULE number is that ratchet: a filename exemption
+// expires silently, a shape does not.
+//
+// Both directions fail. Over budget is a regression; under budget means the baseline is loose and
+// the commit that improved the structure must bank it, or the number stops meaning anything.
+//
+// The message names the component's PACKAGES, never its cycles. A 15-node component has thousands
+// of elementary cycles: the output would not fit a screen, and it would not say which edge to cut,
+// which is the only thing this message is for. That is also why ArchUnit's
+// `slices().should().beFreeOfCycles()` is unusable here.
+tasks.register("checkPackageCycleBand") {
+    group = "verification"
+    description = "Fail when a module's package-cycle count leaves its cycle-baseline.txt band"
+    val repoRoot = layout.projectDirectory.asFile
+    val sourceTrees = PackageGraph.tiers.map { tier ->
+        fileTree(layout.projectDirectory.dir(tier)) {
+            include("*/src/main/java/**/*.java")
+            PackageGraph.outsideTree.keys.filter { it.startsWith("$tier/") }
+                .forEach { exclude("${it.removePrefix("$tier/")}/**") }
+        }
+    }
+    val baselineFile = layout.projectDirectory.file("cycle-baseline.txt")
+    inputs.files(sourceTrees).withPropertyName("mainSources")
+    inputs.file(baselineFile).withPropertyName("cycleBaseline")
+    val stamp = layout.buildDirectory.file("guards/package-cycle-band.ok")
+    outputs.file(stamp)
+    doLast {
+        val sources = PackageGraph.scan(repoRoot)
+        val roots = PackageGraph.modules(sources)
+        val packages = PackageGraph.owners(sources)
+        val edges = PackageGraph.edges(sources)
+        val edgeCount = PackageGraph.edgeCount(edges)
+        val corpus = "${sources.size} main sources, ${packages.size} packages, " +
+            "${roots.size} module roots, $edgeCount package edges"
+        if (sources.size < PackageGraph.MIN_SOURCES
+            || packages.size < PackageGraph.MIN_PACKAGES
+            || roots.size < PackageGraph.MIN_ROOTS
+            || edgeCount < PackageGraph.MIN_EDGES) {
+            throw GradleException(
+                "The package-cycle guard scanned $corpus (${PackageGraph.MEASURED}), so do not trust"
+                    + " a green result — the source-root glob or the import resolver drifted, and an"
+                    + " empty edge set reports every module acyclic.")
+        }
+        val baseline = sortedMapOf<String, Int>()
+        val malformed = mutableListOf<String>()
+        baselineFile.asFile.readLines().forEachIndexed { i, raw ->
+            val line = raw.substringBefore('#').trim()
+            if (line.isEmpty()) return@forEachIndexed
+            val parts = line.split(Regex("\\s+"))
+            val count = parts.getOrNull(1)?.toIntOrNull()
+            when {
+                parts.size != 2 || count == null ->
+                    malformed.add("  cycle-baseline.txt:${i + 1}: expected `<module-rel> <count>`, got `$line`")
+                else -> baseline[parts[0]] = count
+            }
+        }
+        if (malformed.isNotEmpty()) {
+            throw GradleException("cycle-baseline.txt is malformed:\n" + malformed.joinToString("\n"))
+        }
+        val faults = mutableListOf<String>()
+        val tightened = mutableListOf<String>()
+        roots.forEach { module ->
+            val found = PackageGraph.cyclesIn(module, edges, sources)
+            val count = found.sumOf { it.size }
+            // Absent means 0, the convention walk-baseline.txt already uses.
+            val budget = baseline[module] ?: 0
+            if (count == budget) return@forEach
+            val shape = found.joinToString("; ") { component ->
+                "(${component.size}) " + component.joinToString(", ") { it.removePrefix("cc.jumpkick.") }
+            }
+            if (count > budget) {
+                faults.add("  $module: $count packages in a cycle, banded at $budget\n"
+                    + "      component" + (if (found.size == 1) "" else "s") + ": $shape")
+            } else {
+                tightened.add("  $module $count   # was $budget")
+            }
+        }
+        (baseline.keys - roots).sorted().forEach {
+            faults.add("  $it has a cycle-baseline.txt line but is not a module source root — delete it")
+        }
+        if (faults.isNotEmpty()) {
+            throw GradleException(
+                "A module's package-cycle count may not grow ($corpus):\n" + faults.sorted().joinToString("\n")
+                    + "\n  Cut an edge, or widen the module's cycle-baseline.txt line and say why.")
+        }
+        if (tightened.isNotEmpty()) {
+            throw GradleException(
+                "cycle-baseline.txt is loose — a module improved and the commit must bank it."
+                    + " Paste these lines ($corpus):\n" + tightened.sorted().joinToString("\n"))
+        }
+        val banded = baseline.values.sum()
+        logger.lifecycle("checkPackageCycleBand: $corpus, $banded packages in cycles over ${baseline.size} modules")
         stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
     }
 }
