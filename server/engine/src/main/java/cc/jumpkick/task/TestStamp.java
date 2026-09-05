@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Content-hashed key for incremental test skipping. On green runs the build stores a CAS marker
@@ -64,7 +65,7 @@ public final class TestStamp {
         }
     }
 
-    public static String computeKey(
+    public static @Nullable String computeKey(
             List<Path> testSources,
             Path mainClasses,
             List<Path> resourceRoots,
@@ -80,10 +81,10 @@ public final class TestStamp {
      * same {@code dir:…} token the live restore will produce (from the compile action record) so the
      * green marker still matches instead of forecasting a full suite against {@code missing:…}.
      */
-    public static String computeKey(
+    public static @Nullable String computeKey(
             List<Path> testSources,
             Path mainClasses,
-            String mainClassesFingerprint,
+            @Nullable String mainClassesFingerprint,
             List<Path> resourceRoots,
             Path lockFile,
             List<Path> runtimeCp,

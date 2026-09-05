@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Applies the {@link CacheTier} bound of every {@link CacheTree}, then reclaims whatever {@link
@@ -279,7 +280,7 @@ public final class CacheRetention {
         }
     }
 
-    private static boolean expired(Duration window, long now, long mtime) {
+    private static boolean expired(@Nullable Duration window, long now, long mtime) {
         return window != null && !window.isZero() && !window.isNegative() && now - mtime >= window.toMillis();
     }
 

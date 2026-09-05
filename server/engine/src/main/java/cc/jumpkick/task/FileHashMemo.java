@@ -21,6 +21,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Content fingerprints for source and input files, memoized on {@code (path, size, mtime)}.
@@ -183,7 +184,7 @@ public final class FileHashMemo {
     }
 
     /** The store for the session's cache root, or {@code null} when no session cache resolves. */
-    private static Store store() {
+    private static @Nullable Store store() {
         try {
             Path cache = SessionContext.current().cacheDir();
             return STORES.computeIfAbsent(
@@ -258,6 +259,7 @@ public final class FileHashMemo {
         }
 
         /** The entry for {@code path} when it still describes the file the caller just stat'ed. */
+        @Nullable
         Entry get(String path, long size, long mtimeMillis, long nanos) {
             Entry e = entries.get(path);
             if (e == null || e.size != size || e.mtimeMillis != mtimeMillis) return null;

@@ -49,7 +49,7 @@ import org.jspecify.annotations.Nullable;
 public final class ActionCache {
 
     private final Cas cas;
-    private final Cas storeCas; // nullable — dual-CAS lookup for promoted Class-C blobs
+    private final @Nullable Cas storeCas; // dual-CAS lookup for promoted Class-C blobs
     private final Path root;
 
     public ActionCache(Cas cas, Path root) {
@@ -59,7 +59,7 @@ public final class ActionCache {
     /**
      * @param storeCas optional long-lived store CAS for Class-C blob fallback (may be null)
      */
-    public ActionCache(Cas cas, Path root, Cas storeCas) {
+    public ActionCache(Cas cas, Path root, @Nullable Cas storeCas) {
         this.cas = Objects.requireNonNull(cas, "cas");
         this.root = Objects.requireNonNull(root, "root");
         this.storeCas = storeCas;
@@ -348,7 +348,7 @@ public final class ActionCache {
      * current pointer + {@code tasks/<taskId>.gens} (newest first). Older key files are deleted so
      * {@link CasSweep} can reclaim their blobs.
      */
-    private void trimGenerations(String taskId, String newKey, String previousKey) throws IOException {
+    private void trimGenerations(String taskId, String newKey, @Nullable String previousKey) throws IOException {
         int keep = HeavyActionPolicy.generations(taskId);
         if (keep == Integer.MAX_VALUE) return; // not Class-C
         Path gens = HeavyActionPolicy.gensFile(tasksDir(), taskId);
@@ -421,7 +421,8 @@ public final class ActionCache {
             // green tests over wrong classes downstream.
             if (!identicalTo(target, entry.getValue())) {
                 Files.deleteIfExists(target);
-                if (!copyVerified(blobs.get(entry.getValue()).path(), target, entry.getValue())) {
+                var blob = blobs.get(entry.getValue());
+                if (blob == null || !copyVerified(blob.path(), target, entry.getValue())) {
                     dropCorruptBlob(entry.getValue());
                     // The contract is an empty outputDir on failure, so a partial restore is wiped
                     // rather than pruned.

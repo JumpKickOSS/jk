@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.SortedMap;
+import org.jspecify.annotations.Nullable;
 import org.objectweb.asm.AnnotationVisitor;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
@@ -85,7 +86,7 @@ public final class ClassAbi {
         private final List<String> methods = new ArrayList<>();
         private final List<String> anns = new ArrayList<>();
         private final List<String> module = new ArrayList<>();
-        private String nestHost;
+        private @Nullable String nestHost;
 
         ApiCollector() {
             super(Opcodes.ASM9);
@@ -145,12 +146,13 @@ public final class ClassAbi {
         }
 
         @Override
-        public AnnotationVisitor visitAnnotation(String descriptor, boolean visible) {
+        public @Nullable AnnotationVisitor visitAnnotation(String descriptor, boolean visible) {
             return ClassAbiAnns.line(descriptor, visible, anns);
         }
 
         @Override
-        public FieldVisitor visitField(int access, String name, String descriptor, String signature, Object value) {
+        public @Nullable FieldVisitor visitField(
+                int access, String name, String descriptor, String signature, Object value) {
             if (!isApi(access)) return null;
             StringBuilder sb = new StringBuilder("F ")
                     .append(access)
@@ -163,7 +165,7 @@ public final class ClassAbi {
             List<String> fieldAnns = new ArrayList<>();
             return new FieldVisitor(Opcodes.ASM9) {
                 @Override
-                public AnnotationVisitor visitAnnotation(String desc, boolean visible) {
+                public @Nullable AnnotationVisitor visitAnnotation(String desc, boolean visible) {
                     return ClassAbiAnns.line(desc, visible, fieldAnns);
                 }
 
@@ -177,7 +179,7 @@ public final class ClassAbi {
         }
 
         @Override
-        public MethodVisitor visitMethod(
+        public @Nullable MethodVisitor visitMethod(
                 int access, String name, String descriptor, String signature, String[] exceptions) {
             if ("<clinit>".equals(name)) return null;
             if (!isApi(access)) return null;
@@ -196,12 +198,13 @@ public final class ClassAbi {
             List<String> methodAnns = new ArrayList<>();
             return new MethodVisitor(Opcodes.ASM9) {
                 @Override
-                public AnnotationVisitor visitAnnotation(String desc, boolean visible) {
+                public @Nullable AnnotationVisitor visitAnnotation(String desc, boolean visible) {
                     return ClassAbiAnns.line(desc, visible, methodAnns);
                 }
 
                 @Override
-                public AnnotationVisitor visitParameterAnnotation(int parameter, String desc, boolean visible) {
+                public @Nullable AnnotationVisitor visitParameterAnnotation(
+                        int parameter, String desc, boolean visible) {
                     return ClassAbiAnns.line(desc, visible, methodAnns, "P" + parameter);
                 }
 
@@ -226,7 +229,7 @@ public final class ClassAbi {
             List<String> recAnns = new ArrayList<>();
             return new RecordComponentVisitor(Opcodes.ASM9) {
                 @Override
-                public AnnotationVisitor visitAnnotation(String desc, boolean visible) {
+                public @Nullable AnnotationVisitor visitAnnotation(String desc, boolean visible) {
                     return ClassAbiAnns.line(desc, visible, recAnns);
                 }
 

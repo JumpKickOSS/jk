@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 import org.objectweb.asm.AnnotationVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
@@ -26,11 +27,12 @@ final class ClassAbiAnns {
         };
     }
 
-    static AnnotationVisitor line(String descriptor, boolean visible, List<String> sink) {
+    static @Nullable AnnotationVisitor line(String descriptor, boolean visible, List<String> sink) {
         return line(descriptor, visible, sink, null);
     }
 
-    static AnnotationVisitor line(String descriptor, boolean visible, List<String> sink, String prefix) {
+    static @Nullable AnnotationVisitor line(
+            String descriptor, boolean visible, List<String> sink, @Nullable String prefix) {
         if (ClassAbi.KOTLIN_METADATA.equals(descriptor)) return null;
         StringBuilder sb = new StringBuilder();
         if (prefix != null) sb.append(prefix).append(' ');
@@ -82,7 +84,7 @@ final class ClassAbiAnns {
         }
 
         @Override
-        public AnnotationVisitor visitAnnotation(String name, String descriptor) {
+        public @Nullable AnnotationVisitor visitAnnotation(String name, String descriptor) {
             if (ClassAbi.KOTLIN_METADATA.equals(descriptor)) return null;
             StringBuilder inner = new StringBuilder("@").append(descriptor);
             return new ValueCollector(inner) {
@@ -109,7 +111,7 @@ final class ClassAbiAnns {
                 }
 
                 @Override
-                public AnnotationVisitor visitAnnotation(String n, String descriptor) {
+                public @Nullable AnnotationVisitor visitAnnotation(String n, String descriptor) {
                     if (ClassAbi.KOTLIN_METADATA.equals(descriptor)) return null;
                     StringBuilder nested = new StringBuilder("@").append(descriptor);
                     return new ValueCollector(nested) {

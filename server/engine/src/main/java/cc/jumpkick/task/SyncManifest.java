@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Per-project CAS reachability roots written by {@code jk sync} under {@code
@@ -72,7 +73,8 @@ public final class SyncManifest {
     }
 
     /** Parsed manifest; sweep callers mainly need {@link #refs}. */
-    public record Manifest(String projectFingerprint, Path lockFile, long stampMillis, List<String> refs) {
+    public record Manifest(
+            String projectFingerprint, @Nullable Path lockFile, long stampMillis, List<String> refs) {
         public Manifest {
             refs = List.copyOf(refs);
         }

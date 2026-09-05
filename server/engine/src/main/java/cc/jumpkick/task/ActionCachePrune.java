@@ -26,6 +26,7 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Retention for the three things under {@code actions/}, each with its own shelf life and its own
@@ -312,7 +313,8 @@ public final class ActionCachePrune {
                 if (refs.merge(sha, -1, Integer::sum) > 0) continue;
                 Long size = blobSize.get(sha);
                 if (size == null) continue; // swept this pass, or never in this CAS
-                if (now - blobMtime.get(sha) < grace) continue;
+                Long mtime = blobMtime.get(sha);
+                if (mtime != null && now - mtime < grace) continue;
                 if (!dryRun) Files.deleteIfExists(cacheCas.pathFor(sha));
                 deletedBlobs++;
                 bytes += size;
@@ -482,7 +484,7 @@ public final class ActionCachePrune {
      * so no future lookup can name it — and goes first. {@code null} when the pointers could not be
      * read, which the caller reads as "assume nothing is superseded".
      */
-    private static Set<String> livePointers(Path tasksDir) throws IOException {
+    private static @Nullable Set<String> livePointers(Path tasksDir) throws IOException {
         Set<String> live = new HashSet<>();
         if (!Files.isDirectory(tasksDir)) return live;
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(tasksDir)) {

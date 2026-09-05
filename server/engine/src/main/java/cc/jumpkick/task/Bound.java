@@ -2,6 +2,7 @@
 package cc.jumpkick.task;
 
 import java.time.Duration;
+import org.jspecify.annotations.Nullable;
 
 /**
  * What holds one cache tier down: an optional retention window, plus a cap for when the
@@ -17,7 +18,7 @@ import java.time.Duration;
  * @param reason why the tier is deliberately unbounded; non-blank exactly when {@code kind} is
  *     {@link Kind#UNBOUNDED}
  */
-public record Bound(Kind kind, Duration window, Cap cap, String reason) {
+public record Bound(Kind kind, @Nullable Duration window, Cap cap, String reason) {
 
     /** How the tier is laid out, and therefore what one victim is. */
     public enum Kind {
@@ -52,7 +53,7 @@ public record Bound(Kind kind, Duration window, Cap cap, String reason) {
         record None() implements Cap {}
     }
 
-    public static Bound files(Duration window, Cap cap) {
+    public static Bound files(@Nullable Duration window, Cap cap) {
         return new Bound(Kind.FILES, window, cap, "");
     }
 

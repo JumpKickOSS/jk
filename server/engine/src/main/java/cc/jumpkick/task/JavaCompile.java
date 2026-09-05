@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Action-cache front for Java compile. The {@code jk-java-compiler} worker owns Zinc incremental
@@ -69,8 +70,8 @@ public final class JavaCompile {
             Cas cas,
             ActionCache actionCache,
             Path stateDir,
-            Path workerJar,
-            Path generatedSourceDir)
+            @Nullable Path workerJar,
+            @Nullable Path generatedSourceDir)
             throws IOException {
         return run(
                 taskId, request, jkVersion, useCache, true, cas, actionCache, stateDir, workerJar, generatedSourceDir);
@@ -85,8 +86,8 @@ public final class JavaCompile {
             Cas cas,
             ActionCache actionCache,
             Path stateDir,
-            Path workerJar,
-            Path generatedSourceDir)
+            @Nullable Path workerJar,
+            @Nullable Path generatedSourceDir)
             throws IOException {
         Path out = request.outputDir();
         Files.createDirectories(out);
@@ -163,7 +164,7 @@ public final class JavaCompile {
             String jkVersion,
             ActionCache actionCache,
             Path stateDir,
-            Path workerJar)
+            @Nullable Path workerJar)
             throws IOException {
         return predict(taskId, request, jkVersion, actionCache, stateDir, workerJar, null);
     }
@@ -174,8 +175,8 @@ public final class JavaCompile {
             String jkVersion,
             ActionCache actionCache,
             Path stateDir,
-            Path workerJar,
-            Path generatedSourceDir)
+            @Nullable Path workerJar,
+            @Nullable Path generatedSourceDir)
             throws IOException {
         String key = ActionKey.forJavac(taskId, request, jkVersion);
         if (request.sources().isEmpty() || actionCache.lookup(key).isPresent()) {

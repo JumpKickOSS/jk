@@ -18,6 +18,7 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Content identity → JVM ABI token. Keyed by {@link ClasspathFingerprint#entry}, never path or
@@ -38,7 +39,7 @@ public final class AbiMemo {
     private AbiMemo() {}
 
     /** Previously stored ABI token for {@code contentIdentity}, or {@code null}. */
-    public static String get(String contentIdentity) {
+    public static @Nullable String get(@Nullable String contentIdentity) {
         LOOKUPS.incrementAndGet();
         if (contentIdentity == null || contentIdentity.isBlank()) return null;
         Store store = store();
@@ -78,7 +79,7 @@ public final class AbiMemo {
         HITS.set(0);
     }
 
-    private static Store store() {
+    private static @Nullable Store store() {
         try {
             Path cache = SessionContext.current().cacheDir();
             return STORES.computeIfAbsent(
@@ -132,6 +133,7 @@ public final class AbiMemo {
             }
         }
 
+        @Nullable
         String get(String key) {
             Entry e = entries.get(key);
             if (e == null) return null;
