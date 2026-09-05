@@ -38,11 +38,36 @@ public final class ManifestProject {
             "scala",
             "sources",
             "description",
-            "layout",
-            "id",
-            "module");
+            "layout");
 
     private ManifestProject() {}
+
+    /**
+     * Key position is load-bearing in TOML: an identity key typed below the first table header is a
+     * member of that table, not of the project. When a required key is missing at the root but sits
+     * directly under a root table, the error says where it went; the bare "missing" message sent
+     * people hunting for a typo in a key that was right there.
+     */
+    static String strandedHint(TomlTable root, String key) {
+        for (String table : root.keySet()) {
+            if (root.get(table) instanceof TomlTable t && t.contains(key) && !(t.get(key) instanceof TomlTable)) {
+                return strandedSuffix(key, table);
+            }
+        }
+        return "";
+    }
+
+    /** The three keys that make a project itself; a dependency cannot be called any of them. */
+    static final Set<String> IDENTITY_KEYS = Set.of("name", "group", "version");
+
+    static String strandedSuffix(String key, String table) {
+        return " — found `" + key + "` under [" + table + "]; identity keys must appear above the first table";
+    }
+
+    /** The whole error for an identity key found as a member of {@code table}. */
+    static String strandedIdentity(String key, String table) {
+        return "jk.toml is missing required key `" + key + "`" + strandedSuffix(key, table);
+    }
 
     /**
      * @param workspaceRoot when true, omitted optional fields keep local defaults (no inherit);
@@ -58,7 +83,7 @@ public final class ManifestProject {
                     "name cannot use workspace inheritance — every module must declare its own name");
         }
         if (!root.contains("name")) {
-            throw new JkBuildParseException("jk.toml is missing required key `name`");
+            throw new JkBuildParseException("jk.toml is missing required key `name`" + strandedHint(root, "name"));
         }
         java.util.EnumSet<ProjectInherit> inherits = java.util.EnumSet.noneOf(ProjectInherit.class);
 
@@ -257,7 +282,7 @@ public final class ManifestProject {
                 inherits.add(inherit);
                 return Project.VERSION_FROM_WORKSPACE;
             }
-            throw new JkBuildParseException("jk.toml is missing required key `" + path + "`");
+            throw new JkBuildParseException("jk.toml is missing required key `" + path + "`" + strandedHint(root, key));
         }
         String value = root.getString(key);
         if (value == null) {

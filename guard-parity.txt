@@ -20,8 +20,10 @@ G32 SpikeCacheTempDirTest (:engine) — one module, run by both builds
 
 # Reads Gradle's own publication model.
 G19 checkPublishedPomCoordinates reads build/publications/*/pom-default.xml, which Maven-publish
-G19 generates and jk's publisher does not produce. The rule is about what THIS build publishes;
-G19 jk's equivalent belongs with jk's own publish path, not as a text scan of Gradle's output.
+G19 generates and jk's publisher does not produce. Settled: Gradle is the only publisher that can
+G19 emit `unspecified` or a fallback group — jk's PublishablePom takes group, name and version from
+G19 the manifest, where a publishable project must declare all three concretely or fail to parse,
+G19 so the defect this letter bans has no way to occur on the jk side. Permanent, not deferred.
 
 # Folded / never allocated — no code behind the letter on either side.
 G4 folded into checkCliNoParseTypes; no task of its own

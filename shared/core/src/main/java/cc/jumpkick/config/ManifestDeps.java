@@ -148,6 +148,14 @@ public final class ManifestDeps {
         // A reserved keyword (latest/stable/lts/…) or a string that starts with a
         // version-spec character (digit, ^, ~, =, >, <) is always a catalog dep.
         if (isVersionSpecOrKeyword(value)) {
+            // `version = "2.0"` typed below a table header is a project identity key that fell into
+            // the table, not a library called `version`; say so instead of hunting the catalog.
+            if (ManifestProject.IDENTITY_KEYS.contains(name)
+                    && catalog.lookup(name).isEmpty()) {
+                int dot = displayPath.lastIndexOf('.');
+                throw new JkBuildParseException(
+                        ManifestProject.strandedIdentity(name, dot < 0 ? displayPath : displayPath.substring(0, dot)));
+            }
             LibraryCatalog.Module mod = catalog.lookup(name)
                     .orElseThrow(() -> new JkBuildParseException(unknownLibraryMessage(displayPath, name, catalog)));
             VersionSelector selector = VersionSelector.parseFloating(value);
