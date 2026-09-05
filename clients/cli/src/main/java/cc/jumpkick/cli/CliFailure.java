@@ -53,12 +53,17 @@ final class CliFailure {
         return false;
     }
 
-    /** One Warning wedge on the human stream (or one machine line), and a usage exit. */
+    /**
+     * One Warning line on the human stream (or one machine line), and a usage exit. Written with
+     * {@link System#err} and the plain glyph on purpose: the session and the theme both resolve the
+     * working directory when they initialise, so with it gone the wedge renderer is the next thing
+     * to fail, and a warning that throws is a stack on the terminal again.
+     */
     static int workingDirectoryGone(String[] args) {
         if (wantsJson(args)) {
-            CliOutput.out(machineLine("warning", CWD_GONE, null, Exit.USAGE));
+            System.out.println(machineLine("warning", CWD_GONE, null, Exit.USAGE));
         } else {
-            CliOutput.err(CommandWedge.chip(Glyphs.BANG, "jk", CWD_GONE));
+            System.err.println(Glyphs.BANG_PLAIN + " jk   " + CWD_GONE);
         }
         return Exit.USAGE;
     }
@@ -68,10 +73,17 @@ final class CliFailure {
         String message = messageOf(t);
         appendLog(args, t);
         if (wantsJson(args)) {
-            CliOutput.out(machineLine("error", message, t.getClass().getName(), Exit.SOFTWARE));
+            System.out.println(machineLine("error", message, t.getClass().getName(), Exit.SOFTWARE));
         } else {
-            CliOutput.err(CommandWedge.fail("Error", message));
-            if (wantsVerbose(args)) t.printStackTrace(CliOutput.stderr());
+            String line;
+            try {
+                line = CommandWedge.fail("Error", message);
+            } catch (Throwable rendering) {
+                // The theme could not come up either; the message still has to.
+                line = Glyphs.CROSS_PLAIN + " Error   " + message;
+            }
+            System.err.println(line);
+            if (wantsVerbose(args)) t.printStackTrace(System.err);
         }
         return Exit.SOFTWARE;
     }

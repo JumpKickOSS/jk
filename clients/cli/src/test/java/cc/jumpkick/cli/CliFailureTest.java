@@ -94,6 +94,9 @@ class CliFailureTest {
                 () -> code[0] = CliFailure.workingDirectoryGone(new String[] {"--version", "--no-ansi"}));
         assertThat(code[0]).isNotZero().isNotEqualTo(Exit.SOFTWARE);
         assertThat(err).contains(CliFailure.CWD_GONE).doesNotContain("Error").doesNotContain("sun.nio.fs");
+        assertThat(err)
+                .as("plain glyph, no theme: the theme needs the very directory that is gone")
+                .doesNotContain("\u001b[");
         assertThat(state.resolve(CliFailure.LOG_NAME))
                 .as("not a defect, so not journaled")
                 .doesNotExist();
