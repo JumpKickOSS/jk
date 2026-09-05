@@ -28,6 +28,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.TreeMap;
 import org.jspecify.annotations.Nullable;
 
@@ -234,10 +235,12 @@ public final class PackagingKeys {
 
         ProjectFacts facts =
                 PluginBuild.facts(p.project(), PlannerPlugin.resolvedMain(p.project(), p.moduleDir(), p.classes()));
+        PluginBuild.PackagerDecl packager = Objects.requireNonNull(p.decls().packager(), "packager");
+        PluginBuild.Active active = Objects.requireNonNull(p.active(), "active");
         List<String> tokens = new ArrayList<>(PlannerPlugin.declaredInputTokens(
-                p.decls().packager().inputs(),
+                packager.inputs(),
                 new PlannerPlugin.InputSources(
-                        p.classes(), entryJars, entries, p.active().config(), p.layout(), p.moduleDir())));
+                        p.classes(), entryJars, entries, active.config(), p.layout(), p.moduleDir())));
         tokens.addAll(PlannerPlugin.toolTokens(
                 PluginContributions.stepDependencies(p.project(), p.moduleDir()), extras, sdkPins));
         if (!p.secrets().isEmpty()) {
@@ -262,9 +265,8 @@ public final class PackagingKeys {
         // (same path derivation as MinifiedJarPackager.produce). Absence and every content state
         // must be distinct keys — otherwise a post-train rebuild restores the pre-train jar as
         // "up-to-date" and training never reaches the shipped artifact.
-        if ("minified-jar".equals(p.decls().packager().name())) {
-            Path trainSurface = p.artifact()
-                    .getParent()
+        if ("minified-jar".equals(packager.name())) {
+            Path trainSurface = Objects.requireNonNull(p.artifact().getParent(), "artifact dir")
                     .resolve(TrainLayout.ROOT)
                     .resolve("merged")
                     .resolve(TrainLayout.SURFACE_JSON);
@@ -369,8 +371,10 @@ public final class PackagingKeys {
             Path javaHome,
             PackagingKeys.@Nullable Owner plugin,
             ActionCache actionCache) {
-        Path artifact = PluginBuild.mainArtifactPath(layout, plugin.active());
-        String packager = plugin.decls().packager().name();
+        PackagingKeys.Owner owner = Objects.requireNonNull(plugin, "plugin owner");
+        Path artifact = PluginBuild.mainArtifactPath(layout, owner.active());
+        String packager =
+                Objects.requireNonNull(owner.decls().packager(), "packager").name();
         try {
             var keyed = PackagingKeys.pluginPackager(new PackagingKeys.Packager(
                             project,

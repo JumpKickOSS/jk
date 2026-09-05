@@ -176,7 +176,7 @@ public final class CompileSupport {
     }
 
     /** {@code base} plus every {@code extension} file under {@code extraDirs}, deduplicated. */
-    public static List<Path> withExtraSources(List<Path> base, List<Path> extraDirs, String extension)
+    public static List<Path> withExtraSources(@Nullable List<Path> base, List<Path> extraDirs, String extension)
             throws IOException {
         if (extraDirs.isEmpty()) return base;
         var all = new LinkedHashSet<>(base);

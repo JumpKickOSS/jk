@@ -41,9 +41,9 @@ public final class PlannerResources {
         Cas cas = cx.cas();
         ActionCache actionCache = cx.actionCache();
         Supplier<EffortWeights.Plan> plan = cx.plan();
-        AtomicReference<List<Path>> javaMainSrcRef = cx.javaMainSrcRef();
-        AtomicReference<List<Path>> kotlinMainSrcRef = cx.kotlinMainSrcRef();
-        AtomicReference<List<String>> buildLogicInputTokensRef = cx.buildLogicInputTokensRef();
+        AtomicReference<@Nullable List<Path>> javaMainSrcRef = cx.javaMainSrcRef();
+        AtomicReference<@Nullable List<Path>> kotlinMainSrcRef = cx.kotlinMainSrcRef();
+        AtomicReference<@Nullable List<String>> buildLogicInputTokensRef = cx.buildLogicInputTokensRef();
         Path javaMainSrcDir = cx.javaMainSrcDir();
         boolean compact = cx.compact();
         boolean mixed = cx.mixed();
@@ -168,7 +168,7 @@ public final class PlannerResources {
         BuildPlanner.Inputs in = cx.in();
         ActionCache actionCache = cx.actionCache();
         Supplier<EffortWeights.Plan> plan = cx.plan();
-        AtomicReference<List<String>> buildLogicInputTokensRef = cx.buildLogicInputTokensRef();
+        AtomicReference<@Nullable List<String>> buildLogicInputTokensRef = cx.buildLogicInputTokensRef();
         return Task.builder(TaskNames.BUILD_LOGIC_BEFORE_COMPILE)
                 .stage(BuildLogicAnchor.BEFORE_COMPILE.stage())
                 .label("Build logic (before compile)")
@@ -205,7 +205,7 @@ public final class PlannerResources {
         ActionCache actionCache = cx.actionCache();
         Supplier<EffortWeights.Plan> plan = cx.plan();
         String mainCompile = cx.mainCompile();
-        AtomicReference<List<String>> buildLogicInputTokensRef = cx.buildLogicInputTokensRef();
+        AtomicReference<@Nullable List<String>> buildLogicInputTokensRef = cx.buildLogicInputTokensRef();
         return Task.builder(TaskNames.BUILD_LOGIC_AFTER_COMPILE)
                 .stage(BuildLogicAnchor.AFTER_COMPILE.stage())
                 .label("Build logic (after compile)")
@@ -241,7 +241,7 @@ public final class PlannerResources {
         BuildPlanner.Inputs in = cx.in();
         ActionCache actionCache = cx.actionCache();
         Supplier<EffortWeights.Plan> plan = cx.plan();
-        AtomicReference<List<String>> buildLogicInputTokensRef = cx.buildLogicInputTokensRef();
+        AtomicReference<@Nullable List<String>> buildLogicInputTokensRef = cx.buildLogicInputTokensRef();
         return Task.builder(TaskNames.BUILD_LOGIC_BEFORE_PACKAGE)
                 .stage(BuildLogicAnchor.BEFORE_PACKAGE.stage())
                 .label("Build logic (before package)")
@@ -285,7 +285,7 @@ public final class PlannerResources {
         BuildPlanner.Inputs in = cx.in();
         ActionCache actionCache = cx.actionCache();
         Supplier<EffortWeights.Plan> plan = cx.plan();
-        AtomicReference<List<String>> buildLogicInputTokensRef = cx.buildLogicInputTokensRef();
+        AtomicReference<@Nullable List<String>> buildLogicInputTokensRef = cx.buildLogicInputTokensRef();
         return Task.builder(TaskNames.BUILD_LOGIC_AFTER_BUILD)
                 .stage(BuildLogicAnchor.AFTER_BUILD.stage())
                 .label("Build logic (after build)")
@@ -323,7 +323,7 @@ public final class PlannerResources {
         BuildPlanner.Inputs in = cx.in();
         ActionCache actionCache = cx.actionCache();
         Supplier<EffortWeights.Plan> plan = cx.plan();
-        AtomicReference<List<String>> buildLogicInputTokensRef = cx.buildLogicInputTokensRef();
+        AtomicReference<@Nullable List<String>> buildLogicInputTokensRef = cx.buildLogicInputTokensRef();
         return Task.builder(TaskNames.BUILD_LOGIC_GATE)
                 .stage(BuildLogicAnchor.GATE.stage())
                 .label("Build logic (gate)")

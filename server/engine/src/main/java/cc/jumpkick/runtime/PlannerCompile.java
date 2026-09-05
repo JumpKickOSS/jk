@@ -92,8 +92,8 @@ public final class PlannerCompile {
      * Zinc session, so the Scala sources are javac's inputs too). {@code javaSeed} is the
      * caller's already-walked {@code .java} list, so the common path does not walk twice.
      */
-    public static List<Path> javaAndScalaSources(JkBuild project, Path moduleDir, boolean compact, List<Path> javaSeed)
-            throws IOException {
+    public static List<Path> javaAndScalaSources(
+            JkBuild project, Path moduleDir, boolean compact, @Nullable List<Path> javaSeed) throws IOException {
         List<Path> extraSrcDirs = extraSourceDirs(project, moduleDir);
         List<Path> java = javaSeed;
         List<Path> scala = CompileSupport.collectScalaSources(moduleDir, compact);
@@ -244,8 +244,8 @@ public final class PlannerCompile {
         Cas cas = cx.cas();
         ActionCache actionCache = cx.actionCache();
         Supplier<EffortWeights.Plan> plan = cx.plan();
-        AtomicReference<List<Path>> javaMainSrcRef = cx.javaMainSrcRef();
-        AtomicReference<List<Path>> kotlinMainSrcRef = cx.kotlinMainSrcRef();
+        AtomicReference<@Nullable List<Path>> javaMainSrcRef = cx.javaMainSrcRef();
+        AtomicReference<@Nullable List<Path>> kotlinMainSrcRef = cx.kotlinMainSrcRef();
         Path javaMainSrcDir = cx.javaMainSrcDir();
         boolean compact = cx.compact();
         boolean mixed = cx.mixed();
@@ -484,8 +484,8 @@ public final class PlannerCompile {
         Cas cas = cx.cas();
         ActionCache actionCache = cx.actionCache();
         Supplier<EffortWeights.Plan> plan = cx.plan();
-        AtomicReference<List<Path>> javaMainSrcRef = cx.javaMainSrcRef();
-        AtomicReference<List<Path>> kotlinMainSrcRef = cx.kotlinMainSrcRef();
+        AtomicReference<@Nullable List<Path>> javaMainSrcRef = cx.javaMainSrcRef();
+        AtomicReference<@Nullable List<Path>> kotlinMainSrcRef = cx.kotlinMainSrcRef();
         Path javaMainSrcDir = cx.javaMainSrcDir();
         boolean compact = cx.compact();
         boolean mixed = cx.mixed();
@@ -620,7 +620,7 @@ public final class PlannerCompile {
         Cas cas = cx.cas();
         ActionCache actionCache = cx.actionCache();
         Supplier<EffortWeights.Plan> plan = cx.plan();
-        AtomicReference<List<Path>> groovyMainSrcRef = cx.groovyMainSrcRef();
+        AtomicReference<@Nullable List<Path>> groovyMainSrcRef = cx.groovyMainSrcRef();
         boolean compact = cx.compact();
         boolean mixedGroovy = cx.mixedGroovy();
         return Task.builder(TaskNames.COMPILE_GROOVY)

@@ -34,15 +34,35 @@ public record ExecPlan(
         List<String> libPaths,
         String deployCommand) {
 
-    public static ExecPlan error(String kind, String message) {
+    public static ExecPlan error(@Nullable String kind, String message) {
         return error(kind, message, "");
     }
 
     /** As {@link #error(String, String)}, tagging the failure as an unresolved main-class scan. */
-    public static ExecPlan error(String kind, String message, String mainIssue) {
+    public static ExecPlan error(@Nullable String kind, String message, String mainIssue) {
         return new ExecPlan(
-                message, mainIssue, kind, List.of(), "", "", "", false, false, List.of(), List.of(), List.of(), "", "",
-                "", false, "", "", "", List.of(), List.of(), "");
+                message,
+                mainIssue,
+                kind == null ? "" : kind,
+                List.of(),
+                "",
+                "",
+                "",
+                false,
+                false,
+                List.of(),
+                List.of(),
+                List.of(),
+                "",
+                "",
+                "",
+                false,
+                "",
+                "",
+                "",
+                List.of(),
+                List.of(),
+                "");
     }
 
     public String encode() {

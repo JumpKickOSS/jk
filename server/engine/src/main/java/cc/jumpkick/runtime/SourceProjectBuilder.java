@@ -50,7 +50,12 @@ final class SourceProjectBuilder {
      * version (git deps); ignored for Gradle/Maven.
      */
     static Built build(
-            Path projectDir, String versionOverride, Path javaHome, Cas cas, RepoGroup repos, String jkVersion)
+            Path projectDir,
+            @Nullable String versionOverride,
+            Path javaHome,
+            Cas cas,
+            RepoGroup repos,
+            String jkVersion)
             throws IOException, InterruptedException {
 
         if (Files.isRegularFile(projectDir.resolve(ManifestPaths.MANIFEST))) {

@@ -21,6 +21,7 @@ import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -99,11 +100,12 @@ public final class GitSourceResolution {
         byScope.forEach((scope, list) -> {
             List<Dependency> out = new ArrayList<>(list.size());
             for (Dependency d : list) {
-                if (!d.isGit()) {
+                GitSource git = d.gitSource();
+                if (git == null) {
                     out.add(d);
                     continue;
                 }
-                GitSourceMaterializer.Materialized m = bySource.get(sourceKey(d.gitSource()));
+                GitSourceMaterializer.Materialized m = Objects.requireNonNull(bySource.get(sourceKey(git)));
                 out.add(Dependency.of(d.library(), m.coordinate(), VersionSelector.parse("=" + m.version())));
             }
             rewritten.put(scope, out);
@@ -205,7 +207,7 @@ public final class GitSourceResolution {
      * are part of the key so two deps on the same commit that relabel it differently each get their
      * own published artifact.
      */
-    private static String sourceKey(@Nullable GitSource source) {
+    private static String sourceKey(GitSource source) {
         return String.join(
                 "|", source.canonicalUrl(), source.ref().token(), source.path() == null ? "" : source.path());
     }

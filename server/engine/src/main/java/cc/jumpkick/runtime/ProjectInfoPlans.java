@@ -96,7 +96,7 @@ public final class ProjectInfoPlans {
                         envSources.add(e.getValue()); // a member declares what the root does not
                     }
                 } catch (Exception ignored) {
-                    for (String m : rootBuild.workspace().modules()) {
+                    for (String m : rootBuild.workspaceModules()) {
                         Path abs = wsRoot.resolve(m).toAbsolutePath().normalize();
                         moduleDirs.add(abs.toString());
                         moduleNames.add(abs.getFileName().toString());

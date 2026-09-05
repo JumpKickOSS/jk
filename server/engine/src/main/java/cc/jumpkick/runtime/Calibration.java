@@ -566,11 +566,11 @@ public final class Calibration {
      * Ensure a usable calibration is on disk. Network is allowed unless the ambient session is
      * {@code --offline}. Cheap when a current measured file already exists.
      */
-    public static Calibration ensure(Path jdksDir) {
+    public static Calibration ensure(@Nullable Path jdksDir) {
         return ensure(jdksDir, false, !sessionOffline());
     }
 
-    public static Calibration ensure(Path jdksDir, boolean force) {
+    public static Calibration ensure(@Nullable Path jdksDir, boolean force) {
         return ensure(jdksDir, force, !sessionOffline());
     }
 
@@ -578,7 +578,7 @@ public final class Calibration {
      * Full ensure. {@code allowNetwork} (on unless global {@code --offline}) enables the resolve
      * HTTP probe and a JUnit jar fetch into the artifact store when the pinned jars are missing.
      */
-    public static Calibration ensure(Path jdksDir, boolean force, boolean allowNetwork) {
+    public static Calibration ensure(@Nullable Path jdksDir, boolean force, boolean allowNetwork) {
         Calibration current = load();
         // Skip when we already have a current-schema multi-probe result, unless forced.
         if (!force && current.present() && current.measured && current.schema >= 3) return current;

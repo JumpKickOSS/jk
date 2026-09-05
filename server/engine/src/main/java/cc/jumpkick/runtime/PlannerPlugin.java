@@ -39,6 +39,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 
@@ -543,9 +544,10 @@ public final class PlannerPlugin {
             Files.deleteIfExists(specFile);
             Files.deleteIfExists(sbomFile);
         }
+        PluginBuild.PackagerDecl packager = Objects.requireNonNull(decls.packager(), "packager");
         if (!Files.isRegularFile(jarPath)) {
             throw new IOException(
-                    "plugin packager " + decls.packager().name() + " reported success but produced no " + jarPath);
+                    "plugin packager " + packager.name() + " reported success but produced no " + jarPath);
         }
         // A container packager (an AAR) may also emit the conventional classes jar next to the
         // main artifact — the host-classpath view workspace siblings compile against. Both cache
@@ -562,7 +564,9 @@ public final class PlannerPlugin {
         // multi-file layout must cache whole or a hit after `jk clean` restores a broken
         // artifact. Directories expand recursively; escapes of the artifact dir
         // are a packager bug.
-        Path outBase = jarPath.getParent().toAbsolutePath().normalize();
+        Path outBase = Objects.requireNonNull(jarPath.getParent(), "artifact dir")
+                .toAbsolutePath()
+                .normalize();
         for (String line : workerLines) {
             if (!"produced".equals(Jsonl.str(line, "t"))) continue;
             Path p = Path.of(String.valueOf(Jsonl.str(line, "path")))

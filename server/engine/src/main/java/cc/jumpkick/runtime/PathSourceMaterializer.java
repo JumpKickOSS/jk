@@ -40,7 +40,11 @@ import org.jspecify.annotations.Nullable;
 final class PathSourceMaterializer {
 
     /** Outcome: the published coordinate and the {@code file://} repo. */
-    record Materialized(String group, String artifact, String version, URI repoUrl) {
+    record Materialized(
+            @Nullable String group,
+            @Nullable String artifact,
+            @Nullable String version,
+            URI repoUrl) {
         String coordinate() {
             return group + ":" + artifact;
         }
@@ -58,7 +62,7 @@ final class PathSourceMaterializer {
         this(lockRootDir, CacheTree.PATH_ARTIFACTS.under(JkDirs.cache()), cas, buildRepos, javaHome, jkVersion);
     }
 
-    Materialized materialize(@Nullable PathSource source) throws IOException, InterruptedException {
+    Materialized materialize(PathSource source) throws IOException, InterruptedException {
         Path projectDir = lockRootDir.resolve(source.rawPath()).normalize();
         if (!Files.isDirectory(projectDir)) {
             throw new IOException(

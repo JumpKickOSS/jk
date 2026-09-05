@@ -15,6 +15,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Compiles {@code JkKtsHost.kt} — the child program {@link KtsSession} runs — into a jar under
@@ -95,7 +96,7 @@ final class KtsHostJar {
         Path jar = jarPath(kotlinVersion);
         if (Files.isRegularFile(jar) && Files.size(jar) > 0) return jar;
 
-        Path dir = jar.getParent();
+        Path dir = Objects.requireNonNull(jar.getParent(), "kts host jar dir");
         Files.createDirectories(dir);
         Path src = dir.resolve("JkKtsHost.kt");
         Files.writeString(src, source(), StandardCharsets.UTF_8);

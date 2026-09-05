@@ -26,8 +26,8 @@ public record Lockfile(
         @Nullable String scala,
         List<Artifact> artifacts,
         List<PluginEntry> plugins,
-        @Nullable List<SdkEntry> sdk,
-        @Nullable List<ModuleEntry> modules,
+        List<SdkEntry> sdk,
+        List<ModuleEntry> modules,
         /** Minimum jk able to run this lock — a floor, never an artifact pin; null on legacy locks. */
         @Nullable String jkMin,
         /** SHA-256 of every {@code jk.toml} that fed this lock; null on legacy locks. */
@@ -240,8 +240,8 @@ public record Lockfile(
             @Nullable String kotlin,
             List<Artifact> artifacts,
             List<PluginEntry> plugins,
-            @Nullable List<SdkEntry> sdk,
-            @Nullable List<ModuleEntry> modules,
+            List<SdkEntry> sdk,
+            List<ModuleEntry> modules,
             @Nullable String jkMin,
             @Nullable String manifestsSha256,
             @Nullable String projectId) {
@@ -272,7 +272,7 @@ public record Lockfile(
             @Nullable String kotlin,
             List<Artifact> artifacts,
             List<PluginEntry> plugins,
-            @Nullable List<SdkEntry> sdk) {
+            List<SdkEntry> sdk) {
         this(
                 version,
                 generatedBy,
@@ -297,7 +297,7 @@ public record Lockfile(
             @Nullable String kotlin,
             List<Artifact> artifacts,
             List<PluginEntry> plugins,
-            @Nullable List<SdkEntry> sdk,
+            List<SdkEntry> sdk,
             @Nullable String jkMin) {
         this(
                 version,
@@ -323,8 +323,8 @@ public record Lockfile(
             @Nullable String kotlin,
             List<Artifact> artifacts,
             List<PluginEntry> plugins,
-            @Nullable List<SdkEntry> sdk,
-            @Nullable List<ModuleEntry> modules,
+            List<SdkEntry> sdk,
+            List<ModuleEntry> modules,
             @Nullable String jkMin) {
         this(
                 version,

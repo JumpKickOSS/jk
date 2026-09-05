@@ -397,7 +397,7 @@ public final class PreflightMemo {
                 for (String toRel : e.getValue()) {
                     Path to = dirByRel.get(toRel);
                     if (to == null) return Optional.empty();
-                    edges.get(from).add(to);
+                    edges.computeIfAbsent(from, k -> new LinkedHashSet<>()).add(to);
                 }
             }
             return Optional.of(new BuildGraph.Result(List.copyOf(topo), Map.copyOf(edges), List.of()));

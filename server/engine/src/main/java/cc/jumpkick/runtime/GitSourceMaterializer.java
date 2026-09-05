@@ -71,7 +71,7 @@ public final class GitSourceMaterializer {
         new GitFetcher(gitRoot, credentials).verifyLocked(source, expectedSha);
     }
 
-    Materialized materialize(@Nullable GitSource source) throws IOException, InterruptedException {
+    Materialized materialize(GitSource source) throws IOException, InterruptedException {
         GitFetcher fetcher = new GitFetcher(gitRoot, credentials);
         GitFetcher.Fetched fetched = fetcher.fetch(source);
         String sha = fetched.sha();
@@ -130,21 +130,19 @@ public final class GitSourceMaterializer {
         return new Materialized(group, artifact, version, repo.toUri(), gitInfo);
     }
 
-    private static Path artifactJar(
-            Path repo, @Nullable String group, @Nullable String artifact, @Nullable String version) {
+    private static Path artifactJar(Path repo, String group, @Nullable String artifact, @Nullable String version) {
         return repo.resolve(
                 group.replace('.', '/') + "/" + artifact + "/" + version + "/" + artifact + "-" + version + ".jar");
     }
 
-    private static Path artifactPom(
-            Path repo, @Nullable String group, @Nullable String artifact, @Nullable String version) {
+    private static Path artifactPom(Path repo, String group, @Nullable String artifact, @Nullable String version) {
         return repo.resolve(
                 group.replace('.', '/') + "/" + artifact + "/" + version + "/" + artifact + "-" + version + ".pom");
     }
 
     /** The coordinate a foreign (Gradle/Maven) target only reveals once it has been built. */
     record Gav(
-            @Nullable String group,
+            String group,
             @Nullable String artifact,
             @Nullable String version) {}
 

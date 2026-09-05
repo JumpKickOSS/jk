@@ -38,6 +38,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
@@ -211,7 +212,7 @@ public final class OutdatedPlans {
             String scope,
             GitFetcher git,
             Map<String, GitFetcher.RemoteRefs> cache) {
-        GitSource src = dep.gitSource();
+        GitSource src = Objects.requireNonNull(dep.gitSource(), "gitSource");
         String current = gitCurrent(src.ref());
         GitFetcher.RemoteRefs refs = cache.computeIfAbsent(src.canonicalUrl(), u -> listRefsQuiet(git, src));
         String[] latestAndTip = gitLatestAndTip(refs.tags());

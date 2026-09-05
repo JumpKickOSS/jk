@@ -53,6 +53,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
@@ -163,6 +164,15 @@ public final class PluginBuild {
     }
 
     /** The registered packager, as declared. */
+    /**
+     * The {@code [code]} table of a plugin that has one. Every caller here has already established
+     * that: a code plugin is precisely a manifest with this table, and {@code activeCodePlugin}
+     * skips the ones without it.
+     */
+    static PluginDescriptor.Code code(Active active) {
+        return Objects.requireNonNull(active.manifest().code(), "plugin [code] table");
+    }
+
     public record PackagerDecl(String name, List<String> inputs) {}
 
     /** One registered plugin command, as declared. */
@@ -697,7 +707,7 @@ public final class PluginBuild {
      * The main artifact's path under the packager's declared extension ({@code
      * target/lib/<name>-<version>.apk}) — the one place the extension swap lives.
      */
-    public static Path mainArtifactPath(BuildLayout layout, @Nullable Active active) {
+    public static Path mainArtifactPath(BuildLayout layout, Active active) {
         Path jarPath = layout.mainJar();
         var packaging = active.manifest().packaging();
         if (packaging != null) packaging = packaging.resolve(active.config());
@@ -751,7 +761,7 @@ public final class PluginBuild {
                             + " is not in the local cache — run `jk sync` first"));
         }
         if (PluginTableRegistry.isBuiltIn(active.manifest().id())) {
-            String worker = active.manifest().code().worker();
+            String worker = code(active).worker();
             Path locked = lockedFirstPartyJar(active.moduleDir(), worker, cache);
             if (locked != null) return locked;
             PluginJar workerJar = PluginJar.byArtifactId(worker)
@@ -844,7 +854,7 @@ public final class PluginBuild {
         // Kept so a worker that dies without reporting a protocol error is still diagnosable.
         ArrayDeque<String> tail = new ArrayDeque<>();
         String[] error = new String[1];
-        PluginClient client = new PluginClient(active.manifest().code().protocolPrefix())
+        PluginClient client = new PluginClient(code(active).protocolPrefix())
                 .on("label", line -> {
                     if (onLabel != null) onLabel.accept(Jsonl.str(line, "text"));
                 })
@@ -854,8 +864,7 @@ public final class PluginBuild {
                     if (tail.size() >= 20) tail.removeFirst();
                     tail.addLast(line);
                 });
-        int exit = client.run(
-                PluginLaunch.javaCommand(jar, spec, active.manifest().code().protocolPrefix()));
+        int exit = client.run(PluginLaunch.javaCommand(jar, spec, code(active).protocolPrefix()));
         if (error[0] != null) {
             throw new IOException(error[0]);
         }

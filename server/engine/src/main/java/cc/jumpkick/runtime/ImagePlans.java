@@ -698,7 +698,7 @@ public final class ImagePlans {
             if (e.getValue().size() < 2) continue;
             Set<String> qualified = new HashSet<>();
             for (Path jar : e.getValue()) {
-                String withGroup = rows.get(jar).moduleGroup() + "-" + e.getKey();
+                String withGroup = Objects.requireNonNull(rows.get(jar)).moduleGroup() + "-" + e.getKey();
                 if (!qualified.add(withGroup)) {
                     throw new IOException("image dependency jar name collision: multiple lock rows map to " + withGroup
                             + " — cannot lay out /app/libs without losing one");

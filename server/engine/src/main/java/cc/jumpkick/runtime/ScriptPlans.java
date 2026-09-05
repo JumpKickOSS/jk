@@ -47,6 +47,7 @@ import java.util.EnumSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
@@ -534,7 +535,7 @@ public final class ScriptPlans {
     private static List<Path> withDeclaredSources(Path script, ScriptHeader header) {
         List<Path> sources = new ArrayList<>();
         sources.add(script.toAbsolutePath());
-        Path dir = script.toAbsolutePath().getParent();
+        Path dir = Objects.requireNonNull(script.toAbsolutePath().getParent(), "script dir");
         for (String s : header.sources()) {
             Path p = dir.resolve(s).normalize();
             if (!sources.contains(p)) sources.add(p);
@@ -550,7 +551,7 @@ public final class ScriptPlans {
      */
     private static void materializeFiles(Path script, ScriptHeader header, Path classesDir) throws IOException {
         if (header.files().isEmpty()) return;
-        Path dir = script.toAbsolutePath().getParent();
+        Path dir = Objects.requireNonNull(script.toAbsolutePath().getParent(), "script dir");
         for (String spec : header.files()) {
             int eq = spec.indexOf('=');
             String target = eq >= 0 ? spec.substring(0, eq) : spec;

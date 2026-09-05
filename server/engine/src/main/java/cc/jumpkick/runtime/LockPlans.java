@@ -419,7 +419,7 @@ public final class LockPlans {
         return refreshed;
     }
 
-    private static String gitKey(@Nullable GitSource s) {
+    private static String gitKey(GitSource s) {
         return s.canonicalUrl() + "|" + s.ref().token();
     }
 

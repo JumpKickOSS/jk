@@ -42,6 +42,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
@@ -156,7 +157,7 @@ public final class IdeOps {
         List<String> sdkHomes = new ArrayList<>();
         List<String> sdkVersions = new ArrayList<>();
         for (Path dir : dirs) {
-            JkBuild module = allModules.get(dir);
+            JkBuild module = Objects.requireNonNull(allModules.get(dir), "module");
             BuildLayout layout = BuildLayout.of(dir, module);
             moduleDirs.add(dir.toString());
             names.add(module.project().name());
@@ -168,7 +169,7 @@ public final class IdeOps {
             jdtTestClassesDirs.add(layout.jdtTestClassesDir().toString());
             genSrcDirs.add(layout.generatedSourcesDir("annotations").toString());
             genTestSrcDirs.add(layout.generatedSourcesDir("annotations", "test").toString());
-            String[] sdk = sdkRefs.get(dir);
+            String[] sdk = Objects.requireNonNull(sdkRefs.get(dir), "sdk ref");
             sdkStableNames.add(sdk[0]);
             sdkNames.add(sdk[1]);
             sdkLevels.add(sdk[2]);
@@ -257,7 +258,7 @@ public final class IdeOps {
 
         // Only a pin that agrees with this module's level describes this module's JDK; a module off
         // the pinned level resolves its own, or IntelliJ gets the pinned home under the wrong name.
-        boolean pinFits = pinMajor != null && pinMajor == level;
+        boolean pinFits = lockJdk != null && pinMajor != null && pinMajor == level;
         Optional<JdkHit> hit = Optional.empty();
         if (pinFits) {
             hit = LockPinMatch.choose(registry.listHits(), lockJdk);
@@ -265,12 +266,12 @@ public final class IdeOps {
         if (hit.isEmpty()) hit = registry.findHitBySpec(String.valueOf(level));
 
         String vendor;
-        String version = pinFits ? lockJdk.version() : null;
+        String version = lockJdk != null && pinFits ? lockJdk.version() : null;
         if (hit.isPresent()) {
             JdkVendor v = hit.get().vendor();
             vendor = v.jbPrefix().orElse(v.vendor().toLowerCase(Locale.ROOT));
             if (version == null) version = hit.get().version();
-        } else if (pinFits && !lockJdk.vendor().isBlank()) {
+        } else if (lockJdk != null && pinFits && !lockJdk.vendor().isBlank()) {
             vendor = lockJdk.vendor();
         } else {
             vendor = "temurin";

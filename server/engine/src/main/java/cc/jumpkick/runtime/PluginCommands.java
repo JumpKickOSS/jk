@@ -90,14 +90,14 @@ public final class PluginCommands {
                 Path jar = PluginBuild.workerJarFor(active, cache);
                 List<String> output = new ArrayList<>();
                 String[] error = new String[1];
-                PluginClient client = new PluginClient(active.manifest().code().protocolPrefix())
+                PluginClient client = new PluginClient(PluginBuild.code(active).protocolPrefix())
                         .on(PluginProtocol.COMMAND_OUT, line -> output.add(Jsonl.str(line, "line")))
                         .on("error", line -> error[0] = Jsonl.str(line, "message"))
                         .onOther(line -> {
                             // labels/done — not part of the command's user-facing output
                         });
                 int exit = client.run(PluginLaunch.javaCommand(
-                        jar, spec, active.manifest().code().protocolPrefix()));
+                        jar, spec, PluginBuild.code(active).protocolPrefix()));
                 if (error[0] != null) return PluginCommandReport.error(error[0]);
                 return new PluginCommandReport(null, true, exit, output);
             } finally {
