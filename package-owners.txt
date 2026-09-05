@@ -1,0 +1,36 @@
+# package-owners.txt — the ownership map behind `checkPackageModuleOwnership` (G66).
+#
+# Every production package under {shared,server,clients,plugins}/*/src/main/java is declared by
+# exactly ONE module. A package declared by two or more needs a row here saying why that is legal.
+#
+# A split package is latent rather than active harm: package-private reach works across a jar
+# boundary on a flat classpath and stops working under JPMS or a modular image. That is why nine of
+# the rows below grew to 30, 25, 27 and 20 files without anything breaking — the argument for a map,
+# not against one.
+#
+# Format, one row per package:
+#
+#     <package> | <module>,<module>[,…] | <reason it is legal>
+#
+# Modules are repo-relative directories, sorted. The reason is a sentence, not a status: "not fixed
+# yet" is not a reason. A row that is no longer split is STALE and fails the guard — delete it in
+# the commit that unsplits the package.
+#
+# Nine of these eleven are one shape: the package spans the client/engine tier boundary that
+# architecture.md presents as the primary split, with the client-safe half in `shared/` and the
+# engine-only half in `server/`. That is a real boundary and the package name is what does not
+# follow it. Each row states why its split is legal on that boundary, so none of them is a deferral
+# waiting on a follow-up. Renaming either half to match the tier is a separate campaign; this file
+# makes the count visible and monotone in the meantime.
+
+cc.jumpkick.compat | server/toolchain,shared/toolchain-jdk | The tool-import model the client renders (BuildTool, ImportReport, InstalledTool, ToolRegistry) is client-safe; the installer and provisioner that fetch and unpack a distribution must run engine-side.
+cc.jumpkick.compile | server/engine,shared/client-io | Classpath composition (ClasspathResolver, ModuleRuntimeClasspath) is what the thin client needs to launch and to answer `jk tree`; the compilers, packagers and SBOM writer are engine-only and would drag the whole compile stack onto the client.
+cc.jumpkick.config | shared/core,shared/host | EnvValues kept its original package when it moved down into the host leaf, which cost zero import churn across ~50 call sites — a move that touches nothing cannot break anything, and it left no delegating shim. Stated in code-as-art.md under "Primitives live in the host leaf".
+cc.jumpkick.gradle | server/toolchain,shared/toolchain-jdk | GradleExporter writes files from the client; the importer, resolver and version-catalog reader shell out to Gradle and belong to the engine.
+cc.jumpkick.jdk | shared/host,shared/toolchain-jdk | JdkFingerprint kept its original package when it moved down into the host leaf, for the same zero-churn reason as EnvValues above, and is named alongside it in code-as-art.md.
+cc.jumpkick.mvn | server/toolchain,shared/toolchain-jdk | PomExporter writes a pom from the client; MavenResolver and PomImporter shell out to Maven and belong to the engine.
+cc.jumpkick.repo | server/io,shared/client-io | The client's half is the read/link/transport slice a thin client must have (locator, transports, CAS read, m2 layout); the engine's half is POM and Gradle-module-metadata parsing, which the native client must never link.
+cc.jumpkick.resolve | server/resolver,shared/core | ResolveProfile and its package-info are the reporting surface both sides read; ResolveProcessCacheControl clears the solver's process memos and only the engine has them.
+cc.jumpkick.resolver | server/resolver,shared/core | The dependency and lock model the client reads to render `jk tree` / `jk why` is client-safe; the PubGrub solve, orchestrator and artifact materializer are engine-only.
+cc.jumpkick.task | server/engine,shared/core | Cache-tier policy the client reads and reports (prune scheduler, IO ledger, run notices) is client-safe; the action cache, its keys and its retention are the engine's.
+cc.jumpkick.tool | server/toolchain,shared/toolchain-jdk | Launcher and tool-env model is resolved client-side so `jk run` can exec without the engine; ToolResolver provisions a tool and belongs to the engine.

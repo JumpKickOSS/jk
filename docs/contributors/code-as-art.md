@@ -380,6 +380,14 @@ smell and this is the one case that outweighs it: a move that touches
 nothing is a move that cannot break anything, and it does not put a
 delegating shim in the tree either.
 
+Those two are not the only split packages. There are **eleven**, and nine
+of them span the client/engine tier boundary rather than the host leaf —
+the package name is what does not follow a split the module graph already
+makes. Every one is listed in
+[`package-owners.txt`](../../package-owners.txt) with the reason it is
+legal, and **G66** fails on a twelfth. The count lives in the map, not in
+this paragraph: prose cannot be checked.
+
 `:core` must **never** appear on a plugin worker's classpath: it declares
 `api(libs.tomlj)`, which would drag tomlj and ANTLR onto every thin
 worker's POM-rebuilt launch classpath.
@@ -924,6 +932,7 @@ Letters are allocated when a guard lands and are never reused.
 | G63 | `checkCuratedIntegration` (root project) + `.jk/after-build.kts` | a curated integration entry that is missing, renamed, untagged, tagged into a nightly tier, or claims a failure path the class does not show — plus a surface with only happy paths, a branch gate that stopped running the lane, and a nightly that stopped running the full tier | registry scan in both builds, floored on the integration population it is carved out of |
 | G64 | `checkNoDisabledCompile` | a disabled `JavaCompile` task, which takes its source set out of every gate while the build stays green — the tests it would compile report `NO-SOURCE` and the tier prints "did not run" | ban; self-fail when the module has no compile tasks to scan |
 | G65 | `checkNoLinkFollowingDelete` (root project) + `.jk/after-build.kts` | build logic deleting or sizing a tree with a walk that follows symbolic links — Kotlin's `File.deleteRecursively`, `walkTopDown`, `walkBottomUp` and `File.walk`, or `FOLLOW_LINKS` — anywhere but `buildSrc/src/main/kotlin/Trees.kt` | ban in both builds, comment- and string-blind; self-fail when the owner stops using `walkFileTree` or the scan sees too few build files |
+| G66 | `checkPackageModuleOwnership` | a production package declared by two or more modules without a `package-owners.txt` row naming the pair and why it is legal — package-private reach works across a jar boundary on a flat classpath and stops working under JPMS, so a split package is latent breakage that grows quietly | ratchet, single-owner allowlist (`package-owners.txt`) |
 <!-- guards:end -->
 
 `checkCliRuntimeClasspath` and `checkCliNoParseTypes` predate the letters.

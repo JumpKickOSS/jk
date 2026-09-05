@@ -3390,6 +3390,68 @@ guard("G51", "checkGuardParity") {
 // Guard G53: every production package in an enforced source root is @NullMarked.
 // ---------------------------------------------------------------------------
 
+guard("G66", "checkPackageModuleOwnership") {
+    // One module owns each production package; `package-owners.txt` is the map of the legal
+    // exceptions. A split package is latent rather than active harm — package-private reach works
+    // across a jar boundary on a flat classpath and stops working under JPMS — which is why nine of
+    // the eleven current rows grew to 30, 25, 27 and 20 files without breaking anything.
+    val packagePattern = Regex("""(?m)^\s*package\s+([A-Za-z_][\w.]*)\s*;""")
+    val roots = sortedSetOf<String>()
+    val ownersByPackage = sortedMapOf<String, MutableSet<String>>()
+    var parsed = 0
+    // The four product tiers, named rather than inherited from `mainJava`'s two-deep walk: the
+    // Gradle twin globs exactly these, and a rule whose two sides scan different corpora reports
+    // two counts for one fact. `clients/intellij` is already outside `moduleDirs`.
+    val tiers = listOf("shared/", "server/", "clients/", "plugins/")
+    val scanned = mainJava.filter { file -> tiers.any { rel(file).startsWith(it) } }
+    scanned.forEach { file ->
+        val here = rel(file)
+        val marker = here.indexOf("/src/main/java/")
+        if (marker < 0) return@forEach
+        roots.add(here.substring(0, marker))
+        val pkg = packagePattern.find(text(file))?.groupValues?.get(1) ?: return@forEach
+        parsed++
+        ownersByPackage.getOrPut(pkg) { sortedSetOf() }.add(here.substring(0, marker))
+    }
+    val corpus = "${scanned.size} main sources, ${ownersByPackage.size} packages, ${roots.size} module roots"
+    // Floors, measured at landing: 1,432 main sources, 95 packages, 29 module roots. A broken scope
+    // lands far below them, so a green result can be told apart from a blind one.
+    if (scanned.size < 1_200 || ownersByPackage.size < 80 || roots.size < 25 || parsed == 0) {
+        error("Scanned $corpus (measured at landing: 1,432 main sources, 95 packages, 29 module"
+            + " roots), so this guard cannot report green — the scope or the package parser drifted.")
+    }
+    val allowed = sortedMapOf<String, List<String>>()
+    val malformed = mutableListOf<String>()
+    Files.readAllLines(at("package-owners.txt")).forEachIndexed { i, raw ->
+        val line = raw.substringBefore('#').trim()
+        if (line.isEmpty()) return@forEachIndexed
+        val parts = line.split('|').map(String::trim)
+        when {
+            parts.size != 3 -> malformed.add("package-owners.txt:${i + 1}: expected `<package> | <modules> | <reason>`")
+            parts[2].isEmpty() -> malformed.add("package-owners.txt:${i + 1}: ${parts[0]} has no reason")
+            else -> allowed[parts[0]] = parts[1].split(',').map(String::trim).sorted()
+        }
+    }
+    if (malformed.isNotEmpty()) error("package-owners.txt is malformed:\n" + bullets(malformed))
+    val split = ownersByPackage.filterValues { it.size > 1 }
+    val faults = mutableListOf<String>()
+    split.forEach { (pkg, mods) ->
+        val row = allowed[pkg]
+        when {
+            row == null -> faults.add("$pkg is declared by ${mods.joinToString(" + ")} and is not in"
+                + " package-owners.txt — one module must own it, or add a row saying why not")
+            row != mods.toList() -> faults.add("$pkg is allowlisted for ${row.joinToString(" + ")} but is"
+                + " now declared by ${mods.joinToString(" + ")} — update its row")
+        }
+    }
+    (allowed.keys - split.keys).sorted().forEach {
+        faults.add("stale allowlist entry: $it is no longer split — delete its package-owners.txt row")
+    }
+    if (faults.isNotEmpty()) {
+        error("One module owns each production package ($corpus):\n" + bullets(faults.sorted()))
+    }
+}
+
 guard("G53", "checkNullMarkedApiPackages") {
     // Mirrors buildSrc's NullMarking.enforcedRoots; this gate cannot read buildSrc.
     val roots = listOf(

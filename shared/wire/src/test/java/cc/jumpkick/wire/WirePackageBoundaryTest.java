@@ -51,23 +51,6 @@ class WirePackageBoundaryTest {
     }
 
     @Test
-    void wire_and_engine_do_not_share_packages() throws IOException {
-        Set<String> wire = packages(productionJava("shared/wire/src/main/java"));
-        Set<String> engine = packages(productionJava("server/engine/src/main/java"));
-        assertThat(wire).as("wire packages").hasSizeGreaterThanOrEqualTo(4);
-        assertThat(engine).as("engine packages").hasSizeGreaterThanOrEqualTo(8);
-        assertThat(productionJava("server/engine/src/main/java"))
-                .as("engine production sources")
-                .hasSizeGreaterThanOrEqualTo(ENGINE_SOURCES_FLOOR);
-
-        Set<String> shared = new TreeSet<>(wire);
-        shared.retainAll(engine);
-        assertThat(shared)
-                .as("packages declared in both shared/wire and server/engine")
-                .isEmpty();
-    }
-
-    @Test
     void wire_does_not_import_engine_implementation() throws IOException {
         Path root = RepoRoot.find(WirePackageBoundaryTest.class);
         List<Path> sources = productionJava("shared/wire/src/main/java");

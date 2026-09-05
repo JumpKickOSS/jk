@@ -649,6 +649,15 @@ object Guards {
                 description = "Fail when build logic deletes or sizes a tree through symbolic links",
             ),
             spec(
+                66,
+                "checkPackageModuleOwnership",
+                "a production package declared by two or more modules without a `package-owners.txt` row naming the pair and why it is legal — package-private reach works across a jar boundary on a flat classpath and stops working under JPMS, so a split package is latent breakage that grows quietly",
+                "ratchet, single-owner allowlist (`package-owners.txt`)",
+                GuardHome.ROOT,
+                description =
+                    "Fail when a production package is declared by more than one module without an allowlist row",
+            ),
+            spec(
                 61,
                 "checkInstallTestsRedirectM2",
                 "a test that runs the install verb without `--m2-dir`, which publishes the fixture into the developer's real `~/.m2`",

@@ -64,7 +64,11 @@ class CliSourceRulesTest {
             "junit-jupiter",
             "junit-platform-engine",
             "junit-platform-launcher",
-            "assertj-core");
+            "assertj-core",
+            // Analysis libraries are build-time tools; naming one here means a mis-scoped
+            // configuration is caught rather than just happening to be absent.
+            "archunit",
+            "com.tngtech");
 
     @Test
     void cli_main_names_no_parser_or_plugin_schema_type() throws IOException {

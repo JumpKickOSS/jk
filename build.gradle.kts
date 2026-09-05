@@ -254,6 +254,112 @@ tasks.register("checkPluginSdkBoundary") {
     }
 }
 
+// Guard G66: one module owns each production package.
+//
+// The tree had no architecture guard for package structure at all, and the cost was measurable:
+// code-as-art.md stated that exactly two production packages were split across modules and named
+// them, while the tree held eleven. An invariant comment checked and found false.
+//
+// A split package is latent rather than active harm — package-private reach works across a jar
+// boundary on a flat classpath and stops working under JPMS or a modular image — which is exactly
+// why nine of them grew to 30, 25, 27 and 20 files without breaking anything. `package-owners.txt`
+// is the ownership map: checked in, reviewable, one row per legal pair with the reason, and a row
+// that stops being split is stale and fails here.
+//
+// A text scan is sound for a CROSS-package rule rather than approximate: naming a type in another
+// package requires an import or an FQCN, in-code FQCNs are ratcheted to zero-for-new-files by G11,
+// and main holds one `cc.jumpkick` wildcard import. A same-package call has no import line, but a
+// same-package call is by definition not a cross-package edge.
+tasks.register("checkPackageModuleOwnership") {
+    group = "verification"
+    description = "Fail when a production package is declared by more than one module without an allowlist row"
+    val tiers = listOf("shared", "server", "clients", "plugins")
+    // `clients/intellij` is a standalone IntelliJ plugin build that must never see a jk jar, so
+    // jk's own vocabulary rules do not reach it — the self-hosted gate excludes it by name and
+    // this side must scan the same corpus or the two report different counts for one rule. It
+    // declares `cc.jumpkick.idea` and nothing else does, so the exclusion hides no split.
+    val outside = setOf("clients/intellij")
+    val sources = tiers.map { tier ->
+        fileTree(layout.projectDirectory.dir(tier)) {
+            include("*/src/main/java/**/*.java")
+            outside.filter { it.startsWith("$tier/") }
+                .forEach { exclude("${it.removePrefix("$tier/")}/**") }
+        }
+    }
+    val owners = layout.projectDirectory.file("package-owners.txt")
+    inputs.files(sources).withPropertyName("mainSources")
+    inputs.file(owners).withPropertyName("packageOwners")
+    val stamp = layout.buildDirectory.file("guards/package-module-ownership.ok")
+    outputs.file(stamp)
+    doLast {
+        // Corpus floors, measured at this commit: 1,432 main sources, 95 distinct packages,
+        // 29 module source roots. Floors rather than equalities — the corpus grows every week —
+        // but a broken glob or a parser that stops matching lands far below them, so a green
+        // result can be told apart from a blind one.
+        val measured = "measured at landing: 1,432 main sources, 95 packages, 29 module roots"
+        val packagePattern = Regex("""(?m)^\s*package\s+([A-Za-z_][\w.]*)\s*;""")
+        val files = sources.flatMap { it.files }.sorted()
+        val roots = sortedSetOf<String>()
+        val ownersByPackage = sortedMapOf<String, MutableSet<String>>()
+        var parsed = 0
+        files.forEach { file ->
+            val rel = file.relativeTo(layout.projectDirectory.asFile).invariantSeparatorsPath
+            val marker = rel.indexOf("/src/main/java/")
+            if (marker < 0) return@forEach
+            val module = rel.substring(0, marker)
+            roots.add(module)
+            val pkg = packagePattern.find(file.readText())?.groupValues?.get(1) ?: return@forEach
+            parsed++
+            ownersByPackage.getOrPut(pkg) { sortedSetOf() }.add(module)
+        }
+        val corpus = "${files.size} main sources, ${ownersByPackage.size} packages, ${roots.size} module roots"
+        if (files.size < 1_200 || ownersByPackage.size < 80 || roots.size < 25 || parsed == 0) {
+            throw GradleException(
+                "The package-ownership guard scanned $corpus ($measured), so do not trust a green"
+                    + " result — the source-root glob or the package-declaration parser drifted.")
+        }
+        val allowed = sortedMapOf<String, List<String>>()
+        val malformed = mutableListOf<String>()
+        owners.asFile.readLines().forEachIndexed { i, raw ->
+            val line = raw.substringBefore('#').trim()
+            if (line.isEmpty()) return@forEachIndexed
+            val parts = line.split('|').map(String::trim)
+            when {
+                parts.size != 3 ->
+                    malformed.add("  package-owners.txt:${i + 1}: expected `<package> | <modules> | <reason>`")
+                parts[2].isEmpty() ->
+                    malformed.add("  package-owners.txt:${i + 1}: ${parts[0]} has no reason")
+                else -> allowed[parts[0]] = parts[1].split(',').map(String::trim).sorted()
+            }
+        }
+        if (malformed.isNotEmpty()) {
+            throw GradleException("package-owners.txt is malformed:\n" + malformed.joinToString("\n"))
+        }
+        val split = ownersByPackage.filterValues { it.size > 1 }
+        val faults = mutableListOf<String>()
+        split.forEach { (pkg, mods) ->
+            val row = allowed[pkg]
+            when {
+                row == null ->
+                    faults.add("  $pkg is declared by ${mods.joinToString(" + ")}"
+                        + " and is not in package-owners.txt — one module must own it, or add a row saying why not")
+                row != mods.toList() ->
+                    faults.add("  $pkg is allowlisted for ${row.joinToString(" + ")}"
+                        + " but is now declared by ${mods.joinToString(" + ")} — update its row")
+            }
+        }
+        (allowed.keys - split.keys).sorted().forEach {
+            faults.add("  stale allowlist entry: $it is no longer split — delete its package-owners.txt row")
+        }
+        if (faults.isNotEmpty()) {
+            throw GradleException(
+                "One module owns each production package ($corpus):\n" + faults.sorted().joinToString("\n"))
+        }
+        logger.lifecycle("checkPackageModuleOwnership: $corpus, ${split.size} allowlisted split packages")
+        stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
+    }
+}
+
 // Guard G52: the contributor tier table is rendered from TestTiers, never retyped.
 tasks.register("checkTestTierDocs") {
     group = "verification"

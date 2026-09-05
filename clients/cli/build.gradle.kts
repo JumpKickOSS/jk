@@ -85,6 +85,10 @@ val checkCliRuntimeClasspath = registerGuard("checkCliRuntimeClasspath") {
                     || n.startsWith("assertj-")
                     || n.startsWith("opentest4j")
                     || n.startsWith("apiguardian")
+                    // An analysis library is a build-time tool; on the native client's runtime
+                    // classpath it is a mis-scoped configuration, caught rather than merely absent.
+                    || n.startsWith("archunit")
+                    || n.startsWith("com.tngtech")
         }
         if (forbidden.isNotEmpty()) {
             throw GradleException(
