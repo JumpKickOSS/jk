@@ -34,8 +34,10 @@ public record SourceRefs(
         List<Path> hit = ref.get();
         if (hit != null) return hit;
         List<Path> fresh = compute.get();
+        // Whoever wins the race published a list; the loser reads the winner's.
         ref.compareAndSet(null, fresh);
-        return ref.get();
+        List<Path> published = ref.get();
+        return published != null ? published : fresh;
     }
 
     /** A supplier that may fail on the filesystem. */

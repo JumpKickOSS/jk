@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Engine-hosted full-model generators (thin-client contract): {@code jk export maven}/{@code
@@ -34,11 +35,11 @@ public final class GenerateOps {
 
     private GenerateOps() {}
 
-    public static GeneratedFiles generate(Path dir, String kind) {
+    public static GeneratedFiles generate(Path dir, @Nullable String kind) {
         return generate(dir, kind, Map.of());
     }
 
-    public static GeneratedFiles generate(Path dir, String kind, Map<String, String> params) {
+    public static GeneratedFiles generate(Path dir, @Nullable String kind, Map<String, String> params) {
         try {
             return switch (kind) {
                 case "export-maven" -> exportMaven(dir);

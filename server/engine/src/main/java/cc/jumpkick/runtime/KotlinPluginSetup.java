@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Prepares everything a Kotlin compile needs to fork the {@code jk-kotlin-compiler} plugin: the
@@ -42,7 +43,7 @@ public final class KotlinPluginSetup {
      * Resolve the closure + stdlib for {@code kotlinVersion} (null ⇒ jk's default) against {@code
      * repos}, and locate the plugin jar.
      */
-    public static Prepared prepare(RepoGroup repos, Cas cas, String kotlinVersion)
+    public static Prepared prepare(RepoGroup repos, Cas cas, @Nullable String kotlinVersion)
             throws IOException, InterruptedException {
         String version =
                 (kotlinVersion == null || kotlinVersion.isBlank()) ? KotlinResolver.DEFAULT_VERSION : kotlinVersion;

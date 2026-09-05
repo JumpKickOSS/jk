@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Prepares everything a Groovy compile needs to fork the {@code jk-groovy-compiler} plugin: the
@@ -39,7 +40,7 @@ public final class GroovyPluginSetup {
      * Resolve the closure + groovy jar for {@code groovyVersion} (null ⇒ jk's default) against
      * {@code repos}, and locate the plugin jar.
      */
-    public static Prepared prepare(RepoGroup repos, Cas cas, String groovyVersion)
+    public static Prepared prepare(RepoGroup repos, Cas cas, @Nullable String groovyVersion)
             throws IOException, InterruptedException {
         String version =
                 (groovyVersion == null || groovyVersion.isBlank()) ? GroovyResolver.DEFAULT_VERSION : groovyVersion;

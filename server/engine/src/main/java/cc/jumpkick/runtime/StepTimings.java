@@ -23,6 +23,7 @@ import java.util.OptionalDouble;
 import java.util.OptionalLong;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 import org.tomlj.Toml;
 import org.tomlj.TomlArray;
 import org.tomlj.TomlParseResult;
@@ -385,7 +386,7 @@ public final class StepTimings {
         AtomicWrites.replace(file, render(m));
     }
 
-    private static OptionalLong envLong(Function<String, String> env, String name) {
+    private static OptionalLong envLong(Function<String, @Nullable String> env, String name) {
         return toOptionalLong(EnvValues.longValue(env, name));
     }
 

@@ -178,8 +178,9 @@ public final class CompileSupport {
     /** {@code base} plus every {@code extension} file under {@code extraDirs}, deduplicated. */
     public static List<Path> withExtraSources(@Nullable List<Path> base, List<Path> extraDirs, String extension)
             throws IOException {
-        if (extraDirs.isEmpty()) return base;
-        var all = new LinkedHashSet<>(base);
+        List<Path> from = base == null ? List.of() : base;
+        if (extraDirs.isEmpty()) return from;
+        var all = new LinkedHashSet<>(from);
         for (Path dir : extraDirs) all.addAll(collectFilesWithExtension(dir, extension));
         return new ArrayList<>(all);
     }

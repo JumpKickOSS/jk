@@ -586,7 +586,7 @@ public final class BuildMetrics {
          * else the {@code [metrics] max-size-mb} / {@code max-age-days} keys in the user config,
          * else the defaults (10 MB / 2 years).
          */
-        public static Limits resolve(Path userConfig, Function<String, String> env) {
+        public static Limits resolve(Path userConfig, Function<String, @Nullable String> env) {
             long mb = envLong(env, "JK_METRICS_MAX_SIZE_MB")
                     .orElseGet(() -> tomlLong(userConfig, "max-size-mb").orElse(DEFAULT_MAX_MB));
             long days = envLong(env, "JK_METRICS_MAX_AGE_DAYS")

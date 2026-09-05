@@ -338,7 +338,7 @@ public final class ActionCache {
                 previous = null;
             }
         }
-        AtomicWrites.replace(pointer, actionKey);
+        AtomicWrites.replace(pointer, Objects.requireNonNull(actionKey, "actionKey"));
         trimGenerations(taskId, actionKey, previous);
         return record;
     }

@@ -286,7 +286,7 @@ public final class ActionKey {
      * the tags for a project's output dirs and match every {@code tasks/<base>@<tag>} pointer that
      * belongs to it, regardless of the base task name.
      */
-    public static String taskTag(Path moduleDir) {
+    public static String taskTag(@Nullable Path moduleDir) {
         Path p = moduleDir.toAbsolutePath().normalize();
         Path probe = p;
         while (probe != null && !Files.exists(probe)) {
