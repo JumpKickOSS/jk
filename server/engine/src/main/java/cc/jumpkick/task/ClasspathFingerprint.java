@@ -20,7 +20,9 @@ import java.util.TreeMap;
  * raw content SHA ({@code file:…}); directories use a tree of the same. Packagers emit
  * byte-reproducible jars ({@code DeterministicZip}), so raw jar bytes are stable across no-op
  * rebuilds and match CAS digests seeded by {@link FileHashMemo#rememberContent} after clean→restore.
- * Missing entries become a distinct {@code missing:} token.
+ * Missing entries become a distinct {@code missing:} token spelled with the entry's module-relative
+ * path, so an absent jar is the same absence in every checkout and still distinct from its
+ * neighbours.
  *
  * <p>Every walk here drops {@link BuildStamps#isStampFile stamp files}: build-host metadata that
  * lives inside the classes tree, is not code, and whose content changes every build.
@@ -132,7 +134,7 @@ public final class ClasspathFingerprint {
             // would each re-resolve the path.
             attrs = Files.readAttributes(abs, BasicFileAttributes.class);
         } catch (IOException absent) {
-            return "missing:" + abs;
+            return "missing:" + PortablePath.of(abs);
         }
         if (attrs.isDirectory()) {
             // Through entryFromOutputDigests so a live tree and the same tree read back out of an
@@ -146,6 +148,6 @@ public final class ClasspathFingerprint {
         // stops every build from re-hashing each non-CAS jar (repos/ deps, sibling module jars,
         // worker fat jars).
         if (attrs.isRegularFile()) return "file:" + FileHashMemo.contentHash(abs, attrs);
-        return "missing:" + abs;
+        return "missing:" + PortablePath.of(abs);
     }
 }

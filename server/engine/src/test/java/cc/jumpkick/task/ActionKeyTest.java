@@ -18,6 +18,36 @@ import org.junit.jupiter.api.io.TempDir;
 
 class ActionKeyTest {
 
+    /** Two checkouts of the same module at different paths: identical inputs, identical key. */
+    @Test
+    void the_key_does_not_depend_on_where_the_module_is_checked_out(@TempDir Path tempDir) throws IOException {
+        Path a = module(tempDir.resolve("checkout-a/app"));
+        Path b = module(tempDir.resolve("elsewhere/deeper/app"));
+        String keyA = ActionKey.forJavac("compile-main", requestFor(a), "0.1.0");
+        String keyB = ActionKey.forJavac("compile-main", requestFor(b), "0.1.0");
+        assertThat(keyA).isEqualTo(keyB);
+
+        Files.writeString(b.resolve("src/main/java/Hello.java"), "class Hello { void changed() {} }");
+        assertThat(ActionKey.forJavac("compile-main", requestFor(b), "0.1.0"))
+                .as("content still moves the key")
+                .isNotEqualTo(keyA);
+    }
+
+    private static Path module(Path root) throws IOException {
+        Files.createDirectories(root.resolve("src/main/java"));
+        Files.writeString(root.resolve("jk.toml"), "name = \"app\"\n");
+        Files.writeString(root.resolve("src/main/java/Hello.java"), "class Hello {}");
+        return root;
+    }
+
+    private static CompileRequest requestFor(Path module) {
+        return CompileRequest.builder()
+                .sources(List.of(module.resolve("src/main/java/Hello.java")))
+                .outputDir(module.resolve("target/classes"))
+                .release(25)
+                .build();
+    }
+
     @Test
     void same_inputs_produce_same_key(@TempDir Path tempDir) throws IOException {
         Path src = tempDir.resolve("Hello.java");

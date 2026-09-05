@@ -25,7 +25,8 @@ import java.util.Map;
  * <li>jk version
  * <li>{@code --release}, the pinned source encoding, and any extra javac options
  * <li>the project JDK's identity ({@link #jdkToken})
- * <li>each source file's SHA-256 (so editing a file invalidates the key)
+ * <li>each source file's module-relative path and SHA-256 (so editing a file invalidates the key,
+ *     and two checkouts of the same module compute the same key)
  * <li>each classpath entry's content identity ({@code file:<sha256>} / directory tree hash)
  * </ul>
  */
@@ -230,7 +231,7 @@ public final class ActionKey {
      * so a point-release upgraded in place (or reached through a stable {@code <vendor>-<major>}
      * pointer that has been repointed) still moves the key. Deliberately NOT a tree fingerprint:
      * a JDK is tens of thousands of files and this runs on every compile. A directory with no
-     * readable release file keys its absolute path — the same string that reaches the tool.
+     * readable release file keys its directory name, the one fact about it that is not a location.
      *
      * <p>The one JDK-identity convention in the tree: {@link #forJavac}, {@link #forKotlinc} and
      * the {@code jdk:} token both {@code PlannerPlugin} arms add to their {@link #forArtifact}
@@ -242,7 +243,7 @@ public final class ActionKey {
         if (javaHome == null) return "none";
         Path abs = javaHome.toAbsolutePath().normalize();
         Path release = abs.resolve("release");
-        return Files.isRegularFile(release) ? FileHashMemo.contentHash(release) : abs.toString();
+        return Files.isRegularFile(release) ? FileHashMemo.contentHash(release) : PortablePath.of(abs);
     }
 
     /**
@@ -259,7 +260,7 @@ public final class ActionKey {
         for (Path src : sortedSources) {
             Path abs = src.toAbsolutePath().normalize();
             sb.append("source:")
-                    .append(abs)
+                    .append(PortablePath.of(abs))
                     .append(':')
                     .append(FileHashMemo.contentHash(abs))
                     .append('\n');
@@ -270,8 +271,9 @@ public final class ActionKey {
      * Qualify a base task id (e.g. {@code compile-main}) with a stable tag derived from a
      * module-unique directory (the compile output dir), so the {@link ActionCache} {@code
      * tasks/<taskId>} pointer doesn't collide across projects or workspace modules that share the
-     * same base task name. The action key itself is already project-unique (it hashes absolute source
-     * and classpath paths); this only disambiguates the per-task pointer.
+     * same base task name. This tag is the only place a location enters the cache: the action key
+     * hashes module-relative paths and content, so two modules with identical inputs share one key
+     * on purpose, and the tag is what keeps their {@code tasks/} pointers apart.
      */
     public static String qualifiedTaskId(String base, Path moduleDir) {
         return base + "@" + taskTag(moduleDir);

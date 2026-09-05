@@ -274,7 +274,7 @@ keys** when adding a read-only remote later — only add an optional remote look
 | Task type / id | `task:` line (e.g. `compile-main`) | Keep stable names |
 | jk version | `jk:` in key material | Pin engine version for cross-machine hits |
 | Toolchain / release | `--release`, Kotlin target | Include JDK major when outputs are version-sensitive |
-| Sources | path + content SHA-256 | Prefer content-only relative paths for portability later |
+| Sources | module-relative path + content SHA-256 | Portable: two checkouts of one module compute the same key |
 | Classpath / processors | lock digest (`file:<sha256>`) | Hex identity, independent of on-disk path |
 | Plugin / worker jar | worker hash in artifact keys | Must stay part of the key (upgrade invalidates) |
 | OS/arch | only when outputs are platform-specific | Omit for pure class jars |

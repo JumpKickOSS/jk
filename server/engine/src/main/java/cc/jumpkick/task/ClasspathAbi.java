@@ -19,7 +19,7 @@ import java.util.zip.ZipFile;
 
 /**
  * Whole-entry JVM ABI token for a jar or classes directory. {@code abi:<sha256>} of the sorted
- * per-class API lines; {@code missing:<abs>} when the path is absent. Memoized on {@link
+ * per-class API lines; {@code missing:<module-relative path>} when the path is absent. Memoized on {@link
  * ClasspathFingerprint#entry} so the second sighting of the same bytes is a lookup. Does not switch
  * compile action keys.
  */
@@ -35,10 +35,10 @@ public final class ClasspathAbi {
         try {
             attrs = Files.readAttributes(abs, BasicFileAttributes.class);
         } catch (IOException absent) {
-            return "missing:" + abs;
+            return "missing:" + PortablePath.of(abs);
         }
         if (!attrs.isRegularFile() && !attrs.isDirectory()) {
-            return "missing:" + abs;
+            return "missing:" + PortablePath.of(abs);
         }
         String identity = ClasspathFingerprint.entry(abs);
         if (identity.startsWith("missing:")) return identity;

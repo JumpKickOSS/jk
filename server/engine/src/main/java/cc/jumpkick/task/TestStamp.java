@@ -97,7 +97,7 @@ public final class TestStamp {
             sortedSources.sort(Comparator.comparing(Path::toString));
             for (Path src : sortedSources) {
                 if (!Files.isRegularFile(src)) continue; // generated / deleted
-                feed(md, "src:" + src.toAbsolutePath().normalize() + ":" + Hashing.sha256Hex(Files.readAllBytes(src)));
+                feed(md, "src:" + PortablePath.of(src) + ":" + Hashing.sha256Hex(Files.readAllBytes(src)));
             }
 
             // The module's own compiled main output — a main-only change busts the
@@ -115,7 +115,7 @@ public final class TestStamp {
                 sortedRes.sort(Comparator.comparing(Path::toString));
                 for (Path res : sortedRes) {
                     if (!Files.isDirectory(res)) continue;
-                    feed(md, "res:" + res.toAbsolutePath().normalize() + ":" + ClasspathFingerprint.entry(res));
+                    feed(md, "res:" + PortablePath.of(res) + ":" + ClasspathFingerprint.entry(res));
                 }
             }
 

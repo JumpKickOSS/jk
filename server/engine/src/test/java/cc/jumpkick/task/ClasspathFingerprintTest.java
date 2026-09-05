@@ -151,6 +151,21 @@ class ClasspathFingerprintTest {
         assertThat(ClasspathFingerprint.entry(dir.resolve("gone.jar"))).startsWith("missing:");
     }
 
+    /** Absent entries are told apart by their module-relative path, and are the same absence in every checkout. */
+    @Test
+    void missing_entries_are_distinct_from_each_other_and_the_same_across_checkouts(@TempDir Path dir)
+            throws IOException {
+        Path a = Files.createDirectories(dir.resolve("one/app"));
+        Path b = Files.createDirectories(dir.resolve("two/nested/app"));
+        Files.writeString(a.resolve("jk.toml"), "name = \"app\"\n");
+        Files.writeString(b.resolve("jk.toml"), "name = \"app\"\n");
+        String goneA = ClasspathFingerprint.entry(a.resolve("libs/gone.jar"));
+        String goneB = ClasspathFingerprint.entry(b.resolve("libs/gone.jar"));
+        String otherA = ClasspathFingerprint.entry(a.resolve("libs/other.jar"));
+        assertThat(goneA).isEqualTo(goneB).isEqualTo("missing:libs/gone.jar");
+        assertThat(goneA).isNotEqualTo(otherA);
+    }
+
     @Test
     void settled_jar_fingerprint_is_memoized_and_a_content_change_invalidates(@TempDir Path dir) throws Exception {
         // A jar whose mtime has settled takes the FileHashMemo stat fast-path on the
