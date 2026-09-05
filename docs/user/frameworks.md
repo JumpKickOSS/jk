@@ -74,7 +74,16 @@ jk new -t micronaut/hello my-api
 ```
 
 HTTP service scaffold (java / kotlin). Minified jars: by-name indexes and generic-reflection
-limits — [Packaging](packaging.md#minified-jar-r8).
+limits — [Packaging](packaging.md#minified-jar-r8). Native images: declare `[native]` and run
+`jk native`; the plugin supplies Micronaut’s native-image arguments and switches AOT to the
+native runtime — [Native](native.md).
+
+Micronaut Test Resources (the Gradle/Maven plugin that starts Testcontainers-backed databases
+and brokers for tests and dev mode) is not part of the jk plugin before 1.0. Dev mode itself is
+covered by `jk watch run` (`jk dev`), which is framework-neutral; a test that needs a real
+service declares it the ordinary way — Testcontainers in the test, or a `[test] env` pointing at
+what CI provides. The gap versus `mn:run` / `./gradlew run` with test-resources is exactly that
+one convenience: no service is started for you.
 
 ## Android
 

@@ -73,9 +73,7 @@ public final class LockCommand implements CliCommand {
                         .splitOn(","),
                 Opt.flag("Don't activate the project's default features.", "--no-default-features"),
                 Opt.flag("Pin sources JARs for all Maven deps too.", "--sources"),
-                Opt.flag(
-                        "Keep every pinned version; re-stamp and move only what a changed constraint rules out.",
-                        "--conservative"),
+                Opt.flag("Re-stamp keeping every pin; move only what changed.", "--conservative"),
                 CommonOpts.cacheDir(),
                 Opt.value("<url>", "Override declared repos with a single URL.", "--repo-url")
                         .hide(),

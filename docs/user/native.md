@@ -24,6 +24,14 @@ Quarkus native is owned by the Quarkus plugin: JumpKick runs Quarkus’s own nat
 command with jk’s GraalVM toolchain; `[native] args` still apply. See
 [Frameworks](frameworks.md#quarkus).
 
+Micronaut native goes through jk’s own `jk native`: the Micronaut plugin contributes the
+framework’s native-image arguments when `[native]` is declared (Netty’s packages at run time, the
+generated service-discovery interceptors and the AOT reactive-types holder at build time, plus
+logback/slf4j), and Micronaut AOT runs with `aot-runtime = "native"` for the same project unless
+`[micronaut] aot-runtime` says otherwise. Nothing to configure beyond `[native]`; the reachability
+metadata a plain Micronaut HTTP service needs is already in the contribution. See
+[Frameworks](frameworks.md#micronaut).
+
 ## Reachability
 
 Reflection, JNI, resources, and friends: [Dynamic surface](dynamic-surface.md).
