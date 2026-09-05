@@ -456,7 +456,10 @@ tasks.named<Test>("test") {
 
 // The tier and the curated lane, configured once: the lane runs a subset of these classes, so it
 // needs the same worker jars, sandbox roots and transport or it is exercising a different product.
-tasks.withType<Test>().matching { it.name in CuratedIntegration.integrationTasks }.configureEach {
+// The nightly tiers spawn the same real engine: a network-tagged smoke that scaffolds a project and
+// builds it needs the engine jar, the worker repo and the isolated home exactly as the branch lane does.
+val engineSpawningTiers = CuratedIntegration.integrationTasks + setOf(TestTiers.NETWORK, TestTiers.SLOW)
+tasks.withType<Test>().matching { it.name in engineSpawningTiers }.configureEach {
     jvmArgs("--enable-native-access=ALL-UNNAMED")
     // As :cli:test — keep ambient terminal detection out of rendered-output assertions.
     environment("JK_NERD_FONT", "false")
@@ -475,7 +478,8 @@ tasks.withType<Test>().matching { it.name in CuratedIntegration.integrationTasks
             ":publisher:stageWorkerRepo",
             ":image-builder:stageWorkerRepo",
             ":spring-boot:stageWorkerRepo",
-            ":android:stageWorkerRepo")
+            ":android:stageWorkerRepo",
+            ":micronaut:stageWorkerRepo")
     environment("TERM", "xterm-256color")
     environment("CI", "false")
     environment("NO_COLOR", "")
@@ -522,7 +526,8 @@ tasks.withType<Test>().matching { it.name in CuratedIntegration.integrationTasks
                         ":publisher",
                         ":image-builder",
                         ":spring-boot",
-                        ":android")
+                        ":android",
+                        ":micronaut")
                 .forEach { p ->
                     val src = project(p).layout.buildDirectory.dir("worker-repo").get().asFile
                     if (src.isDirectory) src.copyRecursively(store, overwrite = true)
