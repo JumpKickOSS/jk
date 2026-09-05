@@ -724,7 +724,7 @@ public final class EffortWeights {
             SourceRefs shared) {
         boolean rerun = in.session().config().rebuildOr(false) || forceRebuild;
         // Same digest-only staleness predicate the build's freshen uses: a stale digest
-        // means parse-lock will run a conservative re-lock, so forecast it.
+        // means parse-lock will run a keep-pins re-lock, so forecast it.
         boolean lockStale = !rerun && AutoLock.isStale(in.dir(), in.lockFile());
         if (lockStale) rerun = true;
 

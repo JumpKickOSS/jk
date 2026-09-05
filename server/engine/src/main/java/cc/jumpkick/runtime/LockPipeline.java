@@ -187,7 +187,9 @@ public final class LockPipeline {
 
     private static Policy policyFor(LockMode mode, JkBuild effective) {
         return switch (mode) {
-            case LockMode.Explicit(boolean sources) ->
+            case LockMode.Keep(boolean sources) ->
+                new Policy(OfflineReuse.REQUIRED, true, true, false, sources, platformPolicy(effective, null), true);
+            case LockMode.Latest(boolean sources) ->
                 new Policy(OfflineReuse.REQUIRED, false, true, false, sources, platformPolicy(effective, null), true);
             case LockMode.Update(String platformOverride) ->
                 new Policy(
@@ -236,7 +238,7 @@ public final class LockPipeline {
 
     /**
      * Solve the dependency graph and stamp the tool pins onto it. {@code existing} is the lock this
-     * pass will replace (null when there is none); it seeds conservative preferences, immutable git
+     * pass will replace (null when there is none); it seeds the keep-pins preferences, immutable git
      * SHAs and the offline gate.
      */
     public Lockfile resolve(@Nullable Lockfile existing, ResolveObserver observer, Progress progress) throws Exception {
@@ -315,11 +317,15 @@ public final class LockPipeline {
     private Lockfile solve(
             LockOrchestrator orchestrator, JkBuild project, @Nullable Lockfile pins, ResolveObserver observer)
             throws Exception {
-        if (policy.sources()) {
-            return orchestrator.lockWithSources(project, jkVersion, features, withDefaults, observer);
-        }
+        Lockfile lock = resolveGraph(orchestrator, project, pins, observer);
+        return policy.sources() ? orchestrator.attachSources(lock) : lock;
+    }
+
+    private Lockfile resolveGraph(
+            LockOrchestrator orchestrator, JkBuild project, @Nullable Lockfile pins, ResolveObserver observer)
+            throws Exception {
         if (pins != null) {
-            // Invisible freshen: soft-prefer existing pins; the metadata TTL is fine (pins win).
+            // Keep-pins pass: soft-prefer the existing pins; the metadata TTL is fine (pins win).
             return orchestrator.lockConservative(project, pins, jkVersion, features, withDefaults, observer);
         }
         if (policy.forceRevalidate()) {
@@ -328,7 +334,7 @@ public final class LockPipeline {
                     () -> orchestrator.lock(project, jkVersion, features, withDefaults, observer));
         }
         // Local maven-metadata within TTL first (default 24h) — do not force-revalidate every
-        // jk lock (conditional GETs still 429 Central on large graphs). Fresh indexes: jk update,
+        // lock (conditional GETs still 429 Central on large graphs). Fresh indexes: jk update,
         // or -F / --force (Session force → MavenMetadataCache).
         return orchestrator.lock(project, jkVersion, features, withDefaults, observer);
     }

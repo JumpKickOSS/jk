@@ -11,6 +11,7 @@ import cc.jumpkick.host.Errors;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.runtime.LockMode;
 import cc.jumpkick.runtime.LockPlans;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.protocol.EngineProtocol;
@@ -96,9 +97,8 @@ public final class UpdateVerb implements HostedVerb {
                             repoUrl,
                             body.features(),
                             !body.noDefaultFeatures(),
+                            new LockMode.Update(platformFinal),
                             false,
-                            true,
-                            platformFinal,
                             writer);
                 }
                 Files.createDirectories(cache);

@@ -40,7 +40,7 @@ public final class WorkspaceLock {
         try {
             // noDefaultFeatures=false: every freshen resolves with the same feature selection as
             // explicit `jk lock`, so lock content never depends on which path freshened.
-            LockFlow.Result r = LockFlow.run(root, cache, List.of(), false, null, /* conservative */ true);
+            LockFlow.Result r = LockFlow.run(root, cache, List.of(), false, null);
             if (r.status() == 0) {
                 recordLockSuccess(root, (System.nanoTime() - t0) / 1_000_000L);
             }

@@ -183,8 +183,9 @@ public final class EngineRequests {
 
     /**
      * Everything an engine-hosted {@code jk lock} needs — mirrors {@code LockCommand}'s local fields.
-     * {@code conservative} marks an invisible freshen ({@link cc.jumpkick.cli.EnsureFreshLock}):
-     * existing pins are kept as solver preferences; only explicit {@code jk lock} floats to latest.
+     * {@code freshen} marks an invisible freshen ({@link cc.jumpkick.cli.EnsureFreshLock}): existing
+     * pins are always kept and an already-current lock is a no-op. Without it {@code force} decides
+     * — bare {@code jk lock} keeps pins, {@code jk lock -F} floats within the declared ranges.
      */
     public record LockRequest(
             Path entryDir,
@@ -196,8 +197,8 @@ public final class EngineRequests {
             boolean offline,
             boolean force,
             boolean verbose,
-            boolean conservative) {
-        /** Latest versions — not a conservative freshen. */
+            boolean freshen) {
+        /** A lock the user asked for by name — not an invisible freshen. */
         public LockRequest(
                 Path entryDir,
                 Path cache,

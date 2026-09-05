@@ -266,7 +266,7 @@ class EngineProtocolTest {
         assertThat(Jsonl.bool(json, "offline", false)).isTrue();
         assertThat(Jsonl.bool(json, "force", true)).isFalse();
         assertThat(Jsonl.bool(json, "verbose", false)).isTrue();
-        assertThat(Jsonl.bool(json, "conservative", false)).isTrue();
+        assertThat(Jsonl.bool(json, "freshen", false)).isTrue();
     }
 
     @Test

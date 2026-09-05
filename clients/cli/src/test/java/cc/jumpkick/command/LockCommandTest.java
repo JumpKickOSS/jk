@@ -18,6 +18,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.List;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -439,13 +440,12 @@ class LockCommandTest {
 
     /** Register a root -> leaf graph (metadata + pom + jar for each) on the test repo. */
     /**
-     * A manifest edit that changes no dependency still stales the stamp. The conservative re-lock
-     * re-stamps and keeps every pin even though a newer root is published and the metadata is
-     * re-fetched; the plain re-lock is what floats.
+     * A manifest edit that changes no dependency still stales the stamp. Bare {@code jk lock}
+     * re-stamps and keeps every pin — the whole lockfile diff is the stamp line — while {@code -F}
+     * is what floats a pin to the newer root that has since been published.
      */
     @Test
-    void conservative_relock_restamps_without_moving_a_pin_that_plain_lock_floats(@TempDir Path tempDir)
-            throws Exception {
+    void bare_relock_restamps_without_moving_a_pin_that_a_forced_lock_floats(@TempDir Path tempDir) throws Exception {
         registerRootLeafGraph();
         Path cache = tempDir.resolve("cache");
         Files.createDirectories(tempDir);
@@ -479,15 +479,15 @@ class LockCommandTest {
         maven.registerJar("com.foo", "root", "1.1", "root".getBytes(StandardCharsets.UTF_8));
         Files.writeString(
                 tempDir.resolve("jk.toml"), "\n# a note that changes no dependency\n", StandardOpenOption.APPEND);
+        Path lockFile = tempDir.resolve("jk-lock.toml");
         LockfileReader.clearCache();
-        assertThat(LockfileReader.read(tempDir.resolve("jk-lock.toml")).manifestsSha256())
+        assertThat(LockfileReader.read(lockFile).manifestsSha256())
                 .as("the edit stales the stamp")
                 .isNotEqualTo(LockManifestDigest.compute(tempDir));
+        String beforeRelock = Files.readString(lockFile);
 
         assertThat(run(
                         "lock",
-                        "-F",
-                        "--conservative",
                         "-C",
                         tempDir.toString(),
                         "--repo-url",
@@ -496,10 +496,13 @@ class LockCommandTest {
                         cache.toString()))
                 .isEqualTo(0);
         LockfileReader.clearCache();
-        assertThat(LockfileReader.read(tempDir.resolve("jk-lock.toml")).manifestsSha256())
+        assertThat(LockfileReader.read(lockFile).manifestsSha256())
                 .as("re-stamped")
                 .isEqualTo(LockManifestDigest.compute(tempDir));
         assertThat(rootVersion(tempDir)).as("the pin stays where it was").isEqualTo("1.0");
+        assertThat(withoutStamp(Files.readString(lockFile)))
+                .as("a dependency-neutral edit moves the stamp and nothing else")
+                .isEqualTo(withoutStamp(beforeRelock));
 
         assertThat(run(
                         "lock",
@@ -512,8 +515,13 @@ class LockCommandTest {
                         cache.toString()))
                 .isEqualTo(0);
         assertThat(rootVersion(tempDir))
-                .as("plain lock floats to the newest compatible")
+                .as("-F floats to the newest compatible")
                 .isEqualTo("1.1");
+    }
+
+    /** The lockfile text minus its manifest stamp, so a re-stamp compares equal. */
+    private static String withoutStamp(String lock) {
+        return lock.lines().filter(l -> !l.contains("manifests-sha256")).collect(Collectors.joining("\n"));
     }
 
     private static String rootVersion(Path dir) throws IOException {

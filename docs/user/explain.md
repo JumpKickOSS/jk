@@ -15,8 +15,8 @@ jk explain --redo            # forecast full rebuild (same as jk build --redo)
 ```
 
 When the lock is missing or stale, `jk explain` refreshes it first (same as `jk build`) so
-the plan and ETA match the live countdown. Automatic refreshes are conservative — pinned
-versions stay put.
+the plan and ETA match the live countdown. Automatic refreshes keep pins — pinned versions
+stay put.
 
 The ETA seed matches bare `jk build` bit-for-bit (same `-w` auto, `-j`, flags).
 

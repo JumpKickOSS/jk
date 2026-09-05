@@ -16,7 +16,7 @@ Heavy reusable behavior is a [plugin](plugins.md).
 `jk-lock.toml` records every resolved version and checksum. **Commit it.**
 
 - `jk build` / `jk test` / `jk run` **do not re-resolve** when a valid lock exists.
-- `jk lock` writes or refreshes the lock (conservative: pinned versions stay).
+- `jk lock` writes or refreshes the lock — pinned versions stay; `jk lock -F` floats them.
 - `jk update` re-resolves **on purpose** within your declared ranges.
 - `jk outdated` is read-only.
 

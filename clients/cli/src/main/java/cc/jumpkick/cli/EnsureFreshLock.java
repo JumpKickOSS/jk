@@ -121,7 +121,8 @@ public final class EnsureFreshLock {
         EnginePrewarm.ensure();
         boolean showOwn = ownSpinner && spinner == null && isInteractiveAuto(global) && !global.outputIsJson();
         try {
-            // Conservative: a freshen must never float pinned versions — that is `jk lock`'s job.
+            // freshen=true: an invisible freshen must never float pinned versions, not even under
+            // -F — that is `jk lock -F` / `jk update`'s job.
             EngineRequests.LockRequest req = new EngineRequests.LockRequest(
                     dir, cache, List.of(), false, false, repoUrl, global.offline, global.force, global.verbose, true);
 

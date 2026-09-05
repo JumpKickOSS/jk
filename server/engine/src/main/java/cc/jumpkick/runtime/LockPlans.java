@@ -60,11 +60,12 @@ public final class LockPlans {
     public static final BuildPlanKey<String> MANIFESTS_SHA = BuildPlanKey.scalar("manifests-sha", String.class);
 
     /**
-     * Build the {@code jk lock} plan for one project directory: {@code parse-build} → {@code
-     * resolve} → {@code lock-plugins} → {@code lock-sdk} → {@code write-lockfile}. The offline flag
-     * is read off the ambient {@link SessionContext} at step-run time, so both the CLI (which
-     * installs the session from its global flags) and the engine (which reconstructs it from the
-     * wire request) behave alike.
+     * Build the default {@code jk lock} plan for one project directory: {@code parse-build} →
+     * {@code resolve} → {@code lock-plugins} → {@code lock-sdk} → {@code write-lockfile}. Pins
+     * already on disk are kept ({@link LockMode.Keep}); {@link #plan} takes any other mode. The
+     * offline flag is read off the ambient {@link SessionContext} at step-run time, so both the CLI
+     * (which installs the session from its global flags) and the engine (which reconstructs it from
+     * the wire request) behave alike.
      *
      * @param observer per-package resolution events (never {@code null}; use {@link
      * ResolveObserver#NOOP})
@@ -82,30 +83,16 @@ public final class LockPlans {
             boolean sources,
             ResolveObserver observer,
             @Nullable BiFunction<String, String, String> coordLabel) {
-        return lockBuildPlan(
-                dir, effective, cache, repoUrl, features, withDefaultFeatures, sources, false, observer, coordLabel);
-    }
-
-    /**
-     * As {@link #lockBuildPlan(Path, JkBuild, Path, URI, List, boolean, boolean, ResolveObserver,
-     * BiFunction)} with a {@code conservative} switch: an invisible freshen ({@code
-     * EnsureFreshLock}) keeps every pin from the existing lock as a solver preference — only
-     * coordinates a new or changed constraint rules out move. Explicit {@code jk lock} passes
-     * {@code false} and floats to latest.
-     */
-    public static BuildPlan lockBuildPlan(
-            Path dir,
-            JkBuild effective,
-            Path cache,
-            @Nullable URI repoUrl,
-            List<String> features,
-            boolean withDefaultFeatures,
-            boolean sources,
-            boolean conservative,
-            ResolveObserver observer,
-            @Nullable BiFunction<String, String, String> coordLabel) {
-        LockMode mode = conservative && !sources ? new LockMode.Freshen() : new LockMode.Explicit(sources);
-        return plan(dir, effective, cache, repoUrl, features, withDefaultFeatures, mode, observer, coordLabel);
+        return plan(
+                dir,
+                effective,
+                cache,
+                repoUrl,
+                features,
+                withDefaultFeatures,
+                new LockMode.Keep(sources),
+                observer,
+                coordLabel);
     }
 
     /**
@@ -141,7 +128,8 @@ public final class LockPlans {
     private static PlanShape shapeFor(LockMode mode) {
         return switch (mode) {
             // A single preflight tick; resolve owns the whole bar.
-            case LockMode.Explicit ignored -> new PlanShape("lock", "Resolving", resolveTicks -> 1);
+            case LockMode.Keep ignored -> new PlanShape("lock", "Resolving", resolveTicks -> 1);
+            case LockMode.Latest ignored -> new PlanShape("lock", "Resolving", resolveTicks -> 1);
             case LockMode.Freshen ignored -> new PlanShape("lock", "Resolving", resolveTicks -> 1);
             // ~10% of the bar for parse/preflight, so the last resolve tick lands near 100% rather
             // than stuck at an equal split.
@@ -153,7 +141,11 @@ public final class LockPlans {
         };
     }
 
-    private static BuildPlan plan(
+    /**
+     * The lock plan under an explicit {@link LockMode} — the engine's lock/update cascade picks the
+     * mode from the wire request; the convenience wrappers above cover the common two.
+     */
+    public static BuildPlan plan(
             Path dir,
             JkBuild effective,
             Path cache,

@@ -14,6 +14,7 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.runtime.LockGate;
+import cc.jumpkick.runtime.LockMode;
 import cc.jumpkick.runtime.LockPlans;
 import cc.jumpkick.wire.protocol.ProtoEvents;
 import java.io.BufferedWriter;
@@ -31,6 +32,11 @@ final class LockCascade {
 
     private LockCascade() {}
 
+    /**
+     * @param skipWhenFresh an invisible freshen only: report success without resolving when the
+     *     lock is already current — a concurrent job won the flight while this one waited on the
+     *     lock gate. An explicit {@code jk lock} always resolves and rewrites.
+     */
     static JobOutcome run(
             VerbHost host,
             Path entryDir,
@@ -38,36 +44,8 @@ final class LockCascade {
             @Nullable URI repoUrl,
             List<String> features,
             boolean withDefaults,
-            boolean sources,
-            boolean update,
-            @Nullable String platformOverride,
-            BufferedWriter writer)
-            throws Exception {
-        return run(
-                host,
-                entryDir,
-                cache,
-                repoUrl,
-                features,
-                withDefaults,
-                sources,
-                update,
-                platformOverride,
-                false,
-                writer);
-    }
-
-    static JobOutcome run(
-            VerbHost host,
-            Path entryDir,
-            Path cache,
-            @Nullable URI repoUrl,
-            List<String> features,
-            boolean withDefaults,
-            boolean sources,
-            boolean update,
-            @Nullable String platformOverride,
-            boolean conservative,
+            LockMode mode,
+            boolean skipWhenFresh,
             BufferedWriter writer)
             throws Exception {
         Files.createDirectories(cache);
@@ -87,7 +65,7 @@ final class LockCascade {
         synchronized (LockGate.monitorFor(lockDir)) {
             // needsRefresh, not isStale: a missing lock is not "stale" (isStale is digest-only)
             // but an invisible freshen must still write one (jk tree / explain / status).
-            if (conservative && !LockFreshness.needsRefresh(lockDir)) {
+            if (skipWhenFresh && !LockFreshness.needsRefresh(lockDir)) {
                 host.sendQuiet(writer, ProtoEvents.lockFinish(true, 0, List.of(), -1));
                 return JobOutcome.ok();
             }
@@ -106,20 +84,8 @@ final class LockCascade {
                     lockPkgs.onPackage(dirTag, module, version);
                 }
             };
-            BuildPlan plan = update
-                    ? LockPlans.updateBuildPlan(
-                            dir, effective, cache, repoUrl, features, withDefaults, platformOverride, observer)
-                    : LockPlans.lockBuildPlan(
-                            dir,
-                            effective,
-                            cache,
-                            repoUrl,
-                            features,
-                            withDefaults,
-                            sources,
-                            conservative,
-                            observer,
-                            null);
+            BuildPlan plan =
+                    LockPlans.plan(dir, effective, cache, repoUrl, features, withDefaults, mode, observer, null);
             for (Task p : plan.steps()) {
                 host.sendQuiet(
                         writer,

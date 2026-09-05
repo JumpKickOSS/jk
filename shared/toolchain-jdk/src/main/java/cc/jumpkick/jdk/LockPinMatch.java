@@ -146,9 +146,9 @@ public final class LockPinMatch {
      * <p>What the manifest declared wins — it is the contract, and a later build owes that rather
      * than whatever patch happened to be current here. Failing that, {@code previous} holds: a
      * plain {@code jk lock} must not rewrite the record of what built the lock just because this
-     * machine has a different JDK. Callers pass it only on a conservative re-lock, so
-     * {@code jk update} — where floating to the latest is the point — refreshes from the toolchain
-     * that resolved. Only with neither does the resolved toolchain fill in, which is what makes a
+     * machine has a different JDK. Every re-lock passes it but {@code jk update}, so there — where
+     * floating to the latest is the point — the suggestion refreshes from the toolchain that
+     * resolved. Only with neither does the resolved toolchain fill in, which is what makes a
      * first lock record anything at all.
      *
      * <p>A required field leaves its suggested counterpart empty: writing both would state a floor

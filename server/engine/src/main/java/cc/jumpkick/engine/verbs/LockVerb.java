@@ -7,6 +7,7 @@ import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.runtime.LockMode;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.LockRequest;
@@ -67,6 +68,16 @@ public final class LockVerb implements HostedVerb {
                 "web");
     }
 
+    /**
+     * Which semantics one request runs under. An invisible freshen keeps pins and stays soft
+     * offline whatever else was asked for — {@code -F} on {@code jk tree} means "re-fetch", never
+     * "rewrite my pins". Otherwise {@code -F} is what floats them; bare {@code jk lock} keeps them.
+     */
+    static LockMode modeFor(LockRequest body) {
+        if (body.freshen()) return new LockMode.Freshen();
+        return body.force() ? new LockMode.Latest(body.sources()) : new LockMode.Keep(body.sources());
+    }
+
     @Override
     public JobOutcome run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
@@ -82,10 +93,8 @@ public final class LockVerb implements HostedVerb {
                             repoUrl,
                             body.features(),
                             !body.noDefaultFeatures(),
-                            body.sources(),
-                            false,
-                            null,
-                            body.conservative(),
+                            modeFor(body),
+                            body.freshen(),
                             writer));
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));

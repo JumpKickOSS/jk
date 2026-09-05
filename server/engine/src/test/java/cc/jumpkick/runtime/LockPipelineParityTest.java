@@ -62,9 +62,9 @@ class LockPipelineParityTest {
 
     /** The four lock-write entry points this pipeline has. */
     private enum Entry {
-        EXPLICIT_LOCK_PLAN,
+        LOCK_PLAN,
         UPDATE_PLAN,
-        LOCK_FLOW_FRESHEN,
+        LOCK_FLOW,
         AUTO_LOCK
     }
 
@@ -101,7 +101,7 @@ class LockPipelineParityTest {
 
     private static void drive(Entry entry, Fixture f) throws Exception {
         switch (entry) {
-            case EXPLICIT_LOCK_PLAN ->
+            case LOCK_PLAN ->
                 runPlan(LockPlans.lockBuildPlan(
                         f.project,
                         JkBuildParser.parse(f.manifest),
@@ -122,8 +122,8 @@ class LockPipelineParityTest {
                         true,
                         null,
                         ResolveObserver.NOOP));
-            case LOCK_FLOW_FRESHEN -> {
-                LockFlow.Result r = LockFlow.run(f.project, f.cache, List.of(), false, f.repo, true);
+            case LOCK_FLOW -> {
+                LockFlow.Result r = LockFlow.run(f.project, f.cache, List.of(), false, f.repo);
                 assertThat(r.status()).as("LockFlow freshen: %s", r.error()).isZero();
             }
             case AUTO_LOCK -> {

@@ -118,19 +118,12 @@ public final class LockOrchestrator {
     }
 
     /**
-     * Lock and additionally attempt to resolve the {@code -sources.jar} for every Maven package,
-     * populating {@link Lockfile.Artifact#sourcesChecksum} when found. Sources that return 404 are
-     * silently skipped — not all packages publish sources.
+     * Resolve the {@code -sources.jar} for every Maven package in {@code lock} and return a copy
+     * with {@link Lockfile.Artifact#sourcesChecksum} populated where sources exist. Sources that
+     * return 404 are silently skipped — not all packages publish sources.
      */
-    public Lockfile lockWithSources(
-            JkBuild project,
-            String jkVersion,
-            Collection<String> featuresRequested,
-            boolean withDefaults,
-            ResolveObserver observer)
-            throws IOException, InterruptedException {
-        Lockfile base = lock(project, jkVersion, featuresRequested, withDefaults, observer, Map.of());
-        return new SourcesAttacher(repos).attach(base);
+    public Lockfile attachSources(Lockfile lock) throws InterruptedException {
+        return new SourcesAttacher(repos).attach(lock);
     }
 
     public Lockfile lock(JkBuild project, String jkVersion, Collection<String> featuresRequested, boolean withDefaults)

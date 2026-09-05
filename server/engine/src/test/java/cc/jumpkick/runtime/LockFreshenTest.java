@@ -29,11 +29,12 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * an invisible freshen must never float pinned versions — conservative resolution keeps
- * the existing lock's pins and only explicit {@code jk lock} picks latest. Also covers the legacy
- * upgrade: an unstamped lock gains {@code manifests-sha256} without any version moving.
+ * Keeping pins is the default: a re-lock — invisible or the bare {@code jk lock} plan — holds the
+ * existing lock's versions, and only {@code jk lock -F} ({@link LockMode.Latest}) picks latest.
+ * Also covers the legacy upgrade: an unstamped lock gains {@code manifests-sha256} without any
+ * version moving.
  */
-class LockFreshenConservativeTest {
+class LockFreshenTest {
 
     @RegisterExtension
     final LoopbackHttp http = new LoopbackHttp();
@@ -71,11 +72,11 @@ class LockFreshenConservativeTest {
     }
 
     @Test
-    void freshen_preserves_pins_while_explicit_lock_floats(@TempDir Path tmp) throws Exception {
+    void freshen_preserves_pins_while_a_forced_lock_floats(@TempDir Path tmp) throws Exception {
         project(tmp);
         serveLib("1.0");
 
-        LockFlow.Result first = LockFlow.run(tmp, tmp.resolve("cache1"), List.of(), true, http.base(), false);
+        LockFlow.Result first = LockFlow.run(tmp, tmp.resolve("cache1"), List.of(), false, http.base());
         assertThat(first.status()).isZero();
         assertThat(libVersion(first.lockfile())).isEqualTo("1.0");
 
@@ -83,39 +84,38 @@ class LockFreshenConservativeTest {
         restartServer();
         // Re-publish after bind, then drop any warm ambient index for this URL — JkStores puts
         // maven-metadata in the product store (cacheN roots are ignored), so port reuse can
-        // leave a 24h TTL body that only lists 1.0. Plain lock no longer force-revalidates
+        // leave a 24h TTL body that only lists 1.0. Keep-pins locks do not force-revalidate
         // (jk update / -F only); the float assertion needs the live index.
         serveLib("1.0", "1.1");
         dropLibIndexCache();
         touchManifest(tmp); // whitespace-only edit → digest-stale, so the freshen actually resolves
 
-        LockFlow.Result freshened = LockFlow.run(tmp, tmp.resolve("cache2"), List.of(), true, http.base(), true);
+        LockFlow.Result freshened = LockFlow.run(tmp, tmp.resolve("cache2"), List.of(), false, http.base());
         assertThat(freshened.status()).isZero();
         assertThat(libVersion(freshened.lockfile())).isEqualTo("1.0");
 
         restartServer();
         serveLib("1.0", "1.1");
         dropLibIndexCache();
-        LockFlow.Result explicit = LockFlow.run(tmp, tmp.resolve("cache3"), List.of(), true, http.base(), false);
-        assertThat(explicit.status()).isZero();
-        assertThat(libVersion(explicit.lockfile()))
-                .as("explicit jk lock must float to latest within the declared range")
+        Lockfile forced = runLockPlan(tmp, tmp.resolve("cache3"), new LockMode.Latest(false));
+        assertThat(libVersion(forced))
+                .as("jk lock -F must float to latest within the declared range")
                 .isEqualTo("1.1");
     }
 
     @Test
-    void conservative_freshen_on_a_fresh_lock_skips_resolution(@TempDir Path tmp) throws Exception {
+    void freshen_on_a_fresh_lock_skips_resolution(@TempDir Path tmp) throws Exception {
         project(tmp);
         serveLib("1.0");
 
-        assertThat(LockFlow.run(tmp, tmp.resolve("cache1"), List.of(), true, http.base(), false)
+        assertThat(LockFlow.run(tmp, tmp.resolve("cache1"), List.of(), false, http.base())
                         .status())
                 .isZero();
 
         // Repo is now unreachable: only the single-flight skip can succeed.
         http.stop();
         LockFlow.Result skipped =
-                LockFlow.run(tmp, tmp.resolve("cache2"), List.of(), true, URI.create("http://127.0.0.1:9/"), true);
+                LockFlow.run(tmp, tmp.resolve("cache2"), List.of(), false, URI.create("http://127.0.0.1:9/"));
         assertThat(skipped.status()).isZero();
         assertThat(libVersion(skipped.lockfile())).isEqualTo("1.0");
     }
@@ -126,7 +126,7 @@ class LockFreshenConservativeTest {
         serveLib("1.0");
         Path lockFile = tmp.resolve("jk-lock.toml");
 
-        assertThat(LockFlow.run(tmp, tmp.resolve("cache1"), List.of(), true, http.base(), false)
+        assertThat(LockFlow.run(tmp, tmp.resolve("cache1"), List.of(), false, http.base())
                         .status())
                 .isZero();
 
@@ -141,46 +141,40 @@ class LockFreshenConservativeTest {
         serveLib("1.0", "1.1");
         restartServer();
 
-        LockFlow.Result freshened = LockFlow.run(tmp, tmp.resolve("cache2"), List.of(), true, http.base(), true);
+        LockFlow.Result freshened = LockFlow.run(tmp, tmp.resolve("cache2"), List.of(), false, http.base());
         assertThat(freshened.status()).isZero();
         assertThat(libVersion(freshened.lockfile())).isEqualTo("1.0");
         assertThat(LockFreshness.isStale(tmp, lockFile)).isFalse();
     }
 
     @Test
-    void conservative_lock_pipeline_preserves_pins(@TempDir Path tmp) throws Exception {
+    void the_bare_lock_plan_preserves_pins(@TempDir Path tmp) throws Exception {
         project(tmp);
         serveLib("1.0");
 
-        assertThat(LockFlow.run(tmp, tmp.resolve("cache1"), List.of(), true, http.base(), false)
+        assertThat(LockFlow.run(tmp, tmp.resolve("cache1"), List.of(), false, http.base())
                         .status())
                 .isZero();
         serveLib("1.0", "1.1");
         restartServer();
+        dropLibIndexCache();
         touchManifest(tmp);
 
         var effective = JkBuildParser.parse(tmp.resolve("jk.toml"));
         var plan = LockPlans.lockBuildPlan(
-                tmp,
-                effective,
-                tmp.resolve("cache2"),
-                http.base(),
-                List.of(),
-                true,
-                false,
-                true,
-                ResolveObserver.NOOP,
-                null);
+                tmp, effective, tmp.resolve("cache2"), http.base(), List.of(), true, false, ResolveObserver.NOOP, null);
         var result = plan.run();
         assertThat(result.success()).isTrue();
         Lockfile lock = plan.get(LockPlans.LOCKFILE).orElseThrow();
-        assertThat(libVersion(lock)).isEqualTo("1.0");
+        assertThat(libVersion(lock))
+                .as("no -F: the newly published 1.1 must not be taken")
+                .isEqualTo("1.0");
     }
 
     @Test
     void workspace_freshen_resolves_with_default_features_like_jk_lock(@TempDir Path tmp) throws Exception {
-        // lock content must not depend on which path freshened. The pre-build guard
-        // used noDefaultFeatures=true and silently dropped feature-gated deps from the lock.
+        // Lock content must not depend on which path freshened: a freshen that suppressed default
+        // features would silently drop feature-gated deps from the lock.
         serveLib("1.0");
         upstream.leaf("com.foo", "extra", "1.0");
         Files.writeString(tmp.resolve("jk.toml"), """
@@ -199,15 +193,15 @@ class LockFreshenConservativeTest {
                 extra-feat = { deps = ["extra"] }
                 """);
 
-        LockFlow.Result explicit = LockFlow.run(tmp, tmp.resolve("cache1"), List.of(), false, http.base(), false);
-        assertThat(explicit.status()).isZero();
-        assertThat(hasArtifact(explicit.lockfile(), "com.foo:extra")).isTrue();
+        LockFlow.Result first = LockFlow.run(tmp, tmp.resolve("cache1"), List.of(), false, http.base());
+        assertThat(first.status()).isZero();
+        assertThat(hasArtifact(first.lockfile(), "com.foo:extra")).isTrue();
 
         touchManifest(tmp);
         restartServer();
         // Same argument shape as BuildService.ensureWorkspaceLockFresh (features=[],
-        // noDefaultFeatures=false, conservative=true): the feature-gated dep must survive.
-        LockFlow.Result freshened = LockFlow.run(tmp, tmp.resolve("cache2"), List.of(), false, http.base(), true);
+        // noDefaultFeatures=false): the feature-gated dep must survive.
+        LockFlow.Result freshened = LockFlow.run(tmp, tmp.resolve("cache2"), List.of(), false, http.base());
         assertThat(freshened.status()).isZero();
         assertThat(hasArtifact(freshened.lockfile(), "com.foo:extra")).isTrue();
         assertThat(libVersion(freshened.lockfile())).isEqualTo("1.0");
@@ -231,9 +225,25 @@ class LockFreshenConservativeTest {
                 lib = { group = "com.foo", name = "lib", version = "^1.0" }
                 """);
 
-        LockFlow.Result first = LockFlow.run(tmp, tmp.resolve("cache1"), List.of(), false, http.base(), false);
+        LockFlow.Result first = LockFlow.run(tmp, tmp.resolve("cache1"), List.of(), false, http.base());
         assertThat(first.status()).isZero();
         assertThat(first.lockfile().kotlin()).isEqualTo("2.1.0");
+    }
+
+    /** Run the lock plan for {@code tmp} under {@code mode} and return the lockfile it wrote. */
+    private Lockfile runLockPlan(Path tmp, Path cache, LockMode mode) throws Exception {
+        var plan = LockPlans.plan(
+                tmp,
+                JkBuildParser.parse(tmp.resolve("jk.toml")),
+                cache,
+                http.base(),
+                List.of(),
+                true,
+                mode,
+                ResolveObserver.NOOP,
+                null);
+        assertThat(plan.run().success()).isTrue();
+        return plan.get(LockPlans.LOCKFILE).orElseThrow();
     }
 
     private static boolean hasArtifact(Lockfile lock, String ga) {

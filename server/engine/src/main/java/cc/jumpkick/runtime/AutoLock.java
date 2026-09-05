@@ -19,8 +19,8 @@ import org.jspecify.annotations.Nullable;
  * LockMode.Freshen} — locked versions become soft preferences fed into PubGrub's candidate
  * ordering, so the solver selects the locked version first and only versions that conflict with a
  * new or changed constraint are bumped. Deps removed from {@code jk.toml} are dropped from the
- * lock; new deps resolve normally. Explicit {@code jk lock} is the other arm: full fresh
- * resolution, always the latest compatible versions.
+ * lock; new deps resolve normally. {@code jk lock -F} and {@code jk update} are the other arm:
+ * full fresh resolution, always the latest compatible versions.
  */
 public final class AutoLock {
 
@@ -36,7 +36,7 @@ public final class AutoLock {
     }
 
     /**
-     * If {@code lockFile} is stale (jk.toml changed), performs a conservative re-lock, writes the
+     * If {@code lockFile} is stale (jk.toml changed), performs a keep-pins re-lock, writes the
      * updated lock file, and returns the new {@link Lockfile}. Returns {@code null} if the lock is
      * up-to-date or if re-locking fails (the caller should fall back to reading the existing lock and
      * optionally surface a warning).
@@ -88,7 +88,7 @@ public final class AutoLock {
             @Nullable Consumer<String> warn) {
         try {
             // One lock scope, shared with every other lock entry point: a workspace member (or
-            // root) resolves the merged union at the root — a module-scoped conservative relock
+            // root) resolves the merged union at the root — a module-scoped relock
             // must never overwrite the root jk-lock.toml with one module's closure.
             LockPlans.LockScope scope = LockPlans.lockScope(dir);
             LockPipeline pipeline = new LockPipeline(

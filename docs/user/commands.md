@@ -7,7 +7,7 @@ Canonical names. Hidden aliases (Maven/Gradle muscle memory) are listed in
 |---------|--------------|---------|
 | `jk new` / `jk init` | Scaffold a project | [Templates](templates.md) |
 | `jk add` / `jk remove` | Edit dependencies | [Dependencies](dependencies.md) |
-| `jk lock` | Resolve and write `jk-lock.toml` | [Lockfile](lockfile.md) |
+| `jk lock` | Resolve and write `jk-lock.toml` (keeps pins; `-F` floats) | [Lockfile](lockfile.md) |
 | `jk sync` | Materialize cache / offline prep | [Lockfile](lockfile.md) |
 | `jk outdated` | Newer versions than the lock (read-only) | [Lockfile](lockfile.md) |
 | `jk update` | Re-resolve within ranges | [Lockfile](lockfile.md) |

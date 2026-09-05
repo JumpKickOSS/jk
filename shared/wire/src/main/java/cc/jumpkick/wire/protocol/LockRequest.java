@@ -5,7 +5,12 @@ import cc.jumpkick.jsonl.Jsonl;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 
-/** A dependency lock request. */
+/**
+ * A dependency lock request. {@code freshen} marks an invisible freshen — one a command ran for the
+ * user rather than {@code jk lock} itself: pins are always kept and an already-current lock is a
+ * no-op. Otherwise {@code force} decides: bare {@code jk lock} keeps pins, {@code jk lock -F}
+ * floats within the declared ranges.
+ */
 public record LockRequest(
         @Nullable String dir,
         @Nullable String cache,
@@ -16,7 +21,7 @@ public record LockRequest(
         boolean offline,
         boolean force,
         boolean verbose,
-        boolean conservative) {
+        boolean freshen) {
 
     public LockRequest {
         features = features == null ? List.of() : List.copyOf(features);
@@ -33,7 +38,7 @@ public record LockRequest(
                 .bool("offline", offline)
                 .bool("force", force)
                 .bool("verbose", verbose)
-                .bool("conservative", conservative)
+                .bool("freshen", freshen)
                 .finish();
     }
 
@@ -48,6 +53,6 @@ public record LockRequest(
                 Jsonl.bool(json, "offline", false),
                 Jsonl.bool(json, "force", false),
                 Jsonl.bool(json, "verbose", false),
-                Jsonl.bool(json, "conservative", false));
+                Jsonl.bool(json, "freshen", false));
     }
 }

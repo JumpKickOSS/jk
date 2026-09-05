@@ -76,7 +76,7 @@ class HostedVerbDecodeJobTest {
         String lock = new LockVerb(null).decodeJob(JobSpec.of("lock", dir.toString()));
         assertThat(EngineProtocol.typeOf(lock)).isEqualTo(EngineProtocol.LOCK_REQUEST);
         assertThat(Jsonl.str(lock, "trigger")).isEqualTo("web");
-        assertThat(Jsonl.bool(lock, "conservative", true)).isFalse();
+        assertThat(Jsonl.bool(lock, "freshen", true)).isFalse();
 
         String update = new UpdateVerb(null).decodeJob(JobSpec.of("update", dir.toString()));
         assertThat(EngineProtocol.typeOf(update)).isEqualTo(EngineProtocol.UPDATE_REQUEST);

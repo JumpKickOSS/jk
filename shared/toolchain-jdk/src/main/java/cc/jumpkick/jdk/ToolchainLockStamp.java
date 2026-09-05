@@ -23,9 +23,9 @@ import java.util.Optional;
  * for Graal via {@code [native]}. A bare {@code [native]} declares no vendor, so whichever GraalVM
  * distribution resolves is the one recorded — as a suggestion, which is all it is.
  *
- * <p>{@code previous} is the lock being replaced, passed only on a conservative re-lock. It keeps
- * an undeclared suggestion stable across a plain {@code jk lock}: the record of what built the
- * lock should not move because a colleague ran it on a different JDK. An unknown-vendor
+ * <p>{@code previous} is the lock being replaced, passed by every re-lock but {@code jk update}.
+ * It keeps an undeclared suggestion stable across a plain {@code jk lock}: the record of what built
+ * the lock should not move because a colleague ran it on a different JDK. An unknown-vendor
  * suggestion is not kept — it cannot be installed and would fail the next build after the
  * manifest pin is gone. {@code jk update} passes null, and the suggestion refreshes.
  */

@@ -42,16 +42,18 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * {@code jk lock} — resolve declared dependencies and write {@code jk-lock.toml}. Features use Cargo
- * semantics ({@code --features}/{@code --no-default-features}). Workspace roots (and members) write
- * a single root lock for the whole monorepo. Engine-hosted; this command renders progress.
+ * {@code jk lock} — resolve declared dependencies and write {@code jk-lock.toml}. Pinned versions
+ * stay put: only what a new or changed constraint rules out moves. {@code -F}/{@code --force}
+ * floats every pin to the newest version its declared range allows; deliberate upgrades that are
+ * not a force-refresh belong on {@code jk update}. Features use Cargo semantics ({@code
+ * --features}/{@code --no-default-features}). Workspace roots (and members) write a single root
+ * lock for the whole monorepo. Engine-hosted; this command renders progress.
  */
 public final class LockCommand implements CliCommand {
 
     private List<String> features = List.of();
     private boolean noDefaultFeatures;
     private boolean sources;
-    private boolean conservative;
     private URI repoUrl;
     private Path cacheDir;
     private GlobalOptions global;
@@ -63,7 +65,7 @@ public final class LockCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Resolve versions for dependencies and write jk-lock.toml";
+        return "Resolve dependencies into jk-lock.toml, keeping pinned versions";
     }
 
     @Override
@@ -73,7 +75,6 @@ public final class LockCommand implements CliCommand {
                         .splitOn(","),
                 Opt.flag("Don't activate the project's default features.", "--no-default-features"),
                 Opt.flag("Pin sources JARs for all Maven deps too.", "--sources"),
-                Opt.flag("Re-stamp keeping every pin; move only what changed.", "--conservative"),
                 CommonOpts.cacheDir(),
                 Opt.value("<url>", "Override declared repos with a single URL.", "--repo-url")
                         .hide(),
@@ -94,7 +95,6 @@ public final class LockCommand implements CliCommand {
         this.features = in.values("features");
         this.noDefaultFeatures = in.isSet("no-default-features");
         this.sources = in.isSet("sources");
-        this.conservative = in.isSet("conservative");
         this.repoUrl = in.value("repo-url").map(URI::create).orElse(null);
         this.cacheDir = in.value("cache-dir").map(CliPaths::abs).orElse(null);
         this.libraryRegistryUrl =
@@ -140,8 +140,7 @@ public final class LockCommand implements CliCommand {
                 repoUrl,
                 session.offline(),
                 session.force(),
-                global.verbose,
-                conservative);
+                global.verbose);
     }
 
     /**

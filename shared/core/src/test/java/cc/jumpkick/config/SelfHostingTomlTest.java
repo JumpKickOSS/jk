@@ -170,8 +170,8 @@ class SelfHostingTomlTest {
         Assumptions.assumeTrue(Files.isRegularFile(lock), "workspace lock missing");
         assertThat(LockfileReader.read(lock).manifestsSha256())
                 .as("jk-lock.toml manifests-sha256 is stale — re-lock and commit the re-stamp together"
-                        + " with the manifest/pin edit: `jk lock --conservative` keeps every pinned"
-                        + " version and moves only what the edit rules out; plain `jk lock` floats")
+                        + " with the manifest/pin edit: `jk lock` keeps every pinned version and moves"
+                        + " only what the edit rules out; `jk lock -F` / `jk update` float on purpose")
                 .isEqualTo(LockManifestDigest.compute(REPO));
     }
 

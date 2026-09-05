@@ -15,7 +15,7 @@ import java.util.concurrent.locks.ReentrantLock;
 /**
  * Host-wide atomized lock timings for ETA (survives {@code jk clean}).
  *
- * <p>Every successful lock (explicit {@code jk lock}, auto-freshen, conservative re-lock) folds
+ * <p>Every successful lock ({@code jk lock}, {@code jk update}, an auto-freshen) folds
  * three rates so estimates scale with graph size:
  *
  * <ul>

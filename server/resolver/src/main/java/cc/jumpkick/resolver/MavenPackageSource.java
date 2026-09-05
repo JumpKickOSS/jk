@@ -119,7 +119,7 @@ public final class MavenPackageSource implements PackageSource {
      * preferred versions to the front of each package's candidate list (full metadata list still
      * available). PubGrub selects the prefer first; if a constraint rules it out, it backtracks to
      * the next candidate. When both apply, the lock preference is applied last so it sits at the
-     * front (conservative re-lock beats the BOM recommendation).
+     * front (a locked pin beats the BOM recommendation).
      */
     public MavenPackageSource(
             RepoGroup repos,

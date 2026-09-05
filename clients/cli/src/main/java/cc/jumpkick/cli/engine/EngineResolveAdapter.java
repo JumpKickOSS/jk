@@ -90,7 +90,7 @@ final class EngineResolveAdapter {
                                 req.offline(),
                                 req.force(),
                                 req.verbose(),
-                                req.conservative())
+                                req.freshen())
                         .encode(),
                 handler,
                 "lock");

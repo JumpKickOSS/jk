@@ -7,7 +7,8 @@ auto-refreshes when the lock is missing or out of sync with manifests.
 `jk build` **does not re-resolve**. That is the product.
 
 ```bash
-jk lock          # resolve → write jk-lock.toml
+jk lock          # resolve → write jk-lock.toml, keeping pinned versions
+jk lock -F       # same, but float every pin within its declared range
 jk sync          # materialize cache / --offline-prepare
 jk outdated      # read-only: newer versions than the lock
 jk update        # re-resolve within declared ranges; rewrite the lock
@@ -21,8 +22,8 @@ the root lock. Never write per-module lockfiles.
 
 | Command | Role |
 |---------|------|
-| `jk lock` | Resolve and write the lock. Metadata warm within 24h TTL (local first) |
-| `jk lock --conservative` | Re-stamp after a manifest edit, keeping every pinned version; only what a changed constraint rules out moves |
+| `jk lock` | Resolve and write the lock, keeping every pinned version; only what a changed constraint rules out moves. Metadata warm within 24h TTL (local first) |
+| `jk lock -F` | The same resolve, but float every pin to the newest version its declared range allows; revalidates metadata past the TTL |
 | `jk sync` | Materialize cache; `--offline-prepare` for offline CI |
 | `jk outdated` | Current / Compatible / Latest table (exit 0 always on success) |
 | `jk update` | Re-resolve on purpose; revalidates metadata |
@@ -32,10 +33,15 @@ the root lock. Never write per-module lockfiles.
 Metadata indexes live under the store (`metadata/`, 24h TTL + ETag). Back-to-back `jk lock`
 hits disk only; use `jk update` or `-F` when you need Central’s current version lists today.
 
-Automatic refreshes (stale lock on `jk build`) are **conservative** — pinned versions stay
-put. `jk lock --conservative` is the same freshen on demand, for landing a manifest edit that
-changes no dependency without also taking upstream drift. Only plain `jk lock` / `jk update` float
-to latest.
+**`jk lock` keeps pins.** Like `uv lock` and `poetry lock`, the everyday verb re-resolves without
+taking upstream drift: existing pins seed the solver, and only coordinates a new or changed
+constraint rules out move. That is what you want for landing a manifest edit that changes no
+dependency — the lockfile diff is the manifest stamp and nothing else.
+
+Floating is deliberate and has two spellings: `jk lock -F` (a forced lock revalidates metadata and
+takes the newest compatible versions) and `jk update` (the same, plus toolchain suggestions, git
+refresh and `--platform`). Automatic refreshes — a stale lock on `jk build`, or any command that
+needs a current lock — always keep pins, `-F` or not.
 
 ## `jk outdated`
 
@@ -113,8 +119,8 @@ rejected rather than guessed at — re-run `jk lock`.
 
 ## Pre-release pins
 
-A lock that records an RC/M/beta is kept on conservative re-locks when it still satisfies
-the declared range. A platform BOM pin (including a pre-release line) is enforced on
+A lock that records an RC/M/beta is kept by `jk lock` when it still satisfies the declared
+range. A platform BOM pin (including a pre-release line) is enforced on
 managed GAs while the platform is active. Unpinned `latest` still prefers the newest
 **stable** over a newer pre-release. Deliberate upgrades off a pre-release belong on
 `jk update`.

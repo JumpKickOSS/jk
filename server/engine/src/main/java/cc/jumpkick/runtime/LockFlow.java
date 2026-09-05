@@ -23,8 +23,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * {@link LockPipeline} run to completion, without a {@link cc.jumpkick.run.BuildPlan} around it —
- * the first lock of {@code jk sync}, the pre-build workspace freshen, and {@code jk lock} from a
- * caller that has no bar to drive. This is pure logic: failures are returned in {@link
+ * the first lock of {@code jk sync}, the first lock of a build, and the pre-build workspace
+ * freshen. This is pure logic: failures are returned in {@link
  * Result#error} for the caller to surface — nothing is written to {@code stderr} here, so only the
  * CLI view layer touches the streams.
  *
@@ -62,26 +62,15 @@ public final class LockFlow {
         }
     }
 
-    /** Run the lock plan against {@code dir} with explicit-lock (latest versions) semantics. */
-    public static Result run(
-            Path dir, Path cache, List<String> features, boolean noDefaultFeatures, @Nullable URI repoUrl)
-            throws Exception {
-        return run(dir, cache, features, noDefaultFeatures, repoUrl, false);
-    }
-
     /**
-     * Run the lock plan against {@code dir}. {@code conservative} marks an invisible freshen
-     * (pre-build workspace guard): pins from the existing lock are fed to the solver as soft
-     * preferences, so only coordinates a new or changed constraint rules out move. With no readable
-     * existing lock the flag is a no-op (fresh resolve either way).
+     * Run the lock plan against {@code dir}. Every caller here is a lock the user did not ask for
+     * by name, so pins from the existing lock are fed to the solver as soft preferences and only
+     * coordinates a new or changed constraint rules out move. An already-current lock is returned
+     * as it stands. Floating within the declared ranges is {@code jk lock -F} / {@code jk update},
+     * which run the {@link LockPlans} plan instead.
      */
     public static Result run(
-            Path dir,
-            Path cache,
-            List<String> features,
-            boolean noDefaultFeatures,
-            @Nullable URI repoUrl,
-            boolean conservative)
+            Path dir, Path cache, List<String> features, boolean noDefaultFeatures, @Nullable URI repoUrl)
             throws Exception {
         if (!Files.exists(dir.resolve(ManifestPaths.MANIFEST))) {
             return new Result(Exit.CONFIG, "no jk.toml in " + dir, null, null, 0);
@@ -98,10 +87,10 @@ public final class LockFlow {
         Path lockDir = scope.lockDir();
         Path lockFile = LockPaths.lockFile(lockDir);
 
-        // Serialize per lock dir. A conservative freshen that waited here may find the
-        // lock already fresh — a concurrent job won the flight; skip the duplicate resolve.
+        // Serialize per lock dir. A freshen that waited here may find the lock already
+        // fresh — a concurrent job won the flight; skip the duplicate resolve.
         synchronized (LockGate.monitorFor(lockDir)) {
-            if (conservative && Files.exists(lockFile) && !LockFreshness.isStale(lockDir, lockFile)) {
+            if (Files.exists(lockFile) && !LockFreshness.isStale(lockDir, lockFile)) {
                 try {
                     Lockfile current = LockfileReader.read(lockFile);
                     return ok(current, scope);
@@ -109,7 +98,7 @@ public final class LockFlow {
                     // unreadable — fall through and re-lock
                 }
             }
-            return resolveAndWrite(scope, cache, features, noDefaultFeatures, repoUrl, conservative);
+            return resolveAndWrite(scope, cache, features, noDefaultFeatures, repoUrl);
         }
     }
 
@@ -118,11 +107,15 @@ public final class LockFlow {
             Path cache,
             List<String> features,
             boolean noDefaultFeatures,
-            @Nullable URI repoUrl,
-            boolean conservative) {
-        LockMode mode = conservative ? new LockMode.Freshen() : new LockMode.Explicit(false);
+            @Nullable URI repoUrl) {
         LockPipeline pipeline = new LockPipeline(
-                scope.lockDir(), scope.effective(), cache, repoUrl, features, !noDefaultFeatures, mode);
+                scope.lockDir(),
+                scope.effective(),
+                cache,
+                repoUrl,
+                features,
+                !noDefaultFeatures,
+                new LockMode.Freshen());
         try {
             Lockfile lock = pipeline.run(
                     LockPipeline.readIfPresent(scope.lockDir()), ResolveObserver.NOOP, LockPipeline.Progress.SILENT);

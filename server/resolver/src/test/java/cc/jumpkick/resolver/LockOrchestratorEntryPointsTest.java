@@ -34,7 +34,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * The entry points and user-facing sentences of {@link LockOrchestrator} that no other suite reaches:
- * the conservative re-lock, the sources pass, the two diagnostics pinned in full, and the
+ * the keep-pins re-lock, the sources pass, the two diagnostics pinned in full, and the
  * materializer's first-failure-wins contract.
  */
 class LockOrchestratorEntryPointsTest {
@@ -52,12 +52,12 @@ class LockOrchestratorEntryPointsTest {
     }
 
     /**
-     * A conservative re-lock seeds the solver with the existing lock's versions, so a dependency the
+     * A keep-pins re-lock seeds the solver with the existing lock's versions, so a dependency the
      * new constraints do not touch stays where it was even though upstream has published a newer
      * release the selector would otherwise float to.
      */
     @Test
-    void lock_conservative_keeps_an_untouched_locked_version_that_a_plain_lock_floats(@TempDir Path dir)
+    void lock_conservative_keeps_an_untouched_locked_version_that_a_floating_lock_takes(@TempDir Path dir)
             throws Exception {
         upstream.metadata("com.foo", "lib", "1.0", "1.1")
                 .pom("com.foo", "lib", "1.0", MavenStub.emptyPom("com.foo", "lib", "1.0"))
@@ -78,12 +78,12 @@ class LockOrchestratorEntryPointsTest {
                         List.of(),
                         null)));
 
-        Lockfile floated = new LockOrchestrator(repos(dir.resolve("plain"))).lock(project, "test");
-        Lockfile conservative = new LockOrchestrator(repos(dir.resolve("conservative")))
+        Lockfile floated = new LockOrchestrator(repos(dir.resolve("floated"))).lock(project, "test");
+        Lockfile kept = new LockOrchestrator(repos(dir.resolve("kept")))
                 .lockConservative(project, existing, "test", List.of(), true, ResolveObserver.NOOP);
 
         assertThat(version(floated, "com.foo:lib:jar:")).isEqualTo("1.1");
-        assertThat(version(conservative, "com.foo:lib:jar:")).isEqualTo("1.0");
+        assertThat(version(kept, "com.foo:lib:jar:")).isEqualTo("1.0");
     }
 
     /**
@@ -104,8 +104,9 @@ class LockOrchestratorEntryPointsTest {
                         new Dependency("com.foo:bare", VersionSelector.parse("=1.0")),
                         local)));
 
-        Lockfile lock = new LockOrchestrator(repos(dir))
-                .lockWithSources(project, "test", List.of(), true, ResolveObserver.NOOP);
+        LockOrchestrator orchestrator = new LockOrchestrator(repos(dir));
+        Lockfile lock =
+                orchestrator.attachSources(orchestrator.lock(project, "test", List.of(), true, ResolveObserver.NOOP));
 
         assertThat(row(lock, "com.foo:documented:jar:").sourcesChecksum()).startsWith("sha256:");
         assertThat(row(lock, "com.foo:bare:jar:").sourcesChecksum()).isNull();
