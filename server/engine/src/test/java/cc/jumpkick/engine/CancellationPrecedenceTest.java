@@ -196,7 +196,12 @@ class CancellationPrecedenceTest extends EngineServerHarness {
 
     @Test
     void a_wall_deadline_is_a_third_reason_and_names_itself_on_the_wire() throws Exception {
-        Iterator<String> sse = startEngine(JkEngineConfig.DEFAULTS.withJobLimits(new JobLimits(0L, 400L, 200L, 500L)));
+        // The deadline is measured from job start, and the point of the test is a job cut off while
+        // parked on the held download. Three seconds is far past the time the lock takes to reach
+        // that download on a loaded machine, and far short of the latch's own 30 s release, so the
+        // kill lands where the test says it does rather than in an earlier metadata fetch.
+        Iterator<String> sse =
+                startEngine(JkEngineConfig.DEFAULTS.withJobLimits(new JobLimits(0L, 3_000L, 200L, 500L)));
         try (Client building = new Client(EnginePaths.activeSocket(paths))) {
             startLock(building);
             assertThat(held.await(10, TimeUnit.SECONDS)).isTrue();
@@ -218,12 +223,14 @@ class CancellationPrecedenceTest extends EngineServerHarness {
                     .filter(l -> EngineProtocol.BUILDPLAN_FINISH.equals(EngineProtocol.typeOf(l)))
                     .reduce((a, b) -> b)
                     .orElseThrow();
-            assertThat(Jsonl.bool(terminal, "cancelled", false)).isTrue();
+            assertThat(Jsonl.bool(terminal, "cancelled", false))
+                    .as("wire:\n" + String.join("\n", rest) + "\nengine log:\n" + String.join("\n", engineLog))
+                    .isTrue();
         }
         String finish = awaitSseData(sse, "request-finish");
         assertThat(Jsonl.bool(finish, "cancelled", false)).isTrue();
         assertThat(Jsonl.str(finish, "cancelReason"))
-                .isEqualTo("exceeded the 400ms wall deadline (JK_ENGINE_JOB_DEADLINE_MS); cancelled")
+                .isEqualTo("exceeded the 3000ms wall deadline (JK_ENGINE_JOB_DEADLINE_MS); cancelled")
                 .isNotEqualTo(BY_USER)
                 .isNotEqualTo(BY_DISCONNECT);
     }
