@@ -31,6 +31,11 @@ tasks.withType<Test>().configureEach {
     // M2Dirs honours JK_M2_LOCAL so mock-Maven tests cannot overwrite ~/.m2.
     val testM2 = layout.buildDirectory.dir("test-m2").get().asFile.absolutePath
     environment("JK_M2_LOCAL", testM2)
+    // The warm home is a feature (two suites prime the store on purpose) and a liability when it is
+    // unbounded: measured at 744 MB for clients/cli (cache/sha256 540 MB, data/store 117 MB, state
+    // 70 MB) and 1,013 MB for server/engine before this sweep existed, every other module under
+    // 2 MB. A week or a gibibyte, whichever comes first, wipes the whole root and re-stamps; the
+    // state goes with it, which every suite already tolerates on a cold first run.
     doFirst {
         val home = File(testJkHome)
         val stamp = File(home, ".wiped-at")
