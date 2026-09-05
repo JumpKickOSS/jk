@@ -12,6 +12,7 @@ import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.jobs.JobRequest;
 import cc.jumpkick.engine.jobs.JobSelect;
 import cc.jumpkick.engine.jobs.JobSpec;
+import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.ManifestPaths;
@@ -275,7 +276,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                 host.sendQuiet(writer, ProtoEvents.workspaceFinish(false, Exit.FAILURE, List.of(), true));
                 return JobOutcome.declined();
             }
-            String msg = host.redactEnv(dir, Errors.text(e));
+            String msg = EventRedaction.redactText(dir, Errors.text(e));
             host.sendQuiet(writer, host.requestFailedLine(dir, e));
             host.publishRequestError(rid, dir, msg);
             return JobOutcome.failed(Exit.FAILURE);

@@ -21,6 +21,7 @@ import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Quiet store-feed revalidation (libs registry + JDK catalog). Driven by {@link
@@ -50,7 +51,7 @@ public final class StoreFeedRefresh implements AutoCloseable {
     private final URI librariesSource;
     private final URI jdkFeed;
     /** Engine hook: queue idle-boundary cache GC (never blocks the tick on builds). */
-    private final Runnable afterTick;
+    private final @Nullable Runnable afterTick;
 
     private final AtomicBoolean closed = new AtomicBoolean();
 
@@ -62,7 +63,7 @@ public final class StoreFeedRefresh implements AutoCloseable {
      * @param afterTick optional hook run after each feed pass (e.g. enqueue cache prune). Exceptions
      *     are logged and swallowed so a GC failure never aborts the tick.
      */
-    public StoreFeedRefresh(Consumer<String> log, Runnable afterTick) {
+    public StoreFeedRefresh(Consumer<String> log, @Nullable Runnable afterTick) {
         this(
                 log,
                 new Http(),
@@ -81,7 +82,7 @@ public final class StoreFeedRefresh implements AutoCloseable {
             Supplier<Path> jdksFile,
             URI librariesSource,
             URI jdkFeed,
-            Runnable afterTick) {
+            @Nullable Runnable afterTick) {
         this.log = log != null ? log : s -> {};
         this.http = Objects.requireNonNull(http, "http");
         this.librariesFile = Objects.requireNonNull(librariesFile, "librariesFile");

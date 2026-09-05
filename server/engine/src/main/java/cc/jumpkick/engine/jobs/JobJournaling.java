@@ -29,5 +29,6 @@ public interface JobJournaling {
     JkHistoryConfig historyConfig();
 
     /** The project coordinate for {@code dir}, for journal rows. */
+    @Nullable
     String coordOf(String dir);
 }

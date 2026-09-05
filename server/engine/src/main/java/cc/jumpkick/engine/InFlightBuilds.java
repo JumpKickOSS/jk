@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Engine-local exclusive slots for same-fingerprint build-like jobs plus a view of every
@@ -22,10 +23,10 @@ public final class InFlightBuilds {
             String fingerprint,
             String kind,
             String dir,
-            String coord,
+            @Nullable String coord,
             long startedAt,
-            String journalId,
-            String trigger) {}
+            @Nullable String journalId,
+            @Nullable String trigger) {}
 
     private final ConcurrentHashMap<String, Hold> byFingerprint = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, Hold> byRequestId = new ConcurrentHashMap<>();

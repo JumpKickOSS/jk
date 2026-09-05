@@ -38,7 +38,7 @@ public record BuildRecord(
         List<Module> modules,
         List<Task> steps,
         List<Diag> diagnostics,
-        String trigger,
+        @Nullable String trigger,
         @Nullable String commit,
         @Nullable CacheBenefit benefit,
         boolean running,
@@ -221,11 +221,11 @@ public record BuildRecord(
             long buildNumber,
             String kind,
             String dir,
-            String coord,
+            @Nullable String coord,
             String projectId,
             long startedAt,
             String jkVersion,
-            String trigger,
+            @Nullable String trigger,
             long requestId) {
         return new BuildRecord(
                 null,

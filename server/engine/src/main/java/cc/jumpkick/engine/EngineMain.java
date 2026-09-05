@@ -19,6 +19,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Engine JVM entrypoint ({@code :engine}). Plain Java — never a native image. Spawned by the slim
@@ -125,7 +126,7 @@ public final class EngineMain {
      * {@link Runtime#halt}, so writing {@code -XX:AOTCacheOutput} straight to the final path could
      * leave a partial/zero-byte file there — which the client would then map forever.
      */
-    private static Process spawnAotTrainer(String aotOut) {
+    private static @Nullable Process spawnAotTrainer(String aotOut) {
         try {
             Path finalPath = Path.of(aotOut);
             Path tmp = trainerTmpPath(finalPath);

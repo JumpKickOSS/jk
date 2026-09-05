@@ -7,6 +7,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Human-paced {@code lock-package} wire events: at most one emit per cadence with the latest
@@ -20,19 +21,19 @@ public final class CoalescingLockPackages implements AutoCloseable {
 
     @FunctionalInterface
     public interface Emitter {
-        void emit(String dir, String name, String version, int totalSeen);
+        void emit(@Nullable String dir, String name, @Nullable String version, int totalSeen);
     }
 
     private final Emitter emitter;
     private final long cadenceMs;
     private final Object lock = new Object();
 
-    private String dir;
-    private String name;
-    private String version;
+    private @Nullable String dir;
+    private @Nullable String name;
+    private @Nullable String version;
     private int totalSeen;
     private long lastFlushNanos;
-    private ScheduledFuture<?> scheduled;
+    private @Nullable ScheduledFuture<?> scheduled;
     private final AtomicBoolean closed = new AtomicBoolean();
 
     private static final ScheduledExecutorService SCHEDULER = Executors.newSingleThreadScheduledExecutor(r -> {

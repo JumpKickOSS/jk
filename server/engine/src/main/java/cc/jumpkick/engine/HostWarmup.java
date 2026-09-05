@@ -22,6 +22,7 @@ import java.util.Optional;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Engine self-heal: worker AOT → host calibration.
@@ -60,7 +61,7 @@ public final class HostWarmup {
         return enabled(JkDirs.userConfigFile(), System::getenv);
     }
 
-    static boolean enabled(Path userConfig, Function<String, String> env) {
+    static boolean enabled(Path userConfig, @Nullable Function<String, @Nullable String> env) {
         // Baseline: the process-wide AOT switches, including the permanent lame-duck
         // suppression a displaced engine sets. Tests inject their own baseline — the
         // suppression is JVM-global and another suite's EngineServer shutdown must not
@@ -68,7 +69,7 @@ public final class HostWarmup {
         return enabled(userConfig, env, () -> AotSettings.workerAotEnabled() && AotSettings.trainingEnabled());
     }
 
-    static boolean enabled(Path userConfig, Function<String, String> env, BooleanSupplier aot) {
+    static boolean enabled(Path userConfig, @Nullable Function<String, @Nullable String> env, BooleanSupplier aot) {
         Optional<Boolean> fromEnv = env != null ? EnvValues.bool(env, "JK_AUTO_WARMUP") : Optional.empty();
         if (fromEnv.isPresent()) return fromEnv.get();
         if (!JkEngineConfig.fromToml(userConfig).autoWarmup()) return false;
@@ -101,11 +102,11 @@ public final class HostWarmup {
      * marker's TTL is judged by its owner, so an expired refusal re-queues the train here exactly
      * when the trainer itself would attempt it again.
      */
-    static boolean missingKeyNeedsTrain(Path cache) {
+    static boolean missingKeyNeedsTrain(@Nullable Path cache) {
         return cache == null || !AotCacheFiles.blocked(cache);
     }
 
-    private static Path cachePath(String tool, Path host, PluginJar jar) {
+    private static @Nullable Path cachePath(String tool, Path host, PluginJar jar) {
         // locate() + the closure resolve fetch into the store — one gate hold for the whole leg,
         // and a stand-down once the store was wiped, exactly as WorkerAotBootstrap's trainer leg:
         // this path runs from needsWorkerAot() on the warmup decision, before any step.
@@ -212,7 +213,7 @@ public final class HostWarmup {
         }
     }
 
-    private static String hostJdkId() {
+    private static @Nullable String hostJdkId() {
         try {
             Path home = JavaHomes.runningJavaHome();
             if (home == null) return null;

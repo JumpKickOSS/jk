@@ -65,7 +65,7 @@ public final class EngineListeners {
 
     /** As {@link #plan(String, BufferedWriter, BuildPlan)} with a pluggable terminal encoder. */
     public BuildPlanListener plan(
-            String dir, @Nullable BufferedWriter writer, Function<BuildPlanResult, String> finishEncoder) {
+            String dir, @Nullable BufferedWriter writer, @Nullable Function<BuildPlanResult, String> finishEncoder) {
         return hostedPlan(dir, writer, finishEncoder, false);
     }
 

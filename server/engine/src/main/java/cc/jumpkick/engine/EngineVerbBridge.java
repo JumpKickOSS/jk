@@ -71,7 +71,7 @@ public final class EngineVerbBridge implements VerbHost {
 
     @Override
     public BuildPlanListener planListener(
-            String dir, @Nullable BufferedWriter writer, Function<BuildPlanResult, String> finishEncoder) {
+            String dir, @Nullable BufferedWriter writer, @Nullable Function<BuildPlanResult, String> finishEncoder) {
         return listeners.plan(dir, writer, finishEncoder);
     }
 
@@ -102,12 +102,12 @@ public final class EngineVerbBridge implements VerbHost {
     }
 
     @Override
-    public void emitWorkspaceProgress(long rid, BufferedWriter writer, boolean force) {
+    public void emitWorkspaceProgress(long rid, @Nullable BufferedWriter writer, boolean force) {
         sse.emitWorkspaceProgress(rid, writer, force);
     }
 
     @Override
-    public void flushTimeline(long rid, BufferedWriter writer) {
+    public void flushTimeline(long rid, @Nullable BufferedWriter writer) {
         listeners.flushTimeline(rid, writer);
     }
 
@@ -124,13 +124,13 @@ public final class EngineVerbBridge implements VerbHost {
     }
 
     @Override
-    public String redactEnv(@Nullable String dir, @Nullable String text) {
+    public @Nullable String redactEnv(@Nullable String dir, @Nullable String text) {
         return EventRedaction.redactEnv(dir, text);
     }
 
     @Override
     public String requestFailedLine(@Nullable String dir, Throwable e) {
-        return ProtoLifecycle.requestFailed(EventRedaction.redactEnv(dir, Errors.text(e)));
+        return ProtoLifecycle.requestFailed(EventRedaction.redactText(dir, Errors.text(e)));
     }
 
     @Override

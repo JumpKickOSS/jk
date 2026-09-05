@@ -29,6 +29,7 @@ import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Idle-boundary chores: cache prune, journal/metrics retention, host warmup, trailing GC.
@@ -48,8 +49,8 @@ public final class IdleHousekeeping {
     private final BooleanSupplier draining;
     private final Runnable onDrainIdle;
 
-    private final AtomicReference<Path> pendingPruneCache = new AtomicReference<>();
-    private final AtomicReference<Boolean> pendingWarmupForce = new AtomicReference<>();
+    private final AtomicReference<@Nullable Path> pendingPruneCache = new AtomicReference<>();
+    private final AtomicReference<@Nullable Boolean> pendingWarmupForce = new AtomicReference<>();
     private final AtomicBoolean warmupRunning = new AtomicBoolean();
     private final AtomicBoolean running = new AtomicBoolean();
 

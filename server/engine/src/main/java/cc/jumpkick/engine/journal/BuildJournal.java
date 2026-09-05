@@ -93,7 +93,7 @@ public final class BuildJournal {
         return findRunDir(locator).map(d -> d.resolve(ProjectBuilds.DETAILS));
     }
 
-    public Optional<Path> detailsFile(String coord, String projectDir, long buildNumber) {
+    public Optional<Path> detailsFile(@Nullable String coord, String projectDir, long buildNumber) {
         return runDir(coord, projectDir, buildNumber).map(d -> d.resolve(ProjectBuilds.DETAILS));
     }
 
