@@ -20,6 +20,7 @@ import cc.jumpkick.wire.protocol.ProtoSession;
 import cc.jumpkick.wire.protocol.TestRequest;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
+import java.util.Objects;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
@@ -110,7 +111,7 @@ public final class TestVerb implements HostedVerb {
                             cache,
                             buildFile,
                             lockFile,
-                            lockFile.getParent(),
+                            Objects.requireNonNull(lockFile.getParent(), "lock dir"),
                             workerCount,
                             estimatedTestCount,
                             profile,

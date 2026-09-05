@@ -601,6 +601,8 @@ public final class ActionCache {
             @Nullable Path baseDir,
             List<Path> artifacts)
             throws IOException {
+        // Artifacts are recorded relative to the output root they were written under.
+        Path root = Objects.requireNonNull(baseDir, "baseDir");
         Map<String, String> outputs = new TreeMap<>();
         Set<String> executables = new TreeSet<>();
         for (Path a : artifacts) {
@@ -610,7 +612,7 @@ public final class ActionCache {
             cas.putFile(a, hex); // never link a mutable target/ artifact into the CAS
             FileHashMemo.rememberContent(a, hex);
 
-            String rel = baseDir.relativize(a).toString().replace(File.separatorChar, '/');
+            String rel = root.relativize(a).toString().replace(File.separatorChar, '/');
             outputs.put(rel, hex);
             if (executableBit(a)) executables.add(rel);
         }

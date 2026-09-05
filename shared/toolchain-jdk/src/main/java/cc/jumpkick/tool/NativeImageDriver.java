@@ -356,7 +356,7 @@ public final class NativeImageDriver {
         return Optional.empty();
     }
 
-    public static IOException notFoundError(Path javaHome) {
+    public static IOException notFoundError(@Nullable Path javaHome) {
         return new IOException(GraalLauncher.NAME + " binary not found.\n"
                 + "  Checked ("
                 + GraalLauncher.searchedDirs()

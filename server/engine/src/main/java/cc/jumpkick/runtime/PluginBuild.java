@@ -186,7 +186,7 @@ public final class PluginBuild {
             return null;
         }
 
-        public @Nullable CommandDecl command(String name) {
+        public @Nullable CommandDecl command(@Nullable String name) {
             for (CommandDecl v : commands) if (v.name().equals(name)) return v;
             return null;
         }
@@ -587,7 +587,7 @@ public final class PluginBuild {
      */
     static Coordinate resolveCoordinate(RepoGroup repos, @Nullable String gav)
             throws IOException, InterruptedException {
-        Coordinate raw = Coordinate.parse(gav);
+        Coordinate raw = Coordinate.parse(Objects.requireNonNull(gav, "coordinate"));
         String resolved = resolveToolVersion(repos, raw.module(), raw.version());
         if (resolved.equals(raw.version())) return raw;
         return new Coordinate(raw.group(), raw.artifact(), resolved, raw.classifier(), raw.type());

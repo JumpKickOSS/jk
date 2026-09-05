@@ -539,8 +539,8 @@ public final class ExecPlans {
             BuildLayout layout,
             @Nullable String mainOverride,
             @Nullable String binName,
-            Path binDirOverride,
-            Path libDirOverride)
+            @Nullable Path binDirOverride,
+            @Nullable Path libDirOverride)
             throws IOException {
         if (isPluginWorker(dir, project)) {
             return installAck(List.of(), List.of(), "", "", "");

@@ -101,8 +101,9 @@ public final class PlannerCompile {
             java = CompileSupport.withExtraSources(java, extraSrcDirs, ".java");
             scala = CompileSupport.withExtraSources(scala, extraSrcDirs, ".scala");
         }
-        if (scala.isEmpty()) return java;
-        List<Path> withScala = new ArrayList<>(java);
+        List<Path> javaSources = java == null ? List.of() : java;
+        if (scala.isEmpty()) return javaSources;
+        List<Path> withScala = new ArrayList<>(javaSources);
         withScala.addAll(scala);
         return withScala;
     }
@@ -273,7 +274,8 @@ public final class PlannerCompile {
                             srcs = List.of();
                         }
                         javaMainSrcRef.compareAndSet(null, srcs);
-                        srcs = javaMainSrcRef.get();
+                        List<Path> published = javaMainSrcRef.get();
+                        if (published != null) srcs = published;
                     }
                     return srcs.size();
                 })
@@ -515,7 +517,8 @@ public final class PlannerCompile {
                             srcs = List.of();
                         }
                         kotlinMainSrcRef.compareAndSet(null, srcs);
-                        srcs = kotlinMainSrcRef.get();
+                        List<Path> published = kotlinMainSrcRef.get();
+                        if (published != null) srcs = published;
                     }
                     return srcs.size();
                 })
@@ -644,7 +647,8 @@ public final class PlannerCompile {
                             srcs = List.of();
                         }
                         groovyMainSrcRef.compareAndSet(null, srcs);
-                        srcs = groovyMainSrcRef.get();
+                        List<Path> published = groovyMainSrcRef.get();
+                        if (published != null) srcs = published;
                     }
                     return srcs.size();
                 })

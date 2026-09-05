@@ -140,7 +140,7 @@ public final class PlannerSupport {
     }
 
     public static List<String> unresolvedProcessorDeps(
-            JkBuild project, Lockfile lock, WorkspaceClasspath.Result processorSiblings) {
+            JkBuild project, Lockfile lock, WorkspaceClasspath.@Nullable Result processorSiblings) {
         Set<String> locked = lockModules(lock);
         Set<String> siblings = new HashSet<>();
         if (processorSiblings != null) {
@@ -381,7 +381,7 @@ public final class PlannerSupport {
         }
         ActionCache ac = packagingActionCache(cacheRoot);
         var hit = ac.lookup(key);
-        return hit.isPresent() && ac.restoreArtifacts(hit.get(), baseDir);
+        return baseDir != null && hit.isPresent() && ac.restoreArtifacts(hit.get(), baseDir);
     }
 
     /**
@@ -720,7 +720,7 @@ public final class PlannerSupport {
             JkBuild project,
             boolean compact,
             Path mainClasses,
-            String mainClassesFingerprint,
+            @Nullable String mainClassesFingerprint,
             Path lockFile,
             List<Path> testRuntimeCp)
             throws IOException {

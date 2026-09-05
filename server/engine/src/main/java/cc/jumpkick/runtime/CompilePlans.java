@@ -6,6 +6,7 @@ import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.run.BuildPlan;
 import java.nio.file.Path;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.UnaryOperator;
 import org.jspecify.annotations.Nullable;
@@ -26,7 +27,7 @@ public final class CompilePlans {
             Path cache,
             @Nullable String profileName,
             boolean verbose,
-            UnaryOperator<BuildPlanner.Inputs> decorate) {
+            @Nullable UnaryOperator<BuildPlanner.Inputs> decorate) {
         Path buildFile = dir.resolve(ManifestPaths.MANIFEST);
         Path lockFile = LockPaths.lockFile(dir);
         BuildPlanner.Inputs inputs = new BuildPlanner.Inputs(
@@ -34,7 +35,7 @@ public final class CompilePlans {
                 cache,
                 buildFile,
                 lockFile,
-                lockFile.getParent(),
+                Objects.requireNonNull(lockFile.getParent(), "lock dir"),
                 1,
                 0,
                 profileName,

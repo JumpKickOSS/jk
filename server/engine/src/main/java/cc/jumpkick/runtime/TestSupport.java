@@ -668,7 +668,7 @@ public final class TestSupport {
             Cas cas,
             Path cacheRoot,
             List<Path> extraSources,
-            ScalaCompile.Setup scala)
+            ScalaCompile.@Nullable Setup scala)
             throws IOException {
 
         List<Path> sources = new ArrayList<>(CompileSupport.collectJavaSources(srcDir));

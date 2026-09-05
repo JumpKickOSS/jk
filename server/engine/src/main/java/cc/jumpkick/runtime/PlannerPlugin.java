@@ -62,7 +62,7 @@ public final class PlannerPlugin {
      * The single classes-dir-replacing task ({@code transformsClasses}), if any. Two transforms are
      * an error; validated at BuildPlan construction.
      */
-    static PluginBuild.@Nullable TaskDecl transformStep(PluginBuild.Declarations decls) {
+    static PluginBuild.@Nullable TaskDecl transformStep(PluginBuild.@Nullable Declarations decls) {
         if (decls == null) return null;
         PluginBuild.TaskDecl transform = null;
         for (PluginBuild.TaskDecl s : decls.steps()) {
@@ -316,9 +316,11 @@ public final class PlannerPlugin {
      */
     static Task pluginTask(
             BuildPlanner.Ctx cx,
-            PluginBuild.@Nullable Active active,
+            PluginBuild.@Nullable Active declared,
             PluginBuild.TaskDecl step,
             PluginBuild.@Nullable TaskDecl transform) {
+        // The step exists because this plugin declared it.
+        PluginBuild.Active active = Objects.requireNonNull(declared, "active plugin");
         BuildPlanner.Inputs in = cx.in();
         boolean beforeCompile = beforeCompile(step);
         List<String> requires = pluginRequires(step, transform);
@@ -458,10 +460,12 @@ public final class PlannerPlugin {
             JkBuild project,
             Path classes,
             Path jarPath,
-            PluginBuild.@Nullable Active active,
+            PluginBuild.@Nullable Active declaredActive,
             PluginBuild.Declarations decls,
             Map<String, String> secrets)
             throws Exception {
+        // A plugin packager runs because this plugin declared one.
+        PluginBuild.Active active = Objects.requireNonNull(declaredActive, "active plugin");
         Lockfile lock = ctx.require(LOCKFILE);
         BuildLayout layout = ctx.require(LAYOUT);
         ClasspathResolver resolver = new ClasspathResolver(cas);

@@ -80,7 +80,7 @@ public final class HttpEngineServer implements AutoCloseable {
      *     one mid-flight snapshot per running job to that subscription only
      */
     public void setLiveRunSupport(
-            Supplier<List<HttpLive.Run>> liveRuns, Consumer<HttpEvents.Subscription> onEventsConnect) {
+            @Nullable Supplier<List<HttpLive.Run>> liveRuns, Consumer<HttpEvents.Subscription> onEventsConnect) {
         this.liveRuns = liveRuns != null ? liveRuns : List::of;
         sse.onConnect(onEventsConnect);
     }

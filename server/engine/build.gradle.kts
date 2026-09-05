@@ -2,7 +2,7 @@
 // Absorbs :engine and :runtime (Phase 5 module reorg).
 
 plugins {
-    id("jk.java-conventions")
+    id("jk.nullmarked-conventions")
     application
     id("com.gradleup.shadow") version "9.2.2"
 }

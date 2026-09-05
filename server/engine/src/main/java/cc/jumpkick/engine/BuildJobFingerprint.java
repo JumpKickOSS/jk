@@ -74,15 +74,15 @@ public final class BuildJobFingerprint {
     }
 
     public static String of(
-            String kind,
-            String dir,
+            @Nullable String kind,
+            @Nullable String dir,
             boolean rebuild,
             boolean offline,
             boolean skipTests,
             boolean testOnly,
-            String modules,
-            String variant,
-            String assemblyOverride) {
+            @Nullable String modules,
+            @Nullable String variant,
+            @Nullable String assemblyOverride) {
         String canon = canonicalDir(dir);
         StringBuilder sb = new StringBuilder(256);
         sb.append("kind=").append(kind == null ? "" : kind).append('\n');
@@ -98,7 +98,7 @@ public final class BuildJobFingerprint {
     }
 
     /** Real path when the tree exists; otherwise absolute normalized path (worktrees stay distinct). */
-    public static String canonicalDir(String dir) {
+    public static String canonicalDir(@Nullable String dir) {
         if (dir == null || dir.isBlank()) return "";
         try {
             Path p = Path.of(dir);
@@ -117,7 +117,7 @@ public final class BuildJobFingerprint {
         }
     }
 
-    private static String normalizeModules(String modules) {
+    private static String normalizeModules(@Nullable String modules) {
         if (modules == null || modules.isBlank()) return "";
         TreeSet<String> parts = new TreeSet<>();
         for (String p : modules.split("[,\\s]+")) {

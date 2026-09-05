@@ -19,7 +19,7 @@ final class HostCheck {
 
     private HostCheck() {}
 
-    static boolean allowed(String hostHeader, int boundPort) {
+    static boolean allowed(@Nullable String hostHeader, int boundPort) {
         if (hostHeader == null || hostHeader.isBlank()) return false; // HTTP/1.1 requires Host
         String host = hostHeader.trim();
 

@@ -10,6 +10,7 @@ import java.net.URI;
 import java.nio.file.Path;
 import java.util.Collection;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
@@ -65,7 +66,9 @@ public final class AutoLock {
             @Nullable Consumer<String> warn) {
         if (!isStale(dir, lockFile)) return null;
         // Serialize per lock dir; a concurrent job may have freshened while we waited.
-        synchronized (LockGate.monitorFor(lockFile.toAbsolutePath().normalize().getParent())) {
+        Path lockDir =
+                Objects.requireNonNull(lockFile.toAbsolutePath().normalize().getParent(), "lock dir");
+        synchronized (LockGate.monitorFor(lockDir)) {
             if (!isStale(dir, lockFile)) {
                 try {
                     return LockfileReader.read(lockFile);

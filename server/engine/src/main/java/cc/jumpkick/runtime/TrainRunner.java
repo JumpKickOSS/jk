@@ -63,7 +63,7 @@ public final class TrainRunner {
             @Nullable Path graalHome,
             Path javaHome,
             TrainConfig config,
-            String profileFilter,
+            @Nullable String profileFilter,
             boolean force,
             Consumer<String> log)
             throws IOException, InterruptedException {

@@ -57,7 +57,7 @@ public final class ChromeTimeline {
      * @param projectDir entry/workspace root (timeline file under its {@code target/})
      * @param noTimeline request flag (CLI {@code --no-timeline})
      */
-    public static @Nullable ChromeTimeline open(Path projectDir, boolean noTimeline) {
+    public static @Nullable ChromeTimeline open(@Nullable Path projectDir, boolean noTimeline) {
         if (noTimeline || projectDir == null) return null;
         String env = System.getenv(ENV);
         // Blank is this switch's own "off"; a non-boolean value is a destination path.
@@ -78,7 +78,7 @@ public final class ChromeTimeline {
     }
 
     /** Convenience when timeline is enabled. */
-    public static @Nullable ChromeTimeline open(Path projectDir) {
+    public static @Nullable ChromeTimeline open(@Nullable Path projectDir) {
         return open(projectDir, false);
     }
 

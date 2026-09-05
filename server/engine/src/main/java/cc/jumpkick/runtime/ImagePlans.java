@@ -125,7 +125,7 @@ public final class ImagePlans {
             @Nullable String tag,
             @Nullable String tarballArg,
             @Nullable String dockerExecutableArg,
-            UnaryOperator<BuildPlanner.Inputs> decorate) {
+            @Nullable UnaryOperator<BuildPlanner.Inputs> decorate) {
         Path jkBuildPath = projectDir.resolve(ManifestPaths.MANIFEST);
         Path lockFile = LockPaths.lockFile(projectDir);
         boolean compact = ModuleLayout.isCompact(projectDir);

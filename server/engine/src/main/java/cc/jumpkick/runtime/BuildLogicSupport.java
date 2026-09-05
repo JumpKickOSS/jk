@@ -55,7 +55,7 @@ public final class BuildLogicSupport {
             Path projectDir,
             BuildLayout layout,
             ActionCache actionCache,
-            Path classesDir,
+            @Nullable Path classesDir,
             BuildLogicAnchor anchor,
             Consumer<String> label)
             throws IOException, InterruptedException {
@@ -170,7 +170,7 @@ public final class BuildLogicSupport {
             Path projectDir,
             BuildLayout layout,
             ActionCache actionCache,
-            Path classesDir,
+            @Nullable Path classesDir,
             BuildLogicAnchor anchor,
             Consumer<String> label,
             AtomicReference<@Nullable List<String>> inputTokensRef)
@@ -191,7 +191,7 @@ public final class BuildLogicSupport {
             Path projectDir,
             BuildLayout layout,
             ActionCache actionCache,
-            Path classesDir,
+            @Nullable Path classesDir,
             BuildLogicAnchor anchor,
             Consumer<String> label,
             Consumer<String> output,
@@ -232,7 +232,7 @@ public final class BuildLogicSupport {
             Path projectDir,
             BuildLayout layout,
             ActionCache actionCache,
-            Path classesDir,
+            @Nullable Path classesDir,
             BuildLogicAnchor anchor,
             Consumer<String> label,
             Consumer<String> output,
@@ -345,7 +345,11 @@ public final class BuildLogicSupport {
 
     /** Run {@link BuildLogicAnchor#AFTER_RESOURCES} only. */
     public static boolean run(
-            Path projectDir, BuildLayout layout, ActionCache actionCache, Path classesDir, Consumer<String> label)
+            Path projectDir,
+            BuildLayout layout,
+            ActionCache actionCache,
+            @Nullable Path classesDir,
+            Consumer<String> label)
             throws IOException, InterruptedException {
         return run(projectDir, layout, actionCache, classesDir, BuildLogicAnchor.AFTER_RESOURCES, label);
     }
@@ -524,7 +528,8 @@ public final class BuildLogicSupport {
         return hits.stream().sorted().toList();
     }
 
-    private static void mergeIntoClasses(Path generated, Path classesDir) throws IOException {
+    private static void mergeIntoClasses(Path generated, @Nullable Path classesDir) throws IOException {
+        if (classesDir == null) return;
         PathUtil.copyTree(generated, classesDir);
     }
 

@@ -20,6 +20,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
@@ -71,11 +72,11 @@ final class ImageWrite {
         // serve a tarball built on layers the registry no longer has. Resolve once,
         // key on the digest, and hand the worker the pinned reference so the image
         // that ships is the image the key describes.
-        Optional<String> pinnedBase = offline && !BaseImageDigest.pinned(config.base())
+        String declared = Objects.requireNonNull(config.base(), "image base");
+        Optional<String> pinnedBase = offline && !BaseImageDigest.pinned(declared)
                 ? Optional.empty()
-                : BaseImageDigest.pin(
-                        config.base(), new Http(), ImageCredentials.resolve(config.base(), layout.moduleRoot()));
-        String base = pinnedBase.orElse(config.base());
+                : BaseImageDigest.pin(declared, new Http(), ImageCredentials.resolve(declared, layout.moduleRoot()));
+        String base = pinnedBase.orElse(declared);
 
         ActionCache ac = new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache), JkStores.storeCas());
         // The pin probe carries the same registry credential the worker's pull leg gets, so a
@@ -88,7 +89,7 @@ final class ImageWrite {
                 && pinnedBase.isPresent()
                 && !SessionContext.current().config().rebuildOr(false);
         String imgTask = null, imgKey = null;
-        if (useCache) {
+        if (tarballPath != null && useCache) {
             List<String> tokens = ImagePlans.imageTokens(
                     layout.mainJar(),
                     depJars,
@@ -102,7 +103,8 @@ final class ImageWrite {
             imgTask = ActionKey.qualifiedTaskId(TaskNames.WRITE_IMAGE, tarballPath);
             imgKey = ActionKey.forArtifact(imgTask, BuildIdentity.cacheKeyVersion(), tokens);
             var hit = ac.lookup(imgKey);
-            if (hit.isPresent() && ac.restoreArtifacts(hit.get(), tarballPath.getParent())) {
+            Path tarballDir = Objects.requireNonNull(tarballPath.getParent(), "tarball dir");
+            if (hit.isPresent() && ac.restoreArtifacts(hit.get(), tarballDir)) {
                 ctx.put(ImagePlans.IMAGE_REF, "");
                 ctx.label(tarballPath.getFileName() + " up-to-date");
                 ctx.progress(1);
@@ -136,8 +138,13 @@ final class ImageWrite {
             ctx.error("image", Errors.text(e));
             throw e;
         }
-        if (useCache) {
-            ac.storeArtifacts(imgTask, imgKey, Map.of(), tarballPath.getParent(), List.of(tarballPath));
+        if (tarballPath != null && useCache) {
+            ac.storeArtifacts(
+                    imgTask,
+                    imgKey,
+                    Map.of(),
+                    Objects.requireNonNull(tarballPath.getParent(), "tarball dir"),
+                    List.of(tarballPath));
         }
         ctx.progress(1);
     }

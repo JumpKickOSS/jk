@@ -78,13 +78,14 @@ public final class GitSourceResolution {
         Map<String, Lockfile.Artifact.GitInfo> gitInfo = new LinkedHashMap<>();
         for (List<Dependency> list : byScope.values()) {
             for (Dependency d : list) {
-                if (!d.isGit()) continue;
-                String key = sourceKey(d.gitSource());
+                GitSource git = d.gitSource();
+                if (git == null) continue;
+                String key = sourceKey(git);
                 if (bySource.containsKey(key)) continue;
                 // Tag-rewrite canary: an immutable ref must still point where the
                 // lockfile says before we build it.
-                verifyImmutableRef(materializer, d.gitSource(), lockedShas);
-                GitSourceMaterializer.Materialized m = materializer.materialize(d.gitSource());
+                verifyImmutableRef(materializer, git, lockedShas);
+                GitSourceMaterializer.Materialized m = materializer.materialize(git);
                 bySource.put(key, m);
                 extraRepos.add(new MavenRepo(
                         RepoArtifactResolver.GIT_SOURCE_PREFIX + m.coordinate() + ":" + m.version(),
@@ -175,8 +176,7 @@ public final class GitSourceResolution {
      * ref → nothing to check.
      */
     private static void verifyImmutableRef(
-            GitSourceMaterializer materializer, @Nullable GitSource source, Map<String, String> lockedShas)
-            throws IOException {
+            GitSourceMaterializer materializer, GitSource source, Map<String, String> lockedShas) throws IOException {
         if (lockedShas.isEmpty()) return;
         GitRefSpec ref = source.ref();
         if (!(ref instanceof GitRefSpec.Tag) && !(ref instanceof GitRefSpec.Rev)) return;

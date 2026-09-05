@@ -45,6 +45,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
@@ -235,15 +236,18 @@ public final class InstallPlans {
             @Nullable String refStr,
             boolean refresh)
             throws IOException {
+        String url = Objects.requireNonNull(canonical, "canonical git url");
+        String origin = Objects.requireNonNull(expanded, "git url");
+        String wanted = Objects.requireNonNull(refStr, "git ref");
         IOException tagFailure;
         try {
-            GitSource asTag = new GitSource(canonical, expanded, new GitRefSpec.Tag(refStr), null, true, false);
+            GitSource asTag = new GitSource(url, origin, new GitRefSpec.Tag(wanted), null, true, false);
             return fetcher.fetch(asTag, refresh);
         } catch (IOException e) {
             tagFailure = e;
         }
         try {
-            GitSource asBranch = new GitSource(canonical, expanded, new GitRefSpec.Branch(refStr), null, true, false);
+            GitSource asBranch = new GitSource(url, origin, new GitRefSpec.Branch(wanted), null, true, false);
             return fetcher.fetch(asBranch, refresh);
         } catch (IOException branchFailure) {
             IOException wrapped = new IOException("ref `" + refStr + "` not found as tag or branch in " + expanded

@@ -225,7 +225,8 @@ public final class EngineServer implements AutoCloseable {
     /** One-minute chore loop (config mtime + wall-clock 12 h maintenance). */
     private @Nullable EngineMaintenance engineMaintenance;
 
-    public EngineServer(EnginePaths.Paths paths, JkEngineConfig config, String version, Consumer<String> log) {
+    public EngineServer(
+            EnginePaths.Paths paths, JkEngineConfig config, String version, @Nullable Consumer<String> log) {
         this(paths, config, null, version, BuildIdentity.buildId(), log);
     }
 
@@ -251,7 +252,7 @@ public final class EngineServer implements AutoCloseable {
             @Nullable JkHttpConfig httpConfig,
             String version,
             String buildId,
-            Consumer<String> log) {
+            @Nullable Consumer<String> log) {
         this.paths = paths;
         this.config = config;
         this.httpConfig = httpConfig;

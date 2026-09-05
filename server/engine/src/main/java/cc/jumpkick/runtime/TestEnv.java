@@ -13,6 +13,8 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The environment handed to a forked test JVM: the caller's machine env ({@link BuildEnv#MACHINE}),
@@ -135,11 +137,9 @@ public final class TestEnv {
         // opts in — Gradle does the same.
         out.put("JK_HTTP_ENABLED", "false");
         out.put("JK_HTTP_PORT", "0");
+        Function<String, @Nullable String> buildEnv = BuildEnv.forModule(moduleDir);
         out.putAll(TestEnvValues.resolve(
-                project.build().testEnv(),
-                moduleDir,
-                target,
-                new TestEnvValues.Mode.Launch(BuildEnv.forModule(moduleDir))));
+                project.build().testEnv(), moduleDir, target, new TestEnvValues.Mode.Launch(buildEnv::apply)));
         return Map.copyOf(out);
     }
 }

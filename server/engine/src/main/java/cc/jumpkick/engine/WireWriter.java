@@ -4,7 +4,6 @@ package cc.jumpkick.engine;
 import cc.jumpkick.run.JkThreads;
 import java.io.BufferedWriter;
 import java.io.IOException;
-import java.io.InterruptedIOException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import org.jspecify.annotations.NullMarked;
@@ -37,8 +36,8 @@ public final class WireWriter {
      * channel, and the JDK closes such a channel when the thread blocked in it is interrupted — so a
      * cancelled runner interrupted mid-progress-line would take the client's stream down for every
      * producer sharing it, before the terminal and {@code job-finish} could reach the client. Nobody
-     * interrupts the io pool. A caller interrupted while waiting gets an {@link InterruptedIOException}
-     * and keeps its interrupt flag; the line still lands, and the socket stays open.
+     * interrupts the io pool, so the line lands and the socket stays open; the caller keeps its
+     * interrupt flag.
      */
     public static void send(BufferedWriter writer, String line) throws IOException {
         Future<?> written = JkThreads.io().submit(() -> {
@@ -50,16 +49,43 @@ public final class WireWriter {
             return null;
         });
         try {
-            written.get();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new InterruptedIOException("interrupted while a wire line was being written");
+            await(written);
         } catch (ExecutionException e) {
             Throwable cause = e.getCause();
             if (cause instanceof IOException io) throw io;
             if (cause instanceof RuntimeException re) throw re;
             if (cause instanceof Error err) throw err;
             throw new IOException(cause);
+        }
+    }
+
+    /**
+     * Wait for the line to reach the socket, even when the caller is already interrupted.
+     *
+     * <p>{@code Future.get} throws immediately if the caller's interrupt flag is set, so an
+     * interrupted producer used to hand its line to the pool and return — and the next producer's
+     * line, submitted from a thread that was not interrupted, could overtake it. A {@code progress}
+     * frame arriving after {@code job-finish} is not a stream the client can read: the terminal is
+     * where it stops. Ordering is the reason this class exists, and it cannot depend on which
+     * callers happened to be interrupted.
+     *
+     * <p>The wait is bounded by the write itself. The io pool is never interrupted, and a gone
+     * client fails the write rather than blocking it. The caller's interrupt is restored before
+     * this returns, so a cancelled runner still sees its cancellation on the next check.
+     */
+    private static void await(Future<?> written) throws ExecutionException {
+        boolean interrupted = false;
+        try {
+            while (true) {
+                try {
+                    written.get();
+                    return;
+                } catch (InterruptedException e) {
+                    interrupted = true;
+                }
+            }
+        } finally {
+            if (interrupted) Thread.currentThread().interrupt();
         }
     }
 

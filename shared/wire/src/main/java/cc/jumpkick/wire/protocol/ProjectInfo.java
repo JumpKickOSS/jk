@@ -86,9 +86,9 @@ public record ProjectInfo(
         return group + ":" + name;
     }
 
-    public static ProjectInfo error(String message) {
+    public static ProjectInfo error(@Nullable String message) {
         return new ProjectInfo(
-                message,
+                message == null ? "" : message,
                 "",
                 "",
                 "",

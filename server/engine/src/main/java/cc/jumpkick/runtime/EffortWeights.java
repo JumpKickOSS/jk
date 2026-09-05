@@ -857,7 +857,7 @@ public final class EffortWeights {
      * the current/PATH tiers, and a spec <em>would install</em>). {@code resolve} is offline; the
      * download it predicts is the network cost. Anything resolvable on disk → 1.
      */
-    public static int jdkWeight(Path dir, Path jdksDir) {
+    public static int jdkWeight(Path dir, @Nullable Path jdksDir) {
         try {
             JkBuild project = JkBuildParser.parse(dir.resolve(ManifestPaths.MANIFEST));
             Path lf = LockPaths.lockFile(dir);

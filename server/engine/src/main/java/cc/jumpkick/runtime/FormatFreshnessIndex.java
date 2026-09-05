@@ -27,7 +27,7 @@ public final class FormatFreshnessIndex {
 
     static final String VERSION = "format-freshness-v1";
 
-    private final Path file;
+    private final @Nullable Path file;
     private final Path projectDir;
     private final Map<String, Entry> entries;
 

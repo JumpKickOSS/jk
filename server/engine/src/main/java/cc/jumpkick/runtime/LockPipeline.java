@@ -679,11 +679,9 @@ public final class LockPipeline {
      * Returns null for a Java project or when resolution can't complete.
      */
     static @Nullable String resolveKotlinVersion(JkBuild effective, RepoGroup repos) {
-        if (!effective.project().isKotlin()) return null;
-        return highestMatch(
-                effective.project().kotlin(),
-                repos,
-                Coordinate.of("org.jetbrains.kotlin", "kotlin-compiler-embeddable", "any"));
+        VersionSelector kotlin = effective.project().kotlin();
+        if (kotlin == null) return null;
+        return highestMatch(kotlin, repos, Coordinate.of("org.jetbrains.kotlin", "kotlin-compiler-embeddable", "any"));
     }
 
     /**
@@ -691,9 +689,9 @@ public final class LockPipeline {
      * Returns null for a non-Scala project or when resolution can't complete.
      */
     static @Nullable String resolveScalaVersion(JkBuild effective, RepoGroup repos) {
-        if (!effective.project().isScala()) return null;
-        return highestMatch(
-                effective.project().scala(), repos, Coordinate.of("org.scala-lang", "scala3-compiler_3", "any"));
+        VersionSelector scala = effective.project().scala();
+        if (scala == null) return null;
+        return highestMatch(scala, repos, Coordinate.of("org.scala-lang", "scala3-compiler_3", "any"));
     }
 
     private static @Nullable String highestMatch(VersionSelector selector, RepoGroup repos, Coordinate coord) {

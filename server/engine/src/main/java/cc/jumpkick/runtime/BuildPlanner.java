@@ -161,7 +161,7 @@ public final class BuildPlanner {
             int workerCount,
             int estimatedTestCount,
             @Nullable String profileName,
-            Path jdksDir,
+            @Nullable Path jdksDir,
             boolean skipTests,
             boolean verbose,
             boolean testOnly,
@@ -169,7 +169,7 @@ public final class BuildPlanner {
             Set<Path> projectModules,
             Session session,
             String variant,
-            Map<String, String> clientEnv,
+            @Nullable Map<String, String> clientEnv,
             boolean ephemeralActions) {
 
         /**
@@ -182,7 +182,7 @@ public final class BuildPlanner {
                 Path cache,
                 Path buildFile,
                 Path lockFile,
-                @Nullable Path lockDir,
+                Path lockDir,
                 int workerCount,
                 int estimatedTestCount,
                 @Nullable String profileName,
