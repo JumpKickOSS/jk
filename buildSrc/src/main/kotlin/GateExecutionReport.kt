@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import java.io.File
+import java.io.IOException
+import java.nio.file.FileVisitResult
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.SimpleFileVisitor
+import java.nio.file.attribute.BasicFileAttributes
 import java.util.concurrent.ConcurrentHashMap
 import javax.xml.parsers.DocumentBuilderFactory
 import org.gradle.api.file.DirectoryProperty
@@ -107,18 +113,26 @@ abstract class GateExecutionReport :
     private fun resultsByModuleTier(): Map<String, Tally> {
         val root = parameters.rootDir.get().asFile
         val acc = mutableMapOf<String, IntArray>()
-        root
-            .walkTopDown()
-            .onEnter { it.name != ".git" }
-            .filter { it.isDirectory && it.parentFile?.name == "test-results" }
-            .forEach { tierDir ->
-                // <module>/build/test-results/<tier>
-                val module = tierDir.parentFile?.parentFile?.parentFile?.name ?: return@forEach
-                val a = acc.getOrPut("$module/${tierDir.name}") { IntArray(4) }
-                tierDir
-                    .listFiles { f: File -> f.name.startsWith("TEST-") && f.extension == "xml" }
-                    ?.forEach { xml -> addSuite(xml, a) }
-            }
+        Files.walkFileTree(
+            root.toPath(),
+            object : SimpleFileVisitor<Path>() {
+                override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult {
+                    val name = dir.fileName?.toString() ?: return FileVisitResult.CONTINUE
+                    if (name == ".git") return FileVisitResult.SKIP_SUBTREE
+                    if (dir.parent?.fileName?.toString() != "test-results") return FileVisitResult.CONTINUE
+                    // <module>/build/test-results/<tier>
+                    val tierDir = dir.toFile()
+                    val module = tierDir.parentFile?.parentFile?.parentFile?.name ?: return FileVisitResult.SKIP_SUBTREE
+                    val a = acc.getOrPut("$module/$name") { IntArray(4) }
+                    tierDir
+                        .listFiles { f: File -> f.name.startsWith("TEST-") && f.extension == "xml" }
+                        ?.forEach { xml -> addSuite(xml, a) }
+                    return FileVisitResult.SKIP_SUBTREE
+                }
+
+                override fun visitFileFailed(file: Path, exc: IOException): FileVisitResult = FileVisitResult.CONTINUE
+            },
+        )
         return acc.mapValues { (_, a) -> Tally(a[0], a[1], a[2], a[3]) }
     }
 

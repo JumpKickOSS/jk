@@ -2988,6 +2988,42 @@ guard("G59", "checkNoHistoricalNarration") {
     }
 }
 
+guard("G65", "checkNoLinkFollowingDelete") {
+    val owner = "buildSrc/src/main/kotlin/Trees.kt"
+    val banned = Regex("\\.deleteRecursively\\(|\\.walkTopDown\\(|\\.walkBottomUp\\(|(?<!Files)\\.walk\\(\\)|(?<!NO)FOLLOW_LINKS")
+    var candidates = 0
+    var ownerWalksSafely = false
+    val hits = mutableListOf<String>()
+    treeFiles.forEach { f ->
+        val here = rel(f)
+        val kotlin = here.endsWith(".kt") || here.endsWith(".kts")
+        val buildLogic = here.endsWith(".gradle.kts") || here.startsWith("buildSrc/src/") || here.startsWith(".jk/")
+        if (!kotlin || !buildLogic) return@forEach
+        candidates++
+        val code = blankNonCode(text(f))
+        if (here == owner) {
+            ownerWalksSafely = code.contains("walkFileTree") && !banned.containsMatchIn(code)
+            return@forEach
+        }
+        code.lines().forEachIndexed { i, line ->
+            banned.find(line)?.let { hits.add("$here:${i + 1}: ${it.value}") }
+        }
+    }
+    if (candidates < 40) {
+        error("Scanned only $candidates build files — the tree walk broke and this guard is passing vacuously.")
+    }
+    if (!ownerWalksSafely) {
+        error("$owner no longer walks with walkFileTree and nothing else, so the one exempted owner is not"
+            + " the safe walk this guard assumes. Fix the owner or retire the guard deliberately.")
+    }
+    if (hits.isNotEmpty()) {
+        error("a tree walk in build logic that follows symbolic links:\n"
+            + bullets(hits.sorted())
+            + "\n  Call Trees.deleteNoFollow or Trees.exceedsNoFollow: a link is one entry there, never a"
+            + " directory to enter, so a stable JDK pointer in a test home cannot reach the install behind it.")
+    }
+}
+
 guard("G60", "checkOneJsonSplicer") {
     val owner = "shared/host/src/main/java/cc/jumpkick/jsonl/Jsonl.java"
     val chop = Regex("(?s)\\.substring\\(0,\\s*\\w+\\.length\\(\\)\\s*-\\s*1\\)[^;]*\"\\}\"")

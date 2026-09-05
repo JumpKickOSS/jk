@@ -911,6 +911,64 @@ tasks.register("checkOneJsonSplicer") {
     }
 }
 
+// Guard G65: build logic never walks through a symbolic link to delete or size a tree.
+//
+// The warm test home under build/test-jk-home is swept by the shared test convention when it
+// grows past a cap, and the CLI tier's jdk verbs leave stable pointers in that home that are
+// links to whatever JDK the probes found on the machine — the developer's own SDKMAN installs.
+// Kotlin's File.deleteRecursively descends through a link to a directory and deletes what it
+// finds there, and File.walkTopDown sizes through it too, so the linked installs both pushed the
+// home over its cap and were emptied by the sweep that followed, leaving the JVM the build was
+// running on with no `java` to fork. Trees.deleteNoFollow and Trees.exceedsNoFollow are the one
+// place build logic may walk a tree to delete or size it, and neither follows a link.
+tasks.register("checkNoLinkFollowingDelete") {
+    group = "verification"
+    description = "Fail when build logic deletes or sizes a tree with a walk that follows symbolic links"
+    val scanned = rootTextTree()
+    inputs.files(scanned).withPropertyName("scanned")
+    val treeRoot = layout.projectDirectory.asFile
+    val owner = "buildSrc/src/main/kotlin/Trees.kt"
+    val stamp = layout.buildDirectory.file("guards/no-link-following-delete.ok")
+    outputs.file(stamp)
+    doLast {
+        val banned = Regex("\\.deleteRecursively\\(|\\.walkTopDown\\(|\\.walkBottomUp\\(|(?<!Files)\\.walk\\(\\)|(?<!NO)FOLLOW_LINKS")
+        var candidates = 0
+        var ownerWalksSafely = false
+        val hits = mutableListOf<String>()
+        scanned.files.sorted().forEach { f ->
+            val rel = f.relativeTo(treeRoot).invariantSeparatorsPath
+            val kotlin = rel.endsWith(".kt") || rel.endsWith(".kts")
+            val buildLogic = rel.endsWith(".gradle.kts") || rel.startsWith("buildSrc/src/") || rel.startsWith(".jk/")
+            if (!kotlin || !buildLogic) return@forEach
+            candidates++
+            // Comment- and string-blind: the rule's own wording, and a guard that names the banned
+            // call inside a string, are not calls.
+            val code = GuardScan.blankNonCode(f.readText())
+            if (rel == owner) {
+                ownerWalksSafely = code.contains("walkFileTree") && !banned.containsMatchIn(code)
+                return@forEach
+            }
+            code.lines().forEachIndexed { i, line ->
+                banned.find(line)?.let { hits += "$rel:${i + 1}: ${it.value}" }
+            }
+        }
+        if (candidates < 40) {
+            throw GradleException("checkNoLinkFollowingDelete scanned only $candidates build files; the tree walk broke")
+        }
+        if (!ownerWalksSafely) {
+            throw GradleException("$owner no longer walks with walkFileTree and nothing else, so the one exempted"
+                    + " owner is not the safe walk this guard assumes. Fix the owner or retire the guard deliberately.")
+        }
+        if (hits.isNotEmpty()) {
+            throw GradleException("a tree walk in build logic that follows symbolic links:\n"
+                    + hits.sorted().joinToString("\n")
+                    + "\n  Call Trees.deleteNoFollow or Trees.exceedsNoFollow: a link is one entry there, never"
+                    + " a directory to enter, so a stable JDK pointer in a test home cannot reach the install behind it.")
+        }
+        stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
+    }
+}
+
 // Guard: the published stage taxonomy is read off BuildStage, never retyped. The list drifted the
 // same way twice in four days (train, then publish, landed without a doc touch), and
 // machine-output.md is a JSONL contract consumers integrate against — a "closed set" missing live

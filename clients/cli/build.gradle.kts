@@ -419,8 +419,8 @@ val cliTestTmpDirShort =
 // runs are exactly the ones that leave the most litter under the tmp root.
 val cleanCliTestSandboxes by tasks.registering {
     doLast {
-        cliTestStateDirShort.deleteRecursively()
-        cliTestTmpDirShort.deleteRecursively()
+        Trees.deleteNoFollow(cliTestStateDirShort)
+        Trees.deleteNoFollow(cliTestTmpDirShort)
     }
 }
 

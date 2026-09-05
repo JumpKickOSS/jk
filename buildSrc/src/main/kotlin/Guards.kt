@@ -639,6 +639,16 @@ object Guards {
                 description = "Fail when a JavaCompile task in this module is disabled",
             ),
             spec(
+                65,
+                "checkNoLinkFollowingDelete",
+                "build logic deleting or sizing a tree with a walk that follows symbolic links — Kotlin's `File.deleteRecursively`, `walkTopDown`, `walkBottomUp` and `File.walk`, or `FOLLOW_LINKS` — anywhere but `buildSrc/src/main/kotlin/Trees.kt`",
+                "ban in both builds, comment- and string-blind; self-fail when the owner stops using `walkFileTree` or the scan sees too few build files",
+                GuardHome.ROOT,
+                tableTask = "`checkNoLinkFollowingDelete` (root project) + `.jk/after-build.kts`",
+                attach = emptySet(),
+                description = "Fail when build logic deletes or sizes a tree through symbolic links",
+            ),
+            spec(
                 61,
                 "checkInstallTestsRedirectM2",
                 "a test that runs the install verb without `--m2-dir`, which publishes the fixture into the developer's real `~/.m2`",

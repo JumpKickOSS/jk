@@ -243,7 +243,7 @@ fun stageWorkerMavenRepo(storeRoot: File, jar: File, pomXml: String) {
  */
 fun assertFirstPartyJarsHavePoms(repoRoot: File) {
     val firstParty = repoRoot.resolve("repos/jk-local/cc/jumpkick")
-    val jars = firstParty.walkTopDown().filter { it.isFile && it.extension == "jar" }.toList()
+    val jars = Trees.regularFiles(firstParty).filter { it.extension == "jar" }
     if (jars.isEmpty()) {
         throw GradleException("stageWorkerRepo staged no jar under $firstParty, so the jar+POM"
                 + " check verified nothing. The worker jar itself belongs there — fix the staging.")
@@ -297,7 +297,7 @@ tasks.register("stageWorkerRepo") {
     outputs.dir(workerRepoDir)
     doLast {
         val dest = workerRepoDir.get().asFile
-        dest.deleteRecursively()
+        Trees.deleteNoFollow(dest)
         stageWorkerMavenRepo(dest, jarProvider.get().asFile, workerPomXml())
         assertFirstPartyJarsHavePoms(dest)
     }
@@ -332,7 +332,7 @@ tasks.register("installLocal") {
         }
         val staged = workerRepoDir.get().asFile
         if (staged.isDirectory) {
-            staged.walkTopDown().filter { it.isFile }.forEach { src ->
+            Trees.regularFiles(staged).forEach { src ->
                 copyReplacing(src, storeRoot.resolve(src.relativeTo(staged).path))
             }
         } else {

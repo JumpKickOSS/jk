@@ -18,18 +18,6 @@ fun TestTier.applyTo(spec: org.gradle.api.tasks.testing.junitplatform.JUnitPlatf
 
 fun tier(name: String): TestTier = TestTiers.all.first { it.task == name }
 
-fun treeExceeds(root: File, capBytes: Long): Boolean {
-    if (!root.isDirectory) return false
-    var total = 0L
-    root.walkTopDown().forEach { f ->
-        if (f.isFile) {
-            total += f.length()
-            if (total > capBytes) return true
-        }
-    }
-    return false
-}
-
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
     // Isolate tests from the developer's real product layout. JK_HOME relocates the whole tree.
@@ -45,9 +33,11 @@ tasks.withType<Test>().configureEach {
         val weekMs = 7L * 24 * 60 * 60 * 1000
         val capBytes = 1L shl 30
         val stale = stamp.isFile && System.currentTimeMillis() - stamp.lastModified() > weekMs
-        if (stale || treeExceeds(home, capBytes)) {
-            home.deleteRecursively()
-            File(testM2).deleteRecursively()
+        // The home holds stable JDK pointers that are links to installs made by other tools, and a
+        // sweep that walks through a link empties the install it points at. Neither walk here follows one.
+        if (stale || Trees.exceedsNoFollow(home, capBytes)) {
+            Trees.deleteNoFollow(home)
+            Trees.deleteNoFollow(File(testM2))
         }
         if (!stamp.isFile) {
             home.mkdirs()
