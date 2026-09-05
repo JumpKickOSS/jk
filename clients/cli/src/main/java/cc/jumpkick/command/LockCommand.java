@@ -206,7 +206,8 @@ public final class LockCommand implements CliCommand {
             }
 
             @Override
-            public void onModuleFinish(String moduleDir, BuildPlanResult result, EngineRequests.LockCounts counts) {
+            public void onModuleFinish(
+                    @Nullable String moduleDir, BuildPlanResult result, EngineRequests.LockCounts counts) {
                 view.stepDone(coordByDir.get(moduleDir), "lock", result.success());
                 // Authoritative package count from the written lockfile (not wire event cardinality).
                 if (counts != null && counts.packages() >= 0) {

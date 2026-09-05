@@ -18,6 +18,7 @@ import cc.jumpkick.cli.tui.Wizard;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.NerdFontCaps;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.jdk.DefaultGraalPolicy;
 import cc.jumpkick.jdk.HostPlatform;
@@ -190,7 +191,7 @@ public final class JdkInstallCommand implements CliCommand {
                     try {
                         ctx.put(CATALOG, service.fetchCatalog(feedUrl, cacheFile, refresh, ctx::output));
                     } catch (Exception e) {
-                        ctx.error("catalog", e.getMessage());
+                        ctx.error("catalog", Errors.text(e));
                         throw new RuntimeException(e);
                     }
                     ctx.progress(1);
@@ -213,7 +214,7 @@ public final class JdkInstallCommand implements CliCommand {
                         try {
                             chosen = runWizard(catalog, os, arch, showAll);
                         } catch (RuntimeException e) {
-                            ctx.error("wizard", e.getMessage());
+                            ctx.error("wizard", Errors.text(e));
                             throw e;
                         }
                         entry = chosen.entry();
@@ -274,7 +275,7 @@ public final class JdkInstallCommand implements CliCommand {
                     try (InstallView view = new InstallView(entry)) {
                         ctx.put(INSTALLED, service.install(entry, registry, refresh, view));
                     } catch (Exception e) {
-                        ctx.error("install", e.getMessage());
+                        ctx.error("install", Errors.text(e));
                         throw new RuntimeException(e);
                     }
                     ctx.progress(1);

@@ -65,7 +65,7 @@ public final class CompileCommand implements CliCommand {
     }
 
     @Override
-    public @Nullable int run(Invocation in) throws IOException, InterruptedException {
+    public int run(Invocation in) throws IOException, InterruptedException {
         String profileName = in.value("profile").orElse(null);
         Path cacheDir = in.value("cache-dir").map(CliPaths::abs).orElse(null);
         GlobalOptions global = GlobalOptions.from(in);
@@ -111,7 +111,7 @@ public final class CompileCommand implements CliCommand {
         var session = SessionContext.current();
         for (Path moduleDir : List.of(dir)) {
             ConsoleSpec spec = new ConsoleSpec(
-                    "Compile", r -> Theme.colorize("Compiled", Theme.active().focused()), r -> "Compilation failed");
+                    "Compile", r -> Theme.paint("Compiled", Theme.active().focused()), r -> "Compilation failed");
             String target = BuildCommand.buildTarget(moduleDir.resolve(ManifestPaths.MANIFEST), moduleDir);
             BuildPlanResult result;
             try {

@@ -8,6 +8,7 @@ import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import java.time.Duration;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Base for listeners that render plan events as {@link JsonlShape} lines (progress rider
@@ -37,7 +38,7 @@ abstract class JsonlEmittingListener implements BuildPlanListener {
     }
 
     @Override
-    public void stepStart(String step, String group, int ticks) {
+    public void stepStart(String step, @Nullable String group, int ticks) {
         line(JsonlShape.stepStart(step, wire(group), ticks), EngineProtocol.TASK_START);
     }
 
@@ -85,7 +86,7 @@ abstract class JsonlEmittingListener implements BuildPlanListener {
     }
 
     @Override
-    public void stepFinish(String step, String group, TaskStatus s, Duration d, Duration waited) {
+    public void stepFinish(String step, @Nullable String group, TaskStatus s, Duration d, Duration waited) {
         line(JsonlShape.stepFinish(step, wire(group), s, d, waited), EngineProtocol.TASK_FINISH);
     }
 
@@ -98,7 +99,7 @@ abstract class JsonlEmittingListener implements BuildPlanListener {
         emit(JsonlShape.withProgress(raw), !JsonlShape.HOT_TYPES.contains(type));
     }
 
-    private static String wire(String group) {
+    private static String wire(@Nullable String group) {
         return group == null ? "" : group;
     }
 }

@@ -30,11 +30,7 @@ public final class EngineCatalogFreshen {
      * #freshenCatalogIfRunning} instead, which never starts an engine.
      */
     public static void freshenCatalog(
-            EnginePaths.@Nullable Paths paths,
-            String catalog,
-            boolean offline,
-            @Nullable String url,
-            @Nullable Path cacheFile) {
+            EnginePaths.Paths paths, String catalog, boolean offline, @Nullable String url, @Nullable Path cacheFile) {
         if (offline) return; // nothing to freshen without a network
         try {
             EngineSpawn.ensure(paths, Jk.VERSION);

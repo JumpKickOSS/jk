@@ -60,7 +60,7 @@ public final class PathDisplay {
      * @param workingDir the command's working directory (see {@link GlobalOptions#workingDir()}); may
      *     be {@code null} to use the JVM cwd
      */
-    public static String of(Path target, Path workingDir) {
+    public static String of(Path target, @Nullable Path workingDir) {
         Path abs = target.toAbsolutePath().normalize();
         Path anchor = closestAnchor(abs, workingDir);
         // DirKeys rewrites only real Windows paths — a POSIX file named a\b displays verbatim.
@@ -70,7 +70,7 @@ public final class PathDisplay {
     }
 
     /** The deepest ancestor of {@code abs} among the working dir, workspace root, and git root. */
-    private static @Nullable Path closestAnchor(Path abs, Path workingDir) {
+    private static @Nullable Path closestAnchor(Path abs, @Nullable Path workingDir) {
         Path best = null;
         for (Path anchor : new Path[] {cwd(workingDir), workspaceRoot(abs), gitRoot(abs)}) {
             if (anchor != null

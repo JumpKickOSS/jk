@@ -143,7 +143,7 @@ public final class EngineAotCommand implements CliCommand {
                 + String.format("%-" + LABEL_FIELD + "s", label + ":") + " " + value);
     }
 
-    private static boolean notBlank(String s) {
+    private static boolean notBlank(@Nullable String s) {
         return s != null && !s.isBlank();
     }
 
@@ -151,7 +151,7 @@ public final class EngineAotCommand implements CliCommand {
         return notBlank(s) ? s : "—";
     }
 
-    private static String joinNonBlank(String sep, String... parts) {
+    private static String joinNonBlank(String sep, @Nullable String... parts) {
         StringBuilder sb = new StringBuilder();
         for (String p : parts) {
             if (!notBlank(p)) continue;

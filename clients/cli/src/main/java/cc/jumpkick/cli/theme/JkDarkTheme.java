@@ -344,7 +344,7 @@ public final class JkDarkTheme implements Theme {
     }
 
     @Override
-    public Style bright(@Nullable Rgb c) {
+    public Style bright(Rgb c) {
         return withColor(Style.EMPTY, c);
     }
 

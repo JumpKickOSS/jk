@@ -131,7 +131,7 @@ final class EngineReads {
     }
 
     static CacheInventoryAck cacheInventory(
-            EnginePaths.@Nullable Paths paths,
+            EnginePaths.Paths paths,
             String query,
             Path cache,
             @Nullable Path store,
@@ -157,7 +157,7 @@ final class EngineReads {
     static CatalogReadAck catalogRead(
             EnginePaths.Paths paths,
             Path dir,
-            @Nullable Path cache,
+            Path cache,
             String query,
             List<String> terms,
             boolean offline,
@@ -190,7 +190,7 @@ final class EngineReads {
      * rather than throwing, since the caller falls back to whatever the local cache already holds.
      */
     static void freshenCatalog(
-            EnginePaths.@Nullable Paths paths,
+            EnginePaths.Paths paths,
             String catalog,
             boolean offline,
             @Nullable String url,
@@ -199,7 +199,7 @@ final class EngineReads {
     }
 
     static void freshenCatalog(
-            EnginePaths.@Nullable Paths paths,
+            EnginePaths.Paths paths,
             String catalog,
             boolean offline,
             @Nullable String url,
@@ -235,12 +235,7 @@ final class EngineReads {
 
     /** One engine-hosted tree render: the marker-tagged tree; throws with the engine's message. */
     static String treeRender(
-            EnginePaths.Paths paths,
-            @Nullable Path dir,
-            int maxDepth,
-            boolean flatten,
-            boolean stack,
-            List<String> scopes)
+            EnginePaths.Paths paths, Path dir, int maxDepth, boolean flatten, boolean stack, List<String> scopes)
             throws IOException {
         return request(
                 paths,
@@ -349,7 +344,7 @@ final class EngineReads {
                 DenyReport::decode);
     }
 
-    static ProjectInfo projectInfo(EnginePaths.@Nullable Paths paths, Path dir) throws IOException {
+    static ProjectInfo projectInfo(EnginePaths.Paths paths, Path dir) throws IOException {
         return projectInfo(paths, dir, null, null, false);
     }
 
@@ -394,7 +389,7 @@ final class EngineReads {
     static ExecPlan execPlan(
             EnginePaths.Paths paths,
             Path dir,
-            @Nullable Path cache,
+            Path cache,
             @Nullable String kind,
             @Nullable String mainOverride,
             @Nullable String binName,

@@ -114,7 +114,7 @@ public final class NewWizard {
             List<NewJdkCandidate> candidates,
             @Nullable JdkCatalog catalog,
             String groupGuess,
-            NewCommand.@Nullable ParentInfo parent,
+            NewCommand.ParentInfo parent,
             boolean hasDefaultJdk,
             boolean isInit) {
         boolean module = parent != null;
@@ -355,7 +355,7 @@ public final class NewWizard {
         return majors.stream().mapToInt(Integer::intValue).max().orElse(JdkLts.OFFLINE_LATEST_LTS);
     }
 
-    static int jdkFloor(Answers answers, NewCommand.@Nullable ParentInfo parent) {
+    static int jdkFloor(Answers answers, NewCommand.ParentInfo parent) {
         if (parent != null) return parent.javaRelease();
         if ("kotlin".equalsIgnoreCase(answers.get("lang"))) return 0;
         String v = answers.get("javaVersion");

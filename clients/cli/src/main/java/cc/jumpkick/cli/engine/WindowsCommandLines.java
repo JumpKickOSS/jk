@@ -30,7 +30,7 @@ import org.jspecify.annotations.Nullable;
 final class WindowsCommandLines {
 
     /** One query serves a whole command: {@code jk engine status} enumerates the fleet three times. */
-    private static volatile Map<Long, @Nullable String> snapshot;
+    private static volatile @Nullable Map<Long, String> snapshot;
 
     private static volatile long takenAtNanos;
 

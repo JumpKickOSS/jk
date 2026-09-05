@@ -418,7 +418,7 @@ public class IdeEngineClient {
             }
 
             @Override
-            public void stepStart(String step, String group, int ticks) {
+            public void stepStart(String step, @Nullable String group, int ticks) {
                 progress.onStepStart(step, group == null ? "" : group);
             }
 
@@ -435,7 +435,8 @@ public class IdeEngineClient {
             }
 
             @Override
-            public void stepFinish(String step, String group, TaskStatus status, Duration duration, Duration waited) {
+            public void stepFinish(
+                    String step, @Nullable String group, TaskStatus status, Duration duration, Duration waited) {
                 boolean ok = status == TaskStatus.SUCCESS || status == TaskStatus.SKIPPED;
                 progress.onStepFinish(step, ok, status == null ? "" : status.name());
             }

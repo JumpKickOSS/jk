@@ -62,7 +62,7 @@ public final class AggregateModuleListener implements BuildPlanListener {
     }
 
     @Override
-    public void stepStart(String step, String group, int ticks) {
+    public void stepStart(String step, @Nullable String group, int ticks) {
         cm.stepRunning(module, step, group == null ? "" : group);
     }
 
@@ -187,7 +187,7 @@ public final class AggregateModuleListener implements BuildPlanListener {
     }
 
     @Override
-    public void stepFinish(String step, String group, TaskStatus status, Duration duration, Duration waited) {
+    public void stepFinish(String step, @Nullable String group, TaskStatus status, Duration duration, Duration waited) {
         flushBufferedFailure();
         // SKIPPED = cache hit / up-to-date — still a green terminal (matches BuildPlan.isOk).
         // Treating it as failure painted the live tree red with "Failed" while the build

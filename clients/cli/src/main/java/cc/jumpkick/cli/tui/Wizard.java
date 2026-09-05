@@ -457,7 +457,7 @@ public final class Wizard {
             return out;
         }
 
-        private static int indexOf(List<Choice> choices, String id) {
+        private static int indexOf(List<Choice> choices, @Nullable String id) {
             for (var i = 0; i < choices.size(); i++) {
                 if (choices.get(i).id().equals(id)) {
                     return i;
@@ -694,7 +694,7 @@ public final class Wizard {
             var lines = new ArrayList<>(
                     ansiLines(new RadioButtonGroup(buttons, rs.orientation()).render(RenderContext.current())));
             if (rs.hasCustomOption() && rs.orientation() == Orientation.VERTICAL && !error.isEmpty()) {
-                lines.add(Styled.of(Theme.colorize(error, Theme.active().error()), Style.EMPTY));
+                lines.add(Styled.of(Theme.paint(error, Theme.active().error()), Style.EMPTY));
             }
             return lines;
         }

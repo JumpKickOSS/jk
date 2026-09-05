@@ -8,6 +8,7 @@ import cc.jumpkick.terminal.Style;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Single-line Java/Kotlin highlighter for compiler-diagnostic snippets (Prism-inspired ordered
@@ -218,7 +219,7 @@ public final class SyntaxHighlight {
         return render(src, caretCol, rules, null);
     }
 
-    static String render(String src, int caretCol, List<Rule> rules, Rgb bg) {
+    static String render(String src, int caretCol, List<Rule> rules, @Nullable Rgb bg) {
         StringBuilder out = new StringBuilder();
         int n = src.length();
         Matcher[] matchers = new Matcher[rules.size()];
@@ -258,7 +259,7 @@ public final class SyntaxHighlight {
      * is split so the caret character keeps the token color and gains an underline, while its
      * neighbours stay plainly colored.
      */
-    private static void emit(StringBuilder out, String src, int s, int e, Role role, int caretCol, Rgb bg) {
+    private static void emit(StringBuilder out, String src, int s, int e, Role role, int caretCol, @Nullable Rgb bg) {
         Style style = styleFor(role);
         if (bg != null) style = Theme.active().withBackground(style, bg);
         if (caretCol < s || caretCol >= e) {

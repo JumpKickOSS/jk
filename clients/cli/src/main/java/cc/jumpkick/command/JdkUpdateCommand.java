@@ -304,7 +304,7 @@ public final class JdkUpdateCommand implements CliCommand {
      * suggested name encodes the major, so this never crosses majors.
      */
     private static Optional<JdkCatalog.Entry> latestPointRelease(
-            @Nullable JdkCatalog catalog, String installedId, String os, String arch) {
+            JdkCatalog catalog, String installedId, String os, String arch) {
         JdkCatalog.Entry best = null;
         for (JdkCatalog.Entry e : catalog.entries()) {
             if (e.preview()) continue;

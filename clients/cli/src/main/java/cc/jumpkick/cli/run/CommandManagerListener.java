@@ -101,7 +101,7 @@ public final class CommandManagerListener implements BuildPlanListener {
     }
 
     @Override
-    public void stepStart(String step, String group, int ticks) {
+    public void stepStart(String step, @Nullable String group, int ticks) {
         cm.stepRunning(module, step, group == null ? "" : group);
     }
 
@@ -174,7 +174,7 @@ public final class CommandManagerListener implements BuildPlanListener {
     }
 
     @Override
-    public void stepFinish(String step, String group, TaskStatus status, Duration duration, Duration waited) {
+    public void stepFinish(String step, @Nullable String group, TaskStatus status, Duration duration, Duration waited) {
         flushBufferedFailure();
         // SKIPPED = cache hit / up-to-date — green terminal, same as SUCCESS.
         boolean ok = status == TaskStatus.SUCCESS || status == TaskStatus.SKIPPED;

@@ -7,6 +7,7 @@ import cc.jumpkick.run.BuildPlanView;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.run.TestFailureInfo;
 import java.time.Duration;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Fans every {@link BuildPlanListener} callback out to two delegates. Needed because an engine-hosted
@@ -45,7 +46,7 @@ public final class CompositeBuildPlanListener implements BuildPlanListener {
     }
 
     @Override
-    public void stepStart(String step, String group, int ticks) {
+    public void stepStart(String step, @Nullable String group, int ticks) {
         a.stepStart(step, group, ticks);
         b.stepStart(step, group, ticks);
     }
@@ -99,7 +100,7 @@ public final class CompositeBuildPlanListener implements BuildPlanListener {
     }
 
     @Override
-    public void stepFinish(String step, String group, TaskStatus status, Duration duration, Duration waited) {
+    public void stepFinish(String step, @Nullable String group, TaskStatus status, Duration duration, Duration waited) {
         a.stepFinish(step, group, status, duration, waited);
         b.stepFinish(step, group, status, duration, waited);
     }

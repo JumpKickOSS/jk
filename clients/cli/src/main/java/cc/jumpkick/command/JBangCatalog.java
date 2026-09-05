@@ -46,7 +46,7 @@ final class JBangCatalog {
      * {@code originAllowed} are fetched — the forge-fallback list may mix trusted and untrusted
      * origins, and the untrusted ones must not be contacted.
      */
-    static Resolved resolve(@Nullable String target, Http http, Predicate<String> originAllowed)
+    static Resolved resolve(String target, Http http, Predicate<String> originAllowed)
             throws IOException, InterruptedException {
         int at = target.indexOf('@');
         String alias = target.substring(0, at);

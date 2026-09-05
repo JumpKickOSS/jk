@@ -104,7 +104,7 @@ public sealed interface WizardStep
             String prompt,
             List<Choice> choices,
             Function<Answers, List<Choice>> choicesFn,
-            String defaultChoice,
+            @Nullable String defaultChoice,
             Orientation orientation,
             String customPlaceholder,
             Predicate<Answers> shouldRun)

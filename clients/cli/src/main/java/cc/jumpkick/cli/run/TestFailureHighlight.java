@@ -991,12 +991,12 @@ public final class TestFailureHighlight {
         return raw;
     }
 
-    private static String rail(String paintedContent, Theme t) {
+    private static String rail(@Nullable String paintedContent, Theme t) {
         if (!t.isAnsi()) return railPlain(paintedContent);
         return " " + Theme.colorize(RAIL, t.error()) + " " + (paintedContent == null ? "" : paintedContent);
     }
 
-    private static String railPlain(String raw) {
+    private static String railPlain(@Nullable String raw) {
         return " | " + (raw == null ? "" : raw);
     }
 

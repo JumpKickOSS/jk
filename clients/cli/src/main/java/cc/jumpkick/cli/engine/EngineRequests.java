@@ -22,7 +22,7 @@ public final class EngineRequests {
             Path entryDir,
             Path cache,
             @Nullable Path jdksDir,
-            @Nullable int workers,
+            int workers,
             @Nullable String profile,
             boolean verbose,
             boolean offline,
@@ -193,7 +193,7 @@ public final class EngineRequests {
             List<String> features,
             boolean noDefaultFeatures,
             boolean sources,
-            URI repoUrl,
+            @Nullable URI repoUrl,
             boolean offline,
             boolean force,
             boolean verbose,
@@ -273,7 +273,7 @@ public final class EngineRequests {
             onPackage(dir, name, version);
         }
 
-        default void onModuleFinish(String dir, BuildPlanResult result, LockCounts counts) {}
+        default void onModuleFinish(@Nullable String dir, BuildPlanResult result, LockCounts counts) {}
     }
 
     /** A finished lock/update module's written-lockfile counts ({@code -1} when the plan failed before writing). */

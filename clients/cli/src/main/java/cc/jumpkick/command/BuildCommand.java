@@ -29,6 +29,7 @@ import cc.jumpkick.cli.tui.ModuleScopeHint;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -417,7 +418,7 @@ public final class BuildCommand implements CliCommand {
             long elapsed = BuildTails.elapsedMsSince(start);
             run.finishEvent(false, elapsed);
             CommandWedge.printFail("Build", e.getMessage());
-            if (session != null) session.error(e.getMessage());
+            if (session != null) session.error(Errors.text(e));
             notifyBuild(BuildNotify.Outcome.FAILED, entryDir, 0, elapsed);
             return Exit.SOFTWARE;
         }
@@ -627,7 +628,7 @@ public final class BuildCommand implements CliCommand {
             return 1;
         } catch (IOException e) {
             CommandWedge.printFail("Build", e.getMessage());
-            if (session != null) session.error(e.getMessage());
+            if (session != null) session.error(Errors.text(e));
             return Exit.SOFTWARE;
         }
         if (session != null) {

@@ -34,7 +34,7 @@ final class JkxLink {
         SKIPPED_NO_EXE
     }
 
-    record Result(Status status, Path path) {}
+    record Result(Status status, @Nullable Path path) {}
 
     private JkxLink() {}
 

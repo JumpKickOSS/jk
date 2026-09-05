@@ -91,10 +91,7 @@ final class NewChrome {
      * registered as one of its modules, else null.
      */
     static void created(
-            @Nullable NewInputs inputs,
-            @Nullable String parentProject,
-            boolean isInit,
-            @Nullable TerminalSession terminal) {
+            NewInputs inputs, @Nullable String parentProject, boolean isInit, @Nullable TerminalSession terminal) {
         String line = successLine(inputs, parentProject, isInit);
         if (terminal == null) {
             CommandWedge.printLine(line);
@@ -111,14 +108,14 @@ final class NewChrome {
         Style accent = Theme.active().brightCyan().bold();
         if (parentProject != null) {
             String message = "New module "
-                    + Theme.colorize(inputs.name(), accent)
+                    + Theme.paint(inputs.name(), accent)
                     + Theme.colorize(" added to project ", Theme.active().normalGray())
                     + Theme.colorize(parentProject, accent);
             return JkWedge.chipLine(Glyphs.CHECK, "New Module", nerdFont, message);
         }
         String chipCommand = isInit ? "Init" : "New Project";
         String action = isInit ? "Initialized" : "Created new";
-        String message = action + " project " + Theme.colorize(inputs.name(), accent);
+        String message = action + " project " + Theme.paint(inputs.name(), accent);
         return JkWedge.chipLine(Glyphs.CHECK, chipCommand, nerdFont, message);
     }
 }

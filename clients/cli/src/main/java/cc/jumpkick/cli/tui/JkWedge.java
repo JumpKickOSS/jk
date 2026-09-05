@@ -313,7 +313,7 @@ public final class JkWedge implements Widget {
     }
 
     /** {@code "jk: {ascii-icon} {command} >"} optionally followed by {@code " " + message}. */
-    public static String plainWedge(String asciiIcon, String command, String message) {
+    public static String plainWedge(String asciiIcon, String command, @Nullable String message) {
         String cmd = PlainAscii.transform(command == null ? "" : command);
         String icon = asciiIcon == null || asciiIcon.isEmpty() ? Glyphs.BULLET_PLAIN : asciiIcon;
         String head = PLAIN_LINE_PREFIX + icon + " " + cmd + " >";

@@ -31,9 +31,9 @@ public final class CwdModuleScope {
     public record Resolved(
             Path workspaceRoot,
             Path workingDir,
-            String modulesSpec,
+            @Nullable String modulesSpec,
             boolean inferredFromCwd,
-            String focusLabel,
+            @Nullable String focusLabel,
             boolean workspaceMember) {
 
         /** True when a module selector is in effect (explicit or inferred). */

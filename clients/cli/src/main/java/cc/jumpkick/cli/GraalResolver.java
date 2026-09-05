@@ -39,7 +39,7 @@ import org.jspecify.annotations.Nullable;
  */
 public final class GraalResolver {
 
-    private final Path jdksDir; // nullable — overrides the default jdks root
+    private final @Nullable Path jdksDir; // overrides the default jdks root
     private final boolean assumeYes; // --yes: install without prompting
     private final Map<String, Path> memo = new HashMap<>();
 

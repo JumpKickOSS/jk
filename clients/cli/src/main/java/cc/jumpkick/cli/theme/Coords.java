@@ -34,18 +34,18 @@ public final class Coords {
     }
 
     /** {@code [coord-group]group[/]:[coord-name]artifact[/]:[coord-version]version[/]}. */
-    public static RichText richGav(String group, String artifact, String version) {
+    public static RichText richGav(@Nullable String group, @Nullable String artifact, String version) {
         return richGa(group, artifact).plus(RichText.plain(":")).plus(RichText.styled(version, "coord-version"));
     }
 
     /** Cyan group + bold bright-cyan artifact ({@code coord-group} / {@code coord-name}). */
-    public static RichText richGa(String group, String artifact) {
+    public static RichText richGa(@Nullable String group, @Nullable String artifact) {
         return RichText.styled(group, "coord-group")
                 .plus(RichText.plain(":"))
                 .plus(RichText.styled(artifact, "coord-name"));
     }
 
-    public static RichText richModule(String moduleKey, String version) {
+    public static RichText richModule(String moduleKey, @Nullable String version) {
         if (moduleKey == null || moduleKey.isEmpty()) return RichText.empty();
         int colon = moduleKey.indexOf(':');
         RichText base = colon < 0
@@ -60,7 +60,7 @@ public final class Coords {
     }
 
     /** {@code [blue]group[/]:[cyan]artifact[/]:[bright-blue]version[/]}. */
-    public static String gav(String group, String artifact, String version) {
+    public static String gav(@Nullable String group, @Nullable String artifact, String version) {
         return richGav(group, artifact, version).render();
     }
 
@@ -89,7 +89,7 @@ public final class Coords {
      * a key with no {@code ':'} is treated as an artifact short-name and rendered in bright-cyan. A
      * {@code null}/blank version omits the version segment.
      */
-    public static String module(String moduleKey, String version) {
+    public static String module(String moduleKey, @Nullable String version) {
         return richModule(moduleKey, version).render();
     }
 

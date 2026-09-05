@@ -15,7 +15,7 @@ final class ModuleSelectors {
 
     private ModuleSelectors() {}
 
-    static List<String> tokens(String modulesSpec, @Nullable String affectedSince) {
+    static List<String> tokens(@Nullable String modulesSpec, @Nullable String affectedSince) {
         return tokens(modulesSpec, affectedSince, false);
     }
 

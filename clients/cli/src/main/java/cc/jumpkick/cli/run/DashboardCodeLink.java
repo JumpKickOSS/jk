@@ -123,12 +123,18 @@ public final class DashboardCodeLink {
      * files pane uses the red error-line decoration (neutral {@code ?line=} stays soft/cyan).
      * {@code msg=} carries a short compiler / failure note for the Monaco hover.
      */
-    public static String fileUrl(String httpBase, String projectId, String workspaceRelPath, int line) {
+    public static @Nullable String fileUrl(
+            @Nullable String httpBase, @Nullable String projectId, @Nullable String workspaceRelPath, int line) {
         return fileUrl(httpBase, projectId, workspaceRelPath, line, 0, null);
     }
 
     /** Like {@link #fileUrl(String, String, String, int)} with a 1-based column ({@code &col=C}). */
-    public static String fileUrl(String httpBase, String projectId, String workspaceRelPath, int line, int col) {
+    public static @Nullable String fileUrl(
+            @Nullable String httpBase,
+            @Nullable String projectId,
+            @Nullable String workspaceRelPath,
+            int line,
+            int col) {
         return fileUrl(httpBase, projectId, workspaceRelPath, line, col, null);
     }
 
@@ -136,8 +142,13 @@ public final class DashboardCodeLink {
      * Like {@link #fileUrl(String, String, String, int, int)} with a compiler / failure note
      * ({@code &msg=}), shown as a Monaco hover on the jump mark.
      */
-    public static String fileUrl(
-            String httpBase, String projectId, String workspaceRelPath, int line, int col, String msg) {
+    public static @Nullable String fileUrl(
+            @Nullable String httpBase,
+            @Nullable String projectId,
+            @Nullable String workspaceRelPath,
+            int line,
+            int col,
+            @Nullable String msg) {
         if (httpBase == null || httpBase.isBlank()) return null;
         if (projectId == null || projectId.isBlank()) return null;
         if (workspaceRelPath == null || workspaceRelPath.isBlank()) return null;
@@ -174,7 +185,7 @@ public final class DashboardCodeLink {
     }
 
     /** Like {@link #urlForSnippet(String, int, int)} with a hover note. */
-    public static @Nullable String urlForSnippet(String moduleRelativePath, int line, int col, String msg) {
+    public static @Nullable String urlForSnippet(String moduleRelativePath, int line, int col, @Nullable String msg) {
         Scope scope = SCOPE.get();
         Path checkout = scope != null && scope.checkoutDir != null
                 ? scope.checkoutDir
@@ -189,7 +200,7 @@ public final class DashboardCodeLink {
         return fileUrl(http, projectId, rel, line, col, msg);
     }
 
-    static String clipMsg(String msg) {
+    static String clipMsg(@Nullable String msg) {
         if (msg == null) return "";
         String t = msg.strip();
         if (t.isEmpty()) return "";

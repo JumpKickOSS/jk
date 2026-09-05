@@ -132,7 +132,7 @@ public final class EngineStatusCommand implements CliCommand {
         String http = describeHttp(s, paths);
         // OSC-8 hyperlink; visible text is white to match other status values.
         String webUi = s.httpUrl() != null
-                ? Ansi.hyperlink(http, Theme.colorize(http, Theme.active().brightWhite()))
+                ? Ansi.hyperlink(http, Theme.paint(http, Theme.active().brightWhite()))
                 : http;
         detail("Web UI", webUi);
         if (s.mcpUrl() != null) {

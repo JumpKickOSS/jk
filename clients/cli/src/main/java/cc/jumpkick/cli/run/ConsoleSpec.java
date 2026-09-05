@@ -21,7 +21,7 @@ public record ConsoleSpec(
         Function<BuildPlanResult, String> onFailure,
         boolean chip,
         boolean exec,
-        Function<BuildPlanResult, String> softFailure) {
+        @Nullable Function<BuildPlanResult, String> softFailure) {
 
     /** Default generic success/failure finish ({@code chip}/{@code exec} false). */
     public ConsoleSpec(
@@ -147,7 +147,7 @@ public record ConsoleSpec(
     }
 
     /** Compiler diagnostics (javac/kotlinc) carry a verbatim multi-line block. */
-    public static boolean isCompilerCode(String code) {
+    public static boolean isCompilerCode(@Nullable String code) {
         return "javac".equals(code) || "kotlinc".equals(code) || "groovyc".equals(code);
     }
 

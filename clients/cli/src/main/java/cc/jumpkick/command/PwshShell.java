@@ -3,7 +3,6 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.host.Os;
 import java.nio.file.Path;
-import org.jspecify.annotations.Nullable;
 
 /**
  * PowerShell 7+ ({@code pwsh}). Windows PowerShell 5.1 is {@link WindowsPowerShellShell}.
@@ -16,7 +15,7 @@ public final class PwshShell implements Shell {
     }
 
     @Override
-    public String setEnv(String key, @Nullable String value) {
+    public String setEnv(String key, String value) {
         return "$Env:" + key + " = '" + pwshEscape(value) + "'\n";
     }
 

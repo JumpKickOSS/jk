@@ -41,7 +41,7 @@ public final class PlainAscii {
      * Rewrite known Unicode chrome to ASCII when the active theme is plain; otherwise return
      * {@code text} unchanged. Null-safe.
      */
-    public static @Nullable String apply(String text) {
+    public static @Nullable String apply(@Nullable String text) {
         if (text == null || text.isEmpty()) return text;
         if (Theme.active().isAnsi()) return text;
         return transform(text);
@@ -52,7 +52,12 @@ public final class PlainAscii {
      * mode). Null-safe.
      */
     public static @Nullable String transform(@Nullable String text) {
-        if (text == null || text.isEmpty()) return text;
+        return text == null ? null : rewrite(text);
+    }
+
+    /** As {@link #transform} for text the caller already has — present in, present out. */
+    public static String rewrite(String text) {
+        if (text.isEmpty()) return text;
         // Fast path: most lines are already pure ASCII.
         if (isAscii(text)) return text;
         StringBuilder sb = new StringBuilder(text.length() + 8);

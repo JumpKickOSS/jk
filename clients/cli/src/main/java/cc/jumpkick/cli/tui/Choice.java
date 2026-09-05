@@ -10,11 +10,11 @@ import org.jspecify.annotations.Nullable;
  * {@code richLabelFn} for multi-style labels (focused flag in the {@code Boolean} arg).
  */
 public record Choice(
-        String id,
+        @Nullable String id,
         @Nullable String label,
         String hint,
         @Nullable Function<Answers, String> hintFn,
-        Function<Boolean, Styled> richLabelFn) {
+        @Nullable Function<Boolean, Styled> richLabelFn) {
 
     public Choice {
         if (hint == null) hint = "";

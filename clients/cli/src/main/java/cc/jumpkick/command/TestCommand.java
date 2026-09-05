@@ -28,6 +28,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.config.WorkspaceScan;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Profiles;
@@ -249,7 +250,7 @@ public final class TestCommand implements CliCommand {
                     testResultHolder);
         } catch (IOException e) {
             CommandWedge.printFail("Test", e.getMessage());
-            if (session != null) session.error(e.getMessage());
+            if (session != null) session.error(Errors.text(e));
             return finishSession(Exit.SOFTWARE);
         }
         testResult = testResultHolder[0];
@@ -286,7 +287,7 @@ public final class TestCommand implements CliCommand {
             report = EngineClient.runAffectedTests(EnginePaths.current(), dir, testSelection, since, modulesSpec);
         } catch (IOException e) {
             CommandWedge.printFail("Test", e.getMessage());
-            if (session != null) session.error(e.getMessage());
+            if (session != null) session.error(Errors.text(e));
             return Exit.SOFTWARE;
         }
         if (global != null && global.outputIsJson()) {

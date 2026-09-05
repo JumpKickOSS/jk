@@ -13,6 +13,7 @@ import cc.jumpkick.cli.tui.Interactivity;
 import cc.jumpkick.cli.tui.Spinner;
 import cc.jumpkick.cli.tui.Wizard;
 import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.jdk.DefaultGraalPolicy;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.IntellijJdkDir;
@@ -302,7 +303,7 @@ public final class JdkUninstallCommand implements CliCommand {
                             uninstallOne(v, registry);
                             ctx.progress(1);
                         } catch (IOException e) {
-                            ctx.error("delete", e.getMessage());
+                            ctx.error("delete", Errors.text(e));
                             throw new RuntimeException(e);
                         }
                     }
@@ -335,7 +336,7 @@ public final class JdkUninstallCommand implements CliCommand {
                                         .toList(),
                                 m -> ctx.warn("pointer", m));
                     } catch (IOException e) {
-                        ctx.error("reconcile", e.getMessage());
+                        ctx.error("reconcile", Errors.text(e));
                         throw new RuntimeException(e);
                     }
                     ctx.progress(1);

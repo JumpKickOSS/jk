@@ -67,9 +67,9 @@ public final class EnsureFreshLock {
      * @param ownSpinner when true and {@code spinner} is null, show a short-lived lock spinner
      */
     public static int ensure(
-            Path projectDir,
+            @Nullable Path projectDir,
             Path cacheDir,
-            GlobalOptions global,
+            @Nullable GlobalOptions global,
             String wedgeCommand,
             Spinner spinner,
             boolean ownSpinner) {
@@ -83,7 +83,11 @@ public final class EnsureFreshLock {
      * fail its freshen against the declared repos.
      */
     public static int ensure(
-            Path projectDir, Path cacheDir, GlobalOptions global, String wedgeCommand, @Nullable URI repoUrl) {
+            @Nullable Path projectDir,
+            Path cacheDir,
+            @Nullable GlobalOptions global,
+            String wedgeCommand,
+            @Nullable URI repoUrl) {
         return ensure(projectDir, cacheDir, global, wedgeCommand, null, true, repoUrl);
     }
 
@@ -93,9 +97,9 @@ public final class EnsureFreshLock {
      * lock at all — is a warning, never an exit.
      */
     public static void ensureBestEffort(
-            Path projectDir,
+            @Nullable Path projectDir,
             Path cacheDir,
-            GlobalOptions global,
+            @Nullable GlobalOptions global,
             @Nullable String wedgeCommand,
             @Nullable URI repoUrl) {
         int code = ensure(projectDir, cacheDir, global, wedgeCommand, null, true, repoUrl);
@@ -105,13 +109,15 @@ public final class EnsureFreshLock {
     }
 
     private static int ensure(
-            Path projectDir,
-            Path cacheDir,
-            GlobalOptions global,
-            String wedgeCommand,
-            Spinner spinner,
+            @Nullable Path projectDir,
+            @Nullable Path cacheDir,
+            @Nullable GlobalOptions global,
+            @Nullable String wedgeCommand,
+            @Nullable Spinner spinner,
             boolean ownSpinner,
-            URI repoUrl) {
+            @Nullable URI repoUrl) {
+        if (projectDir == null) return Exit.SUCCESS; // nothing to lock outside a project
+        GlobalOptions opts = global == null ? new GlobalOptions() : global;
         Path dir = projectDir.toAbsolutePath().normalize();
         if (!Files.isRegularFile(dir.resolve(ManifestPaths.MANIFEST))) {
             return Exit.SUCCESS; // caller already validated project
@@ -126,12 +132,12 @@ public final class EnsureFreshLock {
         String chip = wedgeCommand == null || wedgeCommand.isBlank() ? "Lock" : wedgeCommand;
 
         EnginePrewarm.ensure();
-        boolean showOwn = ownSpinner && spinner == null && isInteractiveAuto(global) && !global.outputIsJson();
+        boolean showOwn = ownSpinner && spinner == null && isInteractiveAuto(opts) && !opts.outputIsJson();
         try {
             // freshen=true: an invisible freshen must never float pinned versions, not even under
             // -F — that is `jk lock -F` / `jk update`'s job.
             EngineRequests.LockRequest req = new EngineRequests.LockRequest(
-                    dir, cache, List.of(), false, false, repoUrl, global.offline, global.force, global.verbose, true);
+                    dir, cache, List.of(), false, false, repoUrl, opts.offline, opts.force, opts.verbose, true);
 
             EngineRequests.LockHandler quiet = new EngineRequests.LockHandler() {
                 @Override
@@ -185,7 +191,7 @@ public final class EnsureFreshLock {
      * stays a hard failure: the command has nothing to read. Any live wedge spinner is settled
      * before writing, so error lines never interleave with repaints.
      */
-    static int failSoftOrHard(Path dir, String chip, String err, int exitCode, Spinner spinner) {
+    static int failSoftOrHard(Path dir, String chip, String err, int exitCode, @Nullable Spinner spinner) {
         if (spinner != null) spinner.close(); // idempotent; caller's try-with-resources may close again
         boolean unsatisfiable = err != null && err.contains("Cannot resolve dependencies");
         Path lockFile = LockPaths.lockFile(lockOwnerOrSelf(dir));
@@ -207,7 +213,7 @@ public final class EnsureFreshLock {
     }
 
     /** True when interactive AUTO mode (live spinners allowed). */
-    public static boolean isInteractiveAuto(GlobalOptions global) {
+    public static boolean isInteractiveAuto(@Nullable GlobalOptions global) {
         try {
             return BuildPlanConsole.isInteractiveTerminal()
                     && BuildPlanConsole.modeFor(global) == BuildPlanConsole.Mode.AUTO;

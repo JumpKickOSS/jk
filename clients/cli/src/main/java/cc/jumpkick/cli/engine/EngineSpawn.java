@@ -66,7 +66,7 @@ public final class EngineSpawn {
         return expected.startsWith(hs.buildId());
     }
 
-    static EngineProbe.Handshake ensure(EnginePaths.@Nullable Paths paths, String clientVersion) throws IOException {
+    static EngineProbe.Handshake ensure(EnginePaths.Paths paths, String clientVersion) throws IOException {
         Path socket = EnginePaths.activeSocket(paths);
         Reachability reach = probe(socket, clientVersion);
         if (reach instanceof Reachability.Live live) {
@@ -162,7 +162,7 @@ public final class EngineSpawn {
      * Bring up a fresh engine with AOT self-heal: TRAIN/USE/NONE, drop a bad cache and retry once,
      * and wait out slow cold starts rather than reporting "could not start".
      */
-    private static EngineProbe.Handshake startWithSelfHeal(EnginePaths.@Nullable Paths paths, String clientVersion)
+    private static EngineProbe.Handshake startWithSelfHeal(EnginePaths.Paths paths, String clientVersion)
             throws IOException {
         return startOnce(paths, clientVersion, resolveEngineTarget(paths, clientVersion));
     }
@@ -170,8 +170,8 @@ public final class EngineSpawn {
     /**
      * Spawn and wait until serving; re-picks AOT mode per attempt and retries once on early exit.
      */
-    private static EngineProbe.Handshake startOnce(
-            EnginePaths.@Nullable Paths paths, String clientVersion, EngineTarget target) throws IOException {
+    private static EngineProbe.Handshake startOnce(EnginePaths.Paths paths, String clientVersion, EngineTarget target)
+            throws IOException {
         for (int attempt = 0; attempt < 2; attempt++) {
             AotMode mode = chooseAotMode(target);
             StartResult r = awaitStartup(
@@ -233,8 +233,7 @@ public final class EngineSpawn {
     record EngineJdk(Path home, JdkVendor vendor, String version) {}
 
     /** Resolve everything the spawn/mode decision needs, self-healing a missing/skewed engine jar. */
-    private static EngineTarget resolveEngineTarget(EnginePaths.@Nullable Paths paths, String clientVersion)
-            throws IOException {
+    private static EngineTarget resolveEngineTarget(EnginePaths.Paths paths, String clientVersion) throws IOException {
         // Engine spawn is java -cp lib/jk-engine/<jar> EngineMain (or JK_ENGINE_EXE). The client binary
         // path is only needed for cache-prune re-invocation elsewhere — not for the daemon spawn.
         Optional<EngineArtifact> resolved = resolveEngineArtifact(System.getenv("JK_ENGINE_EXE"), clientVersion);
@@ -424,7 +423,7 @@ public final class EngineSpawn {
      * build bump (Temurin 25.0.3→25.0.4), or a vendor swap all yield a fresh key that trains cleanly.
      * Stale {@code .aot}/{@code .noaot} files from previous keys are deleted best-effort here.
      */
-    static Path aotCachePath(EnginePaths.@Nullable Paths paths, Path engineJar, EngineJdk jdk) {
+    static Path aotCachePath(EnginePaths.Paths paths, Path engineJar, EngineJdk jdk) {
         return aotCachePath(paths, engineJar, jdk, Jk.VERSION);
     }
 
@@ -745,7 +744,7 @@ public final class EngineSpawn {
     }
 
     private static StartResult awaitStartup(
-            EnginePaths.@Nullable Paths paths, String clientVersion, Duration timeout, Process spawned) {
+            EnginePaths.Paths paths, String clientVersion, Duration timeout, Process spawned) {
         long deadline = System.nanoTime() + timeout.toNanos();
         while (System.nanoTime() < deadline) {
             Optional<EngineProbe.Handshake> h = EngineProbe.handshake(EnginePaths.activeSocket(paths), clientVersion);

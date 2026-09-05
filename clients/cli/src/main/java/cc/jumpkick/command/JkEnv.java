@@ -49,10 +49,10 @@ public final class JkEnv {
 
     public JkEnv(
             JdkRegistry registry,
-            String basePath,
+            @Nullable String basePath,
             JdkInventory globalDefault,
-            String liveJavaHome,
-            String liveGraalHome) {
+            @Nullable String liveJavaHome,
+            @Nullable String liveGraalHome) {
         this.registry = registry;
         this.basePath = basePath == null ? "" : basePath;
         this.globalDefault = globalDefault;

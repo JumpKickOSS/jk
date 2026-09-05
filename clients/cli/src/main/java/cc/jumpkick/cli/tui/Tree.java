@@ -46,7 +46,7 @@ public final class Tree implements Widget {
     private static final String CHILD_PAD = "   ";
 
     private final @Nullable JkWedge title;
-    private Node root;
+    private @Nullable Node root;
     private final List<Node> children = new ArrayList<>();
     private Gap gap = Gap.CHILDREN;
 
@@ -89,7 +89,7 @@ public final class Tree implements Widget {
         return title;
     }
 
-    public Node root() {
+    public @Nullable Node root() {
         return root;
     }
 
@@ -238,9 +238,9 @@ public final class Tree implements Widget {
         return sb.toString();
     }
 
-    private static @Nullable String rail(String unicode, RenderContext ctx) {
+    private static @Nullable String rail(@Nullable String unicode, RenderContext ctx) {
         if (!ctx.ansi()) {
-            return switch (unicode) {
+            return switch (unicode == null ? "" : unicode) {
                 case BRANCH -> BRANCH_PLAIN;
                 case LAST -> LAST_PLAIN;
                 case SPINE -> SPINE_PLAIN;
@@ -330,16 +330,16 @@ public final class Tree implements Widget {
     /** One tree node: optional bullet/pill/label, hanging body, child nodes. */
     public static final class Node {
 
-        private Icon bullet;
-        private Pill pill;
+        private @Nullable Icon bullet;
+        private @Nullable Pill pill;
         private RichText label;
         private final List<RichText> body = new ArrayList<>();
         private final List<Node> children = new ArrayList<>();
-        private Gap gap;
-        private BodyFit bodyFit;
+        private @Nullable Gap gap;
+        private @Nullable BodyFit bodyFit;
         private boolean flush;
 
-        private Node(Icon bullet, Pill pill, RichText label) {
+        private Node(@Nullable Icon bullet, @Nullable Pill pill, @Nullable RichText label) {
             this.bullet = bullet;
             this.pill = pill;
             this.label = label == null ? RichText.empty() : label;
@@ -410,11 +410,11 @@ public final class Tree implements Widget {
             return this;
         }
 
-        public Icon bullet() {
+        public @Nullable Icon bullet() {
             return bullet;
         }
 
-        public Pill pill() {
+        public @Nullable Pill pill() {
             return pill;
         }
 

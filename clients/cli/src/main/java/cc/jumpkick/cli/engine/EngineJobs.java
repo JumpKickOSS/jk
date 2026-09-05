@@ -192,7 +192,7 @@ final class EngineJobs {
      */
     static BuildPlanResult runSingleBuild(
             EnginePaths.Paths paths,
-            EngineRequests.@Nullable SingleBuildRequest req,
+            EngineRequests.SingleBuildRequest req,
             @Nullable Function<List<Task>, BuildPlanListener> listenerFactory,
             TestSummary @Nullable [] testResultOut,
             String[] buildOutcomeOut)

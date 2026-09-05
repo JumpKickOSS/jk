@@ -360,7 +360,12 @@ public interface Theme {
      * through {@link PlainAscii}.
      */
     static @Nullable String colorize(@Nullable String text, Style style) {
-        if (!Theme.active().isAnsi()) return PlainAscii.transform(text);
+        return text == null ? null : paint(text, style);
+    }
+
+    /** As {@link #colorize} for text the caller already has — present in, present out. */
+    static String paint(String text, Style style) {
+        if (!Theme.active().isAnsi()) return PlainAscii.rewrite(text);
         return style.render(text);
     }
 }

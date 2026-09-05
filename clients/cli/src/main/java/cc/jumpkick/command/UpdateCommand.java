@@ -124,7 +124,8 @@ public final class UpdateCommand implements CliCommand {
             }
 
             @Override
-            public void onModuleFinish(String moduleDir, BuildPlanResult result, EngineRequests.LockCounts counts) {
+            public void onModuleFinish(
+                    @Nullable String moduleDir, BuildPlanResult result, EngineRequests.LockCounts counts) {
                 if (result.success() && !global.outputIsJson()) {
                     printUpdatedLine(
                             LockPaths.lockFile(Path.of(moduleDir)), (int) counts.packages(), global.workingDir());

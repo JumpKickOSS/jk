@@ -433,12 +433,12 @@ public final class TreeCommand implements CliCommand {
         Theme t = Theme.active();
         // Root-line: ● bullet (dark-gray) + bold coord colors — no pill or background.
         return new DependencyTreeStyle.Styling(
-                s -> Theme.colorize(s, t.darkGray()),
-                s -> Theme.colorize(s, Coords.groupStyle()),
-                s -> Theme.colorize(s, Coords.artifactStyle()),
-                s -> Theme.colorize(s, Coords.versionStyle()),
+                s -> Theme.paint(s, t.darkGray()),
+                s -> Theme.paint(s, Coords.groupStyle()),
+                s -> Theme.paint(s, Coords.artifactStyle()),
+                s -> Theme.paint(s, Coords.versionStyle()),
                 // ⎋ back-reference rows: the whole entry in bright-black (= darkGray).
-                s -> Theme.colorize(s, t.darkGray()),
+                s -> Theme.paint(s, t.darkGray()),
                 scopeBadge,
                 TreeCommand::boldCoord);
     }

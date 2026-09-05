@@ -54,7 +54,7 @@ public final class BspServer {
         return t;
     });
     private final AtomicReference<Future<?>> activeJob = new AtomicReference<>();
-    private final AtomicReference<Path> activeDir = new AtomicReference<>();
+    private final AtomicReference<@Nullable Path> activeDir = new AtomicReference<>();
 
     private @Nullable IdeWireModel cachedModel;
     private @Nullable ProjectInfo cachedInfo;
@@ -562,7 +562,7 @@ public final class BspServer {
         }
     }
 
-    private static List<String> stringList(Object value) {
+    private static List<String> stringList(@Nullable Object value) {
         if (!(value instanceof List<?> list)) return List.of();
         List<String> out = new ArrayList<>(list.size());
         for (Object o : list) {

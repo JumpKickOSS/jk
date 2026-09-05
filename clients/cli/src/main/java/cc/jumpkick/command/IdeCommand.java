@@ -12,6 +12,7 @@ import cc.jumpkick.command.ide.IdeSupport;
 import cc.jumpkick.command.ide.IdeTarget;
 import cc.jumpkick.command.ide.IntellijIdeGenerator;
 import cc.jumpkick.command.ide.VscodeIdeGenerator;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
@@ -110,7 +111,7 @@ public final class IdeCommand implements CliCommand {
                     IdeGeneration result = gen.generate(model);
                     chrome.addDetails(result.details());
                 } catch (IdeSupport.IdeException e) {
-                    chrome.fail(e.getMessage());
+                    chrome.fail(Errors.text(e));
                     return e.code();
                 } catch (Exception e) {
                     chrome.fail(

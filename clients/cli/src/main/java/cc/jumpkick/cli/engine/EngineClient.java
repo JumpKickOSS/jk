@@ -122,7 +122,7 @@ public final class EngineClient {
     }
 
     public static CacheInventoryAck cacheInventory(
-            EnginePaths.@Nullable Paths paths,
+            EnginePaths.Paths paths,
             String query,
             Path cache,
             @Nullable Path store,
@@ -164,12 +164,12 @@ public final class EngineClient {
      * Project summary (PROJECT_INFO) — replaces client-side project-file peeks.
      * In-process twin under test/no-engine.
      */
-    public static ProjectInfo projectInfo(EnginePaths.@Nullable Paths paths, Path dir) throws IOException {
+    public static ProjectInfo projectInfo(EnginePaths.Paths paths, Path dir) throws IOException {
         return projectInfo(paths, dir, null, null);
     }
 
-    public static ProjectInfo projectInfo(
-            EnginePaths.@Nullable Paths paths, Path dir, String modules, String affectedSince) throws IOException {
+    public static ProjectInfo projectInfo(EnginePaths.Paths paths, Path dir, String modules, String affectedSince)
+            throws IOException {
         return projectInfo(paths, dir, modules, affectedSince, false);
     }
 

@@ -60,7 +60,6 @@ public final class RunCommand {
     GlobalOptions global;
 
     /** Package-private: {@code jk tool run <dir>} delegates a jk-project directory here. */
-    @Nullable
     int runProject(Path projectDir, List<String> appArgs) throws IOException, InterruptedException {
         // Engine computes the exec plan (artifact preference, classpath, main-class scan)
         // after the build. Workspace roots build the whole graph, then pick a module to run.

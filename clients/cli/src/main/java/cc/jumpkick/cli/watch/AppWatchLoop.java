@@ -171,10 +171,10 @@ public final class AppWatchLoop {
         return report.exit();
     }
 
-    private @Nullable boolean build(Path projectDir, Path cache) throws IOException, InterruptedException {
+    private boolean build(Path projectDir, Path cache) throws IOException, InterruptedException {
         String target = BuildCommand.buildTarget(projectDir.resolve(ManifestPaths.MANIFEST), projectDir);
         ConsoleSpec spec = new ConsoleSpec(
-                "Watch", r -> Theme.colorize("Built", Theme.active().focused()), r -> "Build failed");
+                "Watch", r -> Theme.paint("Built", Theme.active().focused()), r -> "Build failed");
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
         var session = SessionContext.current();
         BuildPlanResult result = EngineClient.runSingleBuild(
@@ -197,10 +197,10 @@ public final class AppWatchLoop {
         return result.success();
     }
 
-    private @Nullable boolean compile(Path projectDir, Path cache) throws IOException, InterruptedException {
+    private boolean compile(Path projectDir, Path cache) throws IOException, InterruptedException {
         String target = BuildCommand.buildTarget(projectDir.resolve(ManifestPaths.MANIFEST), projectDir);
         ConsoleSpec spec = new ConsoleSpec(
-                "Watch", r -> Theme.colorize("Recompiled", Theme.active().focused()), r -> "Compile failed");
+                "Watch", r -> Theme.paint("Recompiled", Theme.active().focused()), r -> "Compile failed");
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
         var session = SessionContext.current();
         BuildPlanResult result = EngineClient.runCompile(

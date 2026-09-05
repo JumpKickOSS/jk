@@ -227,7 +227,7 @@ public final class CliOutput {
     }
 
     /** Rewrite {@code line} for plain consoles unless it is machine-bound stdout. */
-    private static @Nullable String render(String line, boolean err) {
+    private static @Nullable String render(@Nullable String line, boolean err) {
         return err || !SCRIPT_MODE.get() ? PlainAscii.apply(line) : line;
     }
 
