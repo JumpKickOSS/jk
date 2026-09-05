@@ -31,6 +31,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Sync reads (why / explain / outdated): the same domain results the wire verbs serve
@@ -105,7 +106,7 @@ public final class McpReads {
      * (non-transitive); transitive expansion is opt-in and re-capped for the MCP budget below
      * the model's own dashboard caps.
      */
-    public static Map<String, Object> graph(String dir, String scopesCsv, boolean transitive) {
+    public static Map<String, Object> graph(String dir, @Nullable String scopesCsv, boolean transitive) {
         Path root = PathUtil.resolveUserPath(dir);
         Map<String, Object> m = new LinkedHashMap<>();
         DependencyGraphModel.Graph g;
@@ -162,7 +163,7 @@ public final class McpReads {
      * serves ({@code jk export maven|gradle|bom}). Returns written paths + notes; agents read the
      * files themselves — inlining pom/settings bodies would blow the budget.
      */
-    public static Map<String, Object> export(String dir, String format) {
+    public static Map<String, Object> export(String dir, @Nullable String format) {
         Path root = PathUtil.resolveUserPath(dir);
         Map<String, Object> m = new LinkedHashMap<>();
         String kind =
@@ -187,7 +188,7 @@ public final class McpReads {
             m.put("error", files.error());
             return m;
         }
-        m.put("format", format.trim().toLowerCase(Locale.ROOT));
+        m.put("format", format == null ? "" : format.trim().toLowerCase(Locale.ROOT));
         m.put("paths", files.paths());
         if (files.notes() != null && !files.notes().isEmpty()) m.put("notes", files.notes());
         return m;

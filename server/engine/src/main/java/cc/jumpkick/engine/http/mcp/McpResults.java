@@ -60,7 +60,9 @@ public final class McpResults {
         if (id != null && detailsFile != null) {
             Optional<Path> details = detailsFile.apply(id);
             if (details.isPresent()) {
-                Path sibling = details.get().getParent().resolve(JkResultsMarkdown.FILE_NAME);
+                Path runDir = details.get().getParent();
+                if (runDir == null) return null;
+                Path sibling = runDir.resolve(JkResultsMarkdown.FILE_NAME);
                 if (Files.isRegularFile(sibling)) return sibling;
             }
         }

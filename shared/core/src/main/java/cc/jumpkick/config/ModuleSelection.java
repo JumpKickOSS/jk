@@ -66,7 +66,7 @@ public final class ModuleSelection {
      * When neither is set, returns {@code null} (caller should not filter).
      */
     public static @Nullable Result resolveOptional(
-            Path entryDir, JkBuild entryBuild, String modulesSpec, String affectedSince) {
+            Path entryDir, JkBuild entryBuild, @Nullable String modulesSpec, @Nullable String affectedSince) {
         return resolveOptional(entryDir, entryBuild, modulesSpec, affectedSince, false);
     }
 
@@ -75,7 +75,11 @@ public final class ModuleSelection {
      * {@code --affected}. {@code affectedSince} and {@code affectedWip} together is a config error.
      */
     public static @Nullable Result resolveOptional(
-            Path entryDir, JkBuild entryBuild, String modulesSpec, String affectedSince, boolean affectedWip) {
+            Path entryDir,
+            JkBuild entryBuild,
+            @Nullable String modulesSpec,
+            @Nullable String affectedSince,
+            boolean affectedWip) {
         if (affectedWip && affectedSince != null && !affectedSince.isBlank()) {
             return Result.fail("use --affected (WIP) or --affected-since=<ref>, not both");
         }

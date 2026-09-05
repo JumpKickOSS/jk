@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.regex.Pattern;
@@ -75,8 +76,9 @@ public final class Giter8Apply {
                 }
                 Path out = destReal.resolve(renderedRel).normalize();
                 requireInside(destReal, out, renderedRel);
-                Files.createDirectories(out.getParent());
-                requireInside(destReal, out.getParent().toRealPath().resolve(out.getFileName()), renderedRel);
+                Path outParent = Objects.requireNonNull(out.getParent(), renderedRel);
+                Files.createDirectories(outParent);
+                requireInside(destReal, outParent.toRealPath().resolve(out.getFileName()), renderedRel);
                 byte[] raw = Files.readAllBytes(file);
                 String text = matchesVerbatim(rel, file.getFileName().toString(), verbatim) ? null : decodeText(raw);
                 if (text == null) {

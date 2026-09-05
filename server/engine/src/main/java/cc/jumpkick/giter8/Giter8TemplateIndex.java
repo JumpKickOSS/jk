@@ -33,7 +33,7 @@ public final class Giter8TemplateIndex {
      * up to three full scans. Five seconds bounds staleness for concurrent edits;
      * {@link #invalidate()} drops it eagerly after a catalog freshen.
      */
-    private static volatile PickerMemo PICKER_MEMO;
+    private static volatile @Nullable PickerMemo PICKER_MEMO;
 
     private static final long PICKER_TTL_NANOS = TimeUnit.SECONDS.toNanos(5);
 

@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /** Resolve MCP/HTTP module names and tag lists into planner inputs. */
 public final class JobSelect {
@@ -21,7 +22,8 @@ public final class JobSelect {
      * Split {@code affected:<ref>} tokens from {@code -m} selectors and resolve via
      * {@link ModuleSelection#resolveOptional}. {@code null} when {@code tokens} is empty.
      */
-    public static ModuleSelection.Result resolveTokens(Path entryDir, JkBuild entry, List<String> tokens) {
+    public static ModuleSelection.@Nullable Result resolveTokens(
+            Path entryDir, JkBuild entry, @Nullable List<String> tokens) {
         if (tokens == null || tokens.isEmpty()) return null;
         List<String> raw = new ArrayList<>();
         String affected = null;
@@ -38,7 +40,7 @@ public final class JobSelect {
     }
 
     /** User-selected module dirs only (canonical). {@code null} when the caller did not filter. */
-    public static Set<Path> selected(Path entryDir, JkBuild entry, List<String> modules) {
+    public static @Nullable Set<Path> selected(Path entryDir, JkBuild entry, @Nullable List<String> modules) {
         if (modules == null || modules.isEmpty()) return null;
         ModuleSelection.Result sel;
         boolean tokenShape = false;
@@ -64,7 +66,7 @@ public final class JobSelect {
      * Selected module dirs plus build prereqs (canonical). {@code null} when the caller did not
      * filter — the engine forecasts dirtiness itself.
      */
-    public static Set<Path> dirtyHint(Path entryDir, JkBuild entry, List<String> modules) {
+    public static @Nullable Set<Path> dirtyHint(Path entryDir, JkBuild entry, @Nullable List<String> modules) {
         Set<Path> selected = selected(entryDir, entry, modules);
         if (selected == null) return null;
         return ModuleHints.withPrereqs(entryDir, entry, selected);

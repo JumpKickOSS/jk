@@ -106,11 +106,12 @@ public final class JobEnvelope {
         if (plan ? !claimedBuildPlanSlot : host.draining()) {
             if (detached) throw new IllegalStateException("engine is shutting down");
             try {
-                WireWriter.send(
-                        writer,
-                        ProtoLifecycle.error(
-                                EngineProtocol.ERR_SHUTTING_DOWN,
-                                "the engine is shutting down (draining) — retry; the successor engine takes over"));
+                if (writer != null)
+                    WireWriter.send(
+                            writer,
+                            ProtoLifecycle.error(
+                                    EngineProtocol.ERR_SHUTTING_DOWN,
+                                    "the engine is shutting down (draining) — retry; the successor engine takes over"));
             } catch (IOException ignored) {
                 // Client vanished mid-refusal — nothing to do; the connection is closing anyway.
             }
@@ -144,7 +145,9 @@ public final class JobEnvelope {
                 throw new AlreadyRunning(msg, h.requestId(), h.buildNumber());
             }
             try {
-                WireWriter.send(writer, ProtoLifecycle.alreadyRunning(h.buildNumber(), h.requestId(), msg));
+                if (writer != null) {
+                    WireWriter.send(writer, ProtoLifecycle.alreadyRunning(h.buildNumber(), h.requestId(), msg));
+                }
             } catch (IOException ignored) {
                 // client gone
             }

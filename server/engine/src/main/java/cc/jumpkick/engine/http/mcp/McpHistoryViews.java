@@ -35,6 +35,11 @@ public final class McpHistoryViews {
         m.put("diagnosticCount", listSize(rec.get("diagnostics")));
         // The same nested counts object the journal stores and the dashboard renders — MCP does not
         // get a private flattened spelling of "how many tests failed".
+        // Present-with-null, not absent: McpTestCountShapeTest pins `"counts": null` for a run with
+        // no test phase, and the wire codec spells it the same way. NullAway flags the null value
+        // because this row is modelled as Map<String, Object> like every other JSON row in the
+        // engine; widening just this one to Map<String, @Nullable Object> would make it the odd one
+        // out and ripple through three callers and a ternary. The row type is the thing to fix.
         m.put(TestSummary.WIRE_KEY, map(rec.get(TestSummary.WIRE_KEY)));
         return m;
     }
@@ -64,8 +69,9 @@ public final class McpHistoryViews {
         return true;
     }
 
-    public static String normalizeDir(String dir) {
-        String s = DirKeys.key(dir);
+    public static String normalizeDir(@Nullable String dir) {
+        String key = dir == null ? null : DirKeys.key(dir);
+        String s = key == null ? "" : key;
         while (s.endsWith("/") && s.length() > 1) s = s.substring(0, s.length() - 1);
         return s;
     }
@@ -140,12 +146,12 @@ public final class McpHistoryViews {
         return out;
     }
 
-    private static int listSize(Object raw) {
+    private static int listSize(@Nullable Object raw) {
         return raw instanceof List<?> list ? list.size() : 0;
     }
 
     @SuppressWarnings("unchecked")
-    private static @Nullable Map<String, Object> map(Object raw) {
+    private static @Nullable Map<String, Object> map(@Nullable Object raw) {
         return raw instanceof Map<?, ?> m ? (Map<String, Object>) m : null;
     }
 

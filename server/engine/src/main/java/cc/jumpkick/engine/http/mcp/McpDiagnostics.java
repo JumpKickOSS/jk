@@ -63,7 +63,7 @@ public final class McpDiagnostics {
                 if (!McpHistoryViews.matches(rec, dir, null, Boolean.FALSE, null)) continue;
             } else {
                 // A specific run id names one record; the bound-dir filter must not hide it.
-                if (!run.equals(McpHistoryViews.str(rec, "id"))) continue;
+                if (run == null || !run.equals(McpHistoryViews.str(rec, "id"))) continue;
             }
             return rec;
         }

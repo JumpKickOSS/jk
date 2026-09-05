@@ -105,7 +105,7 @@ public final class McpMachine {
         return m;
     }
 
-    public static Map<String, Object> configSet(String key, String value) {
+    public static Map<String, Object> configSet(String key, @Nullable String value) {
         Map<String, Object> m = new LinkedHashMap<>();
         try {
             if ("nerd-font".equals(key)) {
@@ -117,6 +117,7 @@ public final class McpMachine {
                 return m;
             }
             if ("engine.max-heap-mb".equals(key)) {
+                if (value == null) throw new McpError(-32602, "jk_config set " + key + " requires value");
                 int mb = Integer.parseInt(value.trim());
                 Path file = JkDirs.userConfigFile();
                 String text = Files.isRegularFile(file) ? Files.readString(file, StandardCharsets.UTF_8) : "";
@@ -186,12 +187,13 @@ public final class McpMachine {
         return m;
     }
 
-    public static Map<String, Object> jdkAction(String action, String spec, Integer olderThan, boolean confirm) {
+    public static Map<String, Object> jdkAction(
+            String action, @Nullable String spec, @Nullable Integer olderThan, boolean confirm) {
         return jdkAction(action, spec, olderThan, confirm, new JdkRegistry());
     }
 
     static Map<String, Object> jdkAction(
-            String action, String spec, Integer olderThan, boolean confirm, JdkRegistry registry) {
+            String action, @Nullable String spec, @Nullable Integer olderThan, boolean confirm, JdkRegistry registry) {
         if (action == null || action.isBlank() || "list".equals(action)) return jdkList(registry);
         if ("install".equals(action) || "update".equals(action)) {
             return jdkInstall(spec, registry);
@@ -204,7 +206,7 @@ public final class McpMachine {
         return m;
     }
 
-    static Map<String, Object> jdkInstall(String spec, JdkRegistry registry) {
+    static Map<String, Object> jdkInstall(@Nullable String spec, JdkRegistry registry) {
         Map<String, Object> m = new LinkedHashMap<>();
         if (spec == null || spec.isBlank()) {
             m.put("error", "jk_jdk install requires spec (lts, latest, 26, temurin-26)");
@@ -235,7 +237,8 @@ public final class McpMachine {
         return m;
     }
 
-    static Map<String, Object> jdkUninstall(String spec, Integer olderThan, boolean confirm, JdkRegistry registry) {
+    static Map<String, Object> jdkUninstall(
+            @Nullable String spec, @Nullable Integer olderThan, boolean confirm, JdkRegistry registry) {
         Map<String, Object> m = new LinkedHashMap<>();
         try {
             JdkInstaller.sweepStaleDownloads(registry.jdksRoot());
@@ -291,7 +294,7 @@ public final class McpMachine {
         return row;
     }
 
-    static Integer majorOf(String version) {
+    static @Nullable Integer majorOf(@Nullable String version) {
         if (version == null || version.isEmpty()) return null;
         String s = version;
         int dash = s.lastIndexOf('-');
@@ -400,7 +403,7 @@ public final class McpMachine {
         return toml.isBlank() ? block : toml.stripTrailing() + "\n\n" + block;
     }
 
-    private static NerdFontMode parseNerd(String value) {
+    private static NerdFontMode parseNerd(@Nullable String value) {
         return NerdFontMode.parse(value).orElse(NerdFontMode.ON);
     }
 }

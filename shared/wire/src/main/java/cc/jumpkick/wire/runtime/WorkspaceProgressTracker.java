@@ -9,6 +9,7 @@ import cc.jumpkick.wire.runtime.progress.SharedPeak;
 import cc.jumpkick.wire.runtime.progress.WeightedProgressStrategy;
 import java.util.HashMap;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Engine-owned workspace aggregate progress. Effort-weight slices are always tracked for wire
@@ -57,7 +58,7 @@ public final class WorkspaceProgressTracker {
     }
 
     /** Per-request mode from the wire; falls back to the process env when absent. */
-    public WorkspaceProgressTracker(ProgressBarMode mode) {
+    public WorkspaceProgressTracker(@Nullable ProgressBarMode mode) {
         this.mode = mode == null ? ProgressBarMode.fromEnvironment() : mode;
     }
     /** One monotonic floor across the strategy pair — the AUTO takeover must not repaint backwards. */

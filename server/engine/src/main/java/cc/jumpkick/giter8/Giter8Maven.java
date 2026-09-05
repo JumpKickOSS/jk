@@ -13,6 +13,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 
 /** Central {@code maven-metadata.xml} lookup for Giter8 {@code maven()} properties. */
 public final class Giter8Maven {
@@ -78,7 +79,7 @@ public final class Giter8Maven {
         };
     }
 
-    static String pick(MavenMetadata md, boolean stable) {
+    static @Nullable String pick(MavenMetadata md, boolean stable) {
         if (!stable) {
             if (md.latest() != null && !md.latest().isBlank()) return md.latest();
             List<String> v = md.versions();
@@ -92,11 +93,11 @@ public final class Giter8Maven {
         return null;
     }
 
-    static boolean isMavenExpr(String value) {
+    static boolean isMavenExpr(@Nullable String value) {
         return value != null && EXPR.matcher(value.strip()).matches();
     }
 
-    static String resolveExpr(String value, MavenVersionLookup lookup) throws IOException {
+    static String resolveExpr(String value, @Nullable MavenVersionLookup lookup) throws IOException {
         Matcher m = EXPR.matcher(value.strip());
         if (!m.matches()) return value;
         if (lookup == null) {

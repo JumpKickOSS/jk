@@ -142,7 +142,7 @@ public final class DependencyGraphModel {
      * this parameter, so {@code main%2Ctest} parsed as one unknown token and the user got a
      * wrong graph with boxes still ticked.
      */
-    public static List<Scope> parseScopes(String scopesQuery) {
+    public static List<Scope> parseScopes(@Nullable String scopesQuery) {
         if (scopesQuery == null || scopesQuery.isBlank()) {
             return defaultScopes();
         }

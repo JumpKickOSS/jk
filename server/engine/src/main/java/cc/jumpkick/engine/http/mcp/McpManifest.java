@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
+import org.jspecify.annotations.Nullable;
 
 /** Surgical jk.toml edits (preview by default). */
 public final class McpManifest {
@@ -24,7 +25,7 @@ public final class McpManifest {
     private McpManifest() {}
 
     public static Map<String, Object> deps(
-            String dir, String action, List<String> coords, String scopeName, boolean apply) {
+            String dir, String action, List<String> coords, @Nullable String scopeName, boolean apply) {
         Path file = PathUtil.resolveUserPath(dir).resolve(ManifestPaths.MANIFEST);
         Map<String, Object> out = new LinkedHashMap<>();
         try {
@@ -114,7 +115,7 @@ public final class McpManifest {
      * {@code MAIN} silently rewrote a {@code runtime} request into a main dependency. The throw
      * rides the caller's {@code error} field back to the MCP client.
      */
-    static Scope parseScope(String raw) {
+    static Scope parseScope(@Nullable String raw) {
         if (raw == null || raw.isBlank()) return Scope.MAIN;
         String canonical = raw.trim().toLowerCase(Locale.ROOT);
         try {
@@ -130,7 +131,11 @@ public final class McpManifest {
         return p.length >= 2 ? p[1] : coord;
     }
 
-    private record Parsed(String name, String group, String artifact, String version) {}
+    private record Parsed(
+            String name,
+            String group,
+            String artifact,
+            @Nullable String version) {}
 
     private static Parsed parseCoord(String raw) {
         String[] p = raw.split(":");
