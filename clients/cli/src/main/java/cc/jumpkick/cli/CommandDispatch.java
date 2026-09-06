@@ -34,6 +34,7 @@ import cc.jumpkick.command.ExplainCommand;
 import cc.jumpkick.command.ExportCommand;
 import cc.jumpkick.command.FormatCommand;
 import cc.jumpkick.command.GradleCommand;
+import cc.jumpkick.command.GuardCommand;
 import cc.jumpkick.command.HistoryCommand;
 import cc.jumpkick.command.HookEnvCommand;
 import cc.jumpkick.command.IdeCommand;
@@ -144,6 +145,7 @@ public final class CommandDispatch {
             new DenyCommand(),
             new VerifyBuildCommand(),
             new AuditCommand(),
+            new GuardCommand(),
             new AuthCommand(),
             new CacheCommand(),
             new StorageCommand(),

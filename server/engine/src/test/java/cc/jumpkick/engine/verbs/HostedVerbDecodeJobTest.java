@@ -38,7 +38,7 @@ class HostedVerbDecodeJobTest {
     void build_test_and_assemble_decode_to_build_requests(@TempDir Path dir) throws Exception {
         project(dir);
         WorkspaceBuildVerb verb = new WorkspaceBuildVerb(null);
-        assertThat(verb.jobKinds()).containsExactly("build", "assemble", "test");
+        assertThat(verb.jobKinds()).containsExactly("build", "assemble", "test", "guard");
 
         String build = verb.decodeJob(JobSpec.of("build", dir.toString()));
         assertThat(EngineProtocol.typeOf(build)).isEqualTo(EngineProtocol.BUILD_REQUEST);

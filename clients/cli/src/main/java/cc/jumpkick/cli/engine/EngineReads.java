@@ -20,6 +20,8 @@ import cc.jumpkick.wire.protocol.ForecastRequest;
 import cc.jumpkick.wire.protocol.FreshenCatalogRequest;
 import cc.jumpkick.wire.protocol.GenerateRequest;
 import cc.jumpkick.wire.protocol.GeneratedFiles;
+import cc.jumpkick.wire.protocol.GuardFreezeAck;
+import cc.jumpkick.wire.protocol.GuardFreezeRequest;
 import cc.jumpkick.wire.protocol.IdeModelRequest;
 import cc.jumpkick.wire.protocol.IdeWireModel;
 import cc.jumpkick.wire.protocol.ModuleGraphAck;
@@ -339,6 +341,17 @@ final class EngineReads {
     }
 
     /** One engine-hosted deny check: policy parse + lock read + violations, engine-side. */
+    static GuardFreezeAck guardFreeze(
+            EnginePaths.Paths paths, Path dir, String ruleId, @Nullable String reason, boolean retire)
+            throws IOException {
+        return request(
+                paths,
+                new GuardFreezeRequest(dir.toString(), ruleId, reason, retire).encode(),
+                EngineProtocol.GUARD_FREEZE_ACK,
+                "guard freeze",
+                GuardFreezeAck::decode);
+    }
+
     static DenyReport denyCheck(EnginePaths.Paths paths, Path dir) throws IOException {
         return request(
                 paths,

@@ -7,6 +7,7 @@ import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.Jobs;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.jobs.JobRequest;
@@ -70,7 +71,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
 
     @Override
     public List<String> jobKinds() {
-        return List.of("build", "assemble", "test");
+        return List.of("build", "assemble", "test", "guard");
     }
 
     @Override
@@ -89,7 +90,10 @@ public final class WorkspaceBuildVerb implements HostedVerb {
             dirty = JobSelect.dirtyHint(entryDir, entry, spec.modules());
         }
         boolean testOnly = "test".equals(spec.kind());
-        boolean skipTests = spec.skipTests() || "assemble".equals(spec.kind());
+        // `guard` is a build with tests skipped and the gate lanes on: every guard lane runs,
+        // packaging is a cache hit, and the run journals as kind guard.
+        boolean guard = "guard".equals(spec.kind());
+        boolean skipTests = spec.skipTests() || "assemble".equals(spec.kind()) || guard;
         return Jsonl.append(
                 new BuildRequest(
                                 entryDir.toString(),
@@ -113,7 +117,10 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                                                 .map(Path::toString)
                                                 .sorted()
                                                 .toList(),
-                                JobSelect.testSelection(spec.includeTags(), spec.excludeTags(), spec.suites()),
+                                guard
+                                        ? TestSelection.of(List.of(), false, List.of(), List.of(), false, true)
+                                        : JobSelect.testSelection(
+                                                spec.includeTags(), spec.excludeTags(), spec.suites()),
                                 List.of(),
                                 false,
                                 null,
@@ -122,7 +129,8 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                                 "web",
                                 null)
                         .encode(),
-                spec.affected() ? "\"affected\":true" : "");
+                (spec.affected() ? "\"affected\":true" : "")
+                        + (guard ? (spec.affected() ? "," : "") + "\"guard\":true" : ""));
     }
 
     /**
@@ -138,7 +146,9 @@ public final class WorkspaceBuildVerb implements HostedVerb {
     @Override
     public JobRequest toJobRequest(String requestLine) {
         boolean testOnly = BuildRequest.decode(requestLine).testOnly();
-        return new JobRequest(JobKind.workspace(testOnly ? "test" : "build"), threadPrefix(), this::run);
+        boolean guard = Jsonl.bool(requestLine, "guard", false);
+        return new JobRequest(
+                JobKind.workspace(guard ? "guard" : testOnly ? "test" : "build"), threadPrefix(), this::run);
     }
 
     @Override

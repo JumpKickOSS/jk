@@ -13,6 +13,7 @@ import cc.jumpkick.wire.protocol.CatalogReadAck;
 import cc.jumpkick.wire.protocol.DenyReport;
 import cc.jumpkick.wire.protocol.ExecPlan;
 import cc.jumpkick.wire.protocol.GeneratedFiles;
+import cc.jumpkick.wire.protocol.GuardFreezeAck;
 import cc.jumpkick.wire.protocol.IdeWireModel;
 import cc.jumpkick.wire.protocol.ModuleGraphAck;
 import cc.jumpkick.wire.protocol.NewProjectAck;
@@ -233,6 +234,13 @@ public final class EngineClient {
     /** Thin-client why lookup: lock matching + provenance paths, engine-side. */
     public static WhyReport why(EnginePaths.Paths paths, Path dir, String query) throws IOException {
         return EngineReads.why(paths, dir, query);
+    }
+
+    /** {@code jk guard freeze}: the engine grows (or retires) one rule's baseline; one sync round trip. */
+    public static GuardFreezeAck guardFreeze(
+            EnginePaths.Paths paths, Path dir, String ruleId, @Nullable String reason, boolean retire)
+            throws IOException {
+        return EngineReads.guardFreeze(paths, dir, ruleId, reason, retire);
     }
 
     public static DenyReport denyCheck(EnginePaths.Paths paths, Path dir) throws IOException {

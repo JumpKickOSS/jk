@@ -386,6 +386,15 @@ public final class EngineProtocol {
 
     // ---- hosted worker commands (single-plan shape; structured results as repeated messages) ----
 
+    /**
+     * Client → server: {@code jk guard freeze} — accept a rule's current new violations into the
+     * baseline with a reason, or retire a removed rule's entries; one {@link #GUARD_FREEZE_ACK}.
+     */
+    public static final String GUARD_FREEZE_REQUEST = "guard-freeze-request";
+
+    /** Server → client, terminal for {@link #GUARD_FREEZE_REQUEST}. */
+    public static final String GUARD_FREEZE_ACK = "guard-freeze-ack";
+
     /** Client → server: OSV scan ({@code jk audit}). Findings stream as {@link #AUDIT_FINDING}. */
     public static final String AUDIT_REQUEST = "audit-request";
 

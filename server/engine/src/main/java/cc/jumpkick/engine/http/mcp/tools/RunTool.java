@@ -14,12 +14,12 @@ public final class RunTool implements McpTool {
     public Spec spec() {
         return new Spec(
                 "jk_run",
-                "Start a job (build|test|lock|update|format|native|image|assemble|compile|clean|publish|install|import; publish is always a dry-run — credentialed uploads are CLI-only). "
+                "Start a job (build|test|guard|lock|update|format|native|image|assemble|compile|clean|publish|install|import; publish is always a dry-run — credentialed uploads are CLI-only; guard runs every house-rule lane, see jk://guards). "
                         + "wait defaults true. dir optional after jk_bind. Aliases: jk_build/jk_test/jk_lock.",
                 McpSchemas.object(Map.of(
                         "kind",
                         McpSchemas.string(
-                                "build|test|lock|update|format|native|image|assemble|compile|clean|publish|install|import"),
+                                "build|test|guard|lock|update|format|native|image|assemble|compile|clean|publish|install|import"),
                         "dir",
                         McpSchemas.string(McpSchemas.BOUND_ROOT),
                         "modules",
