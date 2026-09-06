@@ -23,6 +23,7 @@ public final class Evaluators {
         BY_KIND.put(Kind.FORBID, new ForbidEvaluator());
         BY_KIND.put(Kind.TEXT, new TextEvaluator());
         BY_KIND.put(Kind.VOCABULARY, new VocabularyEvaluator());
+        BY_KIND.put(Kind.DEPEND, new DependEvaluator());
     }
 
     /** Test seam: drop every registration and reinstall the shipped evaluators. */
