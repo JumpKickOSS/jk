@@ -59,6 +59,42 @@ class ZincJavaCompilerTest {
                 .contains("A.java", "B.java");
     }
 
+    /**
+     * The dependent compile sees the dependency through a classpath <em>directory</em>, the way a
+     * test compile sees its module's own main classes. Zinc hashes such an entry to a constant, so
+     * without jk's own library-change detection an in-place rewrite of a class inside it never
+     * invalidates the classes compiled against it — a test that inlined a main constant kept the old
+     * value forever.
+     */
+    @Test
+    void a_class_rewritten_inside_a_classpath_directory_recompiles_its_users(@TempDir Path dir) throws Exception {
+        Project main = new Project(dir.resolve("main"));
+        main.write("k/K.java", "package k; public class K { public static final int SALT = 1; }");
+        assertThat(main.compile().success()).isTrue();
+
+        Project test = new Project(dir.resolve("test"));
+        test.write("k/KTest.java", "package k; public class KTest { public static int salt() { return K.SALT; } }");
+        ZincJavaCompiler.Result first = test.compile(List.of(main.classes));
+        assertThat(first.success()).as(first.diagnostics().toString()).isTrue();
+        byte[] before = Files.readAllBytes(test.classFile("k/KTest.class"));
+
+        main.write("k/K.java", "package k; public class K { public static final int SALT = 2; }");
+        assertThat(names(main.compile().compiledSources())).containsExactly("K.java");
+
+        ZincJavaCompiler.Plan plan = test.plan(List.of(main.classes));
+        assertThat(names(plan.sources())).as(plan.reason()).containsExactly("KTest.java");
+
+        ZincJavaCompiler.Result second = test.compile(List.of(main.classes));
+        assertThat(second.success()).as(second.diagnostics().toString()).isTrue();
+        assertThat(names(second.compiledSources())).containsExactly("KTest.java");
+        assertThat(Files.readAllBytes(test.classFile("k/KTest.class"))).isNotEqualTo(before);
+
+        // And nothing changed → nothing recompiled: the detection is not a blanket invalidation.
+        ZincJavaCompiler.Result third = test.compile(List.of(main.classes));
+        assertThat(third.success()).isTrue();
+        assertThat(third.compiledSources()).isEmpty();
+    }
+
     @Test
     void plan_after_body_edit_lists_only_the_changed_source(@TempDir Path dir) throws Exception {
         Project p = new Project(dir);
@@ -160,21 +196,27 @@ class ZincJavaCompilerTest {
         }
 
         ZincJavaCompiler.Result compile() throws IOException {
-            List<Path> sources;
-            try (var walk = Files.walk(src)) {
-                sources = walk.filter(f -> f.toString().endsWith(".java")).toList();
-            }
-            return ZincJavaCompiler.compileJava(
-                    new JavaCompileJob(sources, List.of(), classes, workdir, null, 25, List.of(), List.of()));
+            return compile(List.of());
+        }
+
+        ZincJavaCompiler.Result compile(List<Path> classpath) throws IOException {
+            return ZincJavaCompiler.compileJava(job(classpath));
         }
 
         ZincJavaCompiler.Plan plan() throws IOException {
+            return plan(List.of());
+        }
+
+        ZincJavaCompiler.Plan plan(List<Path> classpath) throws IOException {
+            return ZincJavaCompiler.planJava(job(classpath));
+        }
+
+        private JavaCompileJob job(List<Path> classpath) throws IOException {
             List<Path> sources;
             try (var walk = Files.walk(src)) {
                 sources = walk.filter(f -> f.toString().endsWith(".java")).toList();
             }
-            return ZincJavaCompiler.planJava(
-                    new JavaCompileJob(sources, List.of(), classes, workdir, null, 25, List.of(), List.of()));
+            return new JavaCompileJob(sources, classpath, classes, workdir, null, 25, List.of(), List.of());
         }
     }
 }

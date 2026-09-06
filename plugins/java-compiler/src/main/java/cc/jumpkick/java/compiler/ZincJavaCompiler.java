@@ -46,7 +46,6 @@ import xsbti.compile.CompileOptions;
 import xsbti.compile.CompileOrder;
 import xsbti.compile.CompileResult;
 import xsbti.compile.Compilers;
-import xsbti.compile.IncOptions;
 import xsbti.compile.IncrementalCompiler;
 import xsbti.compile.Inputs;
 import xsbti.compile.JavaCompiler;
@@ -197,12 +196,15 @@ public final class ZincJavaCompiler {
 
             CollectingReporter reporter = new CollectingReporter();
             AnalysisStore store = zinced.store();
+            // One stamper for the compile and for library-change detection: both must see the
+            // same (mtime-cached) hash of a class file or the two could disagree mid-compile.
+            ReadStamps stamper = Stamps.timeWrapBinaryStamps(converter);
             Setup setup = Setup.of(
                     new ClasspathLookup(),
                     false,
                     zinced.analysisFile(),
                     new FreshCompilerCache(),
-                    IncOptions.create(),
+                    ZincSetup.incOptions(stamper),
                     reporter,
                     ZincSetup.noExtra());
 
@@ -214,7 +216,7 @@ public final class ZincJavaCompiler {
                     .withJavacOptions(javacOptions(release, extraOptions, sourceOutput, processorPath))
                     .withOrder(CompileOrder.Mixed)
                     .withConverter(converter)
-                    .withStamper(Stamps.timeWrapBinaryStamps(converter));
+                    .withStamper(stamper);
 
             Optional<AnalysisContents> prev = zinced.readAnalysis(store);
             if (prev.isEmpty()) {
@@ -439,9 +441,7 @@ public final class ZincJavaCompiler {
     }
 
     private static boolean stampChanged(Stamp old, Stamp now) {
-        String a = old == null ? "" : old.writeStamp();
-        String b = now == null ? "" : now.writeStamp();
-        return !a.equals(b);
+        return ZincSetup.stampChanged(old, now);
     }
 
     private static Path pathOf(VirtualFileRef ref, FileConverter converter) {
