@@ -58,6 +58,10 @@ class CliSourceRulesTest {
     /** Names that must not reach the native client's runtime through its manifest. */
     private static final Set<String> FORBIDDEN_RUNTIME_DEPS = Set.of(
             "jk-plugin-sdk",
+            // The guard engine and the guard-test library are engine-side; the native client only
+            // ever asks the engine to run them.
+            "jk-guard",
+            "jk-guards-junit",
             "maven-artifact",
             "plexus-utils",
             "jline-terminal-ffm",

@@ -98,10 +98,12 @@ include(
     ":toolchain-jdk",   // client JDK/tool flow: catalog/installer/registry, launchers, exporters
     ":wire",            // the client<->engine wire contract (was :engine-api)
     ":dynamic-surface", // reflection/proxy/resource surface → R8 keeps + Graal reachability
+    ":guard-api",       // the guard-test library (JDK-17; published as jk-guards-junit)
     // server/ — engine-only (never on the native CLI classpath)
     ":io",              // repo fetch/publish machinery: transports (http/file/s3), POM, metadata
     ":resolver",        // PubGrub solver + conflict diagnostics
     ":toolchain",       // resolver-backed tool installs, Gradle/Maven import machinery
+    ":guard",           // house-rule guards: rule schema, facts index, evaluators, baseline
     ":engine",          // the BuildPlan/Task scheduler + build runtime
     // clients/
     ":cli",             // the slim native GraalVM client
@@ -134,11 +136,13 @@ project(":client-io").projectDir     = file("shared/client-io")
 project(":toolchain-jdk").projectDir = file("shared/toolchain-jdk")
 project(":wire").projectDir          = file("shared/wire")
 project(":dynamic-surface").projectDir = file("shared/dynamic-surface")
+project(":guard-api").projectDir     = file("shared/guard-api")
 
 // server/ — engine-only
 project(":io").projectDir        = file("server/io")
 project(":resolver").projectDir  = file("server/resolver")
 project(":toolchain").projectDir = file("server/toolchain")
+project(":guard").projectDir     = file("server/guard")
 project(":engine").projectDir    = file("server/engine")
 
 // clients/

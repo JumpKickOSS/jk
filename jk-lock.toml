@@ -2,7 +2,7 @@ version = 2
 generated-by = "jk 0.13.0"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "2c276b93d514ed529aa9733c417e252e5d7c9a583441ae43d56a157430ea2018"
+manifests-sha256 = "15133cbfb1c6bcaba670305104a3b422e432e7feef0fc93049b2a198c15d6839"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [jdk]
@@ -2358,6 +2358,14 @@ java    = 25
 description = "Resident build engine: plan, cache, compile, and test"
 
 [[module]]
+path    = "server/guard"
+group   = "cc.jumpkick"
+name    = "jk-guard"
+version = "0.13.0"
+java    = 25
+description = "House-rule guards: rule schema, facts index, evaluators, baseline; engine-only"
+
+[[module]]
 path    = "server/io"
 group   = "cc.jumpkick"
 name    = "jk-io"
@@ -2404,6 +2412,14 @@ name    = "jk-dynamic-surface"
 version = "0.13.0"
 java    = 25
 description = "Dynamic surface modeling for R8 keep rules and GraalVM metadata"
+
+[[module]]
+path    = "shared/guard-api"
+group   = "cc.jumpkick"
+name    = "jk-guards-junit"
+version = "0.13.0"
+java    = 17
+description = "Guard-test library: @Guard/@GuardSuite and the injected Facts, Model, Text, Output and Violations views"
 
 [[module]]
 path    = "shared/host"

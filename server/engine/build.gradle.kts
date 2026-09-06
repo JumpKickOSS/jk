@@ -23,6 +23,7 @@ dependencies {
     implementation(project(":plugin-sdk"))
     implementation(project(":resolver"))
     implementation(project(":toolchain"))
+    implementation(project(":guard"))
     implementation(project(":dynamic-surface"))
     // The web dashboard's static assets ride the engine's runtime classpath as /web/* (served by
     // StaticContent) and get bundled into the jk-engine fat jar. Kept resources-only + runtimeOnly

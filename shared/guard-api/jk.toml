@@ -1,0 +1,12 @@
+name = "jk-guards-junit"
+description = "Guard-test library: @Guard/@GuardSuite and the injected Facts, Model, Text, Output and Violations views"
+# Guard tests run inside a project's forked JUnit launcher on the project's JDK; stay on release 17
+# like jk-plugin-sdk.
+java = 17
+
+[dependencies]
+jk-host.workspace = true
+
+[test-dependencies]
+assertj-core = "latest"
+junit-jupiter = "latest"

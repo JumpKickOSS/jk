@@ -1,0 +1,25 @@
+name = "jk-guard"
+description = "House-rule guards: rule schema, facts index, evaluators, baseline; engine-only"
+
+[dependencies]
+jk-host.workspace = true
+jk-model.workspace = true
+jk-core.workspace = true
+jk-guards-junit.workspace = true
+asm = "latest"
+asm-tree = "latest"
+asm-commons = "latest"
+
+[provided-dependencies]
+lombok = "latest"
+
+[processor-dependencies]
+lombok = "latest"
+
+[test-dependencies]
+jk-host = { workspace = true, fixtures = true }
+assertj-core = "latest"
+junit-jupiter = "latest"
+
+[test]
+exclude-tags = ["integration", "slow", "bench", "network"]

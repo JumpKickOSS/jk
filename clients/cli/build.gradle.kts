@@ -77,6 +77,8 @@ val checkCliRuntimeClasspath = registerGuard("checkCliRuntimeClasspath") {
             val n = f.name
             n.startsWith("plugin-sdk")
                     || n.startsWith("jk-plugin-sdk")
+                    || n.startsWith("guard") // :guard, :guard-api — engine-side, like :resolver
+                    || n.startsWith("jk-guard")
                     || n.startsWith("maven-artifact")
                     || n.startsWith("plexus-utils")
                     || n.startsWith("jline")

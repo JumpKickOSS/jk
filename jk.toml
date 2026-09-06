@@ -13,12 +13,14 @@ modules = [
   "shared/core",
   "shared/client-io",
   "shared/dynamic-surface",
+  "shared/guard-api",
   # Server/Engine
   "server/io",
   "server/resolver",
   "shared/toolchain-jdk",
   "server/toolchain",
   "shared/wire",
+  "server/guard",
   "server/engine",
   # Clients
   "clients/cli",

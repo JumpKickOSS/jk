@@ -16,6 +16,8 @@ object NullMarking {
             "shared/plugin-sdk/src/main/java",
             "shared/core/src/main/java",
             "clients/cli/src/main/java",
+            "shared/guard-api/src/main/java",
+            "server/guard/src/main/java",
         )
 
     /**
