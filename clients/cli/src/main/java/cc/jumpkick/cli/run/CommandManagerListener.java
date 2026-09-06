@@ -151,7 +151,7 @@ public final class CommandManagerListener implements BuildPlanListener {
         String report = ConsoleSpec.renderError(step, code, message, module, compilerHeaders.show(step, code, module));
         if (report != null && !report.isEmpty()) {
             cm.writeAbove(report);
-            streamed.add(ConsoleSpec.diagnosticKey(step, code, message));
+            streamed.add(ConsoleSpec.diagnosticKey(module, step, code, message));
         }
         // Non-test diagnostic: treat as tool/worker failure — force-open the process-output pane.
         if (OutputPane.forceShowOnStepFailure(step)) {
@@ -212,7 +212,7 @@ public final class CommandManagerListener implements BuildPlanListener {
         }
         // The summary repeats every error the live stream already showed, minus the module the
         // live form knew; render only what has not been on this surface yet.
-        ConsoleSpec.appendErrors(above, ConsoleSpec.withoutStreamed(result.errors(), streamed));
+        ConsoleSpec.appendErrors(above, ConsoleSpec.withoutStreamed(module, result.errors(), streamed));
         // A soft failure overrides an otherwise-successful result: the plan itself is fine, but the
         // command discovered afterward that it can't proceed (e.g. jk run found no runnable entry
         // point). Rendered as the red failure chip with the caller's exact sentence — no "Failed to

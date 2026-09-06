@@ -4,7 +4,11 @@ package cc.jumpkick.cli.run;
 import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -19,8 +23,16 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class AggregateContext {
 
     private final JkManager cm;
-    private volatile List<BuildPlanResult.Diagnostic> lastErrors = List.of();
-    /** Diagnostics a module listener already rendered from the live stream. */
+
+    /**
+     * Every failed module's plan-finish errors, in the order the modules finished. Keyed per module
+     * because a workspace can fail more than one — {@code --continue}, or two parallel modules dying
+     * together — and a single "last errors" slot kept only whichever finished last, dropping the
+     * earlier module's diagnostics from both the settle and the transcript.
+     */
+    private final Map<String, List<BuildPlanResult.Diagnostic>> errorsByModule =
+            Collections.synchronizedMap(new LinkedHashMap<>());
+    /** Diagnostics a module listener already rendered from the live stream, keyed with their module. */
     private final Set<String> streamed = ConcurrentHashMap.newKeySet();
 
     public AggregateContext(JkManager cm) {
@@ -57,21 +69,33 @@ public final class AggregateContext {
         cm.preflight(stage, done, total, label);
     }
 
+    /** Every failed module's errors, module by module in finish order — the transcript's view. */
     public List<BuildPlanResult.Diagnostic> lastErrors() {
-        return lastErrors;
+        List<BuildPlanResult.Diagnostic> out = new ArrayList<>();
+        synchronized (errorsByModule) {
+            for (List<BuildPlanResult.Diagnostic> errors : errorsByModule.values()) out.addAll(errors);
+        }
+        return out;
     }
 
-    public void notifyErrors(List<BuildPlanResult.Diagnostic> errors) {
-        this.lastErrors = errors;
+    /** {@code module}'s plan finished with {@code errors}; a second finish for the same module replaces the first. */
+    public void notifyErrors(String module, List<BuildPlanResult.Diagnostic> errors) {
+        errorsByModule.put(module, List.copyOf(errors));
     }
 
-    /** A module listener rendered this diagnostic live; the workspace settle must not render it again. */
-    public void markStreamed(String step, String code, String message) {
-        streamed.add(ConsoleSpec.diagnosticKey(step, code, message));
+    /** {@code module}'s listener rendered this diagnostic live; the workspace settle must not render it again. */
+    public void markStreamed(String module, String step, String code, String message) {
+        streamed.add(ConsoleSpec.diagnosticKey(module, step, code, message));
     }
 
-    /** {@link #lastErrors} minus what a module already rendered — the settle's share of the errors. */
+    /** {@link #lastErrors} minus what each module already rendered — the settle's share of the errors. */
     public List<BuildPlanResult.Diagnostic> unstreamedErrors() {
-        return ConsoleSpec.withoutStreamed(lastErrors, streamed);
+        List<BuildPlanResult.Diagnostic> out = new ArrayList<>();
+        synchronized (errorsByModule) {
+            for (Map.Entry<String, List<BuildPlanResult.Diagnostic>> e : errorsByModule.entrySet()) {
+                out.addAll(ConsoleSpec.withoutStreamed(e.getKey(), e.getValue(), streamed));
+            }
+        }
+        return out;
     }
 }

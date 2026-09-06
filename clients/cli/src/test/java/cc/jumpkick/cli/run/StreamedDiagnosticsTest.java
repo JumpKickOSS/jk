@@ -79,4 +79,34 @@ class StreamedDiagnosticsTest {
         assertThat(agg.unstreamedErrors()).containsExactly(summaryOnly);
         view.close();
     }
+
+    /**
+     * Two modules failing the same way are two failures. The key that pairs a live line with its
+     * summary entry is scoped to the module, so g:lib's summary entry is not swallowed because
+     * g:app's live line carried the same text — and the transcript keeps both modules' errors,
+     * not whichever finished last.
+     */
+    @Test
+    void identical_diagnostics_in_two_modules_are_two_diagnostics() {
+        JkManager view = JkManager.plan(new PrintStream(new ByteArrayOutputStream()), "Build", false);
+        var agg = new AggregateContext(view);
+        var app = new AggregateModuleListener(agg, "g:app", List.of());
+        var lib = new AggregateModuleListener(agg, "g:lib", List.of());
+        var same = new BuildPlanResult.Diagnostic("compile-java", "javac", MESSAGE);
+        var libOnly = new BuildPlanResult.Diagnostic("resolve-deps", "resolver", "no such artifact");
+
+        app.error("compile-java", "javac", MESSAGE);
+        app.planFinish(failed(same));
+        // g:lib's listener never saw the live line (a headless surface, a lost event): its summary
+        // is the only rendering it will get.
+        lib.planFinish(failed(same, libOnly));
+
+        assertThat(agg.lastErrors())
+                .as("both modules' errors reach the transcript")
+                .hasSize(3);
+        assertThat(agg.unstreamedErrors())
+                .as("g:app's copy was streamed; g:lib's was not")
+                .containsExactly(same, libOnly);
+        view.close();
+    }
 }

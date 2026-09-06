@@ -93,20 +93,25 @@ public record ConsoleSpec(
 
     /**
      * Identity of one diagnostic across its two wire forms: the live error line and the plan-finish
-     * summary carry the same step, code and message, and nothing else they share is stable (the
-     * summary knows no module). A listener that rendered the live form records this key and skips
-     * the summary form, so one error prints once on one surface.
+     * summary carry the same step, code and message, and nothing else they share is stable. The
+     * summary form names no module, so the listener that holds both forms supplies the module it
+     * is listening for: two modules failing the same way — a shared plugin error, a common missing
+     * tool, an identical compiler diagnostic in copied code — are two diagnostics, and the second
+     * module's must not be swallowed because the first module's live line recorded the same text.
+     * A listener that rendered the live form records this key and skips the summary form, so one
+     * error prints once on one surface.
      */
-    public static String diagnosticKey(String step, String code, @Nullable String message) {
-        return step + "\u0000" + code + "\u0000" + (message == null ? "" : message);
+    public static String diagnosticKey(@Nullable String module, String step, String code, @Nullable String message) {
+        return (module == null ? "" : module) + "\u0000" + step + "\u0000" + code + "\u0000"
+                + (message == null ? "" : message);
     }
 
-    /** {@code errors} minus the ones whose {@link #diagnosticKey} is in {@code streamed}. */
+    /** {@code module}'s {@code errors} minus the ones whose {@link #diagnosticKey} is in {@code streamed}. */
     public static List<BuildPlanResult.Diagnostic> withoutStreamed(
-            Iterable<BuildPlanResult.Diagnostic> errors, Set<String> streamed) {
+            @Nullable String module, Iterable<BuildPlanResult.Diagnostic> errors, Set<String> streamed) {
         List<BuildPlanResult.Diagnostic> out = new ArrayList<>();
         for (BuildPlanResult.Diagnostic d : errors) {
-            if (!streamed.contains(diagnosticKey(d.step(), d.code(), d.message()))) out.add(d);
+            if (!streamed.contains(diagnosticKey(module, d.step(), d.code(), d.message()))) out.add(d);
         }
         return out;
     }

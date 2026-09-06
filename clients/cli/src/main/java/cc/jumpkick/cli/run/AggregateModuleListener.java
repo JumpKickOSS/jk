@@ -147,7 +147,7 @@ public final class AggregateModuleListener implements BuildPlanListener {
         boolean showHeader = !grouped || compilerHeaders.show(step, code, module);
         String report = ConsoleSpec.renderError(step, code, message, module, showHeader);
         if (report != null && !report.isEmpty()) {
-            agg.markStreamed(step, code, message);
+            agg.markStreamed(module, step, code, message);
             // Same buffer-XOR-print rule as output(): the settled block is the single printing
             // path when not animating.
             if (outBuffer != null && !cm.animating()) {
@@ -215,7 +215,7 @@ public final class AggregateModuleListener implements BuildPlanListener {
         // does not linger in the live tree after its plan is done.
         cm.finishModule(module, result.success());
         if (!result.success()) {
-            agg.notifyErrors(result.errors());
+            agg.notifyErrors(module, result.errors());
         }
     }
 }
