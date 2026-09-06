@@ -103,10 +103,10 @@ public final class EngineClient {
      */
     public static BuildPlanResult runSingleBuild(
             EnginePaths.Paths paths,
-            EngineRequests.@Nullable SingleBuildRequest req,
-            @Nullable Function<List<Task>, BuildPlanListener> listenerFactory,
+            EngineRequests.SingleBuildRequest req,
+            Function<List<Task>, BuildPlanListener> listenerFactory,
             TestSummary @Nullable [] testResultOut,
-            String[] buildOutcomeOut)
+            String @Nullable [] buildOutcomeOut)
             throws IOException {
         return EngineJobs.runSingleBuild(paths, req, listenerFactory, testResultOut, buildOutcomeOut);
     }
@@ -141,7 +141,11 @@ public final class EngineClient {
 
     /** Module DAG for {@code jk explain --graph}. */
     public static ModuleGraphAck moduleGraph(
-            EnginePaths.Paths paths, Path dir, String format, @Nullable String modules, String affectedSince)
+            EnginePaths.Paths paths,
+            Path dir,
+            @Nullable String format,
+            @Nullable String modules,
+            @Nullable String affectedSince)
             throws IOException {
         return EngineReads.moduleGraph(paths, dir, format, modules, affectedSince);
     }
@@ -168,7 +172,8 @@ public final class EngineClient {
         return projectInfo(paths, dir, null, null);
     }
 
-    public static ProjectInfo projectInfo(EnginePaths.Paths paths, Path dir, String modules, String affectedSince)
+    public static ProjectInfo projectInfo(
+            EnginePaths.Paths paths, Path dir, @Nullable String modules, @Nullable String affectedSince)
             throws IOException {
         return projectInfo(paths, dir, modules, affectedSince, false);
     }
@@ -220,12 +225,7 @@ public final class EngineClient {
 
     /** Thin-client tree render: engine walks the graph, client substitutes its Theme into the tags. */
     public static String treeRender(
-            EnginePaths.Paths paths,
-            @Nullable Path dir,
-            int maxDepth,
-            boolean flatten,
-            boolean stack,
-            List<String> scopes)
+            EnginePaths.Paths paths, Path dir, int maxDepth, boolean flatten, boolean stack, List<String> scopes)
             throws IOException {
         return EngineReads.treeRender(paths, dir, maxDepth, flatten, stack, scopes);
     }
@@ -246,8 +246,8 @@ public final class EngineClient {
     public static ExecPlan execPlan(
             EnginePaths.Paths paths,
             Path dir,
-            @Nullable Path cache,
-            @Nullable String kind,
+            Path cache,
+            String kind,
             @Nullable String mainOverride,
             @Nullable String binName)
             throws IOException {
@@ -258,8 +258,8 @@ public final class EngineClient {
     public static ExecPlan execPlan(
             EnginePaths.Paths paths,
             Path dir,
-            @Nullable Path cache,
-            @Nullable String kind,
+            Path cache,
+            String kind,
             @Nullable String mainOverride,
             @Nullable String binName,
             @Nullable Path binDir,
@@ -415,7 +415,7 @@ public final class EngineClient {
 
     public static BuildPlanResult runCompile(
             EnginePaths.Paths paths,
-            EngineRequests.@Nullable CompileRequest req,
+            EngineRequests.CompileRequest req,
             Function<List<Task>, BuildPlanListener> listenerFactory)
             throws IOException {
         return EngineHosted.runCompile(paths, req, listenerFactory);
@@ -470,7 +470,7 @@ public final class EngineClient {
 
     public static BuildPlanResult runCacheMaintenance(
             EnginePaths.Paths paths,
-            EngineRequests.@Nullable CacheMaintRequest req,
+            EngineRequests.CacheMaintRequest req,
             Function<List<Task>, BuildPlanListener> listenerFactory,
             ObjIntConsumer<Boolean> onWait,
             EngineRequests.CacheMaintSummary[] summaryOut)

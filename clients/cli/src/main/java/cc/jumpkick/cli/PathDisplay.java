@@ -23,13 +23,13 @@ public final class PathDisplay {
     private PathDisplay() {}
 
     /** {@link #of(Path, Path)} relativized and painted in the theme's {@code path} color. */
-    public static @Nullable String styled(Path target, Path workingDir) {
-        return Theme.colorize(of(target, workingDir), Theme.active().path());
+    public static String styled(Path target, Path workingDir) {
+        return Theme.paint(of(target, workingDir), Theme.active().path());
     }
 
     /** {@link #of(Path)} relativized and painted in the theme's {@code path} color. */
-    public static @Nullable String styled(Path target) {
-        return Theme.colorize(of(target), Theme.active().path());
+    public static String styled(Path target) {
+        return Theme.paint(of(target), Theme.active().path());
     }
 
     /**
@@ -37,8 +37,8 @@ public final class PathDisplay {
      * relativizing — for error/context messages whose path is the working directory itself
      * (relativizing it to "." would be useless).
      */
-    public static @Nullable String styledRaw(@Nullable Object pathLike) {
-        return Theme.colorize(String.valueOf(pathLike), Theme.active().path());
+    public static String styledRaw(@Nullable Object pathLike) {
+        return Theme.paint(String.valueOf(pathLike), Theme.active().path());
     }
 
     /**
@@ -82,7 +82,7 @@ public final class PathDisplay {
         return best;
     }
 
-    private static Path cwd(Path workingDir) {
+    private static Path cwd(@Nullable Path workingDir) {
         return (workingDir != null ? workingDir : Path.of("")).toAbsolutePath().normalize();
     }
 

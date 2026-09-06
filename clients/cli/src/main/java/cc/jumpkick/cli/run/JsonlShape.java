@@ -85,7 +85,7 @@ public final class JsonlShape {
      * Attach {@code progress} (0–100 or JSON {@code null}) before the final {@code }}. Additive only;
      * does not add {@code progress_num}/{@code progress_den}.
      */
-    public static String withProgress(String line, Double progress) {
+    public static String withProgress(String line, @Nullable Double progress) {
         if (line == null || line.isEmpty()) return line;
         int end = line.length() - 1;
         if (line.charAt(end) != '}') return line;
@@ -268,7 +268,7 @@ public final class JsonlShape {
      * addition to {@code message}) only when non-empty, so a test failure's parts stay separate on
      * the wire without bloating the common diagnostic shape.
      */
-    static String error(String step, String code, String msg, String test, String exceptionClass) {
+    static String error(String step, String code, String msg, @Nullable String test, @Nullable String exceptionClass) {
         StringBuilder sb = open("error")
                 .append(",\"task\":")
                 .append(js(step))
@@ -286,7 +286,7 @@ public final class JsonlShape {
      * Enriched test-failure error for details.jsonl / --output json: module, engine, class, method,
      * exceptionClass, and a single top-level stack (no nested throwable duplicate).
      */
-    static String error(String step, String code, String msg, TestFailureInfo failure) {
+    static String error(String step, String code, String msg, @Nullable TestFailureInfo failure) {
         if (failure == null) return error(step, code, msg);
         String message = msg == null || msg.isEmpty() ? failure.message() : msg;
         StringBuilder sb = open("error")

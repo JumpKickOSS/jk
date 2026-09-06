@@ -501,13 +501,13 @@ public final class JkManagerColor {
      * {@code group:artifact} → cyan group + bold bright-cyan artifact (plan tree / failure
      * tails). Plain settled style if no colon.
      */
-    public static @Nullable String coloredModule(String module) {
+    public static String coloredModule(String module) {
         int colon = module.indexOf(':');
-        if (colon < 0) return Theme.colorize(module, Theme.active().settled());
+        if (colon < 0) return Theme.paint(module, Theme.active().settled());
         Theme t = Theme.active();
-        return Theme.colorize(module.substring(0, colon), t.coordGroup())
+        return Theme.paint(module.substring(0, colon), t.coordGroup())
                 + ":"
-                + Theme.colorize(module.substring(colon + 1), t.coordName());
+                + Theme.paint(module.substring(colon + 1), t.coordName());
     }
 
     static String humanize(String stepKey) {

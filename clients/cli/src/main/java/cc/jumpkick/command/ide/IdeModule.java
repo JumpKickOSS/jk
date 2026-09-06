@@ -2,6 +2,7 @@
 package cc.jumpkick.command.ide;
 
 import java.nio.file.Path;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Per-module facts for an {@link IdeGenerator} (engine-computed layout paths; not a full {@code
@@ -20,7 +21,7 @@ import java.nio.file.Path;
 public record IdeModule(
         String name,
         int javaRelease,
-        String mainClass,
+        @Nullable String mainClass,
         Path classesDir,
         Path testClassesDir,
         Path jdtClassesDir,

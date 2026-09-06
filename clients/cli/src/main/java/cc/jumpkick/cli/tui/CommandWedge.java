@@ -54,8 +54,8 @@ public final class CommandWedge {
     }
 
     /** Red cross chip + message (done with error). Prefer this over {@code "jk cmd: …"} prefixes. */
-    public static String fail(String command, String message) {
-        return JkWedge.fail(command, message).renderLine(RenderContext.current());
+    public static String fail(String command, @Nullable String message) {
+        return JkWedge.fail(command, message == null ? "" : message).renderLine(RenderContext.current());
     }
 
     /** Blue / neutral working chip (play glyph) + message. */
@@ -113,8 +113,9 @@ public final class CommandWedge {
         return JkWedge.ok(command, message).renderLine(RenderContext.current().withCaps(caps));
     }
 
-    public static String fail(String command, String message, NerdFontCaps caps) {
-        return JkWedge.fail(command, message).renderLine(RenderContext.current().withCaps(caps));
+    public static String fail(String command, @Nullable String message, NerdFontCaps caps) {
+        return JkWedge.fail(command, message == null ? "" : message)
+                .renderLine(RenderContext.current().withCaps(caps));
     }
 
     /**
@@ -133,7 +134,7 @@ public final class CommandWedge {
      * before the envelope opened. {@code out} must be stdout-side; stderr chrome calls
      * {@link #envelopeStartErr()}.
      */
-    public static void envelopeStart(@Nullable PrintStream out) {
+    public static void envelopeStart(PrintStream out) {
         CliOutput.ensureLeadingBlank(out);
     }
 

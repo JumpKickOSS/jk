@@ -417,7 +417,7 @@ public final class TestFailureHighlight {
             int errorLine,
             int errorCol,
             SyntaxHighlight.Language lang,
-            String note) {
+            @Nullable String note) {
         if (displayPath == null) displayPath = "";
         Theme t = Theme.active();
         int budget = Math.max(40, Size.columns() - ROW_OVERHEAD);
@@ -470,7 +470,7 @@ public final class TestFailureHighlight {
      * Path color + underline; when the dashboard HTTP surface and project id are known, wrap in an
      * OSC-8 deep link ({@code [link url][path underline]…[/][/]}) to the Monaco files pane.
      */
-    static @Nullable String paintSourcePath(String path, String sourceHeader, Theme t) {
+    static String paintSourcePath(String path, String sourceHeader, Theme t) {
         int line = parsePositiveInt(attr(sourceHeader, "line"));
         return paintSourcePath(path, line, 0, t);
     }
@@ -479,15 +479,15 @@ public final class TestFailureHighlight {
      * Path color + underline; when the dashboard HTTP surface and project id are known, wrap in an
      * OSC-8 deep link to the Monaco files pane ({@code ?line=N} and {@code &col=C} when set).
      */
-    static @Nullable String paintSourcePath(String path, int line, int col, Theme t) {
+    static String paintSourcePath(String path, int line, int col, Theme t) {
         return paintSourcePath(path, path, line, col, t);
     }
 
-    static @Nullable String paintSourcePath(String display, String linkPath, int line, int col, Theme t) {
+    static String paintSourcePath(String display, String linkPath, int line, int col, Theme t) {
         return paintSourcePath(display, linkPath, line, col, t, null);
     }
 
-    static @Nullable String paintSourcePath(String display, String linkPath, int line, int col, Theme t, String note) {
+    static String paintSourcePath(String display, String linkPath, int line, int col, Theme t, @Nullable String note) {
         if (display == null || display.isEmpty()) return "";
         String label = locusLabel(display, line, col);
         String url = DashboardCodeLink.urlForSnippet(linkPath != null ? linkPath : display, line, col, note);
@@ -498,7 +498,7 @@ public final class TestFailureHighlight {
             return RichText.parse("[link " + url + "][path underline]" + RichText.escape(label) + "[/][/]")
                     .render();
         }
-        return Theme.colorize(label, t.path().underline());
+        return Theme.paint(label, t.path().underline());
     }
 
     /**
@@ -773,7 +773,7 @@ public final class TestFailureHighlight {
     }
 
     /** {@code SimpleClass.method()} / {@code SimpleClass.method(Path)} — type + function roles. */
-    static @Nullable String paintShortLabel(String rest, Theme t) {
+    static String paintShortLabel(String rest, Theme t) {
         if (rest == null || rest.isEmpty()) return "";
         String shortened = shortDisplayLabel(rest);
         String worker = "";
@@ -806,12 +806,12 @@ public final class TestFailureHighlight {
     }
 
     /** {@code name(Path, String)} — function name + type-colored simple param names. */
-    private static @Nullable String paintMethodWithParams(String method, Theme t) {
+    private static String paintMethodWithParams(String method, Theme t) {
         if (method == null || method.isEmpty()) return "";
         int open = method.indexOf('(');
         int close = method.lastIndexOf(')');
         if (open < 0 || close < open) {
-            return Theme.colorize(method, SyntaxHighlight.styleFor(SyntaxHighlight.Role.FUNCTION));
+            return Theme.paint(method, SyntaxHighlight.styleFor(SyntaxHighlight.Role.FUNCTION));
         }
         String name = method.substring(0, open);
         String inside = method.substring(open + 1, close);
@@ -841,14 +841,14 @@ public final class TestFailureHighlight {
         return sb.toString();
     }
 
-    private static @Nullable String paintThrownAt(String raw, Theme t) {
+    private static String paintThrownAt(String raw, Theme t) {
         String s = raw.strip().replaceFirst("^[›\\s]+", "");
         Matcher m = THROWN_AT.matcher(s);
         if (!m.matches()) {
             if (!s.isEmpty() && s.indexOf(' ') < 0) {
                 return BODY_INDENT + Theme.colorize(simpleName(s), SyntaxHighlight.styleFor(SyntaxHighlight.Role.TYPE));
             }
-            return Theme.colorize(raw, t.midGray());
+            return Theme.paint(raw, t.midGray());
         }
         String ex = simpleName(m.group("ex"));
         String n = m.group("n");
@@ -991,12 +991,12 @@ public final class TestFailureHighlight {
         return raw;
     }
 
-    private static String rail(@Nullable String paintedContent, Theme t) {
+    private static String rail(String paintedContent, Theme t) {
         if (!t.isAnsi()) return railPlain(paintedContent);
         return " " + Theme.colorize(RAIL, t.error()) + " " + (paintedContent == null ? "" : paintedContent);
     }
 
-    private static String railPlain(@Nullable String raw) {
+    private static String railPlain(String raw) {
         return " | " + (raw == null ? "" : raw);
     }
 

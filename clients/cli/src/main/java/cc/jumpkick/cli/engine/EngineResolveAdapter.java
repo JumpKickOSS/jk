@@ -28,6 +28,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
@@ -130,7 +131,7 @@ final class EngineResolveAdapter {
                         req.offline(),
                         req.force(),
                         req.verbose(),
-                        req.platform())
+                        Objects.requireNonNullElse(req.platform(), ""))
                 .encode();
     }
 
@@ -246,7 +247,10 @@ final class EngineResolveAdapter {
                                     .group(EngineEventDecoder.wireGroup(Jsonl.str(line, "stage")))
                                     .build());
                         case EngineProtocol.PLAN_DONE ->
-                            listener = handler.onModuleStart(currentDir, currentCoord, steps);
+                            listener = handler.onModuleStart(
+                                    Objects.requireNonNull(currentDir, "plan-done before module-start"),
+                                    Objects.requireNonNull(currentCoord, "plan-done before module-start"),
+                                    steps);
                         case EngineProtocol.LOCK_PACKAGE ->
                             handler.onPackage(
                                     Jsonl.str(line, "dir"),
@@ -266,7 +270,7 @@ final class EngineResolveAdapter {
                             if (listener != null) listener.planFinish(result);
                             listener = null; // settled — settle() must not settle it twice
                             handler.onModuleFinish(
-                                    currentDir,
+                                    Objects.requireNonNull(currentDir, "module-finish before module-start"),
                                     result,
                                     new EngineRequests.LockCounts(
                                             Jsonl.longValue(line, "lockPackages", -1),

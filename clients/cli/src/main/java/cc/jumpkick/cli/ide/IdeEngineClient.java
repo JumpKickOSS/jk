@@ -59,7 +59,7 @@ public class IdeEngineClient {
     private final @Nullable Path jdksDir;
 
     /** Package-visible for BSP/IDE tests that stub engine calls. */
-    IdeEngineClient(Path projectDir, Path cacheDir, Path jdksDir) {
+    IdeEngineClient(Path projectDir, Path cacheDir, @Nullable Path jdksDir) {
         this.projectDir = projectDir.toAbsolutePath().normalize();
         this.cacheDir = cacheDir.toAbsolutePath().normalize();
         this.jdksDir = jdksDir == null ? null : jdksDir.toAbsolutePath().normalize();
@@ -71,7 +71,7 @@ public class IdeEngineClient {
     }
 
     /** Open a session with an explicit cache (and optional JDK install root for tests). */
-    public static IdeEngineClient open(Path projectDir, Path cacheDir, Path jdksDir) throws IOException {
+    public static IdeEngineClient open(Path projectDir, Path cacheDir, @Nullable Path jdksDir) throws IOException {
         Objects.requireNonNull(projectDir, "projectDir");
         Objects.requireNonNull(cacheDir, "cacheDir");
         if (!Files.isRegularFile(projectDir.resolve(ManifestPaths.MANIFEST))) {
@@ -155,7 +155,7 @@ public class IdeEngineClient {
      * Run a build with structured module/step events for the IDE progress UI. Non-workspace
      * projects use a single-module build; workspace roots use the workspace cascade.
      */
-    public BuildOutcome build(BuildListener listener) throws IOException {
+    public BuildOutcome build(@Nullable BuildListener listener) throws IOException {
         BuildListener progress = listener == null ? BuildListener.NOOP : listener;
 
         ProjectInfo info = projectInfo();
@@ -241,7 +241,7 @@ public class IdeEngineClient {
      * #build(BuildListener)}). When null on a single project, tests that project. Uses the same
      * engine path as {@code jk test}.
      */
-    public BuildOutcome testModule(@Nullable Path moduleDir, BuildListener listener) throws IOException {
+    public BuildOutcome testModule(@Nullable Path moduleDir, @Nullable BuildListener listener) throws IOException {
         return testModule(moduleDir, listener, null);
     }
 
@@ -249,7 +249,8 @@ public class IdeEngineClient {
      * Run tests with optional suite/tag selection BSP {@code data} / CLI TestSelection).
      * {@code selection} null → session default (usually suite {@code test} only).
      */
-    public BuildOutcome testModule(@Nullable Path moduleDir, @Nullable BuildListener listener, TestSelection selection)
+    public BuildOutcome testModule(
+            @Nullable Path moduleDir, @Nullable BuildListener listener, @Nullable TestSelection selection)
             throws IOException {
         BuildListener progress = listener == null ? BuildListener.NOOP : listener;
         if (moduleDir == null) {
@@ -266,7 +267,7 @@ public class IdeEngineClient {
     }
 
     /** Sequential per-module {@code jk test} for a workspace root. */
-    private BuildOutcome testWorkspace(BuildListener progress, TestSelection selection) throws IOException {
+    private BuildOutcome testWorkspace(BuildListener progress, @Nullable TestSelection selection) throws IOException {
         IdeWireModel model = ideModel();
         List<String> dirs = model != null && model.moduleDirs() != null ? model.moduleDirs() : List.of();
         if (dirs.isEmpty()) {
@@ -291,7 +292,8 @@ public class IdeEngineClient {
         return new BuildOutcome(failed == 0, modules, failed, List.copyOf(errors), List.copyOf(warnings));
     }
 
-    private BuildOutcome testOneModule(Path mod, BuildListener progress, TestSelection selection) throws IOException {
+    private BuildOutcome testOneModule(Path mod, BuildListener progress, @Nullable TestSelection selection)
+            throws IOException {
         String coord = mod.getFileName() != null ? mod.getFileName().toString() : mod.toString();
         progress.onModuleStart(coord, mod);
         List<String> errors = new ArrayList<>();
@@ -325,7 +327,7 @@ public class IdeEngineClient {
      * BSP {@code buildTarget/run}: build the module, then execute the engine exec plan (same path as
      * {@code jk run}). Blocks until the process exits. {@code moduleDir} null → project root.
      */
-    public BuildOutcome runModule(Path moduleDir, @Nullable BuildListener listener, Consumer<String> onOutput)
+    public BuildOutcome runModule(@Nullable Path moduleDir, @Nullable BuildListener listener, Consumer<String> onOutput)
             throws IOException {
         BuildListener progress = listener == null ? BuildListener.NOOP : listener;
         Path mod = moduleDir == null ? projectDir : moduleDir.toAbsolutePath().normalize();
@@ -379,7 +381,7 @@ public class IdeEngineClient {
      * Best-effort cancel of engine jobs under this project (and optional module dir). Used by BSP
      * {@code build/cancel}. Does not spawn an engine solely to cancel.
      */
-    public void cancel(Path moduleDir) {
+    public void cancel(@Nullable Path moduleDir) {
         Path dir = moduleDir != null ? moduleDir.toAbsolutePath().normalize() : projectDir;
         try {
             EngineCancel.cancelForDir(EnginePaths.current(), dir.toString());

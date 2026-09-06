@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
@@ -73,8 +74,8 @@ final class EngineEventDecoder {
     static BuildPlanResult streamSingleBuildPlanEvents(
             BufferedReader reader,
             Function<List<Task>, BuildPlanListener> listenerFactory,
-            TestSummary[] testResultOut,
-            String[] buildOutcomeOut)
+            TestSummary @Nullable [] testResultOut,
+            String @Nullable [] buildOutcomeOut)
             throws IOException {
         return streamSingleBuildPlanEvents(reader, listenerFactory, testResultOut, buildOutcomeOut, null);
     }
@@ -88,9 +89,9 @@ final class EngineEventDecoder {
      */
     static BuildPlanResult streamSingleBuildPlanEvents(
             BufferedReader reader,
-            @Nullable Function<List<Task>, BuildPlanListener> listenerFactory,
+            Function<List<Task>, BuildPlanListener> listenerFactory,
             TestSummary @Nullable [] testResultOut,
-            String[] buildOutcomeOut,
+            String @Nullable [] buildOutcomeOut,
             @Nullable SocketChannel ch)
             throws IOException {
         // The wire carries no duration; the summary's "took …" is this client-side
@@ -107,8 +108,7 @@ final class EngineEventDecoder {
             public @Nullable BuildPlanResult onLine(String type, String line) throws IOException {
                 switch (type) {
                     case EngineProtocol.PLAN_TASK -> steps.add(readTask(line));
-                    case EngineProtocol.PLAN_DONE ->
-                        listener = listenerFactory == null ? null : listenerFactory.apply(steps);
+                    case EngineProtocol.PLAN_DONE -> listener = listenerFactory.apply(steps);
                     case EngineProtocol.BUILDPLAN_FINISH -> {
                         TestSummary counts = TestSummary.readCounts(line);
                         if (counts != null && testResultOut != null) testResultOut[0] = counts;
@@ -432,7 +432,9 @@ final class EngineEventDecoder {
         return plans;
     }
 
-    private static ModulePlan buildModulePlan(String dir, ModuleMeta m, Path cache) {
+    private static ModulePlan buildModulePlan(String dir, @Nullable ModuleMeta meta, Path cache) {
+        // A plan-done for a dir that never announced its module is a wire violation, not a case.
+        ModuleMeta m = Objects.requireNonNull(meta, () -> "no module meta for " + dir);
         BuildPlan inertBuildPlan =
                 BuildPlan.builder(m.planName).addAllTasks(m.steps).build();
         return ModulePlan.fromWire(Path.of(dir), m.coord, inertBuildPlan, m.weight, m.fullyCached, cache);

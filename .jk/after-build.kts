@@ -3605,7 +3605,8 @@ guard("G53", "checkNullMarkedApiPackages") {
         "shared/jk-api/src/main/java/",
         "shared/wire/src/main/java/",
         "shared/plugin-sdk/src/main/java/",
-        "shared/core/src/main/java/")
+        "shared/core/src/main/java/",
+        "clients/cli/src/main/java/")
     // Mirrors NullMarking.excludedPackages: a package left unmarked on purpose, with its reason.
     val excluded = emptyMap<String, String>()
     val packagePattern = Regex("""(?m)^\s*package\s+([A-Za-z_][\w.]*)\s*;""")
@@ -3617,8 +3618,8 @@ guard("G53", "checkNullMarkedApiPackages") {
         .filterNot { it.fileName.toString() == "package-info.java" }
         .mapNotNull { packagePattern.find(text(it))?.groupValues?.get(1) }
         .toSortedSet()
-    if (packages.size != 30) {
-        error("Found ${packages.size} enforced production packages; measured against 30. The source"
+    if (packages.size != 41) {
+        error("Found ${packages.size} enforced production packages; measured against 41. The source"
             + " roots or package parser drifted, so this guard cannot report green.")
     }
     val markers = sources.filter { it.fileName.toString() == "package-info.java" }.associateBy { file ->

@@ -419,7 +419,7 @@ public final class JdkInstallCommand implements CliCommand {
      * shipped at that major for this host, the flexible selector falls back to the catalog's
      * default-for-major.
      */
-    private @Nullable String resolveKeyword(String raw, JdkCatalog catalog, String os, String arch) {
+    private @Nullable String resolveKeyword(@Nullable String raw, JdkCatalog catalog, String os, String arch) {
         if (!JdkKeywords.isKeyword(raw)) return null;
         // Pure keyword→major resolution lives in the engine (shared with the
         // headless path); the CLI adds only the "could not resolve" message.
@@ -429,7 +429,8 @@ public final class JdkInstallCommand implements CliCommand {
             // `native` with no Oracle GraalVM, for this host.
             CommandWedge.printFail(
                     "JDK",
-                    "could not resolve `" + raw.trim() + "` against the JetBrains feed for " + os + "/" + arch + ".");
+                    "could not resolve `" + String.valueOf(raw).trim() + "` against the JetBrains feed for " + os + "/"
+                            + arch + ".");
         }
         return resolved;
     }

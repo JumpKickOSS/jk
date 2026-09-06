@@ -34,7 +34,7 @@ import org.jspecify.annotations.Nullable;
  */
 final class ScriptRunner {
 
-    private final @Nullable GlobalOptions global;
+    private final GlobalOptions global;
     private final @Nullable Path cacheDirOverride;
     private final @Nullable Path stateDirOverride;
     private final @Nullable URI repoUrl;
@@ -43,7 +43,7 @@ final class ScriptRunner {
     private final List<String> extraJavaOptions;
 
     ScriptRunner(
-            @Nullable GlobalOptions global,
+            GlobalOptions global,
             @Nullable Path cacheDirOverride,
             @Nullable Path stateDirOverride,
             @Nullable URI repoUrl,
@@ -53,7 +53,7 @@ final class ScriptRunner {
 
     /** As above with {@code --with}/alias dep injections and extra JVM options for the exec. */
     ScriptRunner(
-            @Nullable GlobalOptions global,
+            GlobalOptions global,
             @Nullable Path cacheDirOverride,
             @Nullable Path stateDirOverride,
             @Nullable URI repoUrl,
@@ -247,7 +247,7 @@ final class ScriptRunner {
     }
 
     private int execJava(
-            Path classesDir, List<Path> classpath, List<String> jvmArgs, String mainClass, List<String> args)
+            @Nullable Path classesDir, List<Path> classpath, List<String> jvmArgs, String mainClass, List<String> args)
             throws IOException, InterruptedException {
         Path java = JdkFingerprint.java(JavaHomes.runningJavaHome());
         List<Path> full = new ArrayList<>();

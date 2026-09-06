@@ -148,7 +148,9 @@ public final class EngineWire {
      * {@link EngineProtocol#AUTH} line before returning, so every caller authenticates transparently
      * without needing its own knowledge of the transport.
      */
-    static SocketChannel connect(@Nullable Path socket) throws IOException {
+    static SocketChannel connect(@Nullable Path endpoint) throws IOException {
+        if (endpoint == null) throw new IOException("no engine endpoint to connect to");
+        Path socket = endpoint;
         if (EngineTransport.useLoopbackTcp()) {
             // A killed engine can leave this file empty or half-written. "No port here" means the
             // same thing to every caller as nothing listening, and they all handle IOException —

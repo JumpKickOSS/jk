@@ -28,7 +28,7 @@ public final class ProgressBar {
     private final Style[] fillColors;
 
     /** {@link #colorsFor}'s one-slot memo for a non-default bar width. */
-    private Style[] narrowColors;
+    private Style @Nullable [] narrowColors;
 
     /** Bar in the default green → bright-green progress gradient. */
     public ProgressBar() {

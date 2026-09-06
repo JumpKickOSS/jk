@@ -118,7 +118,13 @@ public final class SelectiveCommand implements CliCommand {
         };
     }
 
-    private static int resolve(Path dir, Path buildFile, String since, String modules, boolean json, Set<Path> into)
+    private static int resolve(
+            Path dir,
+            Path buildFile,
+            @Nullable String since,
+            @Nullable String modules,
+            boolean json,
+            @Nullable Set<Path> into)
             throws Exception {
         if ((since == null || since.isBlank()) && (modules == null || modules.isBlank())) {
             CommandWedge.printFail("Selective", "pass --since=<ref> and/or --modules=<sel>");
@@ -146,7 +152,9 @@ public final class SelectiveCommand implements CliCommand {
         return 0;
     }
 
-    private static int prepare(Path dir, Path buildFile, String since, String modules, Path planPath) throws Exception {
+    private static int prepare(
+            Path dir, Path buildFile, @Nullable String since, @Nullable String modules, Path planPath)
+            throws Exception {
         Set<Path> dirs = new LinkedHashSet<>();
         int code = resolve(dir, buildFile, since, modules, false, dirs);
         if (code != 0) return code;

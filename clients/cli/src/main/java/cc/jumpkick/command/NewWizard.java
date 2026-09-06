@@ -114,14 +114,15 @@ public final class NewWizard {
             List<NewJdkCandidate> candidates,
             @Nullable JdkCatalog catalog,
             String groupGuess,
-            NewCommand.ParentInfo parent,
+            NewCommand.@Nullable ParentInfo parent,
             boolean hasDefaultJdk,
             boolean isInit) {
         boolean module = parent != null;
         // Modules inherit the parent's group, JDK, and language as defaults; a
         // standalone project guesses the group and defaults to the latest LTS.
-        String effectiveGroup = module ? parent.group() : groupGuess;
-        String langDefault = module && parent.kotlin() ? "kotlin" : module && parent.groovy() ? "groovy" : "java";
+        String effectiveGroup = parent != null ? parent.group() : groupGuess;
+        String langDefault =
+                parent != null && parent.kotlin() ? "kotlin" : parent != null && parent.groovy() ? "groovy" : "java";
 
         // The wizard opens with the "native" toggle off, so the initial radio
         // list is whatever filter produces for the non-native case — which
@@ -131,9 +132,10 @@ public final class NewWizard {
         var initial = NewJdkCandidate.filter(candidates, false, LATEST_LTS_MAJOR);
         if (initial.isEmpty()) initial = candidates;
         var defaultJdkId = initial.getFirst().id();
-        if (module) {
+        if (parent != null) {
+            int parentMajor = parent.jdkMajor();
             defaultJdkId = candidates.stream()
-                    .filter(c -> c.major() == parent.jdkMajor())
+                    .filter(c -> c.major() == parentMajor)
                     .map(NewJdkCandidate::id)
                     .findFirst()
                     .orElse(defaultJdkId);
@@ -141,9 +143,9 @@ public final class NewWizard {
 
         // Placement only — scaffolds never write layout=; the tree on disk is the convention.
         var layoutStep = WizardStep.RadioStep.vertical("layout", "Project layout:")
-                .choice(Layout.TRADITIONAL.tomlValue(), "Traditional", "(./src/main/java, ./src/test/java, etc.)")
-                .choice(Layout.SIMPLE.tomlValue(), "Simple", "(./src, ./test/src, etc.)")
-                .defaultChoice(Layout.TRADITIONAL.tomlValue())
+                .choice(Layout.TOKEN_TRADITIONAL, "Traditional", "(./src/main/java, ./src/test/java, etc.)")
+                .choice(Layout.TOKEN_SIMPLE, "Simple", "(./src, ./test/src, etc.)")
+                .defaultChoice(Layout.TOKEN_TRADITIONAL)
                 .build();
 
         // Curated defaults + host declared-dep frequency (≤10); free-form GAV via custom row.
@@ -237,9 +239,9 @@ public final class NewWizard {
                 .when(a -> NewJdkPlan.shouldPrompt(module, hasDefaultJdk, candidates, jdkFloor(a, parent)))
                 .defaultChoice(defaultJdkId);
 
-        String wizardSubtitle = module
+        String wizardSubtitle = parent != null
                 ? "Create a new module for "
-                        + Theme.colorize(
+                        + Theme.paint(
                                 parent.displayName(),
                                 Theme.active().brightCyan().bold())
                 : isInit ? "Initialize this project" : "Create a new project";
@@ -355,7 +357,7 @@ public final class NewWizard {
         return majors.stream().mapToInt(Integer::intValue).max().orElse(JdkLts.OFFLINE_LATEST_LTS);
     }
 
-    static int jdkFloor(Answers answers, NewCommand.ParentInfo parent) {
+    static int jdkFloor(Answers answers, NewCommand.@Nullable ParentInfo parent) {
         if (parent != null) return parent.javaRelease();
         if ("kotlin".equalsIgnoreCase(answers.get("lang"))) return 0;
         String v = answers.get("javaVersion");

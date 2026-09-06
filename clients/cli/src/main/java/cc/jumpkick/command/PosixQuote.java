@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
-import org.jspecify.annotations.Nullable;
-
 /**
  * Minimal POSIX single-quote escaping for shell values. Wraps in single quotes and escapes embedded
  * single quotes via {@code '\''}. Used by Bash, Zsh, and Fish — PowerShell uses a different scheme
@@ -13,7 +11,7 @@ final class PosixQuote {
     private PosixQuote() {}
 
     /** Quote a value so the shell will pass it through verbatim. */
-    static @Nullable String quote(String value) {
+    static String quote(String value) {
         if (!needsQuoting(value)) return value;
         return "'" + value.replace("'", "'\\''") + "'";
     }

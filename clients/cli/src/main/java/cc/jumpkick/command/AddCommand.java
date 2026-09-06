@@ -25,12 +25,14 @@ import cc.jumpkick.model.command.Param;
 import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.tool.JarManifest;
+import cc.jumpkick.wire.protocol.ProjectInfo;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
@@ -50,7 +52,7 @@ public final class AddCommand implements CliCommand {
     private boolean provided;
     private boolean processor;
     private boolean ping;
-    private @Nullable GlobalOptions global;
+    private GlobalOptions global;
 
     @Override
     public String name() {
@@ -163,7 +165,7 @@ public final class AddCommand implements CliCommand {
         String msg = "Added "
                 + Coords.shortName(parsed.library())
                 + " ("
-                + Coords.gav(parsed.group(), parsed.name(), parsed.versionLiteral())
+                + Coords.gav(parsed.group(), parsed.name(), Objects.requireNonNullElse(parsed.versionLiteral(), ""))
                 + ") to "
                 + Theme.colorize("dependency", Theme.active().cyan())
                 + "."
@@ -280,7 +282,7 @@ public final class AddCommand implements CliCommand {
         //    when cwd is the root).
         Path root = WorkspaceScan.findEnclosingWorkspace(cwd).orElse(cwd);
         Path rootToml = root.resolve(ManifestPaths.MANIFEST);
-        var rootInfo = ProjectInfos.orNull(root);
+        ProjectInfo rootInfo;
         try {
             if (!target.startsWith(root)) {
                 CommandWedge.printFail(
@@ -289,7 +291,7 @@ public final class AddCommand implements CliCommand {
                                 + " is outside the workspace root "
                                 + root
                                 + "; added the dependency but not registering it as a module.");
-            } else if (Files.exists(rootToml) && rootInfo != null) {
+            } else if (Files.exists(rootToml) && (rootInfo = ProjectInfos.orNull(root)) != null) {
                 // Adding the first local module promotes a plain project into a workspace root
                 // (Cargo/uv semantics) — without the registration the dependency names a
                 // coordinate that was never published and `jk lock` cannot resolve it.
@@ -530,9 +532,11 @@ public final class AddCommand implements CliCommand {
 
         /** Best-effort Coordinate for --ping. Strips any `=` selector prefix. */
         Coordinate toCoord() {
-            String raw = versionLiteral == null ? "" : versionLiteral;
-            String v = raw.startsWith("=") || raw.startsWith("^") || raw.startsWith("~") ? raw.substring(1) : raw;
-            return Coordinate.of(group, name, v);
+            String literal = versionLiteral == null ? "" : versionLiteral;
+            String v = literal.startsWith("=") || literal.startsWith("^") || literal.startsWith("~")
+                    ? literal.substring(1)
+                    : literal;
+            return Coordinate.of(Objects.requireNonNull(group, "group"), Objects.requireNonNull(name, "name"), v);
         }
     }
 
@@ -558,7 +562,7 @@ public final class AddCommand implements CliCommand {
 
     /** OSC 8 hyperlink: the URL is both the link target and the visible text. */
     private static String osc8Link(String url) {
-        String coloredUrl = Theme.colorize(url, Theme.active().activeStep());
+        String coloredUrl = Theme.paint(url, Theme.active().activeStep());
         return Ansi.hyperlink(url, coloredUrl);
     }
 }

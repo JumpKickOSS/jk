@@ -580,26 +580,26 @@ public final class ExplainCommand implements CliCommand {
                         .row(
                                 RichText.plain("Build time estimate"),
                                 RichText.ansi(
-                                        Theme.colorize(buildTimeEstimateValue(etaMillis, fullyCached), t.warning()))),
+                                        Theme.paint(buildTimeEstimateValue(etaMillis, fullyCached), t.warning()))),
                 Table.Append.SECTION);
         return table.render(RenderContext.current().withAnsi(ansi));
     }
 
-    private static @Nullable String boldNum(int n, Theme t, boolean ansi) {
+    private static String boldNum(int n, Theme t, boolean ansi) {
         String s = String.format("%,d", n);
-        return ansi ? Theme.colorize(s, t.brightWhite().bold()) : s;
+        return ansi ? Theme.paint(s, t.brightWhite().bold()) : s;
     }
 
-    private static @Nullable String colorRebuild(int n, Theme t, boolean ansi) {
+    private static String colorRebuild(int n, Theme t, boolean ansi) {
         String s = String.format("%,d", n);
         if (!ansi) return s;
-        return n > 0 ? Theme.colorize(s, t.blue()) : Theme.colorize(s, t.darkGray());
+        return n > 0 ? Theme.paint(s, t.blue()) : Theme.paint(s, t.darkGray());
     }
 
-    private static @Nullable String colorDelta(int pct, Theme t, boolean ansi) {
+    private static String colorDelta(int pct, Theme t, boolean ansi) {
         String s = pct + "%";
         // All plan percentages are bold white; only the build-time estimate stays yellow.
-        return ansi ? Theme.colorize(s, t.brightWhite().bold()) : s;
+        return ansi ? Theme.paint(s, t.brightWhite().bold()) : s;
     }
 
     private static int pctValue(int part, int whole) {
@@ -716,7 +716,11 @@ public final class ExplainCommand implements CliCommand {
      * {@code jk explain --graph dot|mermaid} — module dependency DAG (engine-hosted).
      */
     private static int emitModuleGraph(
-            Path startDir, String format, @Nullable String modulesSpec, String affectedSince, String outputPath)
+            Path startDir,
+            @Nullable String format,
+            @Nullable String modulesSpec,
+            @Nullable String affectedSince,
+            @Nullable String outputPath)
             throws Exception {
         ModuleGraphAck ack;
         try {

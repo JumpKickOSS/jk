@@ -67,7 +67,7 @@ final class EngineReads {
      * {@code ackType} line, return its decoded value. Every read-only engine verb goes through here
      * so the discriminator is matched in exactly one place.
      */
-    static <T> T request(
+    static <T extends @Nullable Object> T request(
             EnginePaths.Paths paths, String requestLine, String ackType, String what, AckDecoder<T> decoder)
             throws IOException {
         return EngineWire.stream(paths, requestLine, (reader, ch) -> {
@@ -120,7 +120,11 @@ final class EngineReads {
 
     /** The module DAG behind {@code jk explain --graph}. */
     static ModuleGraphAck moduleGraph(
-            EnginePaths.Paths paths, Path dir, String format, @Nullable String modules, String affectedSince)
+            EnginePaths.Paths paths,
+            Path dir,
+            @Nullable String format,
+            @Nullable String modules,
+            @Nullable String affectedSince)
             throws IOException {
         return request(
                 paths,
@@ -217,8 +221,8 @@ final class EngineReads {
         }
     }
 
-    static String freshenCatalogNow(EnginePaths.Paths paths, String catalog, String url, @Nullable String cacheFile)
-            throws IOException {
+    static @Nullable String freshenCatalogNow(
+            EnginePaths.Paths paths, String catalog, String url, @Nullable String cacheFile) throws IOException {
         return request(
                 paths,
                 new FreshenCatalogRequest(catalog, false, url, cacheFile, true).encode(),
@@ -349,7 +353,7 @@ final class EngineReads {
     }
 
     static ProjectInfo projectInfo(
-            EnginePaths.Paths paths, Path dir, String modules, String affectedSince, boolean counts)
+            EnginePaths.Paths paths, Path dir, @Nullable String modules, @Nullable String affectedSince, boolean counts)
             throws IOException {
         return projectInfo(paths, dir, modules, affectedSince, false, counts);
     }
@@ -389,8 +393,8 @@ final class EngineReads {
     static ExecPlan execPlan(
             EnginePaths.Paths paths,
             Path dir,
-            @Nullable Path cache,
-            @Nullable String kind,
+            Path cache,
+            String kind,
             @Nullable String mainOverride,
             @Nullable String binName,
             @Nullable Path binDir,

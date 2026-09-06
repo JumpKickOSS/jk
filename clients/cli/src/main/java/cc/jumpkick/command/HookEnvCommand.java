@@ -91,10 +91,11 @@ public final class HookEnvCommand implements CliCommand {
         dropped.removeAll(managed.keySet());
         dropped.remove(JkEnv.PATH);
         for (var key : dropped) {
-            if (prevDiff.wasUnset(key)) {
+            String previous = prevDiff.previousValue(key);
+            if (prevDiff.wasUnset(key) || previous == null) {
                 out.append(shell.unsetEnv(key));
             } else {
-                out.append(shell.setEnv(key, prevDiff.previousValue(key)));
+                out.append(shell.setEnv(key, previous));
             }
         }
 

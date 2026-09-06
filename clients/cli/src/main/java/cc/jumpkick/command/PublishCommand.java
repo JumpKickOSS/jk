@@ -26,6 +26,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
@@ -68,6 +69,7 @@ public final class PublishCommand implements CliCommand {
         return opts;
     }
 
+    @Nullable
     URI repoUrl;
 
     @Nullable
@@ -98,8 +100,6 @@ public final class PublishCommand implements CliCommand {
     boolean sigstore;
     boolean slsa;
     boolean sbom;
-
-    @Nullable
     GlobalOptions global;
 
     @Override
@@ -219,7 +219,7 @@ public final class PublishCommand implements CliCommand {
         }
         String matchedName = null;
         Optional<RepoCredential> inline = Optional.empty();
-        String target = repoUrl.toString();
+        String target = Objects.requireNonNull(repoUrl, "--repo-url").toString();
         for (RepositoriesScan.Repo repo : RepositoriesScan.scan(jkBuildPath)) {
             String base = repo.url();
             String basePrefix = base.endsWith("/") ? base : base + "/";

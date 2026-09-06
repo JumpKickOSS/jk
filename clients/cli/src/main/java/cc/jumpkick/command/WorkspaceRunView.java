@@ -276,7 +276,7 @@ final class WorkspaceRunView {
                     }
 
                     @Override
-                    public synchronized void error(String step, String code, String message) {
+                    public synchronized void error(String step, String code, @Nullable String message) {
                         // test-failure renders as the styled output block, not an error line.
                         if ("test-failure".equals(code)) return;
                         buf.add("  " + Glyphs.CROSS + " " + step + ": " + message);

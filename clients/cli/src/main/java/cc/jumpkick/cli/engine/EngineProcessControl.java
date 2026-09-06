@@ -128,6 +128,7 @@ public final class EngineProcessControl {
      * when missing or unreadable.
      */
     static long readPidForSocket(@Nullable Path socket) {
+        if (socket == null) return -1;
         return readPidFile(EnginePaths.pidFor(socket));
     }
 

@@ -39,7 +39,7 @@ import org.jspecify.annotations.Nullable;
  */
 public final class GraalResolver {
 
-    private final @Nullable Path jdksDir; // overrides the default jdks root
+    private final @Nullable Path jdksDir; // nullable — overrides the default jdks root
     private final boolean assumeYes; // --yes: install without prompting
     private final Map<String, Path> memo = new HashMap<>();
 
@@ -53,7 +53,7 @@ public final class GraalResolver {
      * actionable message has already been printed — the caller should abort the native build). A
      * non-empty result is suitable to pass as {@code graalHome} to {@code NativePlans.nativeStep}.
      */
-    public Optional<Path> resolve(Path projectDir, String graalSpec) {
+    public Optional<Path> resolve(Path projectDir, @Nullable String graalSpec) {
         String key = graalSpec == null ? "" : graalSpec;
         if (memo.containsKey(key)) {
             return Optional.ofNullable(memo.get(key));
@@ -63,14 +63,14 @@ public final class GraalResolver {
         return Optional.ofNullable(home);
     }
 
-    private static @Nullable String firstNonBlank(String... values) {
+    private static @Nullable String firstNonBlank(@Nullable String... values) {
         for (String v : values) {
             if (v != null && !v.isBlank()) return v;
         }
         return null;
     }
 
-    private @Nullable Path resolveUncached(Path projectDir, String graalSpec) {
+    private @Nullable Path resolveUncached(Path projectDir, @Nullable String graalSpec) {
         JdkRegistry registry = jdksDir != null ? new JdkRegistry(jdksDir) : new JdkRegistry();
 
         // Tiers 1-4 are GraalHomeLookup's — the same policy the engine runs for a request that
@@ -151,7 +151,7 @@ public final class GraalResolver {
         return GraalLauncher.homeOf(launcher).orElse(fallback);
     }
 
-    private @Nullable Path offerOracleGraalVm(Path searchedJavaHome, JdkRegistry registry) {
+    private @Nullable Path offerOracleGraalVm(@Nullable Path searchedJavaHome, JdkRegistry registry) {
         if (!assumeYes && !Confirm.isInteractiveTerminal()) {
             // Can't prompt — fail with the same actionable hint as the driver.
             CliOutput.err(NativeImageDriver.notFoundError(searchedJavaHome).getMessage());

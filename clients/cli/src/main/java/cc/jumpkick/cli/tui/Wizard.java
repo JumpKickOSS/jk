@@ -19,6 +19,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
@@ -328,7 +329,7 @@ public final class Wizard {
         String sub = subtitle == null ? "" : subtitle;
         RichText tail = sub.isEmpty()
                 ? RichText.empty()
-                : RichText.ansi(Theme.colorize(sub, Theme.active().focused()));
+                : RichText.ansi(Theme.paint(sub, Theme.active().focused()));
         return new JkWedge(Icon.menu(), command, tail)
                 .variant(JkWedge.Variant.MENU)
                 .renderLine(RenderContext.current());
@@ -372,17 +373,17 @@ public final class Wizard {
         };
     }
 
-    private static Styled answerLine(@Nullable String text, Style textStyle) {
+    private static Styled answerLine(String text, Style textStyle) {
         return new StyledBuilder()
                 .append("➜ ", Theme.active().brightGreen())
                 .append(text, textStyle)
                 .build();
     }
 
-    private static @Nullable String labelFor(WizardStep.RadioStep step, Map<String, Object> answers) {
+    private static String labelFor(WizardStep.RadioStep step, Map<String, Object> answers) {
         var snapshot = Answers.of(answers);
-        Object chosen = answers.getOrDefault(step.key(), step.defaultChoice());
-        var id = chosen == null ? "" : chosen.toString();
+        Object answer = answers.get(step.key());
+        var id = answer != null ? answer.toString() : Objects.requireNonNullElse(step.defaultChoice(), "");
         for (var c : step.choicesFor(snapshot)) {
             if (c.id().equals(id)) {
                 return c.label();

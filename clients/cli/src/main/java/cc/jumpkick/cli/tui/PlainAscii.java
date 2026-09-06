@@ -110,7 +110,7 @@ public final class PlainAscii {
     }
 
     /** As {@link #wrap} for a stream the caller already has — present in, present out. */
-    public static @Nullable PrintStream wrapping(@Nullable PrintStream out) {
+    public static PrintStream wrapping(PrintStream out) {
         if (Theme.active().isAnsi()) return out;
         if (out instanceof Rewriting) return out;
         return new PlainPrintStream(out);

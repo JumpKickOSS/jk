@@ -69,10 +69,10 @@ public final class CliSessionTranscript {
     private final Object lock = new Object();
     private final ByteArrayOutputStream pending = new ByteArrayOutputStream(4096);
 
-    private Path file;
+    private @Nullable Path file;
     private @Nullable OutputStream out;
     private long lastFlushMs;
-    private String wedgeSummary;
+    private @Nullable String wedgeSummary;
     private boolean closed;
     private boolean bound;
 
@@ -123,7 +123,7 @@ public final class CliSessionTranscript {
                 && (env.isBlank() || EnvValues.parseBool(env).filter(on -> !on).isPresent());
     }
 
-    public Path file() {
+    public @Nullable Path file() {
         return file;
     }
 
@@ -249,11 +249,11 @@ public final class CliSessionTranscript {
         return this;
     }
 
-    public CliSessionTranscript error(String message) {
+    public CliSessionTranscript error(@Nullable String message) {
         return error("", "", message);
     }
 
-    public CliSessionTranscript error(String step, String code, String message) {
+    public CliSessionTranscript error(@Nullable String step, String code, @Nullable String message) {
         if (message == null || message.isBlank()) return this;
         String s = step == null ? "" : step;
         String c = code == null ? "" : code;

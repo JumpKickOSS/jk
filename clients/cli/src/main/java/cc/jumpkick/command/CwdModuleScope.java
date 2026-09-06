@@ -61,9 +61,9 @@ public final class CwdModuleScope {
     public static Resolved resolve(
             Path workingDir,
             @Nullable String modulesSpec,
-            boolean workspaceRoot,
+            @Nullable boolean workspaceRoot,
             String workspaceRootDir,
-            String projectName) {
+            @Nullable String projectName) {
         Path cwd = workingDir.toAbsolutePath().normalize();
         String spec = modulesSpec == null || modulesSpec.isBlank() ? null : modulesSpec;
         if (workspaceRoot) {
@@ -91,7 +91,7 @@ public final class CwdModuleScope {
         return rel.isEmpty() ? "." : rel;
     }
 
-    private static boolean blank(String s) {
+    private static boolean blank(@Nullable String s) {
         return s == null || s.isBlank();
     }
 }

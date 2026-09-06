@@ -33,9 +33,9 @@ public final class EngineRequests {
         public TestRequest(
                 Path entryDir,
                 Path cache,
-                Path jdksDir,
+                @Nullable Path jdksDir,
                 int workers,
-                String profile,
+                @Nullable String profile,
                 boolean verbose,
                 boolean offline,
                 boolean force) {
@@ -45,9 +45,9 @@ public final class EngineRequests {
         public TestRequest(
                 Path entryDir,
                 Path cache,
-                Path jdksDir,
+                @Nullable Path jdksDir,
                 int workers,
-                String profile,
+                @Nullable String profile,
                 boolean verbose,
                 boolean offline,
                 boolean force,
@@ -78,7 +78,7 @@ public final class EngineRequests {
             boolean offline,
             boolean force,
             @Nullable String variant,
-            Map<String, String> clientEnv,
+            @Nullable Map<String, String> clientEnv,
             /** Client-resolved GraalVM home for an always-native module; null when none links. */
             @Nullable Path graalHome) {
 
@@ -93,7 +93,7 @@ public final class EngineRequests {
                 boolean verbose,
                 boolean offline,
                 boolean force,
-                String variant,
+                @Nullable String variant,
                 @Nullable Map<String, String> clientEnv) {
             this(
                     entryDir, cache, jdksDir, workers, profile, skipTests, verbose, offline, force, variant, clientEnv,
@@ -102,7 +102,7 @@ public final class EngineRequests {
 
         /** Default variant, no client env. */
         public SingleBuildRequest(
-                @Nullable Path entryDir,
+                Path entryDir,
                 Path cache,
                 @Nullable Path jdksDir,
                 int workers,
@@ -230,7 +230,7 @@ public final class EngineRequests {
                 Path cache,
                 List<String> features,
                 boolean noDefaultFeatures,
-                URI repoUrl,
+                @Nullable URI repoUrl,
                 boolean offline,
                 boolean force,
                 boolean verbose) {
@@ -273,7 +273,7 @@ public final class EngineRequests {
             onPackage(dir, name, version);
         }
 
-        default void onModuleFinish(@Nullable String dir, BuildPlanResult result, LockCounts counts) {}
+        default void onModuleFinish(String dir, BuildPlanResult result, LockCounts counts) {}
     }
 
     /** A finished lock/update module's written-lockfile counts ({@code -1} when the plan failed before writing). */
@@ -435,7 +435,9 @@ public final class EngineRequests {
             boolean verbose,
             List<String> extraArgs,
             Map<Path, Path> graalByDir,
-            /** When non-null/non-empty: only these module dirs (+ their build prereqs) run.@Nullable  */
+
+            @Nullable
+            /** When non-null/non-empty: only these module dirs (+ their build prereqs) run. */
             List<Path> selectedModuleDirs) {}
 
     /**
@@ -474,21 +476,21 @@ public final class EngineRequests {
             boolean standalone,
             Map<String, String> templateParams,
             boolean relaxParent,
-            String targetDir) {
+            @Nullable String targetDir) {
         public NewProjectRequest(
                 String name,
                 String parentDir,
-                String group,
-                String lang,
+                @Nullable String group,
+                @Nullable String lang,
                 String layout,
-                String template,
+                @Nullable String template,
                 boolean executable,
-                String jdk,
+                @Nullable String jdk,
                 int javaRelease,
                 boolean assembly,
                 boolean nativeImage,
                 boolean plugin,
-                String kotlinModule,
+                @Nullable String kotlinModule,
                 List<String> deps,
                 boolean sample,
                 boolean standalone,
@@ -564,7 +566,7 @@ public final class EngineRequests {
             boolean forceRecompile,
             List<String> with) {
         public ScriptPrepareRequest(
-                String mode, Path script, Path cache, Path stateDir, URI repoUrl, boolean forceRecompile) {
+                String mode, Path script, Path cache, Path stateDir, @Nullable URI repoUrl, boolean forceRecompile) {
             this(mode, script, cache, stateDir, repoUrl, forceRecompile, List.of());
         }
     }

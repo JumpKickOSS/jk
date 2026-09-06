@@ -228,7 +228,7 @@ public final class IdeSupport {
                 ideConfigDir);
     }
 
-    private static int parseInt(@Nullable String s) {
+    private static int parseInt(String s) {
         try {
             return Integer.parseInt(s);
         } catch (NumberFormatException e) {

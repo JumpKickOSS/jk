@@ -30,6 +30,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
@@ -118,7 +119,7 @@ final class EngineJobs {
                                         .sorted()
                                         .toList(),
                         session.testSelection(),
-                        req.modules(),
+                        Objects.requireNonNullElse(req.modules(), List.of()),
                         req.keepGoing(),
                         workspaceTarget,
                         graalHomes,
@@ -192,10 +193,10 @@ final class EngineJobs {
      */
     static BuildPlanResult runSingleBuild(
             EnginePaths.Paths paths,
-            EngineRequests.@Nullable SingleBuildRequest req,
-            @Nullable Function<List<Task>, BuildPlanListener> listenerFactory,
+            EngineRequests.SingleBuildRequest req,
+            Function<List<Task>, BuildPlanListener> listenerFactory,
             TestSummary @Nullable [] testResultOut,
-            String[] buildOutcomeOut)
+            String @Nullable [] buildOutcomeOut)
             throws IOException {
         Session session = SessionContext.current();
         return singlePlan(
@@ -390,9 +391,9 @@ final class EngineJobs {
     private static BuildPlanResult singlePlan(
             EnginePaths.Paths paths,
             String requestLine,
-            @Nullable Function<List<Task>, BuildPlanListener> listenerFactory,
+            Function<List<Task>, BuildPlanListener> listenerFactory,
             TestSummary @Nullable [] testResultOut,
-            String[] buildOutcomeOut)
+            String @Nullable [] buildOutcomeOut)
             throws IOException {
         return EngineWire.stream(
                 paths,

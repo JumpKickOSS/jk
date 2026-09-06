@@ -14,6 +14,7 @@ import cc.jumpkick.terminal.TerminalSession;
 import cc.jumpkick.terminal.Terminals;
 import java.io.PrintWriter;
 import java.time.Duration;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.Nullable;
 
@@ -25,7 +26,7 @@ public final class DrainView implements LiveRegion, AutoCloseable {
 
     private final @Nullable TerminalSession terminal; // null → inactive no-op
     private final @Nullable ModeGuard mode;
-    private final PrintWriter out;
+    private final @Nullable PrintWriter out;
     private final NerdFontCaps nerdFont;
     private final long startNanos;
 
@@ -38,6 +39,11 @@ public final class DrainView implements LiveRegion, AutoCloseable {
     private @Nullable Thread animator;
     private @Nullable Thread keys;
     private @Nullable Thread restoreHook;
+
+    /** The tty writer; only the live view (a non-null terminal) paints, so callers are past the guard. */
+    private PrintWriter out() {
+        return Objects.requireNonNull(out, "inactive drain view has no tty");
+    }
 
     private DrainView(
             @Nullable TerminalSession terminal,
@@ -66,8 +72,8 @@ public final class DrainView implements LiveRegion, AutoCloseable {
             DrainView v = new DrainView(t, mode, initialJobs, nerdFont, now);
             // Leading blank before the live Engine drain wedge (same envelope as other chrome).
             CommandWedge.envelopeStart();
-            v.out.print(Ansi.HIDE_CURSOR);
-            v.out.flush();
+            v.out().print(Ansi.HIDE_CURSOR);
+            v.out().flush();
             LiveRegion.setActive(v);
             v.restoreHook = new Thread(v::restoreTerminalQuietly, "jk-drain-restore");
             Runtime.getRuntime().addShutdownHook(v.restoreHook);
@@ -118,8 +124,8 @@ public final class DrainView implements LiveRegion, AutoCloseable {
         for (String line : lines()) {
             sb.append('\r').append(line).append(Ansi.ERASE_LINE_TO_END).append('\n');
         }
-        out.print(sb);
-        out.flush();
+        out().print(sb);
+        out().flush();
         linesDrawn = 2;
     }
 
@@ -167,12 +173,12 @@ public final class DrainView implements LiveRegion, AutoCloseable {
         if (!settled.compareAndSet(false, true)) return;
         stopAnimator();
         synchronized (lock) {
-            if (linesDrawn > 0) out.print(Ansi.cursorUp(linesDrawn));
-            out.print('\r');
-            out.print(Ansi.ERASE_DISPLAY_TO_END);
-            out.print(wedgeLine);
-            out.print(System.lineSeparator());
-            out.flush();
+            if (linesDrawn > 0) out().print(Ansi.cursorUp(linesDrawn));
+            out().print('\r');
+            out().print(Ansi.ERASE_DISPLAY_TO_END);
+            out().print(wedgeLine);
+            out().print(System.lineSeparator());
+            out().flush();
             linesDrawn = 0;
         }
     }
@@ -185,10 +191,10 @@ public final class DrainView implements LiveRegion, AutoCloseable {
         synchronized (lock) {
             if (!settled.get()) {
                 // No settle line was printed — just wipe the live region.
-                if (linesDrawn > 0) out.print(Ansi.cursorUp(linesDrawn));
-                out.print('\r');
-                out.print(Ansi.ERASE_DISPLAY_TO_END);
-                out.flush();
+                if (linesDrawn > 0) out().print(Ansi.cursorUp(linesDrawn));
+                out().print('\r');
+                out().print(Ansi.ERASE_DISPLAY_TO_END);
+                out().flush();
                 linesDrawn = 0;
             }
         }
@@ -204,12 +210,12 @@ public final class DrainView implements LiveRegion, AutoCloseable {
         if (terminal == null) return true;
         stopAnimator();
         synchronized (lock) {
-            if (linesDrawn > 0) out.print(Ansi.cursorUp(linesDrawn));
-            out.print('\r');
-            out.print(Ansi.ERASE_DISPLAY_TO_END);
-            out.print("jk engine: still draining in the background");
-            out.print(System.lineSeparator());
-            out.flush();
+            if (linesDrawn > 0) out().print(Ansi.cursorUp(linesDrawn));
+            out().print('\r');
+            out().print(Ansi.ERASE_DISPLAY_TO_END);
+            out().print("jk engine: still draining in the background");
+            out().print(System.lineSeparator());
+            out().flush();
             linesDrawn = 0;
         }
         restoreTerminalQuietly();
@@ -231,9 +237,9 @@ public final class DrainView implements LiveRegion, AutoCloseable {
     private void restoreTerminalQuietly() {
         if (terminal == null || !restored.compareAndSet(false, true)) return;
         try {
-            out.print(Ansi.SHOW_CURSOR);
-            out.print(Ansi.RESET);
-            out.flush();
+            out().print(Ansi.SHOW_CURSOR);
+            out().print(Ansi.RESET);
+            out().flush();
             if (mode != null) {
                 mode.close();
             }

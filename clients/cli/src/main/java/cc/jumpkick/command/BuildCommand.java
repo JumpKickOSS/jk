@@ -130,6 +130,7 @@ public final class BuildCommand implements CliCommand {
     @Nullable
     String modulesSpec;
 
+    @Nullable
     Map<String, String> clientEnv = Map.of();
     /** Best-effort session transcript; null when disabled / no project. */
     private @Nullable CliSessionTranscript session;

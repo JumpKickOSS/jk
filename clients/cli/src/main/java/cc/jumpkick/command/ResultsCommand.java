@@ -17,6 +17,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
@@ -74,12 +75,12 @@ public final class ResultsCommand implements CliCommand {
      * Workspace root when {@code start} is a member, else the nearest ancestor with {@code jk.toml},
      * else {@code start}. Journal identity is keyed on that root.
      */
-    static @Nullable Path projectRoot(Path start) {
+    static Path projectRoot(@Nullable Path start) {
         Path abs = start == null
                 ? Path.of("").toAbsolutePath().normalize()
                 : start.toAbsolutePath().normalize();
         Path toml = ConfigSources.findProjectConfig(abs);
-        Path dir = toml != null ? toml.getParent() : abs;
+        Path dir = toml != null ? Objects.requireNonNull(toml.getParent(), "jk.toml dir") : abs;
         try {
             return WorkspaceLocator.findRoot(dir).orElse(dir);
         } catch (IOException e) {

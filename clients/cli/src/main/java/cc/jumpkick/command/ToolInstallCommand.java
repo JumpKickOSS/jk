@@ -43,6 +43,7 @@ import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
@@ -101,6 +102,7 @@ public final class ToolInstallCommand implements CliCommand {
                         + "install the current jk.toml project."));
     }
 
+    @Nullable
     String coord;
 
     @Nullable
@@ -305,6 +307,7 @@ public final class ToolInstallCommand implements CliCommand {
      * script-ref (coordinate refs rewrite {@code coord} and return null to fall through).
      */
     private @Nullable Integer resolveJBangAliasForInstall() throws IOException, InterruptedException {
+        String coord = Objects.requireNonNull(this.coord, "coord");
         String aliasName = coord.substring(0, coord.indexOf('@'));
         Path stateDirForTrust = stateDirOverride != null ? stateDirOverride : JkDirs.state();
         // Trust decides BEFORE any fetch — same rule as tool run: no request leaves the machine
@@ -487,16 +490,17 @@ public final class ToolInstallCommand implements CliCommand {
             return p.exit() == Exit.SUCCESS ? Exit.SOFTWARE : p.exit();
         }
         if (p.exit() != Exit.SUCCESS) return p.exit();
+        String source = Objects.requireNonNullElse(p.source(), "");
         CliOutput.out(slug + " " + p.version() + " "
-                + ("CACHED".equals(p.source())
-                        ? "already installed"
-                        : String.valueOf(p.source()).toLowerCase(Locale.ROOT))
+                + ("CACHED".equals(source) ? "already installed" : source.toLowerCase(Locale.ROOT))
                 + " — " + p.bin());
         return Exit.SUCCESS;
     }
 
     private InstallCommand appInstallDelegate() {
-        InstallCommand delegate = new InstallCommand();
+        BuildOptions buildOpts = new BuildOptions();
+        buildOpts.skipTests = skipTests;
+        InstallCommand delegate = new InstallCommand(global, buildOpts);
         delegate.binName = binName;
         delegate.mainClass = mainClass;
         delegate.groupFlag = groupFlag;
@@ -508,13 +512,10 @@ public final class ToolInstallCommand implements CliCommand {
         delegate.libDirOverride = libDirOverride;
         delegate.m2DirOverride = m2DirOverride;
         delegate.repoUrl = repoUrl;
-        delegate.buildOpts = new BuildOptions();
-        delegate.buildOpts.skipTests = skipTests;
-        delegate.global = global;
         return delegate;
     }
 
-    private static void copyTree(Path from, Path to) throws IOException {
+    private static void copyTree(@Nullable Path from, Path to) throws IOException {
         PathUtil.copyTree(from, to);
     }
 

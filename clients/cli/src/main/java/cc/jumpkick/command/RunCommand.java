@@ -56,8 +56,14 @@ public final class RunCommand {
     @Nullable
     Path jdksDir;
 
-    BuildOptions buildOpts;
-    GlobalOptions global;
+    final BuildOptions buildOpts;
+    final GlobalOptions global;
+
+    /** The delegate {@code jk run <dir>} drives; see {@code InstallCommand} for why a constructor. */
+    RunCommand(GlobalOptions global, BuildOptions buildOpts) {
+        this.global = global;
+        this.buildOpts = buildOpts;
+    }
 
     /** Package-private: {@code jk tool run <dir>} delegates a jk-project directory here. */
     int runProject(Path projectDir, List<String> appArgs) throws IOException, InterruptedException {
@@ -134,7 +140,7 @@ public final class RunCommand {
                 List<String> scopeNames = cwdScope.workspaceMember()
                         ? (cwdScope.focusLabel() == null ? List.of() : List.of(cwdScope.focusLabel()))
                         : List.of();
-                ModuleScopeHint.print("building", scopeNames, global != null && global.outputIsJson());
+                ModuleScopeHint.print("building", scopeNames, global.outputIsJson());
                 WorkspaceResult wr;
                 if (liveWorkspace) {
                     // Same live chrome as `jk build` at a root: aggregate bar + module

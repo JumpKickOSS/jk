@@ -30,7 +30,7 @@ public sealed interface Shell permits BashShell, ZshShell, FishShell, PwshShell,
     String name();
 
     /** Render {@code export FOO=bar} (or the shell's equivalent). */
-    String setEnv(String key, @Nullable String value);
+    String setEnv(String key, String value);
 
     /** Render the {@code unset FOO} statement (or the shell's equivalent). */
     String unsetEnv(String key);
@@ -141,7 +141,8 @@ public sealed interface Shell permits BashShell, ZshShell, FishShell, PwshShell,
      * Test seam — caller supplies {@code os.name}, {@code $SHELL} and {@code pw_shell}. Script hosts
      * ({@code sh}, {@code dash}) are not interactive shells and do not count as a login shell.
      */
-    static List<Shell> installTargets(Path home, String osName, String shellEnv, String passwdShell) {
+    static List<Shell> installTargets(
+            Path home, String osName, @Nullable String shellEnv, @Nullable String passwdShell) {
         List<Shell> targets = new ArrayList<>();
         loginShell(shellEnv, passwdShell).ifPresent(targets::add);
         List<Shell> platform = Os.isWindows(osName)
@@ -167,13 +168,13 @@ public sealed interface Shell permits BashShell, ZshShell, FishShell, PwshShell,
     }
 
     /** The login shell from {@code $SHELL}, else {@code pw_shell}; empty when neither names one. */
-    private static Optional<Shell> loginShell(String shellEnv, String passwdShell) {
+    private static Optional<Shell> loginShell(@Nullable String shellEnv, @Nullable String passwdShell) {
         Optional<Shell> fromEnv = interactive(shellEnv);
         return fromEnv.isPresent() ? fromEnv : interactive(passwdShell);
     }
 
     /** {@link #detect(String)} minus the script hosts: {@code sh}/{@code dash} are not a login shell to write for. */
-    private static Optional<Shell> interactive(String rawShell) {
+    private static Optional<Shell> interactive(@Nullable String rawShell) {
         String name = basename(rawShell);
         return scriptHost(name) ? Optional.empty() : byName(name);
     }
@@ -201,7 +202,7 @@ public sealed interface Shell permits BashShell, ZshShell, FishShell, PwshShell,
     }
 
     /** Map a raw shell path or name ({@code $SHELL}, {@code bash}, …). Empty when unset or unsupported. */
-    static Optional<Shell> detect(String rawShell) {
+    static Optional<Shell> detect(@Nullable String rawShell) {
         return byName(basename(rawShell));
     }
 
@@ -210,7 +211,7 @@ public sealed interface Shell permits BashShell, ZshShell, FishShell, PwshShell,
      * parent process, if that parent is a supported interactive shell. Script hosts ({@code sh},
      * {@code dash}) are ignored as parents so an installer or CI wrapper is not treated as bash.
      */
-    static List<Shell> live(String shellEnv, @Nullable String passwdShell, @Nullable String parentCommand) {
+    static List<Shell> live(@Nullable String shellEnv, @Nullable String passwdShell, @Nullable String parentCommand) {
         LinkedHashMap<String, Shell> out = new LinkedHashMap<>();
         addLive(out, detect(shellEnv));
         addLive(out, detect(passwdShell));
@@ -236,7 +237,7 @@ public sealed interface Shell permits BashShell, ZshShell, FishShell, PwshShell,
      * Full detection chain. {@code shellEnv} is {@code $SHELL}; {@code passwdShell} is {@code
      * pw_shell} from the account database.
      */
-    static Optional<Shell> detect(String shellEnv, String passwdShell, Path home, String osName) {
+    static Optional<Shell> detect(String shellEnv, @Nullable String passwdShell, Path home, String osName) {
         Optional<Shell> fromEnv = detect(shellEnv);
         if (fromEnv.isPresent()) {
             return fromEnv;
@@ -252,7 +253,7 @@ public sealed interface Shell permits BashShell, ZshShell, FishShell, PwshShell,
         return osDefault(osName);
     }
 
-    private static String basename(String raw) {
+    private static String basename(@Nullable String raw) {
         if (raw == null || raw.isBlank()) {
             return "";
         }

@@ -104,8 +104,18 @@ public final class InstallCommand {
     @Nullable
     URI repoUrl;
 
-    BuildOptions buildOpts;
-    GlobalOptions global;
+    final BuildOptions buildOpts;
+    final GlobalOptions global;
+
+    /**
+     * The delegate the tool commands drive: {@code jk install <coord>} hands its options here.
+     * The options are the two things every mode reads, so they arrive by constructor rather than
+     * by field assignment that a caller could forget.
+     */
+    InstallCommand(GlobalOptions global, BuildOptions buildOpts) {
+        this.global = global;
+        this.buildOpts = buildOpts;
+    }
 
     // --- mode 1: current project -----------------------------------------
 
@@ -404,7 +414,7 @@ public final class InstallCommand {
         for (Path mod : moduleDirs) infoByDir.put(mod, projectInfo(mod));
         List<AlwaysNativeGraal.Module> alwaysNative = new ArrayList<>();
         for (Path mod : moduleDirs) {
-            var info = Objects.requireNonNull(infoByDir.get(mod));
+            var info = Objects.requireNonNull(infoByDir.get(mod), () -> "no project info for " + mod);
             if (info.error() != null || !"ALWAYS".equals(info.nativeMode())) continue;
             alwaysNative.add(new AlwaysNativeGraal.Module(mod, info.graal()));
         }
@@ -420,7 +430,7 @@ public final class InstallCommand {
                         null,
                         0,
                         null,
-                        buildOpts != null && buildOpts.skipTests,
+                        buildOpts.skipTests,
                         global.verbose,
                         0,
                         selected.isEmpty() ? null : selected,
@@ -532,8 +542,8 @@ public final class InstallCommand {
      * Whether {@code info}'s declared product-lib destination is missing or holds other bytes than
      * the artifact this tree built. False for every module that declares none.
      */
-    static boolean productLibStale(ProjectInfo info) {
-        if (info.error() != null || info.productLib().isBlank()) return false;
+    static boolean productLibStale(@Nullable ProjectInfo info) {
+        if (info == null || info.error() != null || info.productLib().isBlank()) return false;
         String builtPath = info.assembly() ? info.assemblyJarPath() : info.mainJarPath();
         if (builtPath == null || builtPath.isBlank()) return false;
         Path built = Path.of(builtPath);

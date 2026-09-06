@@ -24,6 +24,9 @@ tasks.withType<JavaCompile>().configureEach {
     // Error Prone's own switch, set outside its lambda: inside it, `isEnabled` resolves to the
     // compile task and silently disables the whole compilation instead of the checker.
     options.errorprone.enabled.set(excuse == null)
+    // javac stops reporting at 100 errors, which turns every large sweep into a count of 101; the
+    // sweeps size their work from the whole list.
+    options.compilerArgs.addAll(listOf("-Xmaxerrs", "10000"))
     options.errorprone {
         disableAllChecks = true
         error("RequireExplicitNullMarking")

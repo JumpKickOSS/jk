@@ -2,6 +2,7 @@
 package cc.jumpkick.command.ide;
 
 import java.nio.file.Path;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A resolved external dependency, with real {@code .jar} paths for the IDE to index.
@@ -11,4 +12,8 @@ import java.nio.file.Path;
  * @param jarPath repo path with a proper {@code .jar} extension (e.g. {@code ~/.jk/cache/repo/.../lib-1.0.jar})
  * @param sourcesPath repo path for the {@code -sources.jar} (may be {@code null})
  */
-public record LibDef(String name, String fileName, Path jarPath, Path sourcesPath) {}
+public record LibDef(
+        String name,
+        String fileName,
+        Path jarPath,
+        @Nullable Path sourcesPath) {}

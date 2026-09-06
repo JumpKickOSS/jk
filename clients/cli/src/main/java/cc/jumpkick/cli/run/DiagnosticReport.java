@@ -81,7 +81,7 @@ public final class DiagnosticReport {
      * Collapse key for consecutive compiler reports that share a pill. {@code null} means the
      * report always carries its own header (non-compiler diagnostics).
      */
-    public static @Nullable String compilerHeaderKey(String step, String code, @Nullable String module) {
+    public static @Nullable String compilerHeaderKey(String step, @Nullable String code, @Nullable String module) {
         if (!ConsoleSpec.isCompilerCode(code)) return null;
         return titleFor(step, code) + "\0" + (module == null ? "" : module);
     }
@@ -90,7 +90,7 @@ public final class DiagnosticReport {
     public static final class CompilerHeaderRun {
         private @Nullable String prev;
 
-        public boolean show(String step, String code, @Nullable String module) {
+        public boolean show(String step, @Nullable String code, @Nullable String module) {
             String key = compilerHeaderKey(step, code, module);
             boolean show = key == null || !key.equals(prev);
             prev = key;
@@ -99,13 +99,12 @@ public final class DiagnosticReport {
     }
 
     /** Warning report: yellow pill + rail (compiler warnings keep their body paint). */
-    public static String renderWarning(String step, @Nullable String code, @Nullable String message) {
+    public static String renderWarning(String step, String code, @Nullable String message) {
         return renderWarning(step, code, message, null);
     }
 
     /** Like {@link #renderWarning(String, String, String)} with a {@code group:artifact} module. */
-    public static String renderWarning(
-            String step, @Nullable String code, @Nullable String message, @Nullable String module) {
+    public static String renderWarning(String step, String code, @Nullable String message, @Nullable String module) {
         String title = titleFor(step, code);
         if (ConsoleSpec.isCompilerCode(code)) {
             return header(title, Role.WARNING, module)
@@ -125,7 +124,7 @@ public final class DiagnosticReport {
             if (code != null && !code.isBlank() && !"workspace".equals(code)) {
                 return titleCaseWords(code.replace('-', ' ').replace('_', ' '));
             }
-            BuildStage stage = BuildStage.ofTaskName(key.isEmpty() ? code : key);
+            BuildStage stage = BuildStage.ofTaskName(key.isEmpty() ? (code == null ? "" : code) : key);
             return stage == BuildStage.OTHER ? "Build" : stage.displayName();
         }
         // Prefer task humanization (Parse Build) over coarse stage (Resolve) — matches the wire
@@ -276,9 +275,9 @@ public final class DiagnosticReport {
         return out.toString();
     }
 
-    private static @Nullable String paintPathToken(String tok, Theme t) {
+    private static String paintPathToken(String tok, Theme t) {
         String display = relativizePathToken(tok);
-        return Theme.colorize(display, t.path());
+        return Theme.paint(display, t.path());
     }
 
     /** Relativize a path-like token; leave non-existent / non-path strings alone. */

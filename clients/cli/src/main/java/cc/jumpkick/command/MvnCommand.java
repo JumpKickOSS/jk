@@ -21,6 +21,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
@@ -107,7 +108,7 @@ public final class MvnCommand implements CliCommand {
      * error already rendered) on failure. Engine-hosted: {@code CompatPlans.provision} links or
      * downloads the distribution in the engine JVM and answers with the launcher path.
      */
-    static Path provision(Path projectDir, Path toolsRoot, boolean noDiscover, boolean isGradle)
+    static @Nullable Path provision(Path projectDir, Path toolsRoot, boolean noDiscover, boolean isGradle)
             throws IOException, InterruptedException {
         String tool = isGradle ? "gradle" : "mvn";
         HostedEvents.Provision p;
@@ -119,9 +120,9 @@ public final class MvnCommand implements CliCommand {
         }
 
         if (p.error() != null) CommandWedge.printFail(tool, p.error());
-        if ("LINKED".equals(p.source()) || "DOWNLOADED".equals(p.source())) {
-            CliOutput.err((isGradle ? "Gradle " : "Maven ") + p.version() + " "
-                    + String.valueOf(p.source()).toLowerCase(Locale.ROOT));
+        String source = Objects.requireNonNullElse(p.source(), "");
+        if ("LINKED".equals(source) || "DOWNLOADED".equals(source)) {
+            CliOutput.err((isGradle ? "Gradle " : "Maven ") + p.version() + " " + source.toLowerCase(Locale.ROOT));
         }
         if (p.exit() != 0) return null;
         return p.bin() != null ? Path.of(p.bin()) : null;

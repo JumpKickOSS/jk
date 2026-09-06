@@ -5,7 +5,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import org.jspecify.annotations.Nullable;
 
 /**
  * The step and phase state of one plan, and how wire events change it. No terminal, no ANSI, no
@@ -115,7 +114,7 @@ final class PlanModel {
     }
 
     /** Set the current sub-task message for a running step. */
-    public void stepMessage(@Nullable String module, String stepKey, String message) {
+    public void stepMessage(String module, String stepKey, String message) {
         synchronized (lock) {
             Row r = rows.get(key(module, stepKey));
             if (r == null) return;
@@ -136,12 +135,12 @@ final class PlanModel {
     }
 
     /** Mark a step finished (phase defaults empty). */
-    public void stepDone(@Nullable String module, String stepKey, boolean ok) {
+    public void stepDone(String module, String stepKey, boolean ok) {
         stepDone(module, stepKey, ok, "");
     }
 
     /** Mark a step finished; updates the phase chain aggregate for {@code phase}. */
-    public void stepDone(@Nullable String module, String stepKey, boolean ok, String phase) {
+    public void stepDone(String module, String stepKey, boolean ok, String phase) {
         synchronized (lock) {
             String phaseKey = phaseKey(phase, stepKey);
             Row r = rows.computeIfAbsent(key(module, stepKey), k -> new Row(module, humanize(stepKey), phaseKey));

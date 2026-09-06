@@ -330,7 +330,7 @@ public final class JkDarkTheme implements Theme {
 
     @Override
     public Style withBackground(Style base, @Nullable Rgb bg) {
-        return withBg(base, bg);
+        return bg == null ? base : withBg(base, bg);
     }
 
     @Override
@@ -339,13 +339,13 @@ public final class JkDarkTheme implements Theme {
     }
 
     @Override
-    public Style bright(int r, int g, int b) {
+    public Style bright(@Nullable int r, int g, int b) {
         return withColor(Style.EMPTY, r, g, b);
     }
 
     @Override
-    public Style bright(Rgb c) {
-        return withColor(Style.EMPTY, c);
+    public Style bright(@Nullable Rgb c) {
+        return c == null ? Style.EMPTY : withColor(Style.EMPTY, c);
     }
 
     // --- help-semantic styles --------------------------------------------

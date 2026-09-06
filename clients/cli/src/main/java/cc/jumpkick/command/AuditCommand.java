@@ -134,7 +134,7 @@ public final class AuditCommand implements CliCommand {
      * the default endpoint's owner is the auditor worker, off this classpath, so the fallback is
      * a stable phrase rather than a second copy of the URL.
      */
-    static String offlineRefusal(URI osvBatchUrl) {
+    static String offlineRefusal(@Nullable URI osvBatchUrl) {
         return Errors.offlineRefusal(osvBatchUrl != null ? osvBatchUrl.toString() : "the OSV API");
     }
 }

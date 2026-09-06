@@ -153,8 +153,8 @@ final class JkManagerPlainView {
      * ({@code running 80 tests} / {@code compiling 12 sources}) and prints the stage change. Must
      * hold the manager lock.
      */
-    void onStepMessage(PlanModel.Row r) {
-        if (!animating()) return;
+    void onStepMessage(PlanModel.@Nullable Row r) {
+        if (r == null || !animating()) return;
         if (r.message.contains("classpath input size")) emitStepDetail(r.message);
         var tests = PlainPhase.runningTestsCount(r.message);
         if (tests.isPresent()) {
@@ -325,7 +325,7 @@ final class JkManagerPlainView {
     }
 
     /** {@code "jk: * Format > Examining source files - working..."} / {@code … - done.}. */
-    static String indeterminateLine(String command, String message, boolean done) {
+    static String indeterminateLine(@Nullable String command, @Nullable String message, boolean done) {
         if (command == null || command.isEmpty()) {
             return JkWedge.plainStatusLine(null, message, done ? JkWedge.PlainTail.DONE : JkWedge.PlainTail.WORKING);
         }
@@ -336,7 +336,7 @@ final class JkManagerPlainView {
         return JkWedge.plainStatusLine(command, msg, JkWedge.PlainTail.BARE);
     }
 
-    private String indeterminateLine(boolean doneLine) {
+    private String indeterminateLine(@Nullable boolean doneLine) {
         if (m.planMode) {
             return indeterminateLine(m.planName(), doneLine ? null : PlainPhase.INITIALIZING, doneLine);
         }

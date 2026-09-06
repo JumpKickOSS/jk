@@ -38,6 +38,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.Nullable;
@@ -206,8 +207,7 @@ public final class LockCommand implements CliCommand {
             }
 
             @Override
-            public void onModuleFinish(
-                    @Nullable String moduleDir, BuildPlanResult result, EngineRequests.LockCounts counts) {
+            public void onModuleFinish(String moduleDir, BuildPlanResult result, EngineRequests.LockCounts counts) {
                 view.stepDone(coordByDir.get(moduleDir), "lock", result.success());
                 // Authoritative package count from the written lockfile (not wire event cardinality).
                 if (counts != null && counts.packages() >= 0) {
@@ -242,7 +242,7 @@ public final class LockCommand implements CliCommand {
     /** Hosted plain path (--verbose / --output json): one console listener per cascade module. */
     private int runHostedPlain(Path dir, Path cache, BuildPlanConsole.Mode mode) {
         EngineRequests.LockHandler handler = new EngineRequests.LockHandler() {
-            private BuildPlanListener current;
+            private @Nullable BuildPlanListener current;
 
             @Override
             public BuildPlanListener onModuleStart(String moduleDir, String coord, List<Task> steps) {
@@ -254,7 +254,8 @@ public final class LockCommand implements CliCommand {
             public void onPackage(String moduleDir, String name, String version) {
                 // The engine sends structured lock-package events instead of pre-themed labels;
                 // colorize here, client-side, exactly as the in-process plan labels itself.
-                current.label(TaskNames.RESOLVE_DEPS, "Resolved " + Coords.module(name, version));
+                Objects.requireNonNull(current, "lock-package before module-start")
+                        .label(TaskNames.RESOLVE_DEPS, "Resolved " + Coords.module(name, version));
             }
         };
 

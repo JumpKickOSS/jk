@@ -152,7 +152,7 @@ public sealed interface WizardStep
             private final Orientation orientation;
             private final List<Choice> choices = new ArrayList<>();
             private @Nullable Function<Answers, List<Choice>> choicesFn;
-            private String defaultChoice = "";
+            private @Nullable String defaultChoice = "";
             private String customPlaceholder = "";
             private Predicate<Answers> shouldRun = ALWAYS;
 
@@ -167,12 +167,12 @@ public sealed interface WizardStep
                 return this;
             }
 
-            public Builder choice(@Nullable String id, @Nullable String label, String hint) {
+            public Builder choice(String id, String label, String hint) {
                 this.choices.add(new Choice(id, label, hint));
                 return this;
             }
 
-            public Builder choice(@Nullable String id, @Nullable String label, Function<Answers, String> hintFn) {
+            public Builder choice(String id, String label, Function<Answers, String> hintFn) {
                 this.choices.add(new Choice(id, label, hintFn));
                 return this;
             }
@@ -198,7 +198,7 @@ public sealed interface WizardStep
             }
 
             public Builder defaultChoice(@Nullable String id) {
-                this.defaultChoice = id == null ? "" : id;
+                this.defaultChoice = id;
                 return this;
             }
 
@@ -208,9 +208,10 @@ public sealed interface WizardStep
             }
 
             public RadioStep build() {
-                var resolved = defaultChoice.isEmpty() && !choices.isEmpty()
+                String chosen = defaultChoice == null ? "" : defaultChoice;
+                var resolved = chosen.isEmpty() && !choices.isEmpty()
                         ? choices.getFirst().id()
-                        : defaultChoice;
+                        : chosen;
                 return new RadioStep(
                         key, prompt, choices, choicesFn, resolved, orientation, customPlaceholder, shouldRun);
             }
@@ -283,18 +284,18 @@ public sealed interface WizardStep
                 return this;
             }
 
-            public Builder choice(@Nullable String id, @Nullable String label, String hint) {
+            public Builder choice(String id, String label, String hint) {
                 this.choices.add(new Choice(id, label, hint));
                 return this;
             }
 
-            public Builder choice(@Nullable String id, @Nullable String label, Function<Answers, String> hintFn) {
+            public Builder choice(String id, String label, Function<Answers, String> hintFn) {
                 this.choices.add(new Choice(id, label, hintFn));
                 return this;
             }
 
             /** Add a pre-built {@link Choice} — used for rich-label rows. */
-            public Builder choice(Choice c) {
+            public Builder choice(@Nullable Choice c) {
                 this.choices.add(c);
                 return this;
             }

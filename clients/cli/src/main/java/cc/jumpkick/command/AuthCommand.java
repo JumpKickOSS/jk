@@ -49,7 +49,7 @@ public final class AuthCommand extends GroupCommand {
                 : new ForgeAuth();
     }
 
-    record Target(ForgeKind kind, String host) {}
+    record Target(ForgeKind kind, @Nullable String host) {}
 
     static Target resolveTarget(@Nullable String provider, @Nullable String host, Path workingDir) {
         if (provider != null) return new Target(requireKind(provider), host);

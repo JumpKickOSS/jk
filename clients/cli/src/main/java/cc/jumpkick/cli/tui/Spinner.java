@@ -125,7 +125,7 @@ public final class Spinner implements AutoCloseable {
     private int frame = 0;
     private String lastMessage = "";
     private volatile boolean closed = false;
-    private Thread animator;
+    private @Nullable Thread animator;
     private boolean plainStarted;
     private long plainLastBeatMs;
     private LongSupplier clock = System::currentTimeMillis;
@@ -165,7 +165,7 @@ public final class Spinner implements AutoCloseable {
         return new Spinner(out, message, command, true);
     }
 
-    private Spinner(@Nullable PrintStream out, String message, @Nullable String wedgeCommand, boolean wedge) {
+    private Spinner(PrintStream out, String message, @Nullable String wedgeCommand, boolean wedge) {
         // PlainAscii.wrap is identity under ANSI; under --no-ansi rewrites …/•/● in messages.
         this.out = PlainAscii.wrapping(out);
         this.message = message == null ? "" : message;

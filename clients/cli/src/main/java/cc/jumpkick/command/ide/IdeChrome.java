@@ -22,6 +22,7 @@ import java.io.PrintStream;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * One live {@code IDE} CommandWedge for {@code jk ide}. The chip name stays {@code IDE}; {@link
@@ -47,7 +48,7 @@ public final class IdeChrome implements AutoCloseable, LiveRegion {
     private int linesDrawn;
     private List<String> lastLines = List.of();
     private boolean done;
-    private Thread animator;
+    private @Nullable Thread animator;
 
     private IdeChrome(PrintStream out, boolean animate) {
         this.out = PlainAscii.wrapping(out);
@@ -134,7 +135,7 @@ public final class IdeChrome implements AutoCloseable, LiveRegion {
     }
 
     /** Wipe the live region and print the red fail chip on stderr. */
-    public void fail(String tail) {
+    public void fail(@Nullable String tail) {
         settle(JkWedge.fail(COMMAND, tail == null ? "" : tail), true);
     }
 
@@ -183,7 +184,7 @@ public final class IdeChrome implements AutoCloseable, LiveRegion {
         return " " + head + ": " + body.render(RenderContext.current());
     }
 
-    private void settle(JkWedge chip, boolean stderr) {
+    private void settle(@Nullable JkWedge chip, boolean stderr) {
         stopAnimator();
         synchronized (lock) {
             if (done) return;

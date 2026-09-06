@@ -74,7 +74,7 @@ final class EnginePluginAdapter {
             String planName,
             Function<List<Task>, BuildPlanListener> listenerFactory,
             BiConsumer<String, String> onEvent,
-            Consumer<String> preFinish)
+            @Nullable Consumer<String> preFinish)
             throws IOException {
         EngineClient.ensureRunning(paths, Jk.VERSION);
 

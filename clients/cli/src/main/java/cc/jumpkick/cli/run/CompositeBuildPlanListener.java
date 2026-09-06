@@ -94,7 +94,7 @@ public final class CompositeBuildPlanListener implements BuildPlanListener {
     }
 
     @Override
-    public void error(String step, String code, String message, TestFailureInfo failure) {
+    public void error(String step, String code, String message, @Nullable TestFailureInfo failure) {
         a.error(step, code, message, failure);
         b.error(step, code, message, failure);
     }

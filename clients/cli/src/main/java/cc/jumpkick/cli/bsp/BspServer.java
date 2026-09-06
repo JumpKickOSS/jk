@@ -53,7 +53,7 @@ public final class BspServer {
         t.setDaemon(true);
         return t;
     });
-    private final AtomicReference<Future<?>> activeJob = new AtomicReference<>();
+    private final AtomicReference<@Nullable Future<?>> activeJob = new AtomicReference<>();
     private final AtomicReference<@Nullable Path> activeDir = new AtomicReference<>();
 
     private @Nullable IdeWireModel cachedModel;

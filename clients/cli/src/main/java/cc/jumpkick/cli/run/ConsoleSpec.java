@@ -17,30 +17,32 @@ import org.jspecify.annotations.Nullable;
  */
 public record ConsoleSpec(
         String command,
-        Function<BuildPlanResult, String> onSuccess,
-        Function<BuildPlanResult, String> onFailure,
+        Function<BuildPlanResult, @Nullable String> onSuccess,
+        Function<BuildPlanResult, @Nullable String> onFailure,
         boolean chip,
         boolean exec,
-        @Nullable Function<BuildPlanResult, String> softFailure) {
+        @Nullable Function<BuildPlanResult, @Nullable String> softFailure) {
 
     /** Default generic success/failure finish ({@code chip}/{@code exec} false). */
     public ConsoleSpec(
-            String command, Function<BuildPlanResult, String> onSuccess, Function<BuildPlanResult, String> onFailure) {
+            String command,
+            Function<BuildPlanResult, @Nullable String> onSuccess,
+            Function<BuildPlanResult, @Nullable String> onFailure) {
         this(command, onSuccess, onFailure, false, false);
     }
 
     public ConsoleSpec(
             String command,
-            Function<BuildPlanResult, String> onSuccess,
-            Function<BuildPlanResult, String> onFailure,
+            Function<BuildPlanResult, @Nullable String> onSuccess,
+            Function<BuildPlanResult, @Nullable String> onFailure,
             boolean chip) {
         this(command, onSuccess, onFailure, chip, false);
     }
 
     public ConsoleSpec(
             String command,
-            Function<BuildPlanResult, String> onSuccess,
-            Function<BuildPlanResult, String> onFailure,
+            Function<BuildPlanResult, @Nullable String> onSuccess,
+            Function<BuildPlanResult, @Nullable String> onFailure,
             boolean chip,
             boolean exec) {
         this(command, onSuccess, onFailure, chip, exec, null);
@@ -50,12 +52,12 @@ public record ConsoleSpec(
      * Duration suffix for settle lines. ANSI: dim italic {@code took Xms}. Plain ({@code
      * --no-ansi}): {@code - took Xms} so the dash substitutes for color separation.
      */
-    public static @Nullable String took(Duration d) {
+    public static String took(Duration d) {
         String body = "took " + fmtDuration(d);
         if (!Theme.active().isAnsi()) {
             return "- " + body;
         }
-        return Theme.colorize(body, Theme.active().darkGray().italic());
+        return Theme.paint(body, Theme.active().darkGray().italic());
     }
 
     /**
@@ -77,17 +79,19 @@ public record ConsoleSpec(
     }
 
     /** Render an error diagnostic from its parts (used by live + summary paths alike). */
-    public static String renderError(String step, @Nullable String code, String message) {
+    public static String renderError(String step, @Nullable String code, @Nullable String message) {
         return DiagnosticReport.renderError(step, code, message, null);
     }
 
     /** Like {@link #renderError(String, String, String)} with a {@code group:artifact} module. */
-    public static String renderError(String step, @Nullable String code, String message, String module) {
+    public static String renderError(
+            String step, @Nullable String code, @Nullable String message, @Nullable String module) {
         return DiagnosticReport.renderError(step, code, message, module);
     }
 
     /** Like {@link #renderError(String, String, String, String)} with an explicit header. */
-    public static String renderError(String step, String code, String message, String module, boolean showHeader) {
+    public static String renderError(
+            String step, @Nullable String code, @Nullable String message, @Nullable String module, boolean showHeader) {
         return DiagnosticReport.renderError(step, code, message, module, showHeader);
     }
 
@@ -135,12 +139,12 @@ public record ConsoleSpec(
     }
 
     /** Warning report: yellow phase pill + railed body. */
-    public static String renderWarning(String step, String code, String message) {
+    public static String renderWarning(String step, String code, @Nullable String message) {
         return DiagnosticReport.renderWarning(step, code, message, null);
     }
 
     /** Like {@link #renderWarning(String, String, String)} with a {@code group:artifact} module. */
-    public static String renderWarning(String step, String code, String message, String module) {
+    public static String renderWarning(String step, String code, @Nullable String message, @Nullable String module) {
         return DiagnosticReport.renderWarning(step, code, message, module);
     }
 

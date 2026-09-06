@@ -13,6 +13,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
@@ -47,8 +48,8 @@ public final class CommandManagerListener implements BuildPlanListener {
      */
     private final boolean aggregateRider;
 
-    private JkManager cm;
-    private JkManager.OutputScope capture;
+    private @Nullable JkManager cm;
+    private JkManager.@Nullable OutputScope capture;
     private final DiagnosticReport.CompilerHeaderRun compilerHeaders = new DiagnosticReport.CompilerHeaderRun();
     /** Diagnostics already rendered from the live stream; the finish summary skips them. */
     private final Set<String> streamed = new HashSet<>();
@@ -87,27 +88,33 @@ public final class CommandManagerListener implements BuildPlanListener {
         this.aggregateRider = true;
     }
 
+    /** The manager {@link #planStart} opened; every later event arrives after it. */
+    private JkManager cm() {
+        return Objects.requireNonNull(cm, "planStart has not opened the plan manager");
+    }
+
     @Override
     public void planStart(BuildPlanView view) {
-        cm = JkManager.plan(out, command, animate);
-        cm.target(module);
+        JkManager opened = JkManager.plan(out, command, animate);
+        cm = opened;
+        opened.target(module);
         for (Task p : steps) {
-            cm.addTaskLabeled(module, p.name(), display(p));
+            opened.addTaskLabeled(module, p.name(), display(p));
         }
-        cm.progress(view.numerator(), view.denominator());
+        opened.progress(view.numerator(), view.denominator());
         if (aggregateRider) LiveProgress.get().update(view.numerator(), view.denominator());
         // Route step/process output above the pinned region for the plan's lifetime.
-        capture = cm.captureOutput();
+        capture = opened.captureOutput();
     }
 
     @Override
     public void stepStart(String step, @Nullable String group, int ticks) {
-        cm.stepRunning(module, step, group == null ? "" : group);
+        cm().stepRunning(module, step, group == null ? "" : group);
     }
 
     @Override
     public void label(String step, String label) {
-        cm.stepMessage(module, step, label);
+        cm().stepMessage(module, step, label);
     }
 
     /** True while buffering a {@link TestFailureHighlight} block from run-tests output. */
@@ -129,14 +136,14 @@ public final class CommandManagerListener implements BuildPlanListener {
             testFailStream.line(line);
             return;
         }
-        cm.writeProcessOutput(StackTraceHighlight.line(line));
+        cm().writeProcessOutput(StackTraceHighlight.line(line));
     }
 
     /** Paint any buffered failure block now — already-received lines must not be dropped. */
     private void flushBufferedFailure() {
         if (!inTestFailure) return;
         for (String painted : testFailStream.finish()) {
-            if (painted != null) cm.writeAbove(painted);
+            if (painted != null) cm().writeAbove(painted);
         }
         inTestFailure = false;
         testFailStream.reset();
@@ -145,31 +152,31 @@ public final class CommandManagerListener implements BuildPlanListener {
     @Override
     public void error(String step, String code, String message) {
         String brief = message == null || message.isBlank() ? (code != null ? code : "Failed") : message;
-        cm.attachPhaseError(module, step, "", brief);
+        cm().attachPhaseError(module, step, "", brief);
         // Styled "Test Failure" block already covers per-test failures; keep JSON diagnostics only.
         if ("test-failure".equals(code)) return;
         String report = ConsoleSpec.renderError(step, code, message, module, compilerHeaders.show(step, code, module));
         if (report != null && !report.isEmpty()) {
-            cm.writeAbove(report);
+            cm().writeAbove(report);
             streamed.add(ConsoleSpec.diagnosticKey(module, step, code, message));
         }
         // Non-test diagnostic: treat as tool/worker failure — force-open the process-output pane.
         if (OutputPane.forceShowOnStepFailure(step)) {
-            cm.showProcessFailureOutput();
+            cm().showProcessFailureOutput();
         }
     }
 
     @Override
     public void progress(String step, int delta, BuildPlanView view) {
-        cm.notePlainTestTick(module, step, delta);
-        cm.progress(view.numerator(), view.denominator());
+        cm().notePlainTestTick(module, step, delta);
+        cm().progress(view.numerator(), view.denominator());
         if (aggregateRider) LiveProgress.get().update(view.numerator(), view.denominator());
     }
 
     @Override
     public void tickUpdate(String step, int delta, BuildPlanView view) {
-        cm.notePlainTestTick(module, step, delta);
-        cm.progress(view.numerator(), view.denominator());
+        cm().notePlainTestTick(module, step, delta);
+        cm().progress(view.numerator(), view.denominator());
         if (aggregateRider) LiveProgress.get().update(view.numerator(), view.denominator());
     }
 
@@ -178,11 +185,11 @@ public final class CommandManagerListener implements BuildPlanListener {
         flushBufferedFailure();
         // SKIPPED = cache hit / up-to-date — green terminal, same as SUCCESS.
         boolean ok = status == TaskStatus.SUCCESS || status == TaskStatus.SKIPPED;
-        cm.stepDone(module, step, ok, group == null ? "" : group);
+        cm().stepDone(module, step, ok, group == null ? "" : group);
         // Failed tool/worker (e.g. native-image): force-open the process-output peek. Test-runner
         // failures keep curated chrome and do not force-open.
         if (!ok && OutputPane.forceShowOnStepFailure(step)) {
-            cm.showProcessFailureOutput();
+            cm().showProcessFailureOutput();
         }
     }
 
@@ -191,14 +198,14 @@ public final class CommandManagerListener implements BuildPlanListener {
         // A cancel/disconnect between a block's lines and stepFinish must still show what
         // already arrived.
         flushBufferedFailure();
-        if (cm != null) cm.finishModule(module, result.success());
+        if (cm != null) cm().finishModule(module, result.success());
         // Restore the real streams before settling so the result line isn't
         // itself routed back above the (closing) region.
         if (capture != null) capture.close();
         if (cm == null) cm = JkManager.plan(out, command, animate);
         // No-spec path: the caller owns the result line — just clean up the live region.
         if (spec == null) {
-            cm.dismiss();
+            cm().dismiss();
             return;
         }
         // Exec commands hand off to a subprocess — the build duration is meaningless there.
@@ -225,15 +232,15 @@ public final class CommandManagerListener implements BuildPlanListener {
             soft = spec.softFailure().apply(result);
         }
         if (soft != null) {
-            cm.finishBuildPlanFailureCustom(soft + suffix, above);
+            cm().finishBuildPlanFailureCustom(soft + suffix, above);
         } else if (result.success()) {
             String tail = spec.onSuccess().apply(result) + suffix;
-            if (spec.chip() && spec.exec()) cm.finishBuildPlanExec(tail, above);
-            else if (spec.chip()) cm.finishBuildPlanSuccess(tail, above);
-            else cm.finishSuccess(tail, above);
+            if (spec.chip() && spec.exec()) cm().finishBuildPlanExec(tail, above);
+            else if (spec.chip()) cm().finishBuildPlanSuccess(tail, above);
+            else cm().finishSuccess(tail, above);
         } else {
-            if (spec.chip()) cm.finishBuildPlanFailure(spec.onFailure().apply(result) + suffix, above);
-            else cm.finishFailure(spec.onFailure().apply(result) + suffix, above);
+            if (spec.chip()) cm().finishBuildPlanFailure(spec.onFailure().apply(result) + suffix, above);
+            else cm().finishFailure(spec.onFailure().apply(result) + suffix, above);
         }
     }
 

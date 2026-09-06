@@ -15,6 +15,7 @@ object NullMarking {
             "shared/wire/src/main/java",
             "shared/plugin-sdk/src/main/java",
             "shared/core/src/main/java",
+            "clients/cli/src/main/java",
         )
 
     /**
@@ -41,6 +42,10 @@ object NullMarking {
                     "assertion in fifty places. The rest is the same shape as core's: null fed in on purpose " +
                     "(an absent [http] table, a job with no module selector) to assert the engine handles it. " +
                     "Production is enforced.",
+            "cli:compileTestJava" to
+                "TODO: the CLI's unit suite hands null to detection helpers on purpose (a missing \$SHELL, an " +
+                    "absent flag) and mocks listeners with null captures; 174 NullAway findings and 10 unmarked " +
+                    "test packages when compiled under the convention. Production sources are enforced.",
         )
 
     /**
@@ -49,16 +54,5 @@ object NullMarking {
      * never applies the plugin looks the same as one with nothing to fix — so this is where the remaining work is
      * written down rather than inferred.
      */
-    val unenforcedModules: Map<String, String> =
-        mapOf(
-            "clients/cli" to
-                "TODO: 161 findings left of the 1,076 that marking every production package first reported — 700 " +
-                    "of them were in cc.jumpkick.command, 103 in cc.jumpkick.cli.tui, 97 in cc.jumpkick.cli.run. " +
-                    "Measured on a daemon with -Xmx8g: the default heap dies partway through that pass, which is " +
-                    "why the earlier 1,056 was recorded as a floor. Every package is marked and CliCommand.run is " +
-                    "a known initializer, which is what a command's parsed fields needed. The tail is per-call-" +
-                    "site judgement: a boolean guard the checker cannot connect to the value it guards, and helper " +
-                    "command bodies whose constructor does not set the fields their caller assigns. Landable the " +
-                    "way server/engine was: fix with the plugin applied as scaffolding, revert it, land, repeat."
-        )
+    val unenforcedModules: Map<String, String> = emptyMap()
 }

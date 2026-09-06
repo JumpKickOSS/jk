@@ -101,7 +101,6 @@ public final class ToolRunCommand implements CliCommand {
                 Param.of("args", Arity.ZERO_OR_MORE, "Arguments forwarded to the program."));
     }
 
-    @Nullable
     String target;
 
     @Nullable
@@ -121,8 +120,6 @@ public final class ToolRunCommand implements CliCommand {
 
     boolean forceRecompile;
     List<String> toolArgs = new ArrayList<>();
-
-    @Nullable
     GlobalOptions global;
     // Set by a JBang alias whose script-ref is a coordinate: the alias's dependencies and
     // java-options ride the normal coordinate flow (extra deps + exec JVM args).
@@ -238,12 +235,11 @@ public final class ToolRunCommand implements CliCommand {
      */
     private int runDirectory(Path dir, List<String> args) throws IOException, InterruptedException {
         if (Files.isRegularFile(dir.resolve(ManifestPaths.MANIFEST))) {
-            RunCommand delegate = new RunCommand();
+            BuildOptions buildOpts = new BuildOptions();
+            buildOpts.skipTests = true;
+            RunCommand delegate = new RunCommand(global, buildOpts);
             delegate.cacheDirOverride = cacheDirOverride;
             delegate.jdksDir = jdksDir;
-            delegate.buildOpts = new BuildOptions();
-            delegate.buildOpts.skipTests = true;
-            delegate.global = global;
             return delegate.runProject(dir, args);
         }
         if (Files.isRegularFile(dir.resolve("jbang-catalog.json"))) {

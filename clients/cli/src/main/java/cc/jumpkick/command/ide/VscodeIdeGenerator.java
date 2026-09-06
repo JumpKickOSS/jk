@@ -17,6 +17,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Emits VS Code project configuration for the <b>redhat.java</b> language server (Eclipse JDT-LS)
@@ -282,7 +283,7 @@ public final class VscodeIdeGenerator implements IdeGenerator {
         return sb.toString();
     }
 
-    private static Path languageServerHome(Map<Integer, SdkRef> byLevel, int defaultLevel) {
+    private static @Nullable Path languageServerHome(Map<Integer, SdkRef> byLevel, int defaultLevel) {
         SdkRef def = byLevel.get(defaultLevel);
         if (def != null && defaultLevel >= 21) return def.javaHome();
         SdkRef best = null;
@@ -292,7 +293,7 @@ public final class VscodeIdeGenerator implements IdeGenerator {
         return best != null ? best.javaHome() : null;
     }
 
-    private static String launchJson(IdeModel model) {
+    private static @Nullable String launchJson(IdeModel model) {
         List<String> configs = new ArrayList<>();
         Map<Path, IdeModule> targets = model.modules().isEmpty() ? model.allModules() : model.modules();
         for (IdeModule module : targets.values()) {

@@ -75,19 +75,19 @@ public final class WebCommand implements CliCommand {
         CommandWedge.envelopeStart();
         CliOutput.out(JkWedge.chipLine(Glyphs.PLAY, "Web", GlobalConfig.nerdFont(), "JumpKick Web Interface"));
         CliOutput.out("");
-        CliOutput.out(Theme.colorize("  Open the URL below if a browser did not launch:", Style.EMPTY.italic()));
+        CliOutput.out(Theme.paint("  Open the URL below if a browser did not launch:", Style.EMPTY.italic()));
         // OSC-8 hyperlink + path color — same treatment as `jk engine status` Web UI line.
-        String visible = Theme.colorize(url, t.path());
+        String visible = Theme.paint(url, t.path());
         CliOutput.out("  " + Ansi.hyperlink(url, visible));
 
         if (!noOpen) {
             boolean opened = OpenBrowser.open(url);
             if (opened) {
                 CliOutput.out("");
-                CliOutput.out(Theme.colorize("  Opening in your browser…", t.darkGray()));
+                CliOutput.out(Theme.paint("  Opening in your browser…", t.darkGray()));
             } else {
                 CliOutput.out("");
-                CliOutput.out(Theme.colorize("  Could not launch a browser — copy the URL above.", t.warning()));
+                CliOutput.out(Theme.paint("  Could not launch a browser — copy the URL above.", t.warning()));
             }
         }
         return Exit.SUCCESS;

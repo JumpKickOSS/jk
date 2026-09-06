@@ -17,6 +17,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Emits IntelliJ IDEA project files ({@code .idea/} + {@code *.iml}) from {@link IdeModel}. Modules
@@ -245,7 +246,7 @@ public final class IntellijIdeGenerator implements IdeGenerator {
             List<ModuleRef> modRefs,
             List<LibRef> libRefs,
             Map<Path, IdeModule> allModules,
-            SdkRef moduleSdk,
+            @Nullable SdkRef moduleSdk,
             SdkRef defaultSdk,
             List<Path> processorFiles) {
         boolean ownJdk =
@@ -294,7 +295,7 @@ public final class IntellijIdeGenerator implements IdeGenerator {
         sb.append("      <excludeFolder url=\"file://$MODULE_DIR$/target\" />\n");
         sb.append("    </content>\n");
 
-        if (ownJdk) {
+        if (ownJdk && moduleSdk != null) {
             sb.append("    <orderEntry type=\"jdk\" jdkName=\"")
                     .append(esc(moduleSdk.sdkName()))
                     .append("\" jdkType=\"JavaSDK\" />\n");

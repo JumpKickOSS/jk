@@ -107,9 +107,9 @@ public final class Table implements Widget {
     private Icon icon = Icon.menu();
     private String title;
     /** {@code null} = context default (root shows, appended hides). */
-    private Boolean showTitle;
+    private @Nullable Boolean showTitle;
 
-    private Boolean showColumns;
+    private @Nullable Boolean showColumns;
     private boolean warning;
     private boolean rowSeparators;
     private final List<Column> columns = new ArrayList<>();
@@ -121,19 +121,19 @@ public final class Table implements Widget {
     }
 
     /** Italic header text when ANSI is on (global-theme convenience for one-shot callers). */
-    public static @Nullable String headerCell(String text) {
+    public static String headerCell(@Nullable String text) {
         return headerCell(text, Theme.active().isAnsi());
     }
 
     /** Like every other paint decision, the plain fallback follows the render context. */
-    static @Nullable String headerCell(@Nullable String text, boolean ansi) {
+    static String headerCell(@Nullable String text, boolean ansi) {
         String s = text == null ? "" : text;
         if (s.isEmpty() || !ansi) return s;
-        return Theme.colorize(s, Style.EMPTY.italic());
+        return Theme.paint(s, Style.EMPTY.italic());
     }
 
     public static int visibleWidth(@Nullable String s) {
-        return RenderContext.visibleWidth(s);
+        return s == null ? 0 : RenderContext.visibleWidth(s);
     }
 
     /** String-cell table (replaces the deleted {@code BoxTable.render}). */
@@ -444,13 +444,13 @@ public final class Table implements Widget {
 
     private static int cellWidth(String raw, RenderContext ctx, boolean plain) {
         String s = raw == null ? "" : raw;
-        if (plain) s = PlainAscii.transform(s);
+        if (plain) s = PlainAscii.rewrite(s);
         return RenderContext.visibleWidth(s);
     }
 
-    private static @Nullable String renderCell(RichText text, RenderContext ctx, boolean plain) {
+    private static String renderCell(RichText text, RenderContext ctx, boolean plain) {
         String s = text == null ? "" : text.render(ctx);
-        return plain ? PlainAscii.transform(s) : s;
+        return plain ? PlainAscii.rewrite(s) : s;
     }
 
     /**
@@ -558,21 +558,20 @@ public final class Table implements Widget {
         return false;
     }
 
-    private static @Nullable String flatClose(RenderContext ctx, int inner) {
+    private static String flatClose(RenderContext ctx, int inner) {
         boolean ansi = ctx.ansi();
         String s = (ansi ? "╰" : "+") + (ansi ? "─" : "-").repeat(inner) + (ansi ? "╯" : "+");
-        return ansi ? Theme.colorize(s, ctx.theme().darkGray()) : s;
+        return ansi ? Theme.paint(s, ctx.theme().darkGray()) : s;
     }
 
-    private static @Nullable String divider(
-            RenderContext ctx, String left, String junction, String right, int[] widths) {
+    private static String divider(RenderContext ctx, String left, String junction, String right, int[] widths) {
         boolean ansi = ctx.ansi();
         var sb = new StringBuilder(ansi ? left : "+");
         for (int i = 0; i < widths.length; i++) {
             sb.append((ansi ? "─" : "-").repeat(widths[i] + 2));
             sb.append(i == widths.length - 1 ? (ansi ? right : "+") : (ansi ? junction : "+"));
         }
-        return ansi ? Theme.colorize(sb.toString(), ctx.theme().darkGray()) : sb.toString();
+        return ansi ? Theme.paint(sb.toString(), ctx.theme().darkGray()) : sb.toString();
     }
 
     /**
@@ -580,7 +579,7 @@ public final class Table implements Widget {
      * {@code ┼}; parent rails that end become {@code ┴}; a child rail with no parent rail is
      * {@code ┬}.
      */
-    static @Nullable String joinDivider(RenderContext ctx, int[] parentW, int[] childEnds) {
+    static String joinDivider(RenderContext ctx, int[] parentW, int[] childEnds) {
         boolean ansi = ctx.ansi();
         // Parent internal rail after column i is at edge i+1. Child rail after child col k
         // is at parent column childEnds[k] (exclusive end) — i.e. the parent rail after
@@ -607,7 +606,7 @@ public final class Table implements Widget {
                 sb.append(junc);
             }
         }
-        return ansi ? Theme.colorize(sb.toString(), ctx.theme().darkGray()) : sb.toString();
+        return ansi ? Theme.paint(sb.toString(), ctx.theme().darkGray()) : sb.toString();
     }
 
     private static String headerRow(RenderContext ctx, List<Column> cols, int[] widths, boolean plain) {
@@ -671,12 +670,13 @@ public final class Table implements Widget {
         return sb.toString();
     }
 
-    private static String pad(@Nullable String s, int width, Align align) {
+    private static String pad(String s, int width, Align align) {
         return pad(s, width, align, " ");
     }
 
     /** {@code fill} is one visible column (possibly styled, e.g. a band-background space). */
-    private static String pad(@Nullable String s, int width, Align align, String fill) {
+    private static String pad(String s, int width, Align align, @Nullable String fillOrNull) {
+        String fill = fillOrNull == null ? " " : fillOrNull;
         int vis = RenderContext.visibleWidth(s);
         int extra = Math.max(0, width - vis);
         if (align == Align.RIGHT) return fill.repeat(extra) + s;

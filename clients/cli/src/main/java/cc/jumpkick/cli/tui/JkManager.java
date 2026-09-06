@@ -303,7 +303,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     }
 
     public void stepMessage(@Nullable String module, String stepKey, String message) {
-        model.stepMessage(module, stepKey, message);
+        model.stepMessage(module == null ? "" : module, stepKey, message);
     }
 
     /** A static test finished; the plain view's remaining-test count follows without printing. */
@@ -313,11 +313,11 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     }
 
     public void stepDone(@Nullable String module, String stepKey, boolean ok) {
-        model.stepDone(module, stepKey, ok);
+        model.stepDone(module == null ? "" : module, stepKey, ok);
     }
 
     public void stepDone(@Nullable String module, String stepKey, boolean ok, String phase) {
-        model.stepDone(module, stepKey, ok, phase);
+        model.stepDone(module == null ? "" : module, stepKey, ok, phase);
     }
 
     public void finishModule(String module, boolean ok) {
@@ -595,7 +595,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         }
     }
 
-    public static @Nullable String coloredModule(String module) {
+    public static String coloredModule(String module) {
         return JkManagerColor.coloredModule(module);
     }
 
@@ -644,7 +644,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         }
 
         @Override
-        public void stepMessage(PlanModel.Row row) {
+        public void stepMessage(PlanModel.@Nullable Row row) {
             plain.onStepMessage(row);
         }
 

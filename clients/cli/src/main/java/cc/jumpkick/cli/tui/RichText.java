@@ -112,14 +112,14 @@ public final class RichText {
     private static @Nullable String paint(Span span, RenderContext ctx) {
         String text = span.text;
         if (span.prestyled) {
-            if (!ctx.ansi()) return PlainAscii.transform(Width.stripAnsi(text));
+            if (!ctx.ansi()) return PlainAscii.rewrite(Width.stripAnsi(text));
             return text;
         }
         if (!ctx.ansi()) {
-            return PlainAscii.transform(text);
+            return PlainAscii.rewrite(text);
         }
         Style style = span.style.toAttributed(ctx.theme());
-        String painted = Theme.colorize(text, style);
+        String painted = Theme.paint(text, style);
         if (span.linkUrl != null && !span.linkUrl.isBlank()) {
             return Ansi.hyperlink(span.linkUrl, painted);
         }
@@ -241,9 +241,7 @@ public final class RichText {
             String text, MarkupStyle style, @Nullable String linkUrl, boolean prestyled) {}
 
     private record Tag(
-            @Nullable String raw,
-            MarkupStyle style,
-            @Nullable String linkUrl) {}
+            String raw, MarkupStyle style, @Nullable String linkUrl) {}
 
     private sealed interface Color permits NamedColor, HexColor {}
 
@@ -308,9 +306,9 @@ public final class RichText {
 
     public static final class ParseException extends IllegalArgumentException {
         private final int index;
-        private final @Nullable String token;
+        private final String token;
 
-        ParseException(int index, @Nullable String token, String message) {
+        ParseException(int index, String token, String message) {
             super(message + " at " + index + " (" + token + ")");
             this.index = index;
             this.token = token;
@@ -320,7 +318,7 @@ public final class RichText {
             return index;
         }
 
-        public @Nullable String token() {
+        public String token() {
             return token;
         }
     }

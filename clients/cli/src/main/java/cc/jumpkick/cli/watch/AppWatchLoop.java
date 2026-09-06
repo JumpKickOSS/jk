@@ -36,7 +36,7 @@ import org.jspecify.annotations.Nullable;
 public final class AppWatchLoop {
 
     private final GlobalOptions global;
-    private final Path jdksDir;
+    private final @Nullable Path jdksDir;
     private final String logPrefix;
 
     public int run(Path projectDir, Path cache, List<String> appArgs) throws IOException, InterruptedException {

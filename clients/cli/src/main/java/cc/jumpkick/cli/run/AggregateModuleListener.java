@@ -25,7 +25,7 @@ public final class AggregateModuleListener implements BuildPlanListener {
     private final List<Task> steps;
 
     /** Parallel-build output buffer; caller flushes when the module finishes. */
-    private List<String> outBuffer;
+    private @Nullable List<String> outBuffer;
 
     /** True while painting a {@link TestFailureHighlight} block from run-tests output. */
     private boolean inTestFailure;
@@ -163,7 +163,7 @@ public final class AggregateModuleListener implements BuildPlanListener {
         }
     }
 
-    private void emit(String line) {
+    private void emit(@Nullable String line) {
         if (line == null) return; // source-snippet buffer mid-stream
         if (outBuffer != null) {
             synchronized (outBuffer) {

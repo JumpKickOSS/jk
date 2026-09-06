@@ -137,6 +137,7 @@ public final class TestCommand implements CliCommand {
 
     @Override
     public int run(Invocation in) throws IOException, InterruptedException {
+        this.global = GlobalOptions.from(in);
         this.profileName = in.value("profile").orElse(null);
         this.workers = in.value("workers").map(Integer::parseInt).orElse(null);
         this.cacheDir = in.value("cache-dir").map(CliPaths::abs).orElse(null);
@@ -148,7 +149,6 @@ public final class TestCommand implements CliCommand {
             CommandWedge.printFail("Test", ModuleSelectors.BOTH_MESSAGE);
             return Exit.CONFIG;
         }
-        this.global = GlobalOptions.from(in);
         this.jobs = global.jobsEffective();
         // C2: overlap module suites by default; --serial-tests opts out (shared ports/locks).
         this.parallelTests = ParallelTestsOpts.enabled(in);
@@ -168,7 +168,7 @@ public final class TestCommand implements CliCommand {
         if (proj == null) return Exit.CONFIG;
         Path buildFile = proj.buildFile();
         this.session = CliSessionTranscript.open(dir, "test", testArgv(in));
-        if (session != null) session.announceIf(global != null && global.verbose);
+        if (session != null) session.announceIf(global.verbose);
         // No jk-lock.toml guard: the plan's parse-build step resolves the lock on
         // first run and re-locks when jk.toml changed — same as `jk build`/`run`.
 
@@ -273,7 +273,7 @@ public final class TestCommand implements CliCommand {
     }
 
     private int finishSession(int code) {
-        return CliSessionTranscript.finish(session, code, global != null && global.verbose);
+        return CliSessionTranscript.finish(session, code, global.verbose);
     }
 
     /**
@@ -290,7 +290,7 @@ public final class TestCommand implements CliCommand {
             if (session != null) session.error(Errors.text(e));
             return Exit.SOFTWARE;
         }
-        if (global != null && global.outputIsJson()) {
+        if (global.outputIsJson()) {
             CliOutput.outRaw(report.encode());
             return report.refused() ? Exit.CONFIG : Exit.SUCCESS;
         }
@@ -392,7 +392,7 @@ public final class TestCommand implements CliCommand {
             scopeNames =
                     ModuleScopeHint.namesFrom(ProjectInfos.orError(entryDir, modulesSpec, affectedSince, affectedWip));
             if (!live) {
-                ModuleScopeHint.print("testing", scopeNames, global != null && global.outputIsJson());
+                ModuleScopeHint.print("testing", scopeNames, global.outputIsJson());
             }
         }
         if (!live) {
@@ -411,7 +411,7 @@ public final class TestCommand implements CliCommand {
         JkManager view = JkManager.plan(CliOutput.stdout(), "Test", animate);
         view.setPlanCoord(BuildCommand.projectGaLabel(entryDir));
         view.setWindowTitle("JumpKick - Testing " + BuildCommand.projectGavLabel(entryDir) + "...");
-        ModuleScopeHint.show("testing", scopeNames, global != null && global.outputIsJson(), view);
+        ModuleScopeHint.show("testing", scopeNames, global.outputIsJson(), view);
         AggregateContext agg = new AggregateContext(view);
         var run = new WorkspaceRunView(new WorkspaceRunView.Chrome("Test", true), entryDir, session, false);
         var request = workspaceTestRequest(entryDir, cache, workerCount, modules);
@@ -436,7 +436,7 @@ public final class TestCommand implements CliCommand {
 
     /** Headless / JSON: same workspace RPC as live, no JkManager chrome. */
     private int runWorkspaceTestsHeadless(Path entryDir, Path cache, int workerCount, List<String> modules) {
-        boolean json = global != null && global.outputIsJson();
+        boolean json = global.outputIsJson();
         long start = System.nanoTime();
         var run = new WorkspaceRunView(new WorkspaceRunView.Chrome("Test", true), entryDir, session, json);
         var request = workspaceTestRequest(entryDir, cache, workerCount, modules);
@@ -536,7 +536,7 @@ public final class TestCommand implements CliCommand {
 
     static void warnGateOverride(Invocation in, GlobalOptions global) {
         if (!gateRequested(in) || in.values("suite").isEmpty()) return;
-        if (global != null && global.outputIsJson()) return;
+        if (global.outputIsJson()) return;
         CliOutput.err(Theme.colorize(Glyphs.BANG, Theme.active().warning()) + " " + GATE_SUITE_OVERRIDE_WARNING);
     }
 

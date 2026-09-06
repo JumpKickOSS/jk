@@ -17,6 +17,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Shared wire + write helpers for the {@code jk export} subcommands. Content generation is
@@ -28,12 +29,12 @@ final class ExportSupport {
     private ExportSupport() {}
 
     /** Fetch a generator's payloads; prints and returns {@code null} on error. */
-    static GeneratedFiles generate(Path dir, String kind, String cmd, GlobalOptions global) {
+    static @Nullable GeneratedFiles generate(Path dir, String kind, String cmd, GlobalOptions global) {
         return generate(dir, kind, Map.of(), cmd, global);
     }
 
     /** As above with generator parameters (scaffold inputs etc.). */
-    static GeneratedFiles generate(
+    static @Nullable GeneratedFiles generate(
             Path dir, String kind, Map<String, String> params, String cmd, GlobalOptions global) {
         // Exports freeze lock versions — freshen first so users never hand-run `jk lock`.
         if (global != null) {

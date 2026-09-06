@@ -47,8 +47,7 @@ public final class EnsureFreshLock {
      * @return 0 when the lock is already fresh or was refreshed successfully; otherwise a non-zero
      *     exit code (and an error already printed)
      */
-    public static int ensure(
-            @Nullable Path projectDir, Path cacheDir, @Nullable GlobalOptions global, String wedgeCommand) {
+    public static int ensure(@Nullable Path projectDir, Path cacheDir, GlobalOptions global, String wedgeCommand) {
         return ensure(projectDir, cacheDir, global, wedgeCommand, /* spinner */ null, /* ownSpinner */ true);
     }
 
@@ -57,7 +56,7 @@ public final class EnsureFreshLock {
      * caller owns progress UI (e.g. {@code jk explain}'s shared prep wedge). Still prints a fail
      * wedge on error.
      */
-    public static int ensureQuiet(Path projectDir, Path cacheDir, @Nullable GlobalOptions global, String wedgeCommand) {
+    public static int ensureQuiet(Path projectDir, Path cacheDir, GlobalOptions global, String wedgeCommand) {
         return ensure(projectDir, cacheDir, global, wedgeCommand, null, false);
     }
 
@@ -69,9 +68,9 @@ public final class EnsureFreshLock {
     public static int ensure(
             @Nullable Path projectDir,
             Path cacheDir,
-            @Nullable GlobalOptions global,
+            GlobalOptions global,
             String wedgeCommand,
-            Spinner spinner,
+            @Nullable Spinner spinner,
             boolean ownSpinner) {
         return ensure(projectDir, cacheDir, global, wedgeCommand, spinner, ownSpinner, null);
     }
@@ -85,7 +84,7 @@ public final class EnsureFreshLock {
     public static int ensure(
             @Nullable Path projectDir,
             Path cacheDir,
-            @Nullable GlobalOptions global,
+            GlobalOptions global,
             String wedgeCommand,
             @Nullable URI repoUrl) {
         return ensure(projectDir, cacheDir, global, wedgeCommand, null, true, repoUrl);
@@ -97,11 +96,7 @@ public final class EnsureFreshLock {
      * lock at all — is a warning, never an exit.
      */
     public static void ensureBestEffort(
-            @Nullable Path projectDir,
-            Path cacheDir,
-            @Nullable GlobalOptions global,
-            @Nullable String wedgeCommand,
-            @Nullable URI repoUrl) {
+            Path projectDir, Path cacheDir, GlobalOptions global, String wedgeCommand, @Nullable URI repoUrl) {
         int code = ensure(projectDir, cacheDir, global, wedgeCommand, null, true, repoUrl);
         if (code != Exit.SUCCESS) {
             CliOutput.err("‼ jk: lock freshen failed — continuing without jk-lock.toml");
@@ -110,14 +105,13 @@ public final class EnsureFreshLock {
 
     private static int ensure(
             @Nullable Path projectDir,
-            @Nullable Path cacheDir,
-            @Nullable GlobalOptions global,
-            @Nullable String wedgeCommand,
+            Path cacheDir,
+            GlobalOptions global,
+            String wedgeCommand,
             @Nullable Spinner spinner,
             boolean ownSpinner,
             @Nullable URI repoUrl) {
-        if (projectDir == null) return Exit.SUCCESS; // nothing to lock outside a project
-        GlobalOptions opts = global == null ? new GlobalOptions() : global;
+        if (projectDir == null) return Exit.SUCCESS; // no project, nothing to freshen
         Path dir = projectDir.toAbsolutePath().normalize();
         if (!Files.isRegularFile(dir.resolve(ManifestPaths.MANIFEST))) {
             return Exit.SUCCESS; // caller already validated project
@@ -132,12 +126,12 @@ public final class EnsureFreshLock {
         String chip = wedgeCommand == null || wedgeCommand.isBlank() ? "Lock" : wedgeCommand;
 
         EnginePrewarm.ensure();
-        boolean showOwn = ownSpinner && spinner == null && isInteractiveAuto(opts) && !opts.outputIsJson();
+        boolean showOwn = ownSpinner && spinner == null && isInteractiveAuto(global) && !global.outputIsJson();
         try {
             // freshen=true: an invisible freshen must never float pinned versions, not even under
             // -F — that is `jk lock -F` / `jk update`'s job.
             EngineRequests.LockRequest req = new EngineRequests.LockRequest(
-                    dir, cache, List.of(), false, false, repoUrl, opts.offline, opts.force, opts.verbose, true);
+                    dir, cache, List.of(), false, false, repoUrl, global.offline, global.force, global.verbose, true);
 
             EngineRequests.LockHandler quiet = new EngineRequests.LockHandler() {
                 @Override
@@ -213,7 +207,7 @@ public final class EnsureFreshLock {
     }
 
     /** True when interactive AUTO mode (live spinners allowed). */
-    public static boolean isInteractiveAuto(@Nullable GlobalOptions global) {
+    public static boolean isInteractiveAuto(GlobalOptions global) {
         try {
             return BuildPlanConsole.isInteractiveTerminal()
                     && BuildPlanConsole.modeFor(global) == BuildPlanConsole.Mode.AUTO;

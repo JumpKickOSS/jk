@@ -169,7 +169,7 @@ public final class DoctorCommand implements CliCommand {
             }
         }
 
-        CliOutput.out(Theme.colorize("---", t.darkGray()));
+        CliOutput.out(Theme.paint("---", t.darkGray()));
         String summary = Theme.colorize(String.valueOf(healthy), t.focused())
                 + " healthy"
                 + (pruned > 0 ? ", " + Theme.colorize(String.valueOf(pruned), t.focused()) + " pruned" : "")
@@ -250,8 +250,10 @@ public final class DoctorCommand implements CliCommand {
         JkCacheConfig cfg = JkCacheConfig.resolve();
         List<String> problems = new ArrayList<>();
         if (!Files.isDirectory(cache)) problems.add("cache missing: " + cache);
-        if (!Files.isDirectory(store.getParent())) problems.add("store parent missing");
-        if (!Files.isDirectory(state.getParent())) problems.add("state parent missing");
+        Path storeParent = store.getParent();
+        Path stateParent = state.getParent();
+        if (storeParent == null || !Files.isDirectory(storeParent)) problems.add("store parent missing");
+        if (stateParent == null || !Files.isDirectory(stateParent)) problems.add("state parent missing");
         if (!problems.isEmpty()) return new Check(Status.FAIL, "dirs", String.join("; ", problems));
         String detail = "cache " + cache + " · store " + store + " · " + JkCacheConfig.formatGb(cfg.maxCacheSizeGb())
                 + "G cache budget · store unbudgeted";

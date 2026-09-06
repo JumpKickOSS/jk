@@ -10,8 +10,8 @@ import org.jspecify.annotations.Nullable;
  * {@code richLabelFn} for multi-style labels (focused flag in the {@code Boolean} arg).
  */
 public record Choice(
-        @Nullable String id,
-        @Nullable String label,
+        String id,
+        String label,
         String hint,
         @Nullable Function<Answers, String> hintFn,
         @Nullable Function<Boolean, Styled> richLabelFn) {
@@ -24,22 +24,21 @@ public record Choice(
         this(id, label, "", null, null);
     }
 
-    public Choice(@Nullable String id, @Nullable String label, String hint) {
+    public Choice(String id, String label, String hint) {
         this(id, label, hint, null, null);
     }
 
-    public Choice(@Nullable String id, @Nullable String label, Function<Answers, String> hintFn) {
+    public Choice(String id, String label, Function<Answers, String> hintFn) {
         this(id, label, "", hintFn, null);
     }
 
     /** Rich-label factory — caller supplies focused/unfocused renderings. */
-    public static Choice rich(String id, @Nullable String fallbackLabel, Function<Boolean, Styled> richLabelFn) {
+    public static Choice rich(String id, String fallbackLabel, Function<Boolean, Styled> richLabelFn) {
         return new Choice(id, fallbackLabel, "", null, richLabelFn);
     }
 
     /** Rich-label factory with a hint suffix. */
-    public static Choice rich(
-            String id, @Nullable String fallbackLabel, String hint, Function<Boolean, Styled> richLabelFn) {
+    public static Choice rich(String id, String fallbackLabel, String hint, Function<Boolean, Styled> richLabelFn) {
         return new Choice(id, fallbackLabel, hint, null, richLabelFn);
     }
 

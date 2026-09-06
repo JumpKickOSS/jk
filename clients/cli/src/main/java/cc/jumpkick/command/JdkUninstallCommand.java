@@ -45,6 +45,7 @@ import java.io.OutputStream;
 import java.io.PrintStream;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
@@ -124,13 +125,14 @@ public final class JdkUninstallCommand implements CliCommand {
         };
     }
 
+    @Nullable
     String argument;
+
     boolean assumeYes;
 
     @Nullable
     Path jdksDir;
 
-    @Nullable
     GlobalOptions global;
 
     private static final BuildPlanKey<List<JdkHit>> VICTIMS = BuildPlanKey.list("victims", JdkHit.class);
@@ -166,6 +168,7 @@ public final class JdkUninstallCommand implements CliCommand {
         // `<source>/<spec>` is optional: a slash qualifies which probe's copy to
         // remove, but a bare `<spec>` matches across every source. Specs never
         // contain a slash, so its presence unambiguously marks a source prefix.
+        String argument = Objects.requireNonNull(this.argument, "a spec argument");
         int slash = argument.indexOf('/');
         String source = slash < 0 ? null : argument.substring(0, slash);
         String spec = slash < 0 ? argument : argument.substring(slash + 1);
@@ -452,7 +455,7 @@ public final class JdkUninstallCommand implements CliCommand {
             List<InstalledJdk> survivors = registry.list();
             if (survivors.isEmpty()) {
                 defaults.clearDefault();
-                CliOutput.out(Theme.colorize(
+                CliOutput.out(Theme.paint(
                         "(no remaining JDKs — global default cleared)",
                         Theme.active().normalGray()));
             } else {
@@ -482,7 +485,7 @@ public final class JdkUninstallCommand implements CliCommand {
         Optional<JdkHit> next = DefaultGraalPolicy.choose(registry.listHits());
         if (next.isEmpty()) {
             defaults.clearGraal();
-            CliOutput.out(Theme.colorize(
+            CliOutput.out(Theme.paint(
                     "(no remaining GraalVM — graal default cleared)",
                     Theme.active().normalGray()));
             return;

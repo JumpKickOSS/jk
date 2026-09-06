@@ -29,7 +29,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.Function;
 import java.util.function.ObjIntConsumer;
-import org.jspecify.annotations.Nullable;
 
 /** Hosted verb bodies that are more than a one-line adapter call. */
 final class EngineHosted {
@@ -137,7 +136,7 @@ final class EngineHosted {
                 new PublishRequest(
                                 req.entryDir().toString(),
                                 req.cache().toString(),
-                                Objects.requireNonNull(req.repoUrl(), "repoUrl").toString(),
+                                Objects.toString(req.repoUrl(), null),
                                 req.region(),
                                 req.endpoint(),
                                 req.jarPath() != null ? req.jarPath().toString() : null,
@@ -218,7 +217,7 @@ final class EngineHosted {
                 new ImportRequest(
                                 req.source().toString(),
                                 req.out().toString(),
-                                Objects.requireNonNull(req.baseDir(), "baseDir").toString(),
+                                Objects.toString(req.baseDir(), null),
                                 req.tmpDir().toString(),
                                 req.force(),
                                 req.report() != null ? req.report().toString() : null,
@@ -270,7 +269,7 @@ final class EngineHosted {
      */
     static BuildPlanResult runCompile(
             EnginePaths.Paths paths,
-            EngineRequests.@Nullable CompileRequest req,
+            EngineRequests.CompileRequest req,
             Function<List<Task>, BuildPlanListener> listenerFactory)
             throws IOException {
         return EnginePluginAdapter.stream(
@@ -453,7 +452,7 @@ final class EngineHosted {
      */
     static BuildPlanResult runCacheMaintenance(
             EnginePaths.Paths paths,
-            EngineRequests.@Nullable CacheMaintRequest req,
+            EngineRequests.CacheMaintRequest req,
             Function<List<Task>, BuildPlanListener> listenerFactory,
             ObjIntConsumer<Boolean> onWait,
             EngineRequests.CacheMaintSummary[] summaryOut)
@@ -461,10 +460,7 @@ final class EngineHosted {
         String requestLine = new CachePruneRequest(
                         req.op(),
                         req.cache().toString(),
-                        "clear".equals(req.op())
-                                ? Objects.requireNonNull(req.projectRoot(), "projectRoot")
-                                        .toString()
-                                : null,
+                        "clear".equals(req.op()) ? Objects.toString(req.projectRoot(), null) : null,
                         req.dryRun(),
                         req.includeJkTmp())
                 .encode();

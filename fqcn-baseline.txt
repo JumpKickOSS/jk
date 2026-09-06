@@ -120,7 +120,6 @@
     1  clients/cli-terminal/src/main/java/cc/jumpkick/terminal/posix/package-info.java
     1  clients/cli-terminal/src/main/java/cc/jumpkick/terminal/windows/package-info.java
     1  clients/cli/src/main/java/cc/jumpkick/cli/Argv0.java
-    1  clients/cli/src/main/java/cc/jumpkick/cli/engine/package-info.java
     2  clients/cli/src/test/java/cc/jumpkick/cli/tui/TableAppendTest.java
     1  clients/cli/src/test/java/cc/jumpkick/command/CacheCommandTest.java
     3  clients/cli/src/test/java/cc/jumpkick/command/SelfNukeCommandTest.java

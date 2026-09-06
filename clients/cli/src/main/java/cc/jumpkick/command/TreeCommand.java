@@ -41,6 +41,7 @@ import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
@@ -96,7 +97,7 @@ public final class TreeCommand implements CliCommand {
             CommandWedge.printFail("Tree", target.error());
             return Exit.CONFIG;
         }
-        Path dir = target.dir();
+        Path dir = Objects.requireNonNull(target.dir(), "tree target dir");
         var proj = ProjectContext.require(dir, "tree").orElse(null);
         if (proj == null) return Exit.CONFIG;
         int lockCode = EnsureFreshLock.ensure(dir, JkDirs.cache(), global, "Tree");
@@ -404,7 +405,7 @@ public final class TreeCommand implements CliCommand {
      * {@code --color} / {@code NO_COLOR} / dumb terminals, so escapes are dropped cleanly when color
      * is off.
      */
-    private static DependencyTreeStyle.@Nullable Styling styling(boolean pillCaps, boolean ansi) {
+    private static DependencyTreeStyle.Styling styling(boolean pillCaps, boolean ansi) {
         if (!ansi) {
             // No-ANSI: replace all Unicode connectors with ASCII equivalents,
             // use [scope] bracket badges, * root bullet, plain uncolored coords.
@@ -449,9 +450,9 @@ public final class TreeCommand implements CliCommand {
      * escape is cancelled by every segment's color reset). Input is the plain {@code
      * group:artifact:version}.
      */
-    private static @Nullable String boldCoord(String gav) {
+    private static String boldCoord(String gav) {
         String[] p = gav.split(":", 3);
-        if (p.length < 3) return Theme.colorize(gav, Coords.groupStyle().bold());
+        if (p.length < 3) return Theme.paint(gav, Coords.groupStyle().bold());
         return Theme.colorize(p[0], Coords.groupStyle().bold())
                 + ":"
                 + Theme.colorize(p[1], Coords.artifactStyle().bold())

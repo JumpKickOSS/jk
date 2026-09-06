@@ -9,6 +9,7 @@ import java.io.PrintStream;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Console listener for simple-task commands: drives a {@link JkManager} in simple mode — an
@@ -28,7 +29,7 @@ public final class SimpleTaskListener implements BuildPlanListener {
     private final ConsoleSpec spec;
     private final boolean animate;
 
-    private JkManager cm;
+    private @Nullable JkManager cm;
 
     @Override
     public void planStart(BuildPlanView view) {

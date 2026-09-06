@@ -36,6 +36,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
@@ -188,7 +189,7 @@ public final class EngineSpawn {
                     }
                     // EngineServer wipes state/aot after claiming the endpoint. Do not
                     // wipe again here — the sidecar may already be training into a fresh file.
-                    return r.handshake();
+                    return Objects.requireNonNull(r.handshake(), "UP without a handshake");
                 }
                 case TIMED_OUT -> throw notStarted(paths); // alive but never served → genuine hang
                 case CHILD_EXITED -> {
