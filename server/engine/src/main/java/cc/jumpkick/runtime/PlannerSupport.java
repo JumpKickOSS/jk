@@ -45,10 +45,12 @@ import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.TestStamp;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -973,8 +975,43 @@ public final class PlannerSupport {
         Files.createDirectories(stage);
         copyTreeInto(classes, stage);
         for (Path contrib : extra) copyTreeInto(contrib, stage);
+        mergeServiceRegistrations(stage, classes, extra);
         if (ctx != null) ctx.put(STAGED_CLASSES_INPUTS, inputs);
         return stage;
+    }
+
+    /**
+     * {@code META-INF/services/*} is the one path a contribution must add to rather than replace.
+     * The tree copies above let the last source win, and for a plugin worker whose contribution is
+     * a workspace sibling that is itself a plugin — grails over spring-boot — that left the jar
+     * registering the sibling's plugin and not its own; the worker then reported "no plugin with
+     * protocol prefix" for the very jar it was launched from. Every source's registrations are kept,
+     * the module's own first, each provider once.
+     */
+    static void mergeServiceRegistrations(Path stage, Path classes, List<Path> extra) throws IOException {
+        Path servicesRel = Path.of("META-INF", "services");
+        Map<String, LinkedHashSet<String>> merged = new LinkedHashMap<>();
+        List<Path> sources = new ArrayList<>();
+        sources.add(classes);
+        sources.addAll(extra);
+        for (Path source : sources) {
+            Path services = source.resolve(servicesRel);
+            List<Path> files = new ArrayList<>();
+            PathUtil.forEachRegularFile(services, (file, attrs) -> files.add(file));
+            files.sort(Comparator.comparing(f -> f.getFileName().toString()));
+            for (Path file : files) {
+                var providers = merged.computeIfAbsent(file.getFileName().toString(), k -> new LinkedHashSet<>());
+                for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
+                    String provider = line.strip();
+                    if (!provider.isEmpty() && !provider.startsWith("#")) providers.add(provider);
+                }
+            }
+        }
+        for (var e : merged.entrySet()) {
+            if (e.getValue().size() < 2) continue; // one source, or one provider: the copy is right
+            Path out = Files.createDirectories(stage.resolve(servicesRel)).resolve(e.getKey());
+            Files.writeString(out, String.join("\n", e.getValue()) + "\n", StandardCharsets.UTF_8);
+        }
     }
 
     static void copyTreeInto(Path from, Path to) throws IOException {

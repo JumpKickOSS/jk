@@ -71,6 +71,35 @@ class BuildPlannerStagedClassesTest {
         assertThat(staged.resolve("com/example/aot/Optimized.class")).hasContent("opt");
     }
 
+    /**
+     * A plugin worker whose contribution is a workspace sibling that is itself a plugin — grails
+     * over spring-boot: both carry {@code META-INF/services/cc.jumpkick.plugin.Plugin}, and a plain
+     * tree copy let the sibling's file win, so the grails jar registered SpringBootPlugin and the
+     * worker reported "no plugin with protocol prefix ##JKGR:".
+     */
+    @Test
+    void service_registrations_from_every_source_survive_the_stage(@TempDir Path tmp) throws Exception {
+        Fixture f = fixture(tmp);
+        Path own = Files.createDirectories(f.classes.resolve("META-INF/services"));
+        Files.writeString(own.resolve("cc.jumpkick.plugin.Plugin"), "cc.jumpkick.grails.GrailsPlugin\n");
+        Files.writeString(own.resolve("java.nio.file.spi.FileSystemProvider"), "x.OnlyMine\n");
+        Path sibling = Files.createDirectories(f.contributed.resolve("META-INF/services"));
+        Files.writeString(
+                sibling.resolve("cc.jumpkick.plugin.Plugin"),
+                "# the sibling's own registration\ncc.jumpkick.boot.SpringBootPlugin\ncc.jumpkick.grails.GrailsPlugin\n");
+        Files.writeString(f.contributed.resolve("Sibling.class"), "sib");
+
+        Path staged = PlannerSupport.stageClassesWithContributions(ctx, f.classes, contributed(f), f.layout);
+
+        assertThat(staged.resolve("META-INF/services/cc.jumpkick.plugin.Plugin"))
+                .as("the module's own provider first, the sibling's after it, each once")
+                .hasContent("cc.jumpkick.grails.GrailsPlugin\ncc.jumpkick.boot.SpringBootPlugin\n");
+        assertThat(staged.resolve("META-INF/services/java.nio.file.spi.FileSystemProvider"))
+                .as("a file one source owns is copied as is")
+                .hasContent("x.OnlyMine\n");
+        assertThat(staged.resolve("Sibling.class")).hasContent("sib");
+    }
+
     @Test
     void nothing_contributed_leaves_the_classes_dir_alone(@TempDir Path tmp) throws Exception {
         Fixture f = fixture(tmp);
