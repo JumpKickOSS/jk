@@ -46,7 +46,7 @@ public record Rule(
         return false;
     }
 
-    static boolean globMatches(String glob, String path) {
+    public static boolean globMatches(String glob, String path) {
         if (glob.equals("*") || glob.equals("**")) return true;
         StringBuilder re = new StringBuilder();
         for (int i = 0; i < glob.length(); i++) {

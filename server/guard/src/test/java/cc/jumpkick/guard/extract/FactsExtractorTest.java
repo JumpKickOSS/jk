@@ -3,6 +3,7 @@ package cc.jumpkick.guard.extract;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.guard.extract.fixture.FixtureBytes;
 import cc.jumpkick.guard.extract.fixture.Sample;
 import cc.jumpkick.guard.facts.CallSite;
 import cc.jumpkick.guard.facts.ClassFacts;
@@ -11,10 +12,8 @@ import cc.jumpkick.guard.facts.FactsIndex;
 import cc.jumpkick.guard.facts.Fingerprints;
 import cc.jumpkick.guard.facts.MethodFacts;
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.file.Path;
 import java.util.Map;
-import java.util.Objects;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.objectweb.asm.Opcodes;
@@ -22,10 +21,7 @@ import org.objectweb.asm.Opcodes;
 class FactsExtractorTest {
 
     static byte[] classBytes(Class<?> c) throws IOException {
-        String res = c.getName().replace('.', '/') + ".class";
-        try (InputStream in = Objects.requireNonNull(c.getClassLoader().getResourceAsStream(res), res)) {
-            return in.readAllBytes();
-        }
+        return FixtureBytes.of(c);
     }
 
     static ClassFacts sample() throws IOException {

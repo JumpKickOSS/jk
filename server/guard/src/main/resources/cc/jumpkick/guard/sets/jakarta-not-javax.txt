@@ -1,0 +1,14 @@
+# Jakarta EE 9+ moved these namespaces; javax.* here is a pre-2020 dependency.
+javax.persistence.**
+javax.inject.**
+javax.validation.**
+javax.servlet.**
+javax.ws.rs.**
+javax.enterprise.**
+javax.annotation.PostConstruct
+javax.annotation.PreDestroy
+javax.transaction.Transactional
+javax.json.**
+javax.mail.**
+javax.jms.**
+javax.websocket.**

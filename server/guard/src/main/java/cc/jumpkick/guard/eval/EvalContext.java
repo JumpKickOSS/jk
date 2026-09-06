@@ -6,7 +6,9 @@ import cc.jumpkick.guard.schema.Lane;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.WeakHashMap;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
@@ -25,7 +27,17 @@ public record EvalContext(
         @Nullable Path moduleDir,
         List<Path> modules,
         Supplier<FactsIndex> factsSupplier,
-        Supplier<@Nullable FactsIndex> testFactsSupplier) {
+        Supplier<@Nullable FactsIndex> testFactsSupplier,
+        Supplier<List<Path>> classpath) {
+
+    private static final Map<EvalContext, TypeHierarchy> HIERARCHIES = new WeakHashMap<>();
+
+    /** The module's type hierarchy (facts, then classpath, then JDK), built once per lane run. */
+    public TypeHierarchy hierarchy() {
+        synchronized (HIERARCHIES) {
+            return HIERARCHIES.computeIfAbsent(this, c -> new TypeHierarchy(c.facts(), c.classpath()));
+        }
+    }
 
     /** This module's main-source-set facts; loaded on first use. */
     public FactsIndex facts() {

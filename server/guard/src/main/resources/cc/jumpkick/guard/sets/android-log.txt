@@ -1,0 +1,15 @@
+# android.util.Log outside the app's logging owner: unstructured, untagged, unfilterable in release.
+android.util.Log#v(java.lang.String,java.lang.String)
+android.util.Log#d(java.lang.String,java.lang.String)
+android.util.Log#i(java.lang.String,java.lang.String)
+android.util.Log#w(java.lang.String,java.lang.String)
+android.util.Log#e(java.lang.String,java.lang.String)
+android.util.Log#wtf(java.lang.String,java.lang.String)
+android.util.Log#v(java.lang.String,java.lang.String,java.lang.Throwable)
+android.util.Log#d(java.lang.String,java.lang.String,java.lang.Throwable)
+android.util.Log#i(java.lang.String,java.lang.String,java.lang.Throwable)
+android.util.Log#w(java.lang.String,java.lang.String,java.lang.Throwable)
+android.util.Log#e(java.lang.String,java.lang.String,java.lang.Throwable)
+android.util.Log#println(int,java.lang.String,java.lang.String)
+java.lang.System#out
+java.lang.System#err

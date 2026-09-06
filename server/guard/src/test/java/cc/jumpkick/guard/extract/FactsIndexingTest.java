@@ -4,6 +4,7 @@ package cc.jumpkick.guard.extract;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.guard.extract.FactsIndexing.Ensured;
+import cc.jumpkick.guard.extract.fixture.FixtureBytes;
 import cc.jumpkick.guard.extract.fixture.Sample;
 import cc.jumpkick.guard.facts.FactsIndex;
 import java.io.IOException;
@@ -18,8 +19,8 @@ class FactsIndexingTest {
     private static Path classes(Path dir) throws IOException {
         Path pkg = dir.resolve("classes/cc/jumpkick/guard/extract/fixture");
         Files.createDirectories(pkg);
-        Files.write(pkg.resolve("Sample.class"), FactsExtractorTest.classBytes(Sample.class));
-        Files.write(pkg.resolve("Sample$Inner.class"), FactsExtractorTest.classBytes(Sample.Inner.class));
+        Files.write(pkg.resolve("Sample.class"), FixtureBytes.of(Sample.class));
+        Files.write(pkg.resolve("Sample$Inner.class"), FixtureBytes.of(Sample.Inner.class));
         return dir.resolve("classes");
     }
 

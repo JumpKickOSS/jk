@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import static cc.jumpkick.runtime.BuildPlanner.CLASSPATH;
 import static cc.jumpkick.runtime.BuildPlanner.LAYOUT;
 import static cc.jumpkick.runtime.BuildPlanner.MAIN_CLASSES;
 import static cc.jumpkick.runtime.BuildPlanner.PROJECT;
@@ -143,7 +144,8 @@ final class PlannerGuards {
                             moduleDir,
                             List.of(moduleDir),
                             EvalContext.lazy(() -> FactsIndexing.load(main)),
-                            testFacts(test));
+                            testFacts(test),
+                            () -> ctx.get(CLASSPATH).orElse(List.of()));
                     execute(ctx, cx, Lane.MODULE, ectx, tokens, ActionKey.qualifiedTaskId(TaskNames.GUARD, moduleDir));
                     ctx.progress(1);
                 })
@@ -167,7 +169,8 @@ final class PlannerGuards {
                     for (Path m : modules)
                         tokens.add(token("manifest:" + relModule(g.root(), m), m.resolve(ManifestPaths.MANIFEST)));
                     tokens.add(token("lock", g.root().resolve(ManifestPaths.LOCK)));
-                    EvalContext ectx = new EvalContext(Lane.MODEL, g.root(), "", null, modules, noFacts(), () -> null);
+                    EvalContext ectx =
+                            new EvalContext(Lane.MODEL, g.root(), "", null, modules, noFacts(), () -> null, List::of);
                     execute(
                             ctx,
                             cx,
@@ -197,7 +200,8 @@ final class PlannerGuards {
                         cx.buildLogicInputTokensRef().compareAndSet(null, tokens);
                     }
                     List<Path> modules = moduleDirs(g.root(), ctx.get(PROJECT).orElse(null));
-                    EvalContext ectx = new EvalContext(Lane.TREE, g.root(), "", null, modules, noFacts(), () -> null);
+                    EvalContext ectx =
+                            new EvalContext(Lane.TREE, g.root(), "", null, modules, noFacts(), () -> null, List::of);
                     execute(
                             ctx,
                             cx,

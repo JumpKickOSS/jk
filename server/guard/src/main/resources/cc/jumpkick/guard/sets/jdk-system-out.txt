@@ -1,0 +1,5 @@
+# Writing to stdout/stderr from library code: a logger is the sanctioned sink.
+java.lang.System#out
+java.lang.System#err
+java.lang.Throwable#printStackTrace()
+java.lang.Thread#dumpStack()

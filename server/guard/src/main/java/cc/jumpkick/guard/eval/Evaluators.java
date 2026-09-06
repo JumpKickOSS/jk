@@ -15,6 +15,20 @@ public final class Evaluators {
 
     private static final Map<Kind, Evaluator> BY_KIND = new EnumMap<>(Kind.class);
 
+    static {
+        installBuiltins();
+    }
+
+    private static void installBuiltins() {
+        BY_KIND.put(Kind.FORBID, new ForbidEvaluator());
+    }
+
+    /** Test seam: drop every registration and reinstall the shipped evaluators. */
+    public static synchronized void restoreDefaults() {
+        BY_KIND.clear();
+        installBuiltins();
+    }
+
     private Evaluators() {}
 
     public static synchronized void register(Kind kind, Evaluator evaluator) {

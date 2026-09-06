@@ -1,0 +1,19 @@
+# Legacy JDK API with a modern replacement.
+java.util.Date#<init>(int,int,int)
+java.util.Date#getYear()
+java.util.Date#getMonth()
+java.util.Date#getDay()
+java.lang.Thread#stop()
+java.lang.Thread#suspend()
+java.lang.Thread#resume()
+java.lang.Runtime#runFinalization()
+java.lang.Object#finalize()
+java.lang.Integer#<init>(int)
+java.lang.Long#<init>(long)
+java.lang.Boolean#<init>(boolean)
+java.lang.Double#<init>(double)
+java.lang.Character#<init>(char)
+java.util.Hashtable
+java.util.Vector
+java.util.Stack
+java.lang.StringBuffer

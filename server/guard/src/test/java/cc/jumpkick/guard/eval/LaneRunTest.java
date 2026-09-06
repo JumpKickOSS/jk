@@ -54,7 +54,8 @@ class LaneRunTest {
                 root.resolve(module),
                 List.of(root.resolve(module)),
                 () -> FactsIndex.EMPTY,
-                () -> null);
+                () -> null,
+                List::of);
     }
 
     private static LoadResult load(Path dir) throws IOException {
@@ -66,9 +67,7 @@ class LaneRunTest {
 
     @AfterEach
     void unregister() {
-        for (Kind k : List.of(Kind.SPLIT_PACKAGE, Kind.FORBID, Kind.VOCABULARY)) {
-            Evaluators.register(k, (rule, ctx) -> Evaluation.unsupported("test reset"));
-        }
+        Evaluators.restoreDefaults();
     }
 
     @Test
@@ -89,6 +88,7 @@ class LaneRunTest {
     @Test
     void an_unlanded_kind_is_unsupported_and_red_never_clean(@TempDir Path dir) throws IOException {
         LoadResult r = load(dir);
+        Evaluators.register(Kind.FORBID, (rule, ctx) -> Evaluation.unsupported("kind forbid has no evaluator yet"));
         LaneRun.Result res = LaneRun.run(
                 Lane.MODULE,
                 LaneRun.rulesFor(Lane.MODULE, r.rules(), "core"),

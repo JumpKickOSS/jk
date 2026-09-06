@@ -1,0 +1,13 @@
+# Reflection and deep access: invisible to the compiler, the shrinker and the native image.
+java.lang.Class#forName(java.lang.String)
+java.lang.Class#forName(java.lang.String,boolean,java.lang.ClassLoader)
+java.lang.Class#getDeclaredMethod(java.lang.String,java.lang.Class[])
+java.lang.Class#getDeclaredField(java.lang.String)
+java.lang.Class#getDeclaredConstructor(java.lang.Class[])
+java.lang.Class#newInstance()
+java.lang.reflect.AccessibleObject#setAccessible(boolean)
+java.lang.reflect.Method#invoke(java.lang.Object,java.lang.Object[])
+java.lang.reflect.Field#set(java.lang.Object,java.lang.Object)
+java.lang.reflect.Proxy#newProxyInstance(java.lang.ClassLoader,java.lang.Class[],java.lang.reflect.InvocationHandler)
+java.util.ServiceLoader#load(java.lang.Class)
+sun.misc.Unsafe
