@@ -95,6 +95,25 @@ class ZincJavaCompilerTest {
         assertThat(third.compiledSources()).isEmpty();
     }
 
+    /** The same dependency at a new path (a version bump): Zinc's origin lookup must still run. */
+    @Test
+    void a_dependency_moved_to_another_classpath_directory_recompiles_its_users(@TempDir Path dir) throws Exception {
+        Project v1 = new Project(dir.resolve("v1"));
+        v1.write("d/Lib.java", "package d; public class Lib { public void f(Object o) {} }");
+        assertThat(v1.compile().success()).isTrue();
+        Project v2 = new Project(dir.resolve("v2"));
+        v2.write("d/Lib.java", "package d; public class Lib { public void f(Object o) {} public void f(String s) {} }");
+        assertThat(v2.compile().success()).isTrue();
+
+        Project user = new Project(dir.resolve("user"));
+        user.write("u/U.java", "package u; public class U { public void call(d.Lib lib) { lib.f(\"hi\"); } }");
+        assertThat(user.compile(List.of(v1.classes)).success()).isTrue();
+
+        ZincJavaCompiler.Result bumped = user.compile(List.of(v2.classes));
+        assertThat(bumped.success()).as(bumped.diagnostics().toString()).isTrue();
+        assertThat(names(bumped.compiledSources())).containsExactly("U.java");
+    }
+
     @Test
     void plan_after_body_edit_lists_only_the_changed_source(@TempDir Path dir) throws Exception {
         Project p = new Project(dir);

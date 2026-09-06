@@ -196,15 +196,15 @@ public final class ZincJavaCompiler {
 
             CollectingReporter reporter = new CollectingReporter();
             AnalysisStore store = zinced.store();
-            // One stamper for the compile and for library-change detection: both must see the
-            // same (mtime-cached) hash of a class file or the two could disagree mid-compile.
+            // One stamper for the compile and for the classpath hash: both must see the same
+            // (mtime-cached) hash of a jar or the two could disagree mid-compile.
             ReadStamps stamper = Stamps.timeWrapBinaryStamps(converter);
             Setup setup = Setup.of(
                     new ClasspathLookup(),
                     false,
                     zinced.analysisFile(),
                     new FreshCompilerCache(),
-                    ZincSetup.incOptions(stamper),
+                    ZincSetup.incOptions(stamper, converter, classOutput),
                     reporter,
                     ZincSetup.noExtra());
 
