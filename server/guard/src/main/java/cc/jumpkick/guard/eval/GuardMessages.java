@@ -107,6 +107,23 @@ public final class GuardMessages {
         return sb.toString();
     }
 
+    /** A module-lane rule with no bite evidence in any lane, reported by the tree lane. */
+    public static String noBite(Rule rule, String note) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("GUARD ")
+                .append(rule.id())
+                .append("  ")
+                .append(Outcome.NO_BITE.id())
+                .append('\n');
+        sb.append("  Observed: ").append(note).append('\n');
+        if (rule.instead() != null)
+            sb.append("  Instead:  ").append(rule.instead()).append('\n');
+        sb.append("  Why:      ").append(rule.why()).append('\n');
+        sb.append("  Source:   ").append(rule.source().render()).append('\n');
+        sb.append("  Explain:  jk guard explain ").append(rule.id());
+        return sb.toString();
+    }
+
     /** One JSONL row for the full list ({@code target/jk-guards/<lane>.jsonl}). */
     public static String jsonl(RuleReport r, Observation o, boolean fresh) {
         Rule rule = r.rule();

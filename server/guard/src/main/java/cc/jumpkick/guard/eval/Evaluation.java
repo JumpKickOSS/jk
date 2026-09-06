@@ -9,13 +9,35 @@ import java.util.TreeMap;
 /**
  * What one evaluator found: the outcome before baseline reconciliation, the population it
  * examined (by unit: {@code classes}, {@code files}, …), every violation as an observation, and a
- * note explaining a non-clean outcome in the rule's words.
+ * note explaining a non-clean outcome in the rule's words. {@code bites} is the evidence the rule
+ * can fire at all — an owner site, a current site, a {@code hit} that matched — without which a clean
+ * pass is a rule looking at nothing (PRD §4.6, must bite).
  */
-public record Evaluation(Outcome outcome, Map<String, Long> population, List<Observation> observations, String note) {
+public record Evaluation(
+        Outcome outcome, Map<String, Long> population, List<Observation> observations, String note, boolean bites) {
 
     public Evaluation {
         population = Map.copyOf(new TreeMap<>(population));
         observations = List.copyOf(observations);
+    }
+
+    /**
+     * Without bite evidence spelled out: a rule that examined something bites by default. The kinds
+     * whose clean pass proves nothing on its own ({@code forbid}, {@code text}) set it explicitly.
+     */
+    public Evaluation(Outcome outcome, Map<String, Long> population, List<Observation> observations, String note) {
+        this(outcome, population, observations, note, !observations.isEmpty() || examined(population) > 0);
+    }
+
+    /** The same evaluation with bite evidence decided by the evaluator. */
+    public Evaluation withBite(boolean bite) {
+        return new Evaluation(outcome, population, observations, note, bite);
+    }
+
+    static long examined(Map<String, Long> population) {
+        long n = 0;
+        for (long v : population.values()) n += v;
+        return n;
     }
 
     /** Clean or violations, decided by whether anything was observed; blind when nothing was examined. */

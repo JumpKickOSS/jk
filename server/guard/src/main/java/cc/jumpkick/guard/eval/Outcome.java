@@ -22,7 +22,9 @@ public enum Outcome {
     /** An {@code allow} entry matched nothing: an exemption that expired silently. */
     STALE_ALLOW("stale-allow"),
     /** The rule threw, timed out or overflowed; the engine is unaffected, the rule is red. */
-    SCANNER_FAILED("scanner-failed");
+    SCANNER_FAILED("scanner-failed"),
+    /** Clean, but with no evidence it could ever fire: no owner site, no current site, no matching hit. */
+    NO_BITE("no-bite");
 
     private final String id;
 

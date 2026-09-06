@@ -86,6 +86,34 @@ class LaneRunTest {
     }
 
     @Test
+    void a_clean_rule_without_bite_evidence_is_no_bite_except_in_a_module_lane(@TempDir Path dir) throws IOException {
+        LoadResult r = load(dir);
+        Evaluators.register(Kind.SPLIT_PACKAGE, (rule, ctx) -> Evaluation.of(Map.of("packages", 12L), List.of())
+                .withBite(false));
+        Lane lane = Evaluators.laneOf(r.rules().rule("one-owner").orElseThrow());
+        LaneRun.Result res =
+                LaneRun.run(lane, LaneRun.rulesFor(lane, r.rules(), ""), ctx(dir, lane, ""), Baseline.EMPTY);
+        assertThat(res.reports()).singleElement().satisfies(rep -> {
+            assertThat(rep.outcome()).isEqualTo(Outcome.NO_BITE);
+            assertThat(rep.red()).isTrue();
+            assertThat(rep.note()).contains("fired nowhere");
+        });
+        assertThat(GuardMessages.render(res.reports().get(0))).startsWith("GUARD one-owner  no-bite");
+
+        Evaluators.register(Kind.FORBID, (rule, ctx) -> Evaluation.of(Map.of("classes", 3L), List.of())
+                .withBite(false));
+        LaneRun.Result module = LaneRun.run(
+                Lane.MODULE,
+                LaneRun.rulesFor(Lane.MODULE, r.rules(), "core"),
+                ctx(dir, Lane.MODULE, "core"),
+                Baseline.EMPTY);
+        assertThat(module.reports().get(0).outcome())
+                .as("one module is not the whole rule; the tree lane judges bite across lanes")
+                .isEqualTo(Outcome.CLEAN);
+        assertThat(module.reports().get(0).evaluation().bites()).isFalse();
+    }
+
+    @Test
     void an_unlanded_kind_is_unsupported_and_red_never_clean(@TempDir Path dir) throws IOException {
         LoadResult r = load(dir);
         Evaluators.register(Kind.FORBID, (rule, ctx) -> Evaluation.unsupported("kind forbid has no evaluator yet"));

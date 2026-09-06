@@ -3,6 +3,7 @@ package cc.jumpkick.guard.eval;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.guard.baseline.Baseline;
 import cc.jumpkick.guard.baseline.Observation;
 import cc.jumpkick.guard.facts.FactsIndex;
 import cc.jumpkick.guard.rules.GuardRules;
@@ -13,6 +14,7 @@ import cc.jumpkick.model.GuardsConfig;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -60,6 +62,33 @@ class TextEvaluatorTest {
         EvalContext ctx =
                 new EvalContext(Lane.TREE, root, "", null, List.of(), () -> FactsIndex.EMPTY, () -> null, List::of);
         return LaneRun.evaluate(LaneRun.rulesFor(Lane.TREE, load.rules(), ""), ctx);
+    }
+
+    @Test
+    void a_pattern_matching_nothing_needs_a_hit_to_prove_it_can_bite(@TempDir Path root) throws Exception {
+        tree(root);
+        String rules = """
+                [guards.nothing]
+                kind = "text"
+                pattern = "zzz-never-here"
+                instead = "i"
+                why = "w"
+                [guards.with-hit]
+                kind = "text"
+                pattern = "zzz-never-here"
+                hit = "String s = \\"zzz-never-here\\";"
+                instead = "i"
+                why = "w"
+                """;
+        Files.writeString(root.resolve(GuardsPresence.RULES_FILE), rules);
+        LoadResult load = GuardRules.load(root, GuardsConfig.ABSENT);
+        assertThat(load.hasErrors()).as(load.problems().toString()).isFalse();
+        EvalContext ctx =
+                new EvalContext(Lane.TREE, root, "", null, List.of(), () -> FactsIndex.EMPTY, () -> null, List::of);
+        LaneRun.Result r = LaneRun.run(Lane.TREE, LaneRun.rulesFor(Lane.TREE, load.rules(), ""), ctx, Baseline.EMPTY);
+        Map<String, Outcome> outcomes = new HashMap<>();
+        for (RuleReport rep : r.reports()) outcomes.put(rep.id(), rep.outcome());
+        assertThat(outcomes).containsEntry("nothing", Outcome.NO_BITE).containsEntry("with-hit", Outcome.CLEAN);
     }
 
     @Test

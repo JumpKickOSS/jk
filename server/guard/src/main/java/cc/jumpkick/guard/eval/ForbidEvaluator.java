@@ -180,7 +180,7 @@ final class ForbidEvaluator implements Evaluator {
                     sites,
                     "allow entries matched nothing: " + String.join(", ", stale));
         }
-        return Evaluation.of(population, sites);
+        return Evaluation.of(population, sites).withBite(ownerHasSite || !sites.isEmpty());
     }
 
     // ---- matching -----------------------------------------------------------------------------

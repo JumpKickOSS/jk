@@ -31,7 +31,14 @@ public final class RuleSummaries {
 
     /** One rule's last evaluation in one lane. */
     public record Summary(
-            String code, String lane, String outcome, String population, int fresh, int baselined, long ts) {}
+            String code,
+            String lane,
+            String outcome,
+            String population,
+            int fresh,
+            int baselined,
+            long ts,
+            @Nullable Boolean bite) {}
 
     public static Path dir(Path root) {
         return root.resolve(BuildLayout.TARGET).resolve("jk-guards");
@@ -52,6 +59,7 @@ public final class RuleSummaries {
                     .append(Jsonl.quote(population(r.evaluation().population())));
             sb.append(",\"fresh\":").append(r.fresh().size());
             sb.append(",\"baselined\":").append(r.baselined().size());
+            sb.append(",\"bite\":").append(r.evaluation().bites());
             sb.append(",\"ts\":").append(now);
             sb.append("}\n");
         }
@@ -103,6 +111,7 @@ public final class RuleSummaries {
                 population == null ? "" : population,
                 Jsonl.intValue(line, "fresh", 0),
                 Jsonl.intValue(line, "baselined", 0),
-                Jsonl.longValue(line, "ts", 0));
+                Jsonl.longValue(line, "ts", 0),
+                Jsonl.has(line, "bite") ? Jsonl.bool(line, "bite", false) : null);
     }
 }

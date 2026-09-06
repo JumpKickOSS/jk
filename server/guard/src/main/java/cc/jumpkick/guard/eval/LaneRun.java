@@ -88,12 +88,30 @@ public final class LaneRun {
                 }
                 Outcome outcome =
                         rec.fresh().isEmpty() && rec.baselined().isEmpty() ? Outcome.CLEAN : Outcome.VIOLATIONS;
+                if (outcome == Outcome.CLEAN && !ev.bites() && lane != Lane.MODULE) {
+                    // A module lane sees one module; its bite is judged across lanes by the tree lane.
+                    reports.add(new RuleReport(rule, Outcome.NO_BITE, ev, rec, noBiteNote(rule)));
+                    continue;
+                }
                 reports.add(new RuleReport(rule, outcome, ev, rec, ev.note()));
             } else {
                 reports.add(new RuleReport(rule, ev.outcome(), ev, null, ev.note()));
             }
         }
         return new Result(lane, reports, current, tightened);
+    }
+
+    /** Why a clean pass with no bite evidence is red, in the kind's own terms. */
+    public static String noBiteNote(Rule rule) {
+        String path =
+                switch (rule.kind()) {
+                    case FORBID ->
+                        "add `owner` (a class that legitimately uses the primitive) so the rule proves it can see one";
+                    case TEXT -> "add `hit` (a snippet the pattern must match through its view)";
+                    default -> "give the rule something to examine";
+                };
+        String fixture = rule.fixture() == null ? "" : "; `fixture` is accepted but not evaluated yet";
+        return "the rule fired nowhere and carries no evidence it can — " + path + fixture;
     }
 
     /**

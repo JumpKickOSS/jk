@@ -60,6 +60,22 @@ class ForbidEvaluatorTest {
     }
 
     @Test
+    void bite_evidence_is_an_owner_site_or_a_current_site(@TempDir Path dir) throws Exception {
+        Evaluation none = run(dir, "signatures = [\"java.util.UUID#randomUUID()\"]\n");
+        assertThat(none.outcome()).isEqualTo(Outcome.CLEAN);
+        assertThat(none.bites())
+                .as("resolves, examined 2 classes, matched nothing: no evidence")
+                .isFalse();
+        Evaluation site = run(dir, "signatures = [\"java.security.MessageDigest#getInstance(**)\"]\n");
+        assertThat(site.bites()).isTrue();
+        Evaluation owner = run(
+                dir,
+                "signatures = [\"java.security.MessageDigest#getInstance(**)\"]\nowner = \"cc.jumpkick.guard.extract.fixture.Sample\"\n");
+        assertThat(owner.outcome()).isEqualTo(Outcome.CLEAN);
+        assertThat(owner.bites()).as("the owner itself uses the primitive").isTrue();
+    }
+
+    @Test
     void any_overload_types_and_package_trees(@TempDir Path dir) throws Exception {
         assertThat(run(dir, "signatures = [\"java.lang.String#toLowerCase(**)\"]\n")
                         .observations())

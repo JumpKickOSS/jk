@@ -47,6 +47,10 @@ final class TextEvaluator implements BatchEvaluator {
         final Map<Allow, Boolean> allowUsed = new LinkedHashMap<>();
         final List<Hit> hits = new ArrayList<>();
         final List<String> unsupported = new ArrayList<>();
+        /** The {@code hit} snippet, once it has matched through the view: bite evidence on its own. */
+        @Nullable
+        String hit;
+
         long filesExamined;
         boolean ownerSeen;
         boolean ownerHasMatch;
@@ -151,6 +155,7 @@ final class TextEvaluator implements BatchEvaluator {
         if (p.patterns.isEmpty()) return "no pattern";
         String hit = t.isString("hit") ? t.getString("hit") : null;
         String miss = t.isString("miss") ? t.getString("miss") : null;
+        p.hit = hit;
         if (hit != null) {
             Object view = project(hit, p.blank, TextFiles.Language.JAVA);
             if (!anyMatch(p.patterns, viewText(view))) {
@@ -240,7 +245,7 @@ final class TextEvaluator implements BatchEvaluator {
                     observations,
                     "allow entries matched nothing: " + String.join(", ", stale));
         }
-        return Evaluation.of(population, observations);
+        return Evaluation.of(population, observations).withBite(p.hit != null || !p.hits.isEmpty());
     }
 
     /** Without {@code count}: every match outside the owner is a violation. */

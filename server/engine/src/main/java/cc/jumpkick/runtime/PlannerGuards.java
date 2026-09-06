@@ -18,6 +18,7 @@ import cc.jumpkick.guard.eval.GuardMessages;
 import cc.jumpkick.guard.eval.LaneRun;
 import cc.jumpkick.guard.eval.Outcome;
 import cc.jumpkick.guard.eval.RuleReport;
+import cc.jumpkick.guard.explain.BiteEvidence;
 import cc.jumpkick.guard.explain.RuleSummaries;
 import cc.jumpkick.guard.extract.FactsIndexing;
 import cc.jumpkick.guard.facts.FactsIndex;
@@ -323,7 +324,19 @@ final class PlannerGuards {
                 ctx.error(r.id(), GuardMessages.outcome(r));
             }
         }
+        // The tree lane runs after every module lane: the one place must-bite can be judged for them.
+        int noBite = 0;
+        if (lane == Lane.TREE) {
+            for (BiteEvidence.Missing m : BiteEvidence.missing(g.root(), load.rules())) {
+                noBite++;
+                ctx.error(m.rule().id(), GuardMessages.noBite(m.rule(), m.note()));
+            }
+        }
         ctx.label(GuardMessages.summary(result, rules.size()));
+        if (noBite > 0 && !result.red()) {
+            ctx.output(GuardMessages.TRAILER);
+            throw new GuardsRed(noBite + (noBite == 1 ? " guard has" : " guards have") + " no bite evidence");
+        }
         if (result.red()) {
             ctx.output(GuardMessages.TRAILER);
             // The diagnostics above carry the detail; the throw is what fails the step.
