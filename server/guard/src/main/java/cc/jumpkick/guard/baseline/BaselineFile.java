@@ -2,6 +2,7 @@
 package cc.jumpkick.guard.baseline;
 
 import cc.jumpkick.util.AtomicWrites;
+import cc.jumpkick.util.MinimalToml;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -111,12 +112,12 @@ public final class BaselineFile {
             for (Entry en : sorted) {
                 sb.append("[[").append(id).append(".entries]]\n");
                 if (en instanceof Entry.Site s) {
-                    sb.append("at     = ").append(quote(s.at())).append('\n');
+                    sb.append("at     = ").append(MinimalToml.quote(s.at())).append('\n');
                 } else if (en instanceof Entry.Metric m) {
-                    sb.append("unit   = ").append(quote(m.unit())).append('\n');
+                    sb.append("unit   = ").append(MinimalToml.quote(m.unit())).append('\n');
                     sb.append("value  = ").append(number(m.value())).append('\n');
                 }
-                sb.append("reason = ").append(quote(en.reason())).append('\n');
+                sb.append("reason = ").append(MinimalToml.quote(en.reason())).append('\n');
             }
         }
         return sb.toString();
@@ -134,20 +135,5 @@ public final class BaselineFile {
 
     private static String number(double v) {
         return v == Math.rint(v) && Math.abs(v) < 1e15 ? Long.toString((long) v) : Double.toString(v);
-    }
-
-    private static String quote(String s) {
-        StringBuilder sb = new StringBuilder("\"");
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            switch (c) {
-                case '"' -> sb.append("\\\"");
-                case '\\' -> sb.append("\\\\");
-                case '\n' -> sb.append("\\n");
-                case '\t' -> sb.append("\\t");
-                default -> sb.append(c);
-            }
-        }
-        return sb.append('"').toString();
     }
 }

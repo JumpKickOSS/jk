@@ -61,9 +61,9 @@ class GuardLaneE2eTest {
         assertThat(first.errors()).anySatisfy(d -> {
             assertThat(d.code()).isEqualTo("no-app");
             assertThat(d.message())
-                    .startsWith("GUARD no-app  (1 new)")
-                    .contains("demo.App calls the banned thing")
-                    .contains("Instead:  nothing");
+                    .startsWith("App.java:1: demo.App calls the banned thing")
+                    .contains("Instead:  nothing")
+                    .contains("Baseline: new");
         });
         assertThat(project.resolve("target/incremental/main-guard.idx"))
                 .as("facts index written by the lane")

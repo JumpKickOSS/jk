@@ -11,9 +11,11 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.guard.baseline.Baseline;
 import cc.jumpkick.guard.baseline.BaselineFile;
 import cc.jumpkick.guard.baseline.Baselines;
+import cc.jumpkick.guard.baseline.Observation;
 import cc.jumpkick.guard.eval.EvalContext;
 import cc.jumpkick.guard.eval.GuardMessages;
 import cc.jumpkick.guard.eval.LaneRun;
+import cc.jumpkick.guard.eval.Outcome;
 import cc.jumpkick.guard.eval.RuleReport;
 import cc.jumpkick.guard.extract.FactsIndexing;
 import cc.jumpkick.guard.facts.FactsIndex;
@@ -24,6 +26,7 @@ import cc.jumpkick.guard.rules.LoadResult;
 import cc.jumpkick.guard.rules.Rule;
 import cc.jumpkick.guard.schema.Lane;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.GuardsConfig;
@@ -37,6 +40,7 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.FileHashMemo;
+import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -283,7 +287,14 @@ final class PlannerGuards {
                 ctx.output(result.tightened() + " baseline entries tightened");
             }
         }
-        for (RuleReport r : result.redReports()) ctx.error(r.id(), GuardMessages.render(r));
+        writeJsonl(g.root(), taskId, result);
+        for (RuleReport r : result.redReports()) {
+            if (r.outcome() == Outcome.VIOLATIONS) {
+                for (Observation o : r.fresh()) ctx.error(r.id(), GuardMessages.site(r, o));
+            } else {
+                ctx.error(r.id(), GuardMessages.outcome(r));
+            }
+        }
         ctx.label(GuardMessages.summary(result, rules.size()));
         if (result.red()) {
             ctx.output(GuardMessages.TRAILER);
@@ -306,6 +317,26 @@ final class PlannerGuards {
     static final class GuardsRed extends RuntimeException {
         GuardsRed(String message) {
             super(message);
+        }
+    }
+
+    /** The full list, every lane its own file: {@code target/jk-guards/<lane>.jsonl}. */
+    private static void writeJsonl(Path root, String taskId, LaneRun.Result result) throws IOException {
+        Path dir = root.resolve(BuildLayout.TARGET).resolve("jk-guards");
+        Files.createDirectories(dir);
+        String name = taskId.replaceAll("[^A-Za-z0-9._-]", "_") + ".jsonl";
+        StringBuilder sb = new StringBuilder();
+        for (RuleReport r : result.reports()) {
+            for (Observation o : r.fresh())
+                sb.append(GuardMessages.jsonl(r, o, true)).append('\n');
+            for (Observation o : r.baselined())
+                sb.append(GuardMessages.jsonl(r, o, false)).append('\n');
+        }
+        Path file = dir.resolve(name);
+        if (sb.length() == 0) {
+            Files.deleteIfExists(file);
+        } else {
+            AtomicWrites.replace(file, sb.toString());
         }
     }
 

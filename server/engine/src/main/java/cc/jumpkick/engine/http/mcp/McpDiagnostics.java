@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.http.mcp;
 
 import cc.jumpkick.diagnostic.CompilerLocus;
+import cc.jumpkick.run.TaskNames;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -124,7 +125,24 @@ public final class McpDiagnostics {
         if (!detail.isEmpty()) row.put("detail", detail);
         Object ex = d.get("exceptionClass");
         if (ex != null && !String.valueOf(ex).isBlank()) row.put("exceptionClass", ex);
+        // A guard row carries the two fields that move one-shot fix rate as typed columns too.
+        String task = McpHistoryViews.str(d, "task");
+        if (task.startsWith(TaskNames.GUARD)) {
+            String instead = fieldLine(detail, "Instead:");
+            String why = fieldLine(detail, "Why:");
+            if (!instead.isEmpty()) row.put("instead", instead);
+            if (!why.isEmpty()) row.put("why", why);
+        }
         return row;
+    }
+
+    /** The value of a {@code  Label:  value} line in a guard diagnostic's detail, or {@code ""}. */
+    static String fieldLine(String detail, String label) {
+        for (String line : detail.split("\n")) {
+            String s = line.strip();
+            if (s.startsWith(label)) return s.substring(label.length()).strip();
+        }
+        return "";
     }
 
     private static String key(Map<String, Object> row) {

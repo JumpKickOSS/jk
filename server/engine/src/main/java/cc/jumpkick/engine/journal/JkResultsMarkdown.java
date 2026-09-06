@@ -90,6 +90,7 @@ public final class JkResultsMarkdown {
         appendCounts(sb, record, tests);
         appendFiles(sb, record, detailsPath, latestPath, tests);
         appendFailures(sb, record, !tests.isEmpty());
+        appendGuards(sb, record);
         appendTests(sb, tests);
         appendDeliverables(sb, record);
         appendFailedTasks(sb, record);
@@ -214,6 +215,7 @@ public final class JkResultsMarkdown {
         for (BuildRecord.Diag d : r.diagnostics()) {
             if (!isError(d)) continue;
             if (testsSectionCoversTests && isTest(d)) continue;
+            if (isGuard(d)) continue; // rendered under ## Guards
             errors.add(d);
         }
         if (errors.isEmpty()) return;
@@ -233,6 +235,97 @@ public final class JkResultsMarkdown {
             appendDiagBody(sb, d, r.dir());
             shown++;
         }
+    }
+
+    /** How many guard sites the section names before pointing at the full list. */
+    static final int MAX_GUARD_SITES = 10;
+
+    /** A diagnostic a guard lane emitted: its step is one of the lane task names. */
+    static boolean isGuard(BuildRecord.Diag d) {
+        String step = some(d.step());
+        return step != null
+                && (step.equals(TaskNames.GUARD)
+                        || step.startsWith(TaskNames.GUARD + "-")
+                        || step.startsWith(TaskNames.GUARD + ":"));
+    }
+
+    /**
+     * {@code ## Guards}: the agent view of the house rules. One line when every lane came back
+     * clean; on failure, at most {@value #MAX_GUARD_SITES} sites grouped by rule with {@code why}
+     * once per group and {@code instead} per site, then a pointer at the full list. Budget ~1,000
+     * tokens; the trailer says how to exempt and what never to do.
+     */
+    private static void appendGuards(StringBuilder sb, BuildRecord r) {
+        List<BuildRecord.Task> lanes = new ArrayList<>();
+        for (BuildRecord.Task t : r.steps()) {
+            String n = t.name();
+            if (n.equals(TaskNames.GUARD) || n.startsWith(TaskNames.GUARD + "-")) lanes.add(t);
+        }
+        List<BuildRecord.Diag> red = new ArrayList<>();
+        for (BuildRecord.Diag d : r.diagnostics()) if (isError(d) && isGuard(d)) red.add(d);
+        if (lanes.isEmpty() && red.isEmpty()) return;
+        sb.append("## Guards\n\n");
+        if (red.isEmpty()) {
+            long cached = lanes.stream()
+                    .filter(t -> "SKIPPED".equalsIgnoreCase(t.status()))
+                    .count();
+            sb.append("Guards: clean · ").append(lanes.size()).append(lanes.size() == 1 ? " lane" : " lanes");
+            if (cached > 0) sb.append(" (").append(cached).append(" cached)");
+            sb.append("\n\n");
+            return;
+        }
+        Map<String, List<BuildRecord.Diag>> byRule = new LinkedHashMap<>();
+        for (BuildRecord.Diag d : red)
+            byRule.computeIfAbsent(d.code(), k -> new ArrayList<>()).add(d);
+        sb.append("**").append(byRule.size()).append(byRule.size() == 1 ? " rule broken**" : " rules broken**");
+        sb.append(" (")
+                .append(red.size())
+                .append(red.size() == 1 ? " site" : " sites")
+                .append(")\n\n");
+        int shown = 0;
+        outer:
+        for (var e : byRule.entrySet()) {
+            List<BuildRecord.Diag> sites = e.getValue();
+            String why = guardField(sites.get(0).message(), "Why:");
+            sb.append("### ").append(e.getKey());
+            if (!why.isEmpty()) sb.append(" — ").append(why);
+            sb.append("  (")
+                    .append(sites.size())
+                    .append(sites.size() == 1 ? " site" : " sites")
+                    .append(")\n");
+            for (BuildRecord.Diag d : sites) {
+                if (shown >= MAX_GUARD_SITES) {
+                    sb.append("\n_+").append(red.size() - shown).append(" more — target/jk-guards/_\n");
+                    break outer;
+                }
+                String first = firstLine(d.message()).strip();
+                sb.append("- ");
+                if (!d.file().isEmpty()) {
+                    sb.append('`').append(d.file());
+                    if (d.line() > 0) sb.append(':').append(d.line());
+                    sb.append("`  ");
+                    int colon = first.indexOf(": ");
+                    if (colon > 0 && first.startsWith(d.file())) first = first.substring(colon + 2);
+                }
+                sb.append(first).append('\n');
+                String instead = guardField(d.message(), "Instead:");
+                if (!instead.isEmpty()) sb.append("  → ").append(instead).append('\n');
+                shown++;
+            }
+            sb.append('\n');
+        }
+        sb.append("To exempt a site, stop and ask the user to add an `allow` entry with a reason to jk-guards.toml. ");
+        sb.append(
+                "Never edit jk-guards-baseline.toml by hand; never add a suppression comment. Explain: `jk guard explain <rule>`.\n\n");
+    }
+
+    /** The value of an indented {@code Label:  value} line in a guard diagnostic, or {@code ""}. */
+    static String guardField(String message, String label) {
+        for (String line : message.split("\n")) {
+            String s = line.strip();
+            if (s.startsWith(label)) return s.substring(label.length()).strip();
+        }
+        return "";
     }
 
     private static void appendTests(StringBuilder sb, List<MarkdownTestReport.ModuleRun> tests) {
