@@ -283,7 +283,7 @@ final class MetricEvaluator implements Evaluator {
                     out.add(Observation.metric(
                             c.binaryName(),
                             value,
-                            sourceOf(ctx, c),
+                            ForbidEvaluator.source(ctx, c),
                             measure + " = " + number(value) + " (" + bound.describe(limit) + ")"));
                 }
                 continue;
@@ -296,7 +296,7 @@ final class MetricEvaluator implements Evaluator {
                     out.add(Observation.metric(
                             c.binaryName() + "#" + m.member(),
                             value,
-                            sourceOf(ctx, c),
+                            ForbidEvaluator.source(ctx, c),
                             measure + " = " + number(value) + " in " + c.binaryName() + "#" + m.name() + " ("
                                     + bound.describe(limit) + ")"));
                 }
@@ -347,14 +347,6 @@ final class MetricEvaluator implements Evaluator {
         for (Allow a : allow)
             if (Rule.globMatches(a.in(), unit) || unit.equals(a.in()) || unit.startsWith(a.in() + "/")) return a;
         return null;
-    }
-
-    private static @Nullable String sourceOf(EvalContext ctx, ClassFacts c) {
-        String file = c.sourceFile();
-        if (file == null) return null;
-        String pkgPath = c.packageName().replace('.', '/');
-        String rel = (pkgPath.isEmpty() ? "" : pkgPath + "/") + file;
-        return ctx.module().isEmpty() ? rel : ctx.module() + "/src/main/java/" + rel;
     }
 
     static String number(double v) {

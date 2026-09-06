@@ -60,6 +60,32 @@ public final class Sample implements Supplier<String> {
     @Target(ElementType.PARAMETER)
     public @interface Marked {}
 
+    /** CLASS retention: in the class file, invisible to reflection. */
+    @Retention(RetentionPolicy.CLASS)
+    @Target({ElementType.FIELD, ElementType.METHOD})
+    public @interface Hidden {}
+
+    /** RUNTIME, on types, with two attributes for {@code with-value}. */
+    @Retention(RetentionPolicy.RUNTIME)
+    @Target(ElementType.TYPE)
+    public @interface Tagged {
+        String value();
+
+        String tier() default "";
+    }
+
+    /** SOURCE retention: not in the class file at all. */
+    @Retention(RetentionPolicy.SOURCE)
+    public @interface Gone {}
+
+    @Hidden
+    @Gone
+    private int count;
+
+    @Hidden
+    void hidden() {}
+
+    @Tagged(value = "inner", tier = "gold")
     public class Inner {
         int read() {
             return field.length();

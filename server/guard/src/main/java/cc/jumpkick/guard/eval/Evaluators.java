@@ -25,6 +25,7 @@ public final class Evaluators {
         BY_KIND.put(Kind.VOCABULARY, new VocabularyEvaluator());
         BY_KIND.put(Kind.DEPEND, new DependEvaluator());
         BY_KIND.put(Kind.METRIC, new MetricEvaluator());
+        BY_KIND.put(Kind.ANNOTATE, new AnnotateEvaluator());
     }
 
     /** Test seam: drop every registration and reinstall the shipped evaluators. */

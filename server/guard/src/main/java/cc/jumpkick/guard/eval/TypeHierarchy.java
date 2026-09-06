@@ -19,6 +19,7 @@ import java.util.function.Supplier;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import org.jspecify.annotations.Nullable;
+import org.objectweb.asm.AnnotationVisitor;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.Opcodes;
@@ -75,6 +76,47 @@ public final class TypeHierarchy {
     public synchronized byte @Nullable [] bytesOf(String internalName) {
         byte[] b = classpathBytes(internalName);
         return b != null ? b : jdkBytes(internalName);
+    }
+
+    /**
+     * The {@code @Retention} of an annotation type: {@code RUNTIME}, {@code CLASS} (also the default
+     * when unannotated) or {@code SOURCE}; empty when the type is unknown. Facts of the module itself
+     * are read from the index, everything else from the classpath or the JDK.
+     */
+    public synchronized Optional<String> retention(String internalName) {
+        ClassFacts own = facts.classes().get(internalName);
+        if (own != null) {
+            for (var a : own.annotations()) {
+                if (a.typeName().equals("java.lang.annotation.Retention")) {
+                    return Optional.of(a.value().isEmpty() ? "CLASS" : a.value().get(0));
+                }
+            }
+            return Optional.of("CLASS");
+        }
+        byte[] bytes = bytesOf(internalName);
+        if (bytes == null) return Optional.empty();
+        RetentionReader r = new RetentionReader();
+        new ClassReader(bytes).accept(r, ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
+        return Optional.of(r.policy);
+    }
+
+    private static final class RetentionReader extends ClassVisitor {
+        String policy = "CLASS";
+
+        RetentionReader() {
+            super(Opcodes.ASM9);
+        }
+
+        @Override
+        public @Nullable AnnotationVisitor visitAnnotation(String desc, boolean visible) {
+            if (!desc.equals("Ljava/lang/annotation/Retention;")) return null;
+            return new AnnotationVisitor(Opcodes.ASM9) {
+                @Override
+                public void visitEnum(@Nullable String name, String enumDesc, String value) {
+                    policy = value;
+                }
+            };
+        }
     }
 
     public synchronized Optional<Supers> supers(String internalName) {

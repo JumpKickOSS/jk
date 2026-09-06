@@ -208,7 +208,7 @@ public final class GuardRules {
                 id,
                 kind,
                 Objects.requireNonNull(t.getString("why"), "why"),
-                t.isString("instead") ? t.getString("instead") : null,
+                t.isString("instead") ? t.getString("instead") : derivedInstead(kind, t),
                 stringOrList(t, "scope"),
                 t.isString("source-set") ? Objects.requireNonNull(t.getString("source-set")) : "main",
                 allow,
@@ -216,6 +216,19 @@ public final class GuardRules {
                 t.isString("fixture") ? t.getString("fixture") : null,
                 t,
                 source);
+    }
+
+    /** The sanctioned alternative a kind can spell out itself when the author left it implicit. */
+    static @Nullable String derivedInstead(Kind kind, TomlTable t) {
+        if (kind == Kind.ANNOTATE) {
+            String required = t.isString("require") ? t.getString("require") : null;
+            if (required == null) return null;
+            String simple = required.substring(Math.max(required.lastIndexOf('.'), required.lastIndexOf('$')) + 1);
+            String on = t.isString("on") ? String.valueOf(t.getString("on")) : "";
+            return "annotate the " + (on.equals("package") ? "package-info.java" : on.isEmpty() ? "element" : on)
+                    + " with @" + simple;
+        }
+        return null;
     }
 
     private static List<Allow> readAllow(

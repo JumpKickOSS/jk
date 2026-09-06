@@ -273,7 +273,8 @@ final class ForbidEvaluator implements Evaluator {
         return false;
     }
 
-    private static @Nullable Allow allowing(List<Allow> allow, ClassFacts c, String module) {
+    /** The allow entry covering {@code c}: by module, class glob, or {@code pkg.*} / {@code pkg.**}. */
+    static @Nullable Allow allowing(List<Allow> allow, ClassFacts c, String module) {
         for (Allow a : allow) {
             String in = a.in();
             if (in.equals(module) || Rule.globMatches(in, module)) return a;
@@ -287,7 +288,8 @@ final class ForbidEvaluator implements Evaluator {
         return null;
     }
 
-    private static @Nullable String source(EvalContext ctx, ClassFacts c) {
+    /** The source path a class compiled from, when its {@code SourceFile} attribute survived. */
+    static @Nullable String source(EvalContext ctx, ClassFacts c) {
         String file = c.sourceFile();
         if (file == null) return null;
         String pkgPath = c.packageName().replace('.', '/');
