@@ -163,7 +163,6 @@ final class BuildLogicGroovyHost {
                     ANT_OPTIONAL_VER,
                     "206b6edca13aeafe4f10995589b7cefd7aff403a24cb34cf085893e2b3e44b19"));
 
-    /** Verified jars under the tool cache; anything absent or off-pin is re-fetched from Central. */
     /**
      * The verified closure, once per engine process. {@link #published} hashes every jar (groovy
      * alone is ~8 MB), and a truncated download only needs catching on the first touch; before
@@ -171,6 +170,7 @@ final class BuildLogicGroovyHost {
      */
     private static volatile Path @Nullable [] verifiedJars;
 
+    /** Verified jars under the tool cache; anything absent or off-pin is re-fetched from Central. */
     static Path[] ensureJars() throws IOException {
         Path[] known = verifiedJars;
         if (known != null) return known;

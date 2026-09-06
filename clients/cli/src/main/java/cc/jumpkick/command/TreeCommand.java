@@ -329,11 +329,6 @@ public final class TreeCommand implements CliCommand {
             .toList();
 
     /**
-     * Resolve a user-supplied scope token (case-insensitive) to one or more scopes: {@code
-     * exec}/{@code run} expand to the run classpath; any other token is a single scope. Returns null
-     * if the token is not a valid scope or meta-scope.
-     */
-    /**
      * The scopes {@code -s/--scopes} selects, in the order given and deduplicated; the default
      * order ({@code export, main, runtime}) when the flag is absent. {@code all} and
      * {@code exec}/{@code run} expand to their lists.
@@ -361,6 +356,11 @@ public final class TreeCommand implements CliCommand {
         return new ArrayList<>(ordered);
     }
 
+    /**
+     * Resolve a user-supplied scope token (case-insensitive) to one or more scopes: {@code all} and
+     * {@code exec}/{@code run} expand to their lists; any other token is a single scope. Returns null
+     * if the token is not a valid scope or meta-scope.
+     */
     private static @Nullable List<Scope> resolveScopeToken(String token) {
         String t = token.toLowerCase(Locale.ROOT);
         if (t.equals("all")) return DependencyTreeStyle.allScopeOrder();

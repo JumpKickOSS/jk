@@ -469,10 +469,6 @@ public final class BuildEta {
                                 || TaskNames.PACKAGE_ASSEMBLY.equals(s.name())));
     }
 
-    /**
-     * Forecast forced RUN because an upstream compile-scope sibling is dirty (action key still
-     * hashed the pre-rebuild jar). Live keys usually hit when the upstream jar is byte-identical.
-     */
     /** A {@code run-tests} step the forecaster marked as a re-run after a red suite. */
     static boolean isRedRerun(TaskForecast.Task s) {
         if (s == null || s.cached() || !TaskNames.RUN_TESTS.equals(s.name())) return false;
@@ -480,6 +476,10 @@ public final class BuildEta {
         return t.contains(TaskForecast.LAST_RUN_FAILED);
     }
 
+    /**
+     * Forecast forced RUN because an upstream compile-scope sibling is dirty (action key still
+     * hashed the pre-rebuild jar). Live keys usually hit when the upstream jar is byte-identical.
+     */
     static boolean isCascadeForcedStep(TaskForecast.Task s) {
         if (s == null || s.cached()) return false;
         String t = s.text() == null ? "" : s.text();
@@ -500,15 +500,15 @@ public final class BuildEta {
         return isCompileStepName(name) || TaskNames.PACKAGE_JAR.equals(name) || TaskNames.PACKAGE_ASSEMBLY.equals(name);
     }
 
+    /** The seed plus the pre-bias schedule the observation loop compares actual walls against. */
+    record Seed(long etaMs, long rawScheduleMs) {}
+
     /**
      * Single schedule-aware ETA (ms) used by both {@code jk explain} and {@code jk build}'s initial
      * countdown. Costs are already Σ of dirty-step weights (measured step walls preferred). Schedule
      * composes them with concurrency / serial-test bounds. Whole-build history is only a cold seed
      * when the schedule has no costs — never a substitute for step composition.
      */
-    /** The seed plus the pre-bias schedule the observation loop compares actual walls against. */
-    record Seed(long etaMs, long rawScheduleMs) {}
-
     private static Seed seedEta(
             Path entryDir,
             List<EffortWeights.ModuleCost> costs,

@@ -42,8 +42,8 @@ public final class ForkedJavac {
     /**
      * @param generated generated source file → the input source file(s) it originated from
      * @param compiledSources sources Zinc (or javac) actually compiled this invocation
+     * @param waitMillis time the request sat in the shared worker's queue before it was dispatched
      */
-    /** @param waitMillis time the request sat in the shared worker's queue before it was dispatched */
     public record Result(
             boolean success,
             List<CompileResult.Diagnostic> diagnostics,

@@ -70,7 +70,6 @@ public final class AotCacheFiles {
 
     private AotCacheFiles() {}
 
-    /** The sticky refusal marker beside {@code cache}. */
     /** The configuration sidecar of {@code cache}: the same whole-name suffix rule as the marker. */
     public static Path configOf(Path cache) {
         return cache.resolveSibling(cache.getFileName() + CONFIG);
@@ -91,6 +90,7 @@ public final class AotCacheFiles {
         return name.endsWith(CONFIG) || name.endsWith(TRAINING) || name.contains(TMP_INFIX) || isMarker(name);
     }
 
+    /** The sticky refusal marker beside {@code cache}. */
     public static Path marker(Path cache) {
         return cache.resolveSibling(cache.getFileName() + MARKER);
     }

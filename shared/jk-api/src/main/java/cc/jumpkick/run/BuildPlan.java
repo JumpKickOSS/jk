@@ -558,15 +558,14 @@ public final class BuildPlan {
     }
 
     /**
-     * Read a step-stashed value after {@link #run} has returned. Command bodies use this to surface
-     * state steps produced — resolved lockfile, JDK outcome, etc. — into their summary output
-     * without needing a separate holder object.
-     */
-    /**
-     * The value under {@code key}, or empty when unset. An undeclared key is also empty, on purpose:
-     * a plan may read state another plan published (a verb reading {@code CLASSES_DIR} off a plan
-     * that never declared it), and only the writer knows the declared set. {@link #declares} tells
-     * the two apart; {@code require} uses it to name the real defect.
+     * Read a step-stashed value after {@link #run} has returned: the value under {@code key}, or
+     * empty when unset. Command bodies use this to surface state steps produced — resolved lockfile,
+     * JDK outcome, etc. — into their summary output without needing a separate holder object.
+     *
+     * <p>An undeclared key is also empty, on purpose: a plan may read state another plan published
+     * (a verb reading {@code CLASSES_DIR} off a plan that never declared it), and only the writer
+     * knows the declared set. {@link #declares} tells the two apart; {@code require} uses it to name
+     * the real defect.
      */
     public <T> Optional<T> get(BuildPlanKey<T> key) {
         BuildPlanKey<?> declared = stateKeys.get(key.name());

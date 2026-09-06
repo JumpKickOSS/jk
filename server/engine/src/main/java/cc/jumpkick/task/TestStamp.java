@@ -27,10 +27,6 @@ public final class TestStamp {
 
     private TestStamp() {}
 
-    /**
-     * Combined content key for all test inputs, or {@code null} if any required input is
-     * unreadable (callers must retest).
-     */
     /** Scalar markers a run-tests record carries in place of CAS outputs. */
     public static final String TOTAL = "tests.total";
 

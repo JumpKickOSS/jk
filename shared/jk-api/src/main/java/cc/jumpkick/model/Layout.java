@@ -25,10 +25,11 @@ public enum Layout {
     public static final String TOKEN_AUTO = "auto";
 
     /**
-     * The trees {@code jk new} / {@code jk init} can place, first is the default. {@code auto} is
-     * not one of them: it is the {@code jk.toml} value meaning "detect", and a scaffold has nothing
-     * to detect. One list for the CLI help, the MCP schema and {@code builtinLayouts}, so the three
-     * surfaces cannot describe this enum three ways.
+     * The layout tokens {@code jk new} / {@code jk init} accept, first is the default. {@code auto}
+     * places no tree of its own — it is the {@code jk.toml} value meaning "detect", which {@code jk
+     * init} does against an existing tree — but it is last here because {@link #parse} accepts it
+     * and the help must list everything the flag takes. One list for the CLI help, the MCP schema
+     * and {@code builtinLayouts}, so the three surfaces cannot describe this enum three ways.
      */
     public static final List<String> SCAFFOLD_TOKENS = List.of(TOKEN_TRADITIONAL, TOKEN_SIMPLE, TOKEN_AUTO);
 
