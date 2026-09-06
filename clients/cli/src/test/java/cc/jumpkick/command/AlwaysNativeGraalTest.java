@@ -49,6 +49,34 @@ class AlwaysNativeGraalTest {
         assertThat(AlwaysNativeGraal.fromManifests(dir)).isEmpty();
     }
 
+    /**
+     * {@code jk build -m api} in a workspace with an always-native sibling must not resolve — or
+     * prompt for, or download — that sibling's Graal: the selector confines the build, so it
+     * confines the resolution.
+     */
+    @Test
+    void a_selector_confines_the_resolution_to_the_selected_members(@TempDir Path root) {
+        var app = new AlwaysNativeGraal.Module(
+                root.resolve("app").toAbsolutePath().normalize(), "graalvm-25");
+        var tool = new AlwaysNativeGraal.Module(
+                root.resolve("tool").toAbsolutePath().normalize(), "graalvm");
+        List<AlwaysNativeGraal.Module> all = List.of(app, tool);
+
+        assertThat(AlwaysNativeGraal.within(
+                        all,
+                        List.of(
+                                root.resolve("tool").toString(),
+                                root.resolve("api").toString())))
+                .containsExactly(tool);
+        assertThat(AlwaysNativeGraal.within(all, List.of(root.resolve("api").toString())))
+                .isEmpty();
+        assertThat(AlwaysNativeGraal.within(all, List.of(root + "/x/../app"))).containsExactly(app);
+        assertThat(AlwaysNativeGraal.homes(List.of(), (dir, spec) -> {
+                    throw new AssertionError("no member, no resolution");
+                }))
+                .contains(Map.of());
+    }
+
     @Test
     void homes_stop_at_the_first_unresolved_pin() {
         var app = new AlwaysNativeGraal.Module(Path.of("/w/app"), "graalvm-25");

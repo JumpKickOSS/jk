@@ -7,10 +7,12 @@ import cc.jumpkick.config.WorkspaceModules;
 import cc.jumpkick.lock.ManifestPaths;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.BiFunction;
 import org.jspecify.annotations.Nullable;
 
@@ -52,6 +54,22 @@ final class AlwaysNativeGraal {
         for (Path dir : dirs) {
             Module m = fromManifest(dir);
             if (m != null) out.add(m);
+        }
+        return List.copyOf(out);
+    }
+
+    /**
+     * The members of {@code modules} whose dir is one of {@code selectedDirs} — the modules a
+     * selector confined the build to. Dirs are compared absolute and normalized, the way {@link
+     * #fromManifests} keys them, so a relative selector dir and an absolute one agree.
+     */
+    static List<Module> within(List<Module> modules, List<String> selectedDirs) {
+        Set<Path> selected = new HashSet<>();
+        for (String dir : selectedDirs)
+            selected.add(Path.of(dir).toAbsolutePath().normalize());
+        List<Module> out = new ArrayList<>();
+        for (Module m : modules) {
+            if (selected.contains(m.dir().toAbsolutePath().normalize())) out.add(m);
         }
         return List.copyOf(out);
     }

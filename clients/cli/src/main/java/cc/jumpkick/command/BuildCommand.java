@@ -281,11 +281,18 @@ public final class BuildCommand implements CliCommand {
             sel = resolveSelection(entryDir);
         }
 
-        // The GraalVM home for every always-native member, before any progress UI opens: the
-        // resolver may prompt or install, and the request carries the answer (the engine is a
-        // daemon and must not pick one from the shell that started it).
-        Optional<Map<Path, Path>> graal = AlwaysNativeGraal.homes(
-                AlwaysNativeGraal.fromManifests(entryDir), new GraalResolver(jdksDir, global.yes)::resolve);
+        // The GraalVM home for every always-native member this build will reach, before any
+        // progress UI opens: the resolver may prompt or install, and the request carries the answer
+        // (the engine is a daemon and must not pick one from the shell that started it). A member
+        // -m / --affected-since leaves out is not asked about: its Graal would be a download and a
+        // prompt for a module this build never touches, and a pin it cannot satisfy is not this
+        // build's failure.
+        List<AlwaysNativeGraal.Module> nativeMembers = AlwaysNativeGraal.fromManifests(entryDir);
+        if (sel != null && sel.confines()) {
+            nativeMembers = AlwaysNativeGraal.within(nativeMembers, sel.dirs());
+        }
+        Optional<Map<Path, Path>> graal =
+                AlwaysNativeGraal.homes(nativeMembers, new GraalResolver(jdksDir, global.yes)::resolve);
         if (graal.isEmpty()) return Exit.FAILURE; // the resolver printed why
         this.graalHomes = graal.get();
 
@@ -344,9 +351,20 @@ public final class BuildCommand implements CliCommand {
     }
 
     /** Resolved {@code -m/--affected-since} selection: at most one of the fields is meaningful. */
-    private record Selection(@Nullable String error, boolean empty, List<String> tokens, List<String> names) {
+    /**
+     * What {@code --modules} / {@code --affected-since} selected: {@code dirs} is every module the
+     * build will touch (empty with {@code empty}, or when nothing was selected at all), so a client
+     * step that works per member — the Graal resolution below — can confine itself to them.
+     */
+    private record Selection(
+            @Nullable String error, boolean empty, List<String> tokens, List<String> names, List<String> dirs) {
         Selection(@Nullable String error, boolean empty, List<String> tokens) {
-            this(error, empty, tokens, List.of());
+            this(error, empty, tokens, List.of(), List.of());
+        }
+
+        /** True when a selector was given and resolved: the build is confined to {@link #dirs}. */
+        boolean confines() {
+            return error == null && !tokens.isEmpty();
         }
     }
 
@@ -361,8 +379,8 @@ public final class BuildCommand implements CliCommand {
             return new Selection(info.error(), false, List.of());
         }
         List<String> names = ModuleScopeHint.namesFrom(info);
-        if (info.moduleDirs().isEmpty()) return new Selection(null, true, tokens, names);
-        return new Selection(null, false, tokens, names);
+        if (info.moduleDirs().isEmpty()) return new Selection(null, true, tokens, names, List.of());
+        return new Selection(null, false, tokens, names, info.moduleDirs());
     }
 
     private String selectionEmptyMessage() {
