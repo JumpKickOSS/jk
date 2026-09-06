@@ -6,9 +6,13 @@ import cc.jumpkick.guard.baseline.Reconciliation;
 import cc.jumpkick.guard.baseline.RuleBaseline;
 import cc.jumpkick.guard.rules.Rule;
 import cc.jumpkick.guard.rules.RuleSet;
+import cc.jumpkick.guard.schema.Kind;
 import cc.jumpkick.guard.schema.Lane;
 import java.util.ArrayList;
+import java.util.EnumMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Runs every rule a lane owns. Collected: one run reports every red rule. A throwing evaluator is
@@ -66,13 +70,9 @@ public final class LaneRun {
         List<RuleReport> reports = new ArrayList<>();
         Baseline current = baseline;
         int tightened = 0;
+        Map<String, Evaluation> evaluations = evaluate(rules, ctx);
         for (Rule rule : rules) {
-            Evaluation ev;
-            try {
-                ev = Evaluators.forKind(rule.kind()).evaluate(rule, ctx);
-            } catch (Throwable t) {
-                ev = Evaluation.failed(t.getClass().getSimpleName() + ": " + String.valueOf(t.getMessage()));
-            }
+            Evaluation ev = evaluations.getOrDefault(rule.id(), Evaluation.failed("the evaluator returned no result"));
             RuleBaseline before = current.of(rule.id());
             if (ev.outcome() == Outcome.CLEAN || ev.outcome() == Outcome.VIOLATIONS) {
                 Reconciliation rec = Reconciliation.of(rule.id(), before, ev.observations(), ev.population());
@@ -94,6 +94,40 @@ public final class LaneRun {
             }
         }
         return new Result(lane, reports, current, tightened);
+    }
+
+    /**
+     * Every rule's evaluation: batch kinds (the text lane) run once over all their rules, the rest one
+     * by one. A throwing evaluator is that rule's — or, for a batch, those rules' — {@code
+     * scanner-failed}; the next kind still runs.
+     */
+    static Map<String, Evaluation> evaluate(List<Rule> rules, EvalContext ctx) {
+        Map<String, Evaluation> out = new LinkedHashMap<>();
+        Map<Kind, List<Rule>> batches = new EnumMap<>(Kind.class);
+        for (Rule rule : rules) {
+            Evaluator e = Evaluators.forKind(rule.kind());
+            if (e instanceof BatchEvaluator) {
+                batches.computeIfAbsent(rule.kind(), k -> new ArrayList<>()).add(rule);
+                continue;
+            }
+            try {
+                out.put(rule.id(), e.evaluate(rule, ctx));
+            } catch (Throwable t) {
+                out.put(rule.id(), failed(t));
+            }
+        }
+        for (var e : batches.entrySet()) {
+            try {
+                out.putAll(((BatchEvaluator) Evaluators.forKind(e.getKey())).evaluateAll(e.getValue(), ctx));
+            } catch (Throwable t) {
+                for (Rule r : e.getValue()) out.put(r.id(), failed(t));
+            }
+        }
+        return out;
+    }
+
+    private static Evaluation failed(Throwable t) {
+        return Evaluation.failed(t.getClass().getSimpleName() + ": " + String.valueOf(t.getMessage()));
     }
 
     /** Entries carried over unchanged, so the tightened count is drops plus lowered lines. */

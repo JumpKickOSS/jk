@@ -53,8 +53,14 @@ public record Rule(
             char c = glob.charAt(i);
             if (c == '*') {
                 if (i + 1 < glob.length() && glob.charAt(i + 1) == '*') {
-                    re.append(".*");
-                    i++;
+                    // `**/` may match nothing at all, so `**/src/**` also matches `src/x`.
+                    if (i + 2 < glob.length() && glob.charAt(i + 2) == '/') {
+                        re.append("(?:.*/)?");
+                        i += 2;
+                    } else {
+                        re.append(".*");
+                        i++;
+                    }
                 } else {
                     re.append("[^/]*");
                 }
