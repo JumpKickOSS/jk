@@ -114,24 +114,43 @@ public sealed interface Shell permits BashShell, ZshShell, FishShell, PwshShell,
     }
 
     /**
-     * Profiles {@code jk activate} (no shell name) writes. Always the platform default(s) — zsh on
-     * macOS, bash on Linux, both PowerShell profiles on Windows — plus any other supported rc file
+     * Profiles {@code jk activate} (no shell name) writes: the login shell ({@code $SHELL}, then
+     * {@code pw_shell}) whether or not its rc file exists yet, the platform default(s) — zsh on
+     * macOS, bash on Linux, both PowerShell profiles on Windows — and any other supported rc file
      * that already exists (Git Bash, fish, extra PowerShell, …).
+     *
+     * <p>The login shell comes first and is written unconditionally: a fish or zsh user on Linux
+     * with no {@code config.fish} / {@code .zshrc} yet would otherwise get only a {@code .bashrc}
+     * their interactive shell never sources, and {@code jk activate} would report success while
+     * {@code jkx} stayed off PATH.
      */
     static List<Shell> installTargets(Path home) {
-        return installTargets(home, Os.name());
+        return installTargets(
+                home,
+                Os.name(),
+                System.getenv("SHELL"),
+                PosixPasswd.loginShell().orElse(null));
     }
 
-    /** Test seam — caller supplies {@code os.name}. */
+    /** Test seam — caller supplies {@code os.name}; no login shell is known. */
     static List<Shell> installTargets(Path home, String osName) {
+        return installTargets(home, osName, null, null);
+    }
+
+    /**
+     * Test seam — caller supplies {@code os.name}, {@code $SHELL} and {@code pw_shell}. Script hosts
+     * ({@code sh}, {@code dash}) are not interactive shells and do not count as a login shell.
+     */
+    static List<Shell> installTargets(Path home, String osName, String shellEnv, String passwdShell) {
         List<Shell> targets = new ArrayList<>();
-        if (Os.isWindows(osName)) {
-            targets.add(new PwshShell());
-            targets.add(new WindowsPowerShellShell());
-        } else if (Os.isDarwin(osName)) {
-            targets.add(new ZshShell());
-        } else {
-            targets.add(new BashShell());
+        loginShell(shellEnv, passwdShell).ifPresent(targets::add);
+        List<Shell> platform = Os.isWindows(osName)
+                ? List.of(new PwshShell(), new WindowsPowerShellShell())
+                : List.of(Os.isDarwin(osName) ? new ZshShell() : new BashShell());
+        for (Shell shell : platform) {
+            if (!named(targets, shell.name())) {
+                targets.add(shell);
+            }
         }
         for (Shell shell : all()) {
             if (named(targets, shell.name())) {
@@ -145,6 +164,18 @@ public sealed interface Shell permits BashShell, ZshShell, FishShell, PwshShell,
             }
         }
         return List.copyOf(targets);
+    }
+
+    /** The login shell from {@code $SHELL}, else {@code pw_shell}; empty when neither names one. */
+    private static Optional<Shell> loginShell(String shellEnv, String passwdShell) {
+        Optional<Shell> fromEnv = interactive(shellEnv);
+        return fromEnv.isPresent() ? fromEnv : interactive(passwdShell);
+    }
+
+    /** {@link #detect(String)} minus the script hosts: {@code sh}/{@code dash} are not a login shell to write for. */
+    private static Optional<Shell> interactive(String rawShell) {
+        String name = basename(rawShell);
+        return scriptHost(name) ? Optional.empty() : byName(name);
     }
 
     private static List<Shell> all() {

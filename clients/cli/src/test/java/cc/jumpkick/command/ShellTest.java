@@ -270,6 +270,38 @@ class ShellTest {
     }
 
     @Test
+    void install_targets_include_the_login_shell_before_its_rc_exists(@TempDir Path home) {
+        // A fish user on Linux who has never created config.fish: fish is the shell that has to
+        // source the activation, so it is written first, and the platform default still follows.
+        assertThat(Shell.installTargets(home, "Linux", "/usr/bin/fish", null).stream()
+                        .map(Shell::name)
+                        .toList())
+                .containsExactly("fish", "bash");
+        // pw_shell answers when $SHELL is unset; a bash login shell on macOS gets its .bashrc.
+        assertThat(Shell.installTargets(home, "Mac OS X", null, "/bin/bash").stream()
+                        .map(Shell::name)
+                        .toList())
+                .containsExactly("bash", "zsh");
+        // $SHELL beats pw_shell, and a login shell that is also the platform default is listed once.
+        assertThat(Shell.installTargets(home, "Linux", "/bin/bash", "/usr/bin/zsh").stream()
+                        .map(Shell::name)
+                        .toList())
+                .containsExactly("bash");
+    }
+
+    @Test
+    void install_targets_ignore_script_hosts_and_unsupported_login_shells(@TempDir Path home) {
+        assertThat(Shell.installTargets(home, "Linux", "/bin/dash", "/usr/sbin/nologin").stream()
+                        .map(Shell::name)
+                        .toList())
+                .containsExactly("bash");
+        assertThat(Shell.installTargets(home, "Linux", "/bin/sh", null).stream()
+                        .map(Shell::name)
+                        .toList())
+                .containsExactly("bash");
+    }
+
+    @Test
     void install_targets_darwin_always_zshrc(@TempDir Path home) throws Exception {
         assertThat(Shell.installTargets(home, "Mac OS X")).hasSize(1).first().isInstanceOf(ZshShell.class);
         Files.writeString(home.resolve(".bashrc"), "# bash\n");
