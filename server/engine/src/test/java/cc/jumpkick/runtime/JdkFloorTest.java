@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.jdk.JdkEnsure;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
@@ -22,8 +23,14 @@ import org.junit.jupiter.api.io.TempDir;
  * so the host JDK 25 cross-compiles). These tests <em>must</em> pin {@code jdk = 17} /
  * {@code jdk = 21} to prove workers use that install as the forked test JVM.
  *
- * <p>Network tests (Maven Central; provisions the pin on first run); the CAS under build/
- * keeps repeats warm.
+ * <p>{@code jdk = 17} is a floor on the major, not a requirement (see {@code docs/user/lockfile.md}
+ * "Toolchain pins"): with only a 25 on disk the build is entitled to it, and in a sandbox home no
+ * 17 exists until something installs one. So each case installs its major first, the way {@code jk
+ * jdk install} would, and then proves the resolver forks the install the manifest named rather
+ * than the newer JVM the engine itself runs on.
+ *
+ * <p>Network tests (Maven Central and the JDK feed; provisions the pin on first run); the CAS
+ * under build/ and the sandbox jdks root keep repeats warm.
  */
 @Tag("network")
 class JdkFloorTest {
@@ -39,6 +46,9 @@ class JdkFloorTest {
     }
 
     private static void runPinnedFloor(Path tmp, int major) throws Exception {
+        // The named major has to exist for the pin to name it: a floor with nothing on disk at
+        // that major is cleared by the newer JVM, by design.
+        JdkEnsure.install("temurin-" + major, warning -> System.out.println("JDK: " + warning));
         Path project = Files.createDirectories(tmp.resolve("app" + major));
         Path cache = Path.of(System.getProperty("user.dir"), "build", "android-spike-cache");
         String majorStr = Integer.toString(major);

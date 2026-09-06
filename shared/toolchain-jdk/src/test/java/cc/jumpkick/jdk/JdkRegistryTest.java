@@ -11,6 +11,7 @@ import cc.jumpkick.host.Os;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -29,6 +30,26 @@ class JdkRegistryTest {
         assertThat(registry.list())
                 .extracting(InstalledJdk::identifier)
                 .containsExactlyInAnyOrder("graalvm-ce-21.0.2", "temurin-21.0.5");
+    }
+
+    /**
+     * The memo is invalidated by the jdks root's mtime, not by this instance's own installs alone:
+     * an install made through any other path — the client's {@code jk jdk install} while the
+     * engine holds a registry for the same root — must be seen by the next list, or a
+     * {@code jdk = 21} pin is cleared by the 25 already on disk for the life of the process.
+     */
+    @Test
+    void an_install_made_outside_the_instance_is_seen_on_the_next_list(@TempDir Path tempDir) throws IOException {
+        makeJdkInstall(tempDir.resolve("temurin-25"), "25.0.4");
+        JdkRegistry registry = new JdkRegistry(tempDir);
+        assertThat(registry.listHits()).hasSize(1);
+
+        makeJdkInstall(tempDir.resolve("temurin-21"), "21.0.9");
+        // A same-millisecond create can leave the directory's mtime where it was; the install path
+        // always changes it, and so does this.
+        Files.setLastModifiedTime(tempDir, FileTime.fromMillis(System.currentTimeMillis() + 2_000));
+
+        assertThat(registry.listHits()).extracting(JdkHit::version).containsExactlyInAnyOrder("25.0.4", "21.0.9");
     }
 
     @Test

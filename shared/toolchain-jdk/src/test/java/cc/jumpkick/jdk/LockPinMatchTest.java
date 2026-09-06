@@ -78,11 +78,31 @@ class LockPinMatchTest {
     }
 
     @Test
-    void higher_major_wins_when_locked_vendor_is_absent() {
+    void the_named_major_wins_when_the_locked_vendor_is_absent() {
+        // 26 clears a 25 floor, and 25 is the major the lock named: with both on disk the build
+        // that reproduces the record is the one to fork, whatever its vendor.
         JdkHit v25 = hit("25.0.9", JdkVendor.CORRETTO);
         JdkHit v26 = hit("26.0.1", JdkVendor.LIBERICA);
-        assertThat(LockPinMatch.choose(List.of(v25, v26), "temurin", "25.0.4")).contains(v26);
+        assertThat(LockPinMatch.choose(List.of(v25, v26), "temurin", "25.0.4")).contains(v25);
         assertThat(LockPinMatch.meetsFloor("26.0.1", "25.0.4")).isTrue();
+        assertThat(LockPinMatch.choose(List.of(v26), "temurin", "25.0.4"))
+                .as("with no 25 anywhere the floor is what decides")
+                .contains(v26);
+    }
+
+    /**
+     * {@code jdk = 17} in a manifest is a floor, so a 25 on its own satisfies it — but a 17 that
+     * is installed beside the 25 is the JDK the project named, and it ranks above the newer
+     * install of the same vendor; {@code JdkFloorTest} proves the forked JVM agrees.
+     */
+    @Test
+    void the_named_major_beats_a_newer_install_of_the_same_vendor() {
+        JdkHit v17 = hit("17.0.20.1", JdkVendor.TEMURIN);
+        JdkHit v25 = hit("25.0.4.1", JdkVendor.TEMURIN);
+        assertThat(LockPinMatch.choose(List.of(v25, v17), "temurin", "17")).contains(v17);
+        assertThat(LockPinMatch.choose(List.of(v25), "temurin", "17"))
+                .as("nothing at 17: the floor admits the 25")
+                .contains(v25);
     }
 
     @Test

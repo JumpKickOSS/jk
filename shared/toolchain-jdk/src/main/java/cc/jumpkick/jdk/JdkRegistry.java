@@ -20,7 +20,9 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Flat view of host JDKs via the probe chain (JAVA_HOME, IntelliJ, SDKMAN, …). Dedup by real
@@ -35,10 +37,26 @@ public final class JdkRegistry {
     /**
      * Memoized {@link #listHits()}: the probe chain reads the filesystem (jk dir, SDKMAN, mise,
      * IntelliJ, system paths, one release file per candidate), and resolution walks consult the
-     * hit list many times per command — the shell hook alone up to eight. One scan per registry
-     * instance; {@link #refresh()} drops it after an install/uninstall.
+     * hit list many times per command — the shell hook alone up to eight. {@link #refresh()}
+     * drops it after an install/uninstall made through this instance.
+     *
+     * <p>An install made anywhere else — {@code jk jdk install} in the client while the engine
+     * holds a registry for the same root, or a test installing through a fresh instance — has to
+     * reach the next resolve too, or a {@code jdk = 21} pin is cleared by the 25 already on disk
+     * and the build forks the wrong JDK for the rest of the process. The memo is therefore valid
+     * only while jk's own jdks root keeps the mtime it had when the scan ran (an install adds a
+     * directory there), and for at most {@link #MEMO_TTL_NANOS} for the roots other tools own,
+     * which this class does not watch.
      */
-    private volatile List<JdkHit> hitsMemo;
+    private volatile @Nullable Memo hitsMemo;
+
+    private static final long MEMO_TTL_NANOS = TimeUnit.SECONDS.toNanos(30);
+
+    private record Memo(List<JdkHit> hits, long rootMtime, long scannedNanos) {
+        boolean fresh(long rootMtimeNow, long now) {
+            return rootMtime == rootMtimeNow && now - scannedNanos < MEMO_TTL_NANOS;
+        }
+    }
 
     /** Production: jk's own JDK dir as the write target + the default probe chain. */
     public JdkRegistry() {
@@ -93,8 +111,9 @@ public final class JdkRegistry {
      * deterministic regardless of timing.
      */
     public List<JdkHit> listHits() {
-        List<JdkHit> memo = hitsMemo;
-        if (memo != null) return memo;
+        Memo memo = hitsMemo;
+        long rootMtime = rootMtime();
+        if (memo != null && memo.fresh(rootMtime, System.nanoTime())) return memo.hits();
         // Dispatch all probes at once.
         List<CompletableFuture<List<JdkHit>>> futures = new ArrayList<>(probes.size());
         for (LocalToolProbe probe : probes) {
@@ -137,8 +156,17 @@ public final class JdkRegistry {
             result.add(relabel(hit));
         }
         List<JdkHit> frozen = List.copyOf(result);
-        hitsMemo = frozen;
+        hitsMemo = new Memo(frozen, rootMtime, System.nanoTime());
         return frozen;
+    }
+
+    /** The jdks root's mtime, or {@code -1} when it does not exist yet; either way a value to compare. */
+    private long rootMtime() {
+        try {
+            return Files.getLastModifiedTime(jdksRoot).toMillis();
+        } catch (IOException e) {
+            return -1L;
+        }
     }
 
     /** Drop the {@link #listHits()} memo so the next list re-probes (after install/uninstall). */

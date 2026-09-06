@@ -194,7 +194,8 @@ public final class JdkEnsure {
      * floor without consulting (or disturbing) the user's project pins and global default.
      */
     public static InstalledJdk install(String spec, Consumer<String> warn) throws IOException, InterruptedException {
-        return install(spec, new JdkRegistry(), warn, JdkInstallListener.NO_OP);
+        // The shared instance, so the install refreshes the memo every later ensure resolves against.
+        return install(spec, sharedRegistry(null), warn, JdkInstallListener.NO_OP);
     }
 
     /**

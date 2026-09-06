@@ -37,21 +37,44 @@ public final class LockPinMatch {
         return rank(ok, vendor, version);
     }
 
-    /** Exact vendor+version first, then the same vendor, then the newest of what is left. */
+    /**
+     * Exact vendor+version first, then the same vendor on the named major, then the same vendor on
+     * any major that clears the floor, then the named major from any vendor, then the newest of
+     * what is left.
+     *
+     * <p>The named major ranks above a newer one on purpose. A suggestion is a floor, so 25 clears
+     * a {@code jdk = 17} — but when a 17 is installed too, the build the manifest named is the one
+     * to fork: a {@code jdk = 17} project compiling and testing on 25 with a 17 on disk is the
+     * resolver choosing for the user, with no way to get 17 back short of uninstalling 25.
+     */
     private static Optional<JdkHit> rank(List<JdkHit> ok, String vendor, String version) {
         if (ok.isEmpty()) return Optional.empty();
         String wantVendor = vendor == null ? "" : vendor.strip();
+        Integer wantMajor = version == null ? null : JdkKeywords.leadingMajor(version);
         if (!wantVendor.isEmpty()) {
             Optional<JdkHit> exact = best(ok.stream()
                     .filter(h -> vendorMatches(h.vendor(), wantVendor) && versionEquals(h.version(), version))
                     .toList());
             if (exact.isPresent()) return exact;
+            Optional<JdkHit> sameVendorMajor = best(ok.stream()
+                    .filter(h -> vendorMatches(h.vendor(), wantVendor) && sameMajor(h.version(), wantMajor))
+                    .toList());
+            if (sameVendorMajor.isPresent()) return sameVendorMajor;
             Optional<JdkHit> sameVendor = best(ok.stream()
                     .filter(h -> vendorMatches(h.vendor(), wantVendor))
                     .toList());
             if (sameVendor.isPresent()) return sameVendor;
         }
+        Optional<JdkHit> sameMajor =
+                best(ok.stream().filter(h -> sameMajor(h.version(), wantMajor)).toList());
+        if (sameMajor.isPresent()) return sameMajor;
         return best(ok);
+    }
+
+    private static boolean sameMajor(String hitVersion, Integer wantMajor) {
+        if (wantMajor == null || hitVersion == null) return false;
+        Integer m = JdkKeywords.leadingMajor(hitVersion);
+        return m != null && m.intValue() == wantMajor.intValue();
     }
 
     /** {@link #choose} restricted to GraalVM hits. */
