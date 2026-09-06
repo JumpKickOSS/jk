@@ -91,6 +91,20 @@ public final class FactsIndexing {
         return new Ensured(indexFile, digest, classes.size(), reextracted, tier);
     }
 
+    /**
+     * The body digest when the index at {@code indexFile} is current for {@code classesDir} —
+     * every stamp matches — without writing anything. Empty when the index is missing or stale
+     * (the lane would re-extract) or the classes directory does not exist. The forecast's probe.
+     */
+    public static Optional<String> freshDigest(Path classesDir, Path indexFile) throws IOException {
+        if (!Files.isDirectory(classesDir)) return Optional.empty();
+        Optional<FactsFormat.Header> header = FactsFormat.readHeader(indexFile);
+        if (header.isEmpty()) return Optional.empty();
+        return header.get().stamps().equals(stamps(classesDir))
+                ? Optional.of(header.get().bodyDigest())
+                : Optional.empty();
+    }
+
     /** Load the class table; callers hold the {@link Ensured} so the file is known current. */
     public static FactsIndex load(Ensured ensured) throws IOException {
         if (ensured.tier() == Ensured.Tier.ABSENT) return FactsIndex.EMPTY;

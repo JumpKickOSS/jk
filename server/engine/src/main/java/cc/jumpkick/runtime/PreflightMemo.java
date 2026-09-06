@@ -3,6 +3,8 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.WorkspaceScan;
+import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
@@ -210,11 +212,32 @@ public final class PreflightMemo {
      */
     public static Map<Path, String> snapshotFingerprints(BuildGraph.Result graph, boolean skipTests) {
         Map<Path, String> fps = new LinkedHashMap<>();
+        Map<Path, String> saltByRoot = new LinkedHashMap<>();
         for (BuildGraph.BuildUnit u : graph.topoOrder()) {
             Path dir = u.dir().toAbsolutePath().normalize();
-            fps.put(dir, fingerprintModule(dir, skipTests));
+            Path root = WorkspaceScan.findRoot(dir).orElse(dir).toAbsolutePath().normalize();
+            String salt = saltByRoot.computeIfAbsent(root, PreflightMemo::guardSalt);
+            fps.put(dir, fingerprintModule(dir, skipTests, salt));
         }
         return fps;
+    }
+
+    /**
+     * The guard rule and baseline files as a module input, when the workspace has guards: a rule
+     * edit must re-plan every module so its lane re-evaluates against the cached facts — a module
+     * skipped as "up to date" never reaches its lane. Empty for a workspace without guards, so the
+     * fingerprint is what it always was.
+     */
+    static String guardSalt(Path root) {
+        if (!PlannerGuards.enabledAt(root)) return "";
+        try {
+            MessageDigest md = Hashing.newSha256();
+            feedFile(md, GuardsPresence.rulesFile(root));
+            feedFile(md, GuardsPresence.baselineFile(root));
+            return "guards=" + Hashing.hex(md.digest());
+        } catch (IOException e) {
+            return "guards=unreadable";
+        }
     }
 
     public static void storeDirty(
@@ -645,11 +668,16 @@ public final class PreflightMemo {
      * {@link cc.jumpkick.layout.ModuleLayout#fingerprintDirs}, not a fixed literal list.
      */
     static String fingerprintModule(Path moduleDir, boolean skipTests) {
+        return fingerprintModule(moduleDir, skipTests, "");
+    }
+
+    static String fingerprintModule(Path moduleDir, boolean skipTests, String guardSalt) {
         try {
             InputTrees.coverModule(moduleDir);
             MessageDigest md = Hashing.newSha256();
             feed(md, "skip=" + (skipTests ? "1" : "0"));
             feed(md, "mode=" + fingerprintMode());
+            if (!guardSalt.isEmpty()) feed(md, guardSalt);
             feedFile(md, moduleDir.resolve(ManifestPaths.MANIFEST));
             feedFile(md, LockPaths.lockFile(moduleDir));
             // Plugin workers keep jk-plugin.toml at the module root (copied onto the jar root).

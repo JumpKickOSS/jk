@@ -596,6 +596,13 @@ public final class TaskForecaster {
                     actionCache,
                     workerJar,
                     testCompileCp);
+            // ---- guard (module lane): stale verdict → RUN, which is what makes the module dirty ----
+            GuardKeys.forecastModuleLane(dir, layout, actionCache, force || compileDirty)
+                    .ifPresent(steps::add);
+            if (PlannerResources.invocationRoot(dir)) {
+                GuardKeys.forecastModelLane(dir, project, actionCache).ifPresent(steps::add);
+            }
+
             if (haveTests && !skipTests) {
                 if (compileDirty) {
                     steps.add(new TaskForecast.Task(

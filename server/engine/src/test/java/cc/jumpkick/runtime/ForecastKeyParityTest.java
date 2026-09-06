@@ -56,7 +56,12 @@ class ForecastKeyParityTest {
                     List.of(
                             "plugin packager",
                             "PlannerPlugin.java|PackagingKeys.pluginPackager(",
-                            "TaskForecaster.java|PackagingKeys.pluginPackagerStep("));
+                            "TaskForecaster.java|PackagingKeys.pluginPackagerStep("),
+            "GuardKeys.java|key",
+                    List.of(
+                            "guard",
+                            "PlannerGuards.java|GuardKeys.laneKey(",
+                            "TaskForecaster.java|GuardKeys.forecastModuleLane("));
 
     /**
      * Sites with no forecast twin: task name, whether the forecast emits a <em>step</em> for it, and
@@ -77,17 +82,7 @@ class ForecastKeyParityTest {
                     new Object[] {
                         "write-image", true, "the image tail is an unconditional side-effect step — always RUN"
                     },
-            "BuildLogicSupport.java|key", new Object[] {"build-logic", false, "build-logic compile is not forecast"},
-            "PlannerGuards.java|key",
-                    new Object[] {
-                        "guard",
-                        false,
-                        "a guard lane is keyed on its read set at task time; explain prices it from history"
-                    },
-            "PlannerGuards.java|storeKey",
-                    new Object[] {
-                        "guard", false, "the verdict is stored under the post-tightening baseline sha; no twin"
-                    });
+            "BuildLogicSupport.java|key", new Object[] {"build-logic", false, "build-logic compile is not forecast"});
 
     /**
      * {@code compileStep} is the one forecast helper naming its step from a parameter; both call

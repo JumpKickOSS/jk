@@ -334,7 +334,10 @@ val forArtifactShared = mapOf(
                 "TaskForecaster.java|PackagingKeys.assemblyActionCached(")),
         "PackagingKeys.java|pkgKey" to ("plugin packager" to listOf(
                 "PlannerPlugin.java|PackagingKeys.pluginPackager(",
-                "TaskForecaster.java|PackagingKeys.pluginPackagerStep(")))
+                "TaskForecaster.java|PackagingKeys.pluginPackagerStep(")),
+        "GuardKeys.java|key" to ("guard" to listOf(
+                "PlannerGuards.java|GuardKeys.laneKey(",
+                "TaskForecaster.java|GuardKeys.forecastModuleLane(")))
 
 // forArtifact sites with no forecast twin. Triple(task name, does the forecast emit a step for that
 // task, why there is nothing to compare). The boolean is checked against TaskForecaster so an
@@ -351,11 +354,7 @@ val forArtifactUnpaired = mapOf(
                 true,
                 "the image tail is an unconditional side-effect step — always RUN, never keyed"),
         "BuildLogicSupport.java|key" to Triple(
-                "build-logic", false, "build-logic compile is not forecast"),
-        "PlannerGuards.java|key" to Triple(
-                "guard", false, "a guard lane is keyed on its read set at task time (facts digest, rule and baseline shas); explain prices it from history, not from a twin key"),
-        "PlannerGuards.java|storeKey" to Triple(
-                "guard", false, "the verdict is stored under the post-tightening baseline sha; same lane, no forecast twin"))
+                "build-logic", false, "build-logic compile is not forecast"))
 
 // `compileStep` is the one forecast helper that names its step from a parameter; both call sites
 // pass a literal, and those literals are scanned. Any OTHER unresolvable step name is a step the

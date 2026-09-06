@@ -8,6 +8,7 @@ import static cc.jumpkick.runtime.BuildPlanner.PROJECT;
 import static cc.jumpkick.runtime.BuildPlanner.TEST_CLASSES;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.guard.baseline.Baseline;
 import cc.jumpkick.guard.baseline.BaselineFile;
 import cc.jumpkick.guard.baseline.Baselines;
@@ -25,10 +26,8 @@ import cc.jumpkick.guard.rules.LoadError;
 import cc.jumpkick.guard.rules.LoadResult;
 import cc.jumpkick.guard.rules.Rule;
 import cc.jumpkick.guard.schema.Lane;
-import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
-import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.GuardsConfig;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildPlan;
@@ -39,7 +38,6 @@ import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
-import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -75,7 +73,14 @@ final class PlannerGuards {
      * {@code [guards]} table. Nothing else.
      */
     static GuardsPlan detect(BuildPlanner.Inputs in) {
-        Path root = in.lockDir() != null ? in.lockDir() : in.dir();
+        // The workspace root, not lockDir: member plans carry their own directory there.
+        return detectAt(WorkspaceScan.findRoot(in.dir())
+                .orElse(in.dir())
+                .toAbsolutePath()
+                .normalize());
+    }
+
+    static GuardsPlan detectAt(Path root) {
         boolean rulesFile = Files.exists(GuardsPresence.rulesFile(root));
         GuardsConfig cfg;
         try {
@@ -150,7 +155,17 @@ final class PlannerGuards {
                             EvalContext.lazy(() -> FactsIndexing.load(main)),
                             testFacts(test),
                             () -> ctx.get(CLASSPATH).orElse(List.of()));
-                    execute(ctx, cx, Lane.MODULE, ectx, tokens, ActionKey.qualifiedTaskId(TaskNames.GUARD, moduleDir));
+                    // A module that compiled nothing (a resources-only module) has no site for any
+                    // bytecode rule: that is not blindness, it is an empty population. Record the
+                    // clean verdict so the forecast stops entering the module for its lane.
+                    execute(
+                            ctx,
+                            cx,
+                            Lane.MODULE,
+                            ectx,
+                            tokens,
+                            ActionKey.qualifiedTaskId(TaskNames.GUARD, moduleDir),
+                            main.classes() == 0);
                     ctx.progress(1);
                 })
                 .build();
@@ -168,11 +183,11 @@ final class PlannerGuards {
                 .ticks(1)
                 .execute(ctx -> {
                     List<Path> modules = moduleDirs(g.root(), ctx.get(PROJECT).orElse(null));
-                    List<String> tokens = new ArrayList<>();
-                    tokens.add(token("manifest", g.root().resolve(ManifestPaths.MANIFEST)));
-                    for (Path m : modules)
-                        tokens.add(token("manifest:" + relModule(g.root(), m), m.resolve(ManifestPaths.MANIFEST)));
-                    tokens.add(token("lock", g.root().resolve(ManifestPaths.LOCK)));
+                    JkBuild rootBuild = ctx.get(PROJECT).orElse(null);
+                    List<String> tokens = rootBuild == null
+                            ? new ArrayList<>(List.of(
+                                    GuardKeys.fileToken("manifest", g.root().resolve(ManifestPaths.MANIFEST))))
+                            : GuardKeys.modelTokens(g.root(), rootBuild);
                     EvalContext ectx =
                             new EvalContext(Lane.MODEL, g.root(), "", null, modules, noFacts(), () -> null, List::of);
                     execute(
@@ -181,7 +196,8 @@ final class PlannerGuards {
                             Lane.MODEL,
                             ectx,
                             tokens,
-                            ActionKey.qualifiedTaskId(TaskNames.GUARD_MODEL, g.root()));
+                            ActionKey.qualifiedTaskId(TaskNames.GUARD_MODEL, g.root()),
+                            false);
                     ctx.progress(1);
                 })
                 .build();
@@ -212,7 +228,8 @@ final class PlannerGuards {
                             Lane.TREE,
                             ectx,
                             new ArrayList<>(tokens),
-                            ActionKey.qualifiedTaskId(TaskNames.GUARD_TREE, g.root()));
+                            ActionKey.qualifiedTaskId(TaskNames.GUARD_TREE, g.root()),
+                            false);
                     ctx.progress(1);
                 })
                 .build();
@@ -221,7 +238,13 @@ final class PlannerGuards {
     // ---- one lane run -------------------------------------------------------------------------
 
     private static void execute(
-            TaskContext ctx, BuildPlanner.Ctx cx, Lane lane, EvalContext ectx, List<String> tokens, String taskId)
+            TaskContext ctx,
+            BuildPlanner.Ctx cx,
+            Lane lane,
+            EvalContext ectx,
+            List<String> tokens,
+            String taskId,
+            boolean noClasses)
             throws IOException {
         GuardsPlan g = cx.guards();
         LoadResult load = rules(g);
@@ -259,17 +282,20 @@ final class PlannerGuards {
             if (orphans) throw new GuardsRed("baseline names retired rules");
             return;
         }
-        for (var e : load.rules().sourceDigests().entrySet()) tokens.add("rules:" + e.getKey() + ":" + e.getValue());
-        String baselineSha = Files.isRegularFile(baselineFile) ? Hashing.sha256Hex(baselineFile) : "none";
-        List<String> keyTokens = new ArrayList<>(tokens);
-        keyTokens.add("baseline:" + baselineSha);
-        String key = ActionKey.forArtifact(taskId, BuildIdentity.cacheKeyVersion(), keyTokens);
+        GuardKeys.addRuleTokens(tokens, load);
+        String baselineSha = GuardKeys.baselineSha(g.root());
+        String key = GuardKeys.laneKey(taskId, tokens, baselineSha);
         ActionCache cache = cx.actionCache();
         boolean useCache = !cx.in().session().config().forceOr(false)
                 && !cx.in().session().config().rebuildOr(false);
         if (useCache && cache.lookup(key).isPresent()) {
             ctx.label(rules.size() + (rules.size() == 1 ? " rule" : " rules") + " · clean (cached)");
             ctx.cached();
+            return;
+        }
+        if (noClasses) {
+            ctx.label("no classes · nothing to examine");
+            cache.storeVerdict(taskId, key, inputsOf(tokens, baselineSha));
             return;
         }
         LaneRun.Result result = LaneRun.run(lane, rules, ectx, baseline);
@@ -283,7 +309,7 @@ final class PlannerGuards {
                                 + " entries would tighten\n  Instead:  " + Baselines.CI_MESSAGE);
             } else {
                 BaselineFile.write(baselineFile, result.baseline());
-                storedBaselineSha = Files.isRegularFile(baselineFile) ? Hashing.sha256Hex(baselineFile) : "none";
+                storedBaselineSha = GuardKeys.baselineSha(g.root());
                 ctx.output(result.tightened() + " baseline entries tightened");
             }
         }
@@ -302,15 +328,8 @@ final class PlannerGuards {
             throw new GuardsRed(result.redReports().size() + " of " + rules.size() + " guards red");
         }
         if (ci && result.tightened() > 0) throw new GuardsRed(Baselines.CI_MESSAGE);
-        List<String> storeTokens = new ArrayList<>(tokens);
-        storeTokens.add("baseline:" + storedBaselineSha);
-        String storeKey = ActionKey.forArtifact(taskId, BuildIdentity.cacheKeyVersion(), storeTokens);
-        Map<String, String> inputs = new LinkedHashMap<>();
-        for (String t : storeTokens) {
-            int i = t.indexOf(':');
-            inputs.put(i < 0 ? t : t.substring(0, i), i < 0 ? "" : t.substring(i + 1));
-        }
-        cache.storeVerdict(taskId, storeKey, inputs);
+        String storeKey = GuardKeys.laneKey(taskId, tokens, storedBaselineSha);
+        cache.storeVerdict(taskId, storeKey, inputsOf(tokens, storedBaselineSha));
     }
 
     /** A red lane: the diagnostics already say why; this only fails the step. */
@@ -318,6 +337,16 @@ final class PlannerGuards {
         GuardsRed(String message) {
             super(message);
         }
+    }
+
+    private static Map<String, String> inputsOf(List<String> tokens, String baselineSha) {
+        Map<String, String> inputs = new LinkedHashMap<>();
+        for (String t : tokens) {
+            int i = t.indexOf(':');
+            inputs.put(i < 0 ? t : t.substring(0, i), i < 0 ? "" : t.substring(i + 1));
+        }
+        inputs.put("baseline", baselineSha);
+        return inputs;
     }
 
     /** The full list, every lane its own file: {@code target/jk-guards/<lane>.jsonl}. */
@@ -377,11 +406,6 @@ final class PlannerGuards {
             for (String m : rootBuild.workspace().modules()) out.add(root.resolve(m));
         }
         return out;
-    }
-
-    private static String token(String name, Path file) throws IOException {
-        if (!Files.isRegularFile(file)) return name + ":absent";
-        return name + ":" + FileHashMemo.contentHash(file);
     }
 
     private static Supplier<@Nullable FactsIndex> testFacts(FactsIndexing.@Nullable Ensured test) {
