@@ -38,6 +38,12 @@ public final class EngineTestSupport {
         if (MATERIALIZED.get()) return;
         synchronized (MATERIALIZED) {
             if (MATERIALIZED.get()) return;
+            // Every engine this JVM spawns (EngineSpawn forwards the property) stops itself once
+            // this JVM is gone — a killed or crashed test worker cannot leave one parked under the
+            // test JK_HOME. The teardown hooks still stop engines promptly on the normal path.
+            System.setProperty(
+                    EngineSpawn.OWNER_PID_PROPERTY,
+                    Long.toString(ProcessHandle.current().pid()));
             Path engineJar = resolveEngineJar();
             if (engineJar == null || !Files.isRegularFile(engineJar)) {
                 throw new IllegalStateException(

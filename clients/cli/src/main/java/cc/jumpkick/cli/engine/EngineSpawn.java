@@ -589,22 +589,9 @@ public final class EngineSpawn {
                     command.add("-Xms" + config.minHeapMb() + "m");
                     command.add("-Xmx" + config.maxHeapMb() + "m");
                 }
-                // Forward plugin-jar location overrides (e.g. -Djk.test.runner.jar=… from Gradle
-                // tests) into the engine JVM — PluginJar.locate reads System.getProperty there.
-                // Also forward AOT switches so nested engines honor JK_AOT_TRAIN / jk.aot.train,
-                // and jk.env.* layout overlays (JkDirs test seam) so a spawned engine resolves the
-                // same store/state the client did.
-                //
-                // Do not forward jk.plugin.class — that is a client/test-runner host signal that
-                // would load workspace/test plugin overlays inside the engine.
                 for (var e : System.getProperties().entrySet()) {
                     String key = String.valueOf(e.getKey());
-                    if (!key.startsWith("jk.")) continue;
-                    if (key.equals("jk.plugin.class")) continue;
-                    boolean jarOverride = key.endsWith(".jar");
-                    boolean aotSwitch = key.equals("jk.aot.train") || key.equals("jk.worker.aot");
-                    boolean envOverlay = key.startsWith("jk.env.");
-                    if (!jarOverride && !aotSwitch && !envOverlay) continue;
+                    if (!forwarded(key)) continue;
                     String val = String.valueOf(e.getValue());
                     if (val == null || val.isBlank()) continue;
                     command.add("-D" + key + "=" + val);
@@ -819,4 +806,28 @@ public final class EngineSpawn {
             Thread.currentThread().interrupt();
         }
     }
+
+    /**
+     * Which of this JVM's {@code jk.*} system properties travel into the engine JVM as {@code -D}:
+     * plugin-jar location overrides (e.g. {@code -Djk.test.runner.jar=…} from Gradle tests —
+     * PluginJar.locate reads System.getProperty there), the AOT switches so nested engines honor
+     * {@code JK_AOT_TRAIN} / {@code jk.aot.train}, the {@code jk.env.*} layout overlays (JkDirs
+     * test seam) so a spawned engine resolves the same store/state the client did, and the owner
+     * pid a sandbox names so its engine dies with it.
+     *
+     * <p>Never {@code jk.plugin.class}: that is a client/test-runner host signal that would load
+     * workspace/test plugin overlays inside the engine.
+     */
+    static boolean forwarded(String key) {
+        if (!key.startsWith("jk.")) return false;
+        if (key.equals("jk.plugin.class")) return false;
+        return key.endsWith(".jar")
+                || key.equals("jk.aot.train")
+                || key.equals("jk.worker.aot")
+                || key.startsWith("jk.env.")
+                || key.equals(OWNER_PID_PROPERTY);
+    }
+
+    /** Mirror of the engine's {@code OwnerWatchdog.PROPERTY}; the CLI cannot see engine classes. */
+    static final String OWNER_PID_PROPERTY = "jk.engine.owner-pid";
 }

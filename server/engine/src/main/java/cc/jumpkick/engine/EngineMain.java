@@ -107,6 +107,7 @@ public final class EngineMain {
             if (aotOut != null && !aotOut.isBlank() && !Files.exists(Path.of(aotOut))) {
                 server.aotTrainerSpawner(() -> spawnAotTrainer(aotOut));
             }
+            OwnerWatchdog.start(System.getProperty(OwnerWatchdog.PROPERTY), server::close, System.err::println);
             server.run();
             return 0;
         } catch (IOException e) {
