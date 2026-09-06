@@ -24,11 +24,13 @@ import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.ActionKey;
+import cc.jumpkick.tool.GraalHomeLookup;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -78,10 +80,14 @@ public final class PlannerNative {
                 .execute(ctx -> {
                     // Fail-fast: verify native-image is available before compilation
                     // has already run and the user has waited for potentially minutes.
-                    // Resolution: the client-resolved home → the request's $GRAALVM_HOME → project
-                    // JDK → running JVM. jk build, jk install and jk native all ship the first for
-                    // every module that links a native image; the rest is the safety net.
-                    Path javaHomeEarly = resolveNativeImageHome(graalHome, dir, jdksDir);
+                    // Resolution: the client-resolved home → the request's $GRAALVM_HOME → the
+                    // installed Graal the CLI would have picked (spec, lock pin, jk jdk graal
+                    // pointer, policy) → project JDK → running JVM. jk build, jk install and jk
+                    // native all ship the first for every module that links a native image; a
+                    // build submitted over HTTP or MCP ships none, and the third tier is what keeps
+                    // it from linking against whatever the daemon's shell knew.
+                    Path javaHomeEarly = resolveNativeImageHome(
+                            graalHome, dir, jdksDir, ctx.require(PROJECT).graal());
                     if (cc.jumpkick.tool.NativeImageDriver.resolve(javaHomeEarly)
                             .isEmpty()) {
                         ctx.error(
@@ -527,7 +533,8 @@ public final class PlannerNative {
      * and spellings count. Order: client-resolved home first, then {@code $GRAALVM_HOME}, then
      * the project JDK, then the running JVM.
      */
-    static Path resolveNativeImageHome(@Nullable Path graalHome, Path projectDir, @Nullable Path jdksDir) {
+    static Path resolveNativeImageHome(
+            @Nullable Path graalHome, Path projectDir, @Nullable Path jdksDir, @Nullable String moduleGraalSpec) {
         if (graalHome != null
                 && cc.jumpkick.tool.NativeImageDriver.resolve(graalHome).isPresent()) {
             return graalHome;
@@ -541,6 +548,12 @@ public final class PlannerNative {
                         .isPresent()) {
             return fromRequest;
         }
+        // No client answer (HTTP / MCP): the installed Graal the CLI's resolver would have named,
+        // short of installing one — the request's --graal spec, the module's [native].graal, the
+        // lock's [graal] pin, the jk jdk graal pointer, then policy.
+        Optional<Path> installed = GraalHomeLookup.installed(
+                projectDir, jdksDir, buildEnv, SessionContext.current().graalSpec(), moduleGraalSpec);
+        if (installed.isPresent()) return installed.get();
         try {
             return cc.jumpkick.jdk.JdkResolver.forProject(projectDir, jdksDir)
                     .map(cc.jumpkick.jdk.InstalledJdk::home)
