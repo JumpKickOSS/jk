@@ -25,7 +25,6 @@ import java.util.TreeSet;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
@@ -156,14 +155,9 @@ public final class JavaCompilerHost {
         // Held only while a COMPILE/PLAN is in flight, so the resident worker does not pin a
         // PluginSlots permit while idle. Touched only by the io thread.
         private PluginSlots.@Nullable Lease slot;
-        // Bounded record of the worker's non-protocol lines, surfaced on a crash: the first lines
-        // (where a stack trace names its exception) and the most recent ones (where it ends). A
-        // tail alone kept fifty frames of scalac internals and dropped the one line that said why.
-        private static final int HEAD_MAX = 25;
-        private static final int TAIL_MAX = 40;
-        private final ConcurrentLinkedDeque<String> passthroughHead = new ConcurrentLinkedDeque<>();
-        private final ConcurrentLinkedDeque<String> passthroughTail = new ConcurrentLinkedDeque<>();
-        private long passthroughDropped;
+        // Bounded record of the worker's non-protocol lines, surfaced on a crash; reset at each
+        // dispatch so it describes the work item that died, not the worker's first breath.
+        private final WorkerTranscript transcript = new WorkerTranscript();
 
         Session(long id, ForkedJavac.Request template) {
             io = Thread.ofVirtual().name("jk-zinc-host-" + id).start(() -> run(template));
@@ -224,7 +218,7 @@ public final class JavaCompilerHost {
                 jvmFlags.addAll(JvmOptions.batchFlags(1));
                 List<String> command = PluginLoader.command(javaExe, workerCp, jvmFlags, List.of("--pull"));
                 new PluginClient(ForkedJavac.PREFIX)
-                        .passthrough(this::recordTail)
+                        .passthrough(transcript::record)
                         .converseNoSlot(command, (json, convo) -> onLine(json, convo));
             } catch (Exception e) {
                 failAll(e);
@@ -257,6 +251,7 @@ public final class JavaCompilerHost {
                 try {
                     next.waitNanos = System.nanoTime() - next.enqueuedNanos;
                     next.spec = ForkedJavac.writeSpec(next.req);
+                    transcript.reset();
                     inflight = next;
                     convo.send((next.plan ? "PLAN " : "COMPILE ") + next.spec.toAbsolutePath());
                 } catch (IOException e) {
@@ -307,19 +302,6 @@ public final class JavaCompilerHost {
                 deleteSpec(w);
                 inflight = null;
                 releaseSlot();
-            }
-        }
-
-        /** Keep the first {@link #HEAD_MAX} and last {@link #TAIL_MAX} worker lines for crash diagnostics. */
-        private void recordTail(String line) {
-            if (passthroughHead.size() < HEAD_MAX) {
-                passthroughHead.addLast(line);
-                return;
-            }
-            passthroughTail.addLast(line);
-            while (passthroughTail.size() > TAIL_MAX) {
-                passthroughTail.pollFirst();
-                passthroughDropped++;
             }
         }
 
@@ -381,13 +363,8 @@ public final class JavaCompilerHost {
          * with no cause.
          */
         private Throwable withWorkerTail(Throwable e) {
-            if (passthroughHead.isEmpty()) return e;
-            StringBuilder sb = new StringBuilder(e.getMessage()).append("\n--- zinc worker output ---\n");
-            sb.append(String.join("\n", passthroughHead));
-            if (passthroughDropped > 0)
-                sb.append("\n... ").append(passthroughDropped).append(" lines elided ...");
-            if (!passthroughTail.isEmpty()) sb.append('\n').append(String.join("\n", passthroughTail));
-            return new IOException(sb.toString(), e);
+            if (transcript.isEmpty()) return e;
+            return new IOException(e.getMessage() + "\n--- zinc worker output ---\n" + transcript.render(), e);
         }
 
         /**
