@@ -109,6 +109,9 @@ class ZincJavaCompilerTest {
         user.write("u/U.java", "package u; public class U { public void call(d.Lib lib) { lib.f(\"hi\"); } }");
         assertThat(user.compile(List.of(v1.classes)).success()).isTrue();
 
+        ZincJavaCompiler.Plan plan = user.plan(List.of(v2.classes));
+        assertThat(names(plan.sources())).as(plan.reason()).containsExactly("U.java");
+
         ZincJavaCompiler.Result bumped = user.compile(List.of(v2.classes));
         assertThat(bumped.success()).as(bumped.diagnostics().toString()).isTrue();
         assertThat(names(bumped.compiledSources())).containsExactly("U.java");
