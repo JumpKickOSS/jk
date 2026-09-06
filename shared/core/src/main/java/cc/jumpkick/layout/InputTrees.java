@@ -5,7 +5,9 @@ import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.lock.ManifestPaths;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
@@ -530,8 +532,16 @@ public final class InputTrees {
     }
 
     /**
-     * True when {@code abs} is a tree this job writes — a {@link BuildLayout#TARGET} segment, with
-     * {@link BuildLayout#TMP} carved out.
+     * True when {@code abs} is a tree this job writes — a {@link BuildLayout#TARGET} segment whose
+     * parent holds the {@code jk.toml} that owns it, with {@link BuildLayout#TMP} carved out.
+     *
+     * <p>The manifest is the anchor. Build output is {@code <module>/target/} standalone and
+     * {@code <workspace>/target/<rel>/} for a member, and in both layouts the directory holding
+     * {@code target} is the one holding {@code jk.toml}. A directory merely named {@code target}
+     * elsewhere — a package spelled {@code com.acme.target} under {@code src/main/java}, a resource
+     * folder — is the user's input, and a name-only rule refused the whole module's snapshot for
+     * it: every preflight walked the tree live, forever, with nothing saying why. The check is one
+     * stat per {@code target} segment, on a path asked about once per root per step.
      *
      * <p>{@link BuildLayout#TMP} is declared scratch ({@link BuildLayout#tmpDir}), not the job's
      * own writing: nothing in a build plan compiles or generates into it. It is inside
@@ -556,6 +566,7 @@ public final class InputTrees {
         int n = abs.getNameCount();
         for (int i = 0; i < n; i++) {
             if (!BuildLayout.TARGET.equals(abs.getName(i).toString())) continue;
+            if (!ownedByManifest(abs, i)) continue; // a directory merely named target
             int scratch = segmentIndex(abs, BuildLayout.TMP, i + 1, n);
             if (scratch < 0) return true;
             // Resume past the scratch root, not at it: the tail is judged on its own, so a
@@ -563,6 +574,15 @@ public final class InputTrees {
             i = scratch;
         }
         return false;
+    }
+
+    /** True when the segment at {@code i} sits in a directory that holds a {@code jk.toml}. */
+    private static boolean ownedByManifest(Path abs, int i) {
+        if (i == 0) return false;
+        Path parent = abs.subpath(0, i);
+        Path root = abs.getRoot();
+        if (root != null) parent = root.resolve(parent);
+        return Files.isRegularFile(parent.resolve(ManifestPaths.MANIFEST));
     }
 
     /** First index in {@code [from, to)} whose segment is {@code name}, or {@code -1}. */

@@ -295,6 +295,7 @@ class InputTreesTest {
     /** Build output is this job's own writing: a root under target/ is walked live, never retained. */
     @Test
     void roots_under_build_output_are_never_retained(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), "[project]\nname='w'\n");
         Path generated = Files.createDirectories(dir.resolve("target/generated/ksp/java"));
         Files.writeString(generated.resolve("Gen.java"), "class Gen {}");
         Path src = Files.createDirectories(dir.resolve("src"));
@@ -316,8 +317,32 @@ class InputTreesTest {
             // Sources are still retained as before.
             assertThat(InputTrees.of(src).overflow()).isFalse();
         });
-        assertThat(InputTrees.isBuildOutput(Path.of("/w/target/x"))).isTrue();
-        assertThat(InputTrees.isBuildOutput(Path.of("/w/src/target-practice/x")))
+        assertThat(InputTrees.isBuildOutput(dir.resolve("target/x"))).isTrue();
+        assertThat(InputTrees.isBuildOutput(dir.resolve("src/target-practice/x")))
+                .isFalse();
+    }
+
+    /**
+     * The manifest anchors the rule. A package named {@code target} under {@code src/} is the
+     * user's input; a name-only rule refused the whole module's snapshot for it and walked the
+     * tree live on every preflight.
+     */
+    @Test
+    void a_directory_merely_named_target_is_not_build_output(@TempDir Path w) throws Exception {
+        Files.writeString(w.resolve("jk.toml"), "[project]\nname='w'\n");
+        Path pkg = Files.createDirectories(w.resolve("src/main/java/com/acme/target"));
+        Files.writeString(pkg.resolve("T.java"), "class T {}");
+        assertThat(InputTrees.isBuildOutput(pkg)).isFalse();
+        assertThat(InputTrees.isBuildOutput(w.resolve("src/main/resources/target/x")))
+                .isFalse();
+        inRequest(() -> assertThat(InputTrees.of(w.resolve("src")).overflow())
+                .as("the module's sources are retained like any other")
+                .isFalse());
+        assertThat(InputTrees.isBuildOutput(w.resolve("target/classes/main")))
+                .as("the module's own output still is")
+                .isTrue();
+        assertThat(InputTrees.isBuildOutput(Path.of("/target/x")))
+                .as("a root-level target has no owner")
                 .isFalse();
     }
 
@@ -327,23 +352,30 @@ class InputTreesTest {
      * rule answered "build output" for every tree a test builds.
      */
     @Test
-    void the_declared_scratch_root_is_not_this_jobs_writing() {
-        assertThat(InputTrees.isBuildOutput(Path.of("/w/target/tmp/junit123/src")))
+    void the_declared_scratch_root_is_not_this_jobs_writing(@TempDir Path w) throws Exception {
+        Files.writeString(w.resolve("jk.toml"), "[workspace]\nmodules = ['shared/core']\n");
+        // A fixture module a test builds inside the scratch root, with a manifest of its own.
+        Path fixture = Files.createDirectories(w.resolve("target/tmp/junit123/fx"));
+        Files.writeString(fixture.resolve("jk.toml"), "[project]\nname='fx'\n");
+        assertThat(InputTrees.isBuildOutput(w.resolve("target/tmp/junit123/src")))
                 .as("a forked test JVM's temp root is scratch, not output")
                 .isFalse();
-        assertThat(InputTrees.isBuildOutput(Path.of("/w/target/shared/core/tmp/junit123/src")))
+        assertThat(InputTrees.isBuildOutput(w.resolve("target/shared/core/tmp/junit123/src")))
                 .as("a workspace member's scratch sits a module path deeper")
                 .isFalse();
-        assertThat(InputTrees.isBuildOutput(Path.of("/w/target/shared/core/tmp/w20/junit123/src")))
+        assertThat(InputTrees.isBuildOutput(w.resolve("target/shared/core/tmp/w20/junit123/src")))
                 .as("and deeper again once the worker pool splits it")
                 .isFalse();
-        assertThat(InputTrees.isBuildOutput(Path.of("/w/target/tmp/junit123/target/generated/ksp")))
+        assertThat(InputTrees.isBuildOutput(fixture.resolve("target/generated/ksp")))
                 .as("a target/ tree inside a scratch tree is output again")
                 .isTrue();
-        assertThat(InputTrees.isBuildOutput(Path.of("/w/target/shared/core/classes/main")))
+        assertThat(InputTrees.isBuildOutput(w.resolve("target/tmp/junit123/data/target/x")))
+                .as("unless nothing owns it")
+                .isFalse();
+        assertThat(InputTrees.isBuildOutput(w.resolve("target/shared/core/classes/main")))
                 .as("real module output is untouched")
                 .isTrue();
-        assertThat(InputTrees.isBuildOutput(Path.of("/w/target/tmpfiles/x")))
+        assertThat(InputTrees.isBuildOutput(w.resolve("target/tmpfiles/x")))
                 .as("the reserved name, not every name starting with it")
                 .isTrue();
     }
