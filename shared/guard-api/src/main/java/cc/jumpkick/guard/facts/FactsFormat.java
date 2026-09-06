@@ -207,6 +207,7 @@ public final class FactsFormat {
                     out.writeInt(s.line());
                     str(s.literalBefore());
                     out.writeInt(s.count());
+                    strings(s.literals());
                 }
                 out.writeInt(m.fieldRefs().size());
                 for (FieldRef r : m.fieldRefs()) {
@@ -290,7 +291,7 @@ public final class FactsFormat {
                 int nc = in.readInt();
                 List<CallSite> calls = new ArrayList<>(nc);
                 for (int c = 0; c < nc; c++) {
-                    calls.add(new CallSite(req(), req(), req(), in.readInt(), str(), in.readInt()));
+                    calls.add(new CallSite(req(), req(), req(), in.readInt(), str(), in.readInt(), strings()));
                 }
                 int nr = in.readInt();
                 List<FieldRef> refs = new ArrayList<>(nr);

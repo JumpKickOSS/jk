@@ -200,7 +200,7 @@ public final class FactsExtractor {
                         key,
                         prior == null
                                 ? new CallSite(owner, name, mdesc, line, lastLdc, 1)
-                                : merge(prior, line, lastLdc));
+                                : prior.merged(line, lastLdc));
                 lastLdc = null;
             }
 
@@ -240,7 +240,7 @@ public final class FactsExtractor {
                                     key,
                                     prior == null
                                             ? new CallSite(h.getOwner(), h.getName(), h.getDesc(), line, null, 1)
-                                            : merge(prior, line, null));
+                                            : prior.merged(line, null));
                         }
                     } else if (a instanceof Type t) {
                         if (t.getSort() == Type.METHOD) refMethodDesc(t.getDescriptor());
@@ -318,17 +318,6 @@ public final class FactsExtractor {
                         new ArrayList<>(fieldRefs.values()),
                         branches,
                         firstLine));
-            }
-
-            private static CallSite merge(CallSite prior, int line, @Nullable String literal) {
-                int first = prior.line() == 0 ? line : line == 0 ? prior.line() : Math.min(prior.line(), line);
-                return new CallSite(
-                        prior.owner(),
-                        prior.name(),
-                        prior.desc(),
-                        first,
-                        prior.literalBefore() != null ? prior.literalBefore() : literal,
-                        prior.count() + 1);
             }
         }
     }

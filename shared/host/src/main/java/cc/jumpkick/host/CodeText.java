@@ -231,13 +231,16 @@ public final class CodeText {
         return squashImportsOut(blank(src, Blank.COMMENTS));
     }
 
+    /** One string literal: its span in the source (quotes included) and its body as written. */
+    public record Literal(int start, int end, String body) {}
+
     /**
-     * Every string literal body in a Java-shaped source, comments and char literals skipped. Escapes
-     * are kept as written. A hand lexer, not a regex: a regex version overflowed the stack on a
-     * long literal.
+     * Every string literal in a Java-shaped source, comments and char literals skipped, with its
+     * position. Escapes are kept as written. A hand lexer, not a regex: a regex version overflowed
+     * the stack on a long literal.
      */
-    public static List<String> stringLiterals(String src) {
-        List<String> out = new ArrayList<>();
+    public static List<Literal> literals(String src) {
+        List<Literal> out = new ArrayList<>();
         int n = src.length();
         int i = 0;
         while (i < n) {
@@ -250,8 +253,9 @@ public final class CodeText {
             } else if (src.startsWith("\"\"\"", i)) {
                 int j = i + 3;
                 while (j < n && !src.startsWith("\"\"\"", j)) j += src.charAt(j) == '\\' ? 2 : 1;
-                out.add(src.substring(i + 3, Math.min(j, n)));
-                i = Math.min(j, n) + 3;
+                int end = Math.min(j, n);
+                out.add(new Literal(i, Math.min(end + 3, n), src.substring(i + 3, end)));
+                i = end + 3;
             } else {
                 char c = src.charAt(i);
                 if (c == '"' || c == '\'') {
@@ -267,13 +271,20 @@ public final class CodeText {
                             j++;
                         }
                     }
-                    if (c == '"') out.add(body.toString());
+                    if (c == '"') out.add(new Literal(i, Math.min(j + 1, n), body.toString()));
                     i = j + 1;
                 } else {
                     i++;
                 }
             }
         }
+        return out;
+    }
+
+    /** The bodies of {@link #literals(String)}. */
+    public static List<String> stringLiterals(String src) {
+        List<String> out = new ArrayList<>();
+        for (Literal l : literals(src)) out.add(l.body());
         return out;
     }
 

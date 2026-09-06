@@ -22,6 +22,7 @@ public final class Evaluators {
     private static void installBuiltins() {
         BY_KIND.put(Kind.FORBID, new ForbidEvaluator());
         BY_KIND.put(Kind.TEXT, new TextEvaluator());
+        BY_KIND.put(Kind.VOCABULARY, new VocabularyEvaluator());
     }
 
     /** Test seam: drop every registration and reinstall the shipped evaluators. */

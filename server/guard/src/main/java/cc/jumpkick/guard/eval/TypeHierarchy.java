@@ -71,6 +71,12 @@ public final class TypeHierarchy {
         return ancestors(internalName).contains(ancestor);
     }
 
+    /** The class file bytes of {@code internalName} from the classpath or the JDK; {@code null} when unknown. */
+    public synchronized byte @Nullable [] bytesOf(String internalName) {
+        byte[] b = classpathBytes(internalName);
+        return b != null ? b : jdkBytes(internalName);
+    }
+
     public synchronized Optional<Supers> supers(String internalName) {
         Optional<Supers> hit = memo.get(internalName);
         if (hit != null) return hit;
