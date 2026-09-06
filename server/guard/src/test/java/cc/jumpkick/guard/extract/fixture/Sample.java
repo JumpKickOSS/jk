@@ -2,6 +2,7 @@
 package cc.jumpkick.guard.extract.fixture;
 
 import java.lang.annotation.ElementType;
+import java.lang.annotation.Repeatable;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
@@ -74,6 +75,20 @@ public final class Sample implements Supplier<String> {
         String tier() default "";
     }
 
+    /** A repeatable and its container, as {@code @Tag}/{@code @Tags} are. */
+    @Retention(RetentionPolicy.RUNTIME)
+    @Target(ElementType.TYPE)
+    public @interface Labels {
+        Label[] value();
+    }
+
+    @Retention(RetentionPolicy.RUNTIME)
+    @Target(ElementType.TYPE)
+    @Repeatable(Labels.class)
+    public @interface Label {
+        String value();
+    }
+
     /** SOURCE retention: not in the class file at all. */
     @Retention(RetentionPolicy.SOURCE)
     public @interface Gone {}
@@ -86,6 +101,8 @@ public final class Sample implements Supplier<String> {
     void hidden() {}
 
     @Tagged(value = "inner", tier = "gold")
+    @Label("x")
+    @Label("y")
     public class Inner {
         int read() {
             return field.length();

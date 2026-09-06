@@ -13,6 +13,8 @@ import cc.jumpkick.guard.facts.Fingerprints;
 import cc.jumpkick.guard.facts.MethodFacts;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -26,6 +28,22 @@ class FactsExtractorTest {
 
     static ClassFacts sample() throws IOException {
         return FactsExtractor.extract(classBytes(Sample.class));
+    }
+
+    @Test
+    void a_repeatable_container_yields_the_container_and_each_nested_annotation() throws IOException {
+        ClassFacts inner = FactsExtractor.extract(classBytes(Sample.Inner.class));
+        List<String> names = new ArrayList<>();
+        for (var a : inner.annotations()) names.add(a.typeName());
+        assertThat(names)
+                .contains(
+                        "cc.jumpkick.guard.extract.fixture.Sample$Labels",
+                        "cc.jumpkick.guard.extract.fixture.Sample$Label")
+                .filteredOn(n -> n.endsWith("$Label"))
+                .hasSize(2);
+        List<String> values = new ArrayList<>();
+        for (var a : inner.annotations()) if (a.typeName().endsWith("$Label")) values.addAll(a.value());
+        assertThat(values).containsExactly("x", "y");
     }
 
     @Test

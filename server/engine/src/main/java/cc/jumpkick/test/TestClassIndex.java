@@ -1,6 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.test;
 
+import cc.jumpkick.guard.extract.FactsIndexing;
+import cc.jumpkick.guard.facts.AnnotationFacts;
+import cc.jumpkick.guard.facts.ClassFacts;
+import cc.jumpkick.guard.facts.Descriptors;
+import cc.jumpkick.guard.facts.FactsFormat;
+import cc.jumpkick.guard.facts.FactsIndex;
+import cc.jumpkick.guard.facts.FieldFacts;
+import cc.jumpkick.guard.facts.MethodFacts;
 import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -10,6 +18,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 import org.objectweb.asm.AnnotationVisitor;
@@ -20,7 +29,11 @@ import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 
-/** ASM scan of compiled test classes: imported production types, JUnit tags, naming heuristic. */
+/**
+ * Compiled test classes as the affected-tests ranker sees them: imported production types, JUnit
+ * tags, naming heuristic. Read from the guard lane's test facts index when it is current, else by
+ * one ASM pass over the class files.
+ */
 public final class TestClassIndex {
 
     private TestClassIndex() {}
@@ -29,6 +42,56 @@ public final class TestClassIndex {
 
     public static List<Entry> scan(Path testClassesDir, Set<String> productionFqcs) throws IOException {
         if (testClassesDir == null || !Files.isDirectory(testClassesDir)) return List.of();
+        Optional<FactsIndex> facts = currentFacts(testClassesDir);
+        if (facts.isPresent()) return fromFacts(facts.get(), productionFqcs);
+        return readClassFiles(testClassesDir, productionFqcs);
+    }
+
+    /**
+     * The guard lane's {@code test-guard.idx} beside {@code target/classes/test}, when its stamps
+     * still match the class files: the same facts read once, not a second ASM pass. Absent or stale
+     * (no guards, or classes recompiled since), the class files are read directly.
+     */
+    static Optional<FactsIndex> currentFacts(Path testClassesDir) {
+        Path buildDir = testClassesDir.toAbsolutePath().normalize().getParent();
+        if (buildDir == null || (buildDir = buildDir.getParent()) == null) return Optional.empty();
+        Path idx = FactsIndexing.indexPath(buildDir, "test");
+        if (!Files.isRegularFile(idx)) return Optional.empty();
+        try {
+            if (FactsIndexing.freshDigest(testClassesDir, idx).isEmpty()) return Optional.empty();
+            return Optional.of(FactsFormat.read(idx));
+        } catch (IOException | RuntimeException stale) {
+            return Optional.empty();
+        }
+    }
+
+    /** The entries as the class files would yield them, from the facts index. */
+    static List<Entry> fromFacts(FactsIndex facts, Set<String> productionFqcs) {
+        List<Entry> out = new ArrayList<>();
+        for (ClassFacts c : facts.classList()) {
+            if (c.isNested() || c.isPackageInfo()) continue;
+            Set<String> imports = new LinkedHashSet<>();
+            for (String ref : c.typeRefs()) {
+                String fqc = Descriptors.binaryName(ref);
+                if (productionFqcs.contains(fqc)) imports.add(fqc);
+            }
+            Set<String> tags = new LinkedHashSet<>();
+            tagsOf(c.annotations(), tags);
+            for (FieldFacts f : c.fields()) tagsOf(f.annotations(), tags);
+            for (MethodFacts m : c.methods()) tagsOf(m.annotations(), tags);
+            String name = c.binaryName();
+            out.add(new Entry(name, Set.copyOf(imports), Set.copyOf(tags), nameMatchSimple(name)));
+        }
+        return List.copyOf(out);
+    }
+
+    private static void tagsOf(List<AnnotationFacts> annotations, Set<String> tags) {
+        for (AnnotationFacts a : annotations) {
+            if (a.desc().equals("Lorg/junit/jupiter/api/Tag;")) tags.addAll(a.value());
+        }
+    }
+
+    private static List<Entry> readClassFiles(Path testClassesDir, Set<String> productionFqcs) throws IOException {
         List<Entry> out = new ArrayList<>();
         PathUtil.forEachRegularFile(testClassesDir, (p, attrs) -> {
             if (!p.toString().endsWith(".class")) return;

@@ -359,7 +359,18 @@ public final class FactsExtractor {
                 public void visitEnum(@Nullable String n, String edesc, String value) {
                     add(key, value);
                 }
+
+                @Override
+                public AnnotationVisitor visitAnnotation(@Nullable String n, String ndesc) {
+                    // A repeatable's container: each nested annotation is a fact on the element too.
+                    return new AnnotationCollector(ndesc, visible, sink);
+                }
             };
+        }
+
+        @Override
+        public AnnotationVisitor visitAnnotation(@Nullable String name, String ndesc) {
+            return new AnnotationCollector(ndesc, visible, sink);
         }
 
         @Override

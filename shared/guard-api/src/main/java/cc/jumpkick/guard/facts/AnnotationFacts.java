@@ -11,7 +11,9 @@ import java.util.Map;
  * @param desc the descriptor, {@code Lorg/junit/jupiter/api/Tag;}
  * @param runtimeVisible {@code RUNTIME} retention; {@code false} is {@code CLASS}
  * @param values string-shaped attribute values (strings, enum constants as {@code NAME}, class
- *     literals as internal names); arrays keep their elements; nested annotations are not recorded
+ *     literals as internal names); arrays keep their elements. A nested annotation (a repeatable's
+ *     container such as {@code @Tags}) is recorded as its own fact on the same element, so {@code
+ *     @Tags({@Tag("a"), @Tag("b")})} yields a {@code Tags} fact and two {@code Tag} facts
  */
 public record AnnotationFacts(String desc, boolean runtimeVisible, Map<String, List<String>> values) {
 
