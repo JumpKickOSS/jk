@@ -263,6 +263,7 @@ final class PlannerGuards {
             return;
         }
         List<Rule> rules = LaneRun.rulesFor(lane, load.rules(), ectx.module());
+        ectx = ectx.withRules(load.rules());
         Path baselineFile = GuardsPresence.baselineFile(g.root());
         Baseline baseline = BaselineFile.read(baselineFile);
         boolean orphans = false;

@@ -2,6 +2,7 @@
 package cc.jumpkick.guard.eval;
 
 import cc.jumpkick.guard.facts.FactsIndex;
+import cc.jumpkick.guard.rules.RuleSet;
 import cc.jumpkick.guard.schema.Lane;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -19,6 +20,7 @@ import org.jspecify.annotations.Nullable;
  *
  * @param module the module's workspace-relative path, or {@code ""} at the root
  * @param modules every module directory of the workspace (root lanes), else just this module's
+ * @param rules every loaded rule, for kinds that refer to another rule ({@code metric matches:<id>})
  */
 public record EvalContext(
         Lane lane,
@@ -28,7 +30,26 @@ public record EvalContext(
         List<Path> modules,
         Supplier<FactsIndex> factsSupplier,
         Supplier<@Nullable FactsIndex> testFactsSupplier,
-        Supplier<List<Path>> classpath) {
+        Supplier<List<Path>> classpath,
+        RuleSet rules) {
+
+    /** Without a rule set: for tests and callers whose kinds never refer to another rule. */
+    public EvalContext(
+            Lane lane,
+            Path root,
+            String module,
+            @Nullable Path moduleDir,
+            List<Path> modules,
+            Supplier<FactsIndex> factsSupplier,
+            Supplier<@Nullable FactsIndex> testFactsSupplier,
+            Supplier<List<Path>> classpath) {
+        this(lane, root, module, moduleDir, modules, factsSupplier, testFactsSupplier, classpath, RuleSet.EMPTY);
+    }
+
+    public EvalContext withRules(RuleSet set) {
+        return new EvalContext(
+                lane, root, module, moduleDir, modules, factsSupplier, testFactsSupplier, classpath, set);
+    }
 
     private static final Map<EvalContext, TypeHierarchy> HIERARCHIES = new WeakHashMap<>();
 
