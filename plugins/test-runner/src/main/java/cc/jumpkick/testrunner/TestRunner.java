@@ -92,24 +92,34 @@ public final class TestRunner implements Plugin {
     }
 
     private static int runPullMode(Args args, EventWriter writer) throws Exception {
-        boolean failed = false;
-        LauncherPath.emitReady(writer, args.workerId);
         try (var stdin = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8))) {
-            String line;
-            while ((line = stdin.readLine()) != null) {
-                if (line.equals("DONE")) break;
-                if (!line.startsWith("RUN ")) {
-                    System.err.println("jk-test-runner: ignoring unknown command: " + line);
-                    continue;
-                }
-                String className = line.substring(4).trim();
-                if (LauncherPath.runClass(className, args.includeTags, args.excludeTags, args.workerId, writer)) {
-                    failed = true;
-                }
-                LauncherPath.emitReady(writer, args.workerId);
-            }
+            return runPullMode(args, writer, stdin);
         }
-        return failed ? 1 : 0;
+    }
+
+    /**
+     * Pull worker: {@code ready} → {@code RUN <class>} … → {@code DONE}. The exit code says whether
+     * the session ran to completion, nothing else: test outcomes travel as events, and the driver
+     * treats any non-zero exit as a worker that died with work still owed (it fails the suite as
+     * "exited N mid-run"). Exiting 1 because some class failed is therefore wrong twice over — the
+     * failure is already counted, and the driver adds a phantom one. Only an input that ends
+     * without {@code DONE} (the driver vanished) exits non-zero.
+     */
+    static int runPullMode(Args args, EventWriter writer, BufferedReader stdin) throws Exception {
+        LauncherPath.emitReady(writer, args.workerId);
+        String line;
+        while ((line = stdin.readLine()) != null) {
+            if (line.equals("DONE")) return 0;
+            if (!line.startsWith("RUN ")) {
+                System.err.println("jk-test-runner: ignoring unknown command: " + line);
+                continue;
+            }
+            String className = line.substring(4).trim();
+            LauncherPath.runClass(className, args.includeTags, args.excludeTags, args.workerId, writer);
+            LauncherPath.emitReady(writer, args.workerId);
+        }
+        System.err.println("jk-test-runner: stdin closed before DONE");
+        return 1;
     }
 
     /**
@@ -123,7 +133,7 @@ public final class TestRunner implements Plugin {
         return ".*" + f + ".*";
     }
 
-    private record Args(
+    record Args(
             Path scanClasspath,
             String filter,
             boolean listOnly,
