@@ -631,6 +631,12 @@ public final class JUnitLauncher {
                         moduleLabel, "", cls, who, "", why, captures.get(i).text(), workerIdBase + i + 1));
             }
         }
+        String cancelledWhy = CancelledShortfall.of(SessionCancel.cancelled(), worstExit, queue.size());
+        if (cancelledWhy != null) {
+            total += 1;
+            failed += 1;
+            allFailures.add(new TestFailureInfo(moduleLabel, "", "", "(test run)", "", cancelledWhy, "", 0));
+        }
         return new TestSummary(total, succeeded, failed, skipped, classCount, allFailures, walls, actualWorkers);
     }
 

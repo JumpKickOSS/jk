@@ -27,6 +27,7 @@ import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.run.BuildStage;
+import cc.jumpkick.run.SessionCancel;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
@@ -533,6 +534,7 @@ public final class PlannerTest {
                         // Surface each failure (name + stack trace) above the bar
                         // not just the count — like Maven/Gradle.
                         for (String line : TestSupport.renderFailures(result, in.dir(), snippets)) ctx.output(line);
+                        if (SessionCancel.cancelled()) throw new RuntimeException("test run cancelled");
                         throw new RuntimeException(
                                 result.failed() + " test failure" + (result.failed() == 1 ? "" : "s"));
                     }
