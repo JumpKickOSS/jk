@@ -4,6 +4,7 @@ package cc.jumpkick.util;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.testing.ShortTempDirs;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -19,6 +20,14 @@ class JkDirsTest {
 
     private static JkDirs linux(Map<String, String> env) {
         return JkDirs.of(env::get, "/home/me", "Linux");
+    }
+
+    /**
+     * Host-absolute override fixture under {@link ShortTempDirs#path()} ({@code ~/.jk-test-tmp}).
+     * Never {@code /opt} or a drive root.
+     */
+    private static Path tmp(String name) {
+        return ShortTempDirs.path().resolve(name);
     }
 
     @Test
@@ -131,23 +140,25 @@ class JkDirsTest {
 
     @Test
     void jk_home_relocates_every_root_but_not_jdks() {
-        JkDirs dirs = linux(Map.of("JK_HOME", "/opt/jk"));
-        assertThat(dirs.binDirectory()).isEqualTo(Path.of("/opt/jk/bin"));
-        assertThat(dirs.cacheDir()).isEqualTo(Path.of("/opt/jk/cache"));
-        assertThat(dirs.configDir()).isEqualTo(Path.of("/opt/jk/config"));
-        assertThat(dirs.credsDir()).isEqualTo(Path.of("/opt/jk/creds"));
-        assertThat(dirs.productLibDir()).isEqualTo(Path.of("/opt/jk/lib"));
-        assertThat(dirs.stateDir()).isEqualTo(Path.of("/opt/jk/state"));
-        assertThat(dirs.storeDir()).isEqualTo(Path.of("/opt/jk/store"));
-        assertThat(dirs.userConfigFilePath()).isEqualTo(Path.of("/opt/jk/config.toml"));
+        Path home = tmp("jk-home");
+        JkDirs dirs = linux(Map.of("JK_HOME", home.toString()));
+        assertThat(dirs.binDirectory()).isEqualTo(home.resolve("bin"));
+        assertThat(dirs.cacheDir()).isEqualTo(home.resolve("cache"));
+        assertThat(dirs.configDir()).isEqualTo(home.resolve("config"));
+        assertThat(dirs.credsDir()).isEqualTo(home.resolve("creds"));
+        assertThat(dirs.productLibDir()).isEqualTo(home.resolve("lib"));
+        assertThat(dirs.stateDir()).isEqualTo(home.resolve("state"));
+        assertThat(dirs.storeDir()).isEqualTo(home.resolve("store"));
+        assertThat(dirs.userConfigFilePath()).isEqualTo(home.resolve("config.toml"));
         // Shared IntelliJ root — not $JK_HOME/jdks
         assertThat(dirs.jdksDir()).isEqualTo(Path.of("/home/me/.jdks"));
     }
 
     @Test
     void the_global_config_file_sits_at_the_home_root_not_inside_the_config_dir() {
-        JkDirs dirs = linux(Map.of("JK_HOME", "/opt/jk"));
-        assertThat(dirs.userConfigFilePath()).isEqualTo(Path.of("/opt/jk/config.toml"));
+        Path home = tmp("jk-home");
+        JkDirs dirs = linux(Map.of("JK_HOME", home.toString()));
+        assertThat(dirs.userConfigFilePath()).isEqualTo(home.resolve("config.toml"));
         assertThat(dirs.userConfigFilePath().startsWith(dirs.configDir())).isFalse();
     }
 
@@ -158,7 +169,7 @@ class JkDirsTest {
      */
     @Test
     void creds_is_a_sibling_of_store_and_of_every_other_root() {
-        JkDirs dirs = linux(Map.of("JK_HOME", "/opt/jk"));
+        JkDirs dirs = linux(Map.of("JK_HOME", tmp("jk-home").toString()));
         assertThat(dirs.credsDir().startsWith(dirs.storeDir())).isFalse();
         assertThat(dirs.credsDir().startsWith(dirs.cacheDir())).isFalse();
         assertThat(dirs.credsDir().startsWith(dirs.stateDir())).isFalse();
@@ -169,9 +180,11 @@ class JkDirsTest {
     /** A relocated store must not drag credentials onto the same volume. */
     @Test
     void jk_store_dir_does_not_move_creds() {
-        JkDirs plain = linux(Map.of("JK_HOME", "/opt/jk"));
-        JkDirs relocated = linux(Map.of("JK_HOME", "/opt/jk", "JK_STORE_DIR", "/srv/artifacts"));
-        assertThat(relocated.storeDir()).isEqualTo(Path.of("/srv/artifacts"));
+        Path home = tmp("jk-home");
+        Path store = tmp("jk-artifacts");
+        JkDirs plain = linux(Map.of("JK_HOME", home.toString()));
+        JkDirs relocated = linux(Map.of("JK_HOME", home.toString(), "JK_STORE_DIR", store.toString()));
+        assertThat(relocated.storeDir()).isEqualTo(store);
         assertThat(relocated.credsDir()).isEqualTo(plain.credsDir());
     }
 
@@ -191,41 +204,52 @@ class JkDirsTest {
 
     @Test
     void jk_jdks_dir_required_for_a_hermetic_jdk_root_under_jk_home() {
-        JkDirs dirs = linux(Map.of("JK_HOME", "/tmp/cold", "JK_JDKS_DIR", "/tmp/cold/jdks"));
-        assertThat(dirs.jdksDir()).isEqualTo(Path.of("/tmp/cold/jdks"));
+        Path cold = tmp("cold");
+        JkDirs dirs = linux(Map.of(
+                "JK_HOME", cold.toString(), "JK_JDKS_DIR", cold.resolve("jdks").toString()));
+        assertThat(dirs.jdksDir()).isEqualTo(cold.resolve("jdks"));
     }
 
     @Test
     void the_three_large_roots_win_over_jk_home() {
+        Path home = tmp("jk-home");
+        Path cache = tmp("jk-cache");
+        Path store = tmp("jk-store");
+        Path state = tmp("jk-state");
         Map<String, String> env = Map.of(
-                "JK_HOME", "/opt/jk",
-                "JK_CACHE_DIR", "/var/cache/jk",
-                "JK_STORE_DIR", "/var/lib/jk/store",
-                "JK_STATE_DIR", "/var/lib/jk/state");
+                "JK_HOME",
+                home.toString(),
+                "JK_CACHE_DIR",
+                cache.toString(),
+                "JK_STORE_DIR",
+                store.toString(),
+                "JK_STATE_DIR",
+                state.toString());
         JkDirs dirs = linux(env);
-        assertThat(dirs.cacheDir()).isEqualTo(Path.of("/var/cache/jk"));
-        assertThat(dirs.storeDir()).isEqualTo(Path.of("/var/lib/jk/store"));
-        assertThat(dirs.stateDir()).isEqualTo(Path.of("/var/lib/jk/state"));
+        assertThat(dirs.cacheDir()).isEqualTo(cache);
+        assertThat(dirs.storeDir()).isEqualTo(store);
+        assertThat(dirs.stateDir()).isEqualTo(state);
         // Roots without an override still follow JK_HOME.
-        assertThat(dirs.binDirectory()).isEqualTo(Path.of("/opt/jk/bin"));
-        assertThat(dirs.credsDir()).isEqualTo(Path.of("/opt/jk/creds"));
-        assertThat(dirs.productLibDir()).isEqualTo(Path.of("/opt/jk/lib"));
+        assertThat(dirs.binDirectory()).isEqualTo(home.resolve("bin"));
+        assertThat(dirs.credsDir()).isEqualTo(home.resolve("creds"));
+        assertThat(dirs.productLibDir()).isEqualTo(home.resolve("lib"));
     }
 
     @Test
     void store_children_follow_the_store_when_only_store_is_overridden() {
-        JkDirs dirs = linux(Map.of("JK_STORE_DIR", "/data/jk-store"));
-        assertThat(dirs.libraryRegistryFile())
-                .isEqualTo(Path.of("/data/jk-store").resolve(JkDirs.LIBRARY_REGISTRY_FILE));
-        assertThat(dirs.templatesDir()).isEqualTo(Path.of("/data/jk-store").resolve(JkDirs.TEMPLATES_DIR));
-        assertThat(dirs.toolsDir()).isEqualTo(Path.of("/data/jk-store").resolve(JkDirs.TOOLS_DIR));
+        Path store = tmp("jk-store");
+        JkDirs dirs = linux(Map.of("JK_STORE_DIR", store.toString()));
+        assertThat(dirs.libraryRegistryFile()).isEqualTo(store.resolve(JkDirs.LIBRARY_REGISTRY_FILE));
+        assertThat(dirs.templatesDir()).isEqualTo(store.resolve(JkDirs.TEMPLATES_DIR));
+        assertThat(dirs.toolsDir()).isEqualTo(store.resolve(JkDirs.TOOLS_DIR));
     }
 
     @Test
     void state_children_follow_the_state_root_when_only_state_is_overridden() {
-        JkDirs dirs = linux(Map.of("JK_STATE_DIR", "/run/jk-state"));
-        assertThat(dirs.buildsDir()).isEqualTo(Path.of("/run/jk-state/builds"));
-        assertThat(dirs.tmpDir()).isEqualTo(Path.of("/run/jk-state/tmp"));
+        Path state = tmp("jk-state");
+        JkDirs dirs = linux(Map.of("JK_STATE_DIR", state.toString()));
+        assertThat(dirs.buildsDir()).isEqualTo(state.resolve("builds"));
+        assertThat(dirs.tmpDir()).isEqualTo(state.resolve("tmp"));
     }
 
     /**
@@ -236,7 +260,7 @@ class JkDirsTest {
      */
     @Test
     void provisioned_tools_live_under_the_store_and_never_under_the_cache() {
-        JkDirs dirs = linux(Map.of("JK_HOME", "/opt/jk"));
+        JkDirs dirs = linux(Map.of("JK_HOME", tmp("jk-home").toString()));
         assertThat(dirs.toolsDir().startsWith(dirs.storeDir())).isTrue();
         assertThat(dirs.toolsDir().startsWith(dirs.cacheDir()))
                 .as("the cache sweep reclaims unknown top-level entries; tools must be out of its reach")
@@ -250,8 +274,13 @@ class JkDirsTest {
      */
     @Test
     void jk_cache_dir_does_not_move_the_tools_root() {
-        JkDirs plain = linux(Map.of("JK_HOME", "/opt/jk"));
-        JkDirs relocated = linux(Map.of("JK_HOME", "/opt/jk", "JK_CACHE_DIR", "/tmp/isolated-cache"));
+        Path home = tmp("jk-home");
+        JkDirs plain = linux(Map.of("JK_HOME", home.toString()));
+        JkDirs relocated = linux(Map.of(
+                "JK_HOME",
+                home.toString(),
+                "JK_CACHE_DIR",
+                tmp("isolated-cache").toString()));
         assertThat(relocated.cacheDir()).isNotEqualTo(plain.cacheDir());
         assertThat(relocated.toolsDir()).isEqualTo(plain.toolsDir());
     }

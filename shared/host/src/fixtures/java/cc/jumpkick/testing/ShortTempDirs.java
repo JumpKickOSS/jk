@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.testing;
 
-import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import org.junit.jupiter.api.extension.AfterEachCallback;
 import org.junit.jupiter.api.extension.ExtensionContext;
@@ -19,10 +20,12 @@ import org.junit.jupiter.api.extension.ExtensionContext;
  * {@code /var/folders/xx/yy…/T/}; JUnit's own random suffix pushes the total past what the JDK
  * will bind, so {@code bind} fails with a message about the *path* rather than about the test.
  * The budget is {@link UnixSocketPaths#MAX_PATH_LENGTH} — one number, proven by binding.
- * {@link #root()} is the root that fits it: {@code /tmp} on POSIX, {@code %USERPROFILE%\Temp} on
- * Windows.
+ * {@link #root()} is {@code ~/.jk-test-tmp/<pid>}: under the user home on every OS, never a drive
+ * root ({@code C:\tmp}, {@code C:\opt}, {@code /opt}, …).
  *
- * <p>Register it and ask for as many roots as the test needs; every one is deleted after the test:
+ * <p>Register it and ask for as many roots as the test needs. Each directory is deleted after the
+ * test; a shutdown hook deletes this JVM's {@code <pid>} tree (success or failure); the first
+ * {@link #root()} call reaps leftover trees from dead PIDs so a crashed run cannot poison the next.
  *
  * <pre>{@code
  * @RegisterExtension
@@ -32,12 +35,21 @@ import org.junit.jupiter.api.extension.ExtensionContext;
  * }</pre>
  *
  * <p>Deletion is best-effort and never fails a test: an engine daemon that outlives the method can
- * hold a socket open, and losing a temp directory is not the defect the test is looking for. That
- * daemon is also why the delete has to tolerate an entry disappearing <em>mid-walk</em> — a lazy
- * {@code Files.walk} surfaces that as an {@code UncheckedIOException}, not an {@code IOException}.
- * {@link PathUtil#deleteRecursively} owns both halves of that catch.
+ * hold a socket open, and losing a temp directory is not the defect the test is looking for.
+ * {@link PathUtil#deleteRecursively} owns that catch.
  */
 public final class ShortTempDirs implements AfterEachCallback {
+
+    /** Namespaced directory under {@code user.home}. */
+    public static final String DIR = ".jk-test-tmp";
+
+    private static final List<Path> LIVE = Collections.synchronizedList(new ArrayList<>());
+
+    private static volatile Path jvmRoot;
+
+    static {
+        Runtime.getRuntime().addShutdownHook(new Thread(ShortTempDirs::reapLive, "jk-test-tmp-cleanup"));
+    }
 
     private final String prefix;
     private final List<Path> created = new ArrayList<>();
@@ -48,45 +60,99 @@ public final class ShortTempDirs implements AfterEachCallback {
     }
 
     /**
-     * Short throwaway parent for tests that mkdir outside the checkout.
-     *
-     * <p>POSIX: {@code /tmp} when present, else {@code java.io.tmpdir}. Windows:
-     * {@code %USERPROFILE%\Temp} (created if missing) — never {@code C:\tmp}.
+     * This JVM's throwaway parent: {@code ~/.jk-test-tmp/<pid>}. Created once per JVM. The first
+     * call sweeps stale siblings (dead PIDs, leftover names) so a crashed run cannot leave the
+     * namespace dirty. Parallel test JVMs keep their own {@code <pid>} trees.
      */
     public static Path root() throws IOException {
-        if (Os.isWindows()) {
-            Path homeTemp = Path.of(System.getProperty("user.home"), "Temp");
-            Files.createDirectories(homeTemp);
-            return homeTemp;
+        Path mine = jvmRoot;
+        if (mine != null) return mine;
+        synchronized (ShortTempDirs.class) {
+            mine = jvmRoot;
+            if (mine != null) return mine;
+            Path ns = namespace();
+            Files.createDirectories(ns);
+            PathUtil.deleteRecursively(ns.resolveSibling(".jk-test--tmp"));
+            sweepStale(ns);
+            mine = ns.resolve(Long.toString(ProcessHandle.current().pid()));
+            PathUtil.deleteRecursively(mine);
+            Files.createDirectories(mine);
+            jvmRoot = mine;
+            return mine;
         }
-        Path tmp = Path.of("/tmp");
-        if (Files.isDirectory(tmp)) {
-            return tmp;
-        }
-        return Path.of(System.getProperty("java.io.tmpdir"));
     }
 
     /**
-     * Synthetic absolute path root (no mkdir): {@code /tmp} on POSIX (unconditionally — unlike
-     * {@link #root()}, which falls back to {@code java.io.tmpdir} when {@code /tmp} is absent),
-     * {@code %USERPROFILE%\Temp} on Windows.
+     * Synthetic absolute path root (no mkdir): {@code ~/.jk-test-tmp} on every OS. Never a drive
+     * root. Tests that only need an absolute fixture, not a real directory, should use this.
      */
     public static Path path() {
-        return Os.isWindows() ? Path.of(System.getProperty("user.home"), "Temp") : Path.of("/tmp");
+        return namespace();
     }
 
-    /** A fresh directory under the shortest usable root, deleted after the current test. */
+    /** A fresh directory under {@link #root()}, deleted after the current test. */
     public Path create() throws IOException {
         Path dir = Files.createTempDirectory(root(), prefix);
         created.add(dir);
+        LIVE.add(dir);
         return dir;
     }
 
     @Override
     public void afterEach(ExtensionContext context) {
         for (Path dir : created) {
+            LIVE.remove(dir);
             PathUtil.deleteRecursively(dir);
         }
         created.clear();
+    }
+
+    private static Path namespace() {
+        return Path.of(System.getProperty("user.home"), DIR);
+    }
+
+    /**
+     * Drop every child of {@code ns} that is not a live test JVM's {@code <pid>} directory. Crash
+     * leftovers, unrecognized names, and PID-reuse dirt all go; concurrent workers stay.
+     */
+    static void sweepStale(Path ns) {
+        if (!Files.isDirectory(ns)) return;
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(ns)) {
+            for (Path child : stream) {
+                if (isLiveJvmDir(child)) continue;
+                PathUtil.deleteRecursively(child);
+            }
+        } catch (IOException ignored) {
+            // next createTempDirectory surfaces a real error
+        }
+    }
+
+    private static boolean isLiveJvmDir(Path child) {
+        try {
+            long pid = Long.parseLong(child.getFileName().toString());
+            return ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false);
+        } catch (NumberFormatException e) {
+            return false;
+        }
+    }
+
+    private static void reapLive() {
+        List<Path> dirs;
+        synchronized (LIVE) {
+            dirs = new ArrayList<>(LIVE);
+            LIVE.clear();
+        }
+        for (Path dir : dirs) {
+            PathUtil.deleteRecursively(dir);
+        }
+        Path mine = jvmRoot;
+        if (mine != null) PathUtil.deleteRecursively(mine);
+        Path ns = namespace();
+        sweepStale(ns);
+        try {
+            Files.deleteIfExists(ns);
+        } catch (IOException ignored) {
+            // another JVM still has a <pid> child
+        }
     }
 }

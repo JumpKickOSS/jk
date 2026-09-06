@@ -13,10 +13,10 @@ package cc.jumpkick.testing;
  * maximum on any one: macOS is the tightest and measures exactly this, Linux's larger
  * {@code sun_path} leaves more. A budget wants the floor, so this is the floor.
  *
- * <p>The root that fits this budget is {@link ShortTempDirs#root()} — {@code /tmp} on POSIX, and
- * {@code %USERPROFILE%\Temp} on Windows. It lives there rather than here because it is wanted by
- * every test that mkdirs outside the checkout, not only the ones that bind a socket; this class
- * owns the number, that one owns the place.
+ * <p>The root that fits this budget is {@link ShortTempDirs#root()} — {@code ~/.jk-test-tmp/<pid>}
+ * on every OS. It lives there rather than here because it is wanted by every test that mkdirs
+ * outside the checkout, not only the ones that bind a socket; this class owns the number, that
+ * one owns the place.
  *
  * <p>Only tests need this. Production sockets live under {@code ~/.jk/state/engine/}, which is
  * short by construction; it is {@code @TempDir} — nested under a build directory, under a checkout,

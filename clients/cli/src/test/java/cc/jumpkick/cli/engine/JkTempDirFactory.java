@@ -36,8 +36,8 @@ public final class JkTempDirFactory implements TempDirFactory {
     }
 
     /**
-     * {@link ShortTempDirs#root()} — {@code /tmp} on POSIX, {@code %USERPROFILE%\Temp} on Windows
-     * — falling back to the configured temp dir only when that root cannot be had.
+     * {@link ShortTempDirs#root()} — {@code ~/.jk-test-tmp/<pid>} on every OS — falling back to the
+     * configured temp dir only when that root cannot be had.
      *
      * <p>Worker isolation is not lost by ignoring the configured value: {@code JUnitLauncher} gives
      * each worker JVM a private tmpdir so parallel workers don't share temp state, and
