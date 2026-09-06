@@ -18,6 +18,7 @@ import cc.jumpkick.guard.eval.GuardMessages;
 import cc.jumpkick.guard.eval.LaneRun;
 import cc.jumpkick.guard.eval.Outcome;
 import cc.jumpkick.guard.eval.RuleReport;
+import cc.jumpkick.guard.explain.RuleSummaries;
 import cc.jumpkick.guard.extract.FactsIndexing;
 import cc.jumpkick.guard.facts.FactsIndex;
 import cc.jumpkick.guard.rules.GuardRules;
@@ -368,6 +369,7 @@ final class PlannerGuards {
         } else {
             AtomicWrites.replace(file, sb.toString());
         }
+        RuleSummaries.write(root, taskId, result);
     }
 
     // ---- rules memo ---------------------------------------------------------------------------

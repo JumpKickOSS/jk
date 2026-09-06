@@ -20,6 +20,8 @@ import cc.jumpkick.wire.protocol.ForecastRequest;
 import cc.jumpkick.wire.protocol.FreshenCatalogRequest;
 import cc.jumpkick.wire.protocol.GenerateRequest;
 import cc.jumpkick.wire.protocol.GeneratedFiles;
+import cc.jumpkick.wire.protocol.GuardExplainAck;
+import cc.jumpkick.wire.protocol.GuardExplainRequest;
 import cc.jumpkick.wire.protocol.GuardFreezeAck;
 import cc.jumpkick.wire.protocol.GuardFreezeRequest;
 import cc.jumpkick.wire.protocol.IdeModelRequest;
@@ -350,6 +352,17 @@ final class EngineReads {
                 EngineProtocol.GUARD_FREEZE_ACK,
                 "guard freeze",
                 GuardFreezeAck::decode);
+    }
+
+    /** {@code jk guard explain}: one card, the catalog, or a kind's schema — an inline read. */
+    static GuardExplainAck guardExplain(
+            EnginePaths.Paths paths, Path dir, @Nullable String ruleId, @Nullable String schema) throws IOException {
+        return request(
+                paths,
+                new GuardExplainRequest(dir.toString(), ruleId, schema).encode(),
+                EngineProtocol.GUARD_EXPLAIN_ACK,
+                "guard explain",
+                GuardExplainAck::decode);
     }
 
     static DenyReport denyCheck(EnginePaths.Paths paths, Path dir) throws IOException {

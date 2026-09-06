@@ -13,6 +13,7 @@ import cc.jumpkick.wire.protocol.CatalogReadAck;
 import cc.jumpkick.wire.protocol.DenyReport;
 import cc.jumpkick.wire.protocol.ExecPlan;
 import cc.jumpkick.wire.protocol.GeneratedFiles;
+import cc.jumpkick.wire.protocol.GuardExplainAck;
 import cc.jumpkick.wire.protocol.GuardFreezeAck;
 import cc.jumpkick.wire.protocol.IdeWireModel;
 import cc.jumpkick.wire.protocol.ModuleGraphAck;
@@ -241,6 +242,12 @@ public final class EngineClient {
             EnginePaths.Paths paths, Path dir, String ruleId, @Nullable String reason, boolean retire)
             throws IOException {
         return EngineReads.guardFreeze(paths, dir, ruleId, reason, retire);
+    }
+
+    /** {@code jk guard explain}: rule card, catalog or schema; one sync round trip, never a build. */
+    public static GuardExplainAck guardExplain(
+            EnginePaths.Paths paths, Path dir, @Nullable String ruleId, @Nullable String schema) throws IOException {
+        return EngineReads.guardExplain(paths, dir, ruleId, schema);
     }
 
     public static DenyReport denyCheck(EnginePaths.Paths paths, Path dir) throws IOException {

@@ -395,6 +395,15 @@ public final class EngineProtocol {
     /** Server → client, terminal for {@link #GUARD_FREEZE_REQUEST}. */
     public static final String GUARD_FREEZE_ACK = "guard-freeze-ack";
 
+    /**
+     * Client → server: {@code jk guard explain} — one rule's card, the catalog, or a kind's schema;
+     * an inline read that never plans a build. One {@link #GUARD_EXPLAIN_ACK}.
+     */
+    public static final String GUARD_EXPLAIN_REQUEST = "guard-explain-request";
+
+    /** Server → client, terminal for {@link #GUARD_EXPLAIN_REQUEST}. */
+    public static final String GUARD_EXPLAIN_ACK = "guard-explain-ack";
+
     /** Client → server: OSV scan ({@code jk audit}). Findings stream as {@link #AUDIT_FINDING}. */
     public static final String AUDIT_REQUEST = "audit-request";
 
