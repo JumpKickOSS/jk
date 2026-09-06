@@ -1,0 +1,101 @@
+# jk-guards.toml — house rules. Exemptions go in `allow` with a reason; never a comment in code.
+[guards.no-system-out]
+kind       = "forbid"
+signatures = ["@jdk-system-out"]
+instead    = "the injected org.slf4j.Logger"
+why        = "stdout is not a log sink in a service"
+
+[guards.no-field-injection]
+kind    = "annotate"
+forbid  = "org.springframework.beans.factory.annotation.Autowired"
+on      = "field"
+instead = "constructor injection"
+why     = "a field-injected bean cannot be constructed in a test without the container"
+
+[guards.entities-live-in-model]
+kind   = "classes"
+that   = { annotated-with = "jakarta.persistence.Entity" }
+should = { reside-in = "..domain.model..", be = ["!abstract"] }
+why    = "an entity outside the model package is a repository leak"
+
+[guards.layers]
+kind    = "layers"
+layers  = { web = "..web..", service = "..service..", repo = "..repository.." }
+access  = { web = ["service"], service = ["repo"] }
+edges   = "classes"
+why     = "controllers that touch repositories skip validation"
+
+[guards.no-feature-cycles]
+kind     = "cycles"
+matching = "com.acme.features.(*).."
+why      = "a cyclic component has no edge anyone can name to cut"
+
+[guards.api-compat]
+kind     = "api"
+against  = "previous-release"
+packages = ["com.acme.sdk.."]
+breaking = "baseline"
+why      = "a removed public method is a customer's build going red"
+
+[guards.no-junit4]
+kind    = "depend"
+ban     = ["junit:junit", "commons-logging:commons-logging"]
+instead = "org.junit.jupiter:junit-jupiter · org.slf4j:jcl-over-slf4j"
+why     = "one test framework; one logging facade"
+
+[guards.lombok-scope]
+kind       = "depend"
+coordinate = "org.projectlombok:lombok"
+only-in    = ["processor-dependencies", "provided-dependencies"]
+instead    = "jk add --scope processor lombok"
+why        = "a compile-time processor on a runtime classpath is dead weight"
+
+[guards.dependency-floors]
+kind        = "depend"
+require     = { "org.apache.logging.log4j:*" = ">=2.17.1", "com.fasterxml.jackson.core:*" = ">=2.17" }
+convergence = true
+no-snapshot = true
+licenses    = { forbid = ["GPL-*", "AGPL-*"] }
+why         = "known-vulnerable floors, one version per artifact, no copyleft in a shipped service"
+
+[guards.toolchain]
+kind         = "toolchain"
+java         = ">=21"
+repositories = { only = ["central", "corp-nexus"] }
+why          = "one JDK floor; no artifact from an unvetted repository"
+
+[guards.containers-are-integration]
+kind  = "tiers"
+uses  = ["org.testcontainers.**", "org.springframework.boot.test.context.SpringBootTest"]
+suite = "integration"
+why   = "a Docker daemon is not a unit-test dependency"
+
+[guards.file-size]
+kind     = "metric"
+measure  = "lines"
+cap      = { java = 800, kt = 600 }
+baseline = true
+why      = "a file that no longer fits a context window no longer fits a reviewer"
+
+[guards.coverage-floor]
+kind    = "metric"
+measure = "coverage.line"
+per     = "module"
+min     = 0.80
+allow   = [{ in = "generated-*", reason = "codegen modules" }]
+why     = "a module under 80 % has untested branches nobody can name"
+
+[guards.no-todo-without-owner]
+kind    = "text"
+pattern = "\\bTODO\\b(?!\\()"
+blank   = "none"
+hit     = "// TODO fix later"
+miss    = "// TODO(bsant) fix later"
+instead = "TODO(<owner>) …"
+why     = "an unowned TODO is a comment nobody will read again"
+
+[guards.no-agent-trailers]
+kind            = "commit"
+forbid-trailers = ["Co-Authored-By: *bot*", "Generated-By: *"]
+instead         = "author commits as a human contributor"
+why             = "attribution trailers are noise in blame"

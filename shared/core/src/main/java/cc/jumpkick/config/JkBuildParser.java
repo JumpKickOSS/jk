@@ -5,6 +5,7 @@ import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.DenyPolicy;
 import cc.jumpkick.model.Features;
+import cc.jumpkick.model.GuardsConfig;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.PluginDeclaration;
@@ -569,6 +570,12 @@ public final class JkBuildParser {
     public static DenyPolicy denyPolicy(Path file) {
         TomlParseResult root = documentIfPresent(file);
         return root == null ? DenyPolicy.permissive() : ManifestDeny.parse(root);
+    }
+
+    /** {@code [guards]} — the guard-lane knobs. {@link GuardsConfig#ABSENT} when the file/table is absent. */
+    public static GuardsConfig guardsConfig(Path file) {
+        TomlParseResult root = documentIfPresent(file);
+        return root == null ? GuardsConfig.ABSENT : ManifestGuards.parse(root);
     }
 
     /** {@code [train]} — AOT training config. {@link TrainConfig#EMPTY} when the table is absent. */

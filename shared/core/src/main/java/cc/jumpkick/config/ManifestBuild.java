@@ -67,7 +67,8 @@ public final class ManifestBuild {
                 "forge",
                 "kotlin-plugins",
                 "m2",
-                "install"));
+                "install",
+                "guards"));
         for (Scope scope : Scope.values()) out.add(scope.tomlSection()); // [dependencies] + scoped spellings
         return Set.copyOf(out);
     }

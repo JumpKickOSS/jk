@@ -1,0 +1,43 @@
+[guards.task-names]
+kind    = "vocabulary"
+owner   = "cc.jumpkick.task.TaskNames"
+shape   = "hyphenated"
+inverse = true
+instead = "TaskNames.<CONSTANT>"
+why     = "a step name typed twice is a rename that half-lands"
+
+[guards.host-surface]
+kind       = "forbid"
+signatures = ["java.lang.System#getProperty(java.lang.String)"]
+args       = ["os.name", "os.arch"]
+owner      = ["cc.jumpkick.host.Os"]
+instead    = "Os.current()"
+why        = "forty reads of os.name are forty spellings of Windows"
+
+[guards.wire-prefix-pairs]
+kind     = "text"
+patterns = ["##JK[A-Z]+:"]
+count    = { exactly = 2, per = "match" }
+files    = ["**/src/main/java/**"]
+instead  = "declare the prefix once in the plugin and once in its engine host"
+why      = "a protocol prefix named once is a reply nobody parses"
+
+[guards.both-builds-see-modules]
+kind  = "parity"
+left  = { workspace-modules = "jk.toml" }
+right = { gradle-includes = "settings.gradle.kts" }
+allow = [{ in = "clients/intellij", reason = "standalone IntelliJ build; never sees a jk jar" }]
+why   = "a module one build cannot see is built half the time"
+
+[guards.guard-registry-doc]
+kind     = "generated"
+source   = { guard-ids = true }
+template = { table = ["id", "kind", "why"] }
+into     = "docs/contributors/code-as-art.md"
+markers  = "guards"
+why      = "the registry drifted twice by hand; the third reconciliation is not by hand"
+
+[guards.published-poms]
+kind = "output"
+pom  = { no-unspecified = true, groups = ["cc.jumpkick"] }
+why  = "a POM with an unspecified coordinate is an artifact nobody can depend on"
