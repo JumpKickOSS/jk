@@ -56,6 +56,17 @@ public final class TaskNames {
     /** GATE anchor — invocation-root scripts bound to {@code --gate} / {@code --scripts-only}. */
     public static final String BUILD_LOGIC_GATE = "build-logic-gate";
 
+    /** Guard lane: one module's bytecode rules, after its compile. */
+    public static final String GUARD = "guard";
+    /** Guard lane: model rules at the invocation root, before any compile. */
+    public static final String GUARD_MODEL = "guard-model";
+    /** Guard lane: cross-module bytecode rules at the root, after every compile. */
+    public static final String GUARD_WORKSPACE = "guard-workspace";
+    /** Guard lane: the tree scan at the root, on {@code --gate} and {@code jk guard}. */
+    public static final String GUARD_TREE = "guard-tree";
+    /** Guard lane: build-output rules at the root, after package / native / coverage. */
+    public static final String GUARD_OUTPUT = "guard-output";
+
     public static final String ENSURE_JDK = "ensure-jdk";
     public static final String FETCH_CATALOG = "fetch-catalog";
     public static final String FETCH_GIT = "fetch-git";

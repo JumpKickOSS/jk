@@ -13,6 +13,7 @@ jk-plugin-sdk.workspace = true
 jk-resolver.workspace = true
 jk-toolchain.workspace = true
 jk-guard.workspace = true
+jk-guards-junit.workspace = true
 jk-dynamic-surface.workspace = true
 jk-web.workspace = true
 asm = "latest"

@@ -77,7 +77,17 @@ class ForecastKeyParityTest {
                     new Object[] {
                         "write-image", true, "the image tail is an unconditional side-effect step — always RUN"
                     },
-            "BuildLogicSupport.java|key", new Object[] {"build-logic", false, "build-logic compile is not forecast"});
+            "BuildLogicSupport.java|key", new Object[] {"build-logic", false, "build-logic compile is not forecast"},
+            "PlannerGuards.java|key",
+                    new Object[] {
+                        "guard",
+                        false,
+                        "a guard lane is keyed on its read set at task time; explain prices it from history"
+                    },
+            "PlannerGuards.java|storeKey",
+                    new Object[] {
+                        "guard", false, "the verdict is stored under the post-tightening baseline sha; no twin"
+                    });
 
     /**
      * {@code compileStep} is the one forecast helper naming its step from a parameter; both call

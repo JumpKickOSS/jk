@@ -161,9 +161,9 @@ tasks.register("checkNullMarkedApiPackages") {
             .filterNot { it.name == "package-info.java" }
             .mapNotNull { packagePattern.find(it.readText())?.groupValues?.get(1) }
             .toSortedSet()
-        if (packages.size != 46) {
+        if (packages.size != 47) {
             throw GradleException(
-                "The null-marked package guard found ${packages.size} production packages; it was measured against 46."
+                "The null-marked package guard found ${packages.size} production packages; it was measured against 47."
                     + " The source roots or package parser drifted, so do not trust a green result.")
         }
         val marked = packages.filter { pkg ->

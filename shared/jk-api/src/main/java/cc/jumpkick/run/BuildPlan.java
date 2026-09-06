@@ -724,6 +724,7 @@ public final class BuildPlan {
         private final List<BuildPlanListener> listeners = new ArrayList<>();
         private final List<BuildPlanKey<?>> stateKeys = new ArrayList<>();
         private @Nullable String terminal;
+        private final List<String> alsoKept = new ArrayList<>();
 
         Builder(String name) {
             this.name = Objects.requireNonNull(name);
@@ -785,6 +786,16 @@ public final class BuildPlan {
         }
 
         /**
+         * Extra roots the terminal prune keeps besides the terminal's closure: a check whose result
+         * is part of the build's success but which nothing downstream consumes (a guard lane). A
+         * name not in the plan is ignored, so a caller may name lanes that were not planned.
+         */
+        public Builder alsoKeep(String... taskNames) {
+            alsoKept.addAll(List.of(taskNames));
+            return this;
+        }
+
+        /**
          * The terminal set so far, or {@code null} while none is. A tail that re-roots the plan has
          * to require what it displaces: {@link #build()} keeps only the terminal's <em>upstream</em>
          * closure, so a new terminal that does not require the old one silently prunes it and
@@ -795,7 +806,7 @@ public final class BuildPlan {
         }
 
         public BuildPlan build() {
-            List<Task> selected = terminal == null ? steps : pruneToTerminal(steps, terminal);
+            List<Task> selected = terminal == null ? steps : pruneToTerminal(steps, terminal, alsoKept);
             validateStateKeys(stateKeys);
             return new BuildPlan(name, interactive, selected, listeners, stateKeys);
         }
@@ -817,6 +828,10 @@ public final class BuildPlan {
      * first — validation still requires every listed require to exist in the selected set.
      */
     static List<Task> pruneToTerminal(List<Task> all, String terminal) {
+        return pruneToTerminal(all, terminal, List.of());
+    }
+
+    static List<Task> pruneToTerminal(List<Task> all, String terminal, List<String> alsoKeep) {
         Map<String, Task> byName = new HashMap<>();
         for (Task t : all) byName.put(t.name(), t);
         if (!byName.containsKey(terminal)) {
@@ -827,6 +842,9 @@ public final class BuildPlan {
         ArrayDeque<String> q = new ArrayDeque<>();
         keep.add(terminal);
         q.add(terminal);
+        for (String extra : alsoKeep) {
+            if (byName.containsKey(extra) && keep.add(extra)) q.add(extra);
+        }
         while (!q.isEmpty()) {
             Task t = byName.get(q.removeFirst());
             if (t == null) continue;

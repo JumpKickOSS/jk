@@ -574,7 +574,8 @@ public final class BuildPlanner {
                 groovyModule,
                 mixedWithJava,
                 mainCompile,
-                kspEnabled);
+                kspEnabled,
+                PlannerGuards.detect(in));
 
         Task parseBuild = PlannerSetup.parseBuildStep(cx);
 
@@ -656,12 +657,14 @@ public final class BuildPlanner {
         // `after-build` logic. The graph orders this unit behind every member, so by the time the
         // step executes the whole workspace is built.
         if (workspaceNoSources) {
+            String guardTerminal = PlannerGuards.appendRootLanes(b, cx, TaskNames.RESOLVE_DEPS);
+            if (guardTerminal != null) b.alsoKeep(TaskNames.GUARD_MODEL, TaskNames.GUARD_TREE);
             if (BuildLogicToml.resolve(in.dir()).isPresent()) {
                 b.addTask(PlannerResources.buildLogicAfterBuildStep(cx));
                 String gate = PlannerResources.appendGate(b, cx, false, in.testOnly(), true);
                 return b.terminal(gate != null ? gate : TaskNames.BUILD_LOGIC_AFTER_BUILD);
             }
-            return b.terminal(TaskNames.RESOLVE_DEPS);
+            return b.terminal(guardTerminal != null ? guardTerminal : TaskNames.RESOLVE_DEPS);
         }
         // BEFORE_COMPILE / GENERATE: codegen before any language compile (or KSP).
         b.addTask(PlannerResources.buildLogicBeforeCompileStep(cx));
@@ -676,6 +679,17 @@ public final class BuildPlanner {
         }
         if (useKotlin) {
             b.addTask(compileKotlin);
+        }
+        if (cx.guards().enabled()) {
+            List<String> after = new ArrayList<>();
+            if (useJava) after.add(TaskNames.COMPILE_JAVA);
+            if (useKotlin) after.add(TaskNames.COMPILE_KOTLIN);
+            if (useGroovy) after.add(TaskNames.COMPILE_GROOVY);
+            if (mixed || mixedGroovy) after.add(TaskNames.ASSEMBLE_CLASSES);
+            b.addTask(PlannerGuards.moduleStep(cx, after.toArray(String[]::new)));
+            PlannerGuards.appendRootLanes(b, cx, TaskNames.GUARD);
+            // Nothing downstream consumes a lane; keep them through the terminal prune.
+            b.alsoKeep(TaskNames.GUARD, TaskNames.GUARD_MODEL, TaskNames.GUARD_TREE);
         }
         if (mixed || mixedGroovy) {
             b.addTask(assembleClasses);
@@ -794,7 +808,8 @@ public final class BuildPlanner {
             boolean groovyModule,
             boolean mixedWithJava,
             String mainCompile,
-            boolean ksp) {}
+            boolean ksp,
+            PlannerGuards.GuardsPlan guards) {}
 
     /** One processor-authored KSP diagnostic: the reporting severity plus the bare message. */
     record KspDiagnostic(String severity, String message) {}

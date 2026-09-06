@@ -474,7 +474,7 @@ public final class BuildLogicSupport {
      * could consume. Hashes come from {@link FileHashMemo}, so the steady-state cost is one stat
      * per file rather than a re-read.
      */
-    private static List<String> workspaceInputTokens(Path rootDir) throws IOException {
+    static List<String> workspaceInputTokens(Path rootDir) throws IOException {
         Path root = rootDir.toAbsolutePath().normalize();
         List<String> tokens = new ArrayList<>();
         PathUtil.forEachRegularFile(root, WalkSkip::workspaceKey, (file, attrs) -> {

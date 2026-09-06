@@ -1,0 +1,186 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.guard.eval;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import cc.jumpkick.guard.baseline.Baseline;
+import cc.jumpkick.guard.baseline.Entry;
+import cc.jumpkick.guard.baseline.Observation;
+import cc.jumpkick.guard.baseline.RuleBaseline;
+import cc.jumpkick.guard.facts.FactsIndex;
+import cc.jumpkick.guard.rules.GuardRules;
+import cc.jumpkick.guard.rules.GuardsPresence;
+import cc.jumpkick.guard.rules.LoadResult;
+import cc.jumpkick.guard.rules.Rule;
+import cc.jumpkick.guard.schema.Kind;
+import cc.jumpkick.guard.schema.Lane;
+import cc.jumpkick.model.GuardsConfig;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+class LaneRunTest {
+
+    private static final String RULES = """
+            [guards.one-owner]
+            kind = "split-package"
+            why  = "one module per package"
+
+            [guards.no-sysout]
+            kind       = "forbid"
+            signatures = ["java.lang.System#out"]
+            instead    = "a logger"
+            why        = "stdout is not a log"
+
+            [guards.only-web]
+            kind  = "vocabulary"
+            owner = "a.Owner"
+            scope = "web/*"
+            instead = "Owner.X"
+            why   = "typed once"
+            """;
+
+    private static EvalContext ctx(Path root, Lane lane, String module) {
+        return new EvalContext(
+                lane,
+                root,
+                module,
+                root.resolve(module),
+                List.of(root.resolve(module)),
+                () -> FactsIndex.EMPTY,
+                () -> null);
+    }
+
+    private static LoadResult load(Path dir) throws IOException {
+        Files.writeString(dir.resolve(GuardsPresence.RULES_FILE), RULES);
+        LoadResult r = GuardRules.load(dir, GuardsConfig.ABSENT);
+        assertThat(r.hasErrors()).as(r.problems().toString()).isFalse();
+        return r;
+    }
+
+    @AfterEach
+    void unregister() {
+        for (Kind k : List.of(Kind.SPLIT_PACKAGE, Kind.FORBID, Kind.VOCABULARY)) {
+            Evaluators.register(k, (rule, ctx) -> Evaluation.unsupported("test reset"));
+        }
+    }
+
+    @Test
+    void rules_route_to_lanes_and_scope(@TempDir Path dir) throws IOException {
+        LoadResult r = load(dir);
+        assertThat(LaneRun.rulesFor(Lane.WORKSPACE, r.rules(), ""))
+                .extracting(Rule::id)
+                .containsExactly("one-owner");
+        assertThat(LaneRun.rulesFor(Lane.MODULE, r.rules(), "web/app"))
+                .extracting(Rule::id)
+                .containsExactly("no-sysout", "only-web");
+        assertThat(LaneRun.rulesFor(Lane.MODULE, r.rules(), "core"))
+                .extracting(Rule::id)
+                .containsExactly("no-sysout");
+        assertThat(LaneRun.rulesFor(Lane.MODEL, r.rules(), "")).isEmpty();
+    }
+
+    @Test
+    void an_unlanded_kind_is_unsupported_and_red_never_clean(@TempDir Path dir) throws IOException {
+        LoadResult r = load(dir);
+        LaneRun.Result res = LaneRun.run(
+                Lane.MODULE,
+                LaneRun.rulesFor(Lane.MODULE, r.rules(), "core"),
+                ctx(dir, Lane.MODULE, "core"),
+                Baseline.EMPTY);
+        assertThat(res.reports()).singleElement().satisfies(rep -> {
+            assertThat(rep.outcome()).isEqualTo(Outcome.UNSUPPORTED);
+            assertThat(rep.red()).isTrue();
+        });
+        assertThat(GuardMessages.render(res.reports().get(0)))
+                .startsWith("GUARD no-sysout  unsupported")
+                .contains("Instead:  a logger")
+                .contains("Why:      stdout");
+    }
+
+    @Test
+    void a_throwing_evaluator_is_scanner_failed_and_the_next_rule_still_runs(@TempDir Path dir) throws IOException {
+        LoadResult r = load(dir);
+        Evaluators.register(Kind.FORBID, (rule, ctx) -> {
+            throw new IllegalStateException("boom");
+        });
+        Evaluators.register(Kind.VOCABULARY, (rule, ctx) -> Evaluation.of(Map.of("literals", 3L), List.of()));
+        LaneRun.Result res = LaneRun.run(
+                Lane.MODULE,
+                LaneRun.rulesFor(Lane.MODULE, r.rules(), "web/app"),
+                ctx(dir, Lane.MODULE, "web/app"),
+                Baseline.EMPTY);
+        assertThat(res.reports())
+                .extracting(RuleReport::outcome)
+                .containsExactly(Outcome.SCANNER_FAILED, Outcome.CLEAN);
+        assertThat(res.reports().get(0).note()).contains("IllegalStateException: boom");
+        assertThat(res.red()).isTrue();
+    }
+
+    @Test
+    void violations_reconcile_against_the_baseline_and_tighten(@TempDir Path dir) throws IOException {
+        LoadResult r = load(dir);
+        Evaluators.register(
+                Kind.SPLIT_PACKAGE,
+                (rule, ctx) -> Evaluation.of(
+                        Map.of("packages", 40L),
+                        List.of(
+                                Observation.site("a.b", "x/A.java", 3, "a.b in x and y"),
+                                Observation.site("c.d", null, 0, "c.d in x and z"))));
+        Baseline before = Baseline.EMPTY.with(
+                "one-owner",
+                new RuleBaseline(
+                        Map.of("packages", 40L),
+                        List.of(new Entry.Site("a.b", "documented"), new Entry.Site("gone", "was split once"))));
+        LaneRun.Result res = LaneRun.run(
+                Lane.WORKSPACE, LaneRun.rulesFor(Lane.WORKSPACE, r.rules(), ""), ctx(dir, Lane.WORKSPACE, ""), before);
+        RuleReport rep = res.reports().get(0);
+        assertThat(rep.outcome()).isEqualTo(Outcome.VIOLATIONS);
+        assertThat(rep.fresh()).extracting(Observation::key).containsExactly("c.d");
+        assertThat(rep.baselined()).extracting(Observation::key).containsExactly("a.b");
+        assertThat(res.tightened()).isEqualTo(1);
+        assertThat(res.baseline().of("one-owner").entries())
+                .extracting(Entry::key)
+                .containsExactly("a.b");
+        String msg = GuardMessages.render(rep);
+        assertThat(msg)
+                .startsWith("GUARD one-owner  (1 new; 1 baselined)")
+                .contains("c.d in x and z")
+                .contains("Exempt:   ask the user")
+                .doesNotContain("Instead:");
+        assertThat(GuardMessages.summary(res, 1)).isEqualTo("1 rule broken (1 new) · 1 baseline entries tightened");
+
+        Baseline frozen = res.baseline()
+                .with("one-owner", Objects.requireNonNull(rep.reconciliation()).frozen("agreed"));
+        LaneRun.Result again = LaneRun.run(
+                Lane.WORKSPACE, LaneRun.rulesFor(Lane.WORKSPACE, r.rules(), ""), ctx(dir, Lane.WORKSPACE, ""), frozen);
+        assertThat(again.red()).isFalse();
+        assertThat(again.tightened()).isZero();
+        assertThat(GuardMessages.summary(again, 1)).isEqualTo("1 rule · clean");
+    }
+
+    @Test
+    void a_shrunk_population_is_scope_shrunk_and_blind_when_zero(@TempDir Path dir) throws IOException {
+        LoadResult r = load(dir);
+        Evaluators.register(Kind.SPLIT_PACKAGE, (rule, ctx) -> Evaluation.of(Map.of("packages", 10L), List.of()));
+        Baseline before = Baseline.EMPTY.with("one-owner", new RuleBaseline(Map.of("packages", 40L), List.of()));
+        LaneRun.Result res = LaneRun.run(
+                Lane.WORKSPACE, LaneRun.rulesFor(Lane.WORKSPACE, r.rules(), ""), ctx(dir, Lane.WORKSPACE, ""), before);
+        assertThat(res.reports().get(0).outcome()).isEqualTo(Outcome.SCOPE_SHRUNK);
+        assertThat(res.reports().get(0).note()).isEqualTo("scope-shrunk: packages: 40 → 10");
+        assertThat(res.baseline()).as("never tightened on a shrink").isEqualTo(before);
+        Evaluators.register(Kind.SPLIT_PACKAGE, (rule, ctx) -> Evaluation.of(Map.of("packages", 0L), List.of()));
+        LaneRun.Result blind = LaneRun.run(
+                Lane.WORKSPACE,
+                LaneRun.rulesFor(Lane.WORKSPACE, r.rules(), ""),
+                ctx(dir, Lane.WORKSPACE, ""),
+                Baseline.EMPTY);
+        assertThat(blind.reports().get(0).outcome()).isEqualTo(Outcome.BLIND);
+    }
+}

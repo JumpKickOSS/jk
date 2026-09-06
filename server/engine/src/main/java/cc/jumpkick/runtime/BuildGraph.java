@@ -206,7 +206,10 @@ public final class BuildGraph {
             // once — after every member, with the scheduler and the report it already has — is to
             // be in the graph. Without this the directory is silently ignored.
             boolean rootHasLogicDir = BuildLogicToml.resolve(rootDir).isPresent();
-            boolean rootHasBuildLogic = !rootHasSources && rootHasLogicDir;
+            // A root with guards is a unit for the same reason: its model and tree lanes run once,
+            // after every member, with the scheduler and the report the graph already has.
+            boolean rootHasGuards = PlannerGuards.enabledAt(rootDir);
+            boolean rootHasBuildLogic = !rootHasSources && (rootHasLogicDir || rootHasGuards);
             boolean rootHasGate = rootHasLogicDir && BuildLogicToml.hasStem(rootDir, "gate");
             boolean rootBuildable = rootHasSources || rootHasBuildLogic;
             if (rootBuildable) {
@@ -238,7 +241,7 @@ public final class BuildGraph {
             // `after-build` means after every member, so the sourceless root depends on all of
             // them. A root that builds nothing publishes nothing, so no member can depend back on
             // it and these edges cannot close a cycle.
-            if (rootHasBuildLogic || (rootHasSources && rootHasGate)) {
+            if (rootHasBuildLogic || (rootHasSources && (rootHasGate || rootHasGuards))) {
                 for (Path moduleDir : modules.keySet()) {
                     addEdge(rootDir, canonical(moduleDir));
                 }
