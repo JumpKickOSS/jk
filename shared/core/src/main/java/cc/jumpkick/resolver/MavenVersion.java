@@ -59,6 +59,10 @@ import org.jspecify.annotations.Nullable;
  *   over {@code 1.0.0.X1}.</li>
  * </ul>
  *
+ * <p>Vendored from Apache Maven 3.9.16 {@code maven-artifact}'s {@code ComparableVersion}
+ * (Apache-2.0) so {@code :core} and the native CLI do not link {@code maven-artifact} or
+ * {@code plexus-utils}. Refresh against that upstream class when its ordering rules change.
+ *
  * @see <a href="https://cwiki.apache.org/confluence/display/MAVENOLD/Versioning">"Versioning" on Maven Wiki</a>
  * @author <a href="mailto:kenney@apache.org">Kenney Westerhof</a>
  * @author <a href="mailto:hboutemy@apache.org">Hervé Boutemy</a>
