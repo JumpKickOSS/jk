@@ -62,6 +62,8 @@ public final class McpTools {
             + "WIP tests → jk_affected_tests (advisory; writes target/jk-tests-affected.md). "
             + "Frozen / kill → jk_status then jk_job cancel. "
             + "Run / test / lock / format / publish (dry-run) / install / import → jk_run (wait defaults true). "
+            + "House rules (jk-guards.toml) → jk_run kind=guard; a failure's code is a rule id, fix per Instead, "
+            + "never edit the baseline — the playbook's Guards page. "
             + "Scaffold → jk_new (preview first). Export maven/gradle/bom → jk_export. "
             + "Add/remove deps → jk_deps. Git/path as workspace member → jk_workspace. "
             + "java= → jk_manifest. Heap / nerd-font / CI → jk_config. "

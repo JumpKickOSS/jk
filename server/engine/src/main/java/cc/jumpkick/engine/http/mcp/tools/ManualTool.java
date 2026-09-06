@@ -16,7 +16,8 @@ public final class ManualTool implements McpTool {
         return new Spec(
                 "jk_manual",
                 "JumpKick playbook (markdown) for coding agents. Same as CLI `jk manual`. "
-                        + "Read this before using Maven or Gradle patterns. Resource: jk://manual.",
+                        + "Read this before using Maven or Gradle patterns; its Guards page says what a "
+                        + "house-rule failure is and how to fix one. Resource: jk://manual.",
                 McpSchemas.object(Map.of()),
                 McpSchemas.READ_ONLY);
     }

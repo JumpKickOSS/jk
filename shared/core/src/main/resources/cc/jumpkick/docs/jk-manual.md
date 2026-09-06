@@ -266,6 +266,57 @@ Need the live event stream? `jk test --output json` or `jk results --details`.
 
 ---
 
+## Guards (house rules)
+
+A project may carry **`jk-guards.toml`**: declarative rules the build enforces — banned calls, required
+annotations, layer edges, text patterns, size caps. They run inside `jk build` as `guard` steps
+(module, model, tree lanes) and `jk guard` runs every lane now, tests skipped. No rule file, no cost.
+
+A guard failure looks like this in `target/jk-results.md` / `jk_diagnostics`:
+
+```
+GUARD one-digest-surface  violations
+  shared/io/src/main/java/…/Foo.java:42: MessageDigest.getInstance("SHA-256") called outside Hashing
+  Instead:  Hashing.newSha256()
+  Why:      one digest surface
+  Source:   jk-guards.toml:14
+  Exempt:   ask the user to add [guards.one-digest-surface].allow with a reason
+  Explain:  jk guard explain one-digest-surface
+```
+
+**A guard failure's `code` is a rule id. Fix per `Instead`. To exempt, stop and ask the user to add an
+`allow` entry with a reason — never edit the baseline, never add a comment.** Read the catalog
+(`jk guard explain`) before large edits.
+
+The loop: read the `code` → `jk guard explain <id>` (why, instead, source line, last outcome) → change
+the *site* the way `Instead` says → `jk format` → rebuild (`jk build`, or MCP `jk_run kind=guard`).
+
+Stop and ask the user when:
+- the fix is an exemption (`allow` needs a human reason), or a rule looks wrong;
+- the message says **thrash** or names `jk guard freeze <id> --reason "…"` — accepting existing
+  violations into `jk-guards-baseline.toml` is the user's decision;
+- a rule is `blind`, `owner-missing`, `stale-allow`, `no-bite` or `scanner-failed`: the rule, not the
+  tree, is what needs attention.
+
+Never: edit `jk-guards-baseline.toml` by hand; add a suppression comment or annotation; pass `--force`
+to get past a red guard; delete a rule to make a build green.
+
+Authoring a rule is three facts — the kind, the thing banned or required, the sanctioned alternative:
+
+```bash
+jk guard explain --schema <kind>    # keys + one example; kinds: forbid annotate classes layers cycles
+                                    # split-package api depend toolchain tiers text metric vocabulary
+                                    # parity generated output commit
+jk guard explain --schema guard-test  # the @Guard skeleton for what TOML cannot say
+jk guard                            # every lane now; red on any violation
+jk guard freeze <id> --reason "…"   # accept a rule's current sites (user-approved); --retire drops a removed rule
+```
+
+Every rule needs `why`; `forbid`/`text`/`vocabulary` need `instead`; a rule that cannot fire anywhere
+is red (`no-bite`) — give `forbid` an `owner`, `text` a `hit`.
+
+---
+
 ## More documentation
 
 Human site (HTML): **https://jumpkick.build/documentation**

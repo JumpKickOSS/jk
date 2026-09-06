@@ -34,6 +34,14 @@ class JkManualTest {
         assertThat(md).contains("raw.githubusercontent.com/JumpKickOSS/jk");
         assertThat(md).contains("jumpkick.build/documentation");
         assertThat(md).contains("`security`");
+        assertThat(md).contains("## Guards (house rules)");
+        assertThat(md).contains("A guard failure's `code` is a rule id");
+        assertThat(md).contains("never edit the baseline, never add a comment");
+        assertThat(md).contains("jk guard explain <id>");
+        String guards = md.substring(md.indexOf("## Guards (house rules)"), md.indexOf("## More documentation"));
+        assertThat(guards.length() / 4)
+                .as("the Guards page is read every session: ~600 tokens, not a reference manual")
+                .isLessThan(700);
     }
 
     @Test
@@ -47,6 +55,8 @@ class JkManualTest {
         assertThat(body).contains("target/jk-results.md");
         assertThat(body).contains("unit");
         assertThat(body).contains("--all");
+        assertThat(body).contains("jk guard explain <id>");
+        assertThat(body).contains("never edit\n`jk-guards-baseline.toml`");
 
         Files.writeString(file, "# custom\n");
         assertThat(JkManual.ensureAgentsGuide(dir)).isFalse();

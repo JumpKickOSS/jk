@@ -44,6 +44,11 @@ public final class JkManual {
             Default `jk test` is the **unit** suite only (the inner loop). Do not pass `--all` as a
             habit. Climb with `--suite integration` or `--suite e2e` when the change needs that
             rung. Replay the same selection after a failure.
+
+            If the project has `jk-guards.toml`, a build failure whose code is a rule id is a guard:
+            fix the site as its `Instead` line says (`jk guard explain <id>` for the rule). To exempt,
+            stop and ask the user for an `allow` entry with a reason — never edit
+            `jk-guards-baseline.toml`, never add a suppression comment.
             """;
 
     private JkManual() {}
