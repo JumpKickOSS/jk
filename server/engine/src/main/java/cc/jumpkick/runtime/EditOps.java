@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildEditor;
+import cc.jumpkick.guard.eval.MutationCheck;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.Scope;
@@ -59,6 +60,12 @@ public final class EditOps {
                 };
             }
             if (updated.equals(original)) return new Result(false, null, detail);
+            if (op != null && op.endsWith("-dependency")) {
+                // Dependency-policy guards judge the proposed manifest before it is written; a
+                // violation refuses the edit with `instead` and `why`. No flag overrides this.
+                String refusal = MutationCheck.check(file, updated);
+                if (refusal != null) return new Result(false, refusal, detail);
+            }
             Files.writeString(file, updated, StandardCharsets.UTF_8);
             return new Result(true, null, detail);
         } catch (IOException | RuntimeException e) {

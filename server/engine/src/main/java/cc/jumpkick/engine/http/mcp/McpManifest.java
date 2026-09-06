@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.http.mcp;
 
 import cc.jumpkick.config.JkBuildEditor;
+import cc.jumpkick.guard.eval.MutationCheck;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.lock.ManifestPaths;
@@ -49,6 +50,16 @@ public final class McpManifest {
                     after = JkBuildEditor.addDependency(after, scope, p.name, p.group, p.artifact, p.version);
                     notes.add("add " + p.group + ":" + p.artifact + ":" + p.version);
                 }
+            }
+            String refusal = after.equals(before) ? null : MutationCheck.check(file, after);
+            if (refusal != null) {
+                // The guard refused the proposed manifest: nothing changes, and the refusal is the note.
+                notes.add(refusal);
+                out.put("notes", notes);
+                out.put("changed", false);
+                out.put("preview", "");
+                out.put("applied", false);
+                return out;
             }
             out.put("notes", notes);
             out.put("changed", !after.equals(before));
