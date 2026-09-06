@@ -830,6 +830,15 @@ is where the mistake is actually typed — runs in both.
   the nine correct non-JSON escapers, with no allowlist at all. When two
   implementations are identical and only one is a defect, the difference
   is always in what surrounds them.
+- **Match against the right view of the text, and take the view from its one
+  owner.** A ban on code must not fire on a javadoc that mentions the banned
+  name; a rule about comments must not fire on a string literal that happens
+  to say the phrase. `cc.jumpkick.host.CodeText` is the lexer that produces
+  every such view (comments blanked, comments and literals blanked, comments
+  only), length-preserving so an offset in the view is an offset in the
+  source. It replaced three copies that had each learned a different edge
+  case; the gate script and buildSrc keep theirs only until the Gradle-side
+  follow-up, and `CodeTextSingleOwnerTest` fails a fourth.
 - **Prefer a zero-allowlist ban to a ratchet, and a ratchet to nothing.**
   An allowlist is a feature, not a concession: it *is* the ownership map,
   checked in and reviewable. When a rule has too many violations to gate

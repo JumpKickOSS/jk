@@ -47,7 +47,7 @@ final class FqcnShortener {
         // insertion point could land inside a block comment or a text block — rewriting a string
         // literal's contents. Offsets in the blanked copy match the original, so positions found here
         // are still valid against `source`.
-        String blanked = JavaText.blankNonCode(source);
+        String blanked = JavaText.blanked(source);
         String pkg = JavaText.packageName(blanked);
         Map<String, String> imported = existingImports(blanked); // simple → fqcn
 
@@ -202,11 +202,11 @@ final class FqcnShortener {
     }
 
     static String insertImports(String source, Set<String> fqcns) {
-        return insertImports(source, fqcns, Syntax.JAVA, JavaText.blankNonCode(source));
+        return insertImports(source, fqcns, Syntax.JAVA, JavaText.blanked(source));
     }
 
     static String insertImports(String source, Set<String> fqcns, Syntax syntax) {
-        return insertImports(source, fqcns, syntax, JavaText.blankNonCode(source));
+        return insertImports(source, fqcns, syntax, JavaText.blanked(source));
     }
 
     /**

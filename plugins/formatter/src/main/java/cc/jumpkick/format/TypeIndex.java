@@ -87,7 +87,7 @@ final class TypeIndex {
         }
         String pkg = JavaText.packageName(src);
         if (pkg.isEmpty()) return;
-        String blanked = JavaText.blankNonCode(src);
+        String blanked = JavaText.blanked(src);
         Matcher m = JavaText.TYPE_DECL.matcher(blanked);
         // Only a declaration at brace depth 0 is a top-level type, and only a top-level type is
         // named {@code package.Simple}. Indexing every match invented an FQCN for each nested,

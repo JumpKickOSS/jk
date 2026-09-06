@@ -1,21 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.format;
 
+import cc.jumpkick.host.CodeText;
 import java.util.regex.Pattern;
 
 /**
- * Length-preserving comment/string blanking and the FQCN matcher shared by the shortener and the
- * type index. Positions in the blanked copy match the original source.
+ * The source-shape patterns the shortener and the type index share. Blanking and the FQCN shape are
+ * {@link CodeText}'s; positions in a blanked copy match the original source.
  */
 final class JavaText {
 
     private JavaText() {}
 
-    /**
-     * Two or more lowercase package segments followed by an UpperCamel type. The same shape
-     * {@code checkNoFqcn} counts.
-     */
-    static final Pattern FQCN = Pattern.compile("(?<![\\w.$])(?:[a-z][a-z0-9_]*\\.){2,}[A-Z][A-Za-z0-9_]*");
+    /** The FQCN shape, owned by {@link CodeText} so the shortener and the FQCN ratchet agree. */
+    static final Pattern FQCN = CodeText.FQCN;
 
     /**
      * The trailing run is {@code [ \\t]*}, deliberately not {@code \\s*}: these patterns are matched
@@ -44,95 +42,9 @@ final class JavaText {
     static final Pattern TYPE_DECL = Pattern.compile(
             "\\b(?:class|interface|enum|record|object|trait)\\s+([A-Z][\\w]*)|@interface\\s+([A-Z][\\w]*)");
 
-    /**
-     * Blank comments and string/char/text-block literals, preserving length and newlines so a
-     * regex over the result still maps onto the original.
-     */
-    static String blankNonCode(String src) {
-        StringBuilder out = new StringBuilder(src.length());
-        int i = 0;
-        boolean line = false, block = false, text = false, str = false, chr = false;
-        while (i < src.length()) {
-            char c = src.charAt(i);
-            String two = i + 2 <= src.length() ? src.substring(i, i + 2) : "";
-            String three = i + 3 <= src.length() ? src.substring(i, i + 3) : "";
-            if (line) {
-                if (c == '\n') {
-                    line = false;
-                    out.append(c);
-                } else {
-                    out.append(' ');
-                }
-            } else if (block) {
-                if ("*/".equals(two)) {
-                    block = false;
-                    out.append("  ");
-                    i += 2;
-                    continue;
-                }
-                out.append(c == '\n' ? '\n' : ' ');
-            } else if (text) {
-                // A text block may escape a quote to keep a `"""` sequence from closing it. Without
-                // consuming the escape, the blanker closed the block early and treated the remaining
-                // string body as code — where the FQCN matcher would rewrite the literal's contents.
-                // That output still compiles; only the string's value changes, and the unused-import
-                // step then removes the evidence. Silent data loss, so it is handled here rather than
-                // left to a later guard.
-                if (c == '\\') {
-                    out.append("  ");
-                    i += 2;
-                    continue;
-                }
-                if ("\"\"\"".equals(three)) {
-                    text = false;
-                    out.append("   ");
-                    i += 3;
-                    continue;
-                }
-                out.append(c == '\n' ? '\n' : ' ');
-            } else if (str) {
-                if (c == '\\') {
-                    out.append("  ");
-                    i += 2;
-                    continue;
-                }
-                if (c == '"') str = false;
-                out.append(' ');
-            } else if (chr) {
-                if (c == '\\') {
-                    out.append("  ");
-                    i += 2;
-                    continue;
-                }
-                if (c == '\'') chr = false;
-                out.append(' ');
-            } else if ("//".equals(two)) {
-                line = true;
-                out.append("  ");
-                i += 2;
-                continue;
-            } else if ("/*".equals(two)) {
-                block = true;
-                out.append("  ");
-                i += 2;
-                continue;
-            } else if ("\"\"\"".equals(three)) {
-                text = true;
-                out.append("   ");
-                i += 3;
-                continue;
-            } else if (c == '"') {
-                str = true;
-                out.append(' ');
-            } else if (c == '\'') {
-                chr = true;
-                out.append(' ');
-            } else {
-                out.append(c);
-            }
-            i++;
-        }
-        return out.toString();
+    /** Comments and literal bodies blanked to spaces; {@link CodeText} owns the lexer. */
+    static String blanked(String src) {
+        return CodeText.blank(src, CodeText.Blank.COMMENTS_AND_STRINGS);
     }
 
     static String packageName(String source) {

@@ -13,7 +13,7 @@ import org.junit.jupiter.api.io.TempDir;
  * The FQCN pass runs on Java and nothing else, and this is the guard on that boundary rather than a
  * preference to be tidied away later.
  *
- * <p>{@link JavaText#blankNonCode} implements Java's lexeme set. The other three languages differ in
+ * <p>{@link JavaText#blanked} implements Java's lexeme set. The other three languages differ in
  * ways that make it rewrite the inside of string literals: Groovy has {@code '''} blocks (the blanker
  * reads {@code '} as a char literal, so the first apostrophe inside closes it) and slashy {@code /…/}
  * regex literals it does not recognise at all; Kotlin and Scala have {@code import … as Alias} and
@@ -51,7 +51,7 @@ class FqcnShortenerLanguageScopeTest {
         String src = """
                 def s = '''Don't reference cc.jumpkick.foo.Bar directly.'''
                 """;
-        String blanked = JavaText.blankNonCode(src);
+        String blanked = JavaText.blanked(src);
         assertThat(blanked)
                 .as("if this ever stops containing the FQCN, Groovy's lexing was fixed and the "
                         + "Kind.JAVA restriction in CodeFormatter.formatOne can be revisited")
@@ -61,7 +61,7 @@ class FqcnShortenerLanguageScopeTest {
     /** Likewise a Groovy slashy string, which the blanker does not recognise at all. */
     @Test
     void the_blanker_still_mis_lexes_a_groovy_slashy_string() {
-        assertThat(JavaText.blankNonCode("def p = ~/cc.jumpkick.foo.Bar/\n")).contains("cc.jumpkick.foo.Bar");
+        assertThat(JavaText.blanked("def p = ~/cc.jumpkick.foo.Bar/\n")).contains("cc.jumpkick.foo.Bar");
     }
 
     /** A Kotlin alias binds a different simple name than the type's own, which this pass cannot model. */
