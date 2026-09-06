@@ -4,6 +4,7 @@ package cc.jumpkick.guard.rules;
 import cc.jumpkick.guard.schema.Kind;
 import cc.jumpkick.model.GuardsConfig;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -20,8 +21,8 @@ public record RuleSet(Map<String, Rule> rules, Map<String, String> sourceDigests
     public static final RuleSet EMPTY = new RuleSet(Map.of(), Map.of(), GuardsConfig.ABSENT);
 
     public RuleSet {
-        rules = Map.copyOf(new TreeMap<>(rules));
-        sourceDigests = Map.copyOf(new TreeMap<>(sourceDigests));
+        rules = Collections.unmodifiableMap(new TreeMap<>(rules));
+        sourceDigests = Collections.unmodifiableMap(new TreeMap<>(sourceDigests));
     }
 
     public Optional<Rule> rule(String id) {

@@ -2,6 +2,7 @@
 package cc.jumpkick.guard.facts;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -24,8 +25,8 @@ public record FactsIndex(Map<String, ClassFacts> classes, Map<String, String> st
     public static final FactsIndex EMPTY = new FactsIndex(Map.of(), Map.of(), "");
 
     public FactsIndex {
-        classes = Map.copyOf(new TreeMap<>(classes));
-        stamps = Map.copyOf(new TreeMap<>(stamps));
+        classes = Collections.unmodifiableMap(new TreeMap<>(classes));
+        stamps = Collections.unmodifiableMap(new TreeMap<>(stamps));
     }
 
     public Optional<ClassFacts> classNamed(String internalName) {
