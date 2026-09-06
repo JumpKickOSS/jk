@@ -41,3 +41,9 @@ G44 authority on a question about Gradle; the self-hosted side is the honest pla
 # A property of the Gradle task graph, not of the sources: whether a JavaCompile task is enabled.
 # The self-hosted build has no task to disable, and the hole it closes only exists on the Gradle side.
 G64 checkNoDisabledCompile — Gradle task-graph state; the jk build has no compile task to disable
+
+# 2026-09-06 — letters that have moved into jk-guards.toml (Guards.kt `ruleId`) are enforced on the
+# jk side by the guard engine and on the Gradle side by their original task. Parity now means "the
+# letter is enforced by both builds", not "the same code runs". Gradle running jk-guards.toml itself
+# (a JavaExec over server/guard) is the owner's follow-up; until then the Gradle twins stay.
+

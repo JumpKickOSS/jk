@@ -1,0 +1,12 @@
+# jk's house rules — the declarative tier. Each letter of docs/contributors/code-as-art.md's
+# registry that has moved here names its rule in Guards.kt (ruleId); G51 keeps the two in step.
+# Exemptions go in `allow` with a reason; never a comment in code, never a hand edit of
+# jk-guards-baseline.toml. `jk guard explain <id>` prints a rule; `--schema <kind>` prints a kind.
+
+# G30. Properties.store() writes a #-dated comment line in Hashtable order — a non-reproducible
+# artifact. DeterministicProperties.render is the one writer.
+[guards.properties-store-owner]
+kind       = "forbid"
+signatures = ["java.util.Properties#store(**)", "java.util.Properties#storeToXML(**)"]
+instead    = "cc.jumpkick.host.DeterministicProperties.render"
+why        = "Properties.store writes a dated comment in hash order: a non-reproducible artifact"

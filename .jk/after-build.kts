@@ -1863,35 +1863,6 @@ guard("G29", "checkWorkerOfflineFromSpec") {
 // order, so a caller that reaches for it ships a non-reproducible artifact.
 // ---------------------------------------------------------------------------
 
-guard("G30", "checkPropertiesStoreOwner") {
-    val ownerPath = "shared/host/src/main/java/cc/jumpkick/host/DeterministicProperties.java"
-    if (!Regex("""String\s+render\s*\(""").containsMatchIn(owner(ownerPath))) {
-        error("DeterministicProperties no longer declares render(...), so this guard has lost the"
-            + " owner it points callers at.")
-    }
-    var importing = 0
-    val hits = mutableListOf<String>()
-    mainJava.forEach { f ->
-        // Strings blanked as well as comments: a javadoc that merely mentions Properties.store()
-        // stays invisible, and so does a `.store(` inside a literal.
-        val code = blankedOf(f)
-        if (!code.contains("import java.util.Properties;")) return@forEach
-        importing++
-        code.lines().forEachIndexed { i, line ->
-            if (line.contains(".store(")) hits.add("${rel(f)}:${i + 1}: ${line.trim()}")
-        }
-    }
-    if (importing == 0) {
-        error("found no main-source file importing java.util.Properties; measured against 14. The"
-            + " walk has stopped seeing the tree.")
-    }
-    if (hits.isNotEmpty()) {
-        error("Properties.store() writes a #-dated comment line in Hashtable order — a"
-            + " non-reproducible artifact. Render through"
-            + " cc.jumpkick.host.DeterministicProperties.render instead:\n" + bullets(hits))
-    }
-}
-
 // ---------------------------------------------------------------------------
 // G33 — the Gradle version catalog and jk-lock.toml agree on every coordinate they share.
 //
@@ -3358,7 +3329,28 @@ guard("G51", "checkGuardParity") {
             + " guard is passing vacuously.")
     }
     val gradle = lettersIn(gradleScripts.joinToString("\n") { text(it) })
-    val jk = lettersIn(text(at(".jk/after-build.kts")))
+    // A letter is also jk-enforced when its registered jk-guards.toml rule exists. The registry
+    // (`Guards.kt`) is read by regex here, as the registry scan does: each `spec(` block that names
+    // a letter and a `ruleId`. A registered rule with no table, or a table no letter claims, is the
+    // registry lagging the code.
+    val specBlock = Regex("""spec\(\s*(\d+),(?:(?!spec\().)*?ruleId = "([a-z0-9][a-z0-9-]*)"""", RegexOption.DOT_MATCHES_ALL)
+    val mapped = specBlock.findAll(text(at("buildSrc/src/main/kotlin/Guards.kt")))
+        .associate { it.groupValues[1].toInt() to it.groupValues[2] }
+    val rulesFile = at("jk-guards.toml")
+    val tables = if (Files.isRegularFile(rulesFile)) {
+        Regex("""(?m)^\[guards\.([a-z0-9][a-z0-9-]*)]""").findAll(text(rulesFile)).map { it.groupValues[1] }.toSortedSet()
+    } else sortedSetOf<String>()
+    val registryFaults = mutableListOf<String>()
+    mapped.filterValues { it !in tables }.forEach { (n, id) ->
+        registryFaults.add("Guards.kt says G$n is enforced by [guards.$id] but jk-guards.toml has no such table")
+    }
+    (tables - mapped.values.toSet()).forEach { id ->
+        registryFaults.add("jk-guards.toml declares [guards.$id] but no Guards.kt letter claims it (ruleId = \"$id\")")
+    }
+    if (registryFaults.isNotEmpty()) {
+        error("The guard registry and jk-guards.toml disagree:\n" + bullets(registryFaults))
+    }
+    val jk = (lettersIn(text(at(".jk/after-build.kts"))) + mapped.filterValues { it in tables }.keys).toSortedSet()
     if (gradle.isEmpty() || jk.isEmpty()) {
         error("Read no guard letters from one of the two sides (gradle=${gradle.size},"
             + " jk=${jk.size}) — the scan broke and this guard is passing vacuously.")

@@ -1230,16 +1230,37 @@ tasks.register("checkGuardParity") {
     description = "Fail when a guard letter is enforced by one build and not the other"
     val catalog = layout.projectDirectory.file("buildSrc/src/main/kotlin/Guards.kt")
     val jkGate = layout.projectDirectory.file(".jk/after-build.kts")
+    val jkRules = layout.projectDirectory.file("jk-guards.toml")
     val exceptions = layout.projectDirectory.file("guard-parity.txt")
     inputs.file(catalog).withPropertyName("catalog")
     inputs.file(jkGate).withPropertyName("jkGate")
+    inputs.files(jkRules).withPropertyName("jkRules")
     inputs.file(exceptions).withPropertyName("exceptions")
     val stamp = layout.buildDirectory.file("guards/guard-parity.ok")
     outputs.file(stamp)
     doLast {
         val marker = Regex("""guard\("G(\d+)"""")
         val gradle = Guards.gradleLetters
-        val jk = marker.findAll(jkGate.asFile.readText()).map { it.groupValues[1].toInt() }.toSortedSet()
+        // A letter is jk-enforced when the gate script still carries it OR its registered
+        // jk-guards.toml rule exists. A registered rule with no table, or a table no letter
+        // claims, is the registry lagging the code — the drift this check exists to catch.
+        val tables = if (jkRules.asFile.isFile) {
+            Regex("""(?m)^\[guards\.([a-z0-9][a-z0-9-]*)]""").findAll(jkRules.asFile.readText())
+                .map { it.groupValues[1] }.toSortedSet()
+        } else sortedSetOf<String>()
+        val mapped = Guards.tomlLetters
+        val jk = (marker.findAll(jkGate.asFile.readText()).map { it.groupValues[1].toInt() }
+                + mapped.filterValues { it in tables }.keys).toSortedSet()
+        val registryProblems = mutableListOf<String>()
+        mapped.filterValues { it !in tables }.forEach { (n, id) ->
+            registryProblems.add("Guards says G$n is enforced by [guards.$id] but jk-guards.toml has no such table")
+        }
+        (tables - mapped.values.toSet()).forEach { id ->
+            registryProblems.add("jk-guards.toml declares [guards.$id] but no Guards letter claims it (ruleId = \"$id\")")
+        }
+        if (registryProblems.isNotEmpty()) {
+            throw GradleException("the guard registry and jk-guards.toml disagree —\n  " + registryProblems.joinToString("\n  "))
+        }
         if (gradle.isEmpty() || jk.isEmpty()) {
             throw GradleException("checkGuardParity read no guard letters from one of the two sides"
                     + " (gradle=${gradle.size}, jk=${jk.size}) — the scan broke and the guard is"
@@ -1660,4 +1681,12 @@ tasks.register("installLocal") {
             .filter { it.path != ":engine" }
             .map { it.tasks.matching { t -> t.name == "installLocal" } })
     finalizedBy(":engine:installLocal")
+}
+
+// Prints the generated guard table so a registry change can be pasted between the markers in
+// docs/contributors/code-as-art.md; `checkGuardRegistry` is the check, this is the pen.
+tasks.register("printGuardRegistry") {
+    group = "verification"
+    description = "Print the generated guard table for docs/contributors/code-as-art.md"
+    doLast { println(Guards.tableMarkdown()) }
 }

@@ -49,6 +49,12 @@ data class GuardSpec(
     val tableTask: String? = null,
     val mavenPublishOnly: Boolean = false,
     val description: String = "",
+    /**
+     * The `[guards.<id>]` table in `jk-guards.toml` that enforces this letter on the self-hosted side, once the letter
+     * has moved out of `.jk/after-build.kts`. Parity (G51) counts the letter as jk-enforced when the table exists, and
+     * fails when the table is missing or unclaimed.
+     */
+    val ruleId: String? = null,
 ) {
     val id: String
         get() = letter?.let { "G$it" } ?: task

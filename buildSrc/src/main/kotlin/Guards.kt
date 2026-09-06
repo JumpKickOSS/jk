@@ -313,6 +313,7 @@ object Guards {
                 ownerPath = ":host",
                 description =
                     "Fail the build on a Properties.store() call in main sources (use DeterministicProperties.render)",
+                ruleId = "properties-store-owner",
             ),
             spec(
                 31,
@@ -739,6 +740,10 @@ object Guards {
     val gradleLetters: Set<Int>
         get() = all.mapNotNull { spec -> spec.letter.takeIf { spec.gradleLetter } }.toSortedSet()
 
+    /** Letter → the `jk-guards.toml` rule id that enforces it on the self-hosted side. */
+    val tomlLetters: Map<Int, String>
+        get() = all.filter { it.letter != null && it.ruleId != null }.associate { it.letter!! to it.ruleId!! }
+
     fun named(task: String): GuardSpec =
         all.singleOrNull { it.task == task && it.registers } ?: error("No Gradle guard task named '$task' in Guards")
 
@@ -747,10 +752,11 @@ object Guards {
 
     fun tableMarkdown(): String = buildString {
         appendLine("<!-- guards:start -->")
-        appendLine("| id | task | rule | form |")
-        appendLine("|---|---|---|---|")
+        appendLine("| id | task | rule | form | jk rule |")
+        appendLine("|---|---|---|---|---|")
         tableRows.forEach { spec ->
-            appendLine("| G${spec.letter} | ${spec.tableTaskCell} | ${spec.rule} | ${spec.form} |")
+            val jkRule = spec.ruleId?.let { "`$it`" } ?: "—"
+            appendLine("| G${spec.letter} | ${spec.tableTaskCell} | ${spec.rule} | ${spec.form} | $jkRule |")
         }
         append("<!-- guards:end -->")
     }
@@ -769,6 +775,7 @@ object Guards {
         tableTask: String? = null,
         mavenPublishOnly: Boolean = false,
         description: String = "",
+        ruleId: String? = null,
     ): GuardSpec =
         GuardSpec(
             letter = letter,
@@ -784,6 +791,7 @@ object Guards {
             tableTask = tableTask,
             mavenPublishOnly = mavenPublishOnly,
             description = description,
+            ruleId = ruleId,
         )
 
     private fun defaultAttach(home: GuardHome): Set<GuardAttach> =
