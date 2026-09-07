@@ -69,6 +69,11 @@ class SelfHostingTomlTest {
                         "shared/wire",
                         "server/guard",
                         "server/engine",
+                        "server/guard/packs/spring",
+                        "server/guard/packs/quarkus",
+                        "server/guard/packs/android",
+                        "server/guard/packs/library",
+                        "server/guard/packs/monorepo",
                         "clients/cli",
                         "clients/cli-terminal",
                         "clients/web",
@@ -86,12 +91,7 @@ class SelfHostingTomlTest {
                         "plugins/grails",
                         "plugins/protobuf",
                         "plugins/android",
-                        "plugins/micronaut",
-                        "packs/spring",
-                        "packs/quarkus",
-                        "packs/android",
-                        "packs/library",
-                        "packs/monorepo");
+                        "plugins/micronaut");
     }
 
     @Test
@@ -223,10 +223,10 @@ class SelfHostingTomlTest {
             Path moduleManifest = REPO.resolve(module).resolve("jk.toml");
             assertThat(moduleManifest).as("missing " + moduleManifest).exists();
             JkBuild parsed = JkBuildParser.parse(moduleManifest);
-            if (module.startsWith("packs/")) {
+            if (module.startsWith("server/guard/packs/")) {
                 // A rule pack is a resource-only artifact under its own group, named for its pack.
                 assertThat(parsed.project().group()).isEqualTo("cc.jumpkick.guards");
-                assertThat(parsed.project().name()).isEqualTo(module.substring("packs/".length()));
+                assertThat(parsed.project().name()).isEqualTo(module.substring("server/guard/packs/".length()));
                 continue;
             }
             assertThat(parsed.project().group()).isEqualTo("cc.jumpkick");

@@ -87,7 +87,7 @@ gradle.sharedServices
     .get() // eager: take the lock now, before any task can touch shared outputs
 
 include(
-    // packs/ — rule packs (cc.jumpkick.guards:<name>)
+    // server/guard/packs/ — rule packs (cc.jumpkick.guards:<name>)
     ":guards-spring",
     ":guards-quarkus",
     ":guards-android",
@@ -133,12 +133,12 @@ include(
     ":minified",
 )
 
-// packs/ — rule packs
-project(":guards-spring").projectDir   = file("packs/spring")
-project(":guards-quarkus").projectDir  = file("packs/quarkus")
-project(":guards-android").projectDir  = file("packs/android")
-project(":guards-library").projectDir  = file("packs/library")
-project(":guards-monorepo").projectDir = file("packs/monorepo")
+// server/guard/packs/ — rule packs
+project(":guards-spring").projectDir   = file("server/guard/packs/spring")
+project(":guards-quarkus").projectDir  = file("server/guard/packs/quarkus")
+project(":guards-android").projectDir  = file("server/guard/packs/android")
+project(":guards-library").projectDir  = file("server/guard/packs/library")
+project(":guards-monorepo").projectDir = file("server/guard/packs/monorepo")
 
 // shared/ — client-safe contracts + code
 project(":host").projectDir          = file("shared/host")

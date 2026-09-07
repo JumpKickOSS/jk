@@ -23,9 +23,9 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
 /**
- * Every shipped rule pack under {@code packs/}: its fragment loads clean and within the token budget
- * as a root rules file, and every fixture-bearing rule bites — {@code Bad} fires, {@code Ok} is
- * quiet — with nothing but the fixture's own stub types on the classpath.
+ * Every shipped rule pack under {@code server/guard/packs/}: its fragment loads clean and within the
+ * token budget as a root rules file, and every fixture-bearing rule bites — {@code Bad} fires,
+ * {@code Ok} is quiet — with nothing but the fixture's own stub types on the classpath.
  */
 class StarterPacksTest {
 
@@ -36,7 +36,7 @@ class StarterPacksTest {
     @ParameterizedTest
     @MethodSource("packs")
     void the_pack_loads_clean_and_every_fixture_bites(String pack, @TempDir Path tmp) throws Exception {
-        Path resources = RepoRoot.dir(StarterPacksTest.class, "packs/" + pack + "/src/main/resources");
+        Path resources = RepoRoot.dir(StarterPacksTest.class, "server/guard/packs/" + pack + "/src/main/resources");
         Path root = Files.createDirectories(tmp.resolve("proj"));
         Files.writeString(
                 root.resolve("jk.toml"), "group = \"t\"\nname = \"consumer\"\nversion = \"0.0.1\"\njdk = 25\n");

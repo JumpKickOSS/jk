@@ -87,7 +87,7 @@ final class HouseRules {
             why = "a hand-built <javaHome>/bin/java drops the Windows .exe and the fork is dead there",
             instead =
                     "JdkFingerprint.java(javaHome), .javac(javaHome), or .tool(javaHome, name) — on :host, so every module reaches it")
-    @Fixture("guard-fixtures/hand-built-java-binary")
+    @Fixture("server/guard/fixtures/hand-built-java-binary")
     void handBuiltJavaBinary(Text text, Violations v) {
         String ownerText = owner(text, JDK_FINGERPRINT);
         List<String> names = new ArrayList<>();
@@ -134,7 +134,7 @@ final class HouseRules {
                     "jk has one boolean truth set, EnvValues.parseBool: 1/true/yes/on against 0/false/no/off, trimmed, case-insensitive",
             instead =
                     "cc.jumpkick.config.EnvValues.parseBool(raw) (or .bool(env, name) for a JK_* variable); a reader of someone else's format is a baseline entry that says so")
-    @Fixture("guard-fixtures/single-truth-set")
+    @Fixture("server/guard/fixtures/single-truth-set")
     void singleTruthSet(Text text, Violations v) {
         String truthy = "true|1|yes|on|false|0|no|off";
         Pattern handRolled = Pattern.compile("\"(?:" + truthy

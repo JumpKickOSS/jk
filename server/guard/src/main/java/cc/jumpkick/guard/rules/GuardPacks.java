@@ -27,7 +27,7 @@ import org.tomlj.TomlParseResult;
  * are a {@code jk-guards.toml} fragment and {@code guard-fixtures/**}. A pack is pinned in {@code
  * jk-lock.toml} like a plugin ({@code [[plugin]]} row: coordinate, version, sha256), located
  * offline through that pin in the store, and unpacked once per sha under {@code
- * target/jk-guards/packs/<artifact>/}, where the loader reads it as the {@code PACK} layer and
+ * target/jk-guards/guard-packs/<artifact>/}, where the loader reads it as the {@code PACK} layer and
  * {@code jk guard test} finds its fixtures.
  */
 public final class GuardPacks {
@@ -77,7 +77,7 @@ public final class GuardPacks {
     public static Path unpackedDir(Path root, Coordinate c) {
         return root.resolve(BuildLayout.TARGET)
                 .resolve("jk-guards")
-                .resolve("packs")
+                .resolve("guard-packs")
                 .resolve(c.artifact());
     }
 

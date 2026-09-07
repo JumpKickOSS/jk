@@ -208,9 +208,10 @@ how the source set is compiled and why it is not a test suite.
 
 ## Fixtures
 
-A ban proves it bites. `fixture = "guard-fixtures/<id>"` on a rule (or `@Fixture` on a guard
-test) names a directory holding `Bad*.java`, which must produce a violation, and `Ok*.java`,
-which must not; the engine compiles them once per owning module and judges them as that
+A ban proves it bites. `fixture = "<dir>"` on a rule (or `@Fixture` on a guard test) names a
+workspace-relative directory — `guard-fixtures/<id>` by convention; jk's own sit beside the rule
+engine under `server/guard/fixtures/` — holding `Bad*.java`, which must produce a violation, and
+`Ok*.java`, which must not; the engine compiles them once per owning module and judges them as that
 module's lane would. Stub types a fixture needs (a framework class by its real name) sit
 beside them and are visible to the rule. A fixture that does not bite is red.
 
@@ -225,7 +226,7 @@ extends = ["cc.jumpkick.guards:spring:0.13.0"]
 ```
 
 `jk lock` pins the exact coordinate as a `[[plugin]]` row and unpacks the fragment under
-`target/jk-guards/packs/`. The root file may `allow` against a pack rule or turn a ban into a
+`target/jk-guards/guard-packs/`. The root file may `allow` against a pack rule or turn a ban into a
 baseline, unless the pack marked the rule `locked = true`. A workspace member's own
 `<module>/jk-guards.toml` may only tighten, and its rules default to that module's scope.
 `jk guard explain` groups the catalog by layer. Every `jk new` framework template ships the

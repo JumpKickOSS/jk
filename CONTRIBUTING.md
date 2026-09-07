@@ -229,7 +229,9 @@ with a clear message. Use a separate worktree for true parallel builds.
 | Path | Role |
 |---|---|
 | `shared/` | Client-safe modules (`host`, `jk-api`, `core`, `plugin-sdk`, `wire`, …) |
-| `server/` | Engine-only (`engine`, `resolver`, `io`, `toolchain`) |
+| `server/` | Engine-only (`engine`, `guard`, `resolver`, `io`, `toolchain`) |
+| `server/guard/packs/` | First-party rule packs (`cc.jumpkick.guards:*`) |
+| `server/guard/fixtures/` | Self-host must-bite trees for root/`@Fixture` rules |
 | `clients/` | `cli` (the native client + its tests), `web`, `vscode` (VS Code extension) |
 | `plugins/` | First-party build/worker plugins |
 

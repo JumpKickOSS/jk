@@ -2,7 +2,7 @@ version = 2
 generated-by = "jk 0.13.0"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "c1d333b8f5ae6cbd860f5ebb956fde43708ae184c0e861340645da0c2ac9f773"
+manifests-sha256 = "d2d248355ae5f310a41b6a3eed98764e5ff78f941823046fe41803ecdda995b1"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [jdk]
@@ -2210,7 +2210,7 @@ scopes   = ["main"]
 [[plugin]]
 coordinate = "cc.jumpkick:jk-guards-junit"
 version    = "0.13.0"
-checksum   = "sha256:b5f1b904b6756df755b4b2a54d4e134345f615f254ea3bd6c6d6a6db680088f7"
+checksum   = "sha256:c34481b47a56dd89c1102ebde158f31187e378585690f5bf54e3088cb4cac380"
 
 [[module]]
 path    = "."
@@ -2243,46 +2243,6 @@ name    = "jk-web"
 version = "0.13.0"
 java    = 25
 description = "Web dashboard static assets for the engine UI"
-
-[[module]]
-path    = "packs/android"
-group   = "cc.jumpkick.guards"
-name    = "android"
-version = "0.13.0"
-java    = 25
-description = "Android house rules: one logging owner, no blocking sleeps, java.time, test libraries in the test scope, a file-size ratchet."
-
-[[module]]
-path    = "packs/library"
-group   = "cc.jumpkick.guards"
-name    = "library"
-version = "0.13.0"
-java    = 25
-description = "Library house rules: locale- and charset-explicit JDK calls, @NullMarked packages, no snapshots, converged versions, a file-size ratchet."
-
-[[module]]
-path    = "packs/monorepo"
-group   = "cc.jumpkick.guards"
-name    = "monorepo"
-version = "0.13.0"
-java    = 25
-description = "Monorepo house rules: one module per package, converged versions, no snapshots, a Java floor, a file-size ratchet."
-
-[[module]]
-path    = "packs/quarkus"
-group   = "cc.jumpkick.guards"
-name    = "quarkus"
-version = "0.13.0"
-java    = 25
-description = "Quarkus house rules: one logger, Jakarta EE, test types and libraries in the test scope, java.time, a file-size ratchet."
-
-[[module]]
-path    = "packs/spring"
-group   = "cc.jumpkick.guards"
-name    = "spring"
-version = "0.13.0"
-java    = 25
-description = "Spring Boot house rules: one logger, Jakarta EE, Lombok as a processor, test libraries in the test scope, java.time, a file-size ratchet."
 
 [[module]]
 path    = "plugins/android"
@@ -2419,6 +2379,46 @@ name    = "jk-guard"
 version = "0.13.0"
 java    = 25
 description = "House-rule guards: rule schema, facts index, evaluators, baseline; engine-only"
+
+[[module]]
+path    = "server/guard/packs/android"
+group   = "cc.jumpkick.guards"
+name    = "android"
+version = "0.13.0"
+java    = 25
+description = "Android house rules: one logging owner, no blocking sleeps, java.time, test libraries in the test scope, a file-size ratchet."
+
+[[module]]
+path    = "server/guard/packs/library"
+group   = "cc.jumpkick.guards"
+name    = "library"
+version = "0.13.0"
+java    = 25
+description = "Library house rules: locale- and charset-explicit JDK calls, @NullMarked packages, no snapshots, converged versions, a file-size ratchet."
+
+[[module]]
+path    = "server/guard/packs/monorepo"
+group   = "cc.jumpkick.guards"
+name    = "monorepo"
+version = "0.13.0"
+java    = 25
+description = "Monorepo house rules: one module per package, converged versions, no snapshots, a Java floor, a file-size ratchet."
+
+[[module]]
+path    = "server/guard/packs/quarkus"
+group   = "cc.jumpkick.guards"
+name    = "quarkus"
+version = "0.13.0"
+java    = 25
+description = "Quarkus house rules: one logger, Jakarta EE, test types and libraries in the test scope, java.time, a file-size ratchet."
+
+[[module]]
+path    = "server/guard/packs/spring"
+group   = "cc.jumpkick.guards"
+name    = "spring"
+version = "0.13.0"
+java    = 25
+description = "Spring Boot house rules: one logger, Jakarta EE, Lombok as a processor, test libraries in the test scope, java.time, a file-size ratchet."
 
 [[module]]
 path    = "server/io"

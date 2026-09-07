@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
-// A rule pack module (packs/<name>): a jar whose entries are a jk-guards.toml fragment and its fixture
-// sources, coordinates cc.jumpkick.guards:<name>:<jk version>. `installLocal` stages it into the local
-// Maven store beside the worker jars (store/repos/jk-local/cc/jumpkick/guards/<name>/<ver>/), which is
-// where `jk lock` finds a first-party pack a project extends.
+// A rule pack module (server/guard/packs/<name>): a jar whose entries are a jk-guards.toml fragment and
+// its fixture sources, coordinates cc.jumpkick.guards:<name>:<jk version>. `installLocal` stages it into
+// the local Maven store beside the worker jars (store/repos/jk-local/cc/jumpkick/guards/<name>/<ver>/),
+// which is where `jk lock` finds a first-party pack a project extends.
 
 plugins {
     id("java-library")
@@ -19,7 +19,7 @@ java {
 group = "cc.jumpkick.guards"
 version = "0.13.0"
 
-// The artifact is the pack's directory name (packs/<name>), not the Gradle project name.
+// The artifact is the pack's directory name (server/guard/packs/<name>), not the Gradle project name.
 val packArtifact: String = project.projectDir.name
 base {
     archivesName.set(packArtifact)

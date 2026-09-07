@@ -765,7 +765,7 @@ why      = "a worker reading the daemon's environment answers from the shell tha
 [guards.properties-render-owner]
 kind       = "forbid"
 signatures = ["java.util.Properties#store(**)"]
-fixture    = "guard-fixtures/properties-render-owner"
+fixture    = "server/guard/fixtures/properties-render-owner"
 instead    = "cc.jumpkick.host.DeterministicProperties.render, sorted and undated"
 why        = "Properties.store() dates the file and orders it by hash, so the same input yields different bytes"
 
@@ -820,7 +820,7 @@ kind       = "forbid"
 scope      = ["server/**", "shared/**", "plugins/**"]
 signatures = ["java.lang.System#getenv(java.lang.String)"]
 args       = ["JK_JDK", "JAVA_HOME", "GRAALVM_HOME"]
-fixture    = "guard-fixtures/toolchain-env-from-request"
+fixture    = "server/guard/fixtures/toolchain-env-from-request"
 instead    = "BuildEnv.forModule(dir) where a module directory is in hand, BuildEnv.ambient() where none is"
 why        = "a toolchain variable read from the daemon's environment selects a JDK by how the engine was started, not by this build"
 
@@ -861,7 +861,7 @@ why      = "an archive written over an unbuffered sink pays one system call per 
 [guards.case-conversion-locale]
 kind       = "forbid"
 signatures = ["java.lang.String#toLowerCase()", "java.lang.String#toUpperCase()"]
-fixture    = "guard-fixtures/case-conversion-locale"
+fixture    = "server/guard/fixtures/case-conversion-locale"
 instead    = "toLowerCase(Locale.ROOT) / toUpperCase(Locale.ROOT)"
 why        = "a case conversion in the default locale misparses identifiers under tr_TR and az"
 
