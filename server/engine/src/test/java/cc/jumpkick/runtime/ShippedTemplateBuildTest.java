@@ -62,11 +62,6 @@ class ShippedTemplateBuildTest {
                             + " --yes), which the gate must not do to the host; verified"
                             + " out-of-gate 2026-09-01 — lock resolves, jk build emits the debug"
                             + " APK, jk test passes 2 JVM tests. Render is gated below.",
-            "java/quarkus/hello",
-                    "pom.xml writes the Maven property reference ${quarkus.platform.version}, which the"
-                            + " Giter8 renderer cannot parse (STException); the use site needs"
-                            + " $quarkus_platform_version$ like the properties block",
-            "kotlin/quarkus/hello", "same ${quarkus.platform.version} render defect as java/quarkus/hello",
             "kotlin/micronaut/hello",
                     "jk.toml omits java = $java$ (default.properties declares java=25 unused), so"
                             + " compile-kotlin gets jvmTarget 0 — the defect groovy/grails/hello had",

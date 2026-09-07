@@ -1,0 +1,57 @@
+# cc.jumpkick.guards:quarkus — the Quarkus starter pack. Extend it from the root jk-guards.toml:
+#   [guards]
+#   extends = ["cc.jumpkick.guards:quarkus:<jk version>"]
+
+[guards.no-system-out]
+kind       = "forbid"
+signatures = ["@jdk-system-out"]
+instead    = "org.jboss.logging.Logger.getLogger(getClass()) or io.quarkus.logging.Log"
+why        = "stdout has no level, no logger name and no appender; Quarkus logging does"
+fixture    = "guard-fixtures/no-system-out"
+
+[guards.jakarta-not-javax]
+kind       = "forbid"
+signatures = ["@jakarta-not-javax"]
+instead    = "the jakarta.* package of the same type"
+why        = "Quarkus 3 is Jakarta EE 10; a javax.* import names a classpath that is no longer there"
+fixture    = "guard-fixtures/jakarta-not-javax"
+
+[guards.quarkus-test-types-stay-in-test]
+kind       = "forbid"
+signatures = ["io.quarkus.test.**"]
+instead    = "keep test support under src/test; production code never mocks itself"
+why        = "io.quarkus.test.* rides quarkus-junit5, which belongs in [test-dependencies] alone"
+fixture    = "guard-fixtures/quarkus-test-types-stay-in-test"
+
+[guards.quarkus-junit5-in-test]
+kind       = "depend"
+coordinate = "io.quarkus:quarkus-junit5"
+only-in    = ["test-dependencies"]
+why        = "quarkus-junit5 in [dependencies] pulls the Maven embedder into MAIN"
+
+[guards.no-legacy-date]
+kind       = "forbid"
+signatures = ["java.util.Date#<init>(**)", "java.util.Calendar#getInstance(**)"]
+instead    = "java.time: Instant, LocalDate, ZonedDateTime"
+why        = "java.util.Date is mutable and zone-blind; java.time is the model the rest of the platform speaks"
+fixture    = "guard-fixtures/no-legacy-date"
+
+[guards.no-legacy-logging]
+kind    = "depend"
+ban     = ["org.slf4j:slf4j-log4j12", "log4j:log4j", "org.slf4j:slf4j-simple", "org.slf4j:slf4j-jdk14"]
+instead = "Quarkus logging (JBoss Logging), already on every extension's classpath"
+why     = "a second SLF4J binding fights the runtime's JBoss LogManager for the same handlers; log4j 1.x is unmaintained"
+
+[guards.test-libraries-stay-in-test]
+kind    = "depend"
+ban     = ["org.junit.jupiter:*", "org.junit.platform:*", "org.assertj:*", "org.mockito:*", "io.rest-assured:*"]
+scopes  = ["dependencies"]
+instead = "[test-dependencies]"
+why     = "a test library in [dependencies] rides into the production jar and the native image"
+
+[guards.file-size]
+kind     = "metric"
+measure  = "lines"
+cap      = 800
+baseline = true
+why      = "a file that no longer fits a review no longer fits a reviewer"

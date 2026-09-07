@@ -1,0 +1,3 @@
+group = "cc.jumpkick.guards"
+name = "quarkus"
+description = "Quarkus house rules: one logger, Jakarta EE, test types and libraries in the test scope, java.time, a file-size ratchet."

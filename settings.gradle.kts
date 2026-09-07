@@ -87,6 +87,12 @@ gradle.sharedServices
     .get() // eager: take the lock now, before any task can touch shared outputs
 
 include(
+    // packs/ — rule packs (cc.jumpkick.guards:<name>)
+    ":guards-spring",
+    ":guards-quarkus",
+    ":guards-android",
+    ":guards-library",
+    ":guards-monorepo",
     // shared/ — client-safe contracts + code (everything the native CLI can link)
     ":host",            // the JDK-only leaf every jk process links: JSONL codec, Hashing,
                         //   PathUtil, Errors, Os, and the Exit/command vocabulary (JDK-17;
@@ -126,6 +132,13 @@ include(
     ":protobuf",
     ":minified",
 )
+
+// packs/ — rule packs
+project(":guards-spring").projectDir   = file("packs/spring")
+project(":guards-quarkus").projectDir  = file("packs/quarkus")
+project(":guards-android").projectDir  = file("packs/android")
+project(":guards-library").projectDir  = file("packs/library")
+project(":guards-monorepo").projectDir = file("packs/monorepo")
 
 // shared/ — client-safe contracts + code
 project(":host").projectDir          = file("shared/host")

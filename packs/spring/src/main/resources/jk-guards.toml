@@ -1,0 +1,51 @@
+# cc.jumpkick.guards:spring — the Spring Boot starter pack. Extend it from the root jk-guards.toml:
+#   [guards]
+#   extends = ["cc.jumpkick.guards:spring:<jk version>"]
+# The root may add `allow` or `baseline` to any rule here; none is locked.
+
+[guards.no-system-out]
+kind       = "forbid"
+signatures = ["@jdk-system-out"]
+instead    = "an org.slf4j.Logger from LoggerFactory.getLogger(getClass())"
+why        = "stdout has no level, no logger name and no appender; the starter's logging does"
+fixture    = "guard-fixtures/no-system-out"
+
+[guards.jakarta-not-javax]
+kind       = "forbid"
+signatures = ["@jakarta-not-javax"]
+instead    = "the jakarta.* package of the same type"
+why        = "Boot 3 is Jakarta EE 9+; a javax.* import names a classpath that is no longer there"
+fixture    = "guard-fixtures/jakarta-not-javax"
+
+[guards.no-legacy-date]
+kind       = "forbid"
+signatures = ["java.util.Date#<init>(**)", "java.util.Calendar#getInstance(**)"]
+instead    = "java.time: Instant, LocalDate, ZonedDateTime"
+why        = "java.util.Date is mutable and zone-blind; java.time is the model the rest of the platform speaks"
+fixture    = "guard-fixtures/no-legacy-date"
+
+[guards.no-legacy-logging]
+kind    = "depend"
+ban     = ["org.slf4j:slf4j-log4j12", "log4j:log4j", "org.slf4j:slf4j-simple", "org.slf4j:slf4j-jdk14"]
+instead = "spring-boot-starter-logging (Logback behind SLF4J), which the web starter already brings"
+why     = "a second SLF4J binding fights the starter's for the same appenders; log4j 1.x is unmaintained"
+
+[guards.lombok-is-a-processor]
+kind       = "depend"
+coordinate = "org.projectlombok:lombok"
+only-in    = ["processor-dependencies", "provided-dependencies"]
+why        = "Lombok runs at compile time; on the runtime classpath it is a jar nobody calls"
+
+[guards.test-libraries-stay-in-test]
+kind    = "depend"
+ban     = ["org.junit.jupiter:*", "org.junit.platform:*", "org.assertj:*", "org.mockito:*"]
+scopes  = ["dependencies"]
+instead = "[test-dependencies]"
+why     = "a test library in [dependencies] rides into the production jar"
+
+[guards.file-size]
+kind     = "metric"
+measure  = "lines"
+cap      = 800
+baseline = true
+why      = "a file that no longer fits a review no longer fits a reviewer"

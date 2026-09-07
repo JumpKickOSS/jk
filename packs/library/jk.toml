@@ -1,0 +1,3 @@
+group = "cc.jumpkick.guards"
+name = "library"
+description = "Library house rules: locale- and charset-explicit JDK calls, @NullMarked packages, no snapshots, converged versions, a file-size ratchet."

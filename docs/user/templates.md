@@ -70,19 +70,27 @@ Third-party monorepos must use `<lang>/<framework>/<name>.g8`.
 
 ## First-party templates
 
-| Name | Framework | Languages | Intent |
-|------|-----------|-----------|--------|
-| `cli` | none | java, kotlin | Simple executable |
-| `cli-native` | none | java | Interactive Java CLI with JLine |
-| `ktor-3` | none | kotlin | Ktor + Koin + Exposed |
-| `hello` | spring-boot | java, kotlin | Plugin hello app |
-| `webmvc` | spring-boot | java, kotlin | Clean-architecture WebMVC workspace |
-| `webmvc-security-actuator-jpa-h2` | spring-boot | java, kotlin | WebMVC + JPA/H2 + Actuator |
-| `mcp` | spring-boot | java | Boot MCP server |
-| `hello` | quarkus | java, kotlin | Plugin REST app |
-| `hello` | micronaut | java, kotlin | Plugin HTTP service |
-| `hello` | grails | groovy | Grails 8 REST |
-| `compose` | android | kotlin | Jetpack Compose app (debug APK, `jk run` deploy) |
+| Name | Framework | Languages | Intent | Rule pack |
+|------|-----------|-----------|--------|-----------|
+| `cli` | none | java, kotlin | Simple executable | — |
+| `cli-native` | none | java | Interactive Java CLI with JLine | — |
+| `library` | none | java | Published library: `@NullMarked` API, unit test | `library` |
+| `ktor-3` | none | kotlin | Ktor + Koin + Exposed | — |
+| `hello` | spring-boot | java, kotlin | Plugin hello app | `spring` |
+| `webmvc` | spring-boot | java, kotlin | Clean-architecture WebMVC workspace | `spring`, `monorepo` |
+| `webmvc-security-actuator-jpa-h2` | spring-boot | java, kotlin | WebMVC + JPA/H2 + Actuator | `spring` |
+| `mcp` | spring-boot | java | Boot MCP server | `spring` |
+| `hello` | quarkus | java, kotlin | Plugin REST app | `quarkus` |
+| `hello` | micronaut | java, kotlin | Plugin HTTP service | — |
+| `hello` | grails | groovy | Grails 8 REST | — |
+| `compose` | android | kotlin | Jetpack Compose app (debug APK, `jk run` deploy) | `android` |
+
+A template with a rule pack writes `jk-guards.toml` with `[guards] extends =
+["cc.jumpkick.guards:<pack>:<jk version>"]`: the pack's house rules run inside `jk build` from the
+first build, `jk lock` pins it, and `jk guard explain` lists its rules with their source. Add your
+own rules below the `[guards]` table; exempt a site with an `allow` entry and a reason. Packs:
+`spring`, `quarkus`, `android`, `library`, `monorepo` — [Guards](../contributors/code-as-art.md)
+describes the vocabulary they are written in.
 
 MCP `jk_new`: `action=templates` lists `{id,name,language,framework,…}`; `preview=true`
 returns the file set without writing. The web dashboard has a New project modal —

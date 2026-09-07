@@ -43,12 +43,9 @@ class JsonlShapeTest {
                 .contains("\"code\":\"one-digest-surface\"")
                 .contains("\"baseline\":\"new\"")
                 .endsWith("\"source\":\"jk-guards.toml:1\"}");
+        // a row that is not an object degrades to the bare envelope
         assertThat(JsonlShape.guard("not json"))
-                .isEqualTo(JsonlShape.guard("not json")
-                        .replaceAll(",\"ts\":\\d+", ",\"ts\":0")
-                        .replace(
-                                ",\"ts\":0",
-                                ",\"ts\":" + JsonlShape.guard("not json").replaceAll(".*\"ts\":(\\d+).*", "$1")));
+                .matches("\\{\"schema\":" + JsonlShape.SCHEMA + ",\"ts\":\\d+,\"type\":\"guard\"\\}");
     }
 
     @Test

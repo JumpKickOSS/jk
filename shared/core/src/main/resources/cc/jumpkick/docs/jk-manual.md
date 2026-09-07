@@ -289,7 +289,7 @@ A guard *test* (`@Guard`, `src/guard`) fails the same way.
 Loop: read the `code` → `jk guard explain <id>` → change the *site* as `Instead` says → `jk format` →
 rebuild (`jk build`, or MCP `jk_run kind=guard`).
 
-Stop and ask the user when:
+Stop and ask when:
 - the fix is an exemption (`allow` needs a human reason) or a rule looks wrong;
 - the message says **thrash** or names `jk guard freeze <id> --reason "…"` — accepting existing
   violations into `jk-guards-baseline.toml` is the user's decision;
@@ -312,8 +312,8 @@ jk guard hooks install              # git hooks: commit rules refuse a message; 
 jk guard --output sarif             # print target/jk-guards.sarif
 ```
 
-Layers: root `jk-guards.toml` ← packs (`[guards] extends`, pinned by `jk lock`) ← `<module>/jk-guards.toml`
-(module-scoped). A `locked` pack rule takes no consumer `allow`.
+Layers: root `jk-guards.toml` ← packs (`[guards] extends`, pinned by `jk lock`; `jk new` ships one) ←
+`<module>/jk-guards.toml`. A `locked` pack rule takes no consumer `allow`.
 
 Every rule needs `why`; `forbid`/`text`/`vocabulary` need `instead`; a rule that cannot fire is red
 (`no-bite`): give `forbid` an `owner`, `text` a `hit`.

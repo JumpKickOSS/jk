@@ -2,7 +2,7 @@ version = 2
 generated-by = "jk 0.13.0"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "462d8bb608166a6b1d274c9f2fd5139e6943e7cb0ce6b044a35aa95a332c46e2"
+manifests-sha256 = "d01e058457d80925a08ab89f64ebe040f70314efcd5bc79fe8d88ea3ec354183"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [jdk]
@@ -2207,6 +2207,11 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:3e158a87bd73d8afb4b6e8239c013b7d049c48563f45860ce99cd2e448cf4a6b"
 scopes   = ["main"]
 
+[[plugin]]
+coordinate = "cc.jumpkick:jk-guards-junit"
+version    = "0.13.0"
+checksum   = "sha256:b5f1b904b6756df755b4b2a54d4e134345f615f254ea3bd6c6d6a6db680088f7"
+
 [[module]]
 path    = "."
 group   = "cc.jumpkick"
@@ -2238,6 +2243,46 @@ name    = "jk-web"
 version = "0.13.0"
 java    = 25
 description = "Web dashboard static assets for the engine UI"
+
+[[module]]
+path    = "packs/android"
+group   = "cc.jumpkick.guards"
+name    = "android"
+version = "0.13.0"
+java    = 25
+description = "Android house rules: one logging owner, no blocking sleeps, java.time, test libraries in the test scope, a file-size ratchet."
+
+[[module]]
+path    = "packs/library"
+group   = "cc.jumpkick.guards"
+name    = "library"
+version = "0.13.0"
+java    = 25
+description = "Library house rules: locale- and charset-explicit JDK calls, @NullMarked packages, no snapshots, converged versions, a file-size ratchet."
+
+[[module]]
+path    = "packs/monorepo"
+group   = "cc.jumpkick.guards"
+name    = "monorepo"
+version = "0.13.0"
+java    = 25
+description = "Monorepo house rules: one module per package, converged versions, no snapshots, a Java floor, a file-size ratchet."
+
+[[module]]
+path    = "packs/quarkus"
+group   = "cc.jumpkick.guards"
+name    = "quarkus"
+version = "0.13.0"
+java    = 25
+description = "Quarkus house rules: one logger, Jakarta EE, test types and libraries in the test scope, java.time, a file-size ratchet."
+
+[[module]]
+path    = "packs/spring"
+group   = "cc.jumpkick.guards"
+name    = "spring"
+version = "0.13.0"
+java    = 25
+description = "Spring Boot house rules: one logger, Jakarta EE, Lombok as a processor, test libraries in the test scope, java.time, a file-size ratchet."
 
 [[module]]
 path    = "plugins/android"

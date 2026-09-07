@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.giter8;
 
+import cc.jumpkick.model.JkVersion;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
@@ -138,6 +139,8 @@ public final class Giter8Apply {
         // interpolation pass ahead of the overrides would freeze derivations to shipped defaults.
         if (overrides != null) props.putAll(overrides);
         props.putIfAbsent(Giter8ShortNames.LAYOUT_SIMPLE, "no");
+        // The jk that scaffolds: a template pins first-party coordinates (rule packs) to it.
+        props.putIfAbsent("jk_version", JkVersion.VERSION);
         for (Map.Entry<String, String> e : new ArrayList<>(props.entrySet())) {
             if (Giter8Maven.isMavenExpr(e.getValue())) {
                 props.put(e.getKey(), Giter8Maven.resolveExpr(e.getValue(), maven));

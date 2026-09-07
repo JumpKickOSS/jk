@@ -1,0 +1,31 @@
+# cc.jumpkick.guards:monorepo — the workspace starter pack. Extend it from the root jk-guards.toml:
+#   [guards]
+#   extends = ["cc.jumpkick.guards:monorepo:<jk version>"]
+
+[guards.one-module-per-package]
+kind = "split-package"
+why  = "a package split across modules works on a flat classpath and breaks under JPMS"
+
+[guards.converge-versions]
+kind        = "depend"
+convergence = true
+instead     = "one version per artifact across the workspace; pin the loser in the root"
+why         = "two modules on two versions of one artifact meet on one classpath"
+
+[guards.no-snapshot-versions]
+kind        = "depend"
+no-snapshot = true
+instead     = "a released version of the dependency"
+why         = "a snapshot in one module is a build no other module can reproduce"
+
+[guards.java-floor]
+kind = "toolchain"
+java = ">=17"
+why  = "one language level across the workspace; a module below it cannot read its siblings' records"
+
+[guards.file-size]
+kind     = "metric"
+measure  = "lines"
+cap      = 800
+baseline = true
+why      = "a file that no longer fits a review no longer fits a reviewer"

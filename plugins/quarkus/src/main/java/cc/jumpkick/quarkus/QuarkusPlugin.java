@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.quarkus;
 
+import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.PreferIpv4;
 import cc.jumpkick.plugin.Plugin;
@@ -98,9 +99,11 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         // Pure bootstrap: worker jar + one BOM-aligned tool closure (step-dep quarkus-bootstrap).
         // Engine resolves core + maven-resolver under quarkus-bootstrap-bom — no dual freestyle
         // trees, no hand-pinned smallrye modules.
-        Path workerJar = pluginJar();
         List<Path> cp = new ArrayList<>();
-        cp.add(workerJar);
+        cp.add(jarOf(QuarkusPlugin.class, "jk-quarkus worker"));
+        // The augment main parses its offline flag with the engine's host helpers; the host jar
+        // is on the plugin's loader, never on a bare fork's classpath.
+        cp.add(jarOf(EnvValues.class, "engine host"));
         Path tools = exec.requireExtra(BOOTSTRAP_EXTRA);
         if (Files.isDirectory(tools)) {
             cp.addAll(jarsIn(tools));
@@ -279,20 +282,16 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         return Optional.empty();
     }
 
-    private static Path pluginJar() throws IOException {
+    private static Path jarOf(Class<?> type, String what) throws IOException {
         try {
-            URI uri = QuarkusPlugin.class
-                    .getProtectionDomain()
-                    .getCodeSource()
-                    .getLocation()
-                    .toURI();
+            URI uri = type.getProtectionDomain().getCodeSource().getLocation().toURI();
             Path p = Path.of(uri);
             if (!Files.isRegularFile(p)) {
-                throw new IOException("plugin code source is not a jar: " + p);
+                throw new IOException(what + " code source is not a jar: " + p);
             }
             return p;
         } catch (Exception e) {
-            throw new IOException("cannot locate jk-quarkus worker jar", e);
+            throw new IOException("cannot locate " + what + " jar", e);
         }
     }
 

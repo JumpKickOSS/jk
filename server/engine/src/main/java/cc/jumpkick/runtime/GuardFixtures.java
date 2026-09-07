@@ -112,12 +112,27 @@ public final class GuardFixtures {
             throws IOException {
         Path moduleDir = module.isEmpty() ? root : root.resolve(module);
         Map<FixtureCheck.Case, List<FixtureCheck.Source>> sources = new LinkedHashMap<>();
+        // Stub types a fixture carries sit in both slices, so a signature naming them resolves; they
+        // are never a site of their own.
+        Map<FixtureCheck.Case, Set<String>> stubs = new LinkedHashMap<>();
         List<Path> files = new ArrayList<>();
         Map<String, String> owners = new LinkedHashMap<>(); // class → fixture id, for collisions
         List<FixtureCheck.Verdict> out = new ArrayList<>();
         for (FixtureCheck.Case c : cases) {
             List<FixtureCheck.Source> src = FixtureCheck.sources(c.dir());
             sources.put(c, src);
+            // Every source in the directory compiles — a fixture may carry stub types (a framework
+            // annotation by its real name) so it needs nothing on the classpath; only Bad*/Ok* are judged.
+            Set<String> stubClasses = new TreeSet<>();
+            if (Files.isDirectory(c.dir())) {
+                PathUtil.forEachRegularFile(c.dir(), (f, attrs) -> {
+                    String n = f.getFileName().toString();
+                    if (!n.endsWith(".java") || n.startsWith("Bad") || n.startsWith("Ok")) return;
+                    if (!files.contains(f)) files.add(f);
+                    stubClasses.addAll(FixtureCheck.declaredClasses(Files.readString(f, StandardCharsets.UTF_8)));
+                });
+            }
+            stubs.put(c, stubClasses);
             for (FixtureCheck.Source s : src) {
                 if (!s.file().toString().endsWith(".java")) continue;
                 files.add(s.file());
@@ -170,6 +185,8 @@ public final class GuardFixtures {
                     okText.add(s.file());
                 }
             }
+            bad.addAll(stubs.getOrDefault(c, Set.of()));
+            ok.addAll(stubs.getOrDefault(c, Set.of()));
             FactsIndex badSlice = FixtureCheck.slice(all, bad);
             FactsIndex okSlice = FixtureCheck.slice(all, ok);
             int badSites;

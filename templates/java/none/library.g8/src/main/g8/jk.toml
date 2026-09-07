@@ -1,0 +1,7 @@
+group = "$organization$"
+name = "$name$"
+version = "0.1.0"
+java = $java$
+
+[dependencies]
+jspecify = { group = "org.jspecify", name = "jspecify", version = "1.0.0" }

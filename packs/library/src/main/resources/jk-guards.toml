@@ -1,0 +1,35 @@
+# cc.jumpkick.guards:library — the published-library starter pack. Extend it from the root jk-guards.toml:
+#   [guards]
+#   extends = ["cc.jumpkick.guards:library:<jk version>"]
+
+[guards.no-unsafe-defaults]
+kind       = "forbid"
+signatures = ["@jdk-unsafe"]
+instead    = "the overload that takes a Locale or a Charset, spelled out"
+why        = "a library runs on machines it did not choose; a default locale or charset is a bug that ships"
+fixture    = "guard-fixtures/no-unsafe-defaults"
+
+[guards.null-marked-packages]
+kind    = "annotate"
+require = "org.jspecify.annotations.NullMarked"
+on      = "package"
+why     = "a library's nullness is part of its API; an unmarked package leaves every caller guessing"
+
+[guards.no-snapshot-versions]
+kind        = "depend"
+no-snapshot = true
+instead     = "a released version of the dependency"
+why         = "a library that depends on a snapshot cannot be rebuilt tomorrow"
+
+[guards.converge-versions]
+kind        = "depend"
+convergence = true
+instead     = "one version per artifact in the lock; pin the loser"
+why         = "two versions of one artifact in a library's closure is a classpath its consumers inherit"
+
+[guards.file-size]
+kind     = "metric"
+measure  = "lines"
+cap      = 800
+baseline = true
+why      = "a file that no longer fits a review no longer fits a reviewer"

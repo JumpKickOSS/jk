@@ -708,7 +708,7 @@ why      = "the registry drifted twice by hand; the third reconciliation is not 
 # fallback group, and no dependency on a cc.jumpkick artifact the workspace does not package.
 [guards.published-poms]
 kind = "output"
-pom  = { no-unspecified = true, groups = ["cc.jumpkick"] }
+pom  = { no-unspecified = true, groups = ["cc.jumpkick", "cc.jumpkick.guards"] }
 why  = "a POM with an unspecified coordinate is an artifact nobody can depend on"
 
 # G80. Commits read as ordinary human contributions: a tool's co-author or generator trailer is

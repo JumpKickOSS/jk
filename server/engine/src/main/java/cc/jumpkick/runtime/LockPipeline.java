@@ -31,6 +31,7 @@ import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.PlatformPolicy;
 import cc.jumpkick.model.PluginDeclaration;
+import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.ToolchainSpec;
 import cc.jumpkick.model.VersionSelector;
@@ -490,14 +491,35 @@ public final class LockPipeline {
             if (!seen.add(c.ga() + ":" + c.version())) continue;
             progress.label("lock pack " + c.gav());
             try {
-                var fetched = repos.tryFetchArtifact(Coordinate.of(c.group(), c.artifact(), c.version()))
-                        .orElseThrow(
-                                () -> new IllegalStateException("rule pack " + c.gav() + " not found in any repo"));
-                String sha = fetched.fetched().sha256();
+                // A first-party pack is staged in the store like the worker jars; a third-party one
+                // resolves through the project's repositories.
+                String rel = c.group().replace('.', '/') + "/" + c.artifact() + "/" + c.version() + "/" + c.artifact()
+                        + "-" + c.version() + ".jar";
+                Path staged = null;
+                for (String store :
+                        List.of(RepoArtifactResolver.JK_LOCAL, RepositorySpec.JUMPKICK_NAME, RepositorySpec.CENTRAL)) {
+                    Optional<Path> hit = new RepoArtifactStore(cas.root(), store).locate(rel);
+                    if (hit.isPresent()) {
+                        staged = hit.get();
+                        break;
+                    }
+                }
+                Path jarPath;
+                String sha;
+                if (staged != null) {
+                    jarPath = staged;
+                    sha = Hashing.sha256Hex(staged);
+                } else {
+                    var fetched = repos.tryFetchArtifact(Coordinate.of(c.group(), c.artifact(), c.version()))
+                            .orElseThrow(
+                                    () -> new IllegalStateException("rule pack " + c.gav() + " not found in any repo"));
+                    jarPath = fetched.fetched().cachePath();
+                    sha = fetched.fetched().sha256();
+                }
                 entries.add(new Lockfile.PluginEntry(c.ga(), c.version(), "sha256:" + sha));
                 // The lock materializes the pack where the loader reads it, so a build after the lock
                 // needs neither the repository nor the store to find its rules.
-                GuardPacks.unpack(fetched.fetched().cachePath(), GuardPacks.unpackedDir(lockDir, c), sha);
+                GuardPacks.unpack(jarPath, GuardPacks.unpackedDir(lockDir, c), sha);
             } catch (IOException | InterruptedException e) {
                 if (e instanceof InterruptedException) Thread.currentThread().interrupt();
                 throw new IllegalStateException("rule pack " + c.gav() + " — " + e.getMessage(), e);

@@ -42,6 +42,12 @@ modules = [
   "plugins/protobuf",
   "plugins/android",
   "plugins/micronaut",
+  # Rule packs (cc.jumpkick.guards:*)
+  "packs/spring",
+  "packs/quarkus",
+  "packs/android",
+  "packs/library",
+  "packs/monorepo",
 ]
 
 # ---------------------------------------------------------------------------

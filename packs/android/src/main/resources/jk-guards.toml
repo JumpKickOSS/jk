@@ -1,0 +1,38 @@
+# cc.jumpkick.guards:android — the Android starter pack. Extend it from the root jk-guards.toml:
+#   [guards]
+#   extends = ["cc.jumpkick.guards:android:<jk version>"]
+
+[guards.no-android-log]
+kind       = "forbid"
+signatures = ["@android-log"]
+instead    = "the app's one logging class (Timber or a Logger wrapper), which strips debug logs from release builds"
+why        = "android.util.Log everywhere leaks debug output into release APKs and cannot be redirected"
+fixture    = "guard-fixtures/no-android-log"
+
+[guards.no-sleep-on-main]
+kind       = "forbid"
+signatures = ["java.lang.Thread#sleep(**)"]
+instead    = "a coroutine delay or a Handler.postDelayed; never block the calling thread"
+why        = "a Thread.sleep on the main thread is a frozen UI and an ANR"
+fixture    = "guard-fixtures/no-sleep-on-main"
+
+[guards.no-legacy-date]
+kind       = "forbid"
+signatures = ["java.util.Date#<init>(**)", "java.util.Calendar#getInstance(**)"]
+instead    = "java.time (desugared on API < 26): Instant, LocalDate, ZonedDateTime"
+why        = "java.util.Date is mutable and zone-blind; java.time is the model the rest of the platform speaks"
+fixture    = "guard-fixtures/no-legacy-date"
+
+[guards.test-libraries-stay-in-test]
+kind    = "depend"
+ban     = ["org.junit.jupiter:*", "junit:junit", "org.assertj:*", "org.mockito:*", "androidx.test:*"]
+scopes  = ["dependencies"]
+instead = "[test-dependencies]"
+why     = "a test library in [dependencies] rides into the APK"
+
+[guards.file-size]
+kind     = "metric"
+measure  = "lines"
+cap      = 800
+baseline = true
+why      = "a file that no longer fits a review no longer fits a reviewer"

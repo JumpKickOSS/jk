@@ -120,7 +120,7 @@ public final class FixtureCheck {
             "(?m)^\\s*(?:public\\s+|final\\s+|abstract\\s+|sealed\\s+|strictfp\\s+)*(?:class|interface|enum|record|@interface)\\s+([A-Za-z_$][\\w$]*)");
 
     /** Top-level types a Java source declares, as binary names; nested types share the outermost name. */
-    static Set<String> declaredClasses(String source) {
+    public static Set<String> declaredClasses(String source) {
         Matcher pm = PACKAGE.matcher(source);
         String pkg = pm.find() ? pm.group(1) + "." : "";
         Set<String> out = new TreeSet<>();

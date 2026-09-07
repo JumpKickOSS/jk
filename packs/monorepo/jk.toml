@@ -1,0 +1,3 @@
+group = "cc.jumpkick.guards"
+name = "monorepo"
+description = "Monorepo house rules: one module per package, converged versions, no snapshots, a Java floor, a file-size ratchet."

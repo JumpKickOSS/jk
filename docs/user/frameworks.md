@@ -7,6 +7,12 @@ and private/vendored jars — the SDK is not on Central yet).
 
 User-facing plugin install: [Plugins](plugins.md). Templates: [Templates](templates.md).
 
+Each framework template ships a **rule pack** (`cc.jumpkick.guards:spring`, `:quarkus`,
+`:android`; libraries `:library`, workspaces `:monorepo`) through `[guards] extends` in
+`jk-guards.toml`: one logger, Jakarta not javax, test libraries in the test scope, `java.time`,
+a file-size ratchet, and the framework's own rules. `jk guard explain` lists them; a violation
+names its `Instead:`.
+
 ## Spring Boot
 
 ```bash

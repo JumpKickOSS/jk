@@ -1,0 +1,5 @@
+language = "java"
+framework = "none"
+name = "library"
+description = "Published library: a @NullMarked API package, the library rule pack, a unit test"
+layouts = ["traditional"]
