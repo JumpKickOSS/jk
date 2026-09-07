@@ -87,6 +87,38 @@ public final class WorkspaceFacts {
         return new FactsIndex(classes, Map.of(), "");
     }
 
+    /** Every workspace class's module ({@code shared/host}), from the index names alone. */
+    public static Map<String, String> classModules(Path root, List<Path> modules) {
+        Map<String, String> out = new HashMap<>();
+        synchronized (LOCK) {
+            for (Path m : modules) {
+                Path idx = indexOf(root, m);
+                if (idx == null) continue;
+                try {
+                    FileTime mtime = Files.getLastModifiedTime(idx);
+                    Names names = NAMES.get(idx);
+                    if (names == null || !names.mtime().equals(mtime)) {
+                        names = new Names(
+                                mtime,
+                                Set.copyOf(FactsFormat.read(idx).classes().keySet()));
+                        NAMES.put(idx, names);
+                    }
+                    String rel = relModule(root, m);
+                    for (String c : names.classNames()) out.putIfAbsent(c, rel);
+                } catch (IOException | RuntimeException unreadable) {
+                    // A module whose index cannot be read owns no class here.
+                }
+            }
+        }
+        return out;
+    }
+
+    static String relModule(Path root, Path m) {
+        Path r = root.toAbsolutePath().normalize();
+        Path mm = m.toAbsolutePath().normalize();
+        return r.equals(mm) ? "" : r.relativize(mm).toString().replace('\\', '/');
+    }
+
     /** The module's main index by the layout rule alone — no manifest is parsed for a lookup. */
     private static @Nullable Path indexOf(Path root, Path module) {
         Path idx = FactsIndexing.indexPath(BuildLayout.moduleTargetDir(root, module), "main");
