@@ -73,7 +73,7 @@ public final class LaneRun {
         Map<String, Evaluation> evaluations = evaluate(rules, ctx);
         for (Rule rule : rules) {
             Evaluation ev = evaluations.getOrDefault(rule.id(), Evaluation.failed("the evaluator returned no result"));
-            RuleBaseline before = current.of(rule.id());
+            RuleBaseline before = Evaluators.acceptsBaseline(rule) ? current.of(rule.id()) : RuleBaseline.EMPTY;
             if (ev.outcome() == Outcome.CLEAN || ev.outcome() == Outcome.VIOLATIONS) {
                 String slice = lane == Lane.MODULE ? ctx.module() : "";
                 Reconciliation rec = Reconciliation.of(rule.id(), before, ev.observations(), ev.population(), slice);

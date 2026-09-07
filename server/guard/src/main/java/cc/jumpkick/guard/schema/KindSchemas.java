@@ -156,7 +156,7 @@ final class KindSchemas {
                 Kind.API,
                 InsteadRule.ABSENT,
                 List.of(
-                        required("against", STRING, "previous-release, baseline, or a g:a:v coordinate"),
+                        required("against", STRING, "a jar path, a g:a:v the lock pins, previous-release, or baseline"),
                         choice("breaking", false, "what a breaking change does", "forbid", "baseline"),
                         optional("packages", STRING_LIST, "API package globs; default the module's exported packages"),
                         optional("codes", STRING_LIST, "japicmp change codes to ignore")),

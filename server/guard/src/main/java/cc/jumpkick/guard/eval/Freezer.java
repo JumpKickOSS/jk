@@ -66,6 +66,12 @@ public final class Freezer {
                             + String.join(", ", load.rules().ids()),
                     0,
                     0);
+        if (!Evaluators.acceptsBaseline(rule))
+            return new Result(
+                    "`" + ruleId
+                            + "` has breaking = \"forbid\": a breaking change stays red; set breaking = \"baseline\" to accept one with a reason",
+                    0,
+                    baseline.entryCount());
         RuleBaseline current = baseline.of(ruleId);
         int accepted = 0;
         Lane lane = Evaluators.laneOf(rule);

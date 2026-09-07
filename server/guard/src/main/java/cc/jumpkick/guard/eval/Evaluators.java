@@ -30,6 +30,7 @@ public final class Evaluators {
         BY_KIND.put(Kind.LAYERS, new LayersEvaluator());
         BY_KIND.put(Kind.CYCLES, new CyclesEvaluator());
         BY_KIND.put(Kind.SPLIT_PACKAGE, new SplitPackageEvaluator());
+        BY_KIND.put(Kind.API, new ApiEvaluator());
     }
 
     /** Test seam: drop every registration and reinstall the shipped evaluators. */
@@ -55,6 +56,14 @@ public final class Evaluators {
     }
 
     /** The lane a rule runs in; the kind's default unless one of its keys moves it. */
+    /**
+     * Whether a rule's baseline entries apply to it at all. Every ratcheting kind's do; an {@code api}
+     * rule with {@code breaking = "forbid"} stays red no matter what the baseline says.
+     */
+    public static boolean acceptsBaseline(Rule rule) {
+        return rule.kind() != Kind.API || ApiEvaluator.acceptsBaseline(rule);
+    }
+
     public static Lane laneOf(Rule rule) {
         return switch (rule.kind()) {
             case LAYERS -> {
