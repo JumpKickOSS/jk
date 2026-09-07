@@ -257,7 +257,7 @@ class ApiEvaluatorTest {
         Files.createDirectories(cas.getParent());
         Files.write(cas, bytes);
         Files.writeString(root.resolve("jk-lock.toml"), """
-                version = 2
+                version = 1
                 generated-by = "jk 0.13.0"
                 resolution-algorithm = "pubgrub-v1"
                 jk-min = "0.12.0"

@@ -114,8 +114,9 @@ through to whatever else is available (`JAVA_HOME`, `GRAALVM_HOME`, `PATH`) as l
 still clears the major. Nothing below the floor is accepted from any of them, and if nothing
 anywhere clears it, jk installs.
 
-Locks written before this shape (a bare `vendor` / `version` pair, schema `version = 1`) are
-rejected rather than guessed at — re-run `jk lock`.
+Locks written before this shape (a bare `vendor` / `version` pair under `[jdk]`) are rejected
+rather than guessed at — re-run `jk lock`. The lockfile's `version` stays `1` until JumpKick 1.0;
+the shape changes in place, never by a new number.
 
 ## Pre-release pins
 

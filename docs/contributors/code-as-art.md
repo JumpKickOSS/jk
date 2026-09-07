@@ -947,6 +947,8 @@ letter — is the Gradle-side follow-up recorded in `guard-parity.txt`.
 | G82 | `published-installer-ps1` (jk-guards.toml, `parity`) | `hosting/public/install.ps1` differing from the repo-root copy — the PowerShell half of G81 | parity, line sets of the two copies | `published-installer-ps1` (parity) |
 | G83 | `guard-kinds-doc` (jk-guards.toml, `generated`) | the kinds table in `docs/user/guards.md` not being what the loader's kind list renders | generated, rendered from `guard-kinds` | `guard-kinds-doc` (generated) |
 | G84 | `guard-schemas-doc` (jk-guards.toml, `generated`) | the key tables in `docs/user/guards.md` not being what the loader's `KeySpec` tables render | generated, rendered from `guard-schemas` | `guard-schemas-doc` (generated) |
+| G85 | `schema-freeze` (jk-guards.toml, `text`) | an external format constant (`Lockfile.CURRENT_VERSION`, `EngineProtocol.PROTOCOL`, MCP / JSONL / transcript `SCHEMA`) not equal to 1 before 1.0 | text, exactly five `= 1` constants across the named owners | `schema-freeze` (text) |
+| G86 | `lock-version-is-one` (jk-guards.toml, `text`) | a committed `jk-lock.toml` whose `version` is not 1 | text, max 0 matches over every lock in the tree | `lock-version-is-one` (text) |
 <!-- guards:end -->
 
 `checkCliRuntimeClasspath` and `checkCliNoParseTypes` predate the letters.
@@ -994,6 +996,7 @@ by id, kind and why. This block is a `generated` guard's rendering
 | guard-schemas-doc | generated | a key the docs describe and the loader does not accept is a rule that fails to load |
 | install-tests-redirect-m2 | text | an install test without --m2-dir publishes into the developer's real ~/.m2 |
 | jdk-removal-confined | forbid | an ordinary build once deleted the JDK it was running on, twice in one afternoon |
+| lock-version-is-one | text | the lockfile schema is version 1 until 1.0 |
 | manifest-names | vocabulary | a file jk owns is named once, in ManifestPaths |
 | named-exit-codes | text | an exit code is the one integer a user's script sees, and a bare one is a meaning nobody wrote down |
 | no-agent-trailers | commit | attribution trailers are noise in blame |
@@ -1020,6 +1023,7 @@ by id, kind and why. This block is a `generated` guard's rendering
 | repository-names | vocabulary | a repository name spelled twice is a store that silently never hits |
 | retired-wire-keys | text | a retired spelling back in production source is a reader of a shape nobody writes |
 | runnable-owner | forbid | an access check off Windows, an extension test on it: 64x cheaper where it matters |
+| schema-freeze | text | a bump before 1.0 mints a dual reader with no users |
 | ship-layout-installer-gradle | parity | install.sh reads <dir-of-binary>/<name>/; a dist that writes another name is one the installer walks past |
 | ship-layout-installer-jk | parity | install.sh reads <dir-of-binary>/<name>/; a dist that writes another name is one the installer walks past |
 | single-home-root | text | jk has one home; a layout it does not have, named anywhere, misleads the reader |

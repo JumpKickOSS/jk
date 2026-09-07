@@ -18,7 +18,7 @@ class LockfileRoundTripTest {
         // The header is deterministic; a floor-less lock is stamped with the FORMAT floor —
         // never the running version (the floor moves only when the lock format requires it).
         assertThat(rendered).startsWith("""
-                version = 2
+                version = 1
                 generated-by = "jk 0.1.0-SNAPSHOT"
                 resolution-algorithm = "pubgrub-v1"
                 """);
@@ -27,23 +27,24 @@ class LockfileRoundTripTest {
     }
 
     @Test
-    void jk_floor_round_trips_and_legacy_pin_reads_as_the_floor() {
+    void jk_floor_round_trips_and_the_retired_artifact_pin_is_refused() {
         Lockfile lock = Lockfile.empty("0.1.0-SNAPSHOT").withJkMin("0.11.0");
         String rendered = LockfileWriter.render(lock);
         assertThat(rendered).contains("jk-min = \"0.11.0\"");
         assertThat(LockfileReader.parse(rendered).jkMin()).isEqualTo("0.11.0");
 
-        // A legacy artifact pin reads as the floor; the sha is ignored (a floor needs no engine
-        // artifact) and the next write renders it in floor form.
-        String legacy = """
-                version = 2
+        // `jk-min` is the only spelling of the floor; the retired `jk = { version, sha256 }` table is
+        // an unknown key, not a fallback.
+        String retired = """
+                version = 1
                 generated-by = "jk 0.9.0"
                 resolution-algorithm = "pubgrub-v1"
                 jk = { version = "0.9.0", sha256 = "abcd" }
                 """;
-        Lockfile parsed = LockfileReader.parse(legacy);
-        assertThat(parsed.jkMin()).isEqualTo("0.9.0");
-        assertThat(LockfileWriter.render(parsed)).contains("jk-min = \"0.9.0\"").doesNotContain("sha256 = \"abcd\"");
+        assertThatThrownBy(() -> LockfileReader.parse(retired))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("unknown top-level key")
+                .hasMessageContaining("jk");
     }
 
     @Test
@@ -52,7 +53,7 @@ class LockfileRoundTripTest {
         // A user remote named local always carries its URL ("local+file://…"), so the bare form is
         // unambiguous and folds to the current marker; the URL form must pass through untouched.
         String legacy = """
-                version = 2
+                version = 1
                 generated-by = "jk 0.12.0"
                 resolution-algorithm = "pubgrub-v1"
 
@@ -200,7 +201,7 @@ class LockfileRoundTripTest {
     @Test
     void the_old_vendor_version_shape_is_rejected_rather_than_guessed_at() {
         String legacy = """
-                version = 2
+                version = 1
                 generated-by = "jk 0.1.0"
                 resolution-algorithm = "nearest-wins"
 
@@ -214,15 +215,18 @@ class LockfileRoundTripTest {
     }
 
     @Test
-    void a_v1_lock_is_rejected_because_its_toolchain_tables_cannot_be_read() {
-        String v1 = """
-                version = 1
-                generated-by = "jk 0.1.0"
-                resolution-algorithm = "nearest-wins"
-                """;
-        assertThatThrownBy(() -> LockfileReader.parse(v1))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("re-run `jk lock`");
+    void any_version_other_than_one_is_rejected() {
+        for (int v : new int[] {0, 2, 3}) {
+            String lock = """
+                    version = %d
+                    generated-by = "jk 0.1.0"
+                    resolution-algorithm = "pubgrub-v1"
+                    """.formatted(v);
+            assertThatThrownBy(() -> LockfileReader.parse(lock))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("schema version " + v + " is not supported")
+                    .hasMessageContaining("this jk reads v1");
+        }
     }
 
     @Test
@@ -314,13 +318,13 @@ class LockfileRoundTripTest {
     @Test
     void a_lock_without_the_native_table_has_no_pin() {
         assertThat(LockfileReader.parse("""
-                        version = 2
+                        version = 1
                         generated-by = "jk 0.9.0"
                         resolution-algorithm = "pubgrub-v1"
                         """).nativeMetadata()).isNull();
         // A table with no version is the same as no table: there is nothing to extract.
         assertThat(LockfileReader.parse("""
-                        version = 2
+                        version = 1
                         generated-by = "jk 0.9.0"
                         resolution-algorithm = "pubgrub-v1"
 

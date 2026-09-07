@@ -206,7 +206,7 @@ class EngineServerRequestTest extends EngineServerHarness {
 
             Path project = shortTempDir();
             Files.writeString(project.resolve("jk-lock.toml"), """
-                    version = 2
+                    version = 1
                     generated-by = "jk test"
                     resolution-algorithm = "pubgrub-v1"
 
@@ -325,7 +325,7 @@ class EngineServerRequestTest extends EngineServerHarness {
                 }
                 """);
         Files.writeString(project.resolve("jk-lock.toml"), """
-                version = 2
+                version = 1
                 generated-by = "jk test"
                 resolution-algorithm = "pubgrub-v1"
                 """);
@@ -379,7 +379,7 @@ class EngineServerRequestTest extends EngineServerHarness {
         // A fresh empty lock (newer than jk.toml) stands in for "already locked" — the plan's
         // parse-build then uses it verbatim instead of resolving over the network.
         Files.writeString(project.resolve("jk-lock.toml"), """
-                version = 2
+                version = 1
                 generated-by = "jk test"
                 resolution-algorithm = "pubgrub-v1"
                 """);

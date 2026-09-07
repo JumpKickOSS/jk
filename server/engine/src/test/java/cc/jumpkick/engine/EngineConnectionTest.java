@@ -76,7 +76,7 @@ class EngineConnectionTest extends EngineServerHarness {
         Path project = shortTempDir();
         Files.writeString(project.resolve("jk.toml"), "group = \"com.example\"\nname = \"app\"\nversion = \"1.0.0\"\n");
         Files.writeString(project.resolve("jk-lock.toml"), """
-                version = 2
+                version = 1
                 generated-by = "jk test"
                 resolution-algorithm = "pubgrub-v1"
                 jk-min = "9.9.9"

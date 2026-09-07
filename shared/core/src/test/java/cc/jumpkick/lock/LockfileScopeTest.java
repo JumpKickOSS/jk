@@ -49,7 +49,7 @@ class LockfileScopeTest {
     @Test
     void package_without_scopes_field_defaults_to_main() {
         String content = """
-                version = 2
+                version = 1
                 generated-by = "jk 0.1.0"
                 resolution-algorithm = "pubgrub-v1"
 

@@ -256,7 +256,7 @@ class IdeIdeaGenerationTest {
         byte[] processorJar = "dummy-jar".getBytes(StandardCharsets.UTF_8);
         String hex = Hashing.sha256Hex(processorJar);
         Files.writeString(ws.resolve("jk-lock.toml"), """
-                version = 2
+                version = 1
                 generated-by = "jk test"
                 resolution-algorithm = "pubgrub-v1"
                 manifests-sha256 = "%s"

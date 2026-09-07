@@ -215,10 +215,12 @@ public record Lockfile(
         }
     }
 
-    /** v2 replaced the {@code [jdk]} / {@code [graal]} vendor+version pair with the suggested and required field pairs. */
-    public static final int CURRENT_VERSION = 2;
+    /**
+     * The lockfile schema version. Frozen at 1 until JumpKick 1.0: the shape changes in place
+     * (additive fields; a removed field is simply refused), never by minting a new number.
+     */
+    public static final int CURRENT_VERSION = 1;
 
-    public static final int MIN_SUPPORTED_VERSION = 2;
     public static final String RESOLUTION_ALGORITHM = "pubgrub-v1";
 
     public Lockfile {

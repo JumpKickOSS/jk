@@ -148,7 +148,7 @@ class ForecastKeyOwnerTest {
                 assembly = true
                 """);
         Files.writeString(module.resolve("jk-lock.toml"), """
-                version = 2
+                version = 1
                 generated-by = "test"
                 resolution-algorithm = "pubgrub-v1"
                 """);

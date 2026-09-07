@@ -853,6 +853,30 @@ object Guards {
                 attach = emptySet(),
                 ruleId = "guard-schemas-doc",
             ),
+            spec(
+                85,
+                "schema-freeze",
+                "an external format constant (`Lockfile.CURRENT_VERSION`, `EngineProtocol.PROTOCOL`, MCP / JSONL / transcript `SCHEMA`) not equal to 1 before 1.0",
+                "text, exactly five `= 1` constants across the named owners",
+                GuardHome.SELF_HOSTED,
+                tableTask = "`schema-freeze` (jk-guards.toml, `text`)",
+                inFastGate = false,
+                gradleLetter = false,
+                attach = emptySet(),
+                ruleId = "schema-freeze",
+            ),
+            spec(
+                86,
+                "lock-version-is-one",
+                "a committed `jk-lock.toml` whose `version` is not 1",
+                "text, max 0 matches over every lock in the tree",
+                GuardHome.SELF_HOSTED,
+                tableTask = "`lock-version-is-one` (jk-guards.toml, `text`)",
+                inFastGate = false,
+                gradleLetter = false,
+                attach = emptySet(),
+                ruleId = "lock-version-is-one",
+            ),
         )
 
     val tableRows: List<GuardSpec>

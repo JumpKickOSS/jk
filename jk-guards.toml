@@ -890,3 +890,26 @@ template = { table = ["kind", "key", "required", "type", "meaning"] }
 into     = "docs/user/guards.md"
 markers  = "guard-schemas"
 why      = "a key the docs describe and the loader does not accept is a rule that fails to load"
+
+# G85. Every external format constant is 1 until 1.0; the shape changes in place, never by a new number.
+[guards.schema-freeze]
+kind    = "text"
+files   = ["**/Lockfile.java", "**/EngineProtocol.java", "**/McpEnvelope.java", "**/JsonlShape.java", "**/CliSessionTranscript.java"]
+pattern = "int\\s+(CURRENT_VERSION|PROTOCOL|SCHEMA)\\s*=\\s*1\\s*;"
+count   = { exactly = 5, per = "tree" }
+hit     = "int CURRENT_VERSION = 1;"
+miss    = "int CURRENT_VERSION = 2;"
+instead = "keep version 1 until 1.0"
+why     = "a bump before 1.0 mints a dual reader with no users"
+
+# G86. A committed lock is version 1; anything else is a shape this jk refuses to read.
+[guards.lock-version-is-one]
+kind    = "text"
+files   = ["**/jk-lock.toml"]
+blank   = "none"
+pattern = "(?m)^version = (?!1\\s*$)\\d+"
+count   = { max = 0, per = "tree" }
+hit     = "version = 2"
+miss    = "version = 1"
+instead = "re-run `jk lock`"
+why     = "the lockfile schema is version 1 until 1.0"

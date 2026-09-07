@@ -15,8 +15,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * The lock's {@code jk-min} is a floor, never a pin: a newer jk always runs; an older jk
- * refuses with the upgrade error; legacy {@code jk = { version, sha256 }} pins read as the
- * floor and never block a newer jk.
+ * refuses with the upgrade error.
  */
 class LockFloorTest {
 
@@ -34,15 +33,6 @@ class LockFloorTest {
                 .isInstanceOf(LockFloor.LockFloorRefused.class)
                 .hasMessageContaining("0.12.0")
                 .hasMessageContaining("self update");
-    }
-
-    @Test
-    void legacy_pin_reads_as_the_floor(@TempDir Path dir) throws IOException {
-        writeLock(dir, "jk = { version = \"0.12.0\", sha256 = \"abcd\" }");
-        // A newer jk runs a legacy-pinned checkout — the pin never selects an old engine.
-        assertThat(LockFloor.requiredNewer(dir, "9.9.9")).isNull();
-        assertThat(LockFloor.requiredNewer(dir, "0.11.0")).isEqualTo("0.12.0");
-        LockfileReader.clearCache();
     }
 
     @Test
@@ -64,7 +54,7 @@ class LockFloorTest {
 
     private static void writeLock(Path dir, String jkLine) throws IOException {
         Files.writeString(dir.resolve("jk-lock.toml"), """
-                version = 2
+                version = 1
                 generated-by = "jk test"
                 resolution-algorithm = "pubgrub-v1"
                 %s

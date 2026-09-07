@@ -550,7 +550,7 @@ class DependencyTreeTest {
     // --- helpers -----------------------------------------------------------
 
     private static final String EMPTY_LOCK = """
-            version = 2
+            version = 1
             generated-by = "jk test"
             resolution-algorithm = "pubgrub-v1"
             """;

@@ -39,7 +39,7 @@ class DependencyGraphModelTest {
                 root = { group = "com.foo", name = "root", version = "1.0" }
                 """);
         Files.writeString(dir.resolve("jk-lock.toml"), """
-                version = 2
+                version = 1
                 generated-by = "jk test"
                 resolution-algorithm = "pubgrub-v1"
 
@@ -253,7 +253,7 @@ class DependencyGraphModelTest {
                 """);
         Files.writeString(dir.resolve("jk.toml"), toml.toString());
         StringBuilder lock = new StringBuilder("""
-                version = 2
+                version = 1
                 generated-by = "jk test"
                 resolution-algorithm = "pubgrub-v1"
                 """);
@@ -308,7 +308,7 @@ class DependencyGraphModelTest {
                 lib-tests = { group = "com.foo", name = "lib", version = "1", kind = "tests" }
                 """);
         Files.writeString(dir.resolve("jk-lock.toml"), """
-                version = 2
+                version = 1
                 generated-by = "jk test"
                 resolution-algorithm = "pubgrub-v1"
 

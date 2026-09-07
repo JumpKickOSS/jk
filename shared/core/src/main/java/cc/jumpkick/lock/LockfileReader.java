@@ -10,6 +10,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
 import org.jspecify.annotations.Nullable;
 import org.tomlj.Toml;
 import org.tomlj.TomlArray;
@@ -21,6 +23,24 @@ import org.tomlj.TomlTable;
  * keys, and unsupported schema versions are rejected.
  */
 public final class LockfileReader {
+
+    /** Every key the writer emits at the top level; anything else is a shape this jk does not read. */
+    private static final Set<String> TOP_LEVEL_KEYS = Set.of(
+            "artifact",
+            "generated-by",
+            "graal",
+            "jdk",
+            "jk-min",
+            "kotlin",
+            "manifests-sha256",
+            "module",
+            "native",
+            "plugin",
+            "project-id",
+            "resolution-algorithm",
+            "scala",
+            "sdk",
+            "version");
 
     private LockfileReader() {}
 
@@ -84,29 +104,26 @@ public final class LockfileReader {
             throw new IllegalArgumentException("jk-lock.toml is missing required key `version`");
         }
         int lockVersion = lockVersionLong.intValue();
-        if (lockVersion < Lockfile.MIN_SUPPORTED_VERSION || lockVersion > Lockfile.CURRENT_VERSION) {
+        if (lockVersion != Lockfile.CURRENT_VERSION) {
             throw new IllegalArgumentException("jk-lock.toml schema version "
                     + lockVersion
                     + " is not supported (this jk reads v"
-                    + Lockfile.MIN_SUPPORTED_VERSION
-                    + "-v"
                     + Lockfile.CURRENT_VERSION
                     + ") — re-run `jk lock` to restate it");
+        }
+        Set<String> unknown = new TreeSet<>(result.keySet());
+        unknown.removeAll(TOP_LEVEL_KEYS);
+        if (!unknown.isEmpty()) {
+            throw new IllegalArgumentException("jk-lock.toml in " + origin + " has unknown top-level key(s) " + unknown
+                    + " — re-run `jk lock` to restate it");
         }
         String generatedBy = requireString(result, "generated-by");
         String resolutionAlgorithm = requireString(result, "resolution-algorithm");
         // Toolchain pins live in [jdk] / [graal] tables (not the deleted top-level jdk = string).
         Lockfile.JdkPin jdk = toPin(tableOrFail(result, "jdk", origin), "jdk", Lockfile.JdkPin::new);
         Lockfile.GraalPin graal = toPin(tableOrFail(result, "graal", origin), "graal", Lockfile.GraalPin::new);
-        // The jk floor: minimum jk able to run this lock. Legacy locks carried an artifact pin
-        // (`jk = { version, sha256 }`); its version reads as the floor — it never blocks a newer
-        // jk, and the sha is ignored (a floor needs no engine artifact). Distinct from [jdk].
+        // The jk floor: minimum jk able to run this lock. It never blocks a newer jk. Distinct from [jdk].
         String jkMin = result.getString("jk-min");
-        if (jkMin == null || jkMin.isBlank()) {
-            // Legacy fallback only — a non-table `jk` is simply no floor, not an error.
-            TomlTable jkTable = result.isTable("jk") ? result.getTable("jk") : null;
-            jkMin = jkTable != null ? jkTable.getString("version") : null;
-        }
         if (jkMin != null && jkMin.isBlank()) jkMin = null;
         String kotlin = result.getString("kotlin"); // optional, resolved Kotlin compiler version
         String scala = result.getString("scala"); // optional, resolved Scala 3 compiler version
