@@ -31,6 +31,7 @@ public final class Evaluators {
         BY_KIND.put(Kind.CYCLES, new CyclesEvaluator());
         BY_KIND.put(Kind.SPLIT_PACKAGE, new SplitPackageEvaluator());
         BY_KIND.put(Kind.API, new ApiEvaluator());
+        BY_KIND.put(Kind.TIERS, new TiersEvaluator());
     }
 
     /** Test seam: drop every registration and reinstall the shipped evaluators. */

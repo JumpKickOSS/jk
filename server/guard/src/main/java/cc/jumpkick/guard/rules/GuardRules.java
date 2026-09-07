@@ -19,6 +19,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 import org.tomlj.Toml;
@@ -60,9 +61,41 @@ public final class GuardRules {
             return new LoadResult(new RuleSet(Map.of(), Map.of(), config), problems);
         }
         Map<String, Rule> rules = loadText(file, text, RuleSource.Layer.ROOT, problems);
+        checkTagVocabulary(root, file, rules, problems);
         Map<String, String> digests =
                 Map.of(root.relativize(file).toString().replace('\\', '/'), Hashing.sha256Hex(text));
         return new LoadResult(new RuleSet(rules, digests, config), problems);
+    }
+
+    /**
+     * A {@code tiers} rule's {@code tag}/{@code tagged} must be tags the manifests declare (in {@code
+     * [test]} or a profile): a tag no tier owns is a test no build runs, so naming one is a load error.
+     */
+    private static void checkTagVocabulary(Path root, Path file, Map<String, Rule> rules, List<LoadError> problems) {
+        Set<String> vocabulary = null;
+        for (Rule r : rules.values()) {
+            if (r.kind() != Kind.TIERS) continue;
+            List<String> named = new ArrayList<>();
+            String tag = r.table().getString("tag");
+            if (tag != null) named.add(tag);
+            TomlArray tagged = r.table().getArray("tagged");
+            if (tagged != null) for (int i = 0; i < tagged.size(); i++) named.add(String.valueOf(tagged.get(i)));
+            if (named.isEmpty()) continue;
+            if (vocabulary == null) vocabulary = TestTags.vocabulary(root);
+            for (String n : named) {
+                if (vocabulary.contains(n)) continue;
+                problems.add(new LoadError(
+                        Severity.ERROR,
+                        file,
+                        r.source().line(),
+                        r.id(),
+                        "tag `" + n + "` is not in the test-tag vocabulary "
+                                + (vocabulary.isEmpty()
+                                        ? "(no manifest declares [test] include-tags/exclude-tags or a profile's tags)"
+                                        : vocabulary)
+                                + "; a tag no tier owns is a test no build runs"));
+            }
+        }
     }
 
     /** Parse one file's text. Package-private so tests and, later, pack fragments reach it. */
@@ -220,6 +253,13 @@ public final class GuardRules {
 
     /** The sanctioned alternative a kind can spell out itself when the author left it implicit. */
     static @Nullable String derivedInstead(Kind kind, TomlTable t) {
+        if (kind == Kind.TIERS) {
+            String suite = t.getString("suite");
+            String tag = t.getString("tag");
+            if (suite != null) return "move the class to src/" + suite + "/java";
+            if (tag != null) return "add @Tag(\"" + tag + "\") to the class";
+            return null;
+        }
         if (kind == Kind.CLASSES) {
             TomlTable should = t.getTable("should");
             if (should == null) return null;
