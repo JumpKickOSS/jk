@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.TreeSet;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 
 /** {@link Text} over the source roots jk allowed; paths are workspace-relative. */
 public final class TextView implements Text {
@@ -20,16 +21,22 @@ public final class TextView implements Text {
     private final Path root;
     private final List<Path> sources;
     private final boolean fixture;
+    private final @Nullable String outputDir;
 
     public TextView(Path root, List<Path> sources) {
-        this(root, sources, false);
+        this(root, sources, false, null);
     }
 
-    /** {@code fixture}: a {@code jk guard test} run, where a glob is matched against file names only — a fixture has no source tree shape. */
-    public TextView(Path root, List<Path> sources, boolean fixture) {
+    /**
+     * {@code fixture}: a {@code jk guard test} run, where a glob is matched against file names only — a
+     * fixture has no source tree shape. {@code outputDir}: the root-level directory jk writes its output
+     * under (where the run's report lives), which a walk from the root never enters.
+     */
+    public TextView(Path root, List<Path> sources, boolean fixture, @Nullable String outputDir) {
         this.root = root.toAbsolutePath().normalize();
         this.sources = List.copyOf(sources);
         this.fixture = fixture;
+        this.outputDir = outputDir;
     }
 
     @Override
@@ -86,11 +93,16 @@ public final class TextView implements Text {
         }
     }
 
-    /** Dot-directories and foreign build output are not the source tree; jk's own output never sits under a source root. */
-    static boolean skipped(String rel) {
+    /**
+     * Dot-directories and foreign build output are not the source tree — except {@code .github} and
+     * {@code .jk}, which are the repository's own text. jk's own output tree at the root is skipped by
+     * where the report lives, not by a name this library would have to know.
+     */
+    boolean skipped(String rel) {
+        if (outputDir != null && (rel.equals(outputDir) || rel.startsWith(outputDir + "/"))) return true;
         for (String seg : rel.split("/")) {
-            if (seg.equals("build") || seg.equals("node_modules") || (seg.startsWith(".") && seg.length() > 1))
-                return true;
+            if (seg.equals("build") || seg.equals("node_modules")) return true;
+            if (seg.startsWith(".") && seg.length() > 1 && !seg.equals(".github") && !seg.equals(".jk")) return true;
         }
         return false;
     }

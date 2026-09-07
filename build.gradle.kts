@@ -1169,7 +1169,7 @@ tasks.register("checkNoLinkFollowingDelete") {
     }
 }
 
-// Guard: the published stage taxonomy is read off BuildStage, never retyped. The list drifted the
+// Guard G77: the published stage taxonomy is read off BuildStage, never retyped. The list drifted the
 // same way twice in four days (train, then publish, landed without a doc touch), and
 // machine-output.md is a JSONL contract consumers integrate against — a "closed set" missing live
 // values is a promise jk breaks on any `jk train` or `jk install` run.
@@ -1202,7 +1202,7 @@ tasks.register("checkStageDocs") {
     }
 }
 
-// Guard: the published guard registry lists exactly the letters the build enforces.
+// Guard G79: the published guard registry lists exactly the letters the build enforces.
 //
 // `docs/contributors/code-as-art.md` is where a contributor learns what this build checks, and it
 // has now fallen behind the code twice — first by six letters, then by eleven, which is how
@@ -1546,7 +1546,7 @@ tasks.register("checkPublishedInstallers") {
     }
 }
 
-// Guard: every relative link under docs/ resolves. The redirect stubs and the user/contributors
+// Guard G78: every relative link under docs/ resolves. The redirect stubs and the user/contributors
 // split multiplied the ways a link can rot, and nothing caught one. Code spans and
 // fenced blocks are stripped first — an example link inside backticks is prose, not navigation.
 tasks.register("checkDocLinks") {

@@ -60,7 +60,7 @@ final class HouseRules {
         return line;
     }
 
-    private static String owner(Text text, String path) {
+    static String owner(Text text, String path) {
         try {
             return text.blanked(path, Blank.COMMENTS);
         } catch (RuntimeException gone) {

@@ -33,9 +33,18 @@ public final class GuardRuntime {
         this.config = config;
         this.facts = new FactsView(merge(config.facts()), merge(config.testFacts()), config.classDirs());
         this.model = config.model() == null ? ModelView.empty() : ModelView.read(config.model());
-        this.text = new TextView(config.root(), config.sources(), config.fixture());
+        this.text = new TextView(config.root(), config.sources(), config.fixture(), outputDirOf(config));
         this.output = new OutputView(config.poms(), config.jars(), config.coverage());
         Files.createDirectories(config.report().toAbsolutePath().getParent());
+    }
+
+    /** The root-level directory the report sits under — jk's output tree — or {@code null} when it is elsewhere. */
+    static @Nullable String outputDirOf(GuardConfig config) {
+        Path root = config.root().toAbsolutePath().normalize();
+        Path report = config.report().toAbsolutePath().normalize();
+        if (!report.startsWith(root)) return null;
+        Path rel = root.relativize(report);
+        return rel.getNameCount() > 1 ? rel.getName(0).toString() : null;
     }
 
     /** The runtime for this JVM, or {@code null} when jk did not configure one. */
