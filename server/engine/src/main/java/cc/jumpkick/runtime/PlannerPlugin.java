@@ -271,9 +271,9 @@ public final class PlannerPlugin {
 
     /**
      * The manifest-contributed tool artifacts as action-key tokens: the second renderer the step
-     * arm and the packager arm share, for the same reason {@link #declaredInputTokens} exists. They
-     * used to disagree — per-artifact {@code tool:<name>:<content>} in the step arm, one combined
-     * {@code extras:} hash in the packager arm, which cannot tell two tools apart by name at all.
+     * arm and the packager arm share, for the same reason {@link #declaredInputTokens} exists. Both
+     * arms render per-artifact {@code tool:<name>:<content>}; a combined {@code extras:} hash cannot
+     * tell two tools apart by name at all.
      *
      * <p>A fetched artifact — a jar, or a CAS-materialized transitive closure dir — <em>is</em> its
      * content, so it is fingerprinted. A step-dependency that names a whole provisioned SDK

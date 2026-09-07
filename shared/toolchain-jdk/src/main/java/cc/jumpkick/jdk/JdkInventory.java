@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.jdk;
 
-import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.discovery.ProbeSupport;
 import cc.jumpkick.discovery.ToolHealth;
 import cc.jumpkick.util.AtomicWrites;
@@ -40,16 +39,11 @@ public final class JdkInventory {
 
     private static final String DEFAULT_KEY = "default";
     private static final String GRAAL_DEFAULT_KEY = "graal-default";
-    private static final String LEGACY_DEFAULT_KEY = "default-jdk";
-    private static final String LEGACY_DEFAULT_HOME_KEY = "default-jdk-home";
-    private static final String LEGACY_GRAAL_KEY = "default-graal-jdk";
-    private static final String LEGACY_GRAAL_HOME_KEY = "default-graal-jdk-home";
 
     private static final ConcurrentHashMap<String, Object> JVM_LOCKS = new ConcurrentHashMap<>();
 
     private final Path jdksRoot;
     private final Path file;
-    private final Path userConfigFile;
 
     public static JdkInventory current() {
         return of(JkDirs.jdks());
@@ -59,7 +53,7 @@ public final class JdkInventory {
     public static JdkInventory of(Path jdksRoot) {
         return SHARED.computeIfAbsent(
                 jdksRoot.toAbsolutePath().normalize(),
-                root -> new JdkInventory(root, JkDirs.state().resolve(FILE_NAME), JkDirs.userConfigFile()));
+                root -> new JdkInventory(root, JkDirs.state().resolve(FILE_NAME)));
     }
 
     /**
@@ -79,15 +73,10 @@ public final class JdkInventory {
         SHARED.clear();
     }
 
-    /** Test seam: inventory file + jdks root, no config migration. */
+    /** Inventory file + jdks root. */
     public JdkInventory(Path jdksRoot, Path file) {
-        this(jdksRoot, file, null);
-    }
-
-    public JdkInventory(Path jdksRoot, Path file, Path userConfigFile) {
         this.jdksRoot = Objects.requireNonNull(jdksRoot, "jdksRoot");
         this.file = Objects.requireNonNull(file, "file");
-        this.userConfigFile = userConfigFile;
     }
 
     public Path file() {
@@ -336,15 +325,16 @@ public final class JdkInventory {
         }
     }
 
-    private void ensureMigrated() {
+    /** A missing inventory file is rebuilt from the jk-owned install trees, once, under the lock. */
+    private void ensureInventory() {
         if (Files.isRegularFile(file)) return;
         try {
             withExclusiveLock(() -> {
                 if (Files.isRegularFile(file)) return;
-                writeLocked(migrateLocked());
+                writeLocked(rebuildFromInstalls());
             });
         } catch (IOException ignored) {
-            // Hook path: a failed migrate leaves TomlScan reading empty.
+            // Hook path: a failed rebuild leaves the snapshot empty.
         }
     }
 
@@ -358,7 +348,7 @@ public final class JdkInventory {
      * together.
      */
     private synchronized Snapshot snapshot() {
-        ensureMigrated();
+        ensureInventory();
         try {
             // One readAttributes, not isRegularFile-then-readAttributes: it answers presence, size and
             // mtime together, and this runs on every shell prompt via `jk hook-env`.
@@ -380,72 +370,18 @@ public final class JdkInventory {
     }
 
     private Snapshot loadLocked() throws IOException {
-        if (!Files.isRegularFile(file)) return migrateLocked();
+        if (!Files.isRegularFile(file)) return rebuildFromInstalls();
         return parse(Files.readString(file, StandardCharsets.UTF_8));
     }
 
-    private Snapshot migrateLocked() throws IOException {
+    private Snapshot rebuildFromInstalls() throws IOException {
         Map<String, Row> rows = new LinkedHashMap<>();
         for (Path dir : ownedInstallDirs()) {
             String id = dir.getFileName().toString();
             Path home = IntellijJdkDir.javaHome(dir);
             rows.put(id, rowFor(new InstalledJdk(id, home), null, false));
         }
-        String def = null;
-        String graal = null;
-        if (userConfigFile != null && Files.isRegularFile(userConfigFile)) {
-            var scan = TomlScan.scan(
-                    userConfigFile,
-                    LEGACY_DEFAULT_KEY,
-                    LEGACY_DEFAULT_HOME_KEY,
-                    LEGACY_GRAAL_KEY,
-                    LEGACY_GRAAL_HOME_KEY);
-            def = matchLegacy(scan.get(LEGACY_DEFAULT_HOME_KEY), scan.get(LEGACY_DEFAULT_KEY), rows);
-            graal = matchLegacy(scan.get(LEGACY_GRAAL_HOME_KEY), scan.get(LEGACY_GRAAL_KEY), rows);
-            stripLegacyKeys(userConfigFile);
-        }
-        return new Snapshot(def, graal, rows);
-    }
-
-    private String matchLegacy(String home, String id, Map<String, Row> rows) {
-        if (home != null && !home.isBlank()) {
-            Path recorded = Path.of(home);
-            for (Row row : rows.values()) {
-                Path rowHome = IntellijJdkDir.javaHome(installDir(row.id));
-                try {
-                    if (Files.exists(recorded) && rowHome.toRealPath().equals(recorded.toRealPath())) {
-                        return row.id;
-                    }
-                } catch (IOException ignored) {
-                    if (rowHome.equals(recorded)) return row.id;
-                }
-            }
-            Path asId = installDirOfHome(recorded);
-            if (asId != null && rows.containsKey(asId.getFileName().toString())) {
-                return asId.getFileName().toString();
-            }
-            // A default can live outside the owned trees (sdkman, system, IntelliJ). If it still
-            // works, synthesize the row setDefault would write so the id still resolves.
-            if (hasJavac(recorded)) {
-                Path dir = installDirOfHome(recorded);
-                String rid;
-                if (dir != null && isUnderJdksRoot(dir)) {
-                    rid = dir.getFileName() != null ? dir.getFileName().toString() : null;
-                } else {
-                    rid = id != null && !id.isBlank()
-                            ? id
-                            : (dir != null && dir.getFileName() != null
-                                    ? dir.getFileName().toString()
-                                    : null);
-                }
-                if (rid != null && !rid.isBlank()) {
-                    rows.put(rid, rowFor(new InstalledJdk(rid, recorded), null, false));
-                    return rid;
-                }
-            }
-        }
-        if (id != null && !id.isBlank() && rows.containsKey(id)) return id;
-        return (id != null && !id.isBlank()) ? id : null;
+        return new Snapshot(null, null, rows);
     }
 
     private static Path installDirOfHome(Path home) {
@@ -470,33 +406,6 @@ public final class JdkInventory {
             return List.of();
         }
         return out;
-    }
-
-    /**
-     * Drop the four legacy default keys, and ONLY them: this can run from the shell hook on any
-     * machine, so an untouched config must round-trip byte-for-byte. Atomic replace — a concurrent
-     * config writer must never observe a torn file.
-     */
-    private static void stripLegacyKeys(Path configFile) throws IOException {
-        if (!Files.exists(configFile)) return;
-        String existing = Files.readString(configFile, StandardCharsets.UTF_8);
-        List<String> legacyKeys =
-                List.of(LEGACY_DEFAULT_KEY, LEGACY_DEFAULT_HOME_KEY, LEGACY_GRAAL_KEY, LEGACY_GRAAL_HOME_KEY);
-        List<String> kept = new ArrayList<>();
-        boolean matched = false;
-        for (String line : existing.split("\n", -1)) {
-            String stripped = line.strip();
-            boolean legacy = legacyKeys.stream()
-                    .anyMatch(k -> stripped.startsWith(k)
-                            && stripped.substring(k.length()).stripLeading().startsWith("="));
-            if (legacy) {
-                matched = true;
-                continue;
-            }
-            kept.add(line);
-        }
-        if (!matched) return;
-        AtomicWrites.replace(configFile, String.join("\n", kept));
     }
 
     private void writeLocked(Snapshot snap) throws IOException {

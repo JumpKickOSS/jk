@@ -396,8 +396,8 @@ public final class SyncPlans {
 
     /**
      * Fetch the plugin's sibling POM into the mirror (warm hit = local probe only) and say so when
-     * it can't be had — a silent POM 404 used to surface only at worker launch as "has no Maven
-     * POM; run `jk install`".
+     * it can't be had, rather than letting a silent POM 404 surface at worker launch as "has no
+     * Maven POM; run `jk install`".
      */
     /**
      * Unpack the lock's {@code [native]} reachability-metadata pin into the artifact store.

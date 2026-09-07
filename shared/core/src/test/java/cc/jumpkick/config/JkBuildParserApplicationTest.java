@@ -145,9 +145,6 @@ class JkBuildParserApplicationTest {
         assertThat(JkBuildParser.parse(PROJECT + "\n[native]\nenabled = \"always\"\n")
                         .nativeMode())
                 .isEqualTo(JkBuild.NativeMode.ALWAYS);
-        // Legacy always = true
-        assertThat(JkBuildParser.parse(PROJECT + "\n[native]\nalways = true\n").nativeMode())
-                .isEqualTo(JkBuild.NativeMode.ALWAYS);
     }
 
     @Test

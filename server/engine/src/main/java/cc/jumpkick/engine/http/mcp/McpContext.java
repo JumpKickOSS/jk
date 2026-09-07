@@ -40,7 +40,7 @@ public final class McpContext {
     /** The one async-job admission point shared with the REST surface. */
     private final EngineHttpJobs jobs;
 
-    /** Legacy coord/description lookup, used only when a project card fails to parse. */
+    /** Coord/description fallback, used only when a project card fails to parse. */
     private final Function<String, Map<String, Object>> projectLookup;
 
     /** Redacted raw journal rows, newest first. Read through {@link #history()}. */

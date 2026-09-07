@@ -80,13 +80,11 @@ public final class EngineWire {
     /**
      * The engine endpoint this process has already ensured, if any.
      *
-     * <p>Every RPC used to run a full {@code ensure} — which opens a connection, completes a
-     * {@code hello}/{@code hello-ack} exchange with its own watchdog thread, closes it, and
-     * <strong>discards the handshake</strong> — and then open a second connection to send the
-     * request. {@code jk build} issues three or four RPCs, so that was six to eight connects, six to
-     * eight endpoint-file reads and three to four wasted round trips per invocation, on a native
-     * binary with no JIT to amortise any of it. On Windows each connect additionally reads the port
-     * file and the token file.
+     * <p>An {@code ensure} opens a connection, completes a {@code hello}/{@code hello-ack} exchange
+     * with its own watchdog thread and closes it. Done per RPC, {@code jk build}'s three or four
+     * RPCs would cost six to eight connects and endpoint-file reads on a native binary with no JIT
+     * to amortise any of it — and on Windows each connect also reads the port file and the token
+     * file.
      *
      * <p>Ensuring once per process is safe because the thing it establishes — that a live,
      * version-matched engine is listening here — is exactly what a failed connect disproves. So the

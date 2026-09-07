@@ -15,9 +15,9 @@ import java.util.ServiceLoader;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The one entry point every out-of-process plugin jar declares as its {@code Main-Class}. Replaces
- * the bespoke {@code main()} each runner used to hand-roll (arg checks, spec read, JSONL escaping,
- * exit codes): this loads the jar's {@link Plugin} via {@link ServiceLoader}, builds the {@link
+ * The one entry point every out-of-process plugin jar declares as its {@code Main-Class}. It owns
+ * what every runner would otherwise hand-roll (arg checks, spec read, JSONL escaping, exit codes):
+ * this loads the jar's {@link Plugin} via {@link ServiceLoader}, builds the {@link
  * ProtocolWriter} from its manifest, and bridges stdio to {@link Plugin#run}.
  *
  * <p>Exit codes come from {@link Exit}, the same vocabulary the engine and CLI use: the plugin's

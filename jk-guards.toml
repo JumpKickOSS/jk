@@ -433,6 +433,10 @@ patterns = [
   '(?i)\bkept for migration\b',
   '(?i)\bdo not revert\b',
   '(?i)\bas (?:they|it) used to\b',
+  '(?i)\b(?:was|were) previously\b',
+  '(?i)\bpreviously (?:kept|restated|named|ignored|hashed|invisible|parsed)\b',
+  '(?i)\bused to (?:hand-roll|fall (?:straight )?through|re-parse|re-derive|probe|buffer|rebuild|skip|forget|disagree|land here)\b',
+  '(?i)\ban earlier (?:revision|version) of\b',
 ]
 hit      = "// this used to be a list"
 miss     = "// used to detect a stale entry"
@@ -913,3 +917,14 @@ hit     = "version = 2"
 miss    = "version = 1"
 instead = "re-run `jk lock`"
 why     = "the lockfile schema is version 1 until 1.0"
+
+# G87. Main code carries no deprecated aliases and no parked helpers: delete on touch, per AGENTS.md.
+[guards.no-retired-code-markers]
+kind     = "text"
+files    = ["**/src/main/**/*.java"]
+patterns = ['@Deprecated\b', '@SuppressWarnings\("unused"\)']
+count    = { max = 0, per = "tree" }
+hit      = "@Deprecated static int old() {}"
+miss     = "// @Deprecated in prose"
+instead  = "delete the alias or the helper"
+why      = "a deprecated alias is a dual path with no users to protect"

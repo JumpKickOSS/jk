@@ -5,10 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
 import static org.assertj.core.api.Assertions.withinPercentage;
 
-import cc.jumpkick.task.RunNotices;
-import java.io.ByteArrayOutputStream;
-import java.io.PrintStream;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
@@ -158,40 +154,5 @@ class JkCacheConfigTest {
         double withoutOwn = JkCacheConfig.clampDefaultGb(6.0, disk, () -> 0L);
         assertThat(withOwn).isCloseTo((5.0 * 0.8) / 2.0, withinPercentage(1));
         assertThat(withOwn).isGreaterThan(withoutOwn);
-    }
-
-    @Test
-    void legacy_mb_keys_and_envs_still_pin_the_budget(@TempDir Path dir) throws Exception {
-        Path toml = dir.resolve("config.toml");
-        Files.writeString(toml, "[cache]\nmax-cache-size-mb = 512\n");
-        JkCacheConfig fromFile = JkCacheConfig.resolve(toml, k -> null, BIG_DISK);
-        assertThat(fromFile.maxCacheSizeGb()).isCloseTo(0.5, withinPercentage(1));
-
-        JkCacheConfig fromEnv =
-                JkCacheConfig.resolve(dir.resolve("none.toml"), Map.of("JK_MAX_CACHE_SIZE_MB", "2048")::get, BIG_DISK);
-        assertThat(fromEnv.maxCacheSizeGb()).isCloseTo(2.0, withinPercentage(1));
-    }
-
-    /** The env and file spellings are two facts, so a machine that sets both is told about both. */
-    @Test
-    void both_legacy_mb_spellings_present_warn_once_each(@TempDir Path dir) throws Exception {
-        Path toml = dir.resolve("config.toml");
-        Files.writeString(toml, "[cache]\nmax-cache-size-mb = 512\n");
-        var err = new ByteArrayOutputStream();
-        var original = System.err;
-        RunNotices.clear();
-        System.setErr(new PrintStream(err, true, StandardCharsets.UTF_8));
-        try {
-            JkCacheConfig.resolve(toml, Map.of("JK_MAX_CACHE_SIZE_MB", "2048")::get, BIG_DISK);
-            JkCacheConfig.resolve(toml, Map.of("JK_MAX_CACHE_SIZE_MB", "2048")::get, BIG_DISK);
-        } finally {
-            System.setErr(original);
-            RunNotices.clear();
-        }
-        String out = err.toString(StandardCharsets.UTF_8);
-        assertThat(out).contains("JK_MAX_CACHE_SIZE_MB is the pre-rename spelling");
-        assertThat(out).contains("cache.max-cache-size-mb is the pre-rename spelling");
-        assertThat(out.indexOf("JK_MAX_CACHE_SIZE_MB is")).isEqualTo(out.lastIndexOf("JK_MAX_CACHE_SIZE_MB is"));
-        assertThat(out.indexOf("cache.max-cache-size-mb is")).isEqualTo(out.lastIndexOf("cache.max-cache-size-mb is"));
     }
 }

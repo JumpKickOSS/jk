@@ -775,9 +775,4 @@ public final class GradleImporter {
         if (!Files.exists(settings)) return Optional.empty();
         return firstString(ROOT_NAME, stripComments(Files.readString(settings)));
     }
-
-    @SuppressWarnings("unused") // helper for future locale-sensitive matching
-    private static String lower(String s) {
-        return s == null ? null : s.toLowerCase(Locale.ROOT);
-    }
 }

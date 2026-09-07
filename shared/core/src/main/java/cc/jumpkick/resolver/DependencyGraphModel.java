@@ -242,8 +242,7 @@ public final class DependencyGraphModel {
         Builder b = new Builder(scopes, transitive, graph);
         Map<Path, String> idByDir = new LinkedHashMap<>();
 
-        // The workspace root is a node too: its own [dependencies] are part of the build and were
-        // previously invisible.
+        // The workspace root is a node too: its own [dependencies] are part of the build.
         String rootId = b.moduleNode(root, rootBuild, ".");
         for (var e : modulesByDir.entrySet()) {
             Path dir = e.getKey().toAbsolutePath().normalize();

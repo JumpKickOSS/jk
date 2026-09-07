@@ -18,11 +18,11 @@ import java.util.Set;
  * jk's resolved RUNTIME closure — the lockfile's answer to "what ships" — as the engine hands it
  * to the augment: one {@code group:artifact:version<TAB>jar} line per locked artifact.
  *
- * <p>This is the <em>whole</em> input to the Quarkus application model. The augment used to keep
- * only the jars that looked like extensions and let {@code BootstrapAppModelResolver} re-resolve
- * everything else under the platform BOM, so Maven's nearest-wins — not {@code jk-lock.toml} —
- * decided what landed in {@code quarkus-app/lib/main}. The lockfile is law: every runtime artifact
- * that ships is one of these, at this version, out of this jar.
+ * <p>This is the <em>whole</em> input to the Quarkus application model. Keeping only the jars that
+ * look like extensions and letting {@code BootstrapAppModelResolver} re-resolve the rest under the
+ * platform BOM would let Maven's nearest-wins — not {@code jk-lock.toml} — decide what lands in
+ * {@code quarkus-app/lib/main}. The lockfile is law: every runtime artifact that ships is one of
+ * these, at this version, out of this jar.
  *
  * <p>Two identities are in play and they are deliberately different. A locked artifact is keyed on
  * {@code group:artifact} because that is all the engine's runtime-entry list can express; the

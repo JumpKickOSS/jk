@@ -264,8 +264,8 @@ class TestEnvTest {
     }
 
     /**
-     * The launch path and the cache-key path used to disagree here: launch threw, the key path
-     * caught the same exception and keyed on the raw {@code ${VAR}} text. One manifest, two answers.
+     * The launch path and the cache-key path must agree here: if launch throws, the key path must
+     * not swallow the same exception and key on the raw {@code ${VAR}} text. One manifest, one answer.
      */
     @Test
     void an_unset_reference_fails_the_key_path_exactly_as_it_fails_at_launch(@TempDir Path tmp) throws Exception {

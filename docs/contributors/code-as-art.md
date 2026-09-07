@@ -949,6 +949,7 @@ letter — is the Gradle-side follow-up recorded in `guard-parity.txt`.
 | G84 | `guard-schemas-doc` (jk-guards.toml, `generated`) | the key tables in `docs/user/guards.md` not being what the loader's `KeySpec` tables render | generated, rendered from `guard-schemas` | `guard-schemas-doc` (generated) |
 | G85 | `schema-freeze` (jk-guards.toml, `text`) | an external format constant (`Lockfile.CURRENT_VERSION`, `EngineProtocol.PROTOCOL`, MCP / JSONL / transcript `SCHEMA`) not equal to 1 before 1.0 | text, exactly five `= 1` constants across the named owners | `schema-freeze` (text) |
 | G86 | `lock-version-is-one` (jk-guards.toml, `text`) | a committed `jk-lock.toml` whose `version` is not 1 | text, max 0 matches over every lock in the tree | `lock-version-is-one` (text) |
+| G87 | `no-retired-code-markers` (jk-guards.toml, `text`) | `@Deprecated` or `@SuppressWarnings("unused")` in main code — a dual path or a parked helper the charter says to delete on touch | text, max 0 matches over `**/src/main/**/*.java` | `no-retired-code-markers` (text) |
 <!-- guards:end -->
 
 `checkCliRuntimeClasspath` and `checkCliNoParseTypes` predate the letters.
@@ -1004,6 +1005,7 @@ by id, kind and why. This block is a `generated` guard's rendering
 | no-glued-inline-tag | text | a glued inline tag renders as garbage and blocks the shortener for the whole file |
 | no-historical-narration | text | historical narration describes a tree that no longer exists |
 | no-link-following-delete | text | a walk that follows links can delete the install behind a stable JDK pointer |
+| no-retired-code-markers | text | a deprecated alias is a dual path nobody has users to protect |
 | no-ticket-ids | text | a ticket id names a tracker the reader does not have; a Giter8 template writes it into a user's project |
 | null-marked-packages | annotate | NullAway checks a package only where it says @NullMarked; an unmarked package is one where every nullness finding is off |
 | one-digest-surface | forbid | one digest surface: buffer size, exception policy and hex spelling decided once |

@@ -5,9 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
 import cc.jumpkick.host.Os;
-import cc.jumpkick.util.MinimalToml;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -66,42 +64,14 @@ class JdkInventoryTest {
     }
 
     @Test
-    void migrate_from_config_and_strip_legacy_keys(@TempDir Path tmp) throws IOException {
-        Path jdks = Files.createDirectories(tmp.resolve("jdks"));
-        Path javaHome = fakeJdk(jdks.resolve("temurin-25.0.3"), "25.0.3", "Eclipse Adoptium");
-        Path graalHome = fakeGraal(jdks.resolve("graalvm-25.0.3"), "25.0.3");
-        Path config = tmp.resolve("config/config.toml");
-        Files.createDirectories(config.getParent());
-        Files.writeString(
-                config,
-                """
-                color = "auto"
-                default-jdk = "temurin-25.0.3"
-                default-jdk-home = %s
-                default-graal-jdk = "graalvm-25.0.3"
-                default-graal-jdk-home = %s
-                nerd-font = "auto"
-                """.formatted(MinimalToml.quote(javaHome.toString()), MinimalToml.quote(graalHome.toString())),
-                StandardCharsets.UTF_8);
-        JdkInventory inv = new JdkInventory(jdks, tmp.resolve("state/jk-jdks.toml"), config);
-        assertThat(inv.defaultId()).contains("temurin-25.0.3");
-        assertThat(inv.graalId()).contains("graalvm-25.0.3");
-
-        String leftover = Files.readString(config);
-        assertThat(leftover).contains("color = \"auto\"").contains("nerd-font = \"auto\"");
-        assertThat(leftover).doesNotContain("default-jdk").doesNotContain("default-graal");
-        assertThat(Files.readString(inv.file())).doesNotContain("sha256 =");
-    }
-
-    @Test
-    void migrate_skips_stable_pointer_aliases(@TempDir Path tmp) throws IOException {
+    void rebuild_skips_stable_pointer_aliases(@TempDir Path tmp) throws IOException {
         assumeFalse(Os.isWindows());
         Path jdks = Files.createDirectories(tmp.resolve("jdks"));
         Path real = fakeJdk(jdks.resolve("temurin-25.0.4"), "25.0.4", "Eclipse Adoptium");
         Files.createSymbolicLink(jdks.resolve("temurin-25"), real);
 
         JdkInventory inv = new JdkInventory(jdks, tmp.resolve("jk-jdks.toml"));
-        inv.defaultId(); // trigger migrate
+        inv.defaultId(); // trigger the rebuild
         String body = Files.readString(inv.file());
         assertThat(body).contains("id = \"temurin-25.0.4\"");
         assertThat(body).doesNotContain("id = \"temurin-25\"");
@@ -166,16 +136,6 @@ class JdkInventoryTest {
     }
 
     @Test
-    void external_default_stores_home(@TempDir Path tmp) throws IOException {
-        Path jdks = Files.createDirectories(tmp.resolve("jdks"));
-        Path external = fakeJdk(tmp.resolve("sdkman/25.0.4-tem"), "25.0.4", "Eclipse Adoptium");
-        JdkInventory inv = new JdkInventory(jdks, tmp.resolve("jk-jdks.toml"));
-        inv.setDefault(new InstalledJdk("25.0.4-tem", external));
-        assertThat(Files.readString(inv.file())).contains("home = ");
-        assertThat(inv.defaultHome()).contains(external.toRealPath());
-    }
-
-    @Test
     void round_trip_parse_render(@TempDir Path tmp) throws IOException {
         Path jdks = Files.createDirectories(tmp.resolve("jdks"));
         Path home = fakeJdk(jdks.resolve("temurin-25.0.4"), "25.0.4", "Eclipse Adoptium");
@@ -211,53 +171,13 @@ class JdkInventoryTest {
     }
 
     @Test
-    void migrate_synthesizes_a_row_for_an_external_legacy_default(@TempDir Path tmp) throws IOException {
+    void external_default_stores_home(@TempDir Path tmp) throws IOException {
         Path jdks = Files.createDirectories(tmp.resolve("jdks"));
         Path external = fakeJdk(tmp.resolve("sdkman/25.0.4-tem"), "25.0.4", "Eclipse Adoptium");
-        Path config = tmp.resolve("config/config.toml");
-        Files.createDirectories(config.getParent());
-        Files.writeString(config, """
-                color = "auto"
-
-                default-jdk = "25.0.4-tem"
-                default-jdk-home = %s
-
-                nerd-font = "auto"
-                """.formatted(MinimalToml.quote(external.toString())), StandardCharsets.UTF_8);
-
-        JdkInventory inv = new JdkInventory(jdks, tmp.resolve("state/jk-jdks.toml"), config);
-        assertThat(inv.defaultId()).contains("25.0.4-tem");
-        // The pre-upgrade explicit default keeps resolving — the old scheme recorded the home
-        // for exactly this case, and migration must not strand a bare id.
+        JdkInventory inv = new JdkInventory(jdks, tmp.resolve("jk-jdks.toml"));
+        inv.setDefault(new InstalledJdk("25.0.4-tem", external));
+        assertThat(Files.readString(inv.file())).contains("home = ");
         assertThat(inv.defaultHome()).contains(external.toRealPath());
-
-        // Legacy keys removed; everything else — including blank lines — byte-preserved.
-        String leftover = Files.readString(config);
-        assertThat(leftover).isEqualTo("""
-                color = "auto"
-
-
-                nerd-font = "auto"
-                """);
-    }
-
-    @Test
-    void migrate_leaves_a_config_without_legacy_keys_untouched(@TempDir Path tmp) throws IOException {
-        Path jdks = Files.createDirectories(tmp.resolve("jdks"));
-        Path config = tmp.resolve("config/config.toml");
-        Files.createDirectories(config.getParent());
-        String original = """
-                color = "auto"
-
-                nerd-font = "auto"
-
-                [m2]
-                integration = true
-                """;
-        Files.writeString(config, original, StandardCharsets.UTF_8);
-        JdkInventory inv = new JdkInventory(jdks, tmp.resolve("state/jk-jdks.toml"), config);
-        inv.defaultId(); // trigger migrate
-        assertThat(Files.readString(config)).isEqualTo(original);
     }
 
     @Test

@@ -14,8 +14,8 @@ public interface Widget {
     List<String> render(RenderContext ctx);
 
     /**
-     * Paint on stdout. Opens the per-command blank-line envelope so callers cannot skip
-     * it the way a raw {@code JkWedge.chipLine} print used to.
+     * Paint on stdout. Opens the per-command blank-line envelope so no caller can skip it (a raw
+     * {@code JkWedge.chipLine} print would).
      */
     default void print() {
         CommandWedge.envelopeStart();

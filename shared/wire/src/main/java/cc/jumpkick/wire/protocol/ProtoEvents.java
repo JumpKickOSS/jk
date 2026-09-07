@@ -995,10 +995,9 @@ public final class ProtoEvents {
      *
      * <p>{@code errors} is {@link Redacted}, not {@code String}, and that is load-bearing: these
      * rows are raw worker output, {@code .env} values are secret by source, and this line reaches
-     * the user's terminal verbatim. Three of the four engine verbs that emit this event used to
-     * forget the masking call, which a {@code List<String>} parameter could not distinguish from
-     * the one that remembered. {@link cc.jumpkick.config.SecretRedactor#redactAll} is the
-     * only mint, so forgetting is now a compile error.
+     * the user's terminal verbatim. A {@code List<String>} parameter cannot tell a verb that masked
+     * from one that forgot; {@link cc.jumpkick.config.SecretRedactor#redactAll} is the only mint,
+     * so forgetting is a compile error.
      */
     public static String workspaceFinish(boolean success, int exitCode, List<Redacted> errors, boolean cancelled) {
         return "{\"type\":\""

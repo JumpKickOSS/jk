@@ -117,9 +117,9 @@ public final class StampedMemo<K, S, V extends @Nullable Object> {
      * A file's (size, mtime) staleness stamp — the rule for files jk only reads, where one stat is
      * cheaper than the parse it guards.
      *
-     * <p>The mtime is kept as a {@link FileTime}, not truncated to milliseconds. Two readers used to
-     * stamp {@code ~/.jk/config.toml} independently, one at each resolution; the finer one is
-     * the safe merge, because a coarser stamp can only ever serve a stale parse.
+     * <p>The mtime is kept as a {@link FileTime}, not truncated to milliseconds: every reader of
+     * {@code ~/.jk/config.toml} shares this stamp, and a coarser one can only ever serve a stale
+     * parse.
      */
     public record FileStamp(long size, FileTime modified) {
 

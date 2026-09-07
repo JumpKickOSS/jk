@@ -149,7 +149,7 @@ public record ConsoleSpec(
     }
 
     /**
-     * A compiler warning under a yellow phase pill (legacy name kept for call sites).
+     * A compiler warning under a yellow phase pill.
      */
     public static String compilerWarning(String step, String message) {
         return DiagnosticReport.renderWarning(step, "javac", message);

@@ -34,7 +34,7 @@ import org.jspecify.annotations.Nullable;
  * environment, {@link System#getProperty} for the JVM overrides {@link JkM2Config} honours — stays
  * at the call site, because that split is deliberate and a reader keeps its own policy. This owns
  * the order the layers are consulted in and the rule that judges them. A caller with an extra layer
- * (a legacy env spelling, a system property) passes it as one more argument in rank order rather
+ * (a system property, a CI floor) passes it as one more argument in rank order rather
  * than reimplementing the fall-through.
  *
  * <p>The built-in is not passed through the predicate: it is the code's own constant, and a default
@@ -64,7 +64,7 @@ public record MachineConfig<T extends @Nullable Object>(T builtIn, Predicate<T> 
     /**
      * The value: the first of {@code highestFirst} that is set and valid, else {@link #builtIn}.
      * Layers are listed in precedence order, highest first — env before file, and a preferred env
-     * spelling before its legacy alias.
+     * layer before a lower-ranked one.
      */
     @SafeVarargs
     public final T layer(@Nullable T... highestFirst) {
@@ -86,7 +86,7 @@ public record MachineConfig<T extends @Nullable Object>(T builtIn, Predicate<T> 
 
     /**
      * One layer's raw read, judged by this setting's rule and nothing else — for a caller that must
-     * keep the layer separate (a legacy spelling it has to convert, a "was it set at all?" question)
+     * keep the layer separate (a unit it has to convert, a "was it set at all?" question)
      * rather than collapse it here. A rejected value comes back {@code null}, so it ranks exactly
      * like an absent one.
      */

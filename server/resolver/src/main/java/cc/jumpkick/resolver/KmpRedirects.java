@@ -37,7 +37,7 @@ public final class KmpRedirects {
     /**
      * Process-wide selection memo: Gradle module metadata is immutable per GAV on disk, and the
      * redirect for a given {@code jvmEnvironment} does not change mid-process. Warm re-locks
-     * (and the three scope solves) used to re-parse hundreds of {@code .module} files every time.
+     * (and the three scope solves) would otherwise re-parse hundreds of {@code .module} files.
      * Keyed by the repositories asked <em>and</em> {@code env + module@version} — which {@code
      * .module} is fetched depends on the repo set. No TTL: release GAV content is immutable; force
      * / {@link #clearProcessCache} drop the memo.

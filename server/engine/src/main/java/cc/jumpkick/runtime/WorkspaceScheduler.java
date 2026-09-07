@@ -166,7 +166,7 @@ public final class WorkspaceScheduler {
         }
         // Critical-path-first admission: the ready scan below takes the FIRST ready
         // unit, so order the backlog by longest remaining dependent chain, descending. With 13
-        // units ready at the widest level, declaration order used to start leaf plugins ahead of
+        // units ready at the widest level, declaration order would start leaf plugins ahead of
         // the client-io → io → resolver → toolchain → engine → cli spine that dominates the wall.
         // Stable sort keeps declaration order among equals.
         List<U> notStarted = new ArrayList<>(units);

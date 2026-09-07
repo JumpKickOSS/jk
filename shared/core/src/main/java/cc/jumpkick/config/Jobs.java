@@ -51,7 +51,6 @@ public final class Jobs {
     public static int resolve(Optional<Integer> cli, JkEngineConfig engine, Function<String, @Nullable String> env) {
         if (cli != null && cli.isPresent()) return effective(cli.get());
         Optional<Integer> fromEnv = EnvValues.intValue(env, "JK_JOBS");
-        if (fromEnv.isEmpty()) fromEnv = EnvValues.intValue(env, "JK_ENGINE_JOBS");
         if (fromEnv.isPresent()) return effective(fromEnv.get());
         if (engine != null && engine.jobs() != null) return effective(engine.jobs());
         return effective(null);

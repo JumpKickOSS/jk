@@ -1,6 +1,10 @@
 # Engine-owned. Tightened on every jk build; grown only by `jk guard freeze <id> --reason`.
 # Never edit by hand: an entry without a reason is a suppression, and there is no suppression syntax.
 
+[archive-instant-owner]
+[archive-instant-owner.populations]
+"shared/client-io" = { classes = 73, sites = 4059 }
+
 [blind-tree-walks]
 [blind-tree-walks.populations]
 "clients/cli" = { classes = 601, sites = 38001 }
@@ -16,7 +20,7 @@
 "plugins/test-runner" = { classes = 9, sites = 556 }
 "server/engine" = { classes = 842, sites = 53926 }
 "server/toolchain" = { classes = 20, sites = 1776 }
-"shared/client-io" = { classes = 73, sites = 4107 }
+"shared/client-io" = { classes = 73, sites = 4059 }
 "shared/core" = { classes = 326, sites = 17593 }
 "shared/dynamic-surface" = { classes = 10, sites = 607 }
 "shared/host" = { classes = 46, sites = 1921 }
@@ -556,10 +560,6 @@ at     = "cc.jumpkick.repo.RepoArtifactStore#hasTrackedFile(Ljava/nio/file/Path;
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
 in     = "shared/client-io"
-at     = "cc.jumpkick.repo.RepoArtifactStore#migrateLegacyLocal(Ljava/nio/file/Path;)V -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
-reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
-[[blind-tree-walks.entries]]
-in     = "shared/client-io"
 at     = "cc.jumpkick.repo.RepoArtifactStore#modules()Ljava/util/List; -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
@@ -754,6 +754,14 @@ reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk
 in     = "shared/wire"
 at     = "cc.jumpkick.wire.EnginePaths#identitiesIn(Ljava/nio/file/Path;)Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+
+[case-conversion-locale]
+[case-conversion-locale.populations]
+"shared/client-io" = { classes = 73, sites = 4059 }
+
+[jdk-removal-confined]
+[jdk-removal-confined.populations]
+"shared/client-io" = { classes = 73, sites = 0 }
 
 [no-fqcn]
 population = { units = 2762 }
@@ -1054,6 +1062,22 @@ unit   = "shared/toolchain-jdk/src/test/java/cc/jumpkick/jdk/JdkResolverTest.jav
 value  = 1
 reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
 
+[one-digest-surface]
+[one-digest-surface.populations]
+"shared/client-io" = { classes = 73, sites = 4059 }
+
+[one-hex-spelling]
+[one-hex-spelling.populations]
+"shared/client-io" = { classes = 73, sites = 4059 }
+
+[one-host-surface]
+[one-host-surface.populations]
+"shared/client-io" = { classes = 73, sites = 3010 }
+
+[own-algorithm-by-name]
+[own-algorithm-by-name.populations]
+"shared/client-io" = { classes = 73, sites = 3010 }
+
 [package-cycles]
 [package-cycles.populations]
 "clients/cli" = { edges = 38, slices = 11 }
@@ -1111,6 +1135,14 @@ unit   = "shared/toolchain-jdk:discovery"
 value  = 2
 reason = "banked from cycle-baseline.txt on 2026-09-06 — the facts edges found the same 9 components the import regex did; per-module follow-up work shrinks them"
 
+[properties-render-owner]
+[properties-render-owner.populations]
+"shared/client-io" = { classes = 73, sites = 4059 }
+
+[runnable-owner]
+[runnable-owner.populations]
+"shared/client-io" = { classes = 73, sites = 4059 }
+
 [single-truth-set]
 population = { examined = 1707 }
 [[single-truth-set.entries]]
@@ -1149,3 +1181,11 @@ reason = "readers of foreign formats (POM, giter8, JDK catalog, plugin manifests
 unit   = "shared/toolchain-jdk/src/main/java/cc/jumpkick/jdk/JdkCatalogClient.java"
 value  = 2
 reason = "readers of foreign formats (POM, giter8, JDK catalog, plugin manifests) compare against the format's own truth words; ratchet down, never exempt"
+
+[toolchain-env-from-request]
+[toolchain-env-from-request.populations]
+"shared/client-io" = { classes = 73, sites = 3010 }
+
+[xml-parser-owner]
+[xml-parser-owner.populations]
+"shared/client-io" = { classes = 73, sites = 4059 }

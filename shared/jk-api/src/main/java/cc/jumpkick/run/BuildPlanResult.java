@@ -65,7 +65,7 @@ public record BuildPlanResult(
      *
      * <p>Test failures carry split identity ({@code module}, {@code engine}, {@code className},
      * {@code method}), {@code exceptionClass}, and full {@code stack}. Non-test diagnostics leave
-     * those empty. Legacy {@code test} is kept empty for new emits (prefer {@code module} +
+     * those empty. {@code test} is kept empty for new emits (prefer {@code module} +
      * {@code method}).
      */
     public record Diagnostic(
@@ -90,7 +90,7 @@ public record BuildPlanResult(
             this(step, code, message, "", "", "", "", "", "", "", "", 0, 0, List.of(), 0);
         }
 
-        /** Legacy two-field test failure (display label + exception class). */
+        /** Two-field test failure (display label + exception class). */
         public Diagnostic(
                 String step,
                 String code,

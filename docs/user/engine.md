@@ -59,7 +59,7 @@ and `auto-warmup` do not follow CI.
 | Key | Env | Default | Read | Meaning |
 |---|---|---|---|---|
 | `max-heap-mb` | `JK_ENGINE_MAX_HEAP_MB` | 256; 512 when CI is set | engine start | Engine process heap ceiling (-Xmx). 0 = uncapped. |
-| `jobs` | `JK_JOBS` | cores (0 = all cores) | each command | Concurrent module/worker budget. CLI -j wins. Alias JK_ENGINE_JOBS. |
+| `jobs` | `JK_JOBS` | cores (0 = all cores) | each command | Concurrent module/worker budget. CLI -j wins. |
 | `continue` | `JK_CONTINUE` | false; true when CI is set | each job | Keep going after a failed module. Does not change the verdict. |
 | `vfs-max-mb` | `JK_ENGINE_VFS_MAX_MB` | 32 | engine start | Per-job input-tree retain in MiB. 0 = off. CI does not bump this. |
 | `auto-warmup` | `JK_AUTO_WARMUP` | true | each idle cycle | Idle AOT train and host calibration. false skips the whole pass. |

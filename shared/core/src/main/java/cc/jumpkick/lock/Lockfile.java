@@ -28,9 +28,9 @@ public record Lockfile(
         List<PluginEntry> plugins,
         List<SdkEntry> sdk,
         List<ModuleEntry> modules,
-        /** Minimum jk able to run this lock — a floor, never an artifact pin; null on legacy locks. */
+        /** Minimum jk able to run this lock — a floor, never an artifact pin; null when the lock names none. */
         @Nullable String jkMin,
-        /** SHA-256 of every {@code jk.toml} that fed this lock; null on legacy locks. */
+        /** SHA-256 of every {@code jk.toml} that fed this lock; null when the lock carries no digest. */
         @Nullable String manifestsSha256,
         /** Durable auto project identity; null until minted. */
         @Nullable String projectId,
@@ -795,7 +795,7 @@ public record Lockfile(
         }
 
         /**
-         * Canonical package key for this row. Bare legacy {@code g:a} names normalize to
+         * Canonical package key for this row. Bare {@code g:a} names normalize to
          * {@code g:a:jar:}.
          */
         public String packageKey() {

@@ -419,9 +419,8 @@ public final class TaskForecaster {
                 Path out = layout.classesDir();
                 // Same stamp gate as BuildPlanner compile-main: a post-rebuild tree with a
                 // fresh.jstamp is cached even when action-cache keys were not rewritten
-                // (historical --rebuild skipped store). The input recipe is SHARED with the live
-                // check and write-stamp — mixed modules previously hashed different
-                // inputs here and never stamp-matched.
+                // (a --rebuild skips the store). The input recipe is SHARED with the live check
+                // and write-stamp, so a mixed module hashes the same inputs here and stamp-matches.
                 Path groovyJar = null;
                 boolean groovyJarUnavailable = false;
                 if (mixedGroovy) {

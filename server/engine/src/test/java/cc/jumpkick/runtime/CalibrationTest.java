@@ -19,7 +19,7 @@ class CalibrationTest {
         // Full model weight from HardwareProbe; wall = fork+javac+fork (test-worker proxy).
         double mpw = Calibration.deriveMsPerWeight(180, 180);
         assertThat(mpw).isGreaterThan(0);
-        assertThat(mpw).isCloseTo(HardwareProbe.deriveMsPerWeight(180, 180, 0, 0, 0, 0), within(1e-6));
+        assertThat(mpw).isCloseTo(HardwareProbe.deriveMsPerWeight(180, 180, 0, 0, 0, 0, 0, 0, false), within(1e-6));
     }
 
     @Test

@@ -184,8 +184,7 @@ public final class ManifestBuild {
     /**
      * Optional {@code [native]}: empty when the table is absent. Presence defaults to {@link
      * JkBuild.NativeMode#SUPPORTED} ({@code enabled = true}). {@code enabled = false} keeps the
-     * table but disables native builds; {@code enabled = "always"} (or legacy {@code always =
-     * true}) auto-runs native-image on {@code jk build}. Default {@code graal} is {@code
+     * table but disables native builds; {@code enabled = "always"} auto-runs native-image on {@code jk build}. Default {@code graal} is {@code
      * "graalvm"}.
      */
     static Optional<JkBuild.NativeConfig> parseNativeConfig(TomlTable root) {
@@ -244,8 +243,7 @@ public final class ManifestBuild {
 
     /**
      * Resolve {@code [native].enabled}: boolean true/false, string {@code "always"}, or omit for
-     * enabled-true. Legacy {@code always = true} maps to {@link JkBuild.NativeMode#ALWAYS} when
-     * {@code enabled} is absent.
+     * enabled-true.
      */
     static JkBuild.NativeMode parseNativeEnabled(TomlTable native_) {
         if (native_.contains("enabled")) {
@@ -264,10 +262,6 @@ public final class ManifestBuild {
                 };
             }
             throw new JkBuildParseException("[native].enabled must be true, false, or \"always\"");
-        }
-        // Legacy always = true (pre-enabled key).
-        if (Boolean.TRUE.equals(native_.getBoolean("always"))) {
-            return JkBuild.NativeMode.ALWAYS;
         }
         // [native] present with no enabled key → enabled = true.
         return JkBuild.NativeMode.SUPPORTED;

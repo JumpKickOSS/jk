@@ -166,8 +166,8 @@ public final class EnginePaths {
             }
         } catch (IOException ignored) {
             // No pointer → no engine. The flat path below is a never-bound placeholder (nothing
-            // creates it since the legacy compat pointer was retired): probes against it fail
-            // cleanly, which is exactly the "no engine running" answer.
+            // creates it): probes against it fail cleanly, which is exactly the "no engine
+            // running" answer.
         }
         return paths.socket();
     }

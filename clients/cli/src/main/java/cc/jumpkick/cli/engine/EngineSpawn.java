@@ -618,8 +618,8 @@ public final class EngineSpawn {
             }
         }
         ProcessBuilder pb = new ProcessBuilder(command);
-        // forward resolve budgets into the engine process. PubGrubSolver reads these from
-        // its own env; client-only exports were previously ignored for resident engines.
+        // Forward resolve budgets into the engine process: PubGrubSolver reads them from its own
+        // env, so a client-only export must reach the resident engine here.
         forwardResolveEnv(pb.environment());
         // Anchor the detached daemon's working directory to its own state dir (created just above),
         // never the spawning client's CWD. A resident engine outlives the shell that started it, and

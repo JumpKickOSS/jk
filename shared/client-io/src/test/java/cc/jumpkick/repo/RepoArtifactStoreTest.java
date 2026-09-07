@@ -54,65 +54,6 @@ class RepoArtifactStoreTest {
     }
 
     @Test
-    void legacy_local_store_is_folded_into_jk_local(@TempDir Path dir) throws IOException {
-        RepoArtifactStore.clearLegacyMigrationMemoForTest();
-        Path cache = dir.resolve("cache");
-        Path legacy = cache.resolve("repos/local/com/example/app/1.0/app-1.0.jar");
-        Files.createDirectories(legacy.getParent());
-        Files.writeString(legacy, "pre-rename-bytes");
-
-        new RepoArtifactStore(cache, "central"); // any store construction migrates
-
-        assertThat(cache.resolve("repos/local")).doesNotExist();
-        assertThat(cache.resolve("repos/jk-local/com/example/app/1.0/app-1.0.jar"))
-                .exists()
-                .content()
-                .isEqualTo("pre-rename-bytes");
-        assertThat(RepoArtifactStore.legacyLocalPending(cache)).isFalse();
-    }
-
-    @Test
-    void legacy_merge_keeps_the_jk_local_copy_on_collision(@TempDir Path dir) throws IOException {
-        RepoArtifactStore.clearLegacyMigrationMemoForTest();
-        Path cache = dir.resolve("cache");
-        Path legacyDup = cache.resolve("repos/local/g/a/1/a-1.jar");
-        Path legacyOnly = cache.resolve("repos/local/g/b/1/b-1.jar");
-        Path kept = cache.resolve("repos/jk-local/g/a/1/a-1.jar");
-        Files.createDirectories(legacyDup.getParent());
-        Files.createDirectories(legacyOnly.getParent());
-        Files.createDirectories(kept.getParent());
-        Files.writeString(legacyDup, "old-copy");
-        Files.writeString(legacyOnly, "only-in-legacy");
-        Files.writeString(kept, "new-copy");
-
-        RepoArtifactStore.migrateLegacyLocal(cache);
-
-        assertThat(kept).content().isEqualTo("new-copy");
-        assertThat(cache.resolve("repos/jk-local/g/b/1/b-1.jar")).content().isEqualTo("only-in-legacy");
-        assertThat(cache.resolve("repos/local")).doesNotExist();
-    }
-
-    @Test
-    void user_remote_named_local_after_the_rename_is_never_migrated(@TempDir Path dir) throws IOException {
-        RepoArtifactStore.clearLegacyMigrationMemoForTest();
-        Path cache = dir.resolve("cache");
-        // First contact with a clean store stamps the rename marker...
-        new RepoArtifactStore(cache, "central");
-        // ...then a user remote actually named "local" fills its own mirror.
-        Path mirror = cache.resolve("repos/local/g/a/1/a-1.jar");
-        Files.createDirectories(mirror.getParent());
-        Files.writeString(mirror, "user-remote-bytes");
-
-        // A fresh process constructs stores again: the marker keeps the mirror in place.
-        RepoArtifactStore.clearLegacyMigrationMemoForTest();
-        new RepoArtifactStore(cache, "local");
-
-        assertThat(mirror).content().isEqualTo("user-remote-bytes");
-        assertThat(cache.resolve("repos/jk-local/g/a/1/a-1.jar")).doesNotExist();
-        assertThat(RepoArtifactStore.legacyLocalPending(cache)).isFalse();
-    }
-
-    @Test
     void evict_removes_the_artifact_and_its_memo(@TempDir Path dir) throws IOException {
         Path cache = dir.resolve("cache");
         Path source = dir.resolve("src.jar");

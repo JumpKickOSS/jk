@@ -117,9 +117,8 @@ public final class RunCommand {
                 int jobs = global.jobsEffective();
                 List<String> tokens =
                         cwdScope.workspaceMember() ? ModuleSelectors.tokens(cwdScope.modulesSpec(), null) : List.of();
-                // Session variant/clientEnv ride the request like `jk build` at a root does
-                // `jk run --release` used to build debug and then exec release artifacts that
-                // were never produced.
+                // Session variant/clientEnv ride the request like `jk build` at a root does, so
+                // `jk run --release` builds the release artifacts it is about to exec.
                 var request = new WorkspaceRequest(
                                 wsRoot,
                                 cache,

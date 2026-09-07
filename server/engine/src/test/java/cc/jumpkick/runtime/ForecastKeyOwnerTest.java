@@ -208,7 +208,7 @@ class ForecastKeyOwnerTest {
 
     @Test
     void the_packaged_main_class_is_the_worker_entry_for_a_plugin_worker(@TempDir Path tmp) throws Exception {
-        // The value the two assembly sites used to disagree about. It is worth pinning even though
+        // The value the two assembly sites must agree on. It is worth pinning even though
         // the disagreement is currently unreachable: JkBuildParser refuses an [application] table on
         // a plugin worker ("already implies main cc.jumpkick.plugin.process.PluginMain"), and
         // `assembly` only exists inside [application] — so no worker module can be assembly = true

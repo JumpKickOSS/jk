@@ -20,10 +20,9 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>One policy for both callers. The CLI's {@code GraalResolver} runs these tiers before it
  * offers to install what is missing; the engine runs them for a request that shipped no client
- * answer — a build submitted over HTTP or MCP — which used to fall straight through to the
- * daemon's own {@code $GRAALVM_HOME} and whichever JDK happened to be pinned, so a workspace with
- * an always-native member linked against a Graal the request never named, or failed at its native
- * tail minutes in. The tiers, in order:
+ * answer — a build submitted over HTTP or MCP — so a workspace with an always-native member links
+ * against the Graal these tiers name, never the daemon's own {@code $GRAALVM_HOME} or whichever
+ * JDK happens to be pinned. The tiers, in order:
  *
  * <ol>
  *   <li>an explicit spec ({@code --graal}, {@code [native].graal}, {@code JK_GRAAL}) — installed

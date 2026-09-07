@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
-import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.FileStore;
 import java.nio.file.Files;
@@ -217,47 +216,18 @@ public record JkCacheConfig(
                 "cache.auto-prune",
                 "cache.prune-interval-days",
                 "cache.max-cache-size-gb",
-                "cache.max-cache-size-mb",
                 "cache.incremental-max-size-gb");
     }
 
-    /**
-     * The env cache budget. The pre-rename {@code -MB} spelling ranks directly under the {@code -GB}
-     * one on the same substrate, so a machine that still sets it is not overridden by the file —
-     * {@link MachineConfig#accept} judges the preferred key first so an out-of-range value there
-     * falls through to the legacy key rather than suppressing it.
-     */
+    /** The env cache budget, judged by the setting's rule; an out-of-range value ranks as absent. */
     private static @Nullable Double envCacheGb(Function<String, @Nullable String> env) {
-        Double gb = MAX_CACHE_SIZE_GB.accept(
+        return MAX_CACHE_SIZE_GB.accept(
                 EnvValues.doubleValue(env, "JK_MAX_CACHE_SIZE_GB").orElse(null));
-        if (gb != null) return gb;
-        return legacyMbAsGb(
-                MAX_CACHE_SIZE_GB.accept(
-                        EnvValues.doubleValue(env, "JK_MAX_CACHE_SIZE_MB").orElse(null)),
-                "JK_MAX_CACHE_SIZE_MB is the pre-rename spelling — use JK_MAX_CACHE_SIZE_GB");
     }
 
-    /**
-     * The file cache budget. Ignoring the pre-rename {@code -mb} key silently would grow a
-     * deliberately small cache to the multi-GiB default on upgrade.
-     */
+    /** The file cache budget, judged the same way. */
     private static @Nullable Double fileCacheGb(TomlScan scan) {
-        Double gb = MAX_CACHE_SIZE_GB.accept(scanDouble(scan, "cache.max-cache-size-gb"));
-        if (gb != null) return gb;
-        return legacyMbAsGb(
-                MAX_CACHE_SIZE_GB.accept(scanDouble(scan, "cache.max-cache-size-mb")),
-                "cache.max-cache-size-mb is the pre-rename spelling — use cache.max-cache-size-gb");
-    }
-
-    /**
-     * The warning text is also the once-per-run key: the env and file spellings are two facts,
-     * and each is said on its own — one shared flag once let whichever legacy key was read first
-     * mute the other's warning.
-     */
-    private static @Nullable Double legacyMbAsGb(@Nullable Double mb, String warning) {
-        if (mb == null) return null;
-        RunNotices.warnOnce(warning, () -> "jk: warning: " + warning);
-        return mb / 1024.0;
+        return MAX_CACHE_SIZE_GB.accept(scanDouble(scan, "cache.max-cache-size-gb"));
     }
 
     /** Action-cache budget in bytes ({@link #maxCacheSizeGb}). */

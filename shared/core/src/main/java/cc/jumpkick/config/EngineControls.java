@@ -38,7 +38,7 @@ public final class EngineControls {
                     "JK_JOBS",
                     "cores (0 = all cores)",
                     "each command",
-                    "Concurrent module/worker budget. CLI -j wins. Alias JK_ENGINE_JOBS."),
+                    "Concurrent module/worker budget. CLI -j wins."),
             control(
                     "continue",
                     "JK_CONTINUE",
@@ -98,12 +98,11 @@ public final class EngineControls {
         return TABLE.stream().map(c -> "engine." + c.toml()).toArray(String[]::new);
     }
 
-    /** Env names the product may read, including the {@code JK_ENGINE_JOBS} alias of {@code JK_JOBS}. */
+    /** Env names the product may read. */
     public static Set<String> envNames() {
         Set<String> out = new LinkedHashSet<>();
         TABLE.forEach(c -> addEnv(out, c.env()));
         PROCESS.forEach(c -> addEnv(out, c.env()));
-        out.add("JK_ENGINE_JOBS");
         return out;
     }
 

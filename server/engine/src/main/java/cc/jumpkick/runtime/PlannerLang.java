@@ -96,7 +96,7 @@ public final class PlannerLang {
         ktArgs.add("-no-stdlib");
         // Contributed kotlinc args (e.g. spring-boot's -java-parameters, mirroring its javac
         // -parameters — Boot reflects on parameter names). User-position args still win: these
-        // sit before extraArgs additions exactly where the hard-coded flag used to.
+        // sit before the extraArgs additions.
         for (String arg : PluginContributions.kotlinArgs(ctx.require(PROJECT), workingDir, lockModules)) {
             if (!ktArgs.contains(arg)) ktArgs.add(arg);
         }

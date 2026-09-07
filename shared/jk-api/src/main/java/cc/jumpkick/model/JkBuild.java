@@ -543,7 +543,7 @@ public record JkBuild(
     }
 
     /**
-     * Resolved {@code [native].enabled} (or legacy {@code always}). See {@link JkBuild#nativeMode}.
+     * Resolved {@code [native].enabled}. See {@link JkBuild#nativeMode}.
      */
     public enum NativeMode {
         /** No {@code [native]} table, or {@code enabled = false}. */
@@ -554,7 +554,7 @@ public record JkBuild(
          */
         SUPPORTED,
         /**
-         * {@code enabled = "always"} (or legacy {@code always = true}): native-image on {@code jk
+         * {@code enabled = "always"}: native-image on {@code jk
          * build}, {@code jk install}, and {@code jk native}.
          */
         ALWAYS;
@@ -671,7 +671,7 @@ public record JkBuild(
             return name;
         }
 
-        /** True when {@code enabled = "always"} (or legacy {@code always = true}). */
+        /** True when {@code enabled = "always"}. */
         public boolean always() {
             return enabled == NativeMode.ALWAYS;
         }

@@ -81,8 +81,8 @@ public final class WindowsUtf8 {
     /**
      * A UTF-8 {@link PrintStream} over {@code fd}, buffered at 8&nbsp;KB, autoflush always.
      *
-     * <p>The TTY arm used to buffer at <strong>128 bytes</strong> against a measured 220-byte mean
-     * line, so every line wrote through twice and a truecolor tree row could split mid-SGR-sequence.
+     * <p>8&nbsp;KB clears the measured 220-byte mean line and a truecolor tree row in one write, so a
+     * line never splits mid-SGR-sequence.
      * A larger buffer costs nothing in liveness here: {@link PrintStream} with {@code autoFlush}
      * flushes on every {@code println} regardless of buffer size, so the size only decides how many
      * {@code WriteFile} calls one line takes — and each of those is a round trip through conhost.

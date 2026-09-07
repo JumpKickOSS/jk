@@ -373,7 +373,7 @@ public record BuildRecord(
                     0);
         }
 
-        /** Legacy ctor without structured test fields. */
+        /** Diagnostic without structured test fields. */
         public Diag(
                 String severity,
                 String dir,

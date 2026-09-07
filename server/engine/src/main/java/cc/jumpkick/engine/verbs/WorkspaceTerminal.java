@@ -14,10 +14,9 @@ import org.jspecify.annotations.Nullable;
  * The one place a {@code workspace-finish} leaves the engine.
  *
  * <p>Four verbs drive a workspace build — {@code build}, {@code native}, {@code image} and a
- * workspace-member {@code compile} — and each used to close it with its own copy of the same
- * epilogue. The copies drifted where it mattered: only {@code build} masked {@code .env} secrets
- * out of the worker error rows, and only {@code build} published them to the dashboard.
- * One emitter, one behaviour.
+ * workspace-member {@code compile} — and every one closes it here. Separate epilogues drift where
+ * it matters: which verb masks {@code .env} secrets out of the worker error rows, which publishes
+ * them to the dashboard. One emitter, one behaviour.
  */
 final class WorkspaceTerminal {
 

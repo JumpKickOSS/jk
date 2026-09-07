@@ -418,9 +418,8 @@ final class EngineReads {
             throws IOException {
         return request(
                 paths,
-                // project-info used to ride bare, with no session envelope at all — so the engine
-                // resolved this project's layout, test tags and toolchain against the daemon's own
-                // state rather than the caller's.
+                // project-info rides in a session envelope so the engine resolves this project's
+                // layout, test tags and toolchain against the caller's state, not the daemon's own.
                 ProtoSession.withToolchain(
                         ProtoSession.withSession(
                                 new ProjectInfoRequest(dir.toString(), modules, affectedSince, affectedWip, counts)

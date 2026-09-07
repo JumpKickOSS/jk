@@ -17,12 +17,10 @@ import org.jspecify.annotations.Nullable;
  * atomic on the wire if every one of them holds the same monitor while writing it, so this class
  * owns that monitor and nothing else takes it.
  *
- * <p>It exists because that discipline was previously restated in three places and one of them
- * disagreed: {@code EngineServer.send} and {@code WireEventSink.emit} both synchronized (each with a
- * comment explaining why), while {@code JobEnvelope.send} did not — and the envelope's copy was the
- * one the 30-second heartbeat used, so a long build could splice a heartbeat into the middle of a
- * plan event and hand the client a malformed line. Three implementations of one invariant is two
- * too many; a fourth would have arrived with the next producer.
+ * <p>One implementation, because the invariant has three producers ({@code EngineServer.send},
+ * {@code WireEventSink.emit}, {@code JobEnvelope.send}) and the 30-second heartbeat rides the
+ * envelope's: a producer that skips the monitor can splice a heartbeat into the middle of a plan
+ * event and hand the client a malformed line.
  */
 @NullMarked
 public final class WireWriter {
@@ -63,8 +61,8 @@ public final class WireWriter {
      * Wait for the line to reach the socket, even when the caller is already interrupted.
      *
      * <p>{@code Future.get} throws immediately if the caller's interrupt flag is set, so an
-     * interrupted producer used to hand its line to the pool and return — and the next producer's
-     * line, submitted from a thread that was not interrupted, could overtake it. A {@code progress}
+     * interrupted producer that handed its line to the pool and returned could be overtaken by the
+     * next producer's line, submitted from a thread that was not interrupted. A {@code progress}
      * frame arriving after {@code job-finish} is not a stream the client can read: the terminal is
      * where it stops. Ordering is the reason this class exists, and it cannot depend on which
      * callers happened to be interrupted.

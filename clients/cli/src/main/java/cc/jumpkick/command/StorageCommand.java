@@ -174,7 +174,7 @@ public final class StorageCommand extends GroupCommand {
 
         @Override
         public List<String> aliases() {
-            // Pre-split / muscle-memory names (bare `jk storage` used to land here)
+            // Muscle-memory names for the bare `jk storage` verb
             return List.of("status", "df", "info");
         }
 

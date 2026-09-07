@@ -330,9 +330,8 @@ public final class NativeCommand implements CliCommand {
         var req = hostedRequest(wsRoot, cache, graalHomes, selectedModuleDirs);
         var paths = EnginePaths.current();
 
-        // JSON / verbose: the shared append-only renderer, exactly as `jk build` drives it. This
-        // arm used to hand-roll a listener that emitted `workspace-progress` and no terminal —
-        // the one orphan copy of the vocabulary left outside WorkspaceRunView.
+        // JSON / verbose: the shared append-only renderer, exactly as `jk build` drives it — the
+        // `workspace-progress` vocabulary has one owner, WorkspaceRunView, and no copy here.
         if (mode != BuildPlanConsole.Mode.AUTO && mode != BuildPlanConsole.Mode.QUIET) {
             boolean json = mode == BuildPlanConsole.Mode.JSON;
             var run = new WorkspaceRunView(new WorkspaceRunView.Chrome("Build", false), wsRoot, null, json);

@@ -31,7 +31,7 @@ import xsbti.compile.ScalaCompiler;
  * two {@link URLClassLoader}s and a {@link ScalaInstance}. None of it touches invalidation, the
  * analysis store, or a source file, and the Java-only path exists only so the mixed path can be
  * the same code with different jars. {@code mixed == null} is what "Java only" means, asked once
- * here instead of at each of the three sites that used to re-derive it.
+ * here instead of at each of the three sites that consume it.
  */
 final class ScalaBridge {
 

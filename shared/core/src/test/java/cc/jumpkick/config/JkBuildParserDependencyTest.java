@@ -537,8 +537,8 @@ class JkBuildParserDependencyTest {
 
     @Test
     void runtime_and_platform_scope_tables_parse() {
-        // [platform-dependencies] (BOM imports) and [runtime-dependencies] were previously
-        // importer-only; hand-written manifests must be able to declare them (Boot BOM flow).
+        // [platform-dependencies] (BOM imports) and [runtime-dependencies] are not importer-only:
+        // hand-written manifests must be able to declare them (Boot BOM flow).
         JkBuild b = JkBuildParser.parse("""
                 group = "com.example"
                 name = "app"

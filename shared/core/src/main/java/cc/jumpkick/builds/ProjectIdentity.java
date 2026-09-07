@@ -413,9 +413,7 @@ public record ProjectIdentity(
                         default -> {}
                     }
                 }
-                if (path == null) return Optional.empty();
-                // Legacy files had only coord+path; directory name is the id.
-                if (id == null || id.isBlank()) id = projectHome.getFileName().toString();
+                if (path == null || id == null || id.isBlank()) return Optional.empty();
                 return Optional.of(new IdentityFile(id, coord, path, source, remote, rel));
             } catch (IOException e) {
                 return Optional.empty();

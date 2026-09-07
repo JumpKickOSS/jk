@@ -7,7 +7,6 @@ import cc.jumpkick.jdk.JdkVendor;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -207,18 +206,5 @@ public final class ToolHealth {
             case "kotlin" -> List.of(home.resolve("lib").resolve("kotlin-compiler.jar"));
             default -> List.of();
         };
-    }
-
-    /**
-     * Read up to {@code limit} bytes from a UTF-8 file. Convenience for probe implementations that
-     * want to grep version strings.
-     */
-    @SuppressWarnings("unused")
-    static String readFirstBytes(Path file, int limit) throws IOException {
-        try (InputStream in = Files.newInputStream(file)) {
-            byte[] buf = new byte[limit];
-            int n = in.read(buf);
-            return n <= 0 ? "" : new String(buf, 0, n, StandardCharsets.UTF_8);
-        }
     }
 }

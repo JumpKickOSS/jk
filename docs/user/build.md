@@ -49,7 +49,7 @@ host’s 64.
 | Layer | Setting |
 |-------|---------|
 | CLI | `-j` / `--jobs` (wins) |
-| Env | `JK_JOBS` (or `JK_ENGINE_JOBS`) |
+| Env | `JK_JOBS` |
 | Machine TOML | `~/.jk/config.toml` → `[engine] jobs = N` |
 
 There is no `--parallel` / `--no-parallel`; use `-j` / `-j1`. Test workers (`-w`) are

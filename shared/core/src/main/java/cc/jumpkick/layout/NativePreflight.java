@@ -23,8 +23,8 @@ public final class NativePreflight {
     public static final String GRAAL_UNSET = "GRAALVM_HOME is not set.";
     /**
      * Reads the launcher name and the searched directories out of {@link GraalLauncher} rather than
-     * restating them: this message previously named {@code $GRAALVM_HOME/bin} while the search it
-     * described could not see {@code lib/svm/bin} at all. Stays under 78 characters
+     * restating them, so the message and the search cannot disagree about {@code lib/svm/bin}.
+     * Stays under 78 characters
      * ({@code NativePreflightTest.messages_are_terse}) — a second searched directory would have to
      * be short, or the message would have to stop enumerating them.
      */

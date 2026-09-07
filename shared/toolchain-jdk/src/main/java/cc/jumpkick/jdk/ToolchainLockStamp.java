@@ -13,11 +13,9 @@ import java.util.Optional;
  *
  * <p>{@code [jdk]} is always written. The table is a record of what built the lock, and its
  * suggested version is a floor on the major only — so naming the host's JVM constrains a later
- * build to the same major, not to the same install. An earlier revision suppressed the stamp
- * unless the project declared a matching {@code jdk} major, because every consumer then read the
- * table as a hard pin and a stamp of the ambient JVM would silently satisfy a JDK the project
- * never got. That is no longer how the table reads: a pin now has to say {@code required-*}, and
- * only an {@code =} in the manifest writes one.
+ * build to the same major, not to the same install. The stamp is safe to write unconditionally
+ * because no consumer reads the table as a hard pin: a pin has to say {@code required-*}, and only
+ * an {@code =} in the manifest writes one.
  *
  * <p>{@code [graal]} is written when the Java home is itself a GraalVM, or when the project asked
  * for Graal via {@code [native]}. A bare {@code [native]} declares no vendor, so whichever GraalVM

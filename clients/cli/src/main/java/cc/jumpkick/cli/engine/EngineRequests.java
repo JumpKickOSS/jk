@@ -266,7 +266,7 @@ public final class EngineRequests {
 
         /**
          * @param totalSeen cumulative packages at this sample ({@code ≥ 0}), or {@code -1} when the
-         * event is a single unbatched package (legacy). Defaults to {@link #onPackage(String,
+         * event is a single unbatched package. Defaults to {@link #onPackage(String,
          * String, String)}.
          */
         default void onPackage(String dir, String name, String version, int totalSeen) {

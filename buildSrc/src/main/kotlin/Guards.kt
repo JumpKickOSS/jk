@@ -877,6 +877,18 @@ object Guards {
                 attach = emptySet(),
                 ruleId = "lock-version-is-one",
             ),
+            spec(
+                87,
+                "no-retired-code-markers",
+                "`@Deprecated` or `@SuppressWarnings(\"unused\")` in main code — a dual path or a parked helper the charter says to delete on touch",
+                "text, max 0 matches over `**/src/main/**/*.java`",
+                GuardHome.SELF_HOSTED,
+                tableTask = "`no-retired-code-markers` (jk-guards.toml, `text`)",
+                inFastGate = false,
+                gradleLetter = false,
+                attach = emptySet(),
+                ruleId = "no-retired-code-markers",
+            ),
         )
 
     val tableRows: List<GuardSpec>

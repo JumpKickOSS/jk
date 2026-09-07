@@ -87,8 +87,8 @@ class RepoGroupExclusiveTest {
 
     @Test
     void prepended_local_repos_preserve_exclusive_bindings(@TempDir Path tmp) throws Exception {
-        // Path/git materialize used to rebuild RepoGroup without exclusive groups → jumpkick
-        // was tried for every Central GAV. Prepend must keep exclusive specialists exclusive.
+        // Path/git materialize rebuilds RepoGroup; rebuilding it without exclusive groups would
+        // try jumpkick for every Central GAV. Prepend must keep exclusive specialists exclusive.
         Path pathDir = tmp.resolve("path-repo");
         Path centralDir = tmp.resolve("central-repo");
         writePom(pathDir, "com.local", "pathlib", "1.0");

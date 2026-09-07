@@ -47,7 +47,7 @@ public final class GraphOps {
         try {
             JkBuild project = JkBuildParser.parse(dir.resolve(ManifestPaths.MANIFEST));
             Lockfile lock = LockfileReader.read(LockPaths.lockFile(dir));
-            // One LockGraph per request: a fuzzy query with many matches used to rebuild the
+            // One LockGraph per request: a fuzzy query with many matches must not rebuild the
             // whole reverse adjacency per match.
             LockGraph graph = LockGraph.of(project, lock, dir);
             List<Lockfile.Artifact> matches = lock.artifacts().stream()

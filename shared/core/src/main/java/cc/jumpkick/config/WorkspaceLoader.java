@@ -102,12 +102,6 @@ public final class WorkspaceLoader {
         return module.withProfiles(new Profiles(merged));
     }
 
-    /** @deprecated use {@link #inheritFromRoot} */
-    @Deprecated
-    public static JkBuild inheritVersionFromRoot(JkBuild module, JkBuild root) {
-        return inheritFromRoot(module, root);
-    }
-
     /**
      * Final artifacts land in a shared {@code <workspaceRoot>/target/} directory keyed by {@code
      * <artifact>-<version>.jar} — so two modules declaring the same artifact + version would race to

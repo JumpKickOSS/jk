@@ -277,9 +277,9 @@ public final class BuildAccumulator {
     }
 
     /**
-     * Journal-path diagnostics cap. Wire and SSE bound theirs at capture; the journal
-     * previously kept every row, so one pathological plan could persist an unbounded record.
-     * Overflow is dropped with an explicit {@code +N more} marker row at record time.
+     * Journal-path diagnostics cap. Wire and SSE bound theirs at capture; the journal bounds here
+     * so one pathological plan cannot persist an unbounded record. Overflow is dropped with an
+     * explicit {@code +N more} marker row at record time.
      */
     static final int MAX_JOURNAL_DIAGNOSTICS = 500;
 

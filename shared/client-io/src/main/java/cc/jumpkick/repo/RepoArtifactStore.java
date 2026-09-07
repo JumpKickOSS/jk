@@ -17,7 +17,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
 
 /**
@@ -46,7 +45,6 @@ public final class RepoArtifactStore {
         // A repo name is a raw substring from the project's config/lockfile; refuse one that would
         // escape repos/ into an attacker-chosen directory.
         MavenLayout.requireSafeSegment(repoName, "repository name");
-        migrateLegacyLocal(cacheRoot);
         this.root = cacheRoot.resolve("repos").resolve(repoName);
     }
 
@@ -57,97 +55,6 @@ public final class RepoArtifactStore {
      * written, {@code repos/local} is an ordinary user-named remote and must be left alone.
      */
     private static final String LEGACY_LOCAL_MARKER = ".jk-local-renamed";
-
-    /** Roots already migrated (or confirmed clean) this process — elides the per-construction probe. */
-    private static final Set<Path> LEGACY_LOCAL_MIGRATED = ConcurrentHashMap.newKeySet();
-
-    /** Test seam: forget which roots this process already migrated, as a fresh process would. */
-    static void clearLegacyMigrationMemoForTest() {
-        LEGACY_LOCAL_MIGRATED.clear();
-    }
-
-    /** True while a pre-rename {@code repos/local} may still exist (migration not yet completed). */
-    public static boolean legacyLocalPending(Path cacheRoot) {
-        Path reposDir = cacheRoot.resolve("repos");
-        return !Files.exists(reposDir.resolve(LEGACY_LOCAL_MARKER)) && Files.isDirectory(reposDir.resolve("local"));
-    }
-
-    /**
-     * Fold a pre-rename {@code repos/local} first-party store into {@code repos/jk-local} so
-     * installs made before the rename stay resolvable under one name. Runs from every store
-     * construction, memoized per process and gated by
-     * {@link #LEGACY_LOCAL_MARKER} on disk, so the real work happens once per store lifetime — and
-     * a {@code repos/local} created <em>after</em> the marker (a user remote actually named
-     * {@code local}, legal since the rename) is never touched. Whole-directory atomic move when
-     * the new store doesn't exist yet; per-file merge otherwise, keeping the jk-local copy on
-     * collision — later writes went there, and every read hash-verifies, so dropping the older
-     * duplicate can never serve wrong bytes. Best-effort: a failure leaves both trees readable and
-     * retries on a later construction.
-     */
-    public static void migrateLegacyLocal(Path cacheRoot) {
-        Path reposDir = cacheRoot.resolve("repos");
-        if (!LEGACY_LOCAL_MIGRATED.add(reposDir)) return;
-        if (Files.exists(reposDir.resolve(LEGACY_LOCAL_MARKER))) return;
-        Path legacy = reposDir.resolve("local");
-        try {
-            if (!Files.isDirectory(legacy)) {
-                writeLegacyMarker(reposDir);
-                return;
-            }
-            Path target = reposDir.resolve(RepoArtifactResolver.JK_LOCAL);
-            if (!Files.exists(target)) {
-                try {
-                    Files.move(legacy, target, StandardCopyOption.ATOMIC_MOVE);
-                    writeLegacyMarker(reposDir);
-                    return;
-                } catch (IOException raceOrFs) {
-                    // Concurrent creator or a filesystem that refuses the directory move —
-                    // fall through to the per-file merge.
-                }
-            }
-            try (Stream<Path> files = Files.walk(legacy)) {
-                for (Path file : (Iterable<Path>) files::iterator) {
-                    if (!Files.isRegularFile(file)) continue;
-                    Path dest = target.resolve(legacy.relativize(file));
-                    if (Files.exists(dest)) {
-                        Files.deleteIfExists(file); // duplicate — jk-local's copy wins
-                    } else {
-                        Files.createDirectories(dest.getParent());
-                        Files.move(file, dest);
-                    }
-                }
-            }
-            // Bottom-up sweep of the emptied skeleton; a leftover file means a concurrent writer
-            // on the OLD layout (an older jk still running) — leave the tree and retry later.
-            boolean emptied = true;
-            try (Stream<Path> dirs = Files.walk(legacy)) {
-                List<Path> ordered = new ArrayList<>();
-                dirs.filter(Files::isDirectory).forEach(ordered::add);
-                for (int i = ordered.size() - 1; i >= 0; i--) {
-                    try {
-                        Files.deleteIfExists(ordered.get(i));
-                    } catch (IOException notEmpty) {
-                        emptied = false;
-                    }
-                }
-            }
-            if (emptied) {
-                writeLegacyMarker(reposDir);
-            } else {
-                LEGACY_LOCAL_MIGRATED.remove(reposDir);
-            }
-        } catch (IOException e) {
-            LEGACY_LOCAL_MIGRATED.remove(reposDir); // retry from a later construction
-        }
-    }
-
-    private static void writeLegacyMarker(Path reposDir) throws IOException {
-        Files.createDirectories(reposDir);
-        Path marker = reposDir.resolve(LEGACY_LOCAL_MARKER);
-        if (!Files.exists(marker)) {
-            Files.writeString(marker, "repos/local was folded into repos/jk-local (or never existed)\n");
-        }
-    }
 
     /** Factory: the full store for {@code repoName} under {@code cacheRoot}. */
     public static RepoArtifactStore forRepoName(Path cacheRoot, String repoName) {

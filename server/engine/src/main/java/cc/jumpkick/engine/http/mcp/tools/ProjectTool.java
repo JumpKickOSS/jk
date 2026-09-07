@@ -30,7 +30,7 @@ public final class ProjectTool implements McpTool {
             abs = dir;
         }
         Map<String, Object> card = McpProjectCards.card(abs, in.ctx().history());
-        // Keep legacy lookup keys (coord/description) if parse failed.
+        // Fall back to the coord/description lookup when the card did not parse.
         if (!card.containsKey("coord")) {
             card.putAll(in.ctx().projectLookup().apply(dir));
         }

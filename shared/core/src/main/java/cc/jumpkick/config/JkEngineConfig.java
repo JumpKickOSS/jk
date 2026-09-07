@@ -100,11 +100,7 @@ public record JkEngineConfig(
                         defaultMaxHeapMb(env),
                         EnvValues.intValue(env, "JK_ENGINE_MAX_HEAP_MB").orElse(null),
                         scanInt(scan, "engine.max-heap-mb")),
-                // JK_ENGINE_JOBS is the legacy spelling: consulted below JK_JOBS, above the file.
-                JOBS.layer(
-                        EnvValues.intValue(env, "JK_JOBS").orElse(null),
-                        EnvValues.intValue(env, "JK_ENGINE_JOBS").orElse(null),
-                        scanInt(scan, "engine.jobs")),
+                JOBS.layer(EnvValues.intValue(env, "JK_JOBS").orElse(null), scanInt(scan, "engine.jobs")),
                 // As the heap: CI moves the floor, not the precedence.
                 KEEP_GOING.layerOver(
                         defaultKeepGoing(env),

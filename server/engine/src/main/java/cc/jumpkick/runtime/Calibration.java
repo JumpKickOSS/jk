@@ -837,7 +837,7 @@ public final class Calibration {
     }
 
     static double deriveMsPerWeight(long forkMs, long javacMs) {
-        return HardwareProbe.deriveMsPerWeight(forkMs, javacMs, 0, 0, 0, 0);
+        return HardwareProbe.deriveMsPerWeight(forkMs, javacMs, 0, 0, 0, 0, 0, 0, false);
     }
 
     private static double safeLoadAverage() {

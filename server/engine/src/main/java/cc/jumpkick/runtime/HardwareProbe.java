@@ -193,12 +193,6 @@ final class HardwareProbe {
         return wall / (double) Math.max(1, modelWeight(resolveUsed));
     }
 
-    /** Legacy overload for unit tests. */
-    static double deriveMsPerWeight(
-            long forkMs, long javacMs, long diskMs, long hashMs, long junitForkMs, long junitRunMs) {
-        return deriveMsPerWeight(forkMs, javacMs, diskMs, hashMs, junitForkMs, junitRunMs, 0, 0, false);
-    }
-
     static int modelWeight() {
         return modelWeight(false);
     }

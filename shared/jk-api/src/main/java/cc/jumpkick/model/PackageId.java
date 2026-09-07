@@ -42,7 +42,7 @@ public final class PackageId {
     }
 
     /**
-     * Parse a package key. Accepts {@code g:a} (legacy lock / declared modules) or full
+     * Parse a package key. Accepts {@code g:a} (declared modules) or full
      * {@code g:a:type:classifier} (classifier may be empty).
      */
     public static PackageId parse(String key) {

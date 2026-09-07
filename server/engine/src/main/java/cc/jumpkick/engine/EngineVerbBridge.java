@@ -199,9 +199,8 @@ public final class EngineVerbBridge implements VerbHost {
      */
     static Session resolve(String requestLine, Session.CancelToken cancelToken, boolean refresh) {
         Path entryDir = Path.of(Jsonl.str(requestLine, "dir"));
-        // Read-only verbs need no cache path and no longer send one (project-info dropped the
-        // field in, before gave the verb a session at all). Absent means "the
-        // engine's own", which is what Session.defaults() already holds — not a null Path.
+        // Read-only verbs need no cache path and send none. Absent means "the engine's own",
+        // which is what Session.defaults() already holds — not a null Path.
         String cacheStr = Jsonl.str(requestLine, "cache");
         JkConfig config = JkConfig.empty()
                 .withOffline(Jsonl.bool(requestLine, "offline", false))

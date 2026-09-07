@@ -261,9 +261,8 @@ public final class TrainRunner {
     }
 
     private static boolean looksLikeGraal(Path home) {
-        // Where the launcher lives is GraalLauncher's answer. This site used to probe
-        // bin/native-image and bin/native-image.cmd only, so an .exe-only Windows GraalVM was not
-        // recognised as GraalVM at all — and, spelling the name path-joined, it evaded guard G12.
+        // Where the launcher lives is GraalLauncher's answer; probing bin/native-image{,.cmd} here
+        // would miss an .exe-only Windows GraalVM and spell the name path-joined past guard G12.
         if (GraalLauncher.in(home).isPresent()) return true;
         // The agent is a shared library, not a launcher: a different vocabulary, deliberately not
         // GraalLauncher's business.

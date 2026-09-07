@@ -17,9 +17,8 @@ package cc.jumpkick.runtime;
  *
  * <p>Storing either number as "engine's suite cost" mis-prices the other shape by 2.6x, and storing
  * a recency-weighted mean of the two mis-prices both. Worse, a mean wall beside a mean runner count
- * is not even a measurement: the pair no longer describes any build that ever ran, and an earlier
- * version of this correction reconstructed "work" from exactly that mismatched pair and priced a
- * 21 s build at 1 m 31 s.
+ * is not even a measurement: the pair describes no build that ever ran, and reconstructing "work"
+ * from such a mismatched pair prices a 21 s build at 1 m 31 s.
  *
  * <p>So the normalized wall is what gets stored, and it is normalized at record time while the wall
  * and its runner count are still known to belong together. Averaging <em>that</em> across

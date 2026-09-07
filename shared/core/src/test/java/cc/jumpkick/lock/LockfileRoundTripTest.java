@@ -48,33 +48,6 @@ class LockfileRoundTripTest {
     }
 
     @Test
-    void legacy_bare_local_source_reads_as_jk_local() {
-        // Pre-rename lockfiles marked first-party file-dep entries with the bare source "local".
-        // A user remote named local always carries its URL ("local+file://…"), so the bare form is
-        // unambiguous and folds to the current marker; the URL form must pass through untouched.
-        String legacy = """
-                version = 1
-                generated-by = "jk 0.12.0"
-                resolution-algorithm = "pubgrub-v1"
-
-                [[artifact]]
-                name = "com.acme:filedep"
-                version = "1.0.0"
-                source = "local"
-                checksum = "sha256:abcd"
-
-                [[artifact]]
-                name = "com.acme:remote"
-                version = "2.0.0"
-                source = "local+file:///srv/repo"
-                checksum = "sha256:ef01"
-                """;
-        Lockfile parsed = LockfileReader.parse(legacy);
-        assertThat(parsed.artifacts().get(0).source()).isEqualTo("jk-local");
-        assertThat(parsed.artifacts().get(1).source()).isEqualTo("local+file:///srv/repo");
-    }
-
-    @Test
     void git_source_package_round_trips() {
         Lockfile.Artifact.GitInfo git = new Lockfile.Artifact.GitInfo(
                 "https://github.com/acme/widgets", "3f2a9c1b4d5e6f70819203a4b5c6d7e8f9012345", "tag:v1.4.0");

@@ -54,7 +54,7 @@ public interface TaskContext {
      */
     void error(String code, String message);
 
-    /** Legacy structured test-failure form of {@link #error(String, String)}. */
+    /** Two-field test-failure form of {@link #error(String, String)} (label + exception class). */
     default void error(String code, String message, String test, String exceptionClass) {
         error(code, message);
     }

@@ -32,7 +32,7 @@ import org.jspecify.annotations.Nullable;
 /**
  * JEP 514 AOT caches for short-lived <em>{@code java … PluginMain}</em> workers (kotlin-compiler,
  * java-compiler ToolProvider host, formatter). <strong>Not</strong> used for bare {@code javac}
- * launcher forks — that path saw no win and no longer trains or maps caches. Background train on
+ * launcher forks — that path measured no win, so it neither trains nor maps caches. Background train on
  * first miss; later forks map the cache. Key includes JDK home/vendor/version, GC, and plugin
  * classpath. Switches: {@link cc.jumpkick.util.AotSettings} — {@code JK_WORKER_AOT=off} disables
  * map+train; {@code JK_AOT_TRAIN=off} disables train-on-miss only. HotSpot 25+ only (Graal
