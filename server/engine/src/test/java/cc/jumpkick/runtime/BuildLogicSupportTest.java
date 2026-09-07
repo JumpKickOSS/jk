@@ -562,13 +562,13 @@ class BuildLogicSupportTest {
                 [workspace]
                 modules = []
                 """);
-        Files.writeString(root.resolve(".jk/guard.groovy"), "outDir.resolve('verdict.txt').toFile().text = 'gate'\n");
+        Files.writeString(root.resolve(".jk/guard.groovy"), "outDir.resolve('verdict.txt').toFile().text = 'guard'\n");
 
         ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
         BuildLayout layout = BuildLayout.of(root, JkBuildParser.parse(root.resolve("jk.toml")));
 
         assertTrue(BuildLogicSupport.run(root, layout, ac, null, BuildLogicAnchor.GUARD, s -> {}));
-        Path out = layout.generatedSourcesDir("jk-logic-out-gate").resolve("verdict.txt");
+        Path out = layout.generatedSourcesDir("jk-logic-out-guard").resolve("verdict.txt");
         assertEquals("guard", Files.readString(out).trim());
     }
 
