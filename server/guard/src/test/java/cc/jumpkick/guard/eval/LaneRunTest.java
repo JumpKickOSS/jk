@@ -18,6 +18,7 @@ import cc.jumpkick.model.GuardsConfig;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -78,10 +79,11 @@ class LaneRunTest {
                 .containsExactly("one-owner");
         assertThat(LaneRun.rulesFor(Lane.MODULE, r.rules(), "web/app"))
                 .extracting(Rule::id)
-                .containsExactly("no-sysout", "only-web");
-        assertThat(LaneRun.rulesFor(Lane.MODULE, r.rules(), "core"))
-                .extracting(Rule::id)
                 .containsExactly("no-sysout");
+        assertThat(LaneRun.rulesFor(Lane.TREE, r.rules(), ""))
+                .as("vocabulary scans every module after the module lanes: the tree lane")
+                .extracting(Rule::id)
+                .containsExactly("only-web");
         assertThat(LaneRun.rulesFor(Lane.MODEL, r.rules(), "")).isEmpty();
     }
 
@@ -135,15 +137,13 @@ class LaneRunTest {
     @Test
     void a_throwing_evaluator_is_scanner_failed_and_the_next_rule_still_runs(@TempDir Path dir) throws IOException {
         LoadResult r = load(dir);
-        Evaluators.register(Kind.FORBID, (rule, ctx) -> {
+        Evaluators.register(Kind.SPLIT_PACKAGE, (rule, ctx) -> {
             throw new IllegalStateException("boom");
         });
         Evaluators.register(Kind.VOCABULARY, (rule, ctx) -> Evaluation.of(Map.of("literals", 3L), List.of()));
-        LaneRun.Result res = LaneRun.run(
-                Lane.MODULE,
-                LaneRun.rulesFor(Lane.MODULE, r.rules(), "web/app"),
-                ctx(dir, Lane.MODULE, "web/app"),
-                Baseline.EMPTY);
+        List<Rule> rules = new ArrayList<>(LaneRun.rulesFor(Lane.WORKSPACE, r.rules(), ""));
+        rules.addAll(LaneRun.rulesFor(Lane.TREE, r.rules(), ""));
+        LaneRun.Result res = LaneRun.run(Lane.TREE, rules, ctx(dir, Lane.TREE, ""), Baseline.EMPTY);
         assertThat(res.reports())
                 .extracting(RuleReport::outcome)
                 .containsExactly(Outcome.SCANNER_FAILED, Outcome.CLEAN);

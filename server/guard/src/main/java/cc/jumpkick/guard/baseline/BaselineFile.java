@@ -7,15 +7,15 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.Nullable;
-import org.tomlj.Toml;
-import org.tomlj.TomlArray;
-import org.tomlj.TomlParseResult;
-import org.tomlj.TomlTable;
 
 /**
  * Reads and writes {@code jk-guards-baseline.toml}. The writer is deterministic — sorted ids,
@@ -34,70 +34,155 @@ public final class BaselineFile {
 
     private BaselineFile() {}
 
+    private record Memo(long size, FileTime mtime, Baseline baseline) {}
+
+    private static final Map<Path, Memo> MEMO = new ConcurrentHashMap<>();
+
+    /**
+     * Read, memoised by size and modification time: thirty module lanes reconcile against the same
+     * file at once, and a general TOML parser builds a tree object per character of every reason
+     * string — the one thing the engine's heap could not afford. The format is the writer's own,
+     * so the reader is the writer's inverse and nothing more.
+     */
     public static Baseline read(Path file) throws IOException {
         if (!Files.isRegularFile(file)) return Baseline.EMPTY;
-        return parse(Files.readString(file, StandardCharsets.UTF_8), file);
+        Path key = file.toAbsolutePath().normalize();
+        BasicFileAttributes a = Files.readAttributes(key, BasicFileAttributes.class);
+        Memo m = MEMO.get(key);
+        if (m != null && m.size() == a.size() && m.mtime().equals(a.lastModifiedTime())) return m.baseline();
+        Baseline parsed = parse(Files.readString(key, StandardCharsets.UTF_8), key);
+        MEMO.put(key, new Memo(a.size(), a.lastModifiedTime(), parsed));
+        return parsed;
     }
 
+    /** Line-shaped: the only forms {@link #render} writes. Anything else is a hand edit, refused. */
     static Baseline parse(String text, @Nullable Path file) throws IOException {
-        TomlParseResult toml = Toml.parse(text);
-        if (toml.hasErrors()) {
-            throw new IOException(
-                    (file == null ? "baseline" : file.getFileName()) + ": "
-                            + toml.errors().get(0).getMessage()
-                            + " — never edit the baseline by hand; delete it and let the engine rewrite it, or run jk guard freeze");
-        }
+        String name = file == null ? "baseline" : file.getFileName().toString();
         Map<String, RuleBaseline> rules = new TreeMap<>();
-        for (String id : toml.keySet()) {
-            TomlTable t = toml.getTable(id);
-            if (t == null) throw new IOException("baseline: `" + id + "` is not a rule table");
-            Map<String, Map<String, Long>> populations = new TreeMap<>();
-            TomlTable pop = t.getTable("population");
-            if (pop != null) populations.put("", counts(pop));
-            TomlTable lanes = t.getTable("populations");
-            if (lanes != null) {
-                for (String lane : lanes.keySet()) {
-                    TomlTable p = lanes.getTable(List.of(lane));
-                    if (p != null) populations.put(lane, counts(p));
-                }
+        Map<String, Map<String, Map<String, Long>>> pops = new TreeMap<>();
+        Map<String, List<Entry>> entries = new TreeMap<>();
+        String rule = null;
+        boolean inLanes = false;
+        // The entry under construction: rule id, in, at | unit, value, reason.
+        String[] cur = null;
+        int lineNo = 0;
+        for (String raw : text.split("\n", -1)) {
+            lineNo++;
+            String line = raw.strip();
+            if (line.isEmpty() || line.startsWith("#")) continue;
+            if (line.startsWith("[[") && line.endsWith(".entries]]")) {
+                finish(cur, entries, name, lineNo);
+                String id = line.substring(2, line.length() - ".entries]]".length());
+                if (!id.equals(rule)) throw refuse(name, lineNo, "entries for `" + id + "` outside its table");
+                cur = new String[] {id, "", null, null, null, null};
+                inLanes = false;
+                continue;
             }
-            List<Entry> entries = new ArrayList<>();
-            TomlArray arr = t.getArray("entries");
-            if (arr != null) {
-                for (int i = 0; i < arr.size(); i++) {
-                    TomlTable e = arr.getTable(i);
-                    String reason = e.isString("reason") ? e.getString("reason") : "";
-                    if (reason == null) reason = "";
-                    String in = e.isString("in") ? String.valueOf(e.getString("in")) : "";
-                    if (e.isString("at")) {
-                        entries.add(new Entry.Site(String.valueOf(e.getString("at")), reason, in));
-                    } else if (e.isString("unit")) {
-                        double v = e.isDouble("value")
-                                ? valueOf(e.getDouble("value"))
-                                : e.isLong("value") ? valueOf(e.getLong("value")) : 0;
-                        entries.add(new Entry.Metric(String.valueOf(e.getString("unit")), v, reason, in));
-                    } else {
-                        throw new IOException(
-                                "baseline: entry " + (i + 1) + " of `" + id + "` has neither `at` nor `unit`");
-                    }
-                }
+            if (line.startsWith("[") && line.endsWith(".populations]")) {
+                finish(cur, entries, name, lineNo);
+                cur = null;
+                String id = line.substring(1, line.length() - ".populations]".length());
+                if (!id.equals(rule)) throw refuse(name, lineNo, "populations for `" + id + "` outside its table");
+                inLanes = true;
+                continue;
             }
-            rules.put(id, new RuleBaseline(populations, entries));
+            if (line.startsWith("[") && line.endsWith("]") && !line.startsWith("[[")) {
+                finish(cur, entries, name, lineNo);
+                cur = null;
+                inLanes = false;
+                rule = line.substring(1, line.length() - 1);
+                if (rule.isEmpty() || rules.containsKey(rule) || pops.containsKey(rule) || entries.containsKey(rule)) {
+                    throw refuse(name, lineNo, "rule table `" + rule + "` is empty or repeated");
+                }
+                pops.put(rule, new TreeMap<>());
+                entries.put(rule, new ArrayList<>());
+                continue;
+            }
+            int eq = line.indexOf('=');
+            if (eq < 0 || rule == null) throw refuse(name, lineNo, "expected `key = value`");
+            String key = line.substring(0, eq).strip();
+            String value = line.substring(eq + 1).strip();
+            if (cur != null) {
+                switch (key) {
+                    case "in" -> cur[1] = string(value, name, lineNo);
+                    case "at" -> cur[2] = string(value, name, lineNo);
+                    case "unit" -> cur[3] = string(value, name, lineNo);
+                    case "value" -> cur[4] = value;
+                    case "reason" -> cur[5] = string(value, name, lineNo);
+                    default -> throw refuse(name, lineNo, "unknown entry key `" + key + "`");
+                }
+                continue;
+            }
+            Map<String, Map<String, Long>> lanes = Objects.requireNonNull(pops.get(rule), "pops");
+            if (inLanes) {
+                lanes.put(string(key, name, lineNo), counts(value, name, lineNo));
+            } else if (key.equals("population")) {
+                lanes.put("", counts(value, name, lineNo));
+            } else {
+                throw refuse(name, lineNo, "unknown key `" + key + "`");
+            }
+        }
+        finish(cur, entries, name, lineNo);
+        for (var e : pops.entrySet()) {
+            rules.put(e.getKey(), new RuleBaseline(e.getValue(), entries.getOrDefault(e.getKey(), List.of())));
         }
         return new Baseline(rules);
     }
 
-    private static Map<String, Long> counts(TomlTable t) {
+    private static void finish(String @Nullable [] cur, Map<String, List<Entry>> entries, String name, int lineNo)
+            throws IOException {
+        if (cur == null) return;
+        String reason = cur[5] == null ? "" : cur[5];
+        String in = cur[1] == null ? "" : cur[1];
+        List<Entry> list = entries.computeIfAbsent(cur[0], k -> new ArrayList<>());
+        if (cur[2] != null) {
+            list.add(new Entry.Site(cur[2], reason, in));
+        } else if (cur[3] != null) {
+            double v;
+            try {
+                v = cur[4] == null ? 0 : Double.parseDouble(cur[4]);
+            } catch (NumberFormatException e) {
+                throw refuse(name, lineNo, "entry value `" + cur[4] + "` is not a number");
+            }
+            list.add(new Entry.Metric(cur[3], v, reason, in));
+        } else {
+            throw refuse(name, lineNo, "an entry of `" + cur[0] + "` has neither `at` nor `unit`");
+        }
+    }
+
+    /** {@code { classes = 1266, sites = 3 }} → counts. */
+    private static Map<String, Long> counts(String value, String name, int lineNo) throws IOException {
         Map<String, Long> out = new TreeMap<>();
-        for (String unit : t.keySet()) {
-            Long n = t.getLong(unit);
-            if (n != null) out.put(unit, n);
+        String body = value.strip();
+        if (!body.startsWith("{") || !body.endsWith("}")) throw refuse(name, lineNo, "expected an inline table");
+        body = body.substring(1, body.length() - 1).strip();
+        if (body.isEmpty()) return out;
+        for (String pair : body.split(",")) {
+            int eq = pair.indexOf('=');
+            if (eq < 0) throw refuse(name, lineNo, "expected `unit = count` in the population");
+            try {
+                out.put(
+                        pair.substring(0, eq).strip(),
+                        Long.parseLong(pair.substring(eq + 1).strip()));
+            } catch (NumberFormatException e) {
+                throw refuse(name, lineNo, "population count `" + pair.strip() + "` is not a number");
+            }
         }
         return out;
     }
 
-    private static double valueOf(@Nullable Number n) {
-        return n == null ? 0 : n.doubleValue();
+    private static String string(String value, String name, int lineNo) throws IOException {
+        String v = value.strip();
+        if (v.length() < 2 || !v.startsWith("\"") || !v.endsWith("\"")) {
+            throw refuse(name, lineNo, "expected a quoted string, got `" + value + "`");
+        }
+        return MinimalToml.unquote(v);
+    }
+
+    private static IOException refuse(String name, int lineNo, String what) {
+        return new IOException(
+                name + ":" + lineNo + ": " + what
+                        + " — never edit the baseline by hand; delete it and let the engine rewrite it, or run jk guard freeze");
     }
 
     public static String render(Baseline b) {

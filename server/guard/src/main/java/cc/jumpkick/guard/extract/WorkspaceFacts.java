@@ -1,13 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.guard.extract;
 
-import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.guard.facts.ClassFacts;
 import cc.jumpkick.guard.facts.FactsFormat;
 import cc.jumpkick.guard.facts.FactsIndex;
 import cc.jumpkick.layout.BuildLayout;
-import cc.jumpkick.lock.ManifestPaths;
-import cc.jumpkick.model.JkBuild;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -42,10 +39,10 @@ public final class WorkspaceFacts {
     private WorkspaceFacts() {}
 
     /** {@code internalName}'s facts from the first module index that holds it, or empty. */
-    public static Optional<ClassFacts> lookup(List<Path> modules, String internalName) {
+    public static Optional<ClassFacts> lookup(Path root, List<Path> modules, String internalName) {
         synchronized (LOCK) {
             for (Path m : modules) {
-                Path idx = indexOf(m);
+                Path idx = indexOf(root, m);
                 if (idx == null) continue;
                 try {
                     FileTime mtime = Files.getLastModifiedTime(idx);
@@ -74,15 +71,9 @@ public final class WorkspaceFacts {
         }
     }
 
-    private static @Nullable Path indexOf(Path module) {
-        Path manifest = module.resolve(ManifestPaths.MANIFEST);
-        if (!Files.isRegularFile(manifest)) return null;
-        try {
-            JkBuild build = JkBuildParser.parse(manifest);
-            Path idx = FactsIndexing.indexPath(BuildLayout.of(module, build).buildDir(), "main");
-            return Files.isRegularFile(idx) ? idx : null;
-        } catch (IOException | RuntimeException unparseable) {
-            return null;
-        }
+    /** The module's main index by the layout rule alone — no manifest is parsed for a lookup. */
+    private static @Nullable Path indexOf(Path root, Path module) {
+        Path idx = FactsIndexing.indexPath(BuildLayout.moduleTargetDir(root, module), "main");
+        return Files.isRegularFile(idx) ? idx : null;
     }
 }

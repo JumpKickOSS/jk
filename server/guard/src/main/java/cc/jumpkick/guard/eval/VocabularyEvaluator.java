@@ -35,10 +35,13 @@ import org.tomlj.TomlTable;
  * <p>Hybrid by necessity: javac inlines a {@code static final String} at every use, so bytecode
  * cannot tell {@code TaskNames.COMPILE_MAIN} from the literal {@code "compile-main"}. The derive
  * half is bytecode (the owner's {@code ConstantValue}s, plus the literals its own {@code <clinit>}
- * hands to its constructor — an enum's names); the scan half is text over this module's own
- * sources, read once for every vocabulary rule of the lane. {@code inverse = true} adds the arm
- * the owner-derived ban cannot have: literals of the vocabulary's <em>shape</em> that no owner
- * declares ("eight step names had no owner at all").
+ * hands to its constructor — an enum's names); the scan half is text over every module's sources,
+ * each read once for every vocabulary rule of the lane. It runs in the tree lane, after every
+ * module lane: the owner is read from whichever module's index holds it, and by then every index
+ * is current — a module lane would read a sibling's index before that sibling recompiled. A
+ * module-scoped context (tests) scans that one module. {@code inverse = true} adds the arm the
+ * owner-derived ban cannot have: literals of the vocabulary's <em>shape</em> that no owner declares
+ * ("eight step names had no owner at all").
  */
 final class VocabularyEvaluator implements BatchEvaluator {
 
@@ -53,7 +56,7 @@ final class VocabularyEvaluator implements BatchEvaluator {
         final Set<String> homonyms;
         final @Nullable Pattern shape;
         final Map<String, String> vocabulary;
-        final @Nullable String ownerSource;
+        final ClassFacts ownerFacts;
         final boolean all;
         final Map<Allow, Boolean> allowUsed = new LinkedHashMap<>();
         final Set<Allow> applicable = new HashSet<>();
@@ -71,7 +74,7 @@ final class VocabularyEvaluator implements BatchEvaluator {
                 Set<String> homonyms,
                 @Nullable Pattern shape,
                 Map<String, String> vocabulary,
-                @Nullable String ownerSource) {
+                ClassFacts ownerFacts) {
             this.rule = rule;
             this.owner = owner;
             this.inverse = inverse;
@@ -79,7 +82,7 @@ final class VocabularyEvaluator implements BatchEvaluator {
             this.homonyms = homonyms;
             this.shape = shape;
             this.vocabulary = vocabulary;
-            this.ownerSource = ownerSource;
+            this.ownerFacts = ownerFacts;
             this.all = rule.sourceSet().equals("all");
             for (Allow a : rule.allow()) allowUsed.put(a, false);
         }
@@ -89,8 +92,9 @@ final class VocabularyEvaluator implements BatchEvaluator {
     public Map<String, Evaluation> evaluateAll(List<Rule> rules, EvalContext ctx) throws IOException {
         Map<String, Evaluation> out = new LinkedHashMap<>();
         Path moduleDir = ctx.moduleDir();
-        if (moduleDir == null) {
-            for (Rule r : rules) out.put(r.id(), Evaluation.notEvaluated("vocabulary runs per module"));
+        List<Path> moduleDirs = moduleDir != null ? List.of(moduleDir) : ctx.modules();
+        if (moduleDirs.isEmpty()) {
+            for (Rule r : rules) out.put(r.id(), Evaluation.notEvaluated("no module to scan"));
             return out;
         }
         List<Prepared> live = new ArrayList<>();
@@ -104,23 +108,40 @@ final class VocabularyEvaluator implements BatchEvaluator {
         }
         if (live.isEmpty()) return out;
 
-        // One pass over the module's sources for every rule of the lane.
-        for (TextFiles.Entry f : TextFiles.corpus(moduleDir)) {
-            if (!f.language().code || !f.language().lexable) continue;
-            String text = null;
-            List<CodeText.Literal> literals = List.of();
+        for (Path m : moduleDirs) {
+            String module = moduleDir != null ? ctx.module() : relModule(ctx.root(), m);
+            List<Prepared> here = new ArrayList<>();
+            Map<Prepared, @Nullable String> ownerSources = new LinkedHashMap<>();
             for (Prepared p : live) {
-                if (!inSourceSet(f.rel(), p.all) || f.rel().equals(p.ownerSource)) continue;
-                if (text == null) {
-                    text = TextFiles.read(f.file());
-                    if (text == null) break;
-                    literals = CodeText.literals(text);
+                if (!p.rule.applies(module)) continue;
+                here.add(p);
+                ownerSources.put(p, ownerSourceRel(p.ownerFacts, m));
+            }
+            if (here.isEmpty()) continue;
+            // One pass over the module's sources for every rule of the lane.
+            for (TextFiles.Entry f : TextFiles.corpus(m)) {
+                if (!f.language().code || !f.language().lexable) continue;
+                String text = null;
+                List<CodeText.Literal> literals = List.of();
+                for (Prepared p : here) {
+                    if (!inSourceSet(f.rel(), p.all) || f.rel().equals(ownerSources.get(p))) continue;
+                    if (text == null) {
+                        text = TextFiles.read(f.file());
+                        if (text == null) break;
+                        literals = CodeText.literals(text);
+                    }
+                    scan(p, f, text, literals, module, moduleDir == null);
                 }
-                scan(p, f, text, literals, ctx.module());
             }
         }
         for (Prepared p : live) out.put(p.rule.id(), finish(p, ctx));
         return out;
+    }
+
+    private static String relModule(Path root, Path m) {
+        Path r = root.toAbsolutePath().normalize();
+        Path mm = m.toAbsolutePath().normalize();
+        return r.equals(mm) ? "" : r.relativize(mm).toString().replace('\\', '/');
     }
 
     private static @Nullable Prepared prepare(Rule rule, EvalContext ctx) {
@@ -141,8 +162,7 @@ final class VocabularyEvaluator implements BatchEvaluator {
             vocabulary.put(value, e.getValue());
         }
         if (vocabulary.isEmpty()) return null;
-        return new Prepared(
-                rule, owner, inverse, minLength, homonyms, shapePattern, vocabulary, ownerSourceRel(ownerFacts, ctx));
+        return new Prepared(rule, owner, inverse, minLength, homonyms, shapePattern, vocabulary, ownerFacts);
     }
 
     /** Why a rule could not be prepared: the owner is unknown, or yields no constant of the shape. */
@@ -159,10 +179,12 @@ final class VocabularyEvaluator implements BatchEvaluator {
     }
 
     private static void scan(
-            Prepared p, TextFiles.Entry f, String text, List<CodeText.Literal> literals, String module) {
+            Prepared p, TextFiles.Entry f, String text, List<CodeText.Literal> literals, String module, boolean tree) {
         p.files++;
         Allow allow = allowing(p.rule.allow(), f.rel(), module);
         if (allow != null) p.applicable.add(allow);
+        // The tree lane names files from the workspace root; a module context keeps module-relative paths.
+        String where = tree && !module.isEmpty() ? module + "/" + f.rel() : f.rel();
         for (CodeText.Literal l : literals) {
             p.literals++;
             String value = l.body();
@@ -172,11 +194,11 @@ final class VocabularyEvaluator implements BatchEvaluator {
                     p.allowUsed.put(allow, true);
                     continue;
                 }
-                String base = f.rel() + " | " + Hashing.sha256Hex(value).substring(0, 16);
+                String base = where + " | " + Hashing.sha256Hex(value).substring(0, 16);
                 int ordinal = p.ordinals.merge(base, 1, Integer::sum);
                 p.sites.add(Observation.site(
                         base + " | " + ordinal,
-                        f.rel(),
+                        where,
                         CodeText.lineAt(text, l.start()),
                         "\"" + value + "\" typed as a literal; the owner spells it " + simpleName(p.owner) + "."
                                 + constant));
@@ -193,7 +215,7 @@ final class VocabularyEvaluator implements BatchEvaluator {
                         value,
                         Observation.site(
                                 "unowned | " + value,
-                                f.rel(),
+                                where,
                                 CodeText.lineAt(text, l.start()),
                                 "\"" + value
                                         + "\" has the shape of the vocabulary but no owner declares it — declare it in "
@@ -220,8 +242,7 @@ final class VocabularyEvaluator implements BatchEvaluator {
                     sites,
                     "allow entries matched nothing: " + String.join(", ", stale));
         }
-        if (p.files == 0)
-            return new Evaluation(Outcome.BLIND, population, List.of(), "no sources scanned in " + ctx.module());
+        if (p.files == 0) return new Evaluation(Outcome.BLIND, population, List.of(), "no sources scanned");
         return Evaluation.of(population, sites);
     }
 
@@ -255,19 +276,18 @@ final class VocabularyEvaluator implements BatchEvaluator {
         byte[] bytes = ctx.hierarchy().bytesOf(internal);
         if (bytes != null) return FactsExtractor.extract(bytes);
         try {
-            return WorkspaceFacts.lookup(WorkspaceModules.of(ctx.root()), internal)
+            return WorkspaceFacts.lookup(ctx.root(), WorkspaceModules.of(ctx.root()), internal)
                     .orElse(null);
         } catch (IOException e) {
             return null;
         }
     }
 
-    private static @Nullable String ownerSourceRel(ClassFacts owner, EvalContext ctx) {
-        if (owner.sourceFile() == null || !ctx.facts().classes().containsKey(owner.name())) return null;
+    /** The owner's own source file inside module {@code moduleDir}, when it lives there: it is exempt. */
+    private static @Nullable String ownerSourceRel(ClassFacts owner, Path moduleDir) {
+        if (owner.sourceFile() == null) return null;
         String pkgPath = owner.packageName().replace('.', '/');
         String tail = (pkgPath.isEmpty() ? "" : pkgPath + "/") + owner.sourceFile();
-        Path moduleDir = ctx.moduleDir();
-        if (moduleDir == null) return null;
         for (String root : List.of("src/main/java/", "src/main/kotlin/", "src/")) {
             if (Files.isRegularFile(moduleDir.resolve(root + tail))) return root + tail;
         }

@@ -23,7 +23,7 @@ public enum Kind {
     TIERS("tiers", Substrate.BYTECODE, Lane.MODULE, "test-tier routing"),
     TEXT("text", Substrate.TEXT, Lane.TREE, "a pattern over text"),
     METRIC("metric", Substrate.TEXT, Lane.TREE, "numeric caps and ratchets"),
-    VOCABULARY("vocabulary", Substrate.HYBRID, Lane.MODULE, "owner constants banned as literals elsewhere"),
+    VOCABULARY("vocabulary", Substrate.HYBRID, Lane.TREE, "owner constants banned as literals elsewhere"),
     PARITY("parity", Substrate.TEXT, Lane.TREE, "two extractions must agree"),
     GENERATED("generated", Substrate.TEXT, Lane.TREE, "a block in a file is rendered from a source of truth"),
     OUTPUT("output", Substrate.OUTPUT, Lane.OUTPUT, "build artefact assertions"),
