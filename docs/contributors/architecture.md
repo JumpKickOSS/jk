@@ -213,6 +213,16 @@ Bootstrap build: **Java 25 + Gradle** (until self-hosting CI is complete). Runti
 
 **Layering:** `host` → `{plugin-sdk, wire, cli, cli-terminal}` ; `jk-api` → `core` → `{client-io, wire, …}` → server `{io, resolver, toolchain, guard}` → `engine` → clients. Plugins depend on `plugin-sdk` (+ transitive `host`), not on engine internals. `host` is the only module a plugin worker, the engine and the native client all link, so it stays JDK-only — `core` cannot serve that role because it api-exposes tomlj.
 
+**Inside `server/engine`:** the root package `cc.jumpkick.engine` (server, connection, startup, the
+SSE publisher) sits on top; `engine.api` is its leaf — the JSON and wire writers, the in-flight build
+table, history kinds and fingerprints, the coalescing listeners, the lock floor, the live snapshot and
+the `SseEvents` surface — and imports no other engine package, so `jobs`, `journal`, `http`, `verbs`
+and `listen` read it instead of reaching back up. Worker-process budgeting (`JobWorkers`) lives with
+the worker launcher in `engine.plugin`, below `runtime`, `compile`, `test` and `git`, which all use it.
+The remaining package cycles are the three the guard's `cycle-baseline.txt` line counts: the planner
+core (`runtime`, `task`, `compile`, `test`), the MCP front (`http`, `http.mcp`, `http.mcp.tools`) and
+the job/journal pair.
+
 Ship layout (`./gradlew dist`): slim native `jk` + `lib/jk-engine-<version>.jar`.
 
 ## Dependency resolution

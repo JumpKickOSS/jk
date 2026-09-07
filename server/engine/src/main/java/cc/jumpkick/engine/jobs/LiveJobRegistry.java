@@ -2,10 +2,10 @@
 package cc.jumpkick.engine.jobs;
 
 import cc.jumpkick.config.Session;
-import cc.jumpkick.engine.BuildJobFingerprint;
-import cc.jumpkick.engine.JobWorkers;
-import cc.jumpkick.engine.WireWriter;
+import cc.jumpkick.engine.api.BuildJobFingerprint;
+import cc.jumpkick.engine.api.WireWriter;
 import cc.jumpkick.engine.journal.BuildAccumulator;
+import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.wire.protocol.ProtoEvents;
 import java.io.BufferedWriter;
 import java.nio.channels.SocketChannel;

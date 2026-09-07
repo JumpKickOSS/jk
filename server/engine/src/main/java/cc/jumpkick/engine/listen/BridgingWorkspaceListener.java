@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.listen;
 
-import cc.jumpkick.engine.CoalescingBuildPlanListener;
+import cc.jumpkick.engine.api.CoalescingBuildPlanListener;
 import cc.jumpkick.plugin.build.InvocationPhase;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;

@@ -3,7 +3,7 @@ package cc.jumpkick.engine.journal;
 
 import cc.jumpkick.builds.MetricsHarvest;
 import cc.jumpkick.builds.ProjectBuilds;
-import cc.jumpkick.engine.BuildHistoryKinds;
+import cc.jumpkick.engine.api.BuildHistoryKinds;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.run.TaskNames;

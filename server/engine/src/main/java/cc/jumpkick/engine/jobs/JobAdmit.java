@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.jobs;
 
-import cc.jumpkick.engine.BuildHistoryKinds;
-import cc.jumpkick.engine.BuildJobFingerprint;
-import cc.jumpkick.engine.InFlightBuilds;
+import cc.jumpkick.engine.api.BuildHistoryKinds;
+import cc.jumpkick.engine.api.BuildJobFingerprint;
+import cc.jumpkick.engine.api.InFlightBuilds;
 import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.runtime.BuildNumberAllocator;
 import cc.jumpkick.runtime.ProjectIds;

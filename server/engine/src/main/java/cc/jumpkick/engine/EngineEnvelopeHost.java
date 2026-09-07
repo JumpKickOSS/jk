@@ -2,6 +2,8 @@
 package cc.jumpkick.engine;
 
 import cc.jumpkick.config.JkHistoryConfig;
+import cc.jumpkick.engine.api.InFlightBuilds;
+import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.engine.jobs.JobEnvelope;
 import cc.jumpkick.engine.jobs.JobSessions;
 import cc.jumpkick.engine.journal.BuildAccumulator;

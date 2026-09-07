@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.http;
 
 import cc.jumpkick.config.JkHttpConfig;
+import cc.jumpkick.engine.api.HttpLive;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.runtime.BuildMetrics;
 import com.sun.net.httpserver.HttpExchange;

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.git;
 
-import cc.jumpkick.engine.JobWorkers;
+import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.forge.ForgeGitCredentials;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.GitSource;

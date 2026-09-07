@@ -27,7 +27,7 @@
 :engine | cc.jumpkick.engine.CancellationPrecedenceTest  | wire      | success,failure | The cancel chain over a live socket: ack shapes, the three cancel reasons, and that a cancelled client still reads its terminal and job-finish rather than EOF.
 :cli    | cc.jumpkick.cli.engine.EngineFleetTest         | spawn     | success,failure | Which processes count as this home's engine, and that stopping a foreign or dead pid reports rather than pretends.
 :engine | cc.jumpkick.engine.EngineTakeoverTest          | spawn     | success,failure | A newer engine repoints the endpoint and the predecessor drains, including the pid-file mismatch that strands a ghost.
-:engine | cc.jumpkick.engine.JobWorkersTest              | workers   | success,failure | Worker processes are tracked per request and killed on cancel, including one registered after shutdown.
+:engine | cc.jumpkick.engine.plugin.JobWorkersTest              | workers   | success,failure | Worker processes are tracked per request and killed on cancel, including one registered after shutdown.
 :engine | cc.jumpkick.engine.plugin.PluginLoaderTest     | workers   | success,failure | A forked plugin worker starts, and a bad spec exits non-zero instead of hanging the job.
 :engine | cc.jumpkick.engine.plugin.PluginProcessTest    | workers   | success         | The plugin fork's stdio split: protocol lines, passthrough output, and the pull queue over stdin.
 :engine | cc.jumpkick.compile.ForkedJavacTest            | workers   | success         | The javac worker launches, reports provenance, and is reused across compile and plan within one job.

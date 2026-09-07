@@ -7,7 +7,7 @@ import cc.jumpkick.config.Redacted;
 import cc.jumpkick.config.ResolvedSecrets;
 import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.config.Session;
-import cc.jumpkick.engine.InFlightBuilds;
+import cc.jumpkick.engine.api.InFlightBuilds;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.model.command.Exit;

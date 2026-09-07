@@ -17,6 +17,14 @@
 # cycle, and two components are 15 and 10 packages inside the two largest modules in the tree.
 # The charter's order is a ban, else a ratchet, else nothing.
 #
+# 2026-09-07: the engine root stopped being a hub. Its leaf types moved to `engine.api` (a package
+# that imports no other engine package), worker budgeting to `engine.plugin`, and the listen
+# package publishes through the `SseEvents` surface; the 15-slice component became three — the
+# planner core (runtime, task, compile, test), the MCP front (http, http.mcp, http.mcp.tools) and
+# the job/journal pair — so the engine line is 9. The two remaining edges that would dissolve the
+# planner core are compile→runtime (GroovycInputs reads CompileSupport.collectJavaSources) and
+# test→runtime (AffectedTestRun reads BuildPlanner's plan keys and Inputs).
+#
 # Measured at landing: 1,432 main sources, 95 packages, 29 module source roots, 195 resolved
 # package edges. Method: per module, resolve each `import cc.jumpkick.*` to the longest declared
 # package prefix WITHIN that module, then Tarjan over the resulting package graph. Imports that
@@ -26,7 +34,7 @@
 # Shrinking any of these is per-module follow-up work. This file makes the number one the build
 # defends.
 
-server/engine 15
+server/engine 9
 clients/cli 10
 shared/core 8
 clients/cli-terminal 3

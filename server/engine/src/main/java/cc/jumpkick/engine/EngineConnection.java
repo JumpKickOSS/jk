@@ -2,6 +2,8 @@
 package cc.jumpkick.engine;
 
 import cc.jumpkick.config.Session;
+import cc.jumpkick.engine.api.LockFloor;
+import cc.jumpkick.engine.api.WireWriter;
 import cc.jumpkick.engine.http.HttpEngineServer;
 import cc.jumpkick.engine.http.StatusSnapshot;
 import cc.jumpkick.engine.jobs.JobEnvelope;

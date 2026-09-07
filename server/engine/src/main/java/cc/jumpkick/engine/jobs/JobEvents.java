@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.jobs;
 
-import cc.jumpkick.engine.JsonOut;
+import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.wire.runtime.progress.ProgressBarMode;
 
 /** The dashboard event bus and the per-request progress state a job's events are decorated with. */

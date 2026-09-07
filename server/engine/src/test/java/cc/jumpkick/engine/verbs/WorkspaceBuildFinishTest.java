@@ -6,7 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.config.Session;
-import cc.jumpkick.engine.WireWriter;
+import cc.jumpkick.engine.api.WireWriter;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.journal.BuildRecord;

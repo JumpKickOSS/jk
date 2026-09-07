@@ -3,9 +3,9 @@ package cc.jumpkick.engine.jobs;
 
 import cc.jumpkick.config.JobLimits;
 import cc.jumpkick.config.Session;
-import cc.jumpkick.engine.JobWorkers;
-import cc.jumpkick.engine.WireWriter;
+import cc.jumpkick.engine.api.WireWriter;
 import cc.jumpkick.engine.journal.BuildAccumulator;
+import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
 import java.io.BufferedWriter;

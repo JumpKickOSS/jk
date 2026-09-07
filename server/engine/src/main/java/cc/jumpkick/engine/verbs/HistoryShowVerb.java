@@ -3,7 +3,7 @@ package cc.jumpkick.engine.verbs;
 
 import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.config.Session;
-import cc.jumpkick.engine.JsonOut;
+import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.journal.BuildRecord;

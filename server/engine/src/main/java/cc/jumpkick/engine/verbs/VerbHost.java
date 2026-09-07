@@ -4,7 +4,7 @@ package cc.jumpkick.engine.verbs;
 import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.config.Redacted;
 import cc.jumpkick.config.Session;
-import cc.jumpkick.engine.InFlightBuilds;
+import cc.jumpkick.engine.api.InFlightBuilds;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.listen.EventRedaction;

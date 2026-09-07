@@ -4,7 +4,8 @@ package cc.jumpkick.engine.http;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkHttpConfig;
-import cc.jumpkick.engine.JsonOut;
+import cc.jumpkick.engine.api.HttpLive;
+import cc.jumpkick.engine.api.JsonOut;
 import java.net.URI;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;

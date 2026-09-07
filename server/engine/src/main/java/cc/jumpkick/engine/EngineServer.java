@@ -4,6 +4,8 @@ package cc.jumpkick.engine;
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.config.JkHttpConfig;
+import cc.jumpkick.engine.api.InFlightBuilds;
+import cc.jumpkick.engine.api.WireWriter;
 import cc.jumpkick.engine.http.HttpEngineServer;
 import cc.jumpkick.engine.http.HttpEvents;
 import cc.jumpkick.engine.http.StatusSnapshot;

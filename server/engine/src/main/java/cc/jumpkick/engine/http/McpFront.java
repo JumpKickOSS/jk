@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http;
 
-import cc.jumpkick.engine.JsonOut;
+import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.runtime.ProjectCard;
 import com.sun.net.httpserver.HttpExchange;

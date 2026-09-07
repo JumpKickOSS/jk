@@ -4,7 +4,7 @@ package cc.jumpkick.engine.http;
 import cc.jumpkick.builds.ProjectIdentity;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.JkBuildParseException;
-import cc.jumpkick.engine.JsonOut;
+import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.runtime.NewProjectOps;
 import cc.jumpkick.giter8.Giter8TemplateIndex;

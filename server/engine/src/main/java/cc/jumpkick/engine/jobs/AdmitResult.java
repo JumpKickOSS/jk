@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.jobs;
 
-import cc.jumpkick.engine.InFlightBuilds.Hold;
+import cc.jumpkick.engine.api.InFlightBuilds.Hold;
 import org.jspecify.annotations.Nullable;
 
 /**

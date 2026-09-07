@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 import cc.jumpkick.config.JkHttpConfig;
+import cc.jumpkick.engine.api.HttpLive;
 import java.net.BindException;
 import java.net.URI;
 import java.net.http.HttpRequest;

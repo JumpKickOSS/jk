@@ -2,6 +2,11 @@
 package cc.jumpkick.engine;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.engine.api.CoalescingBuildPlanListener;
+import cc.jumpkick.engine.api.InFlightBuilds;
+import cc.jumpkick.engine.api.JsonOut;
+import cc.jumpkick.engine.api.SseEvents;
+import cc.jumpkick.engine.api.WireWriter;
 import cc.jumpkick.engine.http.HttpEngineServer;
 import cc.jumpkick.engine.http.HttpEvents;
 import cc.jumpkick.engine.jobs.JobSession;
@@ -30,7 +35,7 @@ import org.jspecify.annotations.Nullable;
 
 /** Dashboard SSE fan-out and workspace-progress emit. */
 @RequiredArgsConstructor
-public final class SsePublisher {
+public final class SsePublisher implements SseEvents {
 
     public interface Acc {
         void stepStart(long requestId, String dir, String step, String phase);
@@ -134,7 +139,7 @@ public final class SsePublisher {
     }
 
     /**
-     * As {@link #publishEvent(String, cc.jumpkick.engine.JsonOut)}; {@code dashboardOnly}
+     * As {@link #publishEvent(String, cc.jumpkick.engine.api.JsonOut)}; {@code dashboardOnly}
      * frames (SSE-connect rehydrate replays) skip MCP subscriptions — the dashboard folds a
      * duplicate {@code request-start} idempotently, but an MCP agent treating it as "job began"
      * would double-count.

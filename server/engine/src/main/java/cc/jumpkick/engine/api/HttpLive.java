@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.engine.http;
+package cc.jumpkick.engine.api;
 
 import java.util.List;
 import org.jspecify.annotations.Nullable;

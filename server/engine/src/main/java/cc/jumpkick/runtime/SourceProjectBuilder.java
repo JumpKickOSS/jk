@@ -4,7 +4,7 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compat.PassthroughEnv;
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.engine.JobWorkers;
+import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.host.DomXml;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;

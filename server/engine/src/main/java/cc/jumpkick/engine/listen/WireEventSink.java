@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.listen;
 
-import cc.jumpkick.engine.WireWriter;
+import cc.jumpkick.engine.api.WireWriter;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoEvents;
 import java.io.BufferedWriter;

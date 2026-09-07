@@ -4,6 +4,8 @@ package cc.jumpkick.engine;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.config.Session;
+import cc.jumpkick.engine.api.InFlightBuilds;
+import cc.jumpkick.engine.api.WireWriter;
 import cc.jumpkick.engine.jobs.JobEnvelope;
 import cc.jumpkick.engine.jobs.JobSessions;
 import cc.jumpkick.engine.journal.BuildJournal;

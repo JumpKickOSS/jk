@@ -2,8 +2,9 @@
 package cc.jumpkick.engine.http;
 
 import cc.jumpkick.config.SecretRedactor;
-import cc.jumpkick.engine.BuildHistoryKinds;
-import cc.jumpkick.engine.JsonOut;
+import cc.jumpkick.engine.api.BuildHistoryKinds;
+import cc.jumpkick.engine.api.HttpLive;
+import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.jsonl.MiniJson;

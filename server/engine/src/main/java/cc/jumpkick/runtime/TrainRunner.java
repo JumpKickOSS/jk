@@ -4,7 +4,7 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.config.TrainConfig;
-import cc.jumpkick.engine.JobWorkers;
+import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.GraalLauncher;
 import cc.jumpkick.host.Hashing;

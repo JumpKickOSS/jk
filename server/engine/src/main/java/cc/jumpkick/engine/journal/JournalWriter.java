@@ -3,8 +3,8 @@ package cc.jumpkick.engine.journal;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.JkHistoryConfig;
-import cc.jumpkick.engine.JsonOut;
-import cc.jumpkick.engine.WireWriter;
+import cc.jumpkick.engine.api.JsonOut;
+import cc.jumpkick.engine.api.WireWriter;
 import cc.jumpkick.engine.jobs.JobSessions;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockPaths;

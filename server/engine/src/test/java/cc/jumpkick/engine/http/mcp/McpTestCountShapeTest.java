@@ -3,7 +3,7 @@ package cc.jumpkick.engine.http.mcp;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.engine.JsonOut;
+import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.run.TestSummary;
 import java.util.Map;

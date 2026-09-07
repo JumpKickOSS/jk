@@ -1,20 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.listen;
 
-import cc.jumpkick.engine.SsePublisher;
+import cc.jumpkick.engine.api.SseEvents;
 
 /**
- * Encodes {@link EngineEvent} as dashboard/MCP SSE frames via {@link SsePublisher}. The second
+ * Encodes {@link EngineEvent} as dashboard/MCP SSE frames via {@link SseEvents}. The second
  * production sink beside {@link WireEventSink}: one event vocabulary, two encodings. Events with
  * no SSE frame (wire-only bursts, per-line diagnostics — the capped publication needs the whole
  * list and stays on {@code Hooks.planDiagnostics}) map to nothing.
  */
 public final class SseEventSink implements EventSink {
 
-    private final SsePublisher sse;
+    private final SseEvents sse;
     private final long requestId;
 
-    public SseEventSink(SsePublisher sse, long requestId) {
+    public SseEventSink(SseEvents sse, long requestId) {
         this.sse = sse;
         this.requestId = requestId;
     }

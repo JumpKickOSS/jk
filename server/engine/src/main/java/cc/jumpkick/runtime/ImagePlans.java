@@ -9,7 +9,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.ManifestImage;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceLoader;
-import cc.jumpkick.engine.JobWorkers;
+import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.host.Errors;

@@ -9,7 +9,7 @@ import static cc.jumpkick.runtime.PlannerSupport.lockModules;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.KspProcessors;
-import cc.jumpkick.engine.JobWorkers;
+import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.Classpaths;

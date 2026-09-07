@@ -18,7 +18,6 @@ import cc.jumpkick.config.TestEnvValues;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.config.WorkspaceLocator;
-import cc.jumpkick.engine.EngineMain;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.groovy.GroovyResolver;
 import cc.jumpkick.host.CacheTree;
@@ -519,7 +518,7 @@ public final class PlannerSupport {
         Path override = BuildPlanner.hostEngineSearchOverride;
         if (override != null) return findMonorepoEngineJar(override);
         try {
-            var cs = EngineMain.class.getProtectionDomain().getCodeSource();
+            var cs = PlannerSupport.class.getProtectionDomain().getCodeSource();
             if (cs != null && cs.getLocation() != null) {
                 Path p = Path.of(cs.getLocation().toURI());
                 if (Files.isRegularFile(p) && p.getFileName().toString().endsWith(".jar")) {

@@ -2,7 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.JkStores;
-import cc.jumpkick.engine.JobWorkers;
+import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.Http;

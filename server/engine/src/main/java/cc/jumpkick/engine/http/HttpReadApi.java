@@ -3,8 +3,8 @@ package cc.jumpkick.engine.http;
 
 import cc.jumpkick.config.EffectiveUserConfig;
 import cc.jumpkick.config.JkHttpConfig;
-import cc.jumpkick.engine.JsonOut;
-import cc.jumpkick.engine.LockFloor;
+import cc.jumpkick.engine.api.JsonOut;
+import cc.jumpkick.engine.api.LockFloor;
 import cc.jumpkick.engine.jobs.JobEnvelope;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.verbs.MetricsVerb;

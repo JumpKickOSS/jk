@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.engine;
+package cc.jumpkick.engine.plugin;
 
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.run.ContextPropagator;
