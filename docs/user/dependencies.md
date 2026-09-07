@@ -14,6 +14,11 @@ jk remove jackson3-databind
 map to `group:artifact` only — versions live on the dependency or a BOM, never in the
 catalog. See [Catalogs](#library-catalog) below and [Platforms](platforms.md).
 
+A project with [guards](guards.md) may carry `depend` rules — banned coordinates, scopes a
+library must stay in, version floors, licence and snapshot policy — judged over the manifest
+and the resolved lock in the model lane of the next build, so a `jk add` that breaks one is
+reported before anything compiles.
+
 ## Coordinates
 
 ```toml

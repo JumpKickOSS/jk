@@ -15,6 +15,7 @@ Canonical names. Hidden aliases (Maven/Gradle muscle memory) are listed in
 | `jk compile` | Type-check | [Build](build.md) |
 | `jk build` | Compile + package | [Build](build.md) |
 | `jk test` | Run tests (`--affected` / `--affected-since` list ranked classes) | [Test](test.md) |
+| `jk guard` | Run the house-rule lanes; `explain`, `freeze`, `hooks`, `commit-msg` | [Guards](guards.md) |
 | `jk run` | Run the app | [Run](run.md) |
 | `jk watch` / `jk dev` | Rebuild on change | [Run](run.md) |
 | `jk jshell` | REPL on compile classpath | [Run](run.md) |

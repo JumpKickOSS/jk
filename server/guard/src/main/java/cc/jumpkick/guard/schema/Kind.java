@@ -80,6 +80,11 @@ public enum Kind {
         return KindSchemas.exampleOf(this);
     }
 
+    /** The keys every kind shares (`why`, `scope`, `allow`, `baseline`, `fixture`, …). */
+    public static List<KeySpec> commonKeys() {
+        return KindSchemas.common();
+    }
+
     public static Optional<Kind> byId(String id) {
         String want = id.toLowerCase(Locale.ROOT);
         for (Kind k : values()) if (k.id.equals(want)) return Optional.of(k);

@@ -297,6 +297,10 @@ Survey percentages are self-reported and multi-select; treat them as **order-of-
 market signal**. The signal is consistent: **declarative still wins headcount; Gradle did
 not become the universal Maven replacement.** The new wedge is **agent-closed loops**.
 
+House rules are data too: `jk-guards.toml` states what a project bans and requires, the
+build enforces it, and an agent reads the rule instead of a reviewer re-typing it —
+[Guards](guards.md).
+
 ## Related
 
 - [Manual](manual.md)
@@ -304,5 +308,6 @@ not become the universal Maven replacement.** The new wedge is **agent-closed lo
 - [Agents](agents.md)
 - [MCP](mcp.md)
 - [Test](test.md)
+- [Guards](guards.md)
 - [Concepts](concepts.md)
 - [README](../../README.md) — hero pitch

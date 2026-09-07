@@ -876,3 +876,21 @@ kind  = "parity"
 left  = { regex = { file = "buildSrc/src/main/kotlin/Guards.kt", pattern = 'ruleId = "([a-z0-9-]+)"' } }
 right = { guard-ids = true }
 why   = "a rule no letter claims, or a letter whose rule is gone, is the registry lagging the code"
+
+# The user documentation's kind and key tables are renderings of the loader's own schema, so the
+# docs cannot drift from what the loader accepts.
+[guards.guard-kinds-doc]
+kind     = "generated"
+source   = { guard-kinds = true }
+template = { table = ["kind", "substrate", "lane", "summary"] }
+into     = "docs/user/guards.md"
+markers  = "guard-kinds"
+why      = "a kind the docs describe and the loader does not know is a rule nobody can write"
+
+[guards.guard-schemas-doc]
+kind     = "generated"
+source   = { guard-schemas = true }
+template = { table = ["kind", "key", "required", "type", "meaning"] }
+into     = "docs/user/guards.md"
+markers  = "guard-schemas"
+why      = "a key the docs describe and the loader does not accept is a rule that fails to load"

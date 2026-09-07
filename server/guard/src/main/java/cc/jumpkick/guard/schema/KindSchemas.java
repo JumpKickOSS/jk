@@ -382,6 +382,11 @@ final class KindSchemas {
         EXAMPLES.put(kind, example.stripIndent());
     }
 
+    /** The keys every kind shares. */
+    public static List<KeySpec> common() {
+        return COMMON;
+    }
+
     static List<KeySpec> keysOf(Kind kind) {
         return Objects.requireNonNull(KEYS.get(kind), kind.id());
     }

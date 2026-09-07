@@ -52,6 +52,7 @@ If you are changing JumpKick itself, go to [../contributors/](../contributors/RE
 
 - [Build](build.md)
 - [Test](test.md)
+- [Guards](guards.md) — house rules in `jk-guards.toml`: kinds, baseline, packs, hooks
 - [Format](format.md)
 - [Run, watch, REPL](run.md)
 - [Explain and tasks](explain.md)

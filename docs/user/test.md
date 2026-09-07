@@ -58,7 +58,7 @@ the test compile classpath (so ArchUnit or Konsist come from `[test-dependencies
 provisions from its local store and pins in `jk-lock.toml` — nothing to declare. Discovery never
 returns `guard`: `jk test`, `--all` and the gate do not collect it, `--suite guard` is an error
 that says so, and the guard lanes run it. `jk ide` exports the directory as a test root so a guard
-test has a debugger.
+test has a debugger. The rules themselves, their kinds and their baseline: [Guards](guards.md).
 
 `--scripts-only` and `--no-scripts` cannot be combined. `--scripts-only` with no
 `gate` stem is a config error. Same flags on `jk build`. See [build logic](build-logic.md).

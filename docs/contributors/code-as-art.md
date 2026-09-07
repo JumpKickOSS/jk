@@ -862,7 +862,11 @@ is where the mistake is actually typed — runs in both.
 
 ### The guard registry
 
-Letters are allocated when a guard lands and are never reused.
+Letters are allocated when a guard lands and are never reused. `Guards.kt` is the Gradle
+side's record and the table below is rendered from it; the jk side is `jk-guards.toml` and
+the guard tests, which the last column names. Retiring `Guards.kt` itself — Gradle running
+`jk-guards.toml` through a `JavaExec` over `server/guard` instead of keeping a twin task per
+letter — is the Gradle-side follow-up recorded in `guard-parity.txt`.
 
 <!-- guards:start -->
 | id | task | rule | form | jk side |
@@ -950,6 +954,8 @@ Letters are allocated when a guard lands and are never reused.
 | G80 | `no-agent-trailers` (jk-guards.toml, `commit`) + `scripts/check-no-agent-attribution.sh` (CI) | a commit message carrying a tool's co-author, generator or assistant trailer — refused at the commit boundary by the `commit-msg` hook `jk guard hooks install` writes | commit rule, forbid-trailers globs; CI's history scan is the other half | `no-agent-trailers` (commit) |
 | G81 | `checkPublishedInstallers` (root project) + `published-installer-sh` (jk-guards.toml, `parity`) | `hosting/public/install.sh` differing from the repo-root copy — served to `curl | bash` users, so a stale copy installs jk where the CLI does not look | parity, line sets of the two copies (Gradle: byte identity) | `published-installer-sh` (parity) |
 | G82 | `published-installer-ps1` (jk-guards.toml, `parity`) | `hosting/public/install.ps1` differing from the repo-root copy — the PowerShell half of G81 | parity, line sets of the two copies | `published-installer-ps1` (parity) |
+| G83 | `guard-kinds-doc` (jk-guards.toml, `generated`) | the kinds table in `docs/user/guards.md` not being what the loader's kind list renders | generated, rendered from `guard-kinds` | `guard-kinds-doc` (generated) |
+| G84 | `guard-schemas-doc` (jk-guards.toml, `generated`) | the key tables in `docs/user/guards.md` not being what the loader's `KeySpec` tables render | generated, rendered from `guard-schemas` | `guard-schemas-doc` (generated) |
 <!-- guards:end -->
 
 `checkCliRuntimeClasspath` and `checkCliNoParseTypes` predate the letters.
@@ -991,8 +997,10 @@ by id, kind and why. This block is a `generated` guard's rendering
 | cli-runtime-classpath | depend | the CLI runtime is the native image; a test or build-time library there is a mis-scoped dependency |
 | cli-runtime-modules | layers | a CLI edge to an engine-side module puts engine code in the native image |
 | file-size | metric | a file that no longer fits a context window no longer fits a reviewer |
+| guard-kinds-doc | generated | a kind the docs describe and the loader does not know is a rule nobody can write |
 | guard-registry-doc | generated | the registry drifted twice by hand; the third reconciliation is not by hand |
 | guard-rules-registered | parity | a rule no letter claims, or a letter whose rule is gone, is the registry lagging the code |
+| guard-schemas-doc | generated | a key the docs describe and the loader does not accept is a rule that fails to load |
 | install-tests-redirect-m2 | text | an install test without --m2-dir publishes into the developer's real ~/.m2 |
 | jdk-removal-confined | forbid | an ordinary build once deleted the JDK it was running on, twice in one afternoon |
 | manifest-names | vocabulary | a file jk owns is named once, in ManifestPaths |

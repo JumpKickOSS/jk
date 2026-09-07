@@ -67,8 +67,8 @@ MCP: `jk_config apply_preset=ci`. Selective prepare/run: [Workspaces](workspaces
 
 ## Guards
 
-A project with `jk-guards.toml` runs its house rules inside `jk build` / `jk test`; `jk guard`
-runs every lane and exits non-zero on any red. Each run leaves `target/jk-guards.sarif`, which
+A project with `jk-guards.toml` ([Guards](guards.md)) runs its house rules inside `jk build` /
+`jk test`; `jk guard` runs every lane and exits non-zero on any red. Each run leaves `target/jk-guards.sarif`, which
 GitHub code scanning reads unchanged:
 
 ```yaml

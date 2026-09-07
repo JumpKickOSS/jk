@@ -275,18 +275,16 @@ annotations, layer edges, text patterns, size caps. They run inside `jk build` a
 A guard failure in `target/jk-results.md` / `jk_diagnostics`:
 
 ```
-GUARD one-digest-surface  violations
-  shared/io/src/main/java/…/Foo.java:42: MessageDigest.getInstance("SHA-256") called outside Hashing
-  Instead:  Hashing.newSha256()
-  Why:      one digest surface
-  Exempt:   ask the user to add [guards.one-digest-surface].allow with a reason
+### one-digest-surface — one digest surface  (1 site)
+- `shared/io/src/main/java/…/Foo.java:42`  `MessageDigest.getInstance("SHA-256")`
+  → Hashing.newSha256()
 ```
 
 A guard *test* (`@Guard`, `src/guard`) fails the same way.
-**A guard failure's `code` is a rule id. Fix per `Instead`. To exempt, stop and ask the user to add an
+**A guard failure's `code` is a rule id. Fix per the arrow (`Instead`). To exempt, stop and ask the user to add an
 `allow` entry with a reason — never edit the baseline, never add a comment.** Catalog: `jk guard explain`.
 
-Loop: read the `code` → `jk guard explain <id>` → change the *site* as `Instead` says → `jk format` →
+Loop: read the `code` → `jk guard explain <id>` → change the *site* as the arrow says → `jk format` →
 rebuild (`jk build`, or MCP `jk_run kind=guard`).
 
 Stop and ask when:
@@ -305,8 +303,7 @@ jk guard explain --schema <kind>    # keys + one example; kinds: forbid annotate
                                     # split-package api depend toolchain tiers text metric vocabulary parity
                                     # generated output commit
 jk guard explain --schema guard-test  # the @Guard skeleton for what TOML cannot say
-jk guard                            # every lane now; red on any violation
-jk guard test                       # prove fixtures: Bad* fires, Ok* is quiet
+jk guard                            # every lane now; red on any violation; fixtures proven (Bad* fires, Ok* is quiet)
 jk guard freeze <id> --reason "…"   # accept a rule's current sites (user-approved); --retire drops a removed rule
 jk guard hooks install              # git hooks: commit rules refuse a message; pre-commit protects the baseline
 jk guard --output sarif             # print target/jk-guards.sarif

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.guard.schema;
 
+import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.model.Scope;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -44,6 +45,8 @@ public final class ExtractorVocabulary {
         m.put("enum-constants", "(class) the constants of an enum, from the facts index");
         m.put("static-finals", "(class) the static final constants of a class as name → value");
         m.put("guard-ids", "(true) every rule of this rules file: id, kind, why");
+        m.put("guard-kinds", "(true) every rule kind: kind, substrate, lane, summary");
+        m.put("guard-schemas", "(true | kind) the keys of every kind, or one: kind, key, required, type, meaning");
         m.put("markdown-table", "{ file, column } the cells of one column of the first table in a Markdown file");
         m.put("markdown-links", "(file) the destination of every [text](href) link in a Markdown file");
         return Map.copyOf(m);
@@ -64,7 +67,8 @@ public final class ExtractorVocabulary {
         return switch (name) {
             case "manifest-deps" -> "module";
             case "enum-constants", "static-finals" -> "class";
-            case "guard-ids" -> "all";
+            case "guard-ids", "guard-kinds" -> "all";
+            case "guard-schemas" -> "kind";
             default -> "file";
         };
     }
@@ -96,6 +100,13 @@ public final class ExtractorVocabulary {
         }
         Map<String, String> a = args(name, spec.get(name));
         switch (name) {
+            case "guard-schemas" -> {
+                String kind = a.getOrDefault("kind", "all");
+                if (EnvValues.parseBool(kind).isEmpty()
+                        && !kind.equals("all")
+                        && Kind.byId(kind).isEmpty())
+                    return key + ": guard-schemas kind `" + kind + "` is not a rule kind; kinds are " + kindIds();
+            }
             case "manifest-deps" -> {
                 if (a.get("module") == null) return key + ": manifest-deps needs `module`";
                 String scope = a.getOrDefault("scope", "main");
@@ -167,5 +178,11 @@ public final class ExtractorVocabulary {
 
     public static Set<String> templateNames() {
         return TEMPLATES.keySet();
+    }
+
+    private static String kindIds() {
+        StringBuilder sb = new StringBuilder();
+        for (Kind k : Kind.values()) sb.append(sb.isEmpty() ? "" : ", ").append(k.id());
+        return sb.toString();
     }
 }

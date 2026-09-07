@@ -6,7 +6,8 @@
 
 One tier per tag. The table is `buildSrc/src/main/kotlin/TestTiers.kt`; the `useJUnitPlatform { }`
 filters are generated from it and guard **G23** (`checkNoOrphanTestTags`) re-derives the partition
-from the same object, so the two cannot drift.
+from the same object, so the two cannot drift. On the jk side the engine's `tiers` validation
+re-derives it from the root manifest's `[test]` and `[profiles.*]` tables ([self-host](self-host.md#test-tiers)).
 
 `./gradlew checkFast` is the canonical branch gate: every subproject `check` task (unit tests plus
 module guards) and every root structural guard. It is network-free. `checkAll` adds the integration

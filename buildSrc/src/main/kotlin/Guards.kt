@@ -931,6 +931,30 @@ object Guards {
                 ownerPath = ":cli",
                 description = "Fail when CLI main references parser or plugin-schema types",
             ),
+            spec(
+                83,
+                "guard-kinds-doc",
+                "the kinds table in `docs/user/guards.md` not being what the loader's kind list renders",
+                "generated, rendered from `guard-kinds`",
+                GuardHome.SELF_HOSTED,
+                tableTask = "`guard-kinds-doc` (jk-guards.toml, `generated`)",
+                inFastGate = false,
+                gradleLetter = false,
+                attach = emptySet(),
+                ruleId = "guard-kinds-doc",
+            ),
+            spec(
+                84,
+                "guard-schemas-doc",
+                "the key tables in `docs/user/guards.md` not being what the loader's `KeySpec` tables render",
+                "generated, rendered from `guard-schemas`",
+                GuardHome.SELF_HOSTED,
+                tableTask = "`guard-schemas-doc` (jk-guards.toml, `generated`)",
+                inFastGate = false,
+                gradleLetter = false,
+                attach = emptySet(),
+                ruleId = "guard-schemas-doc",
+            ),
         )
 
     val tableRows: List<GuardSpec>

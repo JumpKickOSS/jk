@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.guard.eval;
 
+import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.guard.extract.WorkspaceFacts;
 import cc.jumpkick.guard.facts.ClassFacts;
@@ -8,6 +9,8 @@ import cc.jumpkick.guard.facts.Descriptors;
 import cc.jumpkick.guard.facts.FieldFacts;
 import cc.jumpkick.guard.rules.Rule;
 import cc.jumpkick.guard.schema.ExtractorVocabulary;
+import cc.jumpkick.guard.schema.KeySpec;
+import cc.jumpkick.guard.schema.Kind;
 import cc.jumpkick.host.CodeText;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.lock.Lockfile;
@@ -94,6 +97,8 @@ final class Extractors {
             case "enum-constants" -> enumConstants(s, ctx);
             case "static-finals" -> staticFinals(s, ctx);
             case "guard-ids" -> guardIds(s, rule, ctx);
+            case "guard-kinds" -> guardKinds(s);
+            case "guard-schemas" -> guardSchemas(s);
             case "markdown-table" -> markdownTable(s, ctx);
             case "markdown-links" -> markdownLinks(s, ctx);
             default -> throw new ExtractorException("unknown extractor " + s.name());
@@ -337,6 +342,52 @@ final class Extractors {
             rows.add(new Extraction.Row(r.id(), cols));
         }
         return new Extraction(s.label(), null, rows);
+    }
+
+    private static Extraction guardKinds(Spec s) {
+        List<Extraction.Row> rows = new ArrayList<>();
+        for (Kind k : Kind.values())
+            rows.add(row(
+                    k.id(),
+                    "kind",
+                    k.id(),
+                    "substrate",
+                    k.substrate().name().toLowerCase(Locale.ROOT),
+                    "lane",
+                    k.lane().name().toLowerCase(Locale.ROOT),
+                    "summary",
+                    k.summary()));
+        return new Extraction(s.label(), null, rows);
+    }
+
+    /** Every key of every kind (or of one), then the keys all kinds share under the kind {@code common}. */
+    private static Extraction guardSchemas(Spec s) throws ExtractorException {
+        // a bare boolean (`guard-schemas = true`) or `all` is every kind; anything else names one
+        String which = s.arg("kind", "all");
+        List<Extraction.Row> rows = new ArrayList<>();
+        List<Kind> kinds = new ArrayList<>();
+        if (EnvValues.parseBool(which).isPresent() || which.equals("all")) kinds.addAll(List.of(Kind.values()));
+        else kinds.add(Kind.byId(which).orElseThrow(() -> new ExtractorException("unknown rule kind " + which)));
+        for (Kind k : kinds) for (KeySpec key : k.keys()) rows.add(schemaRow(k.id(), key));
+        for (KeySpec key : Kind.commonKeys()) rows.add(schemaRow("common", key));
+        return new Extraction(s.label(), null, rows);
+    }
+
+    private static Extraction.Row schemaRow(String kind, KeySpec key) {
+        String meaning = key.doc();
+        if (!key.values().isEmpty()) meaning += " [" + String.join(" | ", key.values()) + "]";
+        return row(
+                kind + "." + key.name(),
+                "kind",
+                kind,
+                "key",
+                key.name(),
+                "required",
+                key.required() ? "yes" : "",
+                "type",
+                key.type().name().toLowerCase(Locale.ROOT).replace('_', ' '),
+                "meaning",
+                meaning);
     }
 
     // ---- markdown ----------------------------------------------------------------------------
