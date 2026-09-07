@@ -19,9 +19,12 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import org.jspecify.annotations.Nullable;
 
@@ -51,7 +54,8 @@ public final class GuardExplain {
             String source,
             String population,
             int baselineEntries,
-            String lastOutcome) {}
+            String lastOutcome,
+            String layer) {}
 
     public static Result explain(Path root, GuardsConfig config, @Nullable String ruleId) throws IOException {
         Path rulesFile = GuardsPresence.rulesFile(root);
@@ -153,7 +157,8 @@ public final class GuardExplain {
                 r.source().render(),
                 population,
                 baseline.of(r.id()).entries().size(),
-                last);
+                last,
+                r.kind() == Kind.TEST ? "guard tests (src/guard)" : r.source().layerLabel());
     }
 
     static String renderCard(Card c, String rulesSha, String baselineSha) {
@@ -198,7 +203,20 @@ public final class GuardExplain {
                     .append("base")
                     .append("  ")
                     .append("why\n");
-            for (Card c : cards) {
+            // More than one source layer: a header line per layer, root first, then packs, then members.
+            Set<String> layers = new LinkedHashSet<>();
+            for (Card c : cards) layers.add(c.layer());
+            boolean grouped = layers.size() > 1;
+            List<Card> ordered = new ArrayList<>(cards);
+            if (grouped)
+                ordered.sort(Comparator.comparingInt((Card c) -> layerRank(c.layer()))
+                        .thenComparing(Card::id));
+            String currentLayer = null;
+            for (Card c : ordered) {
+                if (grouped && !c.layer().equals(currentLayer)) {
+                    currentLayer = c.layer();
+                    sb.append("── ").append(currentLayer).append('\n');
+                }
                 sb.append(pad(c.id(), idW))
                         .append("  ")
                         .append(pad(c.kind(), kindW))
@@ -226,6 +244,14 @@ public final class GuardExplain {
         sb.append('\n');
         shas(sb, rulesSha, baselineSha);
         return sb.toString();
+    }
+
+    /** Root file, packs, members, guard tests: the order the layers stack in. */
+    static int layerRank(String layer) {
+        if (layer.equals(GuardsPresence.RULES_FILE)) return 0;
+        if (layer.startsWith("pack ")) return 1;
+        if (layer.startsWith("guard tests")) return 3;
+        return 2;
     }
 
     static String renderValidation(EngineValidations.Info v, String rulesSha, String baselineSha) {
@@ -276,6 +302,7 @@ public final class GuardExplain {
             m.put("why", c.why());
             m.put("instead", c.instead());
             m.put("source", c.source());
+            m.put("layer", c.layer());
             m.put("population", c.population());
             m.put("baselineEntries", c.baselineEntries());
             m.put("lastOutcome", c.lastOutcome());

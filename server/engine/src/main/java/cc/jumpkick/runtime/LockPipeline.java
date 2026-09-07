@@ -9,6 +9,8 @@ import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.JkM2Config;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.BuiltInPluginJars;
+import cc.jumpkick.guard.rules.GuardPacks;
+import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkRegistry;
@@ -469,6 +471,36 @@ public final class LockPipeline {
                 } catch (IOException unreadable) {
                     progress.note("note: " + GuardSuiteLibrary.COORDINATE + " could not be hashed; not pinned");
                 }
+            }
+        }
+        // Rule packs pin like plugins: the root jk-guards.toml names them, the lock fixes the bytes.
+        List<String> packs;
+        try {
+            packs = GuardPacks.declared(lockDir);
+        } catch (IOException e) {
+            throw new IllegalStateException(
+                    "cannot read " + GuardsPresence.RULES_FILE + " for [guards] extends: " + e.getMessage(), e);
+        }
+        for (String declared : packs) {
+            GuardPacks.Coordinate c = GuardPacks.Coordinate.parse(declared);
+            if (c == null) {
+                throw new IllegalStateException("[guards] extends: `" + declared
+                        + "` is not group:artifact:version — a rule pack is pinned exactly");
+            }
+            if (!seen.add(c.ga() + ":" + c.version())) continue;
+            progress.label("lock pack " + c.gav());
+            try {
+                var fetched = repos.tryFetchArtifact(Coordinate.of(c.group(), c.artifact(), c.version()))
+                        .orElseThrow(
+                                () -> new IllegalStateException("rule pack " + c.gav() + " not found in any repo"));
+                String sha = fetched.fetched().sha256();
+                entries.add(new Lockfile.PluginEntry(c.ga(), c.version(), "sha256:" + sha));
+                // The lock materializes the pack where the loader reads it, so a build after the lock
+                // needs neither the repository nor the store to find its rules.
+                GuardPacks.unpack(fetched.fetched().cachePath(), GuardPacks.unpackedDir(lockDir, c), sha);
+            } catch (IOException | InterruptedException e) {
+                if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+                throw new IllegalStateException("rule pack " + c.gav() + " — " + e.getMessage(), e);
             }
         }
         return lock.withPlugins(entries).withJkMin(floor);

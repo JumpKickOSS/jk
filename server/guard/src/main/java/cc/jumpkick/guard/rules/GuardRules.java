@@ -12,11 +12,13 @@ import cc.jumpkick.guard.schema.Kind.KeyGroup;
 import cc.jumpkick.guard.schema.SchemaText;
 import cc.jumpkick.guard.validate.EngineValidations;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.model.GuardsConfig;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -53,6 +55,17 @@ public final class GuardRules {
 
     /** Load the root rule file, or an empty set when it does not exist. */
     public static LoadResult load(Path root, GuardsConfig config) {
+        return load(root, config, null);
+    }
+
+    /**
+     * Load every layer: rule packs ({@code [guards] extends}, unpacked from the store when {@code
+     * store} is given), the root file, then each workspace member's {@code jk-guards.toml}. Union of
+     * rules; a lower layer may only tighten, and every conflict is a load error naming both sources.
+     * Members are read in path order and packs in declaration order, and no rule of the result
+     * depends on either: the same files load to the same set whatever order they were found in.
+     */
+    public static LoadResult load(Path root, GuardsConfig config, @Nullable Path store) {
         Path file = GuardsPresence.rulesFile(root);
         if (!Files.isRegularFile(file)) return new LoadResult(new RuleSet(Map.of(), Map.of(), config), List.of());
         List<LoadError> problems = new ArrayList<>();
@@ -63,12 +76,115 @@ public final class GuardRules {
             problems.add(new LoadError(Severity.ERROR, file, 1, null, "cannot read: " + e.getMessage()));
             return new LoadResult(new RuleSet(Map.of(), Map.of(), config), problems);
         }
-        Map<String, Rule> rules = loadText(file, text, RuleSource.Layer.ROOT, problems);
-        checkTagVocabulary(root, file, rules, problems);
-        checkGeneratedMarkers(root, file, rules, problems);
-        Map<String, String> digests =
-                Map.of(root.relativize(file).toString().replace('\\', '/'), Hashing.sha256Hex(text));
-        return new LoadResult(new RuleSet(rules, digests, config), problems);
+        Map<String, String> digests = new LinkedHashMap<>();
+        digests.put(GuardsPresence.RULES_FILE, Hashing.sha256Hex(text));
+        Map<String, Rule> merged = new LinkedHashMap<>();
+        // ---- packs: the layer below the root, in declaration order
+        TomlParseResult rootToml = Toml.parse(text);
+        int extendsLine = rootToml.hasErrors() ? 1 : Math.max(1, lineOf(rootToml, List.of("guards", "extends")));
+        if (store != null) {
+            try {
+                for (String p : GuardPacks.ensure(root, store))
+                    problems.add(new LoadError(Severity.ERROR, file, extendsLine, null, p));
+            } catch (IOException e) {
+                problems.add(new LoadError(Severity.ERROR, file, extendsLine, null, "rule packs: " + e.getMessage()));
+            }
+        }
+        for (String declared : GuardPacks.declared(text)) {
+            GuardPacks.Coordinate c = GuardPacks.Coordinate.parse(declared);
+            if (c == null) {
+                problems.add(new LoadError(
+                        Severity.ERROR,
+                        file,
+                        extendsLine,
+                        null,
+                        "[guards] extends: `" + declared
+                                + "` is not group:artifact:version — a pack is pinned exactly"));
+                continue;
+            }
+            Path fragment = GuardPacks.fragment(GuardPacks.unpackedDir(root, c));
+            if (!Files.isRegularFile(fragment)) {
+                if (store == null) {
+                    problems.add(new LoadError(
+                            Severity.ERROR,
+                            file,
+                            extendsLine,
+                            null,
+                            "pack " + c.gav() + " is not unpacked under " + root.relativize(fragment.getParent())
+                                    + " — run `jk lock`, then `jk build`"));
+                }
+                continue;
+            }
+            String ptext;
+            try {
+                ptext = Files.readString(fragment, StandardCharsets.UTF_8);
+            } catch (IOException e) {
+                problems.add(new LoadError(Severity.ERROR, fragment, 1, null, "cannot read: " + e.getMessage()));
+                continue;
+            }
+            digests.put("pack:" + c.gav(), Hashing.sha256Hex(ptext));
+            Map<String, Rule> pack = loadText(fragment, ptext, RuleSource.Layer.PACK, problems, c.gav(), merged);
+            merged.putAll(pack);
+        }
+        // ---- root: full rules, plus amendments of pack rules (allow / baseline only)
+        merged.putAll(loadText(file, text, RuleSource.Layer.ROOT, problems, "", merged));
+        // ---- members: rules scoped to themselves, tighten-only
+        try {
+            for (Path m : WorkspaceMembers.of(root)) {
+                Path mf = m.resolve(GuardsPresence.RULES_FILE);
+                if (m.toAbsolutePath().normalize().equals(root.toAbsolutePath().normalize())
+                        || !Files.isRegularFile(mf)) continue;
+                String rel = root.toAbsolutePath()
+                        .normalize()
+                        .relativize(m.toAbsolutePath().normalize())
+                        .toString()
+                        .replace('\\', '/');
+                String mtext = Files.readString(mf, StandardCharsets.UTF_8);
+                digests.put(rel + "/" + GuardsPresence.RULES_FILE, Hashing.sha256Hex(mtext));
+                merged.putAll(loadText(mf, mtext, RuleSource.Layer.MODULE, problems, rel, merged));
+            }
+        } catch (IOException e) {
+            problems.add(new LoadError(Severity.ERROR, file, 1, null, "module rule files: " + e.getMessage()));
+        }
+        checkTagVocabulary(root, file, merged, problems);
+        checkGeneratedMarkers(root, file, merged, problems);
+        return new LoadResult(new RuleSet(merged, digests, config), problems);
+    }
+
+    /**
+     * A stamp over every file the load reads — the root file, the lock (pack pins), each member's
+     * rule file and each pack's unpack marker — so a memo can tell whether a load is still current
+     * without reading any of them.
+     */
+    public static String stamp(Path root) {
+        StringBuilder sb = new StringBuilder();
+        stamp(sb, GuardsPresence.rulesFile(root));
+        stamp(sb, LockPaths.lockFile(root));
+        try {
+            for (String declared : GuardPacks.declared(root)) {
+                GuardPacks.Coordinate c = GuardPacks.Coordinate.parse(declared);
+                if (c != null) stamp(sb, GuardPacks.unpackedDir(root, c).resolve(GuardPacks.STAMP));
+            }
+            for (Path m : WorkspaceMembers.of(root)) stamp(sb, m.resolve(GuardsPresence.RULES_FILE));
+        } catch (IOException e) {
+            sb.append("?");
+        }
+        return sb.toString();
+    }
+
+    private static void stamp(StringBuilder sb, Path file) {
+        sb.append(file.getFileName()).append(':');
+        try {
+            if (Files.isRegularFile(file)) {
+                BasicFileAttributes a = Files.readAttributes(file, BasicFileAttributes.class);
+                sb.append(a.size()).append(':').append(a.lastModifiedTime().toMillis());
+            } else {
+                sb.append("absent");
+            }
+        } catch (IOException e) {
+            sb.append("?");
+        }
+        sb.append(';');
     }
 
     /**
@@ -132,8 +248,28 @@ public final class GuardRules {
         }
     }
 
-    /** Parse one file's text. Package-private so tests and, later, pack fragments reach it. */
+    /** Parse one file's text as a layer with no inherited rules. Package-private so tests reach it. */
     static Map<String, Rule> loadText(Path file, String text, RuleSource.Layer layer, List<LoadError> problems) {
+        return loadText(file, text, layer, problems, "", Map.of());
+    }
+
+    /** The keys a root file may write under an inherited pack rule's id: an amendment, not a redefinition. */
+    private static final Set<String> AMENDMENT_KEYS = Set.of("allow", "baseline");
+
+    /**
+     * Parse one file's text as one layer over {@code inherited} (the layers above it). The result
+     * holds this layer's rules and, for the root, the amended pack rules; every clash with an
+     * inherited id is a load error naming both sources.
+     *
+     * @param origin the pack coordinate or the member path, for messages
+     */
+    static Map<String, Rule> loadText(
+            Path file,
+            String text,
+            RuleSource.Layer layer,
+            List<LoadError> problems,
+            String origin,
+            Map<String, Rule> inherited) {
         Map<String, Rule> rules = new LinkedHashMap<>();
         TomlParseResult toml = Toml.parse(text);
         if (toml.hasErrors()) {
@@ -159,14 +295,16 @@ public final class GuardRules {
             List<String> path = List.of("guards", key);
             int line = lineOf(toml, path);
             if ("extends".equals(key)) {
-                problems.add(
-                        new LoadError(
-                                Severity.ERROR,
-                                file,
-                                line,
-                                null,
-                                "[guards] extends (rule packs) is not supported yet — remove it until packs ship; a silent no-op is not allowed"));
-                continue;
+                if (layer != RuleSource.Layer.ROOT) {
+                    problems.add(new LoadError(
+                            Severity.ERROR,
+                            file,
+                            line,
+                            null,
+                            "[guards] extends belongs to the root " + GuardsPresence.RULES_FILE
+                                    + "; a pack or a member cannot extend packs"));
+                }
+                continue; // the coordinates are read by the loader, not as a rule
             }
             Object value = guards.get(path.subList(1, 2));
             if (!(value instanceof TomlTable table)) {
@@ -201,7 +339,40 @@ public final class GuardRules {
                 problems.add(new LoadError(Severity.ERROR, file, line, key, "duplicate rule id"));
                 continue;
             }
-            Rule rule = readRule(key, table, new RuleSource(file, line, layer), toml, problems);
+            Rule above = inherited.get(key);
+            if (above != null) {
+                boolean amendment = layer == RuleSource.Layer.ROOT && AMENDMENT_KEYS.containsAll(table.keySet());
+                if (!amendment) {
+                    problems.add(new LoadError(
+                            Severity.ERROR,
+                            file,
+                            line,
+                            key,
+                            "`" + key + "` is already declared by "
+                                    + above.source().render()
+                                    + "; a lower layer adds rules of its own and never redefines an inherited one"
+                                    + (layer == RuleSource.Layer.ROOT
+                                            ? " (the root may add `allow` or `baseline` to a pack rule, nothing else)"
+                                            : "")));
+                    continue;
+                }
+                if (above.locked()) {
+                    problems.add(new LoadError(
+                            Severity.ERROR,
+                            file,
+                            line,
+                            key,
+                            "`" + key + "` is locked by " + above.source().render()
+                                    + "; a consumer cannot allow against it — the pack's own allow entries apply"));
+                    continue;
+                }
+                List<Allow> more = readAllow(key, table, toml, file, problems);
+                rules.put(key, above.amended(more, Boolean.TRUE.equals(table.getBoolean("baseline"))));
+                continue;
+            }
+            Rule rule = readRule(key, table, new RuleSource(file, line, layer, origin), toml, problems);
+            if (rule != null && layer == RuleSource.Layer.MODULE)
+                rule = tightenOnly(rule, origin, file, line, problems);
             if (rule != null) rules.put(key, rule);
             int tokens = tokenCount(text, key);
             if (tokens > TOKEN_BUDGET) {
@@ -301,6 +472,15 @@ public final class GuardRules {
             if (tp != null) problems.add(err(file, lineOf(doc, List.of("guards", id, "template")), id, tp));
         }
         List<Allow> allow = readAllow(id, t, doc, file, problems);
+        boolean locked = Boolean.TRUE.equals(t.getBoolean("locked"));
+        if (locked && source.layer() != RuleSource.Layer.PACK) {
+            problems.add(
+                    err(
+                            file,
+                            lineOf(doc, List.of("guards", id, "locked")),
+                            id,
+                            "`locked` is a pack's word: it stops consumers allowing against a pack rule, and this file is not a pack"));
+        }
         if (problems.size() > start) return null;
         return new Rule(
                 id,
@@ -313,7 +493,45 @@ public final class GuardRules {
                 Boolean.TRUE.equals(t.getBoolean("baseline")),
                 t.isString("fixture") ? t.getString("fixture") : null,
                 t,
-                source);
+                source,
+                locked);
+    }
+
+    /**
+     * A member's rule may only tighten: it scopes to the member (the default) or inside it, and it
+     * carries no {@code allow} and no {@code baseline} — exemptions are the root's decision.
+     */
+    private static @Nullable Rule tightenOnly(Rule rule, String module, Path file, int line, List<LoadError> problems) {
+        int start = problems.size();
+        if (!rule.allow().isEmpty()) {
+            problems.add(err(
+                    file,
+                    line,
+                    rule.id(),
+                    "a member's rule carries no `allow`: exemptions are written in the root "
+                            + GuardsPresence.RULES_FILE + ", where the reviewer sees them"));
+        }
+        if (rule.baseline()) {
+            problems.add(err(
+                    file,
+                    line,
+                    rule.id(),
+                    "a member's rule carries no `baseline`: only the root may tolerate today's sites"));
+        }
+        List<String> scope = rule.scope();
+        if (scope.isEmpty()) scope = List.of(module);
+        for (String s : scope) {
+            if (!(s.equals(module) || s.startsWith(module + "/"))) {
+                problems.add(err(
+                        file,
+                        line,
+                        rule.id(),
+                        "scope `" + s + "` reaches outside " + module
+                                + "; a member's rule applies to the member (the default) or a path inside it"));
+            }
+        }
+        if (problems.size() > start) return null;
+        return rule.withScope(scope);
     }
 
     /** The sanctioned alternative a kind can spell out itself when the author left it implicit. */

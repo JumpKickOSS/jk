@@ -39,7 +39,8 @@ final class KindSchemas {
             choice("source-set", false, "which compiled sources a bytecode rule reads", "main", "test", "guard", "all"),
             optional("allow", TABLE_LIST, "{ in, reason } pairs where the rule does not apply; a stale entry is red"),
             optional("baseline", BOOL, "tolerate today's violations in jk-guards-baseline.toml; tighten-only"),
-            optional("fixture", STRING, "guard-fixtures/<id> with Bad and Ok sources that prove the rule bites"));
+            optional("fixture", STRING, "guard-fixtures/<id> with Bad and Ok sources that prove the rule bites"),
+            optional("locked", BOOL, "a pack's word: a consumer cannot allow against this rule"));
 
     static final List<String> BLANK_MODES = List.of("comments", "comments+strings", "none", "code");
 

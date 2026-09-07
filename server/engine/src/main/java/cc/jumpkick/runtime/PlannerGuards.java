@@ -58,10 +58,10 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.util.AtomicWrites;
+import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -780,24 +780,21 @@ final class PlannerGuards {
 
     // ---- rules memo ---------------------------------------------------------------------------
 
-    private record Memo(long size, long mtime, LoadResult load) {}
+    private record Memo(String stamp, LoadResult load) {}
 
     private static final Map<Path, Memo> RULES = new ConcurrentHashMap<>();
 
     /** The rule file parsed once per {@code (size, mtime)}; every lane of every module shares it. */
     static LoadResult rules(GuardsPlan g) throws IOException {
         Path file = GuardsPresence.rulesFile(g.root());
-        long size = 0;
-        long mtime = 0;
-        if (Files.isRegularFile(file)) {
-            BasicFileAttributes a = Files.readAttributes(file, BasicFileAttributes.class);
-            size = a.size();
-            mtime = a.lastModifiedTime().toMillis();
-        }
+        // Every layer the load reads is in the stamp: the root file, the lock (pack pins), the members'
+        // files and the packs' unpack markers. A pack the lock pins but the store has not unpacked yet
+        // changes the stamp when it lands, so the memo never outlives its inputs.
+        String stamp = GuardRules.stamp(g.root());
         Memo m = RULES.get(file);
-        if (m != null && m.size == size && m.mtime == mtime) return m.load;
-        LoadResult load = GuardRules.load(g.root(), g.config());
-        RULES.put(file, new Memo(size, mtime, load));
+        if (m != null && m.stamp.equals(stamp)) return m.load;
+        LoadResult load = GuardRules.load(g.root(), g.config(), JkDirs.store());
+        RULES.put(file, new Memo(GuardRules.stamp(g.root()), load));
         return load;
     }
 

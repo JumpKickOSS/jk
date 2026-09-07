@@ -2,6 +2,7 @@
 package cc.jumpkick.guard.rules;
 
 import cc.jumpkick.guard.schema.Kind;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import org.jspecify.annotations.Nullable;
@@ -26,7 +27,37 @@ public record Rule(
         boolean baseline,
         @Nullable String fixture,
         TomlTable table,
-        RuleSource source) {
+        RuleSource source,
+        boolean locked) {
+
+    /** An unlocked rule: every rule a project writes; only a pack says {@code locked = true}. */
+    public Rule(
+            String id,
+            Kind kind,
+            String why,
+            @Nullable String instead,
+            List<String> scope,
+            String sourceSet,
+            List<Allow> allow,
+            boolean baseline,
+            @Nullable String fixture,
+            TomlTable table,
+            RuleSource source) {
+        this(id, kind, why, instead, scope, sourceSet, allow, baseline, fixture, table, source, false);
+    }
+
+    /** The same rule with more {@code allow} entries and a baseline flag — a root amendment of a pack rule. */
+    public Rule amended(List<Allow> more, boolean baselineToo) {
+        List<Allow> all = new ArrayList<>(allow);
+        all.addAll(more);
+        return new Rule(
+                id, kind, why, instead, scope, sourceSet, all, baseline || baselineToo, fixture, table, source, locked);
+    }
+
+    /** The same rule with its scope set — a module file's rule defaults to the module. */
+    public Rule withScope(List<String> newScope) {
+        return new Rule(id, kind, why, instead, newScope, sourceSet, allow, baseline, fixture, table, source, locked);
+    }
 
     public Rule {
         Objects.requireNonNull(id, "id");

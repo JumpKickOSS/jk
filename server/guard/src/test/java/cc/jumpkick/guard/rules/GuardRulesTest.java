@@ -142,10 +142,12 @@ class GuardRulesTest {
     }
 
     @Test
-    void extends_and_unknown_top_level_tables_are_refused_not_ignored(@TempDir Path dir) throws IOException {
+    void an_unprovisioned_pack_and_unknown_top_level_tables_are_refused_not_ignored(@TempDir Path dir)
+            throws IOException {
         LoadResult r = load(dir, "[guards]\nextends = [\"com.acme:rules:1\"]\n[rules.x]\nkind = \"forbid\"\n");
-        assertThat(messages(r))
-                .anySatisfy(m -> assertThat(m).contains("extends").contains("not supported yet"));
+        assertThat(messages(r)).anySatisfy(m -> assertThat(m)
+                .contains("pack com.acme:rules:1 is not unpacked")
+                .contains("run `jk lock`"));
         assertThat(messages(r)).anySatisfy(m -> assertThat(m).contains("unknown top-level table `rules`"));
     }
 

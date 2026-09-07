@@ -268,9 +268,9 @@ Need the live event stream? `jk test --output json` or `jk results --details`.
 
 ## Guards (house rules)
 
-A project may carry **`jk-guards.toml`**: declarative rules the build enforces — banned calls, required
-annotations, layer edges, text patterns, size caps. They run inside `jk build` as `guard` steps
-and `jk guard` runs every lane now, tests skipped. No rule file, no cost.
+A project may carry **`jk-guards.toml`**: declarative rules the build enforces — banned calls,
+annotations, layer edges, text patterns, size caps. They run inside `jk build` as `guard` steps;
+`jk guard` runs every lane now. No rule file, no cost.
 
 A guard failure in `target/jk-results.md` / `jk_diagnostics`:
 
@@ -279,35 +279,31 @@ GUARD one-digest-surface  violations
   shared/io/src/main/java/…/Foo.java:42: MessageDigest.getInstance("SHA-256") called outside Hashing
   Instead:  Hashing.newSha256()
   Why:      one digest surface
-  Source:   jk-guards.toml:14
   Exempt:   ask the user to add [guards.one-digest-surface].allow with a reason
-  Explain:  jk guard explain one-digest-surface
 ```
 
 A guard *test* (`@Guard`, `src/guard`) fails the same way.
 **A guard failure's `code` is a rule id. Fix per `Instead`. To exempt, stop and ask the user to add an
-`allow` entry with a reason — never edit the baseline, never add a comment.** Catalog:
-`jk guard explain` (MCP `jk://guards`).
+`allow` entry with a reason — never edit the baseline, never add a comment.** Catalog: `jk guard explain`.
 
-The loop: read the `code` → `jk guard explain <id>` → change the *site* the way `Instead` says →
-`jk format` → rebuild (`jk build`, or MCP `jk_run kind=guard`).
+Loop: read the `code` → `jk guard explain <id>` → change the *site* as `Instead` says → `jk format` →
+rebuild (`jk build`, or MCP `jk_run kind=guard`).
 
 Stop and ask the user when:
 - the fix is an exemption (`allow` needs a human reason) or a rule looks wrong;
 - the message says **thrash** or names `jk guard freeze <id> --reason "…"` — accepting existing
   violations into `jk-guards-baseline.toml` is the user's decision;
-- a rule is `blind`, `owner-missing`, `stale-allow`, `no-bite` or `scanner-failed`: the rule needs
-  attention, not the tree.
+- a rule is `blind`, `owner-missing`, `stale-allow`, `no-bite` or `scanner-failed`: fix the rule, not the tree.
 
 Never: hand-edit `jk-guards-baseline.toml`; add a suppression comment; pass `--force` past a red
 guard; delete a rule to go green.
 
-Authoring a rule is three facts: kind, the thing banned or required, the alternative:
+A rule is three facts: kind, what is banned or required, the alternative:
 
 ```bash
 jk guard explain --schema <kind>    # keys + one example; kinds: forbid annotate classes layers cycles
-                                    # split-package api depend toolchain tiers text metric vocabulary
-                                    # parity generated output commit
+                                    # split-package api depend toolchain tiers text metric vocabulary parity
+                                    # generated output commit
 jk guard explain --schema guard-test  # the @Guard skeleton for what TOML cannot say
 jk guard                            # every lane now; red on any violation
 jk guard test                       # prove fixtures: Bad* fires, Ok* is quiet
@@ -316,8 +312,11 @@ jk guard hooks install              # git hooks: commit rules refuse a message; 
 jk guard --output sarif             # print target/jk-guards.sarif
 ```
 
+Layers: root `jk-guards.toml` ← packs (`[guards] extends`, pinned by `jk lock`) ← `<module>/jk-guards.toml`
+(module-scoped). A `locked` pack rule takes no consumer `allow`.
+
 Every rule needs `why`; `forbid`/`text`/`vocabulary` need `instead`; a rule that cannot fire is red
-(`no-bite`) — give `forbid` an `owner`, `text` a `hit`.
+(`no-bite`): give `forbid` an `owner`, `text` a `hit`.
 
 ---
 

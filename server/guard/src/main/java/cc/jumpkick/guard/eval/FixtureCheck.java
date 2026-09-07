@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
@@ -61,7 +62,7 @@ public final class FixtureCheck {
         List<Case> out = new ArrayList<>();
         for (Rule r : toml.rules().values()) {
             if (r.fixture() == null) continue;
-            out.add(new Case(r, root.resolve(r.fixture()), owningModule(r), false));
+            out.add(new Case(r, fixtureDir(root, r), owningModule(r), false));
         }
         for (GuardSuites.Located g : guards.values()) {
             if (g.declared().fixture() == null) continue;
@@ -69,6 +70,26 @@ public final class FixtureCheck {
             out.add(new Case(r, root.resolve(g.declared().fixture()), g.module(), true));
         }
         return out;
+    }
+
+    /**
+     * Where a rule's fixture lives: beside a pack's fragment for a pack rule, under the member for a
+     * member's rule when it has one there, else under the root as written.
+     */
+    static Path fixtureDir(Path root, Rule r) {
+        String fixture = Objects.requireNonNull(r.fixture(), "fixture");
+        return switch (r.source().layer()) {
+            case PACK ->
+                Objects.requireNonNull(r.source().file().getParent(), "pack dir")
+                        .resolve(fixture);
+            case MODULE -> {
+                Path inMember = r.source().file().getParent() == null
+                        ? root.resolve(fixture)
+                        : r.source().file().getParent().resolve(fixture);
+                yield Files.isDirectory(inMember) ? inMember : root.resolve(fixture);
+            }
+            case ROOT -> root.resolve(fixture);
+        };
     }
 
     /** The module whose classpath a fixture compiles against: the rule's first exact scope, else the root. */
