@@ -601,6 +601,7 @@ public final class TaskForecaster {
                     .ifPresent(steps::add);
             if (PlannerResources.invocationRoot(dir)) {
                 GuardKeys.forecastModelLane(dir, project, actionCache).ifPresent(steps::add);
+                GuardKeys.forecastWorkspaceLane(dir, actionCache).ifPresent(steps::add);
             }
 
             if (haveTests && !skipTests) {

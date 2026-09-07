@@ -61,7 +61,8 @@ class ForecastKeyParityTest {
                     List.of(
                             "guard",
                             "PlannerGuards.java|GuardKeys.laneKey(",
-                            "TaskForecaster.java|GuardKeys.forecastModuleLane("));
+                            "TaskForecaster.java|GuardKeys.forecastModuleLane(",
+                            "TaskForecaster.java|GuardKeys.forecastWorkspaceLane("));
 
     /**
      * Sites with no forecast twin: task name, whether the forecast emits a <em>step</em> for it, and

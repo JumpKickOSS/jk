@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -69,6 +70,21 @@ public final class WorkspaceFacts {
             }
             return Optional.empty();
         }
+    }
+
+    /**
+     * Every module's main index read together: the workspace lane's view. A module without an index
+     * contributes nothing (its compile failed or never ran); a class two modules both compile is
+     * kept once, under the module read later — the split-package kind reads the per-module indexes.
+     */
+    public static FactsIndex merged(Path root, List<Path> modules) throws IOException {
+        Map<String, ClassFacts> classes = new LinkedHashMap<>();
+        for (Path m : modules) {
+            Path idx = indexOf(root, m);
+            if (idx == null) continue;
+            classes.putAll(FactsFormat.read(idx).classes());
+        }
+        return new FactsIndex(classes, Map.of(), "");
     }
 
     /** The module's main index by the layout rule alone — no manifest is parsed for a lookup. */

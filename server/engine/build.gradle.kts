@@ -337,7 +337,8 @@ val forArtifactShared = mapOf(
                 "TaskForecaster.java|PackagingKeys.pluginPackagerStep(")),
         "GuardKeys.java|key" to ("guard" to listOf(
                 "PlannerGuards.java|GuardKeys.laneKey(",
-                "TaskForecaster.java|GuardKeys.forecastModuleLane(")))
+                "TaskForecaster.java|GuardKeys.forecastModuleLane(",
+                "TaskForecaster.java|GuardKeys.forecastWorkspaceLane(")))
 
 // forArtifact sites with no forecast twin. Triple(task name, does the forecast emit a step for that
 // task, why there is nothing to compare). The boolean is checked against TaskForecaster so an

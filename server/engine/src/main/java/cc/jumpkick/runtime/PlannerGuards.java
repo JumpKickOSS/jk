@@ -21,9 +21,11 @@ import cc.jumpkick.guard.eval.GuardMessages;
 import cc.jumpkick.guard.eval.LaneRun;
 import cc.jumpkick.guard.eval.Outcome;
 import cc.jumpkick.guard.eval.RuleReport;
+import cc.jumpkick.guard.eval.WorkspaceModules;
 import cc.jumpkick.guard.explain.BiteEvidence;
 import cc.jumpkick.guard.explain.RuleSummaries;
 import cc.jumpkick.guard.extract.FactsIndexing;
+import cc.jumpkick.guard.extract.WorkspaceFacts;
 import cc.jumpkick.guard.facts.FactsIndex;
 import cc.jumpkick.guard.rules.GuardRules;
 import cc.jumpkick.guard.rules.GuardsPresence;
@@ -135,11 +137,67 @@ final class PlannerGuards {
         if (!cx.guards().enabled() || !PlannerResources.invocationRoot(cx.in().dir())) return null;
         b.addTask(modelStep(cx));
         String last = TaskNames.GUARD_MODEL;
-        if (PlannerResources.runGateScripts(cx.in())) {
-            b.addTask(treeStep(cx, TaskNames.GUARD_MODEL, after));
+        boolean gate = PlannerResources.runGateScripts(cx.in());
+        // Cross-module structure needs every module's facts at once: the workspace lane, at the
+        // root, which the graph already orders after every member. A standalone project has no
+        // second module to relate, so it has no such lane.
+        if (hasMembers(cx) && moduleLanesOnThisBuild(cx.guards(), gate)) {
+            b.addTask(workspaceStep(cx, TaskNames.GUARD_MODEL, after));
+            last = TaskNames.GUARD_WORKSPACE;
+        }
+        if (gate) {
+            b.addTask(treeStep(cx, last, after));
             last = TaskNames.GUARD_TREE;
         }
         return last;
+    }
+
+    private static boolean hasMembers(BuildPlanner.Ctx cx) {
+        try {
+            return !WorkspaceModules.of(cx.guards().root()).isEmpty()
+                    && !WorkspaceModules.of(cx.guards().root())
+                            .equals(List.of(cx.guards().root()));
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    /**
+     * {@code guard-workspace}: every module's facts index read together, keyed on every index's
+     * digest plus the rules and the baseline — N small indexes, never a class tree. Runs on every
+     * build after the module lanes (the graph orders the root after its members).
+     */
+    static Task workspaceStep(BuildPlanner.Ctx cx, String... requires) {
+        GuardsPlan g = cx.guards();
+        return Task.builder(TaskNames.GUARD_WORKSPACE)
+                .stage(BuildStage.COMPILE)
+                .label("Guards (workspace)")
+                .kind(TaskKind.CPU)
+                .requires(requires)
+                .weight(1)
+                .ticks(1)
+                .execute(ctx -> {
+                    List<Path> modules = WorkspaceModules.of(g.root());
+                    EvalContext ectx = new EvalContext(
+                            Lane.WORKSPACE,
+                            g.root(),
+                            "",
+                            null,
+                            modules,
+                            EvalContext.lazy(() -> WorkspaceFacts.merged(g.root(), modules)),
+                            () -> null,
+                            List::of);
+                    execute(
+                            ctx,
+                            cx,
+                            Lane.WORKSPACE,
+                            ectx,
+                            () -> GuardKeys.workspaceTokens(g.root(), modules),
+                            ActionKey.qualifiedTaskId(TaskNames.GUARD_WORKSPACE, g.root()),
+                            false);
+                    ctx.progress(1);
+                })
+                .build();
     }
 
     /** {@code guard}: this module's bytecode rules, after its compile(s). */
@@ -183,7 +241,7 @@ final class PlannerGuards {
                             cx,
                             Lane.MODULE,
                             ectx,
-                            tokens,
+                            () -> tokens,
                             ActionKey.qualifiedTaskId(TaskNames.GUARD, moduleDir),
                             main.classes() == 0);
                     ctx.progress(1);
@@ -215,7 +273,7 @@ final class PlannerGuards {
                             cx,
                             Lane.MODEL,
                             ectx,
-                            tokens,
+                            () -> tokens,
                             ActionKey.qualifiedTaskId(TaskNames.GUARD_MODEL, g.root()),
                             false);
                     ctx.progress(1);
@@ -234,11 +292,14 @@ final class PlannerGuards {
                 .weight(() -> cx.plan().get().fullyCached() ? 0 : 2)
                 .ticks(1)
                 .execute(ctx -> {
-                    List<String> tokens = cx.buildLogicInputTokensRef().get();
-                    if (tokens == null) {
-                        tokens = BuildLogicSupport.workspaceInputTokens(g.root());
-                        cx.buildLogicInputTokensRef().compareAndSet(null, tokens);
-                    }
+                    EvalContext.IoSupplier<List<String>> tokens = () -> {
+                        List<String> t = cx.buildLogicInputTokensRef().get();
+                        if (t == null) {
+                            t = BuildLogicSupport.workspaceInputTokens(g.root());
+                            cx.buildLogicInputTokensRef().compareAndSet(null, t);
+                        }
+                        return t;
+                    };
                     List<Path> modules = moduleDirs(g.root(), ctx.get(PROJECT).orElse(null));
                     EvalContext ectx =
                             new EvalContext(Lane.TREE, g.root(), "", null, modules, noFacts(), () -> null, List::of);
@@ -247,7 +308,7 @@ final class PlannerGuards {
                             cx,
                             Lane.TREE,
                             ectx,
-                            new ArrayList<>(tokens),
+                            tokens,
                             ActionKey.qualifiedTaskId(TaskNames.GUARD_TREE, g.root()),
                             false);
                     ctx.progress(1);
@@ -262,7 +323,7 @@ final class PlannerGuards {
             BuildPlanner.Ctx cx,
             Lane lane,
             EvalContext ectx,
-            List<String> tokens,
+            EvalContext.IoSupplier<List<String>> tokenSupplier,
             String taskId,
             boolean noClasses)
             throws IOException {
@@ -303,6 +364,9 @@ final class PlannerGuards {
             if (orphans) throw new GuardsRed("baseline names retired rules");
             return;
         }
+        // The key's inputs are gathered only once there is a rule to key: a lane with nothing to
+        // evaluate costs no stat, no walk.
+        List<String> tokens = new ArrayList<>(tokenSupplier.get());
         GuardKeys.addRuleTokens(tokens, load);
         String baselineSha = GuardKeys.baselineSha(g.root());
         String key = GuardKeys.laneKey(taskId, tokens, baselineSha);

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskNames;
@@ -70,6 +71,47 @@ class GuardLanePlanTest {
         TestSelection gate = TestSelection.of(List.of("test", "integration"), false, List.of(), List.of(), false, true);
         Map<String, Task> gated = index(plan(project, dir.resolve("cache"), gate));
         assertThat(gated).containsKeys(TaskNames.GUARD, TaskNames.GUARD_MODEL, TaskNames.GUARD_TREE);
+    }
+
+    @Test
+    void a_workspace_root_plans_the_workspace_lane_after_the_model_lane(@TempDir Path dir) throws Exception {
+        Path root = workspace(dir);
+        Map<String, Task> byName = index(plan(root, dir.resolve("cache"), TestSelection.DEFAULT));
+        assertThat(byName).containsKeys(TaskNames.GUARD_MODEL, TaskNames.GUARD_WORKSPACE);
+        assertThat(byName.get(TaskNames.GUARD_WORKSPACE).requires()).contains(TaskNames.GUARD_MODEL);
+        assertThat(byName).doesNotContainKey(TaskNames.GUARD_TREE);
+        // A member's own plan has no workspace lane: a workspace rule needs the workspace.
+        Map<String, Task> member = index(plan(root.resolve("core"), dir.resolve("cache"), TestSelection.DEFAULT));
+        assertThat(member).containsKey(TaskNames.GUARD).doesNotContainKey(TaskNames.GUARD_WORKSPACE);
+        // on-build = false moves it to the gate with the module lanes.
+        Files.writeString(
+                root.resolve("jk.toml"), Files.readString(root.resolve("jk.toml")) + "\n[guards]\non-build = false\n");
+        Map<String, Task> off = index(plan(root, dir.resolve("cache"), TestSelection.DEFAULT));
+        assertThat(off).containsKey(TaskNames.GUARD_MODEL).doesNotContainKey(TaskNames.GUARD_WORKSPACE);
+    }
+
+    private static Path workspace(Path dir) throws Exception {
+        Path root = Files.createDirectories(dir.resolve("ws"));
+        Files.writeString(root.resolve("jk.toml"), """
+                group = "t"
+                name = "ws"
+                version = "0.0.1"
+                jdk = 25
+
+                [workspace]
+                modules = ["core", "app"]
+                """);
+        for (String m : List.of("core", "app")) {
+            Files.createDirectories(root.resolve(m).resolve("src/main/java/demo"));
+            Files.writeString(
+                    root.resolve(m).resolve("jk.toml"),
+                    "group = \"t\"\nname = \"" + m + "\"\nversion = \"0.0.1\"\njdk = 25\n");
+            Files.writeString(
+                    root.resolve(m).resolve("src/main/java/demo/" + m + ".java"),
+                    "package demo; public class " + m + " {}\n");
+        }
+        Files.writeString(root.resolve(GuardsPresence.RULES_FILE), RULES);
+        return root;
     }
 
     @Test

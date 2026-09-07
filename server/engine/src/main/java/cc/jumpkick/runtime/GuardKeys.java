@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.WorkspaceScan;
+import cc.jumpkick.guard.eval.WorkspaceModules;
 import cc.jumpkick.guard.extract.FactsIndexing;
 import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.guard.rules.LoadResult;
@@ -89,6 +90,50 @@ final class GuardKeys {
         } catch (IOException e) {
             return Optional.of(run("guards · " + e.getMessage()));
         }
+    }
+
+    /**
+     * Every module's main index digest, from the index headers alone: {@code facts:<module>:<digest>},
+     * or {@code absent} for a module with no index yet (never built, or its compile failed).
+     */
+    static List<String> workspaceTokens(Path root, List<Path> modules) throws IOException {
+        List<String> tokens = new ArrayList<>();
+        for (Path m : modules) {
+            Path buildDir = BuildLayout.moduleTargetDir(root, m);
+            Path classes = buildDir.resolve("classes").resolve("main");
+            Path idx = FactsIndexing.indexPath(buildDir, "main");
+            String digest = Files.isDirectory(classes)
+                    ? FactsIndexing.freshDigest(classes, idx).orElse("stale")
+                    : "absent";
+            tokens.add("facts:" + PlannerGuards.relModule(root, m) + ":" + digest);
+        }
+        return tokens;
+    }
+
+    /** The forecast's {@code guard-workspace} step at the workspace root, or empty. */
+    static Optional<TaskForecast.Task> forecastWorkspaceLane(Path root, ActionCache actionCache) {
+        PlannerGuards.GuardsPlan g = PlannerGuards.detectAt(root);
+        if (!PlannerGuards.moduleLanesOnThisBuild(g, PlannerGuards.gateRequested())) return Optional.empty();
+        try {
+            List<Path> modules = WorkspaceModules.of(root);
+            if (modules.isEmpty() || modules.equals(List.of(root))) return Optional.empty();
+            LoadResult load = PlannerGuards.rules(g);
+            if (load.hasErrors()) return Optional.of(workspace("guards · jk-guards.toml does not load"));
+            List<String> tokens = workspaceTokens(root, modules);
+            addRuleTokens(tokens, load);
+            String key = laneKey(ActionKey.qualifiedTaskId(TaskNames.GUARD_WORKSPACE, root), tokens, baselineSha(root));
+            if (actionCache.lookup(key).isPresent()) {
+                return Optional.of(new TaskForecast.Task(
+                        TaskNames.GUARD_WORKSPACE, TaskForecast.Status.CACHED, "", key.substring(0, 8)));
+            }
+            return Optional.of(workspace("guards · workspace rules to evaluate"));
+        } catch (IOException e) {
+            return Optional.of(workspace("guards · " + e.getMessage()));
+        }
+    }
+
+    private static TaskForecast.Task workspace(String why) {
+        return new TaskForecast.Task(TaskNames.GUARD_WORKSPACE, TaskForecast.Status.RUN, why, "");
     }
 
     /** The forecast's {@code guard-model} step at the invocation root, or empty. */
