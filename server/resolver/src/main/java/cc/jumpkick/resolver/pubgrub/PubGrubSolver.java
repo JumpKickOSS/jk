@@ -14,6 +14,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.BiConsumer;
+import org.jspecify.annotations.Nullable;
 
 /**
  * PubGrub version solver: root deps + {@link PackageSource} → package → version map. Constraints
@@ -90,7 +91,8 @@ public class PubGrubSolver {
      * failed to exclude that assignment (loop). Cleared when a universe expands (prior conflicts may
      * have been cap artifacts).
      */
-    private final Set<Long> conflictedDecisionFingerprints = new HashSet<>();
+    /** Decision-map fingerprint at a conflict → how many incompatibilities were known then. */
+    private final Map<Long, Integer> conflictedDecisionFingerprints = new HashMap<>();
 
     /**
      * Optional progress hook fired after each successful non-root {@link PartialSolution#decide}.
@@ -123,6 +125,7 @@ public class PubGrubSolver {
      * root-level unsat from capped candidate lists without ever revisiting a decision, so the
      * decision-time widen hooks alone cannot recover those graphs.
      */
+    /** Temporary resolution trace switch for the debug test. */
     private boolean wideUniverses;
 
     /** True when any universe was seeded from a compact list or preferred singleton. */
@@ -233,7 +236,11 @@ public class PubGrubSolver {
      */
     private void noteDecision(String pkg, String version) {
         long fp = decisionFingerprint();
-        if (conflictedDecisionFingerprints.contains(fp)) {
+        Integer known = conflictedDecisionFingerprints.get(fp);
+        // Re-entering a decision map that conflicted is ordinary search when a clause was learned in
+        // between — the learned clause is what steers the next decisions elsewhere. Only the same
+        // map under the same incompatibility set is a loop: nothing changed, nothing will.
+        if (known != null && known == incompatibilities.size()) {
             throwBudget("solver loop: re-entered conflicted decision assignment (watermark); last decide "
                     + pkg
                     + "@"
@@ -247,7 +254,7 @@ public class PubGrubSolver {
      * rebuild this map later.
      */
     private void watermarkConflict() {
-        conflictedDecisionFingerprints.add(decisionFingerprint());
+        conflictedDecisionFingerprints.put(decisionFingerprint(), incompatibilities.size());
     }
 
     /** Stable fingerprint of the current package→version decision map (TreeMap order). */
@@ -273,7 +280,7 @@ public class PubGrubSolver {
 
     // --- unit propagation --------------------------------------------------
 
-    protected void propagate(String changedPackage) {
+    protected void propagate(String changedPackage) throws IOException, InterruptedException {
         Set<String> changed = new LinkedHashSet<>();
         changed.add(changedPackage);
 
@@ -289,7 +296,7 @@ public class PubGrubSolver {
                         // queue this loop was draining never named the package whose version the
                         // conflict just ruled out, and the next decision would pick it again.
                         Incompatibility learned = handleConflict(inco);
-                        for (Term term : learned.terms()) changed.add(term.pkg());
+                        for (Term term : (learned == null ? inco : learned).terms()) changed.add(term.pkg());
                     }
                     case ALMOST_SATISFIED -> {
                         Term derived = rel.unsatisfied().invert();
@@ -311,7 +318,17 @@ public class PubGrubSolver {
      * Conflict resolution + backtracking, per PubGrub paper §6. Returns the incompatibility learned
      * and recorded at the backtrack point, so the caller can resume propagation on its packages.
      */
-    protected Incompatibility handleConflict(Incompatibility inco) {
+    protected @Nullable Incompatibility handleConflict(Incompatibility inco) throws IOException, InterruptedException {
+        // A conflict is judged over the packages' universes, and a lazy singleton or capped list is
+        // an incomplete one: seeded by a constraint the stack may since have dropped, or by a window
+        // that never held every version, it narrows a package past what the assignments say and
+        // lets a clause that should have derived read as satisfied. Resolution then walks stack
+        // prefixes against the same universe and names the wrong satisfier. Complete every universe
+        // first; a conflict that does not survive that was an artifact, and there is nothing to learn.
+        if (widenIncompleteUniverses()
+                && solution.relationTo(inco).kind() != PartialSolution.IncompatibilityRelation.SATISFIED) {
+            return null;
+        }
         // Once per conflict entry (not per resolution step): the decision map at the conflict is
         // unsat. Resolution may walk several derived incompatibilities before backtracking.
         watermarkConflict();
@@ -358,41 +375,65 @@ public class PubGrubSolver {
                 previousLevel = Math.max(previousLevel, satisfier.decisionLevel());
             }
         }
+        // The previous satisfier may live in the pivot's own package: when the satisfier's term
+        // covers the pivot only together with earlier assignments of that package (`p *` narrowed
+        // by two `¬p {v}` derivations, say), the last of those is what the paper's definition
+        // names, and its level decides between resolving and backjumping. Ignoring it backjumped
+        // to the root with the unresolved clause and relearned it every round.
+        PartialSolution.Assignment previous = satisfierGiven(mostRecentTerm, mostRecent);
+        if (previous != null) previousLevel = Math.max(previousLevel, previous.decisionLevel());
         return new ResolutionStep(mostRecentTerm, mostRecent, previousLevel);
     }
 
     private PartialSolution.Assignment findSatisfier(Term term) {
-        // A POSITIVE term needs a positive assignment in the prefix before it can be satisfied —
-        // raw set intersection loses positivity, and the reference algorithm's term intersection
-        // (negative ∩ positive = positive) never lets negative-only narrowing satisfy a positive
-        // term. Without this the satisfier could land on an earlier negative assignment and
-        // compute a too-shallow backjump level.
-        boolean sawPositive = false;
+        PartialSolution.Assignment satisfier = satisfierGiven(term, null);
+        if (satisfier == null) {
+            throw new IllegalStateException("term not actually satisfied: " + term + " in " + solution.assignments());
+        }
+        return satisfier;
+    }
+
+    /**
+     * The earliest assignment of the term's package whose prefix — together with {@code given}
+     * when present — satisfies {@code term}; null when none does. With {@code given} null this is
+     * the paper's satisfier; with the satisfier itself as {@code given} it is the previous
+     * satisfier, the assignment the satisfier needed alongside it (null when it needed none).
+     *
+     * <p>A POSITIVE term needs a positive assignment in the prefix before it can be satisfied —
+     * raw set intersection loses positivity, and the reference algorithm's term intersection
+     * (negative ∩ positive = positive) never lets negative-only narrowing satisfy a positive term.
+     * Without this the satisfier could land on an earlier negative assignment and compute a
+     * too-shallow backjump level.
+     */
+    private PartialSolution.@Nullable Assignment satisfierGiven(Term term, PartialSolution.@Nullable Assignment given) {
+        boolean sawPositive = given != null && given.term().positive();
+        int before = given == null ? Integer.MAX_VALUE : given.globalIndex();
         VersionUniverse u = universes.get(term.pkg());
         if (u != null) {
             AllowedSet target = u.project(term.effectiveVersions());
-            AllowedSet accumulated = u.all();
+            AllowedSet accumulated =
+                    given == null ? u.all() : u.project(given.term().effectiveVersions());
+            if (given != null && (!term.positive() || sawPositive) && accumulated.subsetOf(target)) return null;
             for (PartialSolution.Assignment a : solution.assignments()) {
-                if (!a.term().pkg().equals(term.pkg())) continue;
+                if (!a.term().pkg().equals(term.pkg()) || a.globalIndex() >= before) continue;
                 sawPositive |= a.term().positive();
                 accumulated = accumulated.intersect(u.project(a.term().effectiveVersions()));
-                if ((!term.positive() || sawPositive) && accumulated.subsetOf(target)) {
-                    return a;
-                }
+                if ((!term.positive() || sawPositive) && accumulated.subsetOf(target)) return a;
             }
-            throw new IllegalStateException("term not actually satisfied: " + term + " in " + solution.assignments());
+            return null;
         }
 
-        VersionSet accumulated = VersionSet.ALL;
+        VersionSet accumulated = given == null ? VersionSet.ALL : given.term().effectiveVersions();
+        if (given != null && (!term.positive() || sawPositive) && accumulated.subsetOf(term.effectiveVersions())) {
+            return null;
+        }
         for (PartialSolution.Assignment a : solution.assignments()) {
-            if (!a.term().pkg().equals(term.pkg())) continue;
+            if (!a.term().pkg().equals(term.pkg()) || a.globalIndex() >= before) continue;
             sawPositive |= a.term().positive();
             accumulated = accumulated.intersect(a.term().effectiveVersions());
-            if ((!term.positive() || sawPositive) && accumulated.subsetOf(term.effectiveVersions())) {
-                return a;
-            }
+            if ((!term.positive() || sawPositive) && accumulated.subsetOf(term.effectiveVersions())) return a;
         }
-        throw new IllegalStateException("term not actually satisfied: " + term + " in " + solution.assignments());
+        return null;
     }
 
     /**
@@ -427,9 +468,13 @@ public class PubGrubSolver {
     /**
      * Whether {@code satisfier} alone satisfies {@code pivot} — judged over the package's bound
      * universe when there is one, so a range that names no advertised version does not count as a
-     * difference and spawn a vacuous residual that resolution could never discharge.
+     * difference and spawn a vacuous residual that resolution could never discharge. A negative
+     * satisfier never covers a positive pivot: the pivot also asserts the package is selected, which
+     * only a positive assignment can supply, so the residual must keep that presence in the learned
+     * clause — dropping it learned "p0 = 1.0 or p2 = 1.0" from two clauses that only bound p3.
      */
     private boolean coversInUniverse(Term satisfier, Term pivot) {
+        if (pivot.positive() && !satisfier.positive()) return false;
         VersionUniverse u = universes.get(pivot.pkg());
         if (u != null) {
             return u.project(satisfier.effectiveVersions()).subsetOf(u.project(pivot.effectiveVersions()));
@@ -594,6 +639,14 @@ public class PubGrubSolver {
         // Prior conflicts may have been artifacts of a singleton/compact candidate list. Expanding
         // invalidates those watermarks so a genuine wider solve can rebuild the same decides.
         conflictedDecisionFingerprints.clear();
+    }
+
+    /** Expand every lazy singleton and capped universe; true when any changed. */
+    private boolean widenIncompleteUniverses() throws IOException, InterruptedException {
+        List<String> incomplete = new ArrayList<>(lazyUniverses);
+        incomplete.addAll(cappedUniverses);
+        for (String pkg : incomplete) expandUniverse(pkg);
+        return !incomplete.isEmpty();
     }
 
     /** A universe that can still grow: a lazy singleton or a compact (capped) candidate list. */

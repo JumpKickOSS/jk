@@ -235,6 +235,13 @@ public final class PartialSolution {
         // INCONCLUSIVE after a backjump, b's positive term was never re-derived, and the solve
         // terminated WITHOUT the mandatory subtree.
         if (!term.positive() && !s.hasPositive) return false;
+        // The mirror for a POSITIVE term: a package mentioned only negatively may still be selected
+        // at any version those terms leave, so no positive term about it is contradicted yet — even
+        // when the bound universe advertises no such version. Judging that by the universe made a
+        // no-candidates clause "contradicted" instead of almost satisfied, its negation was never
+        // derived, and the conflict that produced it recurred until the budget ran out (the paper's
+        // relations are over sets; the universe informs decisions, not derivations).
+        if (term.positive() && !s.hasPositive) return false;
         String decided = decisionByPackage.get(term.pkg());
         if (decided != null) {
             return !term.effectiveVersions().contains(decided);
