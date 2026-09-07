@@ -40,7 +40,9 @@ class GuardLaneE2eTest {
 
     @AfterEach
     void unregister() {
-        Evaluators.register(Kind.FORBID, (rule, ctx) -> Evaluation.unsupported("test reset"));
+        // The registry is static and the fork is shared: a stub left here makes every later forbid
+        // evaluation in this JVM `unsupported`, and the fixture proofs of another class go silent.
+        Evaluators.restoreDefaults();
     }
 
     @Test

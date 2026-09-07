@@ -210,8 +210,13 @@ public final class GuardFixtures {
             } else {
                 var badEval = FixtureCheck.evaluate(c, root, badSlice, c.rule().kind() == Kind.TIERS ? badSlice : null);
                 var okEval = FixtureCheck.evaluate(c, root, okSlice, c.rule().kind() == Kind.TIERS ? okSlice : null);
-                if (badEval.outcome() == Outcome.SCANNER_FAILED) {
-                    out.add(new FixtureCheck.Verdict(c.id(), "error", badEval.note()));
+                // Anything but a verdict over the slice (blind, owner-missing, not-evaluated, a
+                // scanner failure) is the rule's condition, not the fixture's silence: say which.
+                if (badEval.outcome() != Outcome.CLEAN && badEval.outcome() != Outcome.VIOLATIONS) {
+                    out.add(new FixtureCheck.Verdict(
+                            c.id(),
+                            "error",
+                            "Bad evaluated " + badEval.outcome().id() + ": " + badEval.note()));
                     continue;
                 }
                 badSites = badEval.observations().size();
