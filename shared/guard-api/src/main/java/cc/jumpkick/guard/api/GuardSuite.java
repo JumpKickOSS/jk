@@ -10,7 +10,8 @@ import java.lang.annotation.Target;
 /**
  * A class of guard tests under {@code src/guard}. The scope decides which facts its methods receive
  * and which lane runs them; a {@link Scope#MODULE} suite that asks for {@link Text} is a load error
- * unless the module's own sources are all it reads.
+ * unless the module's own sources are all it reads. A JUnit 5 class under the hood: the
+ * runtime extension jk switches on injects the views and reports what each guard found.
  */
 @Documented
 @Retention(RetentionPolicy.RUNTIME)

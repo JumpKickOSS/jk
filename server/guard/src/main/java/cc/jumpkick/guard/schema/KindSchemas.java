@@ -173,6 +173,10 @@ final class KindSchemas {
                 breaking = "baseline"
                 why      = "a removed public method is a customer's build going red"
                 """);
+        define(Kind.TEST, InsteadRule.OPTIONAL, List.of(), List.of(), """
+                # not a TOML kind: a guard test is a @Guard method in a @GuardSuite class under src/guard/java.
+                # jk guard explain --schema guard-test prints the skeleton; the id shares the rule namespace.
+                """);
         define(
                 Kind.DEPEND,
                 InsteadRule.OPTIONAL,

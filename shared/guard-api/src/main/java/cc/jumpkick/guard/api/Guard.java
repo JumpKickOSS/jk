@@ -6,6 +6,7 @@ import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
+import org.junit.jupiter.api.Test;
 
 /**
  * One guard: a method in a {@link GuardSuite} class that receives any of {@link Facts},
@@ -13,11 +14,14 @@ import java.lang.annotation.Target;
  * {@code id} is the diagnostic code and shares its namespace with the TOML rule ids — a duplicate is
  * a load error. {@code why} is the invariant in one sentence; {@code instead} the sanctioned
  * alternative an agent applies at a site. Outcomes, the population floor, the baseline and thrash
- * detection are the engine's, exactly as for a TOML rule.
+ * detection are the engine's, exactly as for a TOML rule. A composed JUnit {@code @Test}: the
+ * forked launcher runs it, the extension reports it, the engine judges it — a violation never fails
+ * the JUnit run, so a red guard is the engine's verdict, not a stack trace.
  */
 @Documented
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.METHOD)
+@Test
 public @interface Guard {
     /** The rule id: lower-case letters, digits and hyphens. */
     String id();

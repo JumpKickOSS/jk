@@ -3,6 +3,7 @@ package cc.jumpkick.guard.explain;
 
 import cc.jumpkick.guard.baseline.Baseline;
 import cc.jumpkick.guard.baseline.BaselineFile;
+import cc.jumpkick.guard.eval.GuardSuites;
 import cc.jumpkick.guard.rules.GuardRules;
 import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.guard.rules.LoadError;
@@ -54,7 +55,9 @@ public final class GuardExplain {
 
     public static Result explain(Path root, GuardsConfig config, @Nullable String ruleId) throws IOException {
         Path rulesFile = GuardsPresence.rulesFile(root);
-        if (!Files.isRegularFile(rulesFile) && !config.declared()) {
+        if (!Files.isRegularFile(rulesFile)
+                && !config.declared()
+                && GuardSuites.declaredAcrossWorkspace(root).isEmpty()) {
             return Result.error("no guards here: no " + GuardsPresence.RULES_FILE + " in " + root
                     + " (jk guard explain --schema <kind> shows how to write the first rule)");
         }
@@ -72,6 +75,12 @@ public final class GuardExplain {
         }
         List<Card> cards = new ArrayList<>();
         for (Rule r : new TreeMap<>(load.rules().rules()).values()) {
+            cards.add(card(r, baseline, summaries.getOrDefault(r.id(), List.of())));
+        }
+        // Guard tests the compiled suites declare read as cards too: kind `test`, source = the method.
+        for (GuardSuites.Located g : GuardSuites.declaredAcrossWorkspace(root).values()) {
+            if (load.rules().rules().containsKey(g.declared().id())) continue;
+            Rule r = GuardSuites.rule(g.declared(), root, g.module());
             cards.add(card(r, baseline, summaries.getOrDefault(r.id(), List.of())));
         }
         String rulesSha = Files.isRegularFile(rulesFile) ? Hashing.sha256Hex(rulesFile) : "absent";

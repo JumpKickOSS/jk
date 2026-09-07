@@ -2,8 +2,10 @@
 package cc.jumpkick.guard.api;
 
 import java.util.Set;
+import org.junit.jupiter.api.Disabled;
 
 /** PRD §4.3's examples, verbatim: they must compile against the library as published. */
+@Disabled("compile-only: a guard suite runs under jk, not under the library's own tests")
 @GuardSuite(scope = Scope.WORKSPACE) // or Scope.MODULE — decides lane and cache key
 final class HouseRules {
 

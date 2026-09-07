@@ -2,10 +2,12 @@
 package cc.jumpkick.runtime;
 
 import static cc.jumpkick.runtime.BuildPlanner.CLASSPATH;
+import static cc.jumpkick.runtime.BuildPlanner.JAVA_HOME;
 import static cc.jumpkick.runtime.BuildPlanner.LAYOUT;
 import static cc.jumpkick.runtime.BuildPlanner.MAIN_CLASSES;
 import static cc.jumpkick.runtime.BuildPlanner.PROJECT;
 import static cc.jumpkick.runtime.BuildPlanner.TEST_CLASSES;
+import static cc.jumpkick.runtime.BuildPlanner.TEST_RUNTIME_CP;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
@@ -18,6 +20,7 @@ import cc.jumpkick.guard.baseline.Reconciliation;
 import cc.jumpkick.guard.baseline.RuleBaseline;
 import cc.jumpkick.guard.eval.EvalContext;
 import cc.jumpkick.guard.eval.GuardMessages;
+import cc.jumpkick.guard.eval.GuardSuites;
 import cc.jumpkick.guard.eval.LaneRun;
 import cc.jumpkick.guard.eval.Outcome;
 import cc.jumpkick.guard.eval.RuleReport;
@@ -36,6 +39,8 @@ import cc.jumpkick.guard.schema.Lane;
 import cc.jumpkick.guard.validate.EngineValidations;
 import cc.jumpkick.guard.validate.Fault;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.layout.ModuleLayout;
+import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.GuardsConfig;
 import cc.jumpkick.model.JkBuild;
@@ -56,6 +61,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
 import java.util.function.Supplier;
@@ -99,13 +106,35 @@ final class PlannerGuards {
             // parse-build reports the manifest error; the rule file alone still enables the lanes.
             cfg = GuardsConfig.ABSENT;
         }
-        if (rulesFile || cfg.declared()) return new GuardsPlan(true, root, cfg);
+        if (rulesFile || cfg.declared() || guardSuiteSeen(root)) return new GuardsPlan(true, root, cfg);
         return GuardsPlan.DISABLED;
+    }
+
+    /**
+     * A {@code src/guard} suite anywhere in the workspace is guards declared: a project with guard
+     * tests and no TOML still gets its lanes. One directory stat per module, from the already-memoised
+     * root manifest.
+     */
+    static boolean guardSuiteSeen(Path root) {
+        if (TestSuites.hasGuardSuite(root, ModuleLayout.isCompact(root))) return true;
+        Path manifest = root.resolve(ManifestPaths.MANIFEST);
+        if (!Files.isRegularFile(manifest)) return false;
+        try {
+            JkBuild build = JkBuildParser.parse(manifest);
+            if (build.workspace() == null) return false;
+            for (String m : build.workspace().modules()) {
+                Path dir = root.resolve(m);
+                if (Files.isDirectory(dir) && TestSuites.hasGuardSuite(dir, ModuleLayout.isCompact(dir))) return true;
+            }
+        } catch (IOException | RuntimeException e) {
+            return false;
+        }
+        return false;
     }
 
     /** Whether {@code root} would enable guards — the graph asks before any plan exists. */
     static boolean enabledAt(Path root) {
-        if (Files.exists(GuardsPresence.rulesFile(root))) return true;
+        if (Files.exists(GuardsPresence.rulesFile(root)) || guardSuiteSeen(root)) return true;
         try {
             return JkBuildParser.guardsConfig(root.resolve(ManifestPaths.MANIFEST))
                     .declared();
@@ -202,6 +231,10 @@ final class PlannerGuards {
                 .build();
     }
 
+    private static boolean compact(Path moduleDir) {
+        return ModuleLayout.isCompact(moduleDir);
+    }
+
     /** {@code guard}: this module's bytecode rules, after its compile(s). */
     static Task moduleStep(BuildPlanner.Ctx cx, String... requires) {
         GuardsPlan g = cx.guards();
@@ -235,6 +268,77 @@ final class PlannerGuards {
                             EvalContext.lazy(() -> FactsIndexing.load(main)),
                             testFacts(test),
                             () -> ctx.get(CLASSPATH).orElse(List.of()));
+                    // ---- the module's src/guard suite, if compiled: its guards join the lane's rules
+                    Path guardClasses = ctx.require(LAYOUT).guardClassesDir();
+                    List<Rule> suiteRules = List.of();
+                    EvalContext.IoRunnable beforeEvaluate = null;
+                    if (Files.isDirectory(guardClasses) && PlannerGuardSuite.declared(moduleDir, compact(moduleDir))) {
+                        FactsIndexing.Ensured suite =
+                                FactsIndexing.ensure(guardClasses, FactsIndexing.indexPath(buildDir, "guard"));
+                        List<GuardSuites.Declared> declared = GuardSuites.declared(FactsIndexing.load(suite));
+                        tokens.add("guard-suite:" + suite.bodyDigest());
+                        List<Path> workspaceModules =
+                                moduleDirs(g.root(), ctx.get(PROJECT).orElse(null));
+                        boolean workspace = GuardSuites.anyWorkspace(declared);
+                        if (workspace) tokens.addAll(GuardKeys.workspaceTokens(g.root(), workspaceModules));
+                        List<String> loadErrors = GuardSuites.loadErrors(declared, rules(g).rules());
+                        if (!loadErrors.isEmpty()) {
+                            for (String e : loadErrors)
+                                ctx.error("guards", "GUARD suite  did not load\n  Observed: " + e);
+                            throw new GuardsRed(loadErrors.size() + " load errors in the guard suite");
+                        }
+                        List<Rule> built = new ArrayList<>();
+                        for (GuardSuites.Declared d : declared) built.add(GuardSuites.rule(d, g.root(), module));
+                        suiteRules = built;
+                        List<Path> factsIdx = new ArrayList<>();
+                        List<Path> testIdx = new ArrayList<>();
+                        List<Path> classDirs = new ArrayList<>();
+                        if (workspace) {
+                            for (Path m : workspaceModules) {
+                                Path bd = BuildLayout.moduleTargetDir(g.root(), m);
+                                Path idx = FactsIndexing.indexPath(bd, "main");
+                                if (Files.isRegularFile(idx)) factsIdx.add(idx);
+                                Path tidx = FactsIndexing.indexPath(bd, "test");
+                                if (Files.isRegularFile(tidx)) testIdx.add(tidx);
+                                classDirs.add(bd.resolve("classes").resolve("main"));
+                            }
+                        } else {
+                            factsIdx.add(FactsIndexing.indexPath(buildDir, "main"));
+                            if (test != null) testIdx.add(FactsIndexing.indexPath(buildDir, "test"));
+                            classDirs.add(ctx.require(MAIN_CLASSES));
+                        }
+                        Path library =
+                                GuardSuiteLibrary.locate(g.root(), cx.cas()).path();
+                        List<Path> runtimeCp = PlannerGuardSuite.classpath(
+                                ctx.require(PROJECT),
+                                ctx.require(LAYOUT),
+                                ctx.get(TEST_RUNTIME_CP)
+                                        .orElseGet(() -> ctx.get(CLASSPATH).orElse(List.of())),
+                                library);
+                        GuardSuiteRunner.Inputs inputs = new GuardSuiteRunner.Inputs(
+                                g.root(),
+                                module,
+                                moduleDir,
+                                ctx.require(LAYOUT),
+                                ctx.require(JAVA_HOME),
+                                runtimeCp,
+                                cx.in().cache(),
+                                factsIdx,
+                                testIdx,
+                                classDirs,
+                                workspace);
+                        beforeEvaluate = () -> {
+                            List<String> problems;
+                            try {
+                                problems = GuardSuiteRunner.run(inputs, workspaceModules);
+                            } catch (InterruptedException e) {
+                                Thread.currentThread().interrupt();
+                                throw new IOException("guard suite run interrupted", e);
+                            }
+                            for (String p : problems)
+                                ctx.error("guards", "GUARD suite  scanner-failed\n  Observed: " + p);
+                        };
+                    }
                     // A module that compiled nothing (a resources-only module) has no site for any
                     // bytecode rule: that is not blindness, it is an empty population. Record the
                     // clean verdict so the forecast stops entering the module for its lane.
@@ -245,7 +349,9 @@ final class PlannerGuards {
                             ectx,
                             () -> tokens,
                             ActionKey.qualifiedTaskId(TaskNames.GUARD, moduleDir),
-                            main.classes() == 0);
+                            main.classes() == 0 && suiteRules.isEmpty(),
+                            suiteRules,
+                            beforeEvaluate);
                     ctx.progress(1);
                 })
                 .build();
@@ -329,6 +435,25 @@ final class PlannerGuards {
             String taskId,
             boolean noClasses)
             throws IOException {
+        execute(ctx, cx, lane, ectx, tokenSupplier, taskId, noClasses, List.of(), null);
+    }
+
+    /**
+     * @param extraRules rules the lane owns beyond the TOML file — a module's guard tests
+     * @param beforeEvaluate runs once the lane is known not to be cached, before evaluation — the
+     *     suite's forked JUnit run, which leaves the report the test kind reads
+     */
+    private static void execute(
+            TaskContext ctx,
+            BuildPlanner.Ctx cx,
+            Lane lane,
+            EvalContext ectx,
+            EvalContext.IoSupplier<List<String>> tokenSupplier,
+            String taskId,
+            boolean noClasses,
+            List<Rule> extraRules,
+            EvalContext.@Nullable IoRunnable beforeEvaluate)
+            throws IOException {
         GuardsPlan g = cx.guards();
         LoadResult load = rules(g);
         if (lane == Lane.MODEL) {
@@ -345,13 +470,17 @@ final class PlannerGuards {
             ctx.label("rules did not load");
             return;
         }
-        List<Rule> rules = LaneRun.rulesFor(lane, load.rules(), ectx.module());
+        List<Rule> rules = new ArrayList<>(LaneRun.rulesFor(lane, load.rules(), ectx.module()));
+        rules.addAll(extraRules);
         ectx = ectx.withRules(load.rules());
         Path baselineFile = GuardsPresence.baselineFile(g.root());
         Baseline baseline = BaselineFile.read(baselineFile);
         boolean orphans = false;
         if (lane == Lane.MODEL) {
-            for (String orphan : baseline.orphans(load.rules().rules().keySet())) {
+            // Live ids are the TOML rules plus every guard the compiled suites declare.
+            Set<String> live = new TreeSet<>(load.rules().rules().keySet());
+            live.addAll(GuardSuites.declaredAcrossWorkspace(g.root()).keySet());
+            for (String orphan : baseline.orphans(live)) {
                 orphans = true;
                 ctx.error(
                         orphan,
@@ -385,6 +514,7 @@ final class PlannerGuards {
             cache.storeVerdict(taskId, key, inputsOf(tokens, baselineSha));
             return;
         }
+        if (beforeEvaluate != null) beforeEvaluate.run();
         LaneRun.Result result;
         if (lane == Lane.MODULE) {
             // Module lanes are quick but each holds a facts index and a text pass in flight; a

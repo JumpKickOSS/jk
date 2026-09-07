@@ -20,6 +20,9 @@ tasks.compileJava {
 
 dependencies {
     api(project(":host"))
+    // The runtime is a JUnit 5 extension: @Guard is a composed @Test, @GuardSuite an @ExtendWith.
+    api(libs.junit.jupiter.api)
+    testImplementation(libs.junit.platform.launcher)
 }
 
 // Coordinates + version must match cc.jumpkick.model.JkVersion.VERSION, like the worker plugins

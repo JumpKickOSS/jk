@@ -65,6 +65,7 @@ class GuardRulesTest {
     @Test
     void every_kind_example_loads_through_the_loader(@TempDir Path dir) throws IOException {
         for (Kind k : Kind.values()) {
+            if (k == Kind.TEST) continue; // a guard test is a @Guard method, not a table; its example says so
             LoadResult r = load(dir, k.example());
             assertThat(r.errors()).as(k.id() + ": " + messages(r)).isEmpty();
             assertThat(r.rules().rules()).as(k.id()).hasSize(1);

@@ -13,6 +13,7 @@ import cc.jumpkick.guard.rules.GuardRules;
 import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.guard.rules.LoadResult;
 import cc.jumpkick.guard.rules.Rule;
+import cc.jumpkick.guard.schema.Kind;
 import cc.jumpkick.guard.schema.Lane;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
@@ -60,6 +61,11 @@ public final class Freezer {
             return new Result(null, dropped, after.entryCount());
         }
         Rule rule = load.rules().rule(ruleId).orElse(null);
+        if (rule == null) {
+            GuardSuites.Located guard =
+                    GuardSuites.declaredAcrossWorkspace(root).get(ruleId);
+            if (guard != null) rule = GuardSuites.rule(guard.declared(), root, guard.module());
+        }
         if (rule == null)
             return new Result(
                     "no rule `" + ruleId + "` in jk-guards.toml; ids are "
@@ -110,6 +116,8 @@ public final class Freezer {
             for (Path m : modules) {
                 String rel = root.equals(m) ? "" : root.relativize(m).toString().replace('\\', '/');
                 if (!rule.applies(rel)) continue;
+                // a guard test lives in one module's suite; its report is there and nowhere else
+                if (rule.kind() == Kind.TEST && !GuardSuites.moduleOf(rule).equals(rel)) continue;
                 JkBuild build = JkBuildParser.parse(m.resolve(ManifestPaths.MANIFEST));
                 BuildLayout layout = BuildLayout.of(m, build);
                 FactsIndexing.Ensured main =

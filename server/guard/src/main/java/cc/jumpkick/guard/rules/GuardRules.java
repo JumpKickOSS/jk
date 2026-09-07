@@ -194,6 +194,15 @@ public final class GuardRules {
             return null;
         }
         Kind kind = Kind.byId(kindId).orElse(null);
+        if (kind == Kind.TEST) {
+            problems.add(err(
+                    file,
+                    source.line(),
+                    id,
+                    "kind = \"test\" is not written in TOML: a guard test is a @Guard method in a"
+                            + " @GuardSuite class under src/guard/java (jk guard explain --schema guard-test)"));
+            return null;
+        }
         if (kind == null) {
             problems.add(err(
                     file,

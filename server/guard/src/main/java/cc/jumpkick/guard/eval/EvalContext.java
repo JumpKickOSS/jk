@@ -94,4 +94,10 @@ public record EvalContext(
     public interface IoSupplier<T> {
         T get() throws IOException;
     }
+
+    /** A step that may fail with I/O. */
+    @FunctionalInterface
+    public interface IoRunnable {
+        void run() throws IOException;
+    }
 }

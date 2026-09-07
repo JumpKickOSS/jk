@@ -2,7 +2,7 @@ version = 2
 generated-by = "jk 0.13.0"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "09e94877e51398d55aeb5a7f68653ab539aca1c32611be167f0de18de8c1c15c"
+manifests-sha256 = "3455861fbeb9f354d28471483f3687185a3ef540752488e9bdf828c623415f5b"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [jdk]
@@ -1337,7 +1337,7 @@ name     = "org.apiguardian:apiguardian-api:jar:"
 version  = "1.1.2"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:b509448ac506d607319f182537f0b35d71007582ec741832a1f111e5b5b70b38"
-scopes   = ["provided", "test"]
+scopes   = ["main", "provided", "test"]
 
 [[artifact]]
 name     = "org.assertj:assertj-core:jar:"
@@ -1699,7 +1699,7 @@ name     = "org.junit.jupiter:junit-jupiter-api:jar:"
 version  = "6.1.3"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:555d6cf20fa1710884dd01b86cc5785397ba73e21ada2d4b784f5f1a14dcafc4"
-scopes   = ["test"]
+scopes   = ["main", "test"]
 deps = [
   "org.apiguardian:apiguardian-api:jar:@1.1.2",
   "org.jspecify:jspecify:jar:@1.0.1",
@@ -1749,7 +1749,7 @@ name     = "org.junit.platform:junit-platform-commons:jar:"
 version  = "6.1.3"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:a4774ae923c109544034aeae7c762cf017fbcdd1342403ba90e0921984b608c3"
-scopes   = ["provided", "test"]
+scopes   = ["main", "provided", "test"]
 deps = [
   "org.apiguardian:apiguardian-api:jar:@1.1.2",
   "org.jspecify:jspecify:jar:@1.0.1",
@@ -1785,7 +1785,7 @@ name     = "org.opentest4j:opentest4j:jar:"
 version  = "1.3.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:48e2df636cab6563ced64dcdff8abb2355627cb236ef0bf37598682ddf742f1b"
-scopes   = ["provided", "test"]
+scopes   = ["main", "provided", "test"]
 
 [[artifact]]
 name     = "org.ow2.asm:asm-commons:jar:"

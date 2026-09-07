@@ -692,6 +692,7 @@ public final class BuildPlanner {
             if (useKotlin) after.add(TaskNames.COMPILE_KOTLIN);
             if (useGroovy) after.add(TaskNames.COMPILE_GROOVY);
             if (mixed || mixedGroovy) after.add(TaskNames.ASSEMBLE_CLASSES);
+            if (hasGuardSuite) after.add(TaskNames.COMPILE_GUARD);
             b.addTask(PlannerGuards.moduleStep(cx, after.toArray(String[]::new)));
             PlannerGuards.appendRootLanes(b, cx, TaskNames.GUARD);
             // Nothing downstream consumes a lane; keep them through the terminal prune.

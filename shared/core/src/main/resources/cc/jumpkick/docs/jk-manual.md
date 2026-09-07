@@ -284,6 +284,7 @@ GUARD one-digest-surface  violations
   Explain:  jk guard explain one-digest-surface
 ```
 
+A guard *test* (`@Guard` under `src/guard`) fails the same way, `Source:` naming its method.
 **A guard failure's `code` is a rule id. Fix per `Instead`. To exempt, stop and ask the user to add an
 `allow` entry with a reason — never edit the baseline, never add a comment.** Read the catalog
 (`jk guard explain`; MCP resource `jk://guards`, one rule `jk://guards/<id>`) before large edits.

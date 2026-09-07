@@ -6,7 +6,9 @@ java = 17
 
 [dependencies]
 jk-host.workspace = true
+junit-jupiter-api = { group = "org.junit.jupiter", version = "latest" }
 
 [test-dependencies]
 assertj-core = "latest"
 junit-jupiter = "latest"
+junit-platform-launcher = "latest"

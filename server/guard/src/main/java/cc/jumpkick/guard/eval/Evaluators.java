@@ -33,6 +33,7 @@ public final class Evaluators {
         BY_KIND.put(Kind.API, new ApiEvaluator());
         BY_KIND.put(Kind.TIERS, new TiersEvaluator());
         BY_KIND.put(Kind.TOOLCHAIN, new ToolchainEvaluator());
+        BY_KIND.put(Kind.TEST, new TestEvaluator());
     }
 
     /** Test seam: drop every registration and reinstall the shipped evaluators. */
@@ -68,6 +69,7 @@ public final class Evaluators {
 
     public static Lane laneOf(Rule rule) {
         return switch (rule.kind()) {
+            case TEST -> "workspace".equals(rule.table().getString("lane")) ? Lane.WORKSPACE : Lane.MODULE;
             case LAYERS -> {
                 String edges = rule.table().isString("edges")
                         ? String.valueOf(rule.table().getString("edges"))

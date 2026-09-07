@@ -18,6 +18,7 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The workspace as the model kinds read it: every member's manifest (memoised by size and
@@ -64,6 +65,11 @@ public final class WorkspaceModel {
 
     public Set<String> modules() {
         return byModule.keySet();
+    }
+
+    /** The workspace-relative path of the module whose manifest {@code name} is this, or {@code null}. */
+    public @Nullable String moduleNamed(String name) {
+        return byName.get(name);
     }
 
     /** Sibling modules {@code module} depends on in {@code scopes}, as workspace-relative paths. */

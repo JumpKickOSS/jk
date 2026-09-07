@@ -27,7 +27,8 @@ public enum Kind {
     PARITY("parity", Substrate.TEXT, Lane.TREE, "two extractions must agree"),
     GENERATED("generated", Substrate.TEXT, Lane.TREE, "a block in a file is rendered from a source of truth"),
     OUTPUT("output", Substrate.OUTPUT, Lane.OUTPUT, "build artefact assertions"),
-    COMMIT("commit", Substrate.TEXT, Lane.HOOK, "commit-message rules");
+    COMMIT("commit", Substrate.TEXT, Lane.HOOK, "commit-message rules"),
+    TEST("test", Substrate.HYBRID, Lane.MODULE, "a @Guard method under src/guard, judged like a rule");
 
     private final String id;
     private final Substrate substrate;

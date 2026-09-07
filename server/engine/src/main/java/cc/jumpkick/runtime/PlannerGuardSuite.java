@@ -219,7 +219,8 @@ public final class PlannerGuardSuite {
         ActionCache actionCache = cx.actionCache();
         Supplier<EffortWeights.Plan> plan = cx.plan();
         return Task.builder(TaskNames.COMPILE_GUARD)
-                .stage(BuildStage.TEST)
+                // COMPILE, not TEST: the module lane (a compile-stage step) requires it.
+                .stage(BuildStage.COMPILE)
                 .label("Guard Suite")
                 .kind(TaskKind.CPU)
                 .requires(TaskNames.BUILD_LOGIC_AFTER_COMPILE, TaskNames.RESOLVE_DEPS, TaskNames.COPY_RESOURCES)

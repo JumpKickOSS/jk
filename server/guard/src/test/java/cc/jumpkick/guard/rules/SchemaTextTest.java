@@ -16,10 +16,10 @@ class SchemaTextTest {
     void every_kind_renders_its_keys_and_example() {
         for (Kind k : Kind.values()) {
             String card = SchemaText.render(k);
-            assertThat(card)
-                    .startsWith("kind = \"" + k.id() + "\"")
-                    .contains("example:")
-                    .contains("[guards.");
+            assertThat(card).startsWith("kind = \"" + k.id() + "\"").contains("example:");
+            // the test kind is not written in TOML: its example points at the guard-test skeleton
+            if (k == Kind.TEST) assertThat(card).contains("--schema guard-test");
+            else assertThat(card).contains("[guards.");
             for (KeySpec key : k.keys())
                 assertThat(card).as(k.id() + " lists " + key.name()).contains("  " + key.name() + " (");
         }
