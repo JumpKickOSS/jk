@@ -680,7 +680,7 @@ public final class BuildPlanner {
         if (useKotlin) {
             b.addTask(compileKotlin);
         }
-        if (cx.guards().enabled()) {
+        if (PlannerGuards.moduleLanesOnThisBuild(cx.guards(), PlannerResources.runGateScripts(in))) {
             List<String> after = new ArrayList<>();
             if (useJava) after.add(TaskNames.COMPILE_JAVA);
             if (useKotlin) after.add(TaskNames.COMPILE_KOTLIN);
@@ -690,6 +690,10 @@ public final class BuildPlanner {
             PlannerGuards.appendRootLanes(b, cx, TaskNames.GUARD);
             // Nothing downstream consumes a lane; keep them through the terminal prune.
             b.alsoKeep(TaskNames.GUARD, TaskNames.GUARD_MODEL, TaskNames.GUARD_TREE);
+        } else if (cx.guards().enabled()) {
+            // on-build = false: the module lanes wait for the gate; the model lane still runs.
+            PlannerGuards.appendRootLanes(b, cx, TaskNames.RESOLVE_DEPS);
+            b.alsoKeep(TaskNames.GUARD_MODEL, TaskNames.GUARD_TREE);
         }
         if (mixed || mixedGroovy) {
             b.addTask(assembleClasses);

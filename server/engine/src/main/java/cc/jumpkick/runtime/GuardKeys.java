@@ -59,7 +59,7 @@ final class GuardKeys {
             Path dir, BuildLayout layout, ActionCache actionCache, boolean upstreamDirty) {
         Path root = WorkspaceScan.findRoot(dir).orElse(dir).toAbsolutePath().normalize();
         PlannerGuards.GuardsPlan g = PlannerGuards.detectAt(root);
-        if (!g.enabled()) return Optional.empty();
+        if (!PlannerGuards.moduleLanesOnThisBuild(g, PlannerGuards.gateRequested())) return Optional.empty();
         // A unit with no classes directory has no module lane (a sourceless root, a never-built module).
         if (!Files.isDirectory(layout.classesDir()) && !upstreamDirty) return Optional.empty();
         if (upstreamDirty) return Optional.of(run("guards · module recompiles"));

@@ -8,6 +8,7 @@ import static cc.jumpkick.runtime.BuildPlanner.PROJECT;
 import static cc.jumpkick.runtime.BuildPlanner.TEST_CLASSES;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.guard.baseline.Baseline;
 import cc.jumpkick.guard.baseline.BaselineFile;
@@ -116,6 +117,20 @@ final class PlannerGuards {
      * {@code guard-model} always, {@code guard-tree} when the session asked for the gate. Returns the
      * last lane added, or {@code null} when none was.
      */
+    /**
+     * Whether this build runs the module lanes: guards are enabled and either {@code [guards]
+     * on-build} is true (the default) or the session asked for the gate. {@code on-build = false}
+     * moves the module lanes to {@code --gate}; the model lane stays on every build.
+     */
+    static boolean moduleLanesOnThisBuild(GuardsPlan g, boolean gate) {
+        return g.enabled() && (g.config().onBuild() || gate);
+    }
+
+    static boolean gateRequested() {
+        var session = SessionContext.current();
+        return session != null && session.testSelection().runGateScripts();
+    }
+
     static @Nullable String appendRootLanes(BuildPlan.Builder b, BuildPlanner.Ctx cx, String after) {
         if (!cx.guards().enabled() || !PlannerResources.invocationRoot(cx.in().dir())) return null;
         b.addTask(modelStep(cx));

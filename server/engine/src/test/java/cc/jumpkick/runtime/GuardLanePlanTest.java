@@ -59,6 +59,20 @@ class GuardLanePlanTest {
     }
 
     @Test
+    void on_build_false_moves_the_module_lane_to_the_gate(@TempDir Path dir) throws Exception {
+        Path project = scaffold(dir, true);
+        Files.writeString(
+                project.resolve("jk.toml"),
+                Files.readString(project.resolve("jk.toml")) + "\n[guards]\non-build = false\n");
+        Map<String, Task> byName = index(plan(project, dir.resolve("cache"), TestSelection.DEFAULT));
+        assertThat(byName).as("the model lane still runs").containsKey(TaskNames.GUARD_MODEL);
+        assertThat(byName).as("the module lane waits for the gate").doesNotContainKey(TaskNames.GUARD);
+        TestSelection gate = TestSelection.of(List.of("test", "integration"), false, List.of(), List.of(), false, true);
+        Map<String, Task> gated = index(plan(project, dir.resolve("cache"), gate));
+        assertThat(gated).containsKeys(TaskNames.GUARD, TaskNames.GUARD_MODEL, TaskNames.GUARD_TREE);
+    }
+
+    @Test
     void the_gate_adds_the_tree_lane(@TempDir Path dir) throws Exception {
         Path project = scaffold(dir, true);
         TestSelection gate = TestSelection.of(List.of("test", "integration"), false, List.of(), List.of(), false, true);
