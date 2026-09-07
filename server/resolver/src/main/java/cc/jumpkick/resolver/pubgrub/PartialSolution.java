@@ -75,18 +75,19 @@ public final class PartialSolution {
             s.hasPositive = true;
         }
         VersionSet effective = t.effectiveVersions();
+        // The continuous set narrows on every assignment, bitset or not: satisfies() and
+        // positiveSet() read it whenever the bitset is empty — a lazy singleton universe that a
+        // later positive term falls outside of — and a snapshot frozen at bind time let unit
+        // propagation re-derive the same term until the step budget ran out.
+        s.continuous = s.continuous.intersect(effective);
         VersionUniverse u = universes.get(t.pkg());
         if (u != null) {
             if (s.allowed == null) {
-                // Bind: project continuous constraints accumulated before the universe was known.
-                s.continuous = s.continuous.intersect(effective);
+                // Bind: project the constraints accumulated before the universe was known.
                 s.allowed = u.project(s.continuous);
             } else {
                 s.allowed = s.allowed.intersect(u.project(effective));
-                // continuous stays frozen at bind-time snapshot (diagnostics only when bits empty)
             }
-        } else {
-            s.continuous = s.continuous.intersect(effective);
         }
     }
 

@@ -13,6 +13,7 @@ dependencies {
     // route-table server eight suites here each carried a copy of — and `SysProps`, which closes
     // this module's `jk.m2.local` leak. A :host source set that never reaches main.
     testImplementation(testFixtures(project(":host")))
+    testImplementation(libs.jqwik)
 }
 
 // `ResolveProcessCacheExtension` (a ServiceLoader-registered JUnit extension) drops the

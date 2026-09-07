@@ -283,7 +283,14 @@ public class PubGrubSolver {
             for (Incompatibility inco : new ArrayList<>(incompatibilitiesByPackage.getOrDefault(pkg, List.of()))) {
                 PartialSolution.Relation rel = solution.relationTo(inco);
                 switch (rel.kind()) {
-                    case SATISFIED -> handleConflict(inco);
+                    case SATISFIED -> {
+                        // Paper §6: the learned incompatibility is almost satisfied by the
+                        // backtracked solution, so its packages join the propagation queue — the
+                        // queue this loop was draining never named the package whose version the
+                        // conflict just ruled out, and the next decision would pick it again.
+                        Incompatibility learned = handleConflict(inco);
+                        for (Term term : learned.terms()) changed.add(term.pkg());
+                    }
                     case ALMOST_SATISFIED -> {
                         Term derived = rel.unsatisfied().invert();
                         // satisfies() itself requires a positive commitment for positive terms
@@ -301,9 +308,10 @@ public class PubGrubSolver {
     }
 
     /**
-     * Conflict resolution + backtracking, per PubGrub paper §6.
+     * Conflict resolution + backtracking, per PubGrub paper §6. Returns the incompatibility learned
+     * and recorded at the backtrack point, so the caller can resume propagation on its packages.
      */
-    protected void handleConflict(Incompatibility inco) {
+    protected Incompatibility handleConflict(Incompatibility inco) {
         // Once per conflict entry (not per resolution step): the decision map at the conflict is
         // unsat. Resolution may walk several derived incompatibilities before backtracking.
         watermarkConflict();
@@ -320,11 +328,11 @@ public class PubGrubSolver {
                     || step.previousLevel < step.mostRecent.decisionLevel()) {
                 solution.backtrack(step.previousLevel);
                 addIncompatibility(current);
-                return;
+                return current;
             }
 
             Incompatibility prior = ((PartialSolution.Assignment.Derivation) step.mostRecent).cause();
-            current = resolveIncompatibilities(current, prior, step.mostRecentTerm);
+            current = resolveIncompatibilities(current, prior, step.mostRecentTerm, step.mostRecent.term());
         }
     }
 
@@ -342,7 +350,11 @@ public class PubGrubSolver {
                 }
                 mostRecent = satisfier;
                 mostRecentTerm = term;
-            } else if (satisfier.decisionLevel() != mostRecent.decisionLevel()) {
+            } else {
+                // Paper §6: the previous satisfier's level, whatever it is. Skipping a satisfier at
+                // the most recent one's own level left previousLevel at the root, so the solver
+                // backtracked to level 1 with the unresolved incompatibility instead of resolving
+                // it against the prior cause — and relearned the same clause every round.
                 previousLevel = Math.max(previousLevel, satisfier.decisionLevel());
             }
         }
@@ -383,13 +395,24 @@ public class PubGrubSolver {
         throw new IllegalStateException("term not actually satisfied: " + term + " in " + solution.assignments());
     }
 
-    private Incompatibility resolveIncompatibilities(Incompatibility a, Incompatibility b, Term pivot) {
+    /**
+     * Paper §6 resolution: the union of both incompatibilities' terms minus the pivot package —
+     * plus, when the satisfying assignment only partially satisfies the pivot term, the residual
+     * {@code ¬(satisfier ∩ ¬pivot)}. Dropping the pivot outright there learns a clause that holds
+     * only under the versions the satisfier ruled out, and the solver then excludes candidates the
+     * conflict never touched.
+     */
+    private Incompatibility resolveIncompatibilities(Incompatibility a, Incompatibility b, Term pivot, Term satisfier) {
         LinkedHashMap<String, Term> merged = new LinkedHashMap<>();
         for (Incompatibility source : List.of(a, b)) {
             for (Term term : source.terms()) {
                 if (term.pkg().equals(pivot.pkg())) continue;
                 merged.merge(term.pkg(), term, Term::intersect);
             }
+        }
+        if (!coversInUniverse(satisfier, pivot)) {
+            Term residual = satisfier.intersect(pivot.invert()).invert();
+            if (!residual.isEmpty()) merged.merge(pivot.pkg(), residual, Term::intersect);
         }
         List<Term> survivors = new ArrayList<>();
         for (Term t : merged.values()) {
@@ -399,6 +422,19 @@ public class PubGrubSolver {
             survivors = List.of(Term.positive(rootPkg, VersionSet.EMPTY));
         }
         return new Incompatibility(survivors, new Incompatibility.Cause.Derived(a, b));
+    }
+
+    /**
+     * Whether {@code satisfier} alone satisfies {@code pivot} — judged over the package's bound
+     * universe when there is one, so a range that names no advertised version does not count as a
+     * difference and spawn a vacuous residual that resolution could never discharge.
+     */
+    private boolean coversInUniverse(Term satisfier, Term pivot) {
+        VersionUniverse u = universes.get(pivot.pkg());
+        if (u != null) {
+            return u.project(satisfier.effectiveVersions()).subsetOf(u.project(pivot.effectiveVersions()));
+        }
+        return satisfier.relation(pivot) == Term.Relation.SATISFIES;
     }
 
     private boolean isFailure(Incompatibility inco) {

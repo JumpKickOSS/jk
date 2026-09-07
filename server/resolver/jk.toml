@@ -8,6 +8,7 @@ jk-io.workspace = true
 [test-dependencies]
 jk-host = { workspace = true, fixtures = true }
 assertj-core = "latest"
+jqwik = "latest"
 junit-jupiter = "latest"
 
 [test]

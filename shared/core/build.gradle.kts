@@ -17,6 +17,7 @@ dependencies {
     api(project(":host"))
     api(libs.tomlj)
     testImplementation(testFixtures(project(":host")))
+    testImplementation(libs.jqwik)
     // testFixtures: the shared session boundary the CLI and publisher suites autodetect.
     // Test-only by construction — :core is unpublished, and this is never a production config.
     testFixturesApi(libs.junit.jupiter)

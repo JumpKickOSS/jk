@@ -91,6 +91,22 @@ gate that needs a remote fails for reasons the change did not cause. `networkTes
 `bench` is off the gate for the opposite reason: a microbench prints medians and asserts nothing
 about deltas, so gating on it would gate on CI noise.
 
+## Property tests (unit tier)
+
+The resolver and the lockfile carry property-based tests on [jqwik](https://jqwik.net): generated
+dependency universes for `PubGrubSolver` (`PubGrubSolverPropertyTest`, checked against an exhaustive
+search), the `VersionSet` algebra (`VersionSetPropertyTest`), the lockfile writer/reader round trip
+and the reader's one typed error on arbitrary text (`LockfilePropertyTest`), and
+`MinimalToml.quote`/`unquote` (`MinimalTomlPropertyTest`). They carry no tag, so they run with the
+unit tier on every `checkFast` and `jk test`; each property is budgeted in tries so the four classes
+add a few seconds.
+
+A failing property prints its shrunk sample and `seed = …` in the test report
+(`build/test-results/test/TEST-*.xml`, `system-out`). To replay one sample, put the seed on the
+property: `@Property(seed = "-3119466389416338755")`. A shrunk sample that exposes a solver defect
+becomes an example test in `PubGrubShrunkCounterexampleTest` so the fix stays pinned when the
+generator moves on.
+
 ## If a test task execs a tool jk does not build, that tool's version is an input
 
 Gradle's up-to-date check sees a task's declared inputs and nothing else. A test that shells out to

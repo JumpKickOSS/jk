@@ -45,11 +45,18 @@ public record Term(String pkg, VersionSet versions, boolean positive) {
         return intersect(other).isEmpty();
     }
 
-    /** {@code this ∩ other} as version sets, packaged as a positive Term. */
+    /**
+     * {@code this ∩ other} per PubGrub §3: two negative terms intersect to the negative of their
+     * union ({@code ¬A ∩ ¬B = ¬(A ∪ B)}) — a term that still permits the package to be absent;
+     * any intersection involving a positive term asserts presence and is packaged positive.
+     */
     public Term intersect(Term other) {
         if (!pkg.equals(other.pkg)) {
             throw new IllegalArgumentException(
                     "cannot intersect terms about different packages: " + pkg + " vs " + other.pkg);
+        }
+        if (!positive && !other.positive) {
+            return new Term(pkg, versions.union(other.versions), false);
         }
         VersionSet vs = effectiveVersions().intersect(other.effectiveVersions());
         return new Term(pkg, vs, true);

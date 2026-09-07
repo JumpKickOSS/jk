@@ -14,6 +14,7 @@ import java.util.TreeSet;
 import org.jspecify.annotations.Nullable;
 import org.tomlj.Toml;
 import org.tomlj.TomlArray;
+import org.tomlj.TomlInvalidTypeException;
 import org.tomlj.TomlParseResult;
 import org.tomlj.TomlTable;
 
@@ -94,6 +95,15 @@ public final class LockfileReader {
     }
 
     private static Lockfile fromResult(TomlParseResult result, String origin) {
+        try {
+            return read(result, origin);
+        } catch (TomlInvalidTypeException e) {
+            // A key holding the wrong TOML type is the same class of defect as a missing one.
+            throw new IllegalArgumentException("jk-lock.toml in " + origin + ": " + e.getMessage(), e);
+        }
+    }
+
+    private static Lockfile read(TomlParseResult result, String origin) {
         if (result.hasErrors()) {
             throw new IllegalArgumentException("jk-lock.toml parse error in " + origin + ": "
                     + result.errors().getFirst().getMessage());

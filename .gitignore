@@ -73,3 +73,6 @@ firebase-debug.*.log
 
 # Agents
 .agents/
+
+# jqwik failure-replay databases (per test module; local state, never shared)
+.jqwik-database

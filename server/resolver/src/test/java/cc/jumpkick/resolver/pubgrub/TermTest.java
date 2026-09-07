@@ -67,6 +67,27 @@ class TermTest {
     }
 
     @Test
+    void two_negative_terms_intersect_to_the_negative_of_their_union() {
+        Term a = Term.negative("a", VersionSet.between("1.0", true, "2.0", false));
+        Term b = Term.negative("a", VersionSet.between("2.0", true, "3.0", false));
+        Term both = a.intersect(b);
+        assertThat(both.positive()).as("still permits the package to be absent").isFalse();
+        assertThat(both.versions()).isEqualTo(VersionSet.between("1.0", true, "3.0", false));
+        assertThat(both.effectiveVersions().contains("0.5")).isTrue();
+        assertThat(both.effectiveVersions().contains("2.5")).isFalse();
+    }
+
+    @Test
+    void a_positive_term_makes_the_intersection_positive() {
+        Term a = Term.positive("a", VersionSet.atLeast("1.0", true));
+        Term b = Term.negative("a", VersionSet.exact("2.0"));
+        Term both = a.intersect(b);
+        assertThat(both.positive()).isTrue();
+        assertThat(both.versions().contains("1.5")).isTrue();
+        assertThat(both.versions().contains("2.0")).isFalse();
+    }
+
+    @Test
     void intersecting_across_packages_throws() {
         Term a = Term.positive("a", VersionSet.exact("1.0"));
         Term b = Term.positive("b", VersionSet.exact("1.0"));
