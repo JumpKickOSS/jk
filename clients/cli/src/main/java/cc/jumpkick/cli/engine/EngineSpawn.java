@@ -2,8 +2,7 @@
 package cc.jumpkick.cli.engine;
 
 import cc.jumpkick.cache.EngineInstall;
-import cc.jumpkick.cli.CliOutput;
-import cc.jumpkick.cli.Jk;
+import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.SessionContext;
@@ -20,6 +19,7 @@ import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.jdk.JdkVendor;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.util.AotManifest;
 import cc.jumpkick.util.AotSettings;
 import cc.jumpkick.util.JkDirs;
@@ -425,7 +425,7 @@ public final class EngineSpawn {
      * Stale {@code .aot}/{@code .noaot} files from previous keys are deleted best-effort here.
      */
     static Path aotCachePath(EnginePaths.Paths paths, Path engineJar, EngineJdk jdk) {
-        return aotCachePath(paths, engineJar, jdk, Jk.VERSION);
+        return aotCachePath(paths, engineJar, jdk, JkVersion.VERSION);
     }
 
     /** As above, version-scoped under {@code state/engine/<v>/} so engines never share AOT state. */

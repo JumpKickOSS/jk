@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
-import cc.jumpkick.cli.CliPaths;
-import cc.jumpkick.cli.CommonOpts;
-import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.GraalResolver;
-import cc.jumpkick.cli.ProjectContext;
+import cc.jumpkick.cli.api.CliPaths;
+import cc.jumpkick.cli.api.CommonOpts;
+import cc.jumpkick.cli.api.GlobalOptions;
+import cc.jumpkick.cli.api.ProjectContext;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
+import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Theme;
@@ -81,7 +82,7 @@ public final class TrainCommand implements CliCommand {
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
         ConsoleSpec spec = new ConsoleSpec(
                 "Train", r -> Theme.paint("Trained", Theme.active().focused()), r -> "Train failed");
-        String target = BuildCommand.buildTarget(proj.buildFile(), dir);
+        String target = ProjectInfos.buildTarget(proj.buildFile(), dir);
         BuildPlanResult result;
         try {
             result = EngineClient.runTrain(

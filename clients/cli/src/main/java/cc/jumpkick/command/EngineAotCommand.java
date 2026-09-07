@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
-import cc.jumpkick.cli.CliOutput;
-import cc.jumpkick.cli.GlobalOptions;
-import cc.jumpkick.cli.PathDisplay;
+import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.cli.api.GlobalOptions;
+import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;

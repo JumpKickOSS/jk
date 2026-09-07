@@ -3,7 +3,7 @@ package cc.jumpkick.cli.tui;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.cli.testing.MainSources;
 import cc.jumpkick.cli.theme.Theme;

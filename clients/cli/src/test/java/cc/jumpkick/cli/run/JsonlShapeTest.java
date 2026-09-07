@@ -3,7 +3,7 @@ package cc.jumpkick.cli.run;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
-import cc.jumpkick.cli.Jk;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.Task;
@@ -76,7 +76,7 @@ final class EnginePluginAdapter {
             BiConsumer<String, String> onEvent,
             @Nullable Consumer<String> preFinish)
             throws IOException {
-        EngineClient.ensureRunning(paths, Jk.VERSION);
+        EngineClient.ensureRunning(paths, JkVersion.VERSION);
 
         try (SocketChannel ch = EngineWire.connect(EnginePaths.activeSocket(paths))) {
             BufferedWriter writer =
@@ -149,7 +149,7 @@ final class EnginePluginAdapter {
      * download), which is fine on this blocking read.
      */
     static HostedEvents.Provision provision(EnginePaths.Paths paths, String requestLine) throws IOException {
-        EngineClient.ensureRunning(paths, Jk.VERSION);
+        EngineClient.ensureRunning(paths, JkVersion.VERSION);
 
         try (SocketChannel ch = EngineWire.connect(EnginePaths.activeSocket(paths))) {
             BufferedWriter writer =

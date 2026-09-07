@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
-import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.NerdFontCaps;
 import java.io.PrintStream;
@@ -31,7 +31,7 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>Human commands print exactly <strong>one blank line before</strong> the first chrome line of
  * the invocation and <strong>one blank line after</strong> the last chrome when the command
- * exits. {@link cc.jumpkick.cli.CliOutput} owns that lifecycle — it opens the envelope on the first
+ * exits. {@link cc.jumpkick.cli.api.CliOutput} owns that lifecycle — it opens the envelope on the first
  * write and dispatch closes it after {@code run}. This class formats wedges and, for chrome whose
  * first write goes to a stream {@code CliOutput} does not own, opens the envelope on that stream.
  * Do <strong>not</strong> add a trailing blank in settles. A command whose stdout is consumed by a
@@ -121,7 +121,7 @@ public final class CommandWedge {
     /**
      * Leading blank of the human chrome envelope on stdout — at most once per command. Safe to call
      * from every chrome entry (spinner, bar, settle). The matching trailing blank is
-     * {@link cc.jumpkick.cli.CliOutput#closeEnvelope()}, from dispatch.
+     * {@link cc.jumpkick.cli.api.CliOutput#closeEnvelope()}, from dispatch.
      */
     public static void envelopeStart() {
         CliOutput.ensureLeadingBlank();

@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Test;
 /**
  * Style guard: fail/ok/working chips should use {@code printFail}/{@code printOk}/{@code
  * printWorking} so they land on the right stream with the right glyph. The leading blank itself
- * is owned by {@link cc.jumpkick.cli.CliOutput} — raw {@code CliOutput.out(wedgeLine)} is fine.
+ * is owned by {@link cc.jumpkick.cli.api.CliOutput} — raw {@code CliOutput.out(wedgeLine)} is fine.
  */
 class WedgeEnvelopeHygieneTest {
 

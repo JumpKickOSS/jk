@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
-import cc.jumpkick.cli.CliOutput;
-import cc.jumpkick.cli.GlobalOptions;
-import cc.jumpkick.cli.Jk;
-import cc.jumpkick.cli.PathDisplay;
+import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.cli.api.GlobalOptions;
+import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.cli.engine.EngineFleet;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
@@ -12,6 +11,7 @@ import cc.jumpkick.cli.tui.Confirm;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.Table;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -303,7 +303,7 @@ public final class SelfNukeCommand implements CliCommand {
             CommandWedge.printOk(
                     "Self",
                     "Nuked selected JumpKick data. Kept: active engine "
-                            + Jk.VERSION
+                            + JkVersion.VERSION
                             + ", PATH, JDKs, installed app jars, credentials"
                             + (wantStoreTarget ? "" : ", store")
                             + ".");

@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
-import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.EnsureFreshLock;
-import cc.jumpkick.cli.GlobalOptions;
-import cc.jumpkick.cli.Jk;
-import cc.jumpkick.cli.PathDisplay;
-import cc.jumpkick.cli.ProjectContext;
+import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.cli.api.GlobalOptions;
+import cc.jumpkick.cli.api.PathDisplay;
+import cc.jumpkick.cli.api.ProjectContext;
 import cc.jumpkick.cli.bsp.BspServer;
 import cc.jumpkick.cli.ide.IdeEngineClient;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -116,7 +116,7 @@ public final class BspCommand implements CliCommand {
                   "languages": ["java", "kotlin", "groovy"],
                   "argv": [%s, "bsp", "serve"]
                 }
-                """.formatted(Jsonl.quote(Jk.VERSION), Jsonl.quote(argv0));
+                """.formatted(Jsonl.quote(JkVersion.VERSION), Jsonl.quote(argv0));
         Path out = bspDir.resolve("jk.json");
         AtomicWrites.replace(out, json);
         return out;

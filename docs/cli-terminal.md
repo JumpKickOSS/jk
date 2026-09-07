@@ -250,7 +250,7 @@ the probe — we do **not** collapse `canPrompt` and `stdoutIsTty`.
    internal to `Style`). Move a tiny `Rgb` into `:cli-terminal` later only if Theme
    conversion is noisy — not in this campaign.
    CSI/cursor/`hyperlink` primitives move with `Ansi`; **OSC enable** stays in `:cli` as
-   `cc.jumpkick.cli.Osc` (the leaf must not read `SessionContext`).
+   `cc.jumpkick.cli.api.Osc` (the leaf must not read `SessionContext`).
    *Rationale:* every `Theme.colorize` / `attributeLeading` / `gradientHeaderAnsi` /
    `stripAnsi` workaround is a Style-API defect; dropping SGR 9 is not a subset, it is a miss.
 
@@ -1308,7 +1308,7 @@ would fork ESC-peek behavior. `Prompt.ask`'s blocking `KeyReader.read` becomes
 `tty.readKey(Duration.ZERO)` (wait forever). `Wizard` keeps `readKey(Duration.ofMillis(75))`;
 empty + live → continue; empty + `!isLive` → abort.
 
-#### Ansi / `cc.jumpkick.cli.Osc`
+#### Ansi / `cc.jumpkick.cli.api.Osc`
 
 Move CSI/cursor/SGR/`hyperlink` (OSC-8 is always constructed; it is not gated today) to
 `cc.jumpkick.terminal.Ansi`. **Do not** move `oscEnabled()`. The leaf must not read
@@ -1325,7 +1325,7 @@ Today these methods return `""` when `--no-osc` (`Ansi.java` L174–176):
 | `desktopNotify` | `BuildNotify`, `BuildNotifyTest` |
 | `oscEnabled` | `JkManager` (window-title gate), `BuildNotify`, `BuildNotifyTest` |
 
-Specify `cc.jumpkick.cli.Osc` with **exactly** those methods. Each gated method is:
+Specify `cc.jumpkick.cli.api.Osc` with **exactly** those methods. Each gated method is:
 
 ```java
 public static String taskbarProgress(int percent) {
@@ -1560,7 +1560,7 @@ the singleton must not `close()` it in a way that would drop `isLive` (they call
 | `KeyReader` | JLine `NonBlockingReader` | deleted; public `Key`; `readKey` on the session; `Keys` package-private |
 | `Interactivity.takeSharedTerminal` | package API | deleted |
 | `Wizard.openTerminal` | JLine builder | `Terminals.controlling()` — **not** try-with-resources |
-| `cc.jumpkick.cli.Ansi` | `:cli` | `cc.jumpkick.terminal.Ansi` + `cc.jumpkick.cli.Osc` for gated OSC |
+| `cc.jumpkick.cli.Ansi` | `:cli` | `cc.jumpkick.terminal.Ansi` + `cc.jumpkick.cli.api.Osc` for gated OSC |
 | `TerminalSize` | `:cli` + JLine Signals | `cc.jumpkick.terminal.Size` |
 | `WindowsUtf8` | `:cli.tui` | `cc.jumpkick.terminal.windows.WindowsUtf8` (`Terminals.bootstrap()`) |
 | Command methods taking `org.jline.terminal.Terminal` | JDK wizards, `NewCommand`, `ActivateCommand`, `JdkInstallCommand` | `TerminalSession` or no terminal arg (they only needed it to pass to Wizard) |
@@ -1771,7 +1771,7 @@ Theme return-type cascade (no `org.jline` import, still break when getters retur
 `NewWizard`, `WhyCommand`, plus any `Theme.colorize` / `.bold()` / `.italic()` site
 `rg 'Theme\.active\(\)|AttributedStyle' clients/cli` finds.
 
-New `:cli` type: `cc.jumpkick.cli.Osc`. DrainView must lose `terminal.close()`.
+New `:cli` type: `cc.jumpkick.cli.api.Osc`. DrainView must lose `terminal.close()`.
 
 ### Tests to rewrite
 
@@ -1944,7 +1944,7 @@ signature change. Theme/`AttributedStyle` stays 5a. Dual-path remains **branch-o
 - **Title:** Migrate Theme and chrome off `AttributedStyle` / `WCWidth`
 - **Files/components:** `Theme`/`JkDarkTheme`/`Coords` → `Style`; grep-driven list in
   Deletion set (rails, wedges, `Table` FQCNs, `RichText.merge`/`crossedOut`, highlighters,
-  `HelpRenderer`, `ExplainCommand`, `JdkListCommand`, …); `cc.jumpkick.cli.Osc` + call-site
+  `HelpRenderer`, `ExplainCommand`, `JdkListCommand`, …); `cc.jumpkick.cli.api.Osc` + call-site
   grep (`Spinner*`, `JdkDownloadBar`, `JkManager*`, `IdeChrome`, `BuildNotify`);
   `RenderContext` delegates to `Width`; tests (`TestAnsi`, `*HighlightTest`,
   `TestFailureHighlightTest` SGR bits, `HelpWidthTest`, `BoxTableRenderTest`)

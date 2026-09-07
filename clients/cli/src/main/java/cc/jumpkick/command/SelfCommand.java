@@ -4,8 +4,7 @@ package cc.jumpkick.command;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.cache.JkStores;
-import cc.jumpkick.cli.CliOutput;
-import cc.jumpkick.cli.Jk;
+import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.engine.EngineFleet;
 import cc.jumpkick.cli.engine.EngineProcessControl;
 import cc.jumpkick.cli.engine.EngineSpawn;
@@ -17,6 +16,7 @@ import cc.jumpkick.config.UserConfigEditor;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.HostPlatform;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -210,35 +210,36 @@ public final class SelfCommand extends GroupCommand {
             if (jarVersion == null) {
                 CommandWedge.printFail(
                         "Self",
-                        "not a jk-engine jar name: " + engineJar.getFileName() + " (expected jk-engine-" + Jk.VERSION
-                                + ".jar)");
+                        "not a jk-engine jar name: " + engineJar.getFileName() + " (expected jk-engine-"
+                                + JkVersion.VERSION + ".jar)");
                 return Exit.SOFTWARE;
             }
-            if (!jarVersion.equals(Jk.VERSION)) {
+            if (!jarVersion.equals(JkVersion.VERSION)) {
                 // A classifier is not a version. `jk-engine-<version>-all.jar` is the assembly this
                 // build produces; the shipped name carries no classifier, because a client only ever
                 // spawns `jk-engine-<its own version>.jar`. Reading `-all` as part of the version
                 // turns "you handed me the assembly" into "you handed me a different release",
                 // which sends the reader looking for a version problem that does not exist.
-                if (jarVersion.startsWith(Jk.VERSION + "-")) {
+                if (jarVersion.startsWith(JkVersion.VERSION + "-")) {
                     CommandWedge.printFail(
                             "Self",
-                            "that is the " + jarVersion.substring(Jk.VERSION.length() + 1)
-                                    + " assembly of " + Jk.VERSION + ", and the engine ships without a"
-                                    + " classifier — materialize jk-engine-" + Jk.VERSION + ".jar"
+                            "that is the " + jarVersion.substring(JkVersion.VERSION.length() + 1)
+                                    + " assembly of " + JkVersion.VERSION + ", and the engine ships without a"
+                                    + " classifier — materialize jk-engine-" + JkVersion.VERSION + ".jar"
                                     + " (the build writes one under target/dist/lib/)");
                     return Exit.SOFTWARE;
                 }
                 CommandWedge.printFail(
                         "Self",
-                        "engine jar is " + jarVersion + ", this client is " + Jk.VERSION + " — refusing to"
+                        "engine jar is " + jarVersion + ", this client is " + JkVersion.VERSION + " — refusing to"
                                 + " materialize " + engineJar + " (build the matching engine, or run"
                                 + " `jk self update " + jarVersion + "` to move the whole install)");
                 return Exit.SOFTWARE;
             }
             EngineInstall install = EngineInstall.current();
-            EngineInstall.Materialized m = install.materializeFromFiles(Jk.VERSION, JkStores.storeCas(), engineJar);
-            EngineInstall.wipeAotDirectory(JkDirs.state().resolve("aot"), Jk.VERSION);
+            EngineInstall.Materialized m =
+                    install.materializeFromFiles(JkVersion.VERSION, JkStores.storeCas(), engineJar);
+            EngineInstall.wipeAotDirectory(JkDirs.state().resolve("aot"), JkVersion.VERSION);
             install.gc();
             try {
                 UserConfigEditor.setNerdFont(JkDirs.userConfigFile(), NerdFontMode.AUTO);
@@ -292,7 +293,7 @@ public final class SelfCommand extends GroupCommand {
             }
             EngineInstall install = EngineInstall.current();
             Cas cas = JkStores.storeCas();
-            String running = Jk.VERSION;
+            String running = JkVersion.VERSION;
             if (target.equals(running) && install.resolve(target).isPresent()) {
                 CommandWedge.printOk("Self", target + " is already current");
                 return 0;
@@ -452,7 +453,7 @@ public final class SelfCommand extends GroupCommand {
         private static Path inflaterEngineJar(byte[] downloadedJar, Path downloadedTmp) throws IOException {
             Files.write(downloadedTmp, downloadedJar);
             if (hasInflateXz(downloadedTmp)) return downloadedTmp;
-            var current = EngineInstall.current().resolve(Jk.VERSION);
+            var current = EngineInstall.current().resolve(JkVersion.VERSION);
             if (current.isPresent()) {
                 Path jar = current.get().engineJar();
                 if (Files.isRegularFile(jar) && hasInflateXz(jar)) return jar;

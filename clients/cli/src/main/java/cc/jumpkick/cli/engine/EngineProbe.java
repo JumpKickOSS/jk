@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
-import cc.jumpkick.cli.Jk;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
 import java.io.IOException;
@@ -106,7 +106,8 @@ public final class EngineProbe {
     /** Connect and request a status snapshot; empty if no engine is reachable. */
     public static Optional<Status> status(Path socket) {
         try (SocketChannel ch = EngineWire.connect(socket)) {
-            EngineWire.exchange(ch, ProtoLifecycle.hello(Jk.VERSION, "probe")); // handshake first, response discarded
+            EngineWire.exchange(
+                    ch, ProtoLifecycle.hello(JkVersion.VERSION, "probe")); // handshake first, response discarded
             String ack = EngineWire.exchange(ch, ProtoLifecycle.statusRequest());
             if (!EngineProtocol.STATUS_ACK.equals(EngineProtocol.typeOf(ack))) return Optional.empty();
             String httpUrl = Jsonl.str(ack, "httpUrl");

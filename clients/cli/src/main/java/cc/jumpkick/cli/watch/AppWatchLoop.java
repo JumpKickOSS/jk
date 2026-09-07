@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.watch;
 
-import cc.jumpkick.cli.CliOutput;
-import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
+import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Theme;
-import cc.jumpkick.command.BuildCommand;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Exit;
@@ -172,7 +172,7 @@ public final class AppWatchLoop {
     }
 
     private boolean build(Path projectDir, Path cache) throws IOException, InterruptedException {
-        String target = BuildCommand.buildTarget(projectDir.resolve(ManifestPaths.MANIFEST), projectDir);
+        String target = ProjectInfos.buildTarget(projectDir.resolve(ManifestPaths.MANIFEST), projectDir);
         ConsoleSpec spec = new ConsoleSpec(
                 "Watch", r -> Theme.paint("Built", Theme.active().focused()), r -> "Build failed");
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
@@ -198,7 +198,7 @@ public final class AppWatchLoop {
     }
 
     private boolean compile(Path projectDir, Path cache) throws IOException, InterruptedException {
-        String target = BuildCommand.buildTarget(projectDir.resolve(ManifestPaths.MANIFEST), projectDir);
+        String target = ProjectInfos.buildTarget(projectDir.resolve(ManifestPaths.MANIFEST), projectDir);
         ConsoleSpec spec = new ConsoleSpec(
                 "Watch", r -> Theme.paint("Recompiled", Theme.active().focused()), r -> "Compile failed");
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);

@@ -2,9 +2,9 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cache.JkStores;
-import cc.jumpkick.cli.CliOutput;
-import cc.jumpkick.cli.GlobalOptions;
-import cc.jumpkick.cli.PathDisplay;
+import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.cli.api.GlobalOptions;
+import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineFleet;
 import cc.jumpkick.cli.engine.EngineRequests;

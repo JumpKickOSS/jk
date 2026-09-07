@@ -25,6 +25,14 @@
 # planner core are compile→runtime (GroovycInputs reads CompileSupport.collectJavaSources) and
 # test→runtime (AffectedTestRun reads BuildPlanner's plan keys and Inputs).
 #
+# 2026-09-07, clients/cli: what a command needs from the shell moved to `cli.api` (CliOutput,
+# GlobalOptions, CommonOpts, PathDisplay, CliPaths, ProjectContext, Osc); the verbs read
+# JkVersion from the model and the watch loop's build-target helper lives with ProjectInfos. The
+# ten-package component is two: the TUI/theme/run/engine/api quintet and the dispatcher/verbs
+# quartet (cli, command, command.ide, cli.bsp) — nine packages. `command -> cli` fell from 283
+# imports to 28 (EnsureFreshLock, BuildOptions, Jk.execute/VERB_ALIASES, GraalResolver,
+# OpenBrowser, ParallelTestsOpts); moving those too would leave only the dispatcher's edge.
+#
 # Measured at landing: 1,432 main sources, 95 packages, 29 module source roots, 195 resolved
 # package edges. Method: per module, resolve each `import cc.jumpkick.*` to the longest declared
 # package prefix WITHIN that module, then Tarjan over the resulting package graph. Imports that
@@ -35,7 +43,7 @@
 # defends.
 
 server/engine 9
-clients/cli 10
+clients/cli 9
 shared/core 8
 clients/cli-terminal 3
 server/resolver 3

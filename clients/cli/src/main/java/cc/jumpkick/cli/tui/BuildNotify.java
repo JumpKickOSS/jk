@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
-import cc.jumpkick.cli.GlobalOptions;
-import cc.jumpkick.cli.Osc;
+import cc.jumpkick.cli.api.GlobalOptions;
+import cc.jumpkick.cli.api.Osc;
 import cc.jumpkick.config.JkConfig;
 import java.io.PrintStream;
 import java.util.ArrayList;

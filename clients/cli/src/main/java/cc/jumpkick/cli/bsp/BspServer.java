@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.bsp;
 
-import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.ide.IdeEngineClient;
 import cc.jumpkick.command.ide.IdeSourceRoots;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.diagnostic.CompilerLocus;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.jsonl.MiniJson;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.wire.protocol.IdeWireModel;
 import cc.jumpkick.wire.protocol.ProjectInfo;
 import java.io.BufferedReader;
@@ -96,7 +96,7 @@ public final class BspServer {
                     respond(
                             id,
                             "{\"displayName\":\"jk\",\"version\":"
-                                    + q(Jk.VERSION)
+                                    + q(JkVersion.VERSION)
                                     + ",\"bspVersion\":\"2.1.0\","
                                     + "\"capabilities\":{"
                                     + "\"compileProvider\":{\"languageIds\":[\"java\",\"kotlin\",\"groovy\"]},"

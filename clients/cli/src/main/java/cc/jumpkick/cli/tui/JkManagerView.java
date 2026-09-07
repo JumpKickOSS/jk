@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
-import cc.jumpkick.cli.Osc;
+import cc.jumpkick.cli.api.Osc;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.run.DurationText;
 import cc.jumpkick.cli.theme.Theme;
@@ -71,7 +71,7 @@ final class JkManagerView {
      * command label (typically {@code Run}); {@code tail} is the pre-styled message.
      *
      * <p>{@code jk run} prints its own single separator before {@code inheritIO} (no settle
-     * trailing blank — settles never add one; {@link cc.jumpkick.cli.CliOutput#closeEnvelope} does
+     * trailing blank — settles never add one; {@link cc.jumpkick.cli.api.CliOutput#closeEnvelope} does
      * after the command returns).
      */
     public void finishBuildPlanExec(String tail, List<String> above) {

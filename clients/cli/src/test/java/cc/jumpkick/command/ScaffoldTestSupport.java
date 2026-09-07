@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
-import cc.jumpkick.cli.Jk;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileWriter;
+import cc.jumpkick.model.JkVersion;
 import java.io.IOException;
 import java.nio.file.Path;
 
@@ -19,6 +19,6 @@ final class ScaffoldTestSupport {
     private ScaffoldTestSupport() {}
 
     static void writeEmptyLock(Path projectDir) throws IOException {
-        LockfileWriter.write(Lockfile.empty(Jk.VERSION), projectDir.resolve("jk-lock.toml"));
+        LockfileWriter.write(Lockfile.empty(JkVersion.VERSION), projectDir.resolve("jk-lock.toml"));
     }
 }

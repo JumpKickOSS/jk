@@ -3,6 +3,7 @@ package cc.jumpkick.cli;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.terminal.Width;

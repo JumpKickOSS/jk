@@ -2,9 +2,9 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.BuildOptions;
-import cc.jumpkick.cli.CliOutput;
-import cc.jumpkick.cli.GlobalOptions;
-import cc.jumpkick.cli.PathDisplay;
+import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.cli.api.GlobalOptions;
+import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.engine.JobCancelledException;
@@ -72,7 +72,7 @@ public final class RunCommand {
         // after the build. Workspace roots build the whole graph, then pick a module to run.
         Path cache = cacheDir();
 
-        String coord = BuildCommand.buildTarget(projectDir.resolve(ManifestPaths.MANIFEST), projectDir);
+        String coord = ProjectInfos.buildTarget(projectDir.resolve(ManifestPaths.MANIFEST), projectDir);
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
         // In chip modes (AUTO/QUIET) the build plan settles as the ▶ Run CommandWedge with
         // "Executing `java …`" — no second banner line. In VERBOSE/JSON no chip is printed, so

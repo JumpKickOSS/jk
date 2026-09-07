@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
-import cc.jumpkick.cli.CliOutput;
-import cc.jumpkick.cli.CliPaths;
-import cc.jumpkick.cli.CommonOpts;
-import cc.jumpkick.cli.GlobalOptions;
-import cc.jumpkick.cli.ProjectContext;
+import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.cli.api.CliPaths;
+import cc.jumpkick.cli.api.CommonOpts;
+import cc.jumpkick.cli.api.GlobalOptions;
+import cc.jumpkick.cli.api.ProjectContext;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.engine.ProjectInfos;
@@ -112,7 +112,7 @@ public final class CompileCommand implements CliCommand {
         for (Path moduleDir : List.of(dir)) {
             ConsoleSpec spec = new ConsoleSpec(
                     "Compile", r -> Theme.paint("Compiled", Theme.active().focused()), r -> "Compilation failed");
-            String target = BuildCommand.buildTarget(moduleDir.resolve(ManifestPaths.MANIFEST), moduleDir);
+            String target = ProjectInfos.buildTarget(moduleDir.resolve(ManifestPaths.MANIFEST), moduleDir);
             BuildPlanResult result;
             try {
                 result = EngineClient.runCompile(

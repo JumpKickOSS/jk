@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
-import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineProbe;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -42,11 +42,11 @@ public final class EngineStartCommand implements CliCommand {
         EnginePaths.Paths paths = EnginePaths.current();
         // Was a matching engine already up before we touched it? Distinguishes "already running"
         // from a fresh start in the settled wedge below.
-        boolean alreadyUp = EngineProbe.handshake(EnginePaths.activeSocket(paths), Jk.VERSION)
-                .map(h -> Jk.VERSION.equals(h.version()))
+        boolean alreadyUp = EngineProbe.handshake(EnginePaths.activeSocket(paths), JkVersion.VERSION)
+                .map(h -> JkVersion.VERSION.equals(h.version()))
                 .orElse(false);
         try {
-            EngineProbe.Handshake hs = EngineClient.ensureRunning(paths, Jk.VERSION);
+            EngineProbe.Handshake hs = EngineClient.ensureRunning(paths, JkVersion.VERSION);
             String pid = pidStyled(hs.pid());
             String message =
                     alreadyUp ? "Engine already running (pid " + pid + ")" : "Build engine started (pid " + pid + ")";

@@ -4,7 +4,7 @@ package cc.jumpkick.command;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.args.ArgParser;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.model.command.Command;

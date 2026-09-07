@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
-import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.EnsureFreshLock;
-import cc.jumpkick.cli.GlobalOptions;
-import cc.jumpkick.cli.Jk;
+import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineJournalReads;
 import cc.jumpkick.cli.engine.EngineProbe;
@@ -19,6 +18,7 @@ import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
@@ -294,7 +294,7 @@ public final class StatusCommand implements CliCommand {
     }
 
     static String engineStatusMarkup(Optional<EngineProbe.Status> engine) {
-        String version = Jk.VERSION;
+        String version = JkVersion.VERSION;
         if (engine.isEmpty()) {
             return "JumpKick Engine v[focused]" + version + "[/] is not running";
         }

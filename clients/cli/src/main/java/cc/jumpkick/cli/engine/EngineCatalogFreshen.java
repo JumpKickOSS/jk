@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
-import cc.jumpkick.cli.Jk;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.wire.EnginePaths;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -33,7 +33,7 @@ public final class EngineCatalogFreshen {
             EnginePaths.Paths paths, String catalog, boolean offline, @Nullable String url, @Nullable Path cacheFile) {
         if (offline) return; // nothing to freshen without a network
         try {
-            EngineSpawn.ensure(paths, Jk.VERSION);
+            EngineSpawn.ensure(paths, JkVersion.VERSION);
         } catch (IOException e) {
             return; // no engine to host the freshen — local resolution proceeds against the cache
         }
@@ -46,7 +46,7 @@ public final class EngineCatalogFreshen {
      */
     public static @Nullable String freshenCatalogNow(
             EnginePaths.Paths paths, String catalog, String url, @Nullable Path cacheFile) throws IOException {
-        EngineSpawn.ensure(paths, Jk.VERSION);
+        EngineSpawn.ensure(paths, JkVersion.VERSION);
         return EngineReads.freshenCatalogNow(paths, catalog, url, cacheFile == null ? null : cacheFile.toString());
     }
 

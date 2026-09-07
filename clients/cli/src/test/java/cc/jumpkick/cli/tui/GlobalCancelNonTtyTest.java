@@ -3,8 +3,8 @@ package cc.jumpkick.cli.tui;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.cli.Jk;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.testing.ShortTempDirs;
 import cc.jumpkick.wire.EnginePaths;
@@ -314,7 +314,11 @@ class GlobalCancelNonTtyTest {
                         send(
                                 w,
                                 ProtoLifecycle.helloAck(
-                                        Jk.VERSION, ProcessHandle.current().pid(), 1L, false, ""));
+                                        JkVersion.VERSION,
+                                        ProcessHandle.current().pid(),
+                                        1L,
+                                        false,
+                                        ""));
                     } else if (EngineProtocol.PING.equals(type)) {
                         send(w, ProtoLifecycle.pong());
                     } else if (EngineProtocol.CANCEL_REQUEST.equals(type)) {

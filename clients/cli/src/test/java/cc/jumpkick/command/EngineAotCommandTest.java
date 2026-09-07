@@ -8,6 +8,7 @@ import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.engine.IsolatedState;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.util.AotManifest;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
@@ -68,7 +69,7 @@ class EngineAotCommandTest {
         Files.createDirectories(aot);
         // The live version + a 16-hex key is exactly the shape aotCachePath sweeps, which is what
         // made the shared state root fatal here — keep it, so the isolation stays load-bearing.
-        String name = "engine-" + Jk.VERSION + "-deadbeefdeadbeef.aot";
+        String name = "engine-" + JkVersion.VERSION + "-deadbeefdeadbeef.aot";
         Files.writeString(aot.resolve(name), "eng");
 
         String out = Capture.stdout(

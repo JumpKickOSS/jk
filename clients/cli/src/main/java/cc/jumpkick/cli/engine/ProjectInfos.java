@@ -70,4 +70,11 @@ public final class ProjectInfos {
         return dir.toAbsolutePath().normalize() + "\0" + (modules == null ? "" : modules) + "\0"
                 + (affectedSince == null ? "" : affectedSince) + "\0" + affectedWip + "\0" + counts;
     }
+
+    /** The coordinate the engine knows {@code dir} by, else its directory name — the build's display target. */
+    public static String buildTarget(Path buildFile, Path dir) {
+        var info = orNull(dir);
+        if (info != null) return info.coord();
+        return dir.getFileName() == null ? "" : dir.getFileName().toString();
+    }
 }

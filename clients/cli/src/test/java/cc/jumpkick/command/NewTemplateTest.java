@@ -3,8 +3,8 @@ package cc.jumpkick.command;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.model.command.Exit;
 import java.nio.file.Path;

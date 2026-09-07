@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.ide;
 
-import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.engine.EngineCancel;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineProbe;
@@ -9,6 +8,7 @@ import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
@@ -90,7 +90,7 @@ public class IdeEngineClient {
 
     /** Ensure a live engine (spawn/replace on version skew). */
     public EngineProbe.Handshake connect() throws IOException {
-        return EngineClient.ensureRunning(EnginePaths.current(), Jk.VERSION);
+        return EngineClient.ensureRunning(EnginePaths.current(), JkVersion.VERSION);
     }
 
     /** Engine status (heap, active requests, …). */

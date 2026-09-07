@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
-import cc.jumpkick.cli.Jk;
 import cc.jumpkick.jsonl.BoundedLineReader;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.EngineTransport;
 import cc.jumpkick.wire.protocol.EngineProtocol;
@@ -99,7 +99,7 @@ public final class EngineWire {
     private static Path ensuredSocket(EnginePaths.Paths paths) throws IOException {
         Ensured hit = ENSURED;
         if (hit != null && hit.paths().equals(paths)) return hit.socket();
-        EngineSpawn.ensure(paths, Jk.VERSION);
+        EngineSpawn.ensure(paths, JkVersion.VERSION);
         Path socket = EnginePaths.activeSocket(paths);
         ENSURED = new Ensured(paths, socket);
         return socket;

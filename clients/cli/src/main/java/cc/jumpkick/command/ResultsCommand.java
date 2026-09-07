@@ -2,8 +2,8 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.builds.ProjectBuilds;
-import cc.jumpkick.cli.CliOutput;
-import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.config.ConfigSources;
 import cc.jumpkick.config.WorkspaceLocator;

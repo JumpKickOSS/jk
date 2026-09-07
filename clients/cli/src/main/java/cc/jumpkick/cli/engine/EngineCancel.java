@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
-import cc.jumpkick.cli.Jk;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
@@ -34,7 +34,7 @@ public final class EngineCancel {
      * engine is unreachable. Idempotent: already-finished jids yield {@code cancelled=false}.
      */
     public static Optional<String> cancel(EnginePaths.Paths paths, long jid) throws IOException {
-        EngineSpawn.ensure(paths, Jk.VERSION);
+        EngineSpawn.ensure(paths, JkVersion.VERSION);
         return cancelOnce(EnginePaths.activeSocket(paths), ProtoLifecycle.cancelRequest(jid), jid);
     }
 
@@ -42,7 +42,7 @@ public final class EngineCancel {
      * Cancel every live job under {@code dir}. Used by bare {@code jk cancel} and Ctrl-C.
      */
     public static Optional<String> cancelForDir(EnginePaths.Paths paths, String dir) throws IOException {
-        EngineSpawn.ensure(paths, Jk.VERSION);
+        EngineSpawn.ensure(paths, JkVersion.VERSION);
         Optional<String> ack = cancelOnce(EnginePaths.activeSocket(paths), ProtoLifecycle.cancelRequestForDir(dir), -1);
         if (ack.isPresent()) ActiveJobs.forgetAll();
         return ack;

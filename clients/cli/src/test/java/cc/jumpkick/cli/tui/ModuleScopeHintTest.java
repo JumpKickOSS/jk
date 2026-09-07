@@ -3,8 +3,8 @@ package cc.jumpkick.cli.tui;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;

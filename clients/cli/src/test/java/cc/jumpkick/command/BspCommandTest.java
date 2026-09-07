@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.Exit;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -35,7 +36,7 @@ class BspCommandTest {
                 .contains("\"name\": \"jk\"")
                 .contains("\"bspVersion\": \"2.1.0\"")
                 .contains("\"languages\": [\"java\", \"kotlin\", \"groovy\"]")
-                .contains("\"version\": " + quoted(Jk.VERSION))
+                .contains("\"version\": " + quoted(JkVersion.VERSION))
                 .contains("\"bsp\", \"serve\"");
     }
 

@@ -3,6 +3,7 @@ package cc.jumpkick.cli;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.jdk.JdkFingerprint;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;

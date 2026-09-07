@@ -2,13 +2,13 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.BuildOptions;
-import cc.jumpkick.cli.CliOutput;
-import cc.jumpkick.cli.CliPaths;
-import cc.jumpkick.cli.CommonOpts;
-import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.GraalResolver;
 import cc.jumpkick.cli.ParallelTestsOpts;
-import cc.jumpkick.cli.PathDisplay;
+import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.cli.api.CliPaths;
+import cc.jumpkick.cli.api.CommonOpts;
+import cc.jumpkick.cli.api.GlobalOptions;
+import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EnginePrewarm;
 import cc.jumpkick.cli.engine.EngineRequests;
@@ -567,7 +567,7 @@ public final class BuildCommand implements CliCommand {
             dir = dir.toRealPath();
         } catch (IOException ignored) {
         }
-        String target = buildTarget(buildFile, dir);
+        String target = ProjectInfos.buildTarget(buildFile, dir);
 
         // Single-module fast path: skip the TUI entirely when the engine's forecast says every
         // work step is already cached (stat/CAS lookups engine-side, one round trip here).
@@ -671,11 +671,6 @@ public final class BuildCommand implements CliCommand {
     // ---- project summary peek -------------------------------------------
 
     /** Header module label for the plan view: the project's {@code group:artifact}. */
-    public static String buildTarget(Path buildFile, Path dir) {
-        var info = ProjectInfos.orNull(dir);
-        if (info != null) return info.coord();
-        return dir.getFileName() == null ? "" : dir.getFileName().toString();
-    }
 
     /** {@code group:name:version} for the OSC window title, from {@code projectInfo}. */
     static String projectGavLabel(Path entryDir) {

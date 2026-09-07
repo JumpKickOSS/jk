@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
-import cc.jumpkick.cli.CliOutput;
-import cc.jumpkick.cli.CliPaths;
-import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.EnsureFreshLock;
-import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.ParallelTestsOpts;
-import cc.jumpkick.cli.ProjectContext;
+import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.cli.api.CliPaths;
+import cc.jumpkick.cli.api.CommonOpts;
+import cc.jumpkick.cli.api.GlobalOptions;
+import cc.jumpkick.cli.api.ProjectContext;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.engine.ProjectInfos;
@@ -250,7 +250,7 @@ public final class ExplainCommand implements CliCommand {
             return Exit.CONFIG;
         }
 
-        renderPlan(plan, in.isSet("verbose"), BuildCommand.buildTarget(buildFile, startDir), etaMillis, fullEtaMillis);
+        renderPlan(plan, in.isSet("verbose"), ProjectInfos.buildTarget(buildFile, startDir), etaMillis, fullEtaMillis);
         return 0;
     }
 

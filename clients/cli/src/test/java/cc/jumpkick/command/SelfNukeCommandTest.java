@@ -3,9 +3,9 @@ package cc.jumpkick.command;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineFleet;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.command.SelfNukeCommand.Target;

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli;
 
+import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.GlobalCancel;
 import cc.jumpkick.command.*;

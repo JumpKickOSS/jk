@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.ide;
 
-import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.EnsureFreshLock;
-import cc.jumpkick.cli.GlobalOptions;
-import cc.jumpkick.cli.PathDisplay;
+import cc.jumpkick.cli.api.CommonOpts;
+import cc.jumpkick.cli.api.GlobalOptions;
+import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineProcessControl;
 import cc.jumpkick.cli.engine.EngineRequests;

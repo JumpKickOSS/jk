@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.cli;
+package cc.jumpkick.cli.api;
 
 import cc.jumpkick.cli.engine.TimelineOpts;
 import cc.jumpkick.cli.tui.Confirm;
@@ -96,7 +96,7 @@ public final class GlobalOptions {
         return outputIsJson(in.value("output").orElse(null));
     }
 
-    static boolean outputIsJson(@Nullable String output) {
+    public static boolean outputIsJson(@Nullable String output) {
         String resolved = output;
         if (resolved == null || resolved.isBlank()) {
             resolved = System.getenv("JK_OUTPUT");

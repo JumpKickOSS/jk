@@ -5,10 +5,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.EngineInstall;
-import cc.jumpkick.cli.Jk;
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.engine.EngineServer;
 import cc.jumpkick.engine.plugin.JvmOptions;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.testing.Await;
@@ -327,7 +327,7 @@ class EngineClientTest {
         // path: Ctrl-C's dir-scoped cancel can never match it and the jid from job-start is the
         // only handle that reaches the job. Same for jk tool resolve and jk tool run <script>.
         EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
-        startEngine(p, Jk.VERSION);
+        startEngine(p, JkVersion.VERSION);
         Await.until(Duration.ofSeconds(30), () -> EngineProbe.ping(EnginePaths.activeSocket(p)));
         ActiveJobs.forgetAll();
 

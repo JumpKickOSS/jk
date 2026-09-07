@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.run;
 
-import cc.jumpkick.cli.PathDisplay;
+import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.diagnostic.CompilerLocus;
 import java.net.URI;

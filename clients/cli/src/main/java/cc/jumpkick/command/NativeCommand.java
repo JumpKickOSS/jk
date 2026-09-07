@@ -2,11 +2,11 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.BuildOptions;
-import cc.jumpkick.cli.CliOutput;
-import cc.jumpkick.cli.CliPaths;
-import cc.jumpkick.cli.CommonOpts;
-import cc.jumpkick.cli.GlobalOptions;
-import cc.jumpkick.cli.PathDisplay;
+import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.cli.api.CliPaths;
+import cc.jumpkick.cli.api.CommonOpts;
+import cc.jumpkick.cli.api.GlobalOptions;
+import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.engine.ProjectInfos;
@@ -435,7 +435,7 @@ public final class NativeCommand implements CliCommand {
             return Exit.CONFIG;
         }
 
-        String coord = BuildCommand.buildTarget(buildFile, projectDir);
+        String coord = ProjectInfos.buildTarget(buildFile, projectDir);
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
 
         // Engine-hosted (a cascade of one): the success tail names the built artifact from

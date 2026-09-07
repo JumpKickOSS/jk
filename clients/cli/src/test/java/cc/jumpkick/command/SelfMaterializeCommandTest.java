@@ -3,10 +3,10 @@ package cc.jumpkick.command;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.cli.CliOutput;
-import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.testing.Capture;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
@@ -46,7 +46,7 @@ class SelfMaterializeCommandTest {
 
     @Test
     void materialize_settles_with_versioned_self_wedge(@TempDir Path tmp) throws Exception {
-        Path jar = tmp.resolve("jk-engine-" + Jk.VERSION + ".jar");
+        Path jar = tmp.resolve("jk-engine-" + JkVersion.VERSION + ".jar");
         Files.writeString(jar, "engine-bytes");
         Path client = tmp.resolve("jk.exe");
         Files.writeString(client, "client");
@@ -59,7 +59,7 @@ class SelfMaterializeCommandTest {
 
         assertThat(exit[0]).isZero();
         assertThat(plain).contains("Self");
-        assertThat(plain).contains("Materialized JumpKick " + Jk.VERSION);
+        assertThat(plain).contains("Materialized JumpKick " + JkVersion.VERSION);
         assertThat(plain).doesNotContain("nerd-font");
         assertThat(plain).doesNotContain("materialized ");
         assertThat(plain).doesNotContain(jar.toString());
@@ -106,7 +106,7 @@ class SelfMaterializeCommandTest {
         assertThat(TestAnsi.strip(streams.err()))
                 .contains("Self")
                 .contains("0.0.1-other")
-                .contains(Jk.VERSION);
+                .contains(JkVersion.VERSION);
         assertThat(TestAnsi.strip(streams.out())).doesNotContain("Materialized JumpKick");
         assertThat(JkDirs.productLib().resolve("jk-engine")).doesNotExist();
     }

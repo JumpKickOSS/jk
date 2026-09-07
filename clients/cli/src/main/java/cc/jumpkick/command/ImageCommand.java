@@ -2,10 +2,10 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.BuildOptions;
-import cc.jumpkick.cli.CliOutput;
-import cc.jumpkick.cli.CliPaths;
-import cc.jumpkick.cli.CommonOpts;
-import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.cli.api.CliPaths;
+import cc.jumpkick.cli.api.CommonOpts;
+import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.engine.ProjectInfos;
@@ -157,7 +157,7 @@ public final class ImageCommand implements CliCommand {
             return runWorkspaceImage(Path.of(peek.workspaceRootDir()), projectDir, cache);
         }
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
-        String module = BuildCommand.buildTarget(jkBuildPath, projectDir);
+        String module = ProjectInfos.buildTarget(jkBuildPath, projectDir);
 
         BuildPlanResult result;
         TestSummary testResult;

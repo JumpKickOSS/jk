@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
-import cc.jumpkick.cli.Jk;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.wire.EnginePaths;
 import java.io.IOException;
 
@@ -20,7 +20,7 @@ public final class EnginePrewarm {
 
     public static void ensure() {
         try {
-            EngineClient.ensureRunning(EnginePaths.current(), Jk.VERSION);
+            EngineClient.ensureRunning(EnginePaths.current(), JkVersion.VERSION);
         } catch (IOException | RuntimeException ignored) {
             // The command's own ensureRunning call will surface any genuine failure.
         }
