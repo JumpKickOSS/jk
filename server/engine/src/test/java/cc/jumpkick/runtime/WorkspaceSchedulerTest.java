@@ -4,7 +4,9 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.testing.Await;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -91,11 +93,8 @@ class WorkspaceSchedulerTest {
 
     /** Park until {@code inFlight} reaches {@code target}; on timeout the peak assertion reports it. */
     private static void awaitInFlight(AtomicInteger inFlight, int target) {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
         try {
-            while (inFlight.get() < target && System.nanoTime() < deadline) {
-                Thread.sleep(1);
-            }
+            Await.until(Duration.ofSeconds(10), () -> inFlight.get() >= target);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }

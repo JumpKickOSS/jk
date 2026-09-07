@@ -4,6 +4,7 @@ package cc.jumpkick.engine;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.http.Http;
+import cc.jumpkick.testing.FakeClock;
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
 import java.net.URI;
@@ -207,20 +208,23 @@ class StoreFeedRefreshTest {
         assertThat(logs).isEmpty();
     }
 
+    /** Age is judged by the injected clock: the same file flips to stale when the clock moves on. */
     @Test
     void needs_refresh_when_missing_or_old(@TempDir Path tmp) throws Exception {
+        FakeClock clock = new FakeClock();
         Path missing = tmp.resolve("nope");
-        assertThat(StoreFeedRefresh.needsRefresh(missing, Duration.ofHours(12))).isTrue();
+        assertThat(StoreFeedRefresh.needsRefresh(missing, Duration.ofHours(12), clock))
+                .isTrue();
 
         Path fresh = tmp.resolve("fresh");
         Files.writeString(fresh, "x");
-        Files.setLastModifiedTime(fresh, FileTime.from(Instant.now()));
-        assertThat(StoreFeedRefresh.needsRefresh(fresh, Duration.ofHours(12))).isFalse();
+        Files.setLastModifiedTime(fresh, FileTime.from(clock.instant()));
+        assertThat(StoreFeedRefresh.needsRefresh(fresh, Duration.ofHours(12), clock))
+                .isFalse();
 
-        Path old = tmp.resolve("old");
-        Files.writeString(old, "x");
-        Files.setLastModifiedTime(old, FileTime.from(Instant.now().minus(Duration.ofHours(12))));
-        assertThat(StoreFeedRefresh.needsRefresh(old, Duration.ofHours(12))).isTrue();
+        clock.advance(Duration.ofHours(12));
+        assertThat(StoreFeedRefresh.needsRefresh(fresh, Duration.ofHours(12), clock))
+                .isTrue();
     }
 
     @Test

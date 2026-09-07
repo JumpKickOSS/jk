@@ -14,6 +14,8 @@ dependencies {
     // links, so this costs no consumer anything: BuildIdentity hashes the running jar and
     // Hashing owns the one MessageDigest lookup in the tree.
     api(project(":host"))
+    // Await and FakeClock: the tree's poll-until-true and hand-advanced clock, so no test here sleeps.
+    testImplementation(testFixtures(project(":host")))
 }
 
 // This module IS jk's public API surface (Gradle project ":jk-api"; dir kept at

@@ -18,6 +18,7 @@ import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.task.RunNotices;
+import cc.jumpkick.testing.Await;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.progress.ProgressBarMode;
@@ -31,6 +32,7 @@ import java.io.StringWriter;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -129,10 +131,7 @@ class JobEnvelopeTest {
         // teardownOrder entries after finished++ lands, and containsExactly iterating the live
         // synchronizedList mid-append flaked under parallel suite load (the "expected X to
         // contain exactly X" failure). Snapshot before asserting.
-        long deadline = System.currentTimeMillis() + 30_000;
-        while ((host.finished == 0 || host.teardownOrder.size() < 2) && System.currentTimeMillis() < deadline) {
-            Thread.sleep(10);
-        }
+        Await.until(Duration.ofSeconds(30), () -> !((host.finished == 0 || host.teardownOrder.size() < 2)));
         assertThat(host.finished).isEqualTo(1);
         assertThat(List.copyOf(host.teardownOrder)).containsExactly("writeJournal", "clearProgress");
         assertThat(host.events.stream().anyMatch(e -> e.contains("request-finish")))
@@ -209,10 +208,7 @@ class JobEnvelopeTest {
                 }),
                 new JobTransport.FireAndForget());
 
-        long deadline = System.currentTimeMillis() + 10_000;
-        while (!host.journalWritten && System.currentTimeMillis() < deadline) {
-            Thread.sleep(10);
-        }
+        Await.until(Duration.ofSeconds(10), () -> host.journalWritten);
         release.countDown();
         assertThat(host.journalWritten).isTrue();
         assertThat(host.journalCancelled).isTrue();
@@ -276,20 +272,14 @@ class JobEnvelopeTest {
                 }),
                 new JobTransport.FireAndForget());
         try {
-            long deadline = System.currentTimeMillis() + 10_000;
-            while (worker.get() == null && System.currentTimeMillis() < deadline) {
-                Thread.sleep(10);
-            }
+            Await.until(Duration.ofSeconds(10), () -> worker.get() != null);
             assertThat(worker.get())
                     .as("the runner forked its worker inside the job's scope")
                     .isNotNull();
 
             assertThat(env.live().cancelJob(jid)).isTrue();
 
-            while (host.logs.stream().noneMatch(l -> l.contains("cancel job"))
-                    && System.currentTimeMillis() < deadline) {
-                Thread.sleep(10);
-            }
+            Await.until(Duration.ofSeconds(10), () -> host.logs.stream().anyMatch(l -> l.contains("cancel job")));
             assertThat(host.logs)
                     .as("the shutdown ran with the envelope's zero grace and reaped the one worker")
                     .anyMatch(l -> l.contains("shut down 1 worker process(es) (grace 0ms)"));
@@ -396,10 +386,7 @@ class JobEnvelopeTest {
                 }),
                 new JobTransport.FireAndForget());
 
-        long deadline = System.currentTimeMillis() + 30_000;
-        while (!host.journalWritten && System.currentTimeMillis() < deadline) {
-            Thread.sleep(10);
-        }
+        Await.until(Duration.ofSeconds(30), () -> host.journalWritten);
         assertThat(host.journalWritten).isTrue();
         assertThat(host.journalCancelled)
                 .as("no reader, no cancel — nothing but the derivation is holding this row")
@@ -475,10 +462,7 @@ class JobEnvelopeTest {
                 }),
                 new JobTransport.FireAndForget());
 
-        long deadline = System.currentTimeMillis() + 30_000;
-        while (!host.journalWritten && System.currentTimeMillis() < deadline) {
-            Thread.sleep(10);
-        }
+        Await.until(Duration.ofSeconds(30), () -> host.journalWritten);
         assertThat(host.journalWritten).isTrue();
         BuildRecord record = host.journalRecord();
         assertThat(record.success()).isFalse();
@@ -541,10 +525,7 @@ class JobEnvelopeTest {
                 }),
                 new JobTransport.FireAndForget());
 
-        long deadline = System.currentTimeMillis() + 30_000;
-        while (!host.journalWritten && System.currentTimeMillis() < deadline) {
-            Thread.sleep(10);
-        }
+        Await.until(Duration.ofSeconds(30), () -> host.journalWritten);
         assertThat(host.journalWritten).isTrue();
         BuildRecord record = host.journalRecord();
         assertThat(record.success()).isTrue();
@@ -671,14 +652,10 @@ class JobEnvelopeTest {
 
     /** The detached tail runs on its own thread; the idle boundary is its last effect. */
     private static void awaitTail(FakeHost host) {
-        long deadline = System.currentTimeMillis() + 30_000;
-        while (!host.sequence.contains("idle-boundary") && System.currentTimeMillis() < deadline) {
-            try {
-                Thread.sleep(5);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return;
-            }
+        try {
+            Await.until(Duration.ofSeconds(30), () -> host.sequence.contains("idle-boundary"));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
     }
 

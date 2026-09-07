@@ -775,6 +775,911 @@ population = { files = 50 }
 [central-address]
 population = { files = 1716 }
 
+[clock-owner]
+[clock-owner.populations]
+"clients/cli" = { classes = 609, sites = 38536 }
+"clients/cli-terminal" = { classes = 48, sites = 1630 }
+"plugins/image-builder" = { classes = 13, sites = 1201 }
+"plugins/java-compiler" = { classes = 25, sites = 1420 }
+"plugins/publisher" = { classes = 15, sites = 710 }
+"plugins/test-runner" = { classes = 9, sites = 556 }
+"server/engine" = { classes = 872, sites = 57038 }
+"server/guard" = { classes = 170, sites = 10374 }
+"server/io" = { classes = 31, sites = 1934 }
+"server/resolver" = { classes = 80, sites = 3938 }
+"shared/client-io" = { classes = 73, sites = 4059 }
+"shared/core" = { classes = 330, sites = 17852 }
+"shared/host" = { classes = 51, sites = 2014 }
+"shared/toolchain-jdk" = { classes = 135, sites = 7304 }
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.cli.CliFailure#appendLog([Ljava/lang/String;Ljava/lang/Throwable;)V -> java.time.Instant#now()Ljava/time/Instant;"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.cli.engine.EngineCancel#cancelBestEffortForInterrupt(Ljava/nio/file/Path;)V -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.cli.engine.EngineEventDecoder#streamSingleBuildPlanEvents(Ljava/io/BufferedReader;Ljava/util/function/Function;[Lcc/jumpkick/run/TestSummary;[Ljava/lang/String;Ljava/nio/channels/SocketChannel;)Lcc/jumpkick/run/BuildPlanResult; -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.cli.engine.EngineEventDecoder$#onLine(Ljava/lang/String;Ljava/lang/String;)Lcc/jumpkick/run/BuildPlanResult; -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.cli.engine.EngineFleet#waitGone(JJ)Z -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.cli.engine.EngineProcessControl#lambda$hardKill$(Ljava/lang/ProcessHandle;)V -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.cli.engine.EngineProcessControl#waitForDeathOrKill(JLjava/time/Duration;)V -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.cli.engine.EngineSpawn#awaitStartup(Lcc/jumpkick/wire/EnginePaths$Paths;Ljava/lang/String;Ljava/time/Duration;Ljava/lang/Process;)Lcc/jumpkick/cli/engine/EngineSpawn$StartResult; -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.cli.engine.WindowsCommandLines#snapshot()Ljava/util/Map; -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.cli.run.CliSessionTranscript#<init>(Ljava/nio/file/Path;Ljava/time/Instant;Ljava/lang/String;Ljava/util/List;)V -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.cli.run.CliSessionTranscript#appendRaw(Ljava/lang/String;Z)V -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.cli.run.CliSessionTranscript#finish(I)Ljava/util/Optional; -> java.time.Instant#now()Ljava/time/Instant;"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.cli.run.CliSessionTranscript#flushPending()V -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.cli.run.CliSessionTranscript#open(Ljava/nio/file/Path;Ljava/lang/String;Ljava/util/List;)Lcc/jumpkick/cli/run/CliSessionTranscript; -> java.time.Instant#now()Ljava/time/Instant;"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.cli.run.DashboardCodeLink#putHttpCache(Ljava/lang/String;)V -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.cli.run.DashboardCodeLink#resolveHttpBase()Ljava/lang/String; -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.cli.run.JsonlShape#nowMillis()J -> java.time.Instant#now()Ljava/time/Instant;"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.cli.tui.DrainView#lines()[Ljava/lang/String; -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.cli.tui.DrainView#start(ILcc/jumpkick/config/NerdFontCaps;)Lcc/jumpkick/cli/tui/DrainView; -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.cli.tui.JdkDownloadBar#<init>(Ljava/io/PrintStream;Ljava/lang/String;Z)V -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.cli.tui.JdkDownloadBar#cancelledLine()Ljava/lang/String; -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.cli.tui.JkManager#elapsedMillis()J -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.cli.tui.JkManager#plan(Ljava/io/PrintStream;Ljava/lang/String;Z)Lcc/jumpkick/cli/tui/JkManager; -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.cli.tui.JkManager#tick()V -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.cli.tui.JkManagerPlainView#maybeEmitHeartbeat()V -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.cli.tui.JkManagerPlainView#printSnapshot(ILjava/lang/String;ZLjava/lang/String;Ljava/lang/String;Z)V -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.cli.tui.OutputCapture$LineSink#maybeFlushStale(J)V -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.cli.tui.OutputCapture$LineSink#write(I)V -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.cli.tui.OutputCapture$LineSink#write([BII)V -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.cli.tui.Spinner#<init>(Ljava/io/PrintStream;Ljava/lang/String;Ljava/lang/String;Z)V -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.cli.tui.WindowTitle#set(Ljava/lang/String;)V -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.cli.watch.SourceWatch#drainEvents(Ljava/nio/file/WatchKey;)Lcc/jumpkick/cli/watch/SourceWatch$Changes; -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.cli.watch.SourceWatch#pollChange(JLjava/util/concurrent/TimeUnit;)Ljava/util/Optional; -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.ActivityCommand#run(Lcc/jumpkick/model/command/Invocation;)I -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.BuildCommand#runForDir(Ljava/nio/file/Path;)I -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.BuildCommand#runGraphParallel(Ljava/nio/file/Path;)I -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.BuildCommand#runWorkspaceHeadless(Ljava/nio/file/Path;Ljava/nio/file/Path;Ljava/util/List;)I -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.BuildTails#elapsedMsSince(J)J -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.CacheCommand#lastPrunedLabel(Ljava/nio/file/Path;)Ljava/lang/String; -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.CleanCommand#run(Lcc/jumpkick/model/command/Invocation;)I -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.CompileCommand#runWorkspaceCompile(Ljava/nio/file/Path;Ljava/lang/String;Lcc/jumpkick/cli/GlobalOptions;Ljava/nio/file/Path;Ljava/util/List;Ljava/util/List;)I -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.CompileCommand#runWorkspaceHeadless(Lcc/jumpkick/cli/engine/EngineRequests$CompileRequest;Lcc/jumpkick/cli/GlobalOptions;Ljava/nio/file/Path;Ljava/util/List;)I -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.DoctorCommand#checkEngine()Lcc/jumpkick/command/DoctorCommand$Check; -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.EngineStatusCommand#printFleet(Ljava/util/List;)V -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.EngineStatusCommand#run(Lcc/jumpkick/model/command/Invocation;)I -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.EngineStopCommand#elapsed(J)J -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.FormatCommand#run(Lcc/jumpkick/model/command/Invocation;)I -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.FormatCommand#runAnimated(Lcc/jumpkick/command/FormatCommand$Run;)I -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.FormatCommand#runPlain(Lcc/jumpkick/command/FormatCommand$Run;)I -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.HistoryCommand$HistoryListCommand#run(Lcc/jumpkick/model/command/Invocation;)I -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.HistoryCommand$HistoryShowCommand#run(Lcc/jumpkick/model/command/Invocation;)I -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.ImageCommand#runWorkspaceHeadless(Lcc/jumpkick/cli/engine/EngineRequests$ImageRequest;Ljava/nio/file/Path;Ljava/util/List;)I -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.ImageCommand#runWorkspaceImage(Ljava/nio/file/Path;Ljava/nio/file/Path;Ljava/nio/file/Path;)I -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.InstallCommand#runWorkspaceInstall(Ljava/nio/file/Path;Lcc/jumpkick/command/CwdModuleScope$Resolved;Ljava/lang/String;)I -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.LibraryUpdateCommand#run(Lcc/jumpkick/model/command/Invocation;)I -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.LockCommand#lockSuccessTail(IJLjava/nio/file/Path;)Ljava/lang/String; -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.LockCommand#runHostedLive(Ljava/nio/file/Path;Ljava/nio/file/Path;Lcc/jumpkick/cli/run/BuildPlanConsole$Mode;)I -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.NativeCommand#runWorkspaceHosted(Ljava/nio/file/Path;Ljava/nio/file/Path;Ljava/util/Map;Ljava/util/List;Lcc/jumpkick/cli/run/BuildPlanConsole$Mode;JIJ)I -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.NativeCommand#runWorkspaceNative(Ljava/nio/file/Path;Ljava/nio/file/Path;)I -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.RunCommand#buildWorkspaceForRun(Ljava/nio/file/Path;Ljava/nio/file/Path;Lcc/jumpkick/cli/run/BuildPlanConsole$Mode;ZLcc/jumpkick/command/CwdModuleScope$Resolved;Lcc/jumpkick/config/Session;)Lcc/jumpkick/wire/runtime/WorkspaceResult; -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.RunCommand#runWorkspaceLive(Lcc/jumpkick/wire/runtime/WorkspaceRequest;Ljava/util/List;)Lcc/jumpkick/wire/runtime/WorkspaceResult; -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.SelectiveCommand#prepare(Ljava/nio/file/Path;Ljava/nio/file/Path;Ljava/lang/String;Ljava/lang/String;Ljava/nio/file/Path;)I -> java.time.Instant#now()Ljava/time/Instant;"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.TestCommand#runWorkspaceTestsHeadless(Ljava/nio/file/Path;Ljava/nio/file/Path;ILjava/util/List;)I -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.TestCommand#runWorkspaceTestsLive(Ljava/nio/file/Path;Ljava/nio/file/Path;ILjava/util/List;Ljava/util/List;)I -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.VerifyBuildCommand#touchLockfiles(Ljava/nio/file/Path;)V -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.WindowsExecutionPolicy#ensure(Ljava/time/Duration;Lcc/jumpkick/command/WindowsExecutionPolicy$ProcessStarter;)Lcc/jumpkick/command/WindowsExecutionPolicy$Result; -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.WindowsExecutionPolicy#remaining(J)J -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.WindowsUserPath#ensure(Ljava/nio/file/Path;Ljava/time/Duration;Lcc/jumpkick/command/WindowsUserPath$ProcessStarter;)Lcc/jumpkick/command/WindowsUserPath$Result; -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.WindowsUserPath#remaining(J)J -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli-terminal"
+at     = "cc.jumpkick.terminal.MemoryTerminal#drain(Ljava/time/Duration;)V -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli-terminal"
+at     = "cc.jumpkick.terminal.MemoryTerminal#readKey(Ljava/time/Duration;)Ljava/util/Optional; -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli-terminal"
+at     = "cc.jumpkick.terminal.MemoryTerminal#readRaw(Ljava/time/Duration;)I -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli-terminal"
+at     = "cc.jumpkick.terminal.NativeTerminal#drain(Ljava/time/Duration;)V -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli-terminal"
+at     = "cc.jumpkick.terminal.posix.PosixTty#readByte(Ljava/time/Duration;Ljava/util/function/BooleanSupplier;)I -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "clients/cli-terminal"
+at     = "cc.jumpkick.terminal.windows.WindowsConsole#readByte(Ljava/time/Duration;Ljava/util/function/BooleanSupplier;)I -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "plugins/image-builder"
+at     = "cc.jumpkick.plugin.image.AotCacheTrainer#lambda$runUntilSettled$(Ljava/lang/StringBuilder;Ljava/util/concurrent/atomic/AtomicLong;Ljava/lang/String;)V -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "plugins/image-builder"
+at     = "cc.jumpkick.plugin.image.AotCacheTrainer#runUntilSettled(Ljava/util/List;Ljava/nio/file/Path;Ljava/lang/String;Ljava/lang/String;Ljava/util/function/Consumer;)Lcc/jumpkick/plugin/image/AotCacheTrainer$Output; -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "plugins/image-builder"
+at     = "cc.jumpkick.plugin.image.BaseJre#extractIfChanged(Ljava/lang/String;Ljava/nio/file/Path;Ljava/nio/file/Path;Lcc/jumpkick/plugin/image/RegistryAuth;)V -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "plugins/image-builder"
+at     = "cc.jumpkick.plugin.image.BaseJre#javaBinary(Ljava/lang/String;Ljava/nio/file/Path;Lcc/jumpkick/plugin/image/RegistryAuth;)Ljava/nio/file/Path; -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "plugins/java-compiler"
+at     = "cc.jumpkick.java.compiler.ZincWorkdir#renameAside(Ljava/nio/file/Path;)Z -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "plugins/publisher"
+at     = "cc.jumpkick.plugin.publish.Publisher#publish(Lcc/jumpkick/plugin/build/PublishContext;)Lcc/jumpkick/plugin/build/PublishResult; -> java.time.Instant#now()Ljava/time/Instant;"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "plugins/publisher"
+at     = "cc.jumpkick.plugin.publish.Sbom#cyclonedx(Lcc/jumpkick/model/JkBuild;Lcc/jumpkick/lock/Lockfile;)[B -> java.time.Instant#now()Ljava/time/Instant;"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "plugins/publisher"
+at     = "cc.jumpkick.plugin.publish.Sbom#spdx(Lcc/jumpkick/model/JkBuild;Lcc/jumpkick/lock/Lockfile;)[B -> java.time.Instant#now()Ljava/time/Instant;"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "plugins/test-runner"
+at     = "cc.jumpkick.testrunner.LauncherPath#runOneShot(Ljava/nio/file/Path;Ljava/lang/String;Ljava/util/List;Ljava/util/List;ILcc/jumpkick/testrunner/EventWriter;)I -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "plugins/test-runner"
+at     = "cc.jumpkick.testrunner.LauncherPath$Adapter#executionFinished(Lorg/junit/platform/launcher/TestIdentifier;Lorg/junit/platform/engine/TestExecutionResult;)V -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "plugins/test-runner"
+at     = "cc.jumpkick.testrunner.LauncherPath$Adapter#executionStarted(Lorg/junit/platform/launcher/TestIdentifier;)V -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.compile.JavaCompilerHost$Session#enqueue(Lcc/jumpkick/compile/JavaCompilerHost$Work;)V -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.compile.JavaCompilerHost$Session#onLine(Ljava/lang/String;Lcc/jumpkick/engine/plugin/PluginProcess$Conversation;)V -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.CoalescingBuildPlanListener#flush()V -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.CoalescingBuildPlanListener#scheduleLocked()V -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.CoalescingLockPackages#flush()V -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.CoalescingLockPackages#scheduleLocked()V -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.EngineMain#runAotTraining()I -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.EngineMaintenance#maintenanceDue()Z -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.EngineMaintenance#runMaintenanceCycle()V -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.EngineServer#<init>(Lcc/jumpkick/wire/EnginePaths$Paths;Lcc/jumpkick/config/JkEngineConfig;Lcc/jumpkick/config/JkHttpConfig;Ljava/lang/String;Ljava/lang/String;Ljava/util/function/Consumer;)V -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.HostWarmup#needsCalibration()Z -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.JobWorkers#shutdownForRequest(JJ)I -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.SsePublisher#emitWorkspaceProgress(JLjava/io/BufferedWriter;ZZ)V -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.SsePublisher#shouldEmitWorkspaceProgress(JLcc/jumpkick/wire/runtime/WorkspaceProgressTracker$Snapshot;)Z -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.http.CacheSnapshot$Memoizing#get()Lcc/jumpkick/engine/http/CacheSnapshot; -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.http.HttpEvents$Subscription#next(J)Ljava/lang/String; -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.http.HttpHistoryApi#enrichHistoryJson(Ljava/lang/String;)Ljava/lang/String; -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.http.HttpProjectApi#handleTemplates(Lcom/sun/net/httpserver/HttpExchange;)V -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.http.StatusSnapshot#vitals()Ljava/util/Map; -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.http.mcp.McpJobRuns#run(Lcc/jumpkick/engine/http/mcp/McpCall;Ljava/lang/String;)Ljava/util/Map; -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.http.mcp.McpJobRuns#waitForJournal(Lcc/jumpkick/engine/http/mcp/McpContext;J)Ljava/util/Map; -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.http.mcp.McpJobRuns#waitUntilGone(Lcc/jumpkick/engine/http/mcp/McpContext;JJ)Z -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.http.mcp.McpMachine#lambda$diskAction$(Ljava/lang/String;Ljava/nio/file/Path;Ljava/util/Map;)V -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.http.mcp.McpVitals#liveJobRows(Lcc/jumpkick/engine/http/mcp/McpContext;)Ljava/util/List; -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.jobs.JobSession#lastProgress(Ljava/lang/Double;)V -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.jobs.JobSession#remaining(Lcc/jumpkick/wire/runtime/RemainingWork;)V -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.journal.BuildJournal#abandonStaleRunning(Ljava/lang/String;)I -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.journal.BuildJournal#append(Lcc/jumpkick/engine/journal/BuildRecord;Lcc/jumpkick/engine/journal/BuildJournal$Snapshot;)Ljava/lang/String; -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.journal.BuildJournal#complete(Ljava/lang/String;Lcc/jumpkick/engine/journal/BuildRecord;Lcc/jumpkick/engine/journal/BuildJournal$Snapshot;)Z -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.plugin.PluginAot#claimed(Ljava/nio/file/Path;)Z -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.plugin.PluginAot#quiesceTrainers(J)Ljava/util/List; -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.plugin.PluginAot#recordReady(Ljava/nio/file/Path;Lcc/jumpkick/engine/plugin/PluginAot$CacheMeta;Z)V -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.plugin.PluginAot#recordUse(Ljava/nio/file/Path;Lcc/jumpkick/engine/plugin/PluginAot$CacheMeta;)V -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.plugin.PluginAot#sweepTool(Ljava/nio/file/Path;)V -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.plugin.PluginAot#touch(Ljava/nio/file/Path;)V -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.plugin.PluginAot#waitForCache(Ljava/nio/file/Path;J)Z -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.plugin.PluginProcess#converse(Ljava/lang/ProcessBuilder;Ljava/lang/String;Ljava/util/function/BiConsumer;Ljava/util/function/Consumer;ZJ)I -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.plugin.PluginProcess#lambda$converse$(Ljava/io/BufferedReader;Ljava/util/concurrent/atomic/AtomicBoolean;Ljava/util/concurrent/atomic/AtomicLong;Ljava/lang/String;Ljava/util/function/BiConsumer;Lcc/jumpkick/engine/plugin/PluginProcess$Conversation;Ljava/util/function/Consumer;Ljava/util/concurrent/atomic/AtomicReference;Ljava/util/concurrent/CountDownLatch;)V -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.plugin.PluginProcess#lambda$converse$(Ljava/lang/Process;Ljava/util/concurrent/atomic/AtomicLong;J)V -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.verbs.CalibrateVerb#run(Ljava/lang/String;Lcc/jumpkick/config/Session$CancelToken;Ljava/io/BufferedWriter;)Lcc/jumpkick/engine/jobs/JobOutcome; -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.verbs.SingleBuildVerb#run(Ljava/lang/String;Lcc/jumpkick/config/Session$CancelToken;Ljava/io/BufferedWriter;)Lcc/jumpkick/engine/jobs/JobOutcome; -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.verbs.SingleBuildVerb#run(Ljava/lang/String;Lcc/jumpkick/config/Session$CancelToken;Ljava/io/BufferedWriter;)Lcc/jumpkick/engine/jobs/JobOutcome; -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.verbs.VerbHost#nowMillis()J -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.giter8.Giter8Maven#lambda$central$(ZLjava/lang/String;Ljava/lang/String;Z)Ljava/lang/String; -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.giter8.Giter8TemplateIndex#picker(Ljava/util/List;)Ljava/util/List; -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.BuildMetrics#aggregatesForSession()Lcc/jumpkick/builds/AggregatedMetrics; -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.BuildMetrics#fromAggregates()Lcc/jumpkick/runtime/BuildMetrics; -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.CachePlans#lambda$pruneBuildPlan$(Ljava/nio/file/Path;ZZLcc/jumpkick/run/TaskContext;)V -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.ChromeTimeline#complete(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;J)V -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.HardwareProbe#measureDiskIo()J -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.HardwareProbe#measureHashCpu()J -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.HardwareProbe#measureResolve()J -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.HardwareProbe#timeProcess(Ljava/lang/ProcessBuilder;)J -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.LockPipeline#resolve(Lcc/jumpkick/lock/Lockfile;Lcc/jumpkick/resolver/ResolveObserver;Lcc/jumpkick/runtime/LockPipeline$Progress;)Lcc/jumpkick/lock/Lockfile; -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.Perf#end(Ljava/lang/String;J)V -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.Perf#start()J -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.PlannerSupport#nestedEngineTestEnv(Ljava/nio/file/Path;)Ljava/util/Map; -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.PreflightMemo#fingerprintModule(Ljava/nio/file/Path;ZLjava/lang/String;)Ljava/lang/String; -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.PreflightMemo#shapeFingerprint(Ljava/nio/file/Path;Z)Ljava/lang/String; -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.PreflightMemo#structureFingerprint(Ljava/nio/file/Path;Ljava/util/List;)Ljava/lang/String; -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.ProjectIds#idOf(Ljava/lang/String;)Ljava/lang/String; -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.ProjectIds#refresh(Ljava/lang/String;)Ljava/lang/String; -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.StepTimings#fromAggregates()Lcc/jumpkick/runtime/StepTimings; -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.TrainRunner#lambda$runUntilSettled$(Ljava/lang/StringBuilder;Ljava/util/concurrent/atomic/AtomicLong;Ljava/lang/String;)V -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.TrainRunner#runUntilSettled(Ljava/lang/ProcessBuilder;Ljava/util/function/Consumer;)Lcc/jumpkick/runtime/TrainRunner$Output; -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.WorkspaceFinalPhase#learn(Lcc/jumpkick/runtime/WorkspaceRunPhase$Run;)V -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.WorkspaceLock#ensureWorkspaceLockFresh(Ljava/nio/file/Path;Ljava/nio/file/Path;Z)Lcc/jumpkick/runtime/BuildService$LockGuard; -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.WorkspaceLock#recordLockSuccess(Ljava/nio/file/Path;J)V -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.WorkspaceRunPhase#run(Lcc/jumpkick/runtime/WorkspacePreparePhase$Prepared;Lcc/jumpkick/wire/runtime/WorkspaceBuildListener;)Lcc/jumpkick/runtime/WorkspaceRunPhase$Run; -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.WorkspaceRunPhase#runModule(Lcc/jumpkick/wire/runtime/ModulePlan;Lcc/jumpkick/wire/runtime/WorkspaceBuildListener;Ljava/lang/Runnable;)Lcc/jumpkick/wire/runtime/ModuleOutcome; -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.WorkspaceScheduler#drainCancelled(Ljava/lang/Iterable;)V -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.task.ActionCache#stampUsed(Ljava/nio/file/Path;)V -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.task.ActionCachePrune#run(Ljava/nio/file/Path;Lcc/jumpkick/cache/Cas;Lcc/jumpkick/task/ActionCachePrune$Policy;Ljava/util/Set;Z)Lcc/jumpkick/task/ActionCachePrune$Report; -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.task.CacheRetention#sweep(Ljava/nio/file/Path;Lcc/jumpkick/cache/Cas;Ljava/util/Set;ZLcc/jumpkick/task/CacheRetention$Probe;Ljava/util/Map;)Lcc/jumpkick/task/CacheRetention$Report; -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.task.CasSweep#sweep(Lcc/jumpkick/cache/Cas;Ljava/util/Set;Z)Lcc/jumpkick/task/CasSweep$Report; -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.task.FileHashMemo#contentHash(Ljava/nio/file/Path;Ljava/nio/file/attribute/BasicFileAttributes;)Ljava/lang/String; -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.task.FileHashMemo$Store#get(Ljava/lang/String;JJJ)Lcc/jumpkick/task/FileHashMemo$Entry; -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.task.PortablePath#lambda$expire$(Ljava/nio/file/Path;Lcc/jumpkick/task/PortablePath$Entry;)Lcc/jumpkick/task/PortablePath$Entry; -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.task.PortablePath#moduleRoot(Ljava/nio/file/Path;)Ljava/util/Optional; -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.task.SyncManifest#write(Ljava/nio/file/Path;Ljava/nio/file/Path;Lcc/jumpkick/lock/Lockfile;)Ljava/nio/file/Path; -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.task.TmpGc#sweep(Ljava/nio/file/Path;Ljava/time/Duration;Z)Lcc/jumpkick/task/TmpGc$Report; -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.test.XmlTestReport#<init>()V -> java.time.Instant#now()Ljava/time/Instant;"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/guard"
+at     = "cc.jumpkick.guard.eval.DeadlineCharSequence#<init>(Ljava/lang/CharSequence;J)V -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/guard"
+at     = "cc.jumpkick.guard.eval.DeadlineCharSequence#charAt(I)C -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/guard"
+at     = "cc.jumpkick.guard.explain.RuleSummaries#write(Ljava/nio/file/Path;Ljava/lang/String;Lcc/jumpkick/guard/eval/LaneRun$Result;)V -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/guard"
+at     = "cc.jumpkick.guard.explain.SarifWriter#document(Ljava/nio/file/Path;Lcc/jumpkick/guard/rules/RuleSet;Lcc/jumpkick/guard/baseline/Baseline;Ljava/util/List;Ljava/util/List;)Ljava/util/Map; -> java.time.Instant#now()Ljava/time/Instant;"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/io"
+at     = "cc.jumpkick.repo.EffectivePomBuilder#awaitShared(Ljava/lang/String;Ljava/lang/String;Lcc/jumpkick/repo/EffectivePomBuilder$Flight;)Lcc/jumpkick/repo/EffectivePom; -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/io"
+at     = "cc.jumpkick.repo.EffectivePomBuilder#build(Lcc/jumpkick/model/Coordinate;)Lcc/jumpkick/repo/EffectivePom; -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/io"
+at     = "cc.jumpkick.repo.EffectivePomBuilder#buildBomImportsParallel(Ljava/util/List;Ljava/util/Set;I)Ljava/util/Map; -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/io"
+at     = "cc.jumpkick.repo.EffectivePomBuilder#joinExpansions(Ljava/util/LinkedHashMap;Ljava/util/Map;Ljava/util/Map;Ljava/lang/Thread;)V -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/io"
+at     = "cc.jumpkick.repo.MavenMetadataCache#fresh(Ljava/nio/file/Path;)Z -> java.time.Instant#now()Ljava/time/Instant;"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/io"
+at     = "cc.jumpkick.repo.MavenMetadataCache#touch(Ljava/nio/file/Path;)V -> java.time.Instant#now()Ljava/time/Instant;"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/io"
+at     = "cc.jumpkick.repo.MavenRepo#downloadAndVerify(Lcc/jumpkick/model/Coordinate;Ljava/net/URI;Ljava/lang/String;Z)Lcc/jumpkick/repo/MavenRepo$Downloaded; -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/io"
+at     = "cc.jumpkick.repo.RepoGroup#availableVersions(Lcc/jumpkick/model/Coordinate;)Ljava/util/List; -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/io"
+at     = "cc.jumpkick.repo.RepoGroup$VersionsEntry#expired()Z -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/resolver"
+at     = "cc.jumpkick.resolver.KmpRedirects#selectionFor(Ljava/lang/String;Ljava/lang/String;)Ljava/util/Optional; -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/resolver"
+at     = "cc.jumpkick.resolver.LockProgress#<init>(Lcc/jumpkick/resolver/ResolveObserver;Lcc/jumpkick/resolver/LockProgress$Timings;)V -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/resolver"
+at     = "cc.jumpkick.resolver.LockProgress#finished(I)V -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/resolver"
+at     = "cc.jumpkick.resolver.LockProgress#graphPhase(I)V -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/resolver"
+at     = "cc.jumpkick.resolver.LockProgress#materializePhase(I)V -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/resolver"
+at     = "cc.jumpkick.resolver.MavenPackageSource#dependencies(Ljava/lang/String;Ljava/lang/String;)Ljava/util/List; -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/resolver"
+at     = "cc.jumpkick.resolver.MavenPackageSource#quiesce()V -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/resolver"
+at     = "cc.jumpkick.resolver.MavenPackageSource#versions(Ljava/lang/String;)Ljava/util/List; -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/resolver"
+at     = "cc.jumpkick.resolver.pubgrub.PartialSolution#relationTo(Lcc/jumpkick/resolver/pubgrub/Incompatibility;)Lcc/jumpkick/resolver/pubgrub/PartialSolution$Relation; -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/resolver"
+at     = "cc.jumpkick.resolver.pubgrub.PubGrubSolver#<init>(Lcc/jumpkick/resolver/pubgrub/PackageSource;IJ)V -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/resolver"
+at     = "cc.jumpkick.resolver.pubgrub.PubGrubSolver#checkBudget()V -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "server/resolver"
+at     = "cc.jumpkick.resolver.pubgrub.PubGrubSolver#solve(Ljava/lang/String;Ljava/lang/String;Ljava/util/List;)Ljava/util/Map; -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "shared/client-io"
+at     = "cc.jumpkick.cache.EngineInstall#<init>(Ljava/nio/file/Path;)V -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "shared/client-io"
+at     = "cc.jumpkick.cache.EngineInstall#<init>(Ljava/nio/file/Path;Ljava/util/function/LongSupplier;)V -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "shared/client-io"
+at     = "cc.jumpkick.cache.EngineInstall#displaceToOld(Ljava/nio/file/Path;)Ljava/util/Optional; -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "shared/client-io"
+at     = "cc.jumpkick.forge.DeviceFlow#poll(Lcc/jumpkick/forge/DeviceCode;)Ljava/lang/String; -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "shared/client-io"
+at     = "cc.jumpkick.http.CentralMirror#active()Z -> java.time.Instant#now()Ljava/time/Instant;"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "shared/client-io"
+at     = "cc.jumpkick.http.CentralMirror#noteRateLimited()V -> java.time.Instant#now()Ljava/time/Instant;"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "shared/client-io"
+at     = "cc.jumpkick.http.HostCooldown#<init>(Ljava/nio/file/Path;)V -> java.time.Instant#now()Ljava/time/Instant;"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "shared/client-io"
+at     = "cc.jumpkick.http.Http#sendWithRetry(Ljava/lang/String;Ljava/net/URI;Ljava/net/http/HttpRequest;Ljava/net/http/HttpResponse$BodyHandler;Lcc/jumpkick/http/Http$OnServerError;)Ljava/net/http/HttpResponse; -> java.time.Instant#now()Ljava/time/Instant;"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "shared/client-io"
+at     = "cc.jumpkick.http.RateLimitedException#message(Ljava/lang/String;Ljava/time/Instant;)Ljava/lang/String; -> java.time.Instant#now()Ljava/time/Instant;"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "shared/client-io"
+at     = "cc.jumpkick.repo.LibraryRegistrySync#fetchAndStore(Ljava/net/URI;Ljava/nio/file/Path;)V -> java.time.Instant#now()Ljava/time/Instant;"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "shared/client-io"
+at     = "cc.jumpkick.repo.LibraryRegistrySync#isFresh(Ljava/nio/file/Path;)Z -> java.time.Instant#now()Ljava/time/Instant;"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "shared/client-io"
+at     = "cc.jumpkick.repo.s3.S3Transport#forGcs(Lcc/jumpkick/http/Http;Ljava/net/URI;Lcc/jumpkick/model/ObjectStoreConfig;Lcc/jumpkick/repo/s3/AwsCredentialChain;Ljava/util/function/Function;)Lcc/jumpkick/repo/s3/S3Transport; -> java.time.Instant#now()Ljava/time/Instant;"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "shared/client-io"
+at     = "cc.jumpkick.repo.s3.S3Transport#forS3(Lcc/jumpkick/http/Http;Ljava/net/URI;Lcc/jumpkick/model/ObjectStoreConfig;Lcc/jumpkick/repo/s3/AwsCredentialChain;Ljava/util/function/Function;)Lcc/jumpkick/repo/s3/S3Transport; -> java.time.Instant#now()Ljava/time/Instant;"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.builds.MetricsHarvest#awaitIdle(J)V -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.builds.MetricsHarvest#runOnce(Ljava/nio/file/Path;)V -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.config.JkBuildParser$ManifestStamp#of(Ljava/nio/file/Path;Lcc/jumpkick/config/JkBuildParser$ByteSource;)Lcc/jumpkick/config/JkBuildParser$ManifestStamp; -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.config.TomlScan#lines(Ljava/nio/file/Path;)Ljava/util/List; -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.config.TomlValues#parse(Ljava/nio/file/Path;)Ljava/util/Optional; -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.lock.LockManifestDigest$Stamp#matchesDisk()Z -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.task.CachePruneScheduler#shouldRun(Lcc/jumpkick/config/JkCacheConfig;Ljava/nio/file/Path;)Z -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.templates.OfficialTemplatesFreshen#refreshQuiet(Ljava/util/function/Consumer;)V -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.util.AotManifest#lambda$reconcile$(Ljava/nio/file/Path;)V -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.util.AotManifest#nowIso()Ljava/lang/String; -> java.time.Instant#now()Ljava/time/Instant;"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.util.HostCalibrationStatus#failedRecently()Z -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "shared/host"
+at     = "cc.jumpkick.host.AotCacheFiles#blocked(Ljava/nio/file/Path;)Z -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "shared/toolchain-jdk"
+at     = "cc.jumpkick.jdk.JdkCatalogClient#cacheAge()Ljava/time/Duration; -> java.time.Instant#now()Ljava/time/Instant;"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "shared/toolchain-jdk"
+at     = "cc.jumpkick.jdk.JdkCatalogClient#loadBody(Z)[B -> java.time.Instant#now()Ljava/time/Instant;"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "shared/toolchain-jdk"
+at     = "cc.jumpkick.jdk.JdkInstaller#sweepDir(Ljava/nio/file/Path;)V -> java.lang.System#currentTimeMillis()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+[[clock-owner.entries]]
+in     = "shared/toolchain-jdk"
+at     = "cc.jumpkick.jdk.JdkRegistry#listHits()Ljava/util/List; -> java.lang.System#nanoTime()J"
+reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+
 [file-size]
 population = { units = 2891 }
 

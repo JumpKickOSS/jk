@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 
+import cc.jumpkick.testing.Await;
+import cc.jumpkick.testing.FakeClock;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.time.Duration;
@@ -553,11 +555,8 @@ class BuildPlanTest {
                             started.countDown();
                             // Bounded: an unpropagated cancel would otherwise spin this task — and
                             // the runner thread joining it — for the life of the JVM.
-                            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
-                            while (!ctx.cancelled() && System.nanoTime() < deadline) {
-                                Thread.sleep(10);
-                            }
-                            if (ctx.cancelled()) sawCancelled.countDown();
+                            Await.until(Duration.ofSeconds(30), ctx::cancelled);
+                            sawCancelled.countDown();
                         })
                         .build())
                 .build();
@@ -622,5 +621,24 @@ class BuildPlanTest {
         public void planFinish(BuildPlanResult result) {
             finalResult = result;
         }
+    }
+
+    /** A step's reported duration is what the plan's clock says passed, not what the machine took. */
+    @Test
+    void step_durations_come_from_the_plan_clock() {
+        FakeClock clock = new FakeClock();
+        var plan = BuildPlan.builder("timed")
+                .clock(clock)
+                .addTask(Task.builder("slow")
+                        .execute(ctx -> clock.advance(Duration.ofMillis(1_500)))
+                        .build())
+                .build();
+        BuildPlanResult result = plan.run();
+        assertThat(result.success()).isTrue();
+        assertThat(result.steps())
+                .filteredOn(s -> s.name().equals("slow"))
+                .extracting(BuildPlanResult.StepReport::duration)
+                .containsExactly(Duration.ofMillis(1_500));
+        assertThat(result.duration()).isGreaterThanOrEqualTo(Duration.ofMillis(1_500));
     }
 }

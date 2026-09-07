@@ -25,6 +25,7 @@ class OwnerWatchdogTest {
             stopped.countDown();
         });
 
+        // Real time: the negative. Sixty quiet milliseconds must not have stopped anything.
         Thread.sleep(60);
         assertThat(stops).hasValue(0);
 

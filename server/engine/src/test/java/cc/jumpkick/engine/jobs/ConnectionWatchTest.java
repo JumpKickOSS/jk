@@ -4,6 +4,7 @@ package cc.jumpkick.engine.jobs;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JobLimits;
+import cc.jumpkick.testing.Await;
 import java.io.BufferedReader;
 import java.io.PipedReader;
 import java.io.PipedWriter;
@@ -46,14 +47,12 @@ class ConnectionWatchTest {
             }
         });
         try {
-            long deadline = System.currentTimeMillis() + 10_000;
-            while (!watch.parkedOnRead() && System.currentTimeMillis() < deadline) Thread.sleep(5);
+            Await.until(Duration.ofSeconds(10), watch::parkedOnRead);
             assertThat(watch.parkedOnRead()).isTrue();
 
             // No channel to half-close: the blunt wake is the only way off the read.
             watch.wakeIfParked(null, connection);
-            deadline = System.currentTimeMillis() + 10_000;
-            while (watch.parkedOnRead() && System.currentTimeMillis() < deadline) Thread.sleep(5);
+            Await.until(Duration.ofSeconds(10), () -> !watch.parkedOnRead());
             assertThat(watch.parkedOnRead()).isFalse();
             assertThat(disconnects)
                     .as("a wake with the job still running is a disconnect")
@@ -108,6 +107,7 @@ class ConnectionWatchTest {
         CountDownLatch done = new CountDownLatch(1);
         Thread.ofVirtual().start(() -> {
             try {
+                // Real time: the wake has to arrive while the read is parked, from another thread.
                 Thread.sleep(50);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();

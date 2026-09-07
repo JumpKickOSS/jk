@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkLts;
@@ -549,10 +550,20 @@ public final class Calibration {
 
     // --- load / ensure -------------------------------------------------------
 
+    /**
+     * The clock every stamp and backoff here reads. Static because the class is a static-API store
+     * with a process memo; {@link #clock(Clock)} is the test seam.
+     */
+    private static volatile Clock clock = Clock.SYSTEM;
+
+    static void clock(Clock c) {
+        clock = c;
+    }
+
     public static Calibration load() {
         Calibration cached = MEMO.get();
         if (cached != null) return cached;
-        Calibration read = HostMetricsFile.readOrAbsent(System.currentTimeMillis());
+        Calibration read = HostMetricsFile.readOrAbsent(clock.millis());
         MEMO.set(read);
         return read;
     }
@@ -620,7 +631,7 @@ public final class Calibration {
             Path marker = failureMarker();
             if (!Files.isRegularFile(marker)) return false;
             long at = Long.parseLong(Files.readString(marker).trim());
-            return System.currentTimeMillis() - at < FAILURE_BACKOFF_MS;
+            return clock.millis() - at < FAILURE_BACKOFF_MS;
         } catch (Exception e) {
             return false;
         }
@@ -629,7 +640,7 @@ public final class Calibration {
     private static void recordFailure() {
         try {
             Files.createDirectories(failureMarker().getParent());
-            Files.writeString(failureMarker(), Long.toString(System.currentTimeMillis()));
+            Files.writeString(failureMarker(), Long.toString(clock.millis()));
         } catch (IOException ignored) {
         }
     }
@@ -662,10 +673,9 @@ public final class Calibration {
             Calibration cur = load();
             HostLearnedRates next = cur.learned.withSamples(samples);
             if (next == cur.learned) return;
-            Calibration updated =
-                    cur.present() ? cur.withLearned(next) : minimalWithLearned(next, System.currentTimeMillis());
+            Calibration updated = cur.present() ? cur.withLearned(next) : minimalWithLearned(next, clock.millis());
             // Bump updated so the file is not treated as stale solely from age of last probe.
-            updated = updated.touch(System.currentTimeMillis());
+            updated = updated.touch(clock.millis());
             persist(updated);
             MEMO.set(updated);
         } catch (RuntimeException ignored) {
@@ -766,7 +776,7 @@ public final class Calibration {
                     Runtime.getRuntime().availableProcessors(),
                     jdkId,
                     JkVersion.VERSION,
-                    System.currentTimeMillis(),
+                    clock.millis(),
                     true,
                     r.junitPlatformUsed(),
                     r.resolveUsed(),

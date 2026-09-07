@@ -7,3 +7,4 @@ jk-host.workspace = true
 [test-dependencies]
 assertj-core = "latest"
 junit-jupiter = "latest"
+jk-host = { workspace = true, fixtures = true }

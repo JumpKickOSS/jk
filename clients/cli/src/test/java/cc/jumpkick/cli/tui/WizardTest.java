@@ -6,11 +6,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.terminal.InputMode;
 import cc.jumpkick.terminal.MemoryTerminal;
 import cc.jumpkick.terminal.Terminals;
+import cc.jumpkick.testing.Await;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Executors;
@@ -30,8 +32,6 @@ class WizardTest {
      * Wizard.run drains stdin for ~40ms on entry ({@code drainInput}). Keys written before that
      * are discarded — always {@link #waitReady} after submit before typing.
      */
-    private static final long READY_POLL_MS = 2L;
-
     private record Harness(MemoryTerminal tty, PipedOutputStream input, AtomicInteger drawnBeforeKey) {
         String output() {
             return new String(tty.written(), StandardCharsets.UTF_8);
@@ -63,12 +63,7 @@ class WizardTest {
 
     /** Wait until the wizard has drawn {@code prompt} (post-drain). */
     private static void waitReady(Harness h, String prompt) throws Exception {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
-        while (System.nanoTime() < deadline) {
-            if (h.output().contains(prompt)) return;
-            Thread.sleep(READY_POLL_MS);
-        }
-        throw new TimeoutException("wizard never showed: " + prompt);
+        Await.until(Duration.ofSeconds(2), () -> h.output().contains(prompt), () -> "wizard never showed: " + prompt);
     }
 
     /**
@@ -84,14 +79,11 @@ class WizardTest {
      */
     private static void settle(Harness h) throws Exception {
         int before = h.drawnBeforeKey().get();
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-        while (h.tty().written().length <= before) {
-            if (System.nanoTime() > deadline) {
-                throw new TimeoutException("the wizard never redrew after the last keystroke (still " + before
+        Await.until(
+                Duration.ofSeconds(5),
+                () -> h.tty().written().length > before,
+                () -> "the wizard never redrew after the last keystroke (still " + before
                         + " bytes drawn) — the key was not consumed");
-            }
-            Thread.sleep(READY_POLL_MS);
-        }
     }
 
     @Test

@@ -7,8 +7,10 @@ import cc.jumpkick.terminal.InputMode;
 import cc.jumpkick.terminal.MemoryTerminal;
 import cc.jumpkick.terminal.ModeGuard;
 import cc.jumpkick.terminal.Terminals;
+import cc.jumpkick.testing.Await;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
+import java.time.Duration;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -64,10 +66,7 @@ class PeekKeysTest {
                 () -> false);
         assertThat(keys).isNotNull();
         try (keys) {
-            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
-            while (in.available() > 0 && System.nanoTime() < deadline) {
-                Thread.sleep(5);
-            }
+            Await.until(Duration.ofSeconds(10), () -> in.available() == 0);
             assertThat(in.available())
                     .as("the attach-time drain consumed the typeahead")
                     .isZero();
@@ -90,10 +89,7 @@ class PeekKeysTest {
         try (keys) {
             assertThat(t.mode()).isEqualTo(InputMode.PLAN_KEYS);
             finished.set(true);
-            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
-            while (readerAlive() && System.nanoTime() < deadline) {
-                Thread.sleep(10);
-            }
+            Await.until(Duration.ofSeconds(2), () -> !readerAlive());
             assertThat(readerAlive()).isFalse();
         }
         assertThat(t.mode()).isEqualTo(InputMode.COOKED);

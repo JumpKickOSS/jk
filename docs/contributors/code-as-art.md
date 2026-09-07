@@ -957,6 +957,7 @@ letter — is the Gradle-side follow-up recorded in `guard-parity.txt`.
 | G87 | `no-retired-code-markers` (jk-guards.toml, `text`) | `@Deprecated` or `@SuppressWarnings("unused")` in main code — a dual path or a parked helper the charter says to delete on touch | text, max 0 matches over `**/src/main/**/*.java` | `no-retired-code-markers` (text) |
 | G88 | `method-size` (jk-guards.toml, `metric`) | a method or constructor body over 120 code lines in main, test or fixture Java — the file cap alone let 34 members pass 150 inside files parked under 800 | metric, `lines` per method, baselined and tightened on every build | `method-size` (metric) |
 | G89 | `catalog-is-the-version-source` (jk-guards.toml, `text`) | a literal `group:artifact:version` coordinate in a Gradle script — every pin lives in gradle/libs.versions.toml, which the lockfiles and verification metadata are written from | text, `**/*.gradle.kts`, code only | `catalog-is-the-version-source` (text) |
+| G90 | `clock-owner` (jk-guards.toml, `forbid`) | a wall-clock or monotonic read (System.currentTimeMillis, System.nanoTime, Instant.now) outside cc.jumpkick.host.time — a time the caller cannot move is a test that has to sleep | forbid, baselined at the swept count and tightened on every build | `clock-owner` (forbid) |
 <!-- guards:end -->
 
 `checkCliRuntimeClasspath` and `checkCliNoParseTypes` predate the letters.
@@ -998,6 +999,7 @@ by id, kind and why. This block is a `generated` guard's rendering
 | central-address | text | the mirror and the cooldown key on the canonical host; an alias matches neither |
 | cli-runtime-classpath | depend | the CLI runtime is the native image; a test or build-time library there is a mis-scoped dependency |
 | cli-runtime-modules | layers | a CLI edge to an engine-side module puts engine code in the native image |
+| clock-owner | forbid | a wall-clock read the caller cannot move is a test that has to sleep, and a sleep asserts a duration instead of a condition |
 | file-size | metric | a file that no longer fits a context window no longer fits a reviewer |
 | guard-kinds-doc | generated | a kind the docs describe and the loader does not know is a rule nobody can write |
 | guard-registry-doc | generated | the registry drifted twice by hand; the third reconciliation is not by hand |

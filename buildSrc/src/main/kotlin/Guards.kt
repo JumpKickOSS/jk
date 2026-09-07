@@ -913,6 +913,18 @@ object Guards {
                 attach = emptySet(),
                 ruleId = "catalog-is-the-version-source",
             ),
+            spec(
+                90,
+                "clock-owner",
+                "a wall-clock or monotonic read (System.currentTimeMillis, System.nanoTime, Instant.now) outside cc.jumpkick.host.time — a time the caller cannot move is a test that has to sleep",
+                "forbid, baselined at the swept count and tightened on every build",
+                GuardHome.SELF_HOSTED,
+                tableTask = "`clock-owner` (jk-guards.toml, `forbid`)",
+                inFastGate = false,
+                gradleLetter = false,
+                attach = emptySet(),
+                ruleId = "clock-owner",
+            ),
         )
 
     val tableRows: List<GuardSpec>

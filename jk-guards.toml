@@ -952,3 +952,18 @@ why      = "a version pinned in a build script is one the lockfiles and verifica
 instead  = "add the coordinate to gradle/libs.versions.toml and reference it as libs.<alias>"
 hit      = 'implementation("org.example:lib:1.2.3")'
 miss     = 'implementation(libs.example.lib)'
+
+# Time is read in one place. A stamp, an age or a duration taken straight from the JVM cannot be
+# moved by a test, so the test sleeps instead — and a sleep asserts a duration, not a condition.
+# Baselined at the swept count; the ratchet only shrinks it.
+[guards.clock-owner]
+kind       = "forbid"
+signatures = [
+  "java.lang.System#currentTimeMillis(**)",
+  "java.lang.System#nanoTime(**)",
+  "java.time.Instant#now(**)",
+]
+owner      = "cc.jumpkick.host.time.SystemClock"
+baseline   = true
+instead    = "take a cc.jumpkick.host.time.Clock (Clock.SYSTEM in production, FakeClock in a test) and read clock.millis(), clock.nanos() or clock.instant()"
+why        = "a wall-clock read the caller cannot move is a test that has to sleep, and a sleep asserts a duration instead of a condition"

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.wire.runtime;
 
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.wire.runtime.progress.ClockProgressStrategy;
 import cc.jumpkick.wire.runtime.progress.HeaderProgressState;
 import cc.jumpkick.wire.runtime.progress.HeaderProgressStrategy;
@@ -52,6 +53,7 @@ public final class WorkspaceProgressTracker {
     private boolean settled;
 
     private final ProgressBarMode mode;
+    private final Clock ticker;
 
     public WorkspaceProgressTracker() {
         this(ProgressBarMode.fromEnvironment());
@@ -59,7 +61,13 @@ public final class WorkspaceProgressTracker {
 
     /** Per-request mode from the wire; falls back to the process env when absent. */
     public WorkspaceProgressTracker(@Nullable ProgressBarMode mode) {
+        this(mode, Clock.SYSTEM);
+    }
+
+    /** As above, with the ticker the elapsed clock reads; tests pass a fake and advance it. */
+    public WorkspaceProgressTracker(@Nullable ProgressBarMode mode, Clock ticker) {
         this.mode = mode == null ? ProgressBarMode.fromEnvironment() : mode;
+        this.ticker = ticker;
     }
     /** One monotonic floor across the strategy pair — the AUTO takeover must not repaint backwards. */
     private final SharedPeak displayedPeak = new SharedPeak();
@@ -240,10 +248,10 @@ public final class WorkspaceProgressTracker {
     }
 
     private void tickElapsed() {
-        // Monotonic synthetic clock via a System.nanoTime base — wall clock jumps (NTP steps)
-        // inflated or froze elapsed when this used currentTimeMillis. First call
-        // establishes the epoch.
-        long nowNanos = System.nanoTime();
+        // Monotonic synthetic clock via a nanosecond ticker base — wall clock jumps (NTP steps)
+        // inflated or froze elapsed when this read the epoch clock. First call establishes the
+        // epoch.
+        long nowNanos = ticker.nanos();
         if (elapsedEpochNanos == 0) {
             elapsedEpochNanos = nowNanos;
             elapsedClockMs = 0;

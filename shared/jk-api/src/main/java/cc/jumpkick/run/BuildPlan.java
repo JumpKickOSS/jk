@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.run;
 
+import cc.jumpkick.host.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayDeque;
@@ -67,6 +68,7 @@ public final class BuildPlan {
     private final Set<DefaultTaskContext> easing = ConcurrentHashMap.newKeySet();
 
     private final String name;
+    private final Clock clock;
     private final boolean interactive;
     private final List<Task> steps;
     private final List<BuildPlanListener> listeners;
@@ -95,8 +97,10 @@ public final class BuildPlan {
             boolean interactive,
             List<Task> steps,
             List<BuildPlanListener> listeners,
-            Collection<BuildPlanKey<?>> stateKeys) {
+            Collection<BuildPlanKey<?>> stateKeys,
+            Clock clock) {
         this.name = Objects.requireNonNull(name);
+        this.clock = Objects.requireNonNull(clock, "clock");
         this.interactive = interactive;
         this.steps = List.copyOf(steps);
         this.listeners = new CopyOnWriteArrayList<>(listeners);
@@ -154,7 +158,7 @@ public final class BuildPlan {
      * step failures are folded into {@link BuildPlanResult#success}.
      */
     public BuildPlanResult run() {
-        Instant planStart = Instant.now();
+        Instant planStart = clock.instant();
 
         // Step 1: ticks estimation (parallel on IO). `initialTicks` is each step's
         // internal unit count (how granularly it ticks); `weights` is its share of
@@ -284,7 +288,7 @@ public final class BuildPlan {
         BuildPlanResult result = new BuildPlanResult(
                 name,
                 success,
-                Duration.between(planStart, Instant.now()),
+                Duration.between(planStart, clock.instant()),
                 orderedReports,
                 warnings,
                 errors,
@@ -310,7 +314,7 @@ public final class BuildPlan {
         });
         interpTimer.scheduleAtFixedRate(
                 () -> {
-                    long now = System.nanoTime();
+                    long now = clock.nanos();
                     for (DefaultTaskContext c : easing) {
                         try {
                             c.tick(now);
@@ -429,9 +433,9 @@ public final class BuildPlan {
     }
 
     private TaskStatus runOneStep(Task step, int initialTicks, int weight) {
-        Instant start = Instant.now();
+        Instant start = clock.instant();
         long startNum = numerator.sum();
-        long startNanos = System.nanoTime();
+        long startNanos = clock.nanos();
         long expectedNanos = step.interpolated() ? (long) weight * INTERP_NANOS_PER_WEIGHT : 0;
         DefaultTaskContext ctx = new DefaultTaskContext(
                 step.name(), this, initialTicks, weight, step.hasExplicitWeight(), expectedNanos, startNanos);
@@ -458,7 +462,7 @@ public final class BuildPlan {
             // dashboard's per-project cache-hit ("steps skipped") ratio.
             TaskStatus terminal = ctx.wasCached() ? TaskStatus.SKIPPED : TaskStatus.SUCCESS;
             statuses.put(step.name(), terminal);
-            Duration dur = Duration.between(start, Instant.now());
+            Duration dur = Duration.between(start, clock.instant());
             reports.add(new BuildPlanResult.StepReport(step.name(), terminal, dur, step.requires()));
             stepsComplete.incrementAndGet();
             emit(l -> l.stepFinish(step.name(), step.group().orElse(null), terminal, dur, ctx.waited()));
@@ -490,7 +494,7 @@ public final class BuildPlan {
             }
             TaskStatus terminal = cancel ? TaskStatus.CANCELLED : TaskStatus.FAIL;
             statuses.put(step.name(), terminal);
-            Duration dur = Duration.between(start, Instant.now());
+            Duration dur = Duration.between(start, clock.instant());
             reports.add(new BuildPlanResult.StepReport(step.name(), terminal, dur, step.requires()));
             stepsComplete.incrementAndGet();
             emit(l -> l.stepFinish(step.name(), step.group().orElse(null), terminal, dur, ctx.waited()));
@@ -725,9 +729,16 @@ public final class BuildPlan {
         private final List<BuildPlanKey<?>> stateKeys = new ArrayList<>();
         private @Nullable String terminal;
         private final List<String> alsoKept = new ArrayList<>();
+        private Clock clock = Clock.SYSTEM;
 
         Builder(String name) {
             this.name = Objects.requireNonNull(name);
+        }
+
+        /** The clock the run reads for step durations and the interpolation timer; tests pass a fake. */
+        public Builder clock(Clock clock) {
+            this.clock = Objects.requireNonNull(clock, "clock");
+            return this;
         }
 
         /**
@@ -808,7 +819,7 @@ public final class BuildPlan {
         public BuildPlan build() {
             List<Task> selected = terminal == null ? steps : pruneToTerminal(steps, terminal, alsoKept);
             validateStateKeys(stateKeys);
-            return new BuildPlan(name, interactive, selected, listeners, stateKeys);
+            return new BuildPlan(name, interactive, selected, listeners, stateKeys, clock);
         }
     }
 

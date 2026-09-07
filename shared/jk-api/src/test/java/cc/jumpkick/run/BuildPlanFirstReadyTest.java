@@ -94,6 +94,8 @@ class BuildPlanFirstReadyTest {
                         .kind(TaskKind.CPU)
                         .execute(ctx -> {
                             testsRunning.countDown();
+                            // Real time: this task's simulated work. The property is which task the scheduler
+                            // starts first while another is running, and only real threads show that.
                             Thread.sleep(SLOW.toMillis());
                             testsEnd.set(Instant.now());
                         })
@@ -131,6 +133,8 @@ class BuildPlanFirstReadyTest {
                         .build())
                 .addTask(Task.builder("run-tests")
                         .kind(TaskKind.CPU)
+                        // Real time: this task's simulated work. The property is which task the scheduler
+                        // starts first while another is running, and only real threads show that.
                         .execute(ctx -> Thread.sleep(200))
                         .build())
                 .addTask(Task.builder("native-image")
@@ -169,6 +173,8 @@ class BuildPlanFirstReadyTest {
                 .addTask(Task.builder("run-tests")
                         .kind(TaskKind.CPU)
                         .execute(ctx -> {
+                            // Real time: this task's simulated work. The property is which task the scheduler
+                            // starts first while another is running, and only real threads show that.
                             Thread.sleep(150);
                             throw new RuntimeException("suite is red");
                         })
@@ -183,6 +189,8 @@ class BuildPlanFirstReadyTest {
                                     sawCancelled.set(true);
                                     throw new RuntimeException("cancelled");
                                 }
+                                // Real time: this task's simulated work. The property is which task the scheduler
+                                // starts first while another is running, and only real threads show that.
                                 Thread.sleep(25);
                             }
                         })
@@ -225,6 +233,8 @@ class BuildPlanFirstReadyTest {
                                     sawCancelled.set(true);
                                     throw new RuntimeException("cancelled");
                                 }
+                                // Real time: this task's simulated work. The property is which task the scheduler
+                                // starts first while another is running, and only real threads show that.
                                 Thread.sleep(25);
                             }
                         })
@@ -235,6 +245,8 @@ class BuildPlanFirstReadyTest {
                         .kind(TaskKind.SYNC)
                         .requires("package-jar")
                         .execute(ctx -> {
+                            // Real time: this task's simulated work. The property is which task the scheduler
+                            // starts first while another is running, and only real threads show that.
                             Thread.sleep(150);
                             throw new IllegalStateException("stamp dir vanished");
                         })

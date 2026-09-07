@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.JdkCatalogClient;
 import cc.jumpkick.library.LibraryCatalog;
@@ -53,6 +54,8 @@ public final class StoreFeedRefresh implements AutoCloseable {
     /** Engine hook: queue idle-boundary cache GC (never blocks the tick on builds). */
     private final @Nullable Runnable afterTick;
 
+    private final Clock clock;
+
     private final AtomicBoolean closed = new AtomicBoolean();
 
     public StoreFeedRefresh(Consumer<String> log) {
@@ -71,10 +74,11 @@ public final class StoreFeedRefresh implements AutoCloseable {
                 JdkCatalogClient::defaultCachePath,
                 LibraryRegistryClient.DEFAULT_SOURCE,
                 URI.create(JdkCatalogClient.DEFAULT_FEED_URL),
-                afterTick);
+                afterTick,
+                Clock.SYSTEM);
     }
 
-    /** Test seam: injectable HTTP, paths, feed URIs, and after-tick hook. */
+    /** Test seam: injectable HTTP, paths, feed URIs, and after-tick hook, on the system clock. */
     StoreFeedRefresh(
             Consumer<String> log,
             Http http,
@@ -83,6 +87,19 @@ public final class StoreFeedRefresh implements AutoCloseable {
             URI librariesSource,
             URI jdkFeed,
             @Nullable Runnable afterTick) {
+        this(log, http, librariesFile, jdksFile, librariesSource, jdkFeed, afterTick, Clock.SYSTEM);
+    }
+
+    /** As above with the clock feed ages are judged by. */
+    StoreFeedRefresh(
+            Consumer<String> log,
+            Http http,
+            Supplier<Path> librariesFile,
+            Supplier<Path> jdksFile,
+            URI librariesSource,
+            URI jdkFeed,
+            @Nullable Runnable afterTick,
+            Clock clock) {
         this.log = log != null ? log : s -> {};
         this.http = Objects.requireNonNull(http, "http");
         this.librariesFile = Objects.requireNonNull(librariesFile, "librariesFile");
@@ -90,6 +107,7 @@ public final class StoreFeedRefresh implements AutoCloseable {
         this.librariesSource = Objects.requireNonNull(librariesSource, "librariesSource");
         this.jdkFeed = Objects.requireNonNull(jdkFeed, "jdkFeed");
         this.afterTick = afterTick;
+        this.clock = Objects.requireNonNull(clock, "clock");
     }
 
     /**
@@ -135,12 +153,12 @@ public final class StoreFeedRefresh implements AutoCloseable {
     void refreshLibraries() throws IOException, InterruptedException {
         Path cacheFile = librariesFile.get();
         Path etagFile = LibraryCatalog.etagFileFor(cacheFile);
-        if (!needsRefresh(cacheFile, INTERVAL)) return;
+        if (!needsRefresh(cacheFile, INTERVAL, clock)) return;
 
         LibraryRegistryClient.Result result =
                 new LibraryRegistryClient(http).fetch(librariesSource, etagFile, cacheFile);
         if (result instanceof LibraryRegistryClient.Result.Unchanged) {
-            touch(cacheFile);
+            touch(cacheFile, clock);
             return;
         }
         if (!(result instanceof LibraryRegistryClient.Result.Updated updated)) return;
@@ -165,7 +183,7 @@ public final class StoreFeedRefresh implements AutoCloseable {
      */
     void refreshJdks() throws IOException, InterruptedException {
         Path cacheFile = jdksFile.get();
-        if (!needsRefresh(cacheFile, INTERVAL)) {
+        if (!needsRefresh(cacheFile, INTERVAL, clock)) {
             // Still warm — skip. (JdkCatalogClient would no-op the same way via its TTL.)
             return;
         }
@@ -174,15 +192,16 @@ public final class StoreFeedRefresh implements AutoCloseable {
                 .fetch(false);
     }
 
-    static boolean needsRefresh(Path file, Duration maxAge) throws IOException {
+    /** Whether {@code file} is missing, empty, or older than {@code maxAge} by {@code clock}. */
+    static boolean needsRefresh(Path file, Duration maxAge, Clock clock) throws IOException {
         if (!Files.isRegularFile(file) || Files.size(file) == 0) return true;
         Instant mtime = Files.getLastModifiedTime(file).toInstant();
-        return Duration.between(mtime, Instant.now()).compareTo(maxAge) >= 0;
+        return Duration.between(mtime, clock.instant()).compareTo(maxAge) >= 0;
     }
 
-    private static void touch(Path file) throws IOException {
+    private static void touch(Path file, Clock clock) throws IOException {
         if (Files.isRegularFile(file)) {
-            Files.setLastModifiedTime(file, FileTime.from(Instant.now()));
+            Files.setLastModifiedTime(file, FileTime.from(clock.instant()));
         }
     }
 

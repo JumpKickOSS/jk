@@ -8,12 +8,14 @@ import cc.jumpkick.http.Http;
 import cc.jumpkick.repo.GradleModuleMetadata;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.testing.Await;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -114,10 +116,7 @@ class KmpRedirectsMemoTest {
             // covered by a bare Thread.sleep(50) — a guess about this machine, and no assertion
             // . Parking is not directly observable, but being off the CPU is: wait for the
             // second caller's thread to leave RUNNABLE before releasing the first one.
-            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
-            while (secondThread.get().getState() == Thread.State.RUNNABLE && System.nanoTime() < deadline) {
-                Thread.sleep(5);
-            }
+            Await.until(Duration.ofSeconds(30), () -> secondThread.get().getState() != Thread.State.RUNNABLE);
             assertThat(secondThread.get().getState())
                     .as("the second caller must be parked on the in-flight lookup, not running")
                     .isNotEqualTo(Thread.State.RUNNABLE);
