@@ -80,6 +80,7 @@ Token, loopback bind, and how to report a hole in that gate: [Security](security
 | `jk://runs/latest` | Latest history summary |
 | `jk://runs/latest/results` | Latest `jk-results.md` (same as `jk_results`) |
 | `jk://runs/latest/details` | Budgeted tail of latest `details.jsonl` (same as `jk_details`) |
+| `jk://guards` | Guard catalog (same as `jk guard explain`); `jk://guards/<id>` is one rule's card (same as `jk guard explain <id>`). Needs `jk_bind`; an unknown id is a `-32602` error naming the nearest ids |
 | `jk://disk` | Cache and store usage |
 | `jk://config` | Effective machine config |
 

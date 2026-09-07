@@ -286,7 +286,7 @@ GUARD one-digest-surface  violations
 
 **A guard failure's `code` is a rule id. Fix per `Instead`. To exempt, stop and ask the user to add an
 `allow` entry with a reason — never edit the baseline, never add a comment.** Read the catalog
-(`jk guard explain`) before large edits.
+(`jk guard explain`; MCP resource `jk://guards`, one rule `jk://guards/<id>`) before large edits.
 
 The loop: read the `code` → `jk guard explain <id>` (why, instead, source line, last outcome) → change
 the *site* the way `Instead` says → `jk format` → rebuild (`jk build`, or MCP `jk_run kind=guard`).

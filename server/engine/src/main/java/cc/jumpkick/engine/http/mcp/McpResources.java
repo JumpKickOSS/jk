@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http.mcp;
 
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.docs.JkManual;
+import cc.jumpkick.guard.explain.GuardExplain;
 import cc.jumpkick.jsonl.MiniJson;
+import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.GuardsConfig;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -35,6 +39,11 @@ public final class McpResources {
                 "jk://runs/latest/details",
                 "Budgeted tail of latest details.jsonl (same as jk_details; CLI jk results --details dumps the full file)",
                 "application/json"));
+        rs.add(
+                resource(
+                        "jk://guards",
+                        "Guard catalog: every rule's id, kind, scope, why, instead, population, baseline count, last outcome"
+                                + " (same as CLI jk guard explain); jk://guards/<id> is one rule's card. Read before large edits"));
         rs.add(resource("jk://disk", "Cache and store usage"));
         rs.add(resource("jk://config", "Effective machine config"));
         return Map.of("resources", rs);
@@ -47,6 +56,7 @@ public final class McpResources {
         if ("jk://manual".equals(uri)) return manualResource();
         if ("jk://runs/latest/results".equals(uri)) return resultsResource(ctx);
         if ("jk://runs/latest/details".equals(uri)) return detailsResource(ctx);
+        if (uri.equals(GUARDS) || uri.startsWith(GUARDS + "/")) return guardsResource(ctx, uri);
         Map<String, Object> payload =
                 switch (uri) {
                     case "jk://session" -> McpVitals.statusPayload(ctx);
@@ -68,6 +78,42 @@ public final class McpResources {
                     default -> throw new McpError(-32602, "unknown resource: " + uri);
                 };
         return contents(uri, "application/json", MiniJson.write(payload));
+    }
+
+    static final String GUARDS = "jk://guards";
+
+    /**
+     * {@code jk://guards} is the catalog, {@code jk://guards/<id>} one rule's card — both the JSON
+     * {@code jk guard explain} prints, so a client that browses and one that calls read one fact.
+     * An unknown id is a parameter error naming the nearest ids, not an empty document.
+     */
+    private static Map<String, Object> guardsResource(McpContext ctx, String uri) {
+        String dir = ctx.session().dir();
+        if (dir == null) return contents(uri, "application/json", MiniJson.write(Map.of("error", "jk_bind first")));
+        Path root = Path.of(dir);
+        String id = uri.equals(GUARDS) ? null : uri.substring(GUARDS.length() + 1);
+        if (id != null && id.isEmpty()) throw new McpError(-32602, "jk://guards/<id> needs a rule id");
+        GuardsConfig cfg;
+        try {
+            cfg = JkBuildParser.guardsConfig(root.resolve(ManifestPaths.MANIFEST));
+        } catch (RuntimeException unparseable) {
+            cfg = GuardsConfig.ABSENT;
+        }
+        GuardExplain.Result r;
+        try {
+            r = GuardExplain.explain(root, cfg, id);
+        } catch (IOException e) {
+            String msg = e.getMessage() == null ? "read failed" : e.getMessage();
+            return contents(uri, "application/json", MiniJson.write(Map.of("error", msg)));
+        }
+        if (r.error() != null) {
+            if (id != null && r.error().startsWith("no rule `"))
+                throw new McpError(
+                        -32602,
+                        "unknown guard: " + id + r.error().substring(r.error().indexOf(';')));
+            return contents(uri, "application/json", MiniJson.write(Map.of("error", r.error())));
+        }
+        return contents(uri, "application/json", r.json());
     }
 
     private static Map<String, Object> manualResource() {
