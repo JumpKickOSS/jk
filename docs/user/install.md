@@ -26,8 +26,11 @@ evidence comes from `JK_RELEASES_URL/<version>/`, so an arbitrary archive URL ca
 own trust metadata.
 
 Windows PATH install dir: `%USERPROFILE%\.jk\bin` — the same `bin/` every other platform
-uses. `install.ps1` prepends it to your **User PATH** (visible from cmd and PowerShell) and
-runs `jk activate --yes` for profile hooks.
+uses. `install.ps1` prepends it to your **User PATH** (visible from cmd and PowerShell),
+sets **CurrentUser** PowerShell execution policy to `RemoteSigned` when a new session would
+otherwise be `Restricted`/`AllSigned` (so `$PROFILE` hooks can load), and runs
+`jk activate --yes` for profile hooks. Group Policy that locks the policy is left alone with
+a note — ask an admin, or run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` yourself.
 
 Local dogfood from this repository:
 
@@ -168,6 +171,8 @@ PowerShell 7: `activate pwsh`; Windows PowerShell 5.1: `activate powershell`.)
 
 - **PATH** — prepends `~/.jk/bin` so real `jk` / `jkx` resolve. On Windows the same step
   writes the User PATH, so `cmd.exe` and GUI-launched processes see it too
+- **PowerShell policy (Windows)** — if a fresh PowerShell would refuse `$PROFILE`
+  (`Restricted` / `AllSigned`), sets CurrentUser to `RemoteSigned` (same as `install.ps1`)
 - **Hooks** — `jk hook-env` updates `JAVA_HOME` / `GRAALVM_HOME` and swaps only those toolchain
   `bin` dirs onto your live `PATH` when you `cd` (nvm and other PATH edits are left alone). A
   project `jk-lock.toml` `[jdk]` / `[graal]` entry wins over the global default when some installed

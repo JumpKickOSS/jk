@@ -4,7 +4,6 @@ package cc.jumpkick.kotlin.compiler;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import cc.jumpkick.host.Os;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.PluginSpec;
 import cc.jumpkick.plugin.protocol.SpecWriter;
@@ -23,14 +22,12 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class CompileSpecTest {
 
-    private static final boolean WINDOWS = Os.isWindows();
-
     /**
      * Synthetic path root for specs. {@code SpecWriter} serializes {@link Path#toAbsolutePath()};
-     * use {@code /tmp} on Unix and {@code %USERPROFILE%\Temp} on Windows (not {@code C:\tmp}).
+     * {@code ~/.jk-test-tmp} on every OS — never a drive root.
      */
     private static Path root() {
-        return WINDOWS ? Path.of(System.getProperty("user.home"), "Temp") : Path.of("/tmp");
+        return Path.of(System.getProperty("user.home"), ".jk-test-tmp");
     }
 
     private static Path path(String first, String... more) {

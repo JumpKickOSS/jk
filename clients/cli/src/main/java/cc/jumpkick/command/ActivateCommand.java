@@ -254,7 +254,17 @@ public final class ActivateCommand implements CliCommand {
     private void finishInstall() throws IOException {
         ensureJkxLauncher();
         ensureBinOnSystemPath();
+        ensureProfileExecutionPolicy();
         ShellCompletions.writeAll();
+    }
+
+    /**
+     * The other half of Windows activation a profile block cannot do: allow PowerShell to
+     * <em>load</em> that profile. Default client policy is Restricted. Never fatal — see
+     * {@link WindowsExecutionPolicy}.
+     */
+    private static WindowsExecutionPolicy.Result ensureProfileExecutionPolicy() {
+        return WindowsExecutionPolicy.ensure();
     }
 
     private static String coloredRcList(List<Shell> shells, Theme t) {
