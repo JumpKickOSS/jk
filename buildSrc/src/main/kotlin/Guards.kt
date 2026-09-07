@@ -889,6 +889,18 @@ object Guards {
                 attach = emptySet(),
                 ruleId = "no-retired-code-markers",
             ),
+            spec(
+                88,
+                "method-size",
+                "a method or constructor body over 120 code lines in main, test or fixture Java — the file cap alone let 34 members pass 150 inside files parked under 800",
+                "metric, `lines` per method, baselined and tightened on every build",
+                GuardHome.SELF_HOSTED,
+                tableTask = "`method-size` (jk-guards.toml, `metric`)",
+                inFastGate = false,
+                gradleLetter = false,
+                attach = emptySet(),
+                ruleId = "method-size",
+            ),
         )
 
     val tableRows: List<GuardSpec>

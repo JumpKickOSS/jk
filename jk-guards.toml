@@ -518,6 +518,17 @@ cap      = 0
 baseline = true
 why      = "a package-qualified reference in a body is a name the formatter could not shorten, or a collision that must say so"
 
+# G88. A method or constructor body fits a reviewer's screen; the file cap alone let 34 members
+# pass 150 code lines inside files parked just under 800.
+[guards.method-size]
+kind     = "metric"
+measure  = "lines"
+per      = "method"
+files    = ["*/*/src/main/java/**/*.java", "*/*/src/test/java/**/*.java", "*/*/src/fixtures/java/**/*.java"]
+cap      = 120
+baseline = true
+why      = "a member that no longer fits a screen no longer fits a reviewer"
+
 # G66. One module owns each production package. A split package is latent rather than active harm:
 # package-private reach works across a jar boundary on a flat classpath and stops working under JPMS,
 # which is why nine of the rows below grew to 30, 25, 27 and 20 files without anything breaking. Each

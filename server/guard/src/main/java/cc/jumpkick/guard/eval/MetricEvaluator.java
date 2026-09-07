@@ -129,6 +129,10 @@ final class MetricEvaluator implements Evaluator {
                 units += commentBlocks(rule, f, text, limit, bound, allow, out);
                 continue;
             }
+            if (measure.equals("lines") && per.equals("method")) {
+                units += methodBodies(f, text, ext, limit, bound, allow, out);
+                continue;
+            }
             double value = measure.equals("lines") ? CodeText.codeLines(text, ext) : fqcns(text, ext);
             if (per.equals("module")) {
                 String module = moduleOf(f.rel());
@@ -175,6 +179,38 @@ final class MetricEvaluator implements Evaluator {
             n += countMatches(CodeText.FQCN, line);
         }
         return n;
+    }
+
+    /**
+     * {@code lines} per method or constructor body ({@link CodeText#methodSpans}): the unit is
+     * {@code <file>#<name>/<arity>} so an entry survives the member moving within its file; the
+     * value counts code lines from the opening brace to the closing one, nested lambdas and local
+     * classes included — they are the member's complexity, whoever compiles them.
+     */
+    private static long methodBodies(
+            TextFiles.Entry f,
+            String text,
+            String ext,
+            double limit,
+            Bound bound,
+            @Nullable Allow allow,
+            List<Observation> out) {
+        if (!ext.equals("java")) return 0;
+        long units = 0;
+        for (CodeText.MethodSpan span : CodeText.methodSpans(text)) {
+            units++;
+            double value = CodeText.codeLines(text.substring(span.open(), span.close() + 1), ext);
+            if (allow == null && bound.breached(value, limit)) {
+                String unit = f.rel() + "#" + span.name() + "/" + span.arity();
+                out.add(Observation.metric(
+                        unit,
+                        value,
+                        f.rel(),
+                        span.name() + " is " + number(value) + " code lines from line "
+                                + CodeText.lineAt(text, span.open()) + " (" + bound.describe(limit) + ")"));
+            }
+        }
+        return units;
     }
 
     /** {@code comment-lines} per contiguous comment block: {@code //} runs and each block comment. */

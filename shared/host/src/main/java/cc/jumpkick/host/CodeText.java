@@ -1,10 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.host;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Source text as a lexer sees it, for tools that match patterns against code without parsing it:
@@ -307,6 +312,123 @@ public final class CodeText {
             if (body.isEmpty() || !(body.startsWith("package ") || body.startsWith("import "))) lines++;
         }
         return lines;
+    }
+
+    /**
+     * A method or constructor body in Java source: the member's simple name, its parameter count,
+     * and the 0-based offsets of its opening and closing brace in the source text.
+     */
+    public record MethodSpan(String name, int arity, int open, int close) {}
+
+    private static final Set<String> NOT_A_MEMBER_NAME = Set.of(
+            "if",
+            "else",
+            "for",
+            "while",
+            "do",
+            "switch",
+            "case",
+            "catch",
+            "try",
+            "synchronized",
+            "return",
+            "throw",
+            "new",
+            "record",
+            "class",
+            "interface",
+            "enum",
+            "assert",
+            "yield",
+            "when");
+
+    private static final Pattern THROWS_TAIL = Pattern.compile("\\)\\s*throws\\s+[\\w.$<>,\\s\\[\\]]+$");
+
+    /**
+     * Every method and constructor body in a Java source, by brace matching over the
+     * comments-and-strings-blanked view (offsets are the source's — blanking keeps length). A body
+     * opens where {@code {} follows a parenthesised parameter list, optionally with a {@code throws}
+     * clause, whose name is an identifier that is neither a keyword nor preceded by {@code new}
+     * (anonymous class) or {@code record} (record header). Lambdas, control statements, initializer
+     * blocks and type bodies are not members; their lines count toward the member enclosing them.
+     */
+    public static List<MethodSpan> methodSpans(String javaSource) {
+        String code = blank(javaSource, Blank.COMMENTS_AND_STRINGS, false);
+        List<MethodSpan> out = new ArrayList<>();
+        record Open(String name, int arity, int offset, int depth) {}
+        Deque<Open> stack = new ArrayDeque<>();
+        int depth = 0;
+        int stmtStart = 0;
+        for (int i = 0; i < code.length(); i++) {
+            char c = code.charAt(i);
+            if (c == ';') {
+                stmtStart = i + 1;
+            } else if (c == '{') {
+                String head = code.substring(stmtStart, i).strip();
+                MethodSpan member = memberHead(head);
+                if (member != null) stack.push(new Open(member.name(), member.arity(), i, depth));
+                depth++;
+                stmtStart = i + 1;
+            } else if (c == '}') {
+                depth--;
+                if (!stack.isEmpty() && stack.peek().depth() == depth) {
+                    Open o = stack.pop();
+                    out.add(new MethodSpan(o.name(), o.arity(), o.offset(), i));
+                }
+                stmtStart = i + 1;
+            }
+        }
+        return out;
+    }
+
+    /** The member a statement head opens, or null when the brace is not a method or constructor body. */
+    private static @Nullable MethodSpan memberHead(String head) {
+        if (head.isEmpty() || head.contains("->")) return null;
+        Matcher throwsTail = THROWS_TAIL.matcher(head);
+        if (throwsTail.find()) head = head.substring(0, throwsTail.start() + 1);
+        if (!head.endsWith(")")) return null;
+        int open = matchingOpenParen(head, head.length() - 1);
+        if (open < 0) return null;
+        String before = head.substring(0, open).stripTrailing();
+        int nameStart = before.length();
+        while (nameStart > 0
+                && (Character.isLetterOrDigit(before.charAt(nameStart - 1))
+                        || before.charAt(nameStart - 1) == '_'
+                        || before.charAt(nameStart - 1) == '$')) {
+            nameStart--;
+        }
+        String name = before.substring(nameStart);
+        if (name.isEmpty() || Character.isDigit(name.charAt(0)) || NOT_A_MEMBER_NAME.contains(name)) return null;
+        String prefix = before.substring(0, nameStart).stripTrailing();
+        if (prefix.endsWith("new") || prefix.endsWith("record") || prefix.endsWith("=")) return null;
+        if (prefix.endsWith(".")) return null; // a chained call ending in `) {` is not a declaration
+        String params = head.substring(open + 1, head.length() - 1).strip();
+        return new MethodSpan(name, params.isEmpty() ? 0 : topLevelCommas(params) + 1, 0, 0);
+    }
+
+    private static int matchingOpenParen(String s, int closeAt) {
+        int depth = 0;
+        for (int i = closeAt; i >= 0; i--) {
+            char c = s.charAt(i);
+            if (c == ')') depth++;
+            else if (c == '(') {
+                depth--;
+                if (depth == 0) return i;
+            }
+        }
+        return -1;
+    }
+
+    private static int topLevelCommas(String params) {
+        int depth = 0;
+        int commas = 0;
+        for (int i = 0; i < params.length(); i++) {
+            char c = params.charAt(i);
+            if (c == '<' || c == '(' || c == '[') depth++;
+            else if (c == '>' || c == ')' || c == ']') depth--;
+            else if (c == ',' && depth == 0) commas++;
+        }
+        return commas;
     }
 
     /** 1-based line number of {@code offset} in {@code text}. */

@@ -29,7 +29,7 @@ final class EngineRules {
 
     /** A build site and its forecast twin, addressed as {@code <file>|<key variable>}. */
     private static final List<String[]> PAIRS =
-            List.<String[]>of(new String[] {"package-jar", "PlannerPackage.java|pkgKey", "TaskForecaster.java|pkgKey"});
+            List.<String[]>of(new String[] {"package-jar", "PlannerPackage.java|pkgKey", "ModuleForecast.java|pkgKey"});
 
     /** One body, both callers: the owner site to the {@code <file>|<literal>} reach points. */
     private static final Map<String, List<String>> SHARED = Map.of(
@@ -37,17 +37,17 @@ final class EngineRules {
                     List.of(
                             "package-assembly",
                             "PlannerTails.java|PackagingKeys.assembly(",
-                            "TaskForecaster.java|PackagingKeys.assemblyActionCached("),
+                            "ModuleForecast.java|PackagingKeys.assemblyActionCached("),
             "PackagingKeys.java|pkgKey",
                     List.of(
                             "plugin packager",
                             "PlannerPlugin.java|PackagingKeys.pluginPackager(",
-                            "TaskForecaster.java|PackagingKeys.pluginPackagerStep("),
+                            "ModuleForecast.java|PackagingKeys.pluginPackagerStep("),
             "GuardKeys.java|key",
                     List.of(
                             "guard",
                             "PlannerGuards.java|GuardKeys.laneKey(",
-                            "TaskForecaster.java|GuardKeys.forecastModuleLane(",
+                            "ModuleForecast.java|GuardKeys.forecastModuleLane(",
                             "GuardKeys.java|forecastWorkspaceLane(root, actionCache)",
                             "GuardKeys.java|forecastTreeLane(root, actionCache)",
                             "GuardKeys.java|forecastOutputLane(root, actionCache)"));
@@ -71,7 +71,7 @@ final class EngineRules {
     private static final List<String[]> REQUEST_PAIRS = List.<String[]>of(new String[] {
         "compile-test",
         "TestSupport.java|qualifiedTaskId(taskId, outputDir)",
-        "TaskForecaster.java|TaskNames.COMPILE_TEST, testOut)"
+        "ModuleForecast.java|TaskNames.COMPILE_TEST, testOut)"
     });
 
     private static final Map<String, List<String>> REQUEST_SHARED = Map.of(
@@ -79,7 +79,7 @@ final class EngineRules {
             List.of(
                     "compile-main",
                     "PlannerCompile.java|mainCompileRequest(new MainCompile(",
-                    "TaskForecaster.java|PlannerCompile.mainCompileRequest("),
+                    "ModuleForecast.java|PlannerCompile.mainCompileRequest("),
             "PlannerFixtures.java|public static CompileRequest fixturesCompileRequest(",
             List.of(
                     "compile-test-fixtures",
@@ -96,7 +96,7 @@ final class EngineRules {
             "PlannerFixtures.java", 1,
             "PlannerGuardSuite.java", 1,
             "TestSupport.java", 1,
-            "TaskForecaster.java", 1,
+            "ModuleForecast.java", 1,
             "LocalProjectBuilder.java", 1,
             "ScriptPlans.java", 1);
 
@@ -315,7 +315,9 @@ final class EngineRules {
                 assertReaches(src, v, reach, spec.get(0) + " (" + e.getKey() + ")", "key");
         }
         // unpaired keys are honest about whether the forecast steps them
-        String forecaster = src.read("TaskForecaster.java");
+        // The module forecast emits its steps from ModuleForecast; the shared step factory stays in
+        // TaskForecaster, so both are scanned.
+        String forecaster = src.read("TaskForecaster.java") + "\n" + src.read("ModuleForecast.java");
         TreeSet<String> stepArgs = new TreeSet<>();
         for (Pattern p : List.of(
                 Pattern.compile("new TaskForecast\\.Task\\(\\s*([^,]+),"),

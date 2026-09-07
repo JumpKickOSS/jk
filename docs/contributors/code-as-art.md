@@ -418,6 +418,11 @@ cannot drift.
 | JavaScript | `.js` `.mjs` | 600 | 1,200 | 1,600 with the same comment |
 | CSS | `.css` | — | — | exempt |
 
+Members have a cap of their own: a method or constructor body is at most **120**
+code lines, counted from its opening brace to its closing one with every nested
+lambda and local class included (the `method-size` rule, baselined and tightened
+on every build). A file that fits is not a licence for a member that does not.
+
 The count is **code lines**, not `wc -l`. Comments (including Javadoc), blank
 lines, and `package` / `import` lines do not count. A statement with a trailing
 comment still counts. String and text-block contents count — a fixture is
@@ -950,6 +955,7 @@ letter — is the Gradle-side follow-up recorded in `guard-parity.txt`.
 | G85 | `schema-freeze` (jk-guards.toml, `text`) | an external format constant (`Lockfile.CURRENT_VERSION`, `EngineProtocol.PROTOCOL`, MCP / JSONL / transcript `SCHEMA`) not equal to 1 before 1.0 | text, exactly five `= 1` constants across the named owners | `schema-freeze` (text) |
 | G86 | `lock-version-is-one` (jk-guards.toml, `text`) | a committed `jk-lock.toml` whose `version` is not 1 | text, max 0 matches over every lock in the tree | `lock-version-is-one` (text) |
 | G87 | `no-retired-code-markers` (jk-guards.toml, `text`) | `@Deprecated` or `@SuppressWarnings("unused")` in main code — a dual path or a parked helper the charter says to delete on touch | text, max 0 matches over `**/src/main/**/*.java` | `no-retired-code-markers` (text) |
+| G88 | `method-size` (jk-guards.toml, `metric`) | a method or constructor body over 120 code lines in main, test or fixture Java — the file cap alone let 34 members pass 150 inside files parked under 800 | metric, `lines` per method, baselined and tightened on every build | `method-size` (metric) |
 <!-- guards:end -->
 
 `checkCliRuntimeClasspath` and `checkCliNoParseTypes` predate the letters.
@@ -999,6 +1005,7 @@ by id, kind and why. This block is a `generated` guard's rendering
 | jdk-removal-confined | forbid | an ordinary build once deleted the JDK it was running on, twice in one afternoon |
 | lock-version-is-one | text | the lockfile schema is version 1 until 1.0 |
 | manifest-names | vocabulary | a file jk owns is named once, in ManifestPaths |
+| method-size | metric | a member that no longer fits a screen no longer fits a reviewer |
 | named-exit-codes | text | an exit code is the one integer a user's script sees, and a bare one is a meaning nobody wrote down |
 | no-agent-trailers | commit | attribution trailers are noise in blame |
 | no-fqcn | metric | a package-qualified reference in a body is a name the formatter could not shorten, or a collision that must say so |
