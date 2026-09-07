@@ -904,6 +904,7 @@ tasks.register("checkNoHistoricalNarration") {
     val exempt = mapOf(
         "AGENTS.md" to "names the banned narration phrases as the policy",
         "docs/contributors/comments.md" to "names the banned narration phrases as the policy",
+        "jk-guards.toml" to "the jk-side rule spells the banned phrases",
     )
     val stamp = layout.buildDirectory.file("guards/no-historical-narration.ok")
     outputs.file(stamp)
@@ -1350,6 +1351,7 @@ tasks.register("checkNoTicketIds") {
     val exempt = mapOf(
         "AGENTS.md" to "documents the board protocol an agent follows, ids included",
         "docs/contributors/comments.md" to "states the ban, using ids as its own examples",
+        "jk-guards.toml" to "the jk-side rule's own hit fixture",
     )
     val stamp = layout.buildDirectory.file("guards/no-ticket-ids.ok")
     outputs.file(stamp)
@@ -1466,7 +1468,8 @@ tasks.register("checkSingleHomeRoot") {
             var text = f.readText()
             val markers = when (rel) {
                 "build.gradle.kts" -> "// Guard G49:" to "// Guard: the published installers"
-                ".jk/after-build.kts" -> "val singleHomeAllowedLines =" to "// The two places a ticket id"
+                // The jk-side rule spells the same shapes; its table sits between these two comments.
+                "jk-guards.toml" -> "# G49." to "# G50."
                 else -> null
             }
             if (markers != null) {

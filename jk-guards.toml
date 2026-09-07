@@ -3,14 +3,6 @@
 # Exemptions go in `allow` with a reason; never a comment in code, never a hand edit of
 # jk-guards-baseline.toml. `jk guard explain <id>` prints a rule; `--schema <kind>` prints a kind.
 
-# G30. Properties.store() writes a #-dated comment line in Hashtable order — a non-reproducible
-# artifact. DeterministicProperties.render is the one writer.
-[guards.properties-store-owner]
-kind       = "forbid"
-signatures = ["java.util.Properties#store(**)", "java.util.Properties#storeToXML(**)"]
-instead    = "cc.jumpkick.host.DeterministicProperties.render"
-why        = "Properties.store writes a dated comment in hash order: a non-reproducible artifact"
-
 # G3. jk parses XML in one place, with one hardening posture. A second factory is a second XXE
 # posture to get wrong; DomXml hands out documents, never a factory or a builder.
 [guards.xml-parser-owner]
@@ -318,4 +310,211 @@ hit      = "d.class"
 miss     = "el.className"
 instead  = "EngineProtocol.TEST_CLASS_FIELD (\"testClass\"): the SPA reads d.testClass"
 why      = "the dashboard hand-types every key it reads, so a retired key there is silent"
+
+# G5. Every ##JK<X>: marker is one end of a parent/child protocol: the plugin declares it and the
+# engine reads it. Named once it is a dead protocol; named three times it is a lockstep waiting to
+# break — and neither end fails loudly at runtime.
+[guards.wire-prefix-pairs]
+kind    = "text"
+files   = ["**/src/main/java/**/*.java", "**/jk-plugin.toml"]
+pattern = '"##JK[A-Z]+:"'
+count   = { exactly = 2, per = "match" }
+hit     = 'String prefix = "##JKFMT:";'
+instead = "reference the declaring constant instead of re-typing the literal"
+why     = "a protocol prefix has exactly two ends: one writes it, one reads it"
+
+# G48. An inline Javadoc tag needs a space before its payload: {@code .asc}, not the glued form,
+# which renders as literal garbage and can block FQCN shortening for the whole file.
+[guards.no-glued-inline-tag]
+kind    = "text"
+files   = ["**/src/**/*.java"]
+blank   = "code"
+pattern = '\{@(?:code|value|linkplain|link)[^\s}a-zA-Z]'
+hit     = "/** see {@code.asc} */"
+miss    = "/** see {@code .asc} */"
+instead = "a space before the payload: {@code .asc}"
+why     = "a glued inline tag renders as garbage and blocks the shortener for the whole file"
+
+# G49. jk lives under $HOME/.jk, on every platform. Deliberately not comment-blind: a path spelled
+# in a comment, a doc or an installer misleads the same reader.
+[guards.single-home-root]
+kind     = "text"
+blank    = "none"
+files    = [
+  "**/*.java", "**/*.kt", "**/*.kts", "**/*.md", "**/*.sh", "**/*.ps1", "**/*.bat",
+  "**/*.html", "**/*.js", "**/*.mjs", "**/*.css",
+]
+patterns = [
+  '\.local/share', '\.local/state', '\.local/bin', '\.cache/jk', '\.config/jk',
+  'XDG_[A-Z_]+', 'LOCALAPPDATA', 'APPDATA', '<data>',
+  '(?i)\bdata root\b', '(?i)\bdata/lib\b',
+  '\$\{?JK_HOME\}?[/\\]data\b', '--data(?:-dir)?\b',
+  '(?:homeDir\(\)|JkDirs\.home\(\))\.resolve\("data"\)',
+  'JK_DATA_DIR|JK_BUILDS_DIR|JK_TMP_DIR|JK_BIN_DIR|JK_INSTALL_DIR',
+  'JK_CONFIG_DIR|JK_CONFIG_FILE',
+]
+hit      = "the data root"
+miss     = "the store root"
+instead  = "resolve paths through cc.jumpkick.util.JkDirs (JK_HOME, plus JK_STORE_DIR / JK_CACHE_DIR / JK_STATE_DIR / JK_JDKS_DIR)"
+why      = "jk has one home; a layout it does not have, named anywhere, misleads the reader"
+
+[[guards.single-home-root.allow]]
+in     = "build.gradle.kts"
+reason = "the Gradle twin of this rule spells the banned shapes"
+
+[[guards.single-home-root.allow]]
+in     = "shared/core/src/main/java/cc/jumpkick/config/TerminalFonts.java"
+reason = "reads another program's XDG_CONFIG_HOME to find the terminal's font"
+
+[[guards.single-home-root.allow]]
+in     = "shared/toolchain-jdk/src/main/java/cc/jumpkick/discovery/MiseProbe.java"
+reason = "reads mise's own layout (MISE_DATA_DIR, XDG_DATA_HOME, .local/share/mise) to discover JDKs"
+
+[[guards.single-home-root.allow]]
+in     = "shared/toolchain-jdk/src/test/java/cc/jumpkick/discovery/MiseProbeTest.java"
+reason = "fixtures for mise's own layout"
+
+[[guards.single-home-root.allow]]
+in     = "shared/toolchain-jdk/src/main/java/cc/jumpkick/jdk/IntellijJdkTable.java"
+reason = "reads IntelliJ's own config location (APPDATA, XDG_CONFIG_HOME)"
+
+[[guards.single-home-root.allow]]
+in     = "shared/toolchain-jdk/src/test/java/cc/jumpkick/jdk/IntellijJdkTableTest.java"
+reason = "fixtures for IntelliJ's own config location"
+
+[[guards.single-home-root.allow]]
+in     = "shared/core/src/test/java/cc/jumpkick/util/JkDirsTest.java"
+reason = "asserts that the retired XDG / AppData variables are ignored"
+
+[[guards.single-home-root.allow]]
+in     = "clients/cli/src/main/java/cc/jumpkick/cli/engine/RetiredEngineLayouts.java"
+reason = "names the retired layouts in order to migrate away from them"
+
+[[guards.single-home-root.allow]]
+in     = "clients/cli/src/test/java/cc/jumpkick/cli/engine/EngineFleetTest.java"
+reason = "fixture for a retired LOCALAPPDATA layout"
+
+[[guards.single-home-root.allow]]
+in     = "clients/cli/src/test/java/cc/jumpkick/command/WrapperTemplateTest.java"
+reason = "asserts the wrapper template does not contain the retired variables"
+
+# G50. A ticket id names a tracker this repository's readers do not have. Extension-blind on
+# purpose: every scope this rule was given by extension is where it was missed next.
+[guards.no-ticket-ids]
+kind    = "text"
+files   = ["**"]
+blank   = "none"
+pattern = '\bJK-\d{4}\b'
+hit     = "see JK-1234"
+instead = "state the invariant or the defect; history belongs in the commit message, not the tree"
+why     = "a ticket id names a tracker the reader does not have; a Giter8 template writes it into a user's project"
+
+[[guards.no-ticket-ids.allow]]
+in     = "AGENTS.md"
+reason = "documents the board protocol an agent follows, ids included"
+
+[[guards.no-ticket-ids.allow]]
+in     = "docs/contributors/comments.md"
+reason = "states the ban, using ids as its own examples"
+
+[[guards.no-ticket-ids.allow]]
+in     = "jk-guards.toml"
+reason = "this rule's own hit fixture"
+
+# G59. A comment that narrates history describes a tree that no longer exists. State the current
+# invariant; history belongs in the commit body. Comments and prose only: a string literal that
+# says "formerly" is data.
+[guards.no-historical-narration]
+kind     = "text"
+files    = ["**/*.java", "**/*.kt", "**/*.kts", "**/*.md", ".github/**/*.yml"]
+blank    = "code"
+patterns = [
+  '(?i)(?:this|it|they|javadoc) used to\b',
+  '(?i)\bused to (?:be|say|live|scan)\b',
+  '(?i)\bformerly\b',
+  '(?i)\bback-compat',
+  '(?i)\bfor future agents\b',
+  '(?i)\bkept for migration\b',
+  '(?i)\bdo not revert\b',
+  '(?i)\bas (?:they|it) used to\b',
+]
+hit      = "// this used to be a list"
+miss     = "// used to detect a stale entry"
+instead  = "state the current invariant"
+why      = "historical narration describes a tree that no longer exists"
+
+[[guards.no-historical-narration.allow]]
+in     = "AGENTS.md"
+reason = "names the banned narration phrases as the policy"
+
+[[guards.no-historical-narration.allow]]
+in     = "docs/contributors/comments.md"
+reason = "names the banned narration phrases as the policy"
+
+# G60. A JSON object spliced by hand — chop the closing brace, append fields, re-close — got the
+# separator wrong on an empty object every time it was written. Jsonl.append owns it.
+[guards.one-json-splicer]
+kind     = "text"
+files    = ["**/src/main/java/**/*.java"]
+patterns = [
+  '\.substring\(0,\s*\w+\.length\(\)\s*-\s*1\)[^;]*"\}"',
+  '"\{(?:\\"|[^"])*"[^;]*\.substring\(1\)',
+]
+owner    = "shared/host/src/main/java/cc/jumpkick/jsonl/Jsonl.java"
+hit      = 'sb.substring(0, sb.length() - 1) + ",\"k\":1" + "}"'
+miss     = 'Jsonl.append(object, fields)'
+instead  = "Jsonl.append(object, fields): it validates the object and owns the separator"
+why      = "every hand chop got the separator wrong on an empty object"
+
+# G61. `[m2] install` is on by default, so a test that runs the install verb without --m2-dir
+# publishes into the developer's real ~/.m2 — outside the checkout, where no assertion looks.
+[guards.install-tests-redirect-m2]
+kind    = "text"
+files   = ["**/src/test/java/**/*.java"]
+pattern = '\b(?:execute|run)\s*\(\s*(?:new\s+String\s*\[\s*]\s*\{\s*)?(?:"tool"\s*,\s*)?"install"\s*[,)}](?:(?!--m2-dir)[^;])*;'
+hit     = 'Jk.execute("install", dir.toString());'
+miss    = 'Jk.execute("install", "--m2-dir", m2.toString(), dir.toString());'
+instead = "pass --m2-dir into the test's own temp dir"
+why     = "an install test without --m2-dir publishes into the developer's real ~/.m2"
+
+# G65. A tree walk in build logic that follows symbolic links can reach the JDK install behind a
+# stable pointer in a test home and delete it. Trees.deleteNoFollow / exceedsNoFollow never enter a
+# link.
+[guards.no-link-following-delete]
+kind     = "text"
+files    = ["**/*.gradle.kts", "buildSrc/src/**/*.kt", ".jk/**/*.kts"]
+blank    = "comments+strings"
+patterns = [
+  '\.deleteRecursively\(', '\.walkTopDown\(', '\.walkBottomUp\(',
+  '(?<!Files)\.walk\(\)', '(?<!NO)FOLLOW_LINKS',
+]
+hit      = "dir.toFile().deleteRecursively()"
+miss     = "Trees.deleteNoFollow(dir)"
+instead  = "Trees.deleteNoFollow or Trees.exceedsNoFollow: a link is one entry there, never a directory to enter"
+why      = "a walk that follows links can delete the install behind a stable JDK pointer"
+
+# G10. Unenforced caps regrow: a class finished its peel at 1,064 lines and was back over 1,200
+# eleven days later. Code lines, per language; a listed file may only shrink.
+[guards.file-size]
+kind     = "metric"
+measure  = "lines"
+files    = [
+  "*/*/src/main/java/**/*.java", "*/*/src/main/kotlin/**/*.kt",
+  "*/*/src/main/resources/**/*.js", "*/*/src/main/resources/**/*.mjs",
+  "*/*/src/test/java/**/*.java", "*/*/src/test/kotlin/**/*.kt", "*/*/src/fixtures/java/**/*.java",
+  "*/*/src/test/js/**/*.js", "*/*/src/test/js/**/*.mjs",
+]
+cap      = { java = 800, kt = 800, js = 1200, mjs = 1200 }
+baseline = true
+why      = "a file that no longer fits a context window no longer fits a reviewer"
+
+# G11. A fully-qualified class name in a method body is banned — import the type. A genuine
+# collision keeps its FQCN as a baseline entry that names what it collides with.
+[guards.no-fqcn]
+kind     = "metric"
+measure  = "fqcn"
+files    = ["*/*/src/main/java/**/*.java", "*/*/src/test/java/**/*.java"]
+cap      = 0
+baseline = true
+why      = "a package-qualified reference in a body is a name the formatter could not shorten, or a collision that must say so"
 

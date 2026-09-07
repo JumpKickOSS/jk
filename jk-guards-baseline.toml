@@ -721,3 +721,298 @@ reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk
 in     = "shared/wire"
 at     = "cc.jumpkick.wire.EnginePaths#identitiesIn(Ljava/nio/file/Path;)Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+
+[no-fqcn]
+population = { units = 2703 }
+[[no-fqcn.entries]]
+unit   = "clients/cli-terminal/src/main/java/cc/jumpkick/terminal/package-info.java"
+value  = 1
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "clients/cli-terminal/src/main/java/cc/jumpkick/terminal/posix/package-info.java"
+value  = 1
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "clients/cli-terminal/src/main/java/cc/jumpkick/terminal/windows/package-info.java"
+value  = 1
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "clients/cli/src/main/java/cc/jumpkick/cli/Argv0.java"
+value  = 1
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "clients/cli/src/test/java/cc/jumpkick/cli/tui/TableAppendTest.java"
+value  = 2
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "clients/cli/src/test/java/cc/jumpkick/command/CacheCommandTest.java"
+value  = 1
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "clients/cli/src/test/java/cc/jumpkick/command/NewScaffolder.java"
+value  = 3
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "clients/cli/src/test/java/cc/jumpkick/command/SelfNukeCommandTest.java"
+value  = 3
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "plugins/image-builder/src/main/java/cc/jumpkick/plugin/image/BaseJre.java"
+value  = 2
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "plugins/java-compiler/src/main/java/cc/jumpkick/java/compiler/ScalaBridge.java"
+value  = 1
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "plugins/java-compiler/src/main/java/cc/jumpkick/java/compiler/ZincJavaCompiler.java"
+value  = 2
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "plugins/kotlin-compiler/src/main/java/cc/jumpkick/kotlin/compiler/KotlinCompiler.java"
+value  = 8
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "plugins/test-runner/src/main/java/cc/jumpkick/testrunner/JUnitUniqueId.java"
+value  = 3
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "server/engine/src/main/java/cc/jumpkick/compile/CompileResult.java"
+value  = 1
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "server/engine/src/main/java/cc/jumpkick/engine/http/package-info.java"
+value  = 1
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "server/engine/src/main/java/cc/jumpkick/engine/jobs/JobBody.java"
+value  = 1
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "server/engine/src/main/java/cc/jumpkick/engine/jobs/package-info.java"
+value  = 1
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "server/engine/src/main/java/cc/jumpkick/engine/journal/package-info.java"
+value  = 1
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "server/engine/src/main/java/cc/jumpkick/engine/listen/package-info.java"
+value  = 1
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "server/engine/src/main/java/cc/jumpkick/engine/plugin/PluginProcess.java"
+value  = 1
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "server/engine/src/main/java/cc/jumpkick/engine/verbs/NativeVerb.java"
+value  = 1
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "server/engine/src/main/java/cc/jumpkick/engine/verbs/package-info.java"
+value  = 1
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "server/engine/src/main/java/cc/jumpkick/giter8/Giter8Render.java"
+value  = 1
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "server/engine/src/main/java/cc/jumpkick/giter8/package-info.java"
+value  = 1
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "server/engine/src/main/java/cc/jumpkick/runtime/PlannerNative.java"
+value  = 33
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "server/engine/src/test/java/cc/jumpkick/engine/http/McpHandlerTest.java"
+value  = 5
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "server/engine/src/test/java/cc/jumpkick/engine/plugin/JvmOptionsTest.java"
+value  = 1
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "server/engine/src/test/java/cc/jumpkick/engine/plugin/PluginProcessTest.java"
+value  = 1
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "server/engine/src/test/java/cc/jumpkick/engine/runtime/CacheInventoryOpsTest.java"
+value  = 2
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "server/engine/src/test/java/cc/jumpkick/engine/runtime/NewProjectOpsTest.java"
+value  = 1
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "server/engine/src/test/java/cc/jumpkick/giter8/Giter8TemplateIndexTest.java"
+value  = 1
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "server/engine/src/test/java/cc/jumpkick/runtime/BuildServiceEtaParityTest.java"
+value  = 1
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "server/engine/src/test/java/cc/jumpkick/runtime/BuildServiceEtaTest.java"
+value  = 1
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "server/engine/src/test/java/cc/jumpkick/runtime/CachePlansPurgeTest.java"
+value  = 1
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "server/engine/src/test/java/cc/jumpkick/runtime/ExplainBuildEtaParityTest.java"
+value  = 2
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "server/engine/src/test/java/cc/jumpkick/runtime/NativePlansTest.java"
+value  = 3
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "server/engine/src/test/java/cc/jumpkick/runtime/PinnedWorkerJarTest.java"
+value  = 1
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "server/engine/src/test/java/cc/jumpkick/runtime/RobolectricUnitTest.java"
+value  = 1
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "server/engine/src/test/java/cc/jumpkick/runtime/TestEffortTest.java"
+value  = 1
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "server/engine/src/test/java/cc/jumpkick/runtime/TestEnvTest.java"
+value  = 1
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "server/engine/src/test/java/cc/jumpkick/runtime/WorkspaceExecuteSelectionTest.java"
+value  = 1
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "server/resolver/src/test/java/cc/jumpkick/resolver/LockOrchestratorBomTest.java"
+value  = 1
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "server/resolver/src/test/java/cc/jumpkick/resolver/MavenPackageSourceExclusionTest.java"
+value  = 1
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "server/resolver/src/test/java/cc/jumpkick/resolver/PlatformBomVersionsTest.java"
+value  = 1
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "shared/client-io/src/test/java/cc/jumpkick/http/HostCooldownTest.java"
+value  = 1
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "shared/client-io/src/test/java/cc/jumpkick/repo/RepoArtifactStoreTest.java"
+value  = 3
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "shared/client-io/src/test/java/cc/jumpkick/repo/RepoCredentialResolverTest.java"
+value  = 1
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "shared/core/src/main/java/cc/jumpkick/config/ManifestProject.java"
+value  = 5
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "shared/core/src/main/java/cc/jumpkick/plugin/manifest/PluginTableRegistry.java"
+value  = 1
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "shared/core/src/test/java/cc/jumpkick/config/JkBuildWorkspaceTest.java"
+value  = 1
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "shared/core/src/test/java/cc/jumpkick/config/ManifestTrainTest.java"
+value  = 1
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "shared/core/src/test/java/cc/jumpkick/config/ModuleDotGraphTest.java"
+value  = 1
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "shared/core/src/test/java/cc/jumpkick/config/NerdFontDetectCostTest.java"
+value  = 1
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "shared/core/src/test/java/cc/jumpkick/diagnostic/CompilerLocusTest.java"
+value  = 4
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "shared/core/src/test/java/cc/jumpkick/layout/BuildLayoutTest.java"
+value  = 1
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "shared/core/src/test/java/cc/jumpkick/lock/LockManifestDigestTest.java"
+value  = 4
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "shared/core/src/test/java/cc/jumpkick/plugin/manifest/PluginContributionsTest.java"
+value  = 3
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "shared/core/src/test/java/cc/jumpkick/plugin/manifest/PluginTableRegistryTest.java"
+value  = 3
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "shared/core/src/test/java/cc/jumpkick/plugin/manifest/VariantApplyTest.java"
+value  = 1
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "shared/core/src/test/java/cc/jumpkick/resolver/DependencyGraphModelTest.java"
+value  = 3
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "shared/core/src/test/java/cc/jumpkick/resolver/DependencyTreeTest.java"
+value  = 12
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "shared/core/src/test/java/cc/jumpkick/templates/OfficialTemplatesFreshenTest.java"
+value  = 3
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "shared/jk-api/src/test/java/cc/jumpkick/run/BuildStageTest.java"
+value  = 2
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "shared/plugin-sdk/src/main/java/cc/jumpkick/plugin/build/BuildPluginContext.java"
+value  = 1
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "shared/plugin-sdk/src/main/java/cc/jumpkick/plugin/build/BuildPluginHarness.java"
+value  = 3
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "shared/plugin-sdk/src/main/java/cc/jumpkick/plugin/build/In.java"
+value  = 2
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "shared/plugin-sdk/src/main/java/cc/jumpkick/plugin/build/InvocationPhase.java"
+value  = 2
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "shared/plugin-sdk/src/main/java/cc/jumpkick/plugin/build/PackageIo.java"
+value  = 1
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "shared/plugin-sdk/src/main/java/cc/jumpkick/plugin/build/PluginCommandExec.java"
+value  = 3
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "shared/plugin-sdk/src/main/java/cc/jumpkick/plugin/build/TaskExec.java"
+value  = 3
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "shared/toolchain-jdk/src/test/java/cc/jumpkick/jdk/JdkCatalogClientTest.java"
+value  = 2
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "shared/toolchain-jdk/src/test/java/cc/jumpkick/jdk/JdkRegistryTest.java"
+value  = 2
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "shared/toolchain-jdk/src/test/java/cc/jumpkick/jdk/JdkResolverTest.java"
+value  = 1
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"

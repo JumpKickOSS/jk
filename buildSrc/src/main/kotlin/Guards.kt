@@ -64,6 +64,7 @@ object Guards {
                 "ban",
                 GuardHome.MODULE,
                 description = "Fail the build on a ##JK*: protocol prefix not named exactly twice",
+                ruleId = "wire-prefix-pairs",
             ),
             spec(
                 6,
@@ -107,6 +108,7 @@ object Guards {
                 "ratchet",
                 GuardHome.MODULE,
                 description = "Fail the build when a file grows past size-baseline.txt or over its hard cap",
+                ruleId = "file-size",
             ),
             spec(
                 11,
@@ -115,6 +117,7 @@ object Guards {
                 "ratchet",
                 GuardHome.MODULE,
                 description = "Fail the build when a file gains a fully-qualified class name (fqcn-baseline.txt)",
+                ruleId = "no-fqcn",
             ),
             spec(
                 12,
@@ -327,7 +330,6 @@ object Guards {
                 ownerPath = ":host",
                 description =
                     "Fail the build on a Properties.store() call in main sources (use DeterministicProperties.render)",
-                ruleId = "properties-store-owner",
             ),
             spec(
                 31,
@@ -505,6 +507,7 @@ object Guards {
                 "ban, no allowlist",
                 GuardHome.MODULE,
                 description = "Fail the build on a glued Javadoc inline tag",
+                ruleId = "no-glued-inline-tag",
             ),
             spec(
                 49,
@@ -515,6 +518,7 @@ object Guards {
                 tableTask = "`checkSingleHomeRoot` (root project)",
                 attach = emptySet(),
                 description = "Fail the build on an old-layout path or a retired JK_*_DIR spelling",
+                ruleId = "single-home-root",
             ),
             spec(
                 50,
@@ -525,6 +529,7 @@ object Guards {
                 tableTask = "`checkNoTicketIds` (root project)",
                 attach = emptySet(),
                 description = "Fail the build on a KanArtist ticket id anywhere in the tree",
+                ruleId = "no-ticket-ids",
             ),
             spec(
                 51,
@@ -616,6 +621,7 @@ object Guards {
                 tableTask = "`checkNoHistoricalNarration` (root project) + `.jk/after-build.kts`",
                 attach = emptySet(),
                 description = "Fail when comments or docs narrate a previous design",
+                ruleId = "no-historical-narration",
             ),
             spec(
                 60,
@@ -626,6 +632,7 @@ object Guards {
                 tableTask = "`checkOneJsonSplicer` (root project) + `.jk/after-build.kts`",
                 attach = emptySet(),
                 description = "Fail when a JSON object is spliced by hand outside Jsonl.append",
+                ruleId = "one-json-splicer",
             ),
             spec(
                 62,
@@ -665,6 +672,7 @@ object Guards {
                 tableTask = "`checkNoLinkFollowingDelete` (root project) + `.jk/after-build.kts`",
                 attach = emptySet(),
                 description = "Fail when build logic deletes or sizes a tree through symbolic links",
+                ruleId = "no-link-following-delete",
             ),
             spec(
                 66,
@@ -720,6 +728,15 @@ object Guards {
                 ruleId = "spa-no-class-key",
             ),
             spec(
+                72,
+                "checkCharterTableParity",
+                "the size caps code-as-art.md states and the caps `[guards.file-size]` enforces disagreeing, or the charter's Contents list drifting from its headings",
+                "parity, self-hosted build only",
+                GuardHome.JK_ONLY,
+                description =
+                    "Fail the build when the charter's size table or Contents list drifts from what the gate enforces",
+            ),
+            spec(
                 61,
                 "checkInstallTestsRedirectM2",
                 "a test that runs the install verb without `--m2-dir`, which publishes the fixture into the developer's real `~/.m2`",
@@ -728,6 +745,7 @@ object Guards {
                 tableTask = "`checkInstallTestsRedirectM2` (root project) + `.jk/after-build.kts`",
                 attach = emptySet(),
                 description = "Fail when a test runs the install verb without --m2-dir",
+                ruleId = "install-tests-redirect-m2",
             ),
             spec(
                 task = "checkStageDocs",

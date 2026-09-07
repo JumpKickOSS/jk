@@ -58,3 +58,7 @@ G70 central-address is G16's URL and alias-host arm (text, not a vocabulary the 
 G70 Gradle's checkSingleCentralAddress still checks it inside G16. 2026-09-06.
 G71 spa-no-class-key is G28's SPA-only arm (a different file set than the retired keys);
 G71 Gradle's checkNoRetiredWireSpelling still checks it inside G28. 2026-09-06.
+G72 checkCharterTableParity compares docs/contributors/code-as-art.md against jk-guards.toml's
+G72 file-size caps and against its own headings: a question about this repository's charter and
+G72 this gate, with nothing for a Gradle twin to enforce. Split from G10 when G10 became the
+G72 file-size metric rule. 2026-09-06.

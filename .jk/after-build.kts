@@ -440,6 +440,81 @@ guard("G0", "checkCorpus") {
 }
 
 // ---------------------------------------------------------------------------
+// G72 — the charter and the gate agree on the size caps, and the charter agrees with itself.
+//
+// The caps are enforced by [guards.file-size] in jk-guards.toml; a cap the charter states and the
+// gate does not enforce is worse than no cap, because a reader trusts the table. The Contents
+// list is a fact about the file, so it is derived and checked rather than maintained by hand.
+// ---------------------------------------------------------------------------
+
+guard("G72", "checkCharterTableParity") {
+    val charterPath = at("docs/contributors/code-as-art.md")
+    val charterLines = Files.readAllLines(charterPath)
+
+    // Doc/guard parity: a cap the charter states and the gate does not enforce is worse than no
+    // cap at all, because a reader trusts the table. An em dash means "exempt".
+    val row = Regex("^\\|([^|]*)\\|([^|]*)\\|([^|]*)\\|([^|]*)\\|")
+    val docCaps = LinkedHashMap<String, Int?>()
+    var inTable = false
+    charterLines.forEach { raw ->
+        val line = raw.trim()
+        when {
+            line.startsWith("| Language | Extensions |") -> inTable = true
+            inTable && !line.startsWith("|") -> inTable = false
+            inTable && !line.startsWith("|---") -> {
+                row.find(line)?.let { m ->
+                    val hardCell = m.groupValues[4].trim()
+                    val hard = if (hardCell == "\u2014") null else hardCell.replace(",", "").toIntOrNull()
+                    Regex("`\\.([a-z]+)`").findAll(m.groupValues[2]).forEach { docCaps[it.groupValues[1]] = hard }
+                }
+            }
+        }
+    }
+
+    // The charter's Contents list is a fact about the file, so it is derived and checked rather
+    // than maintained by hand.
+    fun slug(t: String) = t.replace("`", "").lowercase(Locale.ROOT)
+        .filter { it.isLetterOrDigit() || it == ' ' || it == '-' }.trim().replace(' ', '-')
+    val tocSlugs = charterLines.mapNotNull {
+        Regex("^ *- \\[(.+)]\\(#([a-z0-9-]+)\\)$").find(it.trimEnd())?.groupValues?.get(2)
+    }
+    val headings = charterLines.mapNotNull { Regex("^(##|###) (.+)$").find(it)?.groupValues?.get(2) }
+        .filter { it != "Contents" }.map(::slug)
+    val tocDrift = mutableListOf<String>()
+    headings.filterNot { it in tocSlugs }.forEach { tocDrift.add("missing from Contents: #$it") }
+    tocSlugs.filterNot { it in headings }.forEach { tocDrift.add("in Contents, no such heading: #$it") }
+    if (tocDrift.isEmpty() && tocSlugs != headings) {
+        tocDrift.add("Contents lists every heading but in a different order")
+    }
+    if (tocDrift.isNotEmpty()) {
+        error("code-as-art.md's Contents list and its headings disagree:\n" + bullets(tocDrift))
+    }
+
+    val drift = mutableListOf<String>()
+    if (docCaps.isEmpty()) {
+        drift.add("the Size table in code-as-art.md was not found; it must have a"
+            + " `| Language | Extensions | Soft | Hard | Exception |` header and one backticked"
+            + " extension per language")
+    }
+    // The enforced caps are [guards.file-size].cap in jk-guards.toml — the one owner.
+    val rules = text(at("jk-guards.toml"))
+    val capTable = Regex("""\[guards\.file-size]\n(?:(?!\n\[guards\.).)*?\ncap\s*=\s*\{([^}]*)}""", RegexOption.DOT_MATCHES_ALL)
+        .find(rules)?.groupValues?.get(1)
+        ?: error("jk-guards.toml no longer declares [guards.file-size] with a cap table, so this guard has lost the caps it compares.")
+    val enforcedCaps = Regex("""(\w+)\s*=\s*(\d+)""").findAll(capTable).associate { it.groupValues[1] to it.groupValues[2].toInt() }
+    if (enforcedCaps.isEmpty()) error("[guards.file-size].cap names no language, so this guard compares nothing.")
+    (docCaps.keys + enforcedCaps.keys).toSortedSet().forEach { ext ->
+        val doc = if (ext in docCaps) docCaps[ext]?.toString() ?: "exempt" else "absent"
+        val task = enforcedCaps[ext]?.toString() ?: "exempt"
+        if (doc != task) drift.add(".$ext: charter says $doc, gate enforces $task")
+    }
+    if (drift.isNotEmpty()) {
+        error("The size caps in code-as-art.md and [guards.file-size] disagree. A cap the charter"
+            + " states and the build does not enforce is worse than no cap:\n" + bullets(drift))
+    }
+}
+
+// ---------------------------------------------------------------------------
 // G1 — one owner for a JDK's launcher path.
 //
 // Hand-building `<javaHome>/bin/java` silently drops the Windows `.exe` and the fork is dead
@@ -513,43 +588,6 @@ guard("G2", "checkNoBareExitCode") {
             + "\n  cc.jumpkick.model.command.Exit is in :host, which every module already reaches."
             + " If no existing constant fits, add one with a javadoc line saying what it means — do"
             + " not reuse a code that already means something.")
-    }
-}
-
-// ---------------------------------------------------------------------------
-// G5 — a fork protocol's line prefix has exactly two ends.
-//
-// Every `##JK<X>:` marker is one end of a parent/child protocol: the plugin declares it and the
-// engine reads it. A prefix named once is a dead protocol; named three times it is a lockstep
-// waiting to break. Neither end fails loudly at runtime — the child's protocol lines simply
-// look like ordinary stdout.
-// ---------------------------------------------------------------------------
-
-guard("G5", "checkWireProtocolPrefixPairs") {
-    val quotedPrefix = Regex(""""(##JK[A-Z]+:)"""")
-    val sites = LinkedHashMap<String, MutableList<String>>()
-    val sources = mainJava + moduleDirs.map { it.resolve("jk-plugin.toml") }.filter { Files.isRegularFile(it) }
-    sources.forEach { f ->
-        val raw = text(f)
-        if (!raw.contains("##JK")) return@forEach
-        val code = if (f.fileName.toString().endsWith(".toml")) {
-            raw.lineSequence().filterNot { it.trimStart().startsWith("#") }.joinToString("\n")
-        } else {
-            guardText(raw)
-        }
-        quotedPrefix.findAll(code).forEach { m ->
-            sites.getOrPut(m.groupValues[1]) { mutableListOf() }.add(rel(f))
-        }
-    }
-    val wrong = sites.toSortedMap().filter { (_, a) -> a.size != 2 || a.distinct().size != 2 }
-    if (wrong.isNotEmpty()) {
-        error("A ##JK*: protocol prefix names exactly two ends — one writes it, one reads it. These"
-            + " do not:\n"
-            + wrong.entries.joinToString("\n") { (p, a) ->
-                "  $p: ${a.size} site(s)\n" + a.joinToString("\n") { "      $it" }
-            }
-            + "\n  One site means a dead protocol; three means a copy that will drift. Reference the"
-            + " declaring constant instead of re-typing the literal.")
     }
 }
 
@@ -635,228 +673,6 @@ guard("G43", "checkArchiveStreamOwner") {
             + " new JarOutputStream(DeterministicZip.archiveStream(path)), or"
             + " DeterministicZip.newArchive(path) when a ZipOutputStream will do.")
     }
-}
-
-// ---------------------------------------------------------------------------
-// G10 — the size caps are a ratchet, not a suggestion.
-//
-// Unenforced caps regrow: a class finished its peel at 1,064 lines and was back over 1,200
-// eleven days later. Three rules against the checked-in `size-baseline.txt`: a listed file may
-// only shrink; an unlisted file must be at or under its language's hard cap; every listed file
-// claims the exception band, so every entry carries the invariant comment. The caps are also a
-// house rule written down in code-as-art.md, and both are read here so the doc and the guard
-// cannot drift.
-// ---------------------------------------------------------------------------
-val fileSizeHardCaps = mapOf("java" to 800, "kt" to 800, "js" to 1200, "mjs" to 1200)
-
-val cappedSources: List<Path> = moduleDirs.flatMap { m ->
-    filesUnder(m.resolve("src/main/java"), ".java") +
-        filesUnder(m.resolve("src/main/kotlin"), ".kt") +
-        filesUnder(m.resolve("src/main/resources"), ".js") +
-        filesUnder(m.resolve("src/main/resources"), ".mjs") +
-        filesUnder(m.resolve("src/test/java"), ".java") +
-        filesUnder(m.resolve("src/test/kotlin"), ".kt") +
-        filesUnder(m.resolve("src/fixtures/java"), ".java") +
-        filesUnder(m.resolve("src/test/js"), ".js") +
-        filesUnder(m.resolve("src/test/js"), ".mjs")
-}
-
-guard("G10", "checkFileSizeCaps") {
-    val charterPath = at("docs/contributors/code-as-art.md")
-    val charterLines = Files.readAllLines(charterPath)
-
-    // Doc/guard parity: a cap the charter states and the gate does not enforce is worse than no
-    // cap at all, because a reader trusts the table. An em dash means "exempt".
-    val row = Regex("^\\|([^|]*)\\|([^|]*)\\|([^|]*)\\|([^|]*)\\|")
-    val docCaps = LinkedHashMap<String, Int?>()
-    var inTable = false
-    charterLines.forEach { raw ->
-        val line = raw.trim()
-        when {
-            line.startsWith("| Language | Extensions |") -> inTable = true
-            inTable && !line.startsWith("|") -> inTable = false
-            inTable && !line.startsWith("|---") -> {
-                row.find(line)?.let { m ->
-                    val hardCell = m.groupValues[4].trim()
-                    val hard = if (hardCell == "\u2014") null else hardCell.replace(",", "").toIntOrNull()
-                    Regex("`\\.([a-z]+)`").findAll(m.groupValues[2]).forEach { docCaps[it.groupValues[1]] = hard }
-                }
-            }
-        }
-    }
-
-    // The charter's Contents list is a fact about the file, so it is derived and checked rather
-    // than maintained by hand.
-    fun slug(t: String) = t.replace("`", "").lowercase(Locale.ROOT)
-        .filter { it.isLetterOrDigit() || it == ' ' || it == '-' }.trim().replace(' ', '-')
-    val tocSlugs = charterLines.mapNotNull {
-        Regex("^ *- \\[(.+)]\\(#([a-z0-9-]+)\\)$").find(it.trimEnd())?.groupValues?.get(2)
-    }
-    val headings = charterLines.mapNotNull { Regex("^(##|###) (.+)$").find(it)?.groupValues?.get(2) }
-        .filter { it != "Contents" }.map(::slug)
-    val tocDrift = mutableListOf<String>()
-    headings.filterNot { it in tocSlugs }.forEach { tocDrift.add("missing from Contents: #$it") }
-    tocSlugs.filterNot { it in headings }.forEach { tocDrift.add("in Contents, no such heading: #$it") }
-    if (tocDrift.isEmpty() && tocSlugs != headings) {
-        tocDrift.add("Contents lists every heading but in a different order")
-    }
-    if (tocDrift.isNotEmpty()) {
-        error("code-as-art.md's Contents list and its headings disagree:\n" + bullets(tocDrift))
-    }
-
-    val drift = mutableListOf<String>()
-    if (docCaps.isEmpty()) {
-        drift.add("the Size table in code-as-art.md was not found; it must have a"
-            + " `| Language | Extensions | Soft | Hard | Exception |` header and one backticked"
-            + " extension per language")
-    }
-    (docCaps.keys + fileSizeHardCaps.keys).toSortedSet().forEach { ext ->
-        val doc = if (ext in docCaps) docCaps[ext]?.toString() ?: "exempt" else "absent"
-        val task = fileSizeHardCaps[ext]?.toString() ?: "exempt"
-        if (doc != task) drift.add(".$ext: charter says $doc, gate enforces $task")
-    }
-    if (drift.isNotEmpty()) {
-        error("The size caps in code-as-art.md and `fileSizeHardCaps` disagree. A cap the charter"
-            + " states and the build does not enforce is worse than no cap:\n" + bullets(drift))
-    }
-
-    // An entry is `<lines>  <path>`; its invariant is the comment block directly above it, with
-    // no blank line between.
-    val listed = LinkedHashMap<String, Int>()
-    val malformed = mutableListOf<String>()
-    val undocumented = mutableListOf<String>()
-    var documented = false
-    Files.readAllLines(at("size-baseline.txt")).forEachIndexed { i, raw ->
-        val line = raw.trim()
-        when {
-            line.isEmpty() -> documented = false
-            line.startsWith("#") -> documented = true
-            else -> {
-                val parts = line.split(Regex("\\s+"))
-                val lines = if (parts.size == 2) parts[0].toIntOrNull() else null
-                if (lines == null) {
-                    malformed.add("size-baseline.txt:${i + 1}: expected `<lines>  <path>`, got `$line`")
-                } else {
-                    listed[parts[1]] = lines
-                    if (!documented) undocumented.add("size-baseline.txt:${i + 1}: ${parts[1]}")
-                }
-                documented = false
-            }
-        }
-    }
-
-    val grew = mutableListOf<String>()
-    val overCap = mutableListOf<String>()
-    val loose = mutableListOf<String>()
-    val present = mutableSetOf<String>()
-    cappedSources.forEach { f ->
-        val ext = f.fileName.toString().substringAfterLast('.').lowercase(Locale.ROOT)
-        val hard = fileSizeHardCaps[ext] ?: return@forEach
-        val r = rel(f)
-        val n = codeLines(f, ext)
-        present.add(r)
-        val listedAt = listed[r]
-        when {
-            listedAt == null && n > hard -> overCap.add("$r: $n code lines, hard cap $hard")
-            listedAt != null && n > listedAt -> grew.add("$r: $n code lines, baseline $listedAt (+${n - listedAt})")
-            listedAt != null && n < listedAt -> loose.add("%5d  %s   (was %d)".format(n, r, listedAt))
-        }
-    }
-    listed.forEach { (r, a) -> if (r !in present) loose.add("(deleted) $r   (was $a)") }
-
-    val faults = mutableListOf<String>()
-    if (grew.isNotEmpty()) faults.add("A file in size-baseline.txt may only shrink. These grew:\n" + bullets(grew))
-    if (overCap.isNotEmpty()) {
-        faults.add("Over the hard cap for their language and not in size-baseline.txt:\n" + bullets(overCap)
-            + "\n  Split the file, or add it to size-baseline.txt with the invariant that must not be split.")
-    }
-    if (undocumented.isNotEmpty()) {
-        faults.add("Every size-baseline.txt entry is a file claiming the exception band, and the"
-            + " exception band costs a stated invariant. Write the comment directly above the"
-            + " entry:\n" + bullets(undocumented))
-    }
-    if (malformed.isNotEmpty()) faults.add("size-baseline.txt is malformed:\n" + bullets(malformed))
-    if (faults.isNotEmpty()) error(faults.joinToString("\n\n"))
-    if (loose.isNotEmpty()) notes.add("size-baseline.txt is loose (these shrank — tighten it in this commit):\n" + bullets(loose))
-}
-
-// ---------------------------------------------------------------------------
-// G11 — a fully-qualified class name in the body of a file is a ratchet.
-//
-// The guard counts EVERY package-qualified reference, not only the kinds `jk format` can fix:
-// narrowing it to type references would leave the most common residual shape — a qualified
-// static call — permanently unguarded. A genuine collision keeps its FQCN and is listed under
-// `## collisions` with the name it collides with.
-// ---------------------------------------------------------------------------
-
-// Two or more all-lowercase dot-separated segments followed by an UpperCamel identifier. Two
-// segments is the floor because `cc.jumpkick.Foo` has exactly two, and requiring two is what
-// keeps `builder.config.Value` — a field chain, not a package — out.
-val fqcnPattern = Regex("""(?<![\w.$])(?:[a-z][a-z0-9_]*\.){2,}[A-Z][A-Za-z0-9_]*""")
-
-fun countFqcns(p: Path): Int =
-    blankedOf(p).lineSequence().sumOf { raw ->
-        val s = raw.trimStart()
-        if (s.startsWith("import ") || s.startsWith("package ")) 0 else fqcnPattern.findAll(raw).count()
-    }
-
-guard("G11", "checkNoFqcn") {
-    val listed = LinkedHashMap<String, Int>()
-    val malformed = mutableListOf<String>()
-    val unexplained = mutableListOf<String>()
-    var section: String? = null
-    var lastWasComment = false
-    Files.readAllLines(at("fqcn-baseline.txt")).forEachIndexed { i, raw ->
-        val line = raw.trim()
-        when {
-            line.startsWith("##") -> { section = line.removePrefix("##").trim(); lastWasComment = true }
-            line.startsWith("#") -> lastWasComment = true
-            line.isEmpty() -> {}
-            else -> {
-                val parts = line.split(Regex("\\s+"))
-                val count = if (parts.size == 2) parts[0].toIntOrNull() else null
-                when {
-                    count == null -> malformed.add("fqcn-baseline.txt:${i + 1}: expected `<count>  <path>`, got `$line`")
-                    section == null -> unexplained.add("fqcn-baseline.txt:${i + 1}: ${parts[1]} — no `## <reason>` section above it")
-                    section == "collisions" && !lastWasComment ->
-                        unexplained.add("fqcn-baseline.txt:${i + 1}: ${parts[1]} — a collision must name what it collides with")
-                    else -> listed[parts[1]] = count
-                }
-                lastWasComment = false
-            }
-        }
-    }
-
-    val grew = mutableListOf<String>()
-    val unlisted = mutableListOf<String>()
-    val loose = mutableListOf<String>()
-    val present = mutableSetOf<String>()
-    (mainJava + testJava).forEach { f ->
-        val r = rel(f)
-        val n = countFqcns(f)
-        present.add(r)
-        val a = listed[r]
-        when {
-            a == null && n > 0 -> unlisted.add("%5d  %s".format(n, r))
-            a != null && n > a -> grew.add("$r: $n FQCNs, baseline $a (+${n - a})")
-            a != null && n < a -> loose.add("%5d  %s   (was %d)".format(n, r, a))
-        }
-    }
-    listed.forEach { (r, a) -> if (r !in present) loose.add("(deleted) $r   (was $a)") }
-
-    val faults = mutableListOf<String>()
-    if (unlisted.isNotEmpty()) {
-        faults.add("A fully-qualified class name in a method body is banned — import the type. These"
-            + " files are not in fqcn-baseline.txt:\n" + bullets(unlisted)
-            + "\n  `jk format` shortens type references for you. A static member, an annotation or a"
-            + " third-party type it cannot reach is a hand edit. A genuine collision goes under"
-            + " `## collisions` with the name it collides with.")
-    }
-    if (grew.isNotEmpty()) faults.add("A file in fqcn-baseline.txt may only shrink. These grew:\n" + bullets(grew))
-    if (unexplained.isNotEmpty()) faults.add("Every fqcn-baseline.txt entry states why the FQCN survives:\n" + bullets(unexplained))
-    if (malformed.isNotEmpty()) faults.add("fqcn-baseline.txt is malformed:\n" + bullets(malformed))
-    if (faults.isNotEmpty()) error(faults.joinToString("\n\n"))
-    if (loose.isNotEmpty()) notes.add("fqcn-baseline.txt is loose (these shrank — tighten it in this commit):\n" + bullets(loose))
 }
 
 // ---------------------------------------------------------------------------
@@ -1262,6 +1078,44 @@ guard("G29", "checkWorkerOfflineFromSpec") {
 // `Properties.store()` prepends a #-dated comment line and emits keys in unspecified Hashtable
 // order, so a caller that reaches for it ships a non-reproducible artifact.
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// G30 — deterministic `.properties` rendering has one owner.
+//
+// `Properties.store()` prepends a #-dated comment line and emits keys in unspecified Hashtable
+// order, so a caller that reaches for it ships a non-reproducible artifact. A pure ban with no
+// owner that uses the primitive has no bite evidence a rule can carry until fixtures land, so it
+// stays here for now.
+// ---------------------------------------------------------------------------
+
+guard("G30", "checkPropertiesStoreOwner") {
+    val ownerPath = "shared/host/src/main/java/cc/jumpkick/host/DeterministicProperties.java"
+    if (!Regex("""String\s+render\s*\(""").containsMatchIn(owner(ownerPath))) {
+        error("DeterministicProperties no longer declares render(...), so this guard has lost the"
+            + " owner it points callers at.")
+    }
+    var importing = 0
+    val hits = mutableListOf<String>()
+    mainJava.forEach { f ->
+        // Strings blanked as well as comments: a javadoc that merely mentions Properties.store()
+        // stays invisible, and so does a `.store(` inside a literal.
+        val code = blankedOf(f)
+        if (!code.contains("import java.util.Properties;")) return@forEach
+        importing++
+        code.lines().forEachIndexed { i, line ->
+            if (line.contains(".store(")) hits.add("${rel(f)}:${i + 1}: ${line.trim()}")
+        }
+    }
+    if (importing == 0) {
+        error("found no main-source file importing java.util.Properties; measured against 14. The"
+            + " walk has stopped seeing the tree.")
+    }
+    if (hits.isNotEmpty()) {
+        error("Properties.store() writes a #-dated comment line in Hashtable order — a"
+            + " non-reproducible artifact. Render through"
+            + " cc.jumpkick.host.DeterministicProperties.render instead:\n" + bullets(hits))
+    }
+}
 
 // ---------------------------------------------------------------------------
 // G33 — the Gradle version catalog and jk-lock.toml agree on every coordinate they share.
@@ -1783,164 +1637,6 @@ guard("G47", "checkCaseConversionLocale") {
     }
 }
 
-guard("G48", "checkNoGluedInlineTag") {
-    val sources = mainJava + testJava + fixtureJava
-    if (sources.isEmpty()) {
-        error("G48 scanned zero sources — the gate has silently lost its scope.")
-    }
-    // The payload class excludes letters so `link` cannot half-match `linkplain`; the glued family
-    // is punctuation ({@code.asc}, {@code:}, {@code,}), never a letter. Raw text on purpose: the
-    // defect lives in comments, which every other guard here blanks.
-    val glued = Regex("""\{@(?:code|value|linkplain|link)[^\s}a-zA-Z]""")
-    val hits = sources.mapNotNull { f ->
-        val n = countIn(text(f), glued)
-        if (n > 0) "${rel(f)}: $n" else null
-    }
-    if (hits.isNotEmpty()) {
-        error("An inline Javadoc tag needs a space before its payload — {@code .asc}, not the glued"
-            + " form, which renders as literal garbage and can block FQCN shortening for the whole"
-            + " file:\n" + bullets(hits))
-    }
-}
-
-val singleHomeAllowedLines = mapOf(
-    "shared/core/src/main/java/cc/jumpkick/config/TerminalFonts.java"
-        to Regex("""env\.apply\("XDG_CONFIG_HOME"\)"""),
-    "shared/toolchain-jdk/src/main/java/cc/jumpkick/discovery/MiseProbe.java"
-        to Regex("""MISE_DATA_DIR|XDG_DATA_HOME|\.local/share/mise"""),
-    "shared/toolchain-jdk/src/test/java/cc/jumpkick/discovery/MiseProbeTest.java"
-        to Regex("""XDG_DATA_HOME|\.local/share/mise"""),
-    "shared/toolchain-jdk/src/main/java/cc/jumpkick/jdk/IntellijJdkTable.java"
-        to Regex("""env\.apply\("(?:APPDATA|XDG_CONFIG_HOME)"\)"""),
-    "shared/toolchain-jdk/src/test/java/cc/jumpkick/jdk/IntellijJdkTableTest.java"
-        to Regex("""XDG_CONFIG_HOME"""),
-    "shared/core/src/test/java/cc/jumpkick/util/JkDirsTest.java"
-        to Regex(""""(?:XDG_[A-Z_]+|LOCALAPPDATA|APPDATA)""""),
-    "clients/cli/src/main/java/cc/jumpkick/cli/engine/RetiredEngineLayouts.java"
-        to Regex("""env\.apply\("(?:XDG_DATA_HOME|XDG_STATE_HOME|LOCALAPPDATA)"\)"""),
-    "clients/cli/src/test/java/cc/jumpkick/cli/engine/EngineFleetTest.java"
-        to Regex(""""LOCALAPPDATA""""),
-    "clients/cli/src/test/java/cc/jumpkick/command/WrapperTemplateTest.java"
-        to Regex("""doesNotContain\("(?:XDG_|JK_BIN_DIR|JK_INSTALL_DIR)"""))
-
-guard("G49", "checkSingleHomeRoot") {
-    val missing = singleHomeAllowedLines.keys.filterNot { Files.isRegularFile(at(it)) }
-    if (missing.isNotEmpty()) {
-        error("The allowlist exempts files that no longer exist, so this guard is weaker than it"
-            + " reads: " + missing.sorted().joinToString(", ") + ". Drop the entries, or fix the paths.")
-    }
-    val extensions = listOf(
-        ".java", ".kt", ".kts", ".md", ".sh", ".ps1", ".bat",
-        // The dashboard renders paths to users; it was outside this ban until a hard-coded
-        // ~/.config/jk/config.toml fallback shipped in its config panel.
-        ".html", ".js", ".mjs", ".css")
-    val banned = listOf(
-        Regex("""\.local/share"""), Regex("""\.local/state"""), Regex("""\.local/bin"""),
-        Regex("""\.cache/jk"""), Regex("""\.config/jk"""),
-        Regex("""XDG_[A-Z_]+"""), Regex("""LOCALAPPDATA"""), Regex("""APPDATA"""),
-        Regex("""<data>"""),
-        Regex("""(?i)\bdata root\b"""), Regex("""(?i)\bdata/lib\b"""),
-        Regex("""\$\{?JK_HOME\}?[/\\]data\b"""), Regex("""--data(?:-dir)?\b"""),
-        Regex("""(?:homeDir\(\)|JkDirs\.home\(\))\.resolve\("data"\)"""),
-        Regex("""JK_DATA_DIR|JK_BUILDS_DIR|JK_TMP_DIR|JK_BIN_DIR|JK_INSTALL_DIR"""),
-        Regex("""JK_CONFIG_DIR|JK_CONFIG_FILE"""))
-    val fixtures = listOf(
-        "the data root",
-        "\$JK_HOME/data/lib",
-        "\${JK_HOME}/data",
-        """homeDir().resolve("data")""",
-        "jk self nuke --data")
-    val missedFixtures = fixtures.filter { sample -> banned.none { it.containsMatchIn(sample) } }
-    if (missedFixtures.isNotEmpty()) error("G49 no longer catches its fixtures: $missedFixtures")
-    var candidates = 0
-    val hits = mutableListOf<String>()
-    treeFiles.forEach { f ->
-        val name = f.fileName.toString()
-        if (extensions.none { name.endsWith(it) }) return@forEach
-        candidates++
-        val here = rel(f)
-        var source = text(f)
-        val markers = when (here) {
-            "build.gradle.kts" -> "// Guard G49:" to "// Guard: the published installers"
-            ".jk/after-build.kts" -> "val singleHomeAllowedLines =" to "// The two places a ticket id"
-            else -> null
-        }
-        if (markers != null) {
-            var inside = false
-            var starts = 0
-            var ends = 0
-            source = source.lineSequence().filter { line ->
-                if (!inside && line.startsWith(markers.first)) {
-                    inside = true
-                    starts++
-                }
-                if (inside && line.startsWith(markers.second)) {
-                    inside = false
-                    ends++
-                }
-                !inside && !line.startsWith(markers.first)
-            }.joinToString("\n")
-            if (starts != 1 || ends != 1) error("Cannot isolate the G49 definition in $here")
-        }
-        val allowed = singleHomeAllowedLines[here]
-        val found = source.lineSequence().withIndex().flatMap { (index, line) ->
-            val visible = allowed?.replace(line, "") ?: line
-            banned.asSequence().mapNotNull { it.find(visible)?.value?.let { value -> "$value:${index + 1}" } }
-        }.distinct().toList()
-        if (found.isNotEmpty()) hits.add("$here: ${found.joinToString(", ")}")
-    }
-    if (candidates == 0) {
-        error("Scanned zero files — the tree walk broke and this guard is passing vacuously.")
-    }
-    if (hits.isNotEmpty()) {
-        error("jk lives under \$HOME/.jk, on every platform, and these name a layout it does not"
-            + " have:\n" + bullets(hits.sorted())
-            + "\n  Resolve paths through cc.jumpkick.util.JkDirs (JK_HOME, plus JK_STORE_DIR /"
-            + " JK_CACHE_DIR / JK_STATE_DIR / JK_JDKS_DIR). If you are reading ANOTHER program's"
-            + " files, allow only the exact token shape here.")
-    }
-}
-
-// The two places a ticket id is the subject rather than a reference.
-val ticketIdExempt = mapOf(
-    "AGENTS.md" to "documents the board protocol an agent follows, ids included",
-    "docs/contributors/comments.md" to "states the ban, using ids as its own examples")
-
-guard("G50", "checkNoTicketIds") {
-    val missing = ticketIdExempt.keys.filterNot { Files.isRegularFile(at(it)) }
-    if (missing.isNotEmpty()) {
-        error("The allowlist exempts files that no longer exist: "
-            + missing.sorted().joinToString(", ") + ". Drop the entries, or fix the paths.")
-    }
-    // Extension-blind on purpose. Every scope this rule was given by extension is where it was
-    // missed next: `*.kts` held 153 after the first sweep reported clean, the web client's CSS/JS
-    // held ~50 after the second, and a Giter8 template wrote one into a user's own new project.
-    val id = Regex("""\bJK-\d{4}\b""")
-    var candidates = 0
-    val hits = mutableListOf<String>()
-    treeFiles.forEach { f ->
-        candidates++
-        val here = rel(f)
-        if (here in ticketIdExempt) return@forEach
-        val found = try {
-            id.findAll(text(f)).map { it.value }.distinct().take(4).toList()
-        } catch (e: Exception) {
-            return@forEach // not decodable as text; nothing to read
-        }
-        if (found.isNotEmpty()) hits.add("$here: ${found.joinToString(", ")}")
-    }
-    if (candidates == 0) {
-        error("Scanned zero files — the tree walk broke and this guard is passing vacuously.")
-    }
-    if (hits.isNotEmpty()) {
-        error("A ticket id names a tracker this repository's readers do not have:\n"
-            + bullets(hits.sorted())
-            + "\n  State the invariant or the defect instead — history belongs in the commit"
-            + " message, not the tree. Worst case is a Giter8 template, which writes the id into a"
-            + " user's own project.")
-    }
-}
-
 guard("G52", "checkTestTierDocs") {
     val model = text(at("buildSrc/src/main/kotlin/TestTiers.kt"))
     val constants = Regex("""const val (\w+) = "([^"]+)"""")
@@ -2195,114 +1891,6 @@ guard("G58", "checkSecurityDocs") {
     }
 }
 
-guard("G59", "checkNoHistoricalNarration") {
-    val exempt = mapOf(
-        "AGENTS.md" to "names the banned narration phrases as the policy",
-        "docs/contributors/comments.md" to "names the banned narration phrases as the policy")
-    val missing = exempt.keys.filterNot { Files.isRegularFile(at(it)) }
-    if (missing.isNotEmpty()) {
-        error("The allowlist exempts files that no longer exist: "
-            + missing.sorted().joinToString(", "))
-    }
-    val u = "used " + "to"
-    val narration = Regex(
-        "(?i)(?:this $u|it $u|they $u|javadoc $u"
-            + "|$u (?:be|say|live|scan)"
-            + "|former" + "ly|back" + "-compat|for future " + "agents|kept for " + "migration|do not " + "revert"
-            + "|as they $u|as it $u)")
-    var candidates = 0
-    val hits = mutableListOf<String>()
-    treeFiles.forEach { f ->
-        candidates++
-        val here = rel(f)
-        if (here in exempt) return@forEach
-        val found = try {
-            narration.findAll(text(f)).map { it.value }.distinct().take(3).toList()
-        } catch (e: Exception) {
-            return@forEach
-        }
-        if (found.isNotEmpty()) hits.add("$here: ${found.joinToString(", ")}")
-    }
-    if (candidates == 0) {
-        error("Scanned zero files — the tree walk broke and this guard is passing vacuously.")
-    }
-    if (hits.isNotEmpty()) {
-        error("historical narration in comments or docs:\n"
-            + bullets(hits.sorted())
-            + "\n  State the current invariant. History belongs in the commit body.")
-    }
-}
-
-guard("G65", "checkNoLinkFollowingDelete") {
-    val owner = "buildSrc/src/main/kotlin/Trees.kt"
-    val banned = Regex("\\.deleteRecursively\\(|\\.walkTopDown\\(|\\.walkBottomUp\\(|(?<!Files)\\.walk\\(\\)|(?<!NO)FOLLOW_LINKS")
-    var candidates = 0
-    var ownerWalksSafely = false
-    val hits = mutableListOf<String>()
-    treeFiles.forEach { f ->
-        val here = rel(f)
-        val kotlin = here.endsWith(".kt") || here.endsWith(".kts")
-        val buildLogic = here.endsWith(".gradle.kts") || here.startsWith("buildSrc/src/") || here.startsWith(".jk/")
-        if (!kotlin || !buildLogic) return@forEach
-        candidates++
-        val code = blankNonCode(text(f))
-        if (here == owner) {
-            ownerWalksSafely = code.contains("walkFileTree") && !banned.containsMatchIn(code)
-            return@forEach
-        }
-        code.lines().forEachIndexed { i, line ->
-            banned.find(line)?.let { hits.add("$here:${i + 1}: ${it.value}") }
-        }
-    }
-    if (candidates < 40) {
-        error("Scanned only $candidates build files — the tree walk broke and this guard is passing vacuously.")
-    }
-    if (!ownerWalksSafely) {
-        error("$owner no longer walks with walkFileTree and nothing else, so the one exempted owner is not"
-            + " the safe walk this guard assumes. Fix the owner or retire the guard deliberately.")
-    }
-    if (hits.isNotEmpty()) {
-        error("a tree walk in build logic that follows symbolic links:\n"
-            + bullets(hits.sorted())
-            + "\n  Call Trees.deleteNoFollow or Trees.exceedsNoFollow: a link is one entry there, never a"
-            + " directory to enter, so a stable JDK pointer in a test home cannot reach the install behind it.")
-    }
-}
-
-guard("G60", "checkOneJsonSplicer") {
-    val owner = "shared/host/src/main/java/cc/jumpkick/jsonl/Jsonl.java"
-    val chop = Regex("(?s)\\.substring\\(0,\\s*\\w+\\.length\\(\\)\\s*-\\s*1\\)[^;]*\"\\}\"")
-    val insert = Regex("(?s)\"\\{(?:\\\\\"|[^\"])*\"[^;]*\\.substring\\(1\\)")
-    var candidates = 0
-    var ownerSplices = false
-    val hits = mutableListOf<String>()
-    treeFiles.forEach { f ->
-        val here = rel(f)
-        if (!here.endsWith(".java") || !here.contains("/src/main/java/")) return@forEach
-        candidates++
-        val t = text(f)
-        if (here == owner) {
-            ownerSplices = chop.containsMatchIn(t)
-            return@forEach
-        }
-        val n = chop.findAll(t).count() + insert.findAll(t).count()
-        if (n > 0) hits.add("$here: $n")
-    }
-    if (candidates < 500) {
-        error("Scanned only $candidates main sources — the tree walk broke and this guard is passing vacuously.")
-    }
-    if (!ownerSplices) {
-        error("$owner no longer splices with the shape this guard bans, so the guard has lost the owner"
-            + " it exempts. Move the exemption with the splicer or retire the guard deliberately.")
-    }
-    if (hits.isNotEmpty()) {
-        error("a JSON object spliced by hand:\n"
-            + bullets(hits.sorted())
-            + "\n  Call Jsonl.append(object, fields): it validates the object and owns the separator,"
-            + " which is what every hand chop got wrong on an empty object.")
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Guard G62: the ship layout is one shape, and three files have to agree on it.
 //
@@ -2519,57 +2107,6 @@ guard("G63", "checkCuratedIntegration") {
 // which branch its install takes, and the file / coordinate modes are one refactor from the m2
 // one; a flag that is inert on those paths is cheaper than a rule with exceptions.
 // ---------------------------------------------------------------------------
-
-guard("G61", "checkInstallTestsRedirectM2") {
-    // The two in-process entry points — JkRun.run delegates to Jk.execute — leading with the
-    // install verb, in either of its two spellings. `jk tool install <dir>` delegates to the same
-    // app pipeline as `jk install`, and that is the one that published a fixture into the real
-    // ~/.m2 after the first-argument-only version of this scan called the tree clean. `jk jdk
-    // install` and `jk bsp install` are different verbs that publish nothing, and `List.of(
-    // "install", …)` is data — none of the three match.
-    val call = Regex(
-        """\b(?:execute|run)\s*\(\s*(?:new\s+String\s*\[\s*]\s*\{\s*)?(?:"tool"\s*,\s*)?"install"\s*[,)}]""")
-    var sites = 0
-    val hits = mutableListOf<String>()
-    testJava.forEach { f ->
-        // Two views of the same offsets: the verb and the flag are string literals, so the search
-        // needs them intact, while the walk to the end of the argument list must not be
-        // unbalanced by a brace inside a fixture manifest. blankNonCode preserves length, so an
-        // index found in one view means the same character in the other.
-        val code = codeOf(f)
-        val blank = blankedOf(f)
-        call.findAll(code).forEach { m ->
-            val open = code.indexOf('(', m.range.first)
-            var depth = 0
-            var i = open
-            while (i < blank.length) {
-                val c = blank[i]
-                if (c == '(' || c == '{') depth++
-                else if (c == ')' || c == '}') {
-                    depth--
-                    if (depth == 0) break
-                }
-                i++
-            }
-            sites++
-            if (!code.substring(open, minOf(i + 1, code.length)).contains("--m2-dir")) {
-                hits.add("${rel(f)}:${code.take(open).count { it == '\n' } + 1}")
-            }
-        }
-    }
-    // Measured when written: 25 install invocations across 5 test classes, all redirected.
-    if (sites < 20) {
-        error("Found only $sites in-process `install` invocations in the test corpus — the entry-point"
-            + " pattern no longer matches how tests drive the CLI, and this guard is passing vacuously.")
-    }
-    if (hits.isNotEmpty()) {
-        error("A test runs the install verb without redirecting the Maven local repo:\n"
-            + bullets(hits.sorted())
-            + "\n  Pass --m2-dir into the test's own temp dir. `[m2] install` is on by default, so"
-            + " without it the install publishes into the developer's real ~/.m2 — outside the"
-            + " checkout, where no assertion and no clean task will ever look.")
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Guard G51: both builds enforce the same house rules.
