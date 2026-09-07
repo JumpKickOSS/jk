@@ -24,3 +24,8 @@ G64 checkNoDisabledCompile — Gradle task-graph state; the jk build has no comp
 # jk-guards.toml itself (a JavaExec over server/guard against the built engine); its scope is that
 # task plus the residual duplication in buildSrc — Trees (the no-follow walk) and the null-marking
 # and test-tier tables, which Gradle's own build needs and the jk side reads from the manifests.
+
+# The coverage ratchet reads JaCoCo XML written by Gradle's test task under -Pjk.coverage. The jk
+# side gets this letter when `jk test` writes a JaCoCo XML of its own; until then the question
+# cannot be asked from the self-hosted build.
+G91 checkCoverageBand — needs the JaCoCo agent and report that only the Gradle test task produces today

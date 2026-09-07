@@ -965,5 +965,5 @@ signatures = [
 ]
 owner      = "cc.jumpkick.host.time.SystemClock"
 baseline   = true
-instead    = "take a cc.jumpkick.host.time.Clock (Clock.SYSTEM in production, FakeClock in a test) and read clock.millis(), clock.nanos() or clock.instant()"
+instead    = "take a cc.jumpkick.host.time.Clock (Clock.SYSTEM in production, FakeClock in tests) and read millis(), nanos() or instant()"
 why        = "a wall-clock read the caller cannot move is a test that has to sleep, and a sleep asserts a duration instead of a condition"

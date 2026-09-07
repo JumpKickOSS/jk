@@ -1,0 +1,43 @@
+# coverage-baseline.txt — the ratchet behind `checkCoverageBand` (G91).
+#
+# One line per module with unit-tier tests:
+#
+#     <module-rel> <line coverage %>
+#
+# Measured by the nightly coverage run (`./gradlew checkCoverageBand -Pjk.coverage`). A module
+# more than 0.5 points BELOW its line fails the run: a regression, cover the change or say why
+# the line moves. A module more than 0.5 points ABOVE its line rewrites the line in the same
+# run — an improvement is banked, never a failure; commit the rewritten file. A module this file
+# has never seen is added at its measured value. No percentage target: the only direction the
+# number moves without a hand is up.
+clients/cli 45.0
+clients/cli-terminal 39.2
+plugins/android 48.9
+plugins/auditor 77.5
+plugins/formatter 67.2
+plugins/grails 75.0
+plugins/groovy-compiler 78.3
+plugins/image-builder 25.4
+plugins/java-compiler 74.1
+plugins/kotlin-compiler 32.6
+plugins/micronaut 43.2
+plugins/minified 58.6
+plugins/protobuf 97.9
+plugins/publisher 82.0
+plugins/quarkus 37.3
+plugins/spring-boot 74.6
+plugins/test-runner 46.1
+server/engine 51.9
+server/guard 89.8
+server/io 84.4
+server/resolver 87.1
+server/toolchain 64.3
+shared/client-io 76.7
+shared/core 78.4
+shared/dynamic-surface 91.9
+shared/guard-api 96.5
+shared/host 74.3
+shared/jk-api 60.3
+shared/plugin-sdk 71.9
+shared/toolchain-jdk 69.2
+shared/wire 81.9

@@ -958,6 +958,7 @@ letter — is the Gradle-side follow-up recorded in `guard-parity.txt`.
 | G88 | `method-size` (jk-guards.toml, `metric`) | a method or constructor body over 120 code lines in main, test or fixture Java — the file cap alone let 34 members pass 150 inside files parked under 800 | metric, `lines` per method, baselined and tightened on every build | `method-size` (metric) |
 | G89 | `catalog-is-the-version-source` (jk-guards.toml, `text`) | a literal `group:artifact:version` coordinate in a Gradle script — every pin lives in gradle/libs.versions.toml, which the lockfiles and verification metadata are written from | text, `**/*.gradle.kts`, code only | `catalog-is-the-version-source` (text) |
 | G90 | `clock-owner` (jk-guards.toml, `forbid`) | a wall-clock or monotonic read (System.currentTimeMillis, System.nanoTime, Instant.now) outside cc.jumpkick.host.time — a time the caller cannot move is a test that has to sleep | forbid, baselined at the swept count and tightened on every build | `clock-owner` (forbid) |
+| G91 | `checkCoverageBand` | a module's unit-test line coverage falling below its `coverage-baseline.txt` line — and an improvement that is not banked, because a number nobody tightens stops meaning anything | ratchet, one line per module (`coverage-baseline.txt`); nightly, with the JaCoCo agent | — |
 <!-- guards:end -->
 
 `checkCliRuntimeClasspath` and `checkCliNoParseTypes` predate the letters.

@@ -107,6 +107,29 @@ jobs:
       - name: Aggregate JaCoCo report
         run: ./gradlew coverageReport -Pjk.coverage --no-daemon
 
+      # The per-module ratchet (G91): a module below its coverage-baseline.txt line fails the job; a
+      # module above it rewrites its line, which this run cannot commit — the diff is the artifact and
+      # the summary, for a contributor to bank.
+      - name: Coverage ratchet
+        run: ./gradlew checkCoverageBand -Pjk.coverage --no-daemon
+
+      - name: Report a tightened baseline
+        if: always()
+        run: |
+          if ! git diff --quiet -- coverage-baseline.txt; then
+            echo "## coverage-baseline.txt tightened — commit this" >> "$GITHUB_STEP_SUMMARY"
+            echo '```diff' >> "$GITHUB_STEP_SUMMARY"
+            git diff -- coverage-baseline.txt >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-baseline
+          path: coverage-baseline.txt
+          retention-days: 14
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:

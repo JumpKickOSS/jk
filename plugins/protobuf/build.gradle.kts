@@ -12,4 +12,6 @@ description = "jk-protobuf: the built-in protobuf build plugin's code layer — 
 
 dependencies {
     implementation(project(":plugin-sdk"))
+    // `FakeBuildIo` — the shared engine-side fake for a step body.
+    testImplementation(testFixtures(project(":plugin-sdk")))
 }

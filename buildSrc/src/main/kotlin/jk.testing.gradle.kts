@@ -92,6 +92,15 @@ tasks.withType<Test>().configureEach {
     }
 }
 
+// The per-module XML the coverage ratchet (checkCoverageBand) reads; produced only when the agent ran.
+tasks.named<org.gradle.testing.jacoco.tasks.JacocoReport>("jacocoTestReport") {
+    reports {
+        xml.required.set(true)
+        html.required.set(false)
+        csv.required.set(false)
+    }
+}
+
 tasks.named<Test>("test") {
     description = "Unit/fast tests (excludes @Tag " + slowTags.joinToString("|") + ")"
     useJUnitPlatform { tier(TestTiers.UNIT).applyTo(this) }

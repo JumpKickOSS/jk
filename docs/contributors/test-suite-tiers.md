@@ -107,6 +107,23 @@ property: `@Property(seed = "-3119466389416338755")`. A shrunk sample that expos
 becomes an example test in `PubGrubShrunkCounterexampleTest` so the fix stays pinned when the
 generator moves on.
 
+## Coverage ratchet (nightly)
+
+`coverage-baseline.txt` holds one line per module: `<module-rel> <unit-test line coverage %>`.
+`./gradlew checkCoverageBand -Pjk.coverage` (G91; the nightly coverage job runs it after the
+inventory report) measures every module's unit tier with the JaCoCo agent and compares:
+
+- more than 0.5 points **below** the line: the job fails, naming the module, the measured and the
+  recorded value — cover the change, or move the line in the same commit and say why;
+- more than 0.5 points **above** the line: the file is rewritten with the new value in the same run.
+  Locally that is a modified file to commit; in the nightly job it is the step summary's diff and the
+  `coverage-baseline` artifact, for a contributor to bank;
+- a module the file has never seen is added at its measured value.
+
+There is no percentage target and no badge. The number only moves without a hand in one direction.
+To re-baseline after an intentional drop (a deleted test tier, a module split), edit the line and
+say why in the commit; the ratchet does not lower a line itself.
+
 ## If a test task execs a tool jk does not build, that tool's version is an input
 
 Gradle's up-to-date check sees a task's declared inputs and nothing else. A test that shells out to

@@ -53,12 +53,15 @@ public final class JkWireModel {
         return moduleDirs.size();
     }
 
+    private static final Pattern WORKSPACE_TRUE = Pattern.compile("\"workspace\"\\s*:\\s*true");
+
     public static @NotNull JkWireModel parse(@NotNull String json) {
         // Take the last complete-looking JSON object if chrome leaked onto stdout.
         String body = extractJsonObject(json);
         String error = strField(body, "error");
         if ("null".equals(error)) error = null;
-        boolean workspace = body.contains("\"workspace\":true") || body.contains("\"workspace\": true");
+        // The same whitespace tolerance the string fields get; two literal spellings missed `"workspace" : true`.
+        boolean workspace = WORKSPACE_TRUE.matcher(body).find();
         return new JkWireModel(
                 error,
                 strField(body, "wsRoot"),

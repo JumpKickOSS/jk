@@ -27,9 +27,6 @@ public final class JkCliRunner {
 
     private static final Logger LOG = Logger.getInstance(JkCliRunner.class);
 
-    /** Chars of transcript retained per stream on the streaming path (a tail — errors print last). */
-    private static final int STREAM_RETAIN_CHARS = 64 * 1024;
-
     public record Result(int exitCode, String stdout, String stderr) {
         public boolean ok() {
             return exitCode == 0;
@@ -47,7 +44,7 @@ public final class JkCliRunner {
     /**
      * Run with an explicit line sink ({@code null} = capture-only). With a sink, each output line
      * is delivered as it arrives and the returned {@link Result} carries only the last
-     * {@value #STREAM_RETAIN_CHARS} chars per stream; without one, the full transcript is kept.
+     * {@value JkCliLines#STREAM_RETAIN_CHARS} chars per stream; without one, the full transcript is kept.
      */
     public static Result run(
             @NotNull File cwd,
@@ -71,19 +68,17 @@ public final class JkCliRunner {
             public void onTextAvailable(@NotNull ProcessEvent event, @NotNull Key outputType) {
                 String text = event.getText();
                 if (text == null) return;
-                // ProcessOutputTypes.STDERR vs STDOUT — compare by toString for API stability.
-                if ("stderr".equalsIgnoreCase(String.valueOf(outputType))
-                        || String.valueOf(outputType).contains("STDERR")) {
-                    append(err, text, sink != null);
+                if (JkCliLines.isStderr(String.valueOf(outputType))) {
+                    JkCliLines.append(err, text, sink != null);
                 } else {
-                    append(out, text, sink != null);
+                    JkCliLines.append(out, text, sink != null);
                 }
                 if (sink != null) {
                     String line = text.stripTrailing();
                     if (!line.isEmpty()) sink.accept(line);
                 }
                 if (indicator != null) {
-                    indicator.setText2(trimLine(text));
+                    indicator.setText2(JkCliLines.trimLine(text));
                     if (indicator.isCanceled()) {
                         handler.destroyProcess();
                     }
@@ -124,20 +119,7 @@ public final class JkCliRunner {
         return run(cwd, args, indicator, null);
     }
 
-    /** Append to a transcript buffer, trimming to the retained tail on the streaming path. */
-    private static void append(StringBuilder sb, String text, boolean capped) {
-        sb.append(text);
-        if (capped && sb.length() > STREAM_RETAIN_CHARS * 2) {
-            sb.delete(0, sb.length() - STREAM_RETAIN_CHARS);
-        }
-    }
-
     public static List<String> args(String... parts) {
         return new ArrayList<>(Arrays.asList(parts));
-    }
-
-    private static String trimLine(String text) {
-        String t = text.strip();
-        return t.length() > 100 ? t.substring(0, 97) + "…" : t;
     }
 }

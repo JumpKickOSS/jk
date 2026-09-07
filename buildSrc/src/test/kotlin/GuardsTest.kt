@@ -22,7 +22,9 @@ class GuardsTest {
     }
 
     /**
-     * The Gradle side keeps the one task-graph letter and the two registry tasks; every other letter is self-hosted.
+     * The Gradle side keeps the one task-graph letter, the registry tasks and the coverage ratchet — a question only
+     * Gradle's test task can answer until `jk test` writes a JaCoCo XML (see guard-parity.txt); every other letter is
+     * self-hosted.
      */
     @Test
     fun gradle_registers_only_the_task_graph_letter_and_the_registry_tasks() {
@@ -33,7 +35,12 @@ class GuardsTest {
                 "checkGuardParity",
                 "checkGuardRegistry",
                 "checkGateCoverage",
+                "checkCoverageBand",
             )
+        val g91 = Guards.named("checkCoverageBand")
+        assertThat(g91.letter).isEqualTo(91)
+        assertThat(g91.home).isEqualTo(GuardHome.ROOT)
+        assertThat(g91.inFastGate).describedAs("nightly: needs the JaCoCo agent").isFalse()
         val g64 = Guards.named("checkNoDisabledCompile")
         assertThat(g64.letter).isEqualTo(64)
         assertThat(g64.home).isEqualTo(GuardHome.MODULE)
@@ -63,7 +70,7 @@ class GuardsTest {
     }
 
     @Test
-    fun only_the_task_graph_letter_and_the_registry_tasks_are_gradle_letters() {
-        assertThat(Guards.gradleLetters).containsExactlyInAnyOrder(51, 64, 79)
+    fun only_the_task_graph_letter_the_registry_tasks_and_the_coverage_ratchet_are_gradle_letters() {
+        assertThat(Guards.gradleLetters).containsExactlyInAnyOrder(51, 64, 79, 91)
     }
 }

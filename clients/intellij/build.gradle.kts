@@ -60,6 +60,15 @@ tasks {
     buildSearchableOptions {
         enabled = false
     }
+    // No GUI forms in this plugin, so instrumentation has nothing to do — and its tooling cannot read
+    // the class files newer JDKs produce (NoSuchMethodError in its bundled ASM). Off, for the tests
+    // and the distribution alike: both run on the compiler's output.
+    instrumentCode {
+        enabled = false
+    }
+    instrumentTestCode {
+        enabled = false
+    }
     withType<JavaCompile>().configureEach {
         options.release.set(17)
     }

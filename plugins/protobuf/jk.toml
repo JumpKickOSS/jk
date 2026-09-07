@@ -3,3 +3,8 @@ description = "JumpKick's Protobuf plugin"
 
 [dependencies]
 jk-plugin-sdk.workspace = true
+
+[test-dependencies]
+jk-plugin-sdk = { workspace = true, fixtures = true }
+assertj-core = "latest"
+junit-jupiter = "latest"
