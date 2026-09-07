@@ -47,3 +47,10 @@ G64 checkNoDisabledCompile — Gradle task-graph state; the jk build has no comp
 # letter is enforced by both builds", not "the same code runs". Gradle running jk-guards.toml itself
 # (a JavaExec over server/guard) is the owner's follow-up; until then the Gradle twins stay.
 
+# Split out of a Gradle-side letter whose twin still carries the arm. One jk-guards.toml table has
+# one signature list and one args set, so an arm with its own shape is its own rule and its own
+# letter on the jk side; the Gradle twin of the parent letter enforces the same check unsplit.
+G68 xml-parser-hardening is G3's third arm (DomXml's six XXE flags by name); Gradle's
+G68 checkSingleXmlParserOwner still checks them inside G3. 2026-09-06.
+G69 own-algorithm-by-name is G6's second arm ("SHA-256" passed to a Hashing algorithm door);
+G69 Gradle's checkOneDigestSurface still checks it inside G6. 2026-09-06.

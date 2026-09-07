@@ -1,0 +1,723 @@
+# Engine-owned. Tightened on every jk build; grown only by `jk guard freeze <id> --reason`.
+# Never edit by hand: an entry without a reason is a suppression, and there is no suppression syntax.
+
+[blind-tree-walks]
+[blind-tree-walks.populations]
+"clients/cli" = { classes = 601, sites = 38001 }
+"plugins/android" = { classes = 29, sites = 1906 }
+"plugins/formatter" = { classes = 14, sites = 856 }
+"plugins/java-compiler" = { classes = 25, sites = 1420 }
+"plugins/micronaut" = { classes = 1, sites = 192 }
+"plugins/minified" = { classes = 5, sites = 536 }
+"plugins/protobuf" = { classes = 2, sites = 104 }
+"plugins/quarkus" = { classes = 11, sites = 834 }
+"plugins/spring-boot" = { classes = 5, sites = 462 }
+"plugins/test-runner" = { classes = 9, sites = 556 }
+"server/engine" = { classes = 842, sites = 53926 }
+"server/toolchain" = { classes = 20, sites = 1776 }
+"shared/client-io" = { classes = 73, sites = 4107 }
+"shared/core" = { classes = 326, sites = 17593 }
+"shared/dynamic-surface" = { classes = 10, sites = 607 }
+"shared/host" = { classes = 46, sites = 1921 }
+"shared/toolchain-jdk" = { classes = 134, sites = 7278 }
+"shared/wire" = { classes = 115, sites = 4305 }
+[[blind-tree-walks.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.cli.engine.EngineFleet#addGenerationPids(Ljava/nio/file/Path;Ljava/util/Set;Ljava/util/List;)V -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.cli.engine.EngineSpawn#aotCachePath(Lcc/jumpkick/wire/EnginePaths$Paths;Ljava/nio/file/Path;Lcc/jumpkick/cli/engine/EngineSpawn$EngineJdk;Ljava/lang/String;)Ljava/nio/file/Path; -> java.nio.file.Files#newDirectoryStream(Ljava/nio/file/Path;Ljava/lang/String;)Ljava/nio/file/DirectoryStream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.cli.watch.SourceWatch#registerTree(Ljava/nio/file/Path;)V -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.AotCachePackage#extractBootLayout(Ljava/lang/String;Ljava/nio/file/Path;Ljava/nio/file/Path;Ljava/nio/file/Path;)Ljava/lang/String; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.BuildLogicTaskScan#discoverNames(Ljava/nio/file/Path;)Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.DoctorCommand#checkJdk()Lcc/jumpkick/command/DoctorCommand$Check; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.SelectiveCommand#fingerprintModule(Ljava/nio/file/Path;)Ljava/lang/String; -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.ToolListCommand#run(Lcc/jumpkick/model/command/Invocation;)I -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.ToolRunCommand#runDirectory(Ljava/nio/file/Path;Ljava/util/List;)I -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.UrlToolSource#topLevelFiles(Ljava/nio/file/Path;)Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.VerifyBuildCommand#touchLockfiles(Ljava/nio/file/Path;)V -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.ide.IntellijSdkRegistrar#moduleNames(Ljava/nio/file/Path;)Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.ide.IntellijSdkRegistrar#targetTables()Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "plugins/android"
+at     = "cc.jumpkick.android.AndroidDeps#copyRetraceArtifacts(Lcc/jumpkick/plugin/build/PackageIo;)V -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "plugins/android"
+at     = "cc.jumpkick.android.AndroidDeps$Aar#hasRes()Z -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "plugins/android"
+at     = "cc.jumpkick.android.AvdCommand#list(Lcc/jumpkick/plugin/build/PluginCommandExec;Ljava/nio/file/Path;)I -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "plugins/android"
+at     = "cc.jumpkick.android.HiltTransformStep#run(Lcc/jumpkick/plugin/build/TaskExec;)V -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "plugins/android"
+at     = "cc.jumpkick.android.ManifestStep#jarsIn(Ljava/nio/file/Path;)Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "plugins/android"
+at     = "cc.jumpkick.android.ResourceMerger#copyFirstWins(Ljava/nio/file/Path;Ljava/nio/file/Path;)V -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "plugins/android"
+at     = "cc.jumpkick.android.ResourceMerger#mergeDepRes(Ljava/util/List;Ljava/nio/file/Path;)Ljava/nio/file/Path; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "plugins/android"
+at     = "cc.jumpkick.android.ResourceMerger#mergeValuesDir(Ljava/nio/file/Path;Ljava/util/Map;Ljava/util/Map;)V -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "plugins/android"
+at     = "cc.jumpkick.android.ResourceStep#filesUnder(Ljava/nio/file/Path;Ljava/lang/String;)Ljava/util/List; -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "plugins/android"
+at     = "cc.jumpkick.android.ResourceStep#run(Lcc/jumpkick/plugin/build/TaskExec;)V -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "plugins/formatter"
+at     = "cc.jumpkick.format.FormatStampCache#sweepResidue(Ljava/nio/file/Path;)V -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "plugins/formatter"
+at     = "cc.jumpkick.format.TypeIndex#loadJdk()Lcc/jumpkick/format/TypeIndex; -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "plugins/java-compiler"
+at     = "cc.jumpkick.java.compiler.GeneratedProvenance#deleteOutputs(Ljava/nio/file/Path;Ljava/nio/file/Path;Ljava/nio/file/Path;)V -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "plugins/java-compiler"
+at     = "cc.jumpkick.java.compiler.ZincJavaCompiler#deleteClassFiles(Ljava/nio/file/Path;)V -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "plugins/micronaut"
+at     = "cc.jumpkick.micronaut.MicronautPlugin#jarsIn(Ljava/nio/file/Path;)Ljava/util/List; -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "plugins/minified"
+at     = "cc.jumpkick.minified.MinifiedJarPackager#appendModuleClassKeeps(Ljava/lang/StringBuilder;Ljava/nio/file/Path;)V -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "plugins/minified"
+at     = "cc.jumpkick.minified.MinifiedJarPackager#zipClasses(Ljava/nio/file/Path;Ljava/nio/file/Path;)V -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "plugins/protobuf"
+at     = "cc.jumpkick.protobuf.ProtocStep#protoFiles(Ljava/nio/file/Path;)Ljava/util/List; -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "plugins/quarkus"
+at     = "cc.jumpkick.quarkus.AppJar#write(Ljava/nio/file/Path;Ljava/nio/file/Path;)V -> java.nio.file.Files#walkFileTree(Ljava/nio/file/Path;Ljava/nio/file/FileVisitor;)Ljava/nio/file/Path;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "plugins/quarkus"
+at     = "cc.jumpkick.quarkus.LockedClosure#mirrorRepoRoots()Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "plugins/quarkus"
+at     = "cc.jumpkick.quarkus.QuarkusAugmentMain#findProducedUberJar(Ljava/nio/file/Path;Ljava/nio/file/Path;)Ljava/nio/file/Path; -> java.nio.file.Files#walk(Ljava/nio/file/Path;I[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "plugins/quarkus"
+at     = "cc.jumpkick.quarkus.QuarkusAugmentMain#main([Ljava/lang/String;)V -> java.nio.file.Files#walk(Ljava/nio/file/Path;I[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "plugins/quarkus"
+at     = "cc.jumpkick.quarkus.QuarkusAugmentMain#publishNativeSources(Ljava/nio/file/Path;Ljava/nio/file/Path;)V -> java.nio.file.Files#walk(Ljava/nio/file/Path;I[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "plugins/quarkus"
+at     = "cc.jumpkick.quarkus.QuarkusPlugin#deleteTree(Ljava/nio/file/Path;)V -> java.nio.file.Files#walkFileTree(Ljava/nio/file/Path;Ljava/nio/file/FileVisitor;)Ljava/nio/file/Path;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "plugins/quarkus"
+at     = "cc.jumpkick.quarkus.QuarkusPlugin#findQuarkusRunJar(Ljava/nio/file/Path;)Ljava/nio/file/Path; -> java.nio.file.Files#walk(Ljava/nio/file/Path;I[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "plugins/quarkus"
+at     = "cc.jumpkick.quarkus.QuarkusPlugin#findUberJar(Ljava/nio/file/Path;)Ljava/nio/file/Path; -> java.nio.file.Files#walk(Ljava/nio/file/Path;I[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "plugins/quarkus"
+at     = "cc.jumpkick.quarkus.QuarkusPlugin#jarsIn(Ljava/nio/file/Path;)Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "plugins/spring-boot"
+at     = "cc.jumpkick.boot.SpringBootPlugin#runAot(Lcc/jumpkick/plugin/build/TaskExec;)V -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "plugins/test-runner"
+at     = "cc.jumpkick.testrunner.LauncherPath#countClassFiles(Ljava/nio/file/Path;)J -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.EngineMain#cleanStaleTrainerTmps(Ljava/nio/file/Path;)V -> java.nio.file.Files#newDirectoryStream(Ljava/nio/file/Path;Ljava/nio/file/DirectoryStream$Filter;)Ljava/nio/file/DirectoryStream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.http.HttpReadApi#handleFs(Lcom/sun/net/httpserver/HttpExchange;)V -> java.nio.file.Files#newDirectoryStream(Ljava/nio/file/Path;)Ljava/nio/file/DirectoryStream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.http.WorkspaceFileAccess#list(Ljava/nio/file/Path;)Lcc/jumpkick/engine/http/WorkspaceFileAccess$FileList; -> java.nio.file.Files#newDirectoryStream(Ljava/nio/file/Path;)Ljava/nio/file/DirectoryStream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.http.mcp.McpMachine#tools()Ljava/util/Map; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.plugin.PluginAot#sweepTool(Ljava/nio/file/Path;)V -> java.nio.file.Files#newDirectoryStream(Ljava/nio/file/Path;Ljava/lang/String;)Ljava/nio/file/DirectoryStream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.plugin.WorkerLaunchClasspath#addCodecModule(Ljava/util/List;Ljava/nio/file/Path;Ljava/lang/String;)V -> java.nio.file.Files#newDirectoryStream(Ljava/nio/file/Path;Ljava/lang/String;)Ljava/nio/file/DirectoryStream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.runtime.CacheInventoryOps#cacheUsage(Ljava/nio/file/Path;)Lcc/jumpkick/wire/protocol/CacheInventoryAck; -> java.nio.file.Files#newDirectoryStream(Ljava/nio/file/Path;)Ljava/nio/file/DirectoryStream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.runtime.CacheInventoryOps#repoNames(Ljava/nio/file/Path;)Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.runtime.CacheInventoryOps#storeUsage(Ljava/nio/file/Path;)Lcc/jumpkick/wire/protocol/CacheInventoryAck; -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.runtime.CacheInventoryOps#walkExclusiveAdding(Ljava/nio/file/Path;Ljava/util/Set;Lcc/jumpkick/cache/DiskUsage$SameFileKeys;)Lcc/jumpkick/engine/runtime/CacheInventoryOps$Stat; -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.runtime.NewProjectOps#cleanupFailedTarget(Ljava/nio/file/Path;Z)V -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.runtime.NewProjectOps#cloneRemoteTemplate(Ljava/lang/String;)Ljava/nio/file/Path; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.runtime.NewProjectOps#createWithIdentity(Lcc/jumpkick/engine/runtime/NewProjectOps$Request;)Lcc/jumpkick/engine/runtime/NewProjectOps$Created; -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.runtime.NewProjectOps#isEmptyDir(Ljava/nio/file/Path;)Z -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.runtime.NewProjectOps#prepare(Lcc/jumpkick/engine/runtime/NewProjectOps$Request;)Lcc/jumpkick/engine/runtime/NewProjectOps$Prepared; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.engine.runtime.NewProjectOps#preview(Lcc/jumpkick/engine/runtime/NewProjectOps$Request;)Lcc/jumpkick/engine/runtime/NewProjectOps$Preview; -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.giter8.Giter8Apply#apply(Ljava/nio/file/Path;Ljava/nio/file/Path;Ljava/util/Map;Lcc/jumpkick/giter8/MavenVersionLookup;)I -> java.nio.file.Files#walkFileTree(Ljava/nio/file/Path;Ljava/nio/file/FileVisitor;)Ljava/nio/file/Path;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.giter8.Giter8TemplateIndex#scanCatalogLayout(Ljava/nio/file/Path;Ljava/util/Map;Ljava/lang/String;)Z -> java.nio.file.Files#newDirectoryStream(Ljava/nio/file/Path;)Ljava/nio/file/DirectoryStream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.giter8.Giter8TemplateIndex#scanFrameworkDir(Ljava/lang/String;Ljava/lang/String;Ljava/nio/file/Path;Ljava/util/Map;Ljava/lang/String;)Z -> java.nio.file.Files#newDirectoryStream(Ljava/nio/file/Path;)Ljava/nio/file/DirectoryStream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.giter8.Giter8TemplateIndex#scanNested(Ljava/nio/file/Path;Ljava/util/Map;Ljava/lang/String;I)V -> java.nio.file.Files#newDirectoryStream(Ljava/nio/file/Path;)Ljava/nio/file/DirectoryStream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.giter8.Giter8TemplateIndex#scanRoot(Ljava/nio/file/Path;Ljava/util/Map;Ljava/lang/String;)V -> java.nio.file.Files#newDirectoryStream(Ljava/nio/file/Path;)Ljava/nio/file/DirectoryStream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.giter8.PluginTemplates#scanJar(Ljava/lang/String;Ljava/nio/file/Path;)Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.BuildLogicScripts#discover(Ljava/nio/file/Path;)Ljava/util/List; -> java.nio.file.Files#newDirectoryStream(Ljava/nio/file/Path;)Ljava/nio/file/DirectoryStream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.BuildLogicSupport#deleteContents(Ljava/nio/file/Path;)V -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.BuildLogicSupport#rejectCompiledSources(Ljava/nio/file/Path;)V -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.CachePlans#deleteQualified(Ljava/nio/file/Path;Ljava/util/Set;Ljava/util/Set;Z[J)V -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.CachePlans#deleteQualified(Ljava/nio/file/Path;Ljava/util/Set;Ljava/util/Set;Z[J)V -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.CachePlans#lambda$clearBuildPlan$(ZLjava/nio/file/Path;Ljava/nio/file/Path;Lcc/jumpkick/run/TaskContext;)V -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.CachePlans#purgeActionCache(Ljava/nio/file/Path;)V -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.CachePlans#tempFiles(Ljava/nio/file/Path;)Ljava/util/List; -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.FormatSources#collectSources(Ljava/nio/file/Path;)Lcc/jumpkick/runtime/FormatSources$CollectedSources; -> java.nio.file.Files#walkFileTree(Ljava/nio/file/Path;Ljava/nio/file/FileVisitor;)Ljava/nio/file/Path;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.HardwareProbe#artifactRoots(Ljava/nio/file/Path;)Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.HardwareProbe#deleteContents(Ljava/nio/file/Path;)V -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.HardwareProbe#findAnyVersion(Ljava/util/List;Ljava/lang/String;Ljava/lang/String;)Ljava/nio/file/Path; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.NativeEffort#directorySize(Ljava/nio/file/Path;I)J -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.PathSourceMaterializer#fingerprint(Ljava/nio/file/Path;)Ljava/lang/String; -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.PlannerKsp#kspGeneratedSources(Lcc/jumpkick/layout/BuildLayout;Ljava/lang/String;)Ljava/util/List; -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.PlannerKsp#pluginContributedSources(Lcc/jumpkick/layout/BuildLayout;Lcc/jumpkick/runtime/PluginBuild$Declarations;Ljava/lang/String;)Ljava/util/List; -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.PlannerNative#frameworkBinary(Ljava/nio/file/Path;)Ljava/nio/file/Path; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.PlannerPlugin#packagePlugin(Lcc/jumpkick/run/TaskContext;Lcc/jumpkick/runtime/BuildPlanner$Inputs;Lcc/jumpkick/cache/Cas;Lcc/jumpkick/model/JkBuild;Ljava/nio/file/Path;Ljava/nio/file/Path;Lcc/jumpkick/runtime/PluginBuild$Active;Lcc/jumpkick/runtime/PluginBuild$Declarations;Ljava/util/Map;)V -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.PlannerResources#containsClassFiles(Ljava/nio/file/Path;)Z -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.PlannerResources#stripFlattenedPluginCatalog(Ljava/nio/file/Path;Ljava/util/function/Consumer;)Z -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.PluginBuild#toolClosureDir(Lcc/jumpkick/plugin/manifest/PluginContributions$StepDep;Lcc/jumpkick/repo/RepoGroup;Lcc/jumpkick/cache/Cas;)Ljava/nio/file/Path; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.PluginDescriptorOps#listedRepoNames(Ljava/nio/file/Path;)Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.PreflightMemo#fingerprintModule(Ljava/nio/file/Path;ZLjava/lang/String;)Ljava/lang/String; -> java.nio.file.Files#walkFileTree(Ljava/nio/file/Path;Ljava/nio/file/FileVisitor;)Ljava/nio/file/Path;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.ScalaToolResolver#listLibJars(Ljava/nio/file/Path;)Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.ScalaToolResolver#pruneOrphanJars(Ljava/nio/file/Path;Ljava/util/List;)V -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.SourceProjectBuilder#selectMainJar(Ljava/nio/file/Path;Ljava/nio/file/Path;)Ljava/nio/file/Path; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.TaskForecaster#flattenedPluginCatalogPresent(Ljava/nio/file/Path;)Z -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.TestFailureSource#scanByFileName(Lcc/jumpkick/runtime/TestFailureSource$Cache;Ljava/nio/file/Path;Ljava/lang/String;Ljava/lang/String;Lcc/jumpkick/runtime/TestFailureSource$Layout;)Ljava/util/Optional; -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.task.AbiMemo$Store#sweepResidue(Ljava/nio/file/Path;Ljava/nio/file/Path;)V -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.task.ActionCache#isEmptyDir(Ljava/nio/file/Path;)Z -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.task.ActionCache#pruneUnowned(Ljava/nio/file/Path;Ljava/util/Set;)V -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.task.ActionCachePrune#countFiles(Ljava/nio/file/Path;)I -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.task.ActionCachePrune#livePointers(Ljava/nio/file/Path;)Ljava/util/Set; -> java.nio.file.Files#newDirectoryStream(Ljava/nio/file/Path;)Ljava/nio/file/DirectoryStream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.task.ActionCachePrune#pruneIncremental(Ljava/nio/file/Path;Lcc/jumpkick/task/ActionCachePrune$Policy;JJZ)Lcc/jumpkick/task/ActionCachePrune$Incremental; -> java.nio.file.Files#newDirectoryStream(Ljava/nio/file/Path;)Ljava/nio/file/DirectoryStream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.task.ActionCachePrune#pruneIncremental(Ljava/nio/file/Path;Lcc/jumpkick/task/ActionCachePrune$Policy;JJZ)Lcc/jumpkick/task/ActionCachePrune$Incremental; -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.task.ActionCachePrune#scanActions(Ljava/nio/file/Path;Ljava/nio/file/Path;Ljava/nio/file/Path;)Lcc/jumpkick/task/ActionCachePrune$Scan; -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.task.ActionCachePrune#scanCas(Lcc/jumpkick/cache/Cas;Ljava/util/Set;Ljava/util/Map;Ljava/util/Map;)J -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.task.CacheRetention#children(Ljava/nio/file/Path;)Ljava/util/List; -> java.nio.file.Files#newDirectoryStream(Ljava/nio/file/Path;)Ljava/nio/file/DirectoryStream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.task.CacheRetention#delete(Ljava/nio/file/Path;Z)Lcc/jumpkick/task/CacheRetention$Tally; -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.task.CacheRetention#newestMtime(Ljava/nio/file/Path;Lcc/jumpkick/task/CacheRetention$Probe;)J -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.task.CacheRetention#pruneEmptyDirs(Ljava/nio/file/Path;)V -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.task.CacheRetention#pruneEmptyDirs(Ljava/nio/file/Path;)V -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.task.CacheRetention#sweepFiles(Ljava/nio/file/Path;Lcc/jumpkick/task/Bound;JJZLcc/jumpkick/task/CacheRetention$Probe;)Lcc/jumpkick/task/CacheRetention$Tally; -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.task.CacheRoots#collect(Lcc/jumpkick/cache/Cas;Ljava/nio/file/Path;Ljava/nio/file/Path;)Ljava/util/Set; -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.task.CasPrewriter#pollOnce()V -> java.nio.file.Files#walkFileTree(Ljava/nio/file/Path;Ljava/nio/file/FileVisitor;)Ljava/nio/file/Path;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.task.ClasspathFingerprint#hashInto(Ljava/nio/file/Path;Ljava/util/Map;Z)V -> java.nio.file.Files#walkFileTree(Ljava/nio/file/Path;Ljava/nio/file/FileVisitor;)Ljava/nio/file/Path;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.task.FileHashMemo$Store#sweepResidue(Ljava/nio/file/Path;Ljava/nio/file/Path;)V -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.task.JavaCompile#deleteClasses(Ljava/nio/file/Path;)V -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.task.LangCompile#hasClasses(Ljava/nio/file/Path;)Z -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.test.AbiIndex#fingerprintWithNested(Ljava/nio/file/Path;Ljava/lang/String;)Lcc/jumpkick/task/ClassAbi$Fingerprint; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "server/toolchain"
+at     = "cc.jumpkick.compat.ToolInstaller#flattenedRoot(Ljava/nio/file/Path;)Ljava/nio/file/Path; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/client-io"
+at     = "cc.jumpkick.cache.DiskUsage#walkExclusive(Ljava/nio/file/Path;Lcc/jumpkick/cache/DiskUsage$SeenLinks;)Lcc/jumpkick/cache/DiskUsage$Stats; -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/client-io"
+at     = "cc.jumpkick.cache.EngineInstall#hasPrimaryAot(Ljava/nio/file/Path;)Z -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/client-io"
+at     = "cc.jumpkick.cache.EngineInstall#inferVersion(Ljava/lang/String;)Ljava/util/Optional; -> java.nio.file.Files#newDirectoryStream(Ljava/nio/file/Path;Ljava/lang/String;)Ljava/nio/file/DirectoryStream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/client-io"
+at     = "cc.jumpkick.cache.EngineInstall#newestEngineJar()Ljava/util/Optional; -> java.nio.file.Files#newDirectoryStream(Ljava/nio/file/Path;Ljava/lang/String;)Ljava/nio/file/DirectoryStream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/client-io"
+at     = "cc.jumpkick.cache.EngineInstall#sweepAbandonedConfig(Ljava/nio/file/Path;Ljava/util/List;)V -> java.nio.file.Files#newDirectoryStream(Ljava/nio/file/Path;)Ljava/nio/file/DirectoryStream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/client-io"
+at     = "cc.jumpkick.cache.EngineInstall#sweepParkedClients(Ljava/nio/file/Path;Ljava/util/List;)V -> java.nio.file.Files#newDirectoryStream(Ljava/nio/file/Path;)Ljava/nio/file/DirectoryStream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/client-io"
+at     = "cc.jumpkick.cache.EngineInstall#sweepRetiredJars(Ljava/util/List;)V -> java.nio.file.Files#newDirectoryStream(Ljava/nio/file/Path;)Ljava/nio/file/DirectoryStream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/client-io"
+at     = "cc.jumpkick.cache.EngineInstall#wipeAotDirectory(Ljava/nio/file/Path;Ljava/lang/String;Ljava/util/List;)I -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/client-io"
+at     = "cc.jumpkick.cache.SourcesJar#appendTree(Ljava/util/jar/JarOutputStream;Ljava/nio/file/Path;)V -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/client-io"
+at     = "cc.jumpkick.repo.RepoArtifactStore#hasTrackedFile(Ljava/nio/file/Path;)Z -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/client-io"
+at     = "cc.jumpkick.repo.RepoArtifactStore#migrateLegacyLocal(Ljava/nio/file/Path;)V -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/client-io"
+at     = "cc.jumpkick.repo.RepoArtifactStore#modules()Ljava/util/List; -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/client-io"
+at     = "cc.jumpkick.repo.RepoArtifactStore#repoNames(Ljava/nio/file/Path;)Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/client-io"
+at     = "cc.jumpkick.repo.RepoArtifactStore#versions(Ljava/lang/String;Ljava/lang/String;)Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.builds.ProjectBuilds#listProjectHomes(Ljava/nio/file/Path;)Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.builds.ProjectBuilds#listRuns(Ljava/nio/file/Path;)Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.builds.ProjectIdentity#recoverId(Ljava/nio/file/Path;Ljava/util/Optional;)Ljava/util/Optional; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.config.JkCacheConfig#usedBytes(Ljava/nio/file/Path;)J -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.layout.MainClassScanner#scan(Ljava/nio/file/Path;)Ljava/util/List; -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.layout.NativePreflight#scanSourceMains(Ljava/nio/file/Path;)Ljava/util/List; -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.layout.TestSuites#discover(Ljava/nio/file/Path;Z)Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.scaffold.NewParentDirGuess#scanGit(Ljava/nio/file/Path;Ljava/nio/file/Path;ILjava/util/List;[I)V -> java.nio.file.Files#newDirectoryStream(Ljava/nio/file/Path;)Ljava/nio/file/DirectoryStream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.templates.OfficialTemplatesFreshen#hasG8Child(Ljava/nio/file/Path;)Z -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.templates.OfficialTemplatesFreshen#isEmptyDir(Ljava/nio/file/Path;)Z -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.templates.OfficialTemplatesFreshen#isLegacyLangKindLayout(Ljava/nio/file/Path;)Z -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.templates.OfficialTemplatesFreshen#looksLikeTemplateMonorepo(Ljava/nio/file/Path;)Z -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/core"
+at     = "cc.jumpkick.util.AotManifest#list(Ljava/nio/file/Path;)Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/dynamic-surface"
+at     = "cc.jumpkick.surface.DynamicSurfaceIo#importAgentDir(Ljava/nio/file/Path;Ljava/lang/String;)Lcc/jumpkick/surface/DynamicSurface; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/dynamic-surface"
+at     = "cc.jumpkick.surface.DynamicSurfaceIo#importAgentDir(Ljava/nio/file/Path;Ljava/lang/String;)Lcc/jumpkick/surface/DynamicSurface; -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/host"
+at     = "cc.jumpkick.jdk.JdkFingerprint#compute(Ljava/nio/file/Path;)Ljava/lang/String; -> java.nio.file.Files#walkFileTree(Ljava/nio/file/Path;Ljava/nio/file/FileVisitor;)Ljava/nio/file/Path;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/toolchain-jdk"
+at     = "cc.jumpkick.androidsdk.AndroidSdk#installed(Ljava/lang/String;)Z -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/toolchain-jdk"
+at     = "cc.jumpkick.androidsdk.AndroidSdkInstaller#singleTopLevel(Ljava/nio/file/Path;)Ljava/nio/file/Path; -> java.nio.file.Files#newDirectoryStream(Ljava/nio/file/Path;)Ljava/nio/file/DirectoryStream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/toolchain-jdk"
+at     = "cc.jumpkick.compat.ToolRegistry#list(Lcc/jumpkick/compat/BuildTool;Z)Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/toolchain-jdk"
+at     = "cc.jumpkick.discovery.AsdfProbe#discoverAllJdks()Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/toolchain-jdk"
+at     = "cc.jumpkick.discovery.AsdfProbe#find(Lcc/jumpkick/discovery/ToolSpec;)Ljava/util/Optional; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/toolchain-jdk"
+at     = "cc.jumpkick.discovery.GradleProbe#candidateHomes()Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/toolchain-jdk"
+at     = "cc.jumpkick.discovery.HomebrewProbe#collectFormulaInstalls(Ljava/nio/file/Path;Ljava/util/List;)V -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/toolchain-jdk"
+at     = "cc.jumpkick.discovery.HomebrewProbe#discoverAllJdks()Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/toolchain-jdk"
+at     = "cc.jumpkick.discovery.HomebrewProbe#find(Lcc/jumpkick/discovery/ToolSpec;)Ljava/util/Optional; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/toolchain-jdk"
+at     = "cc.jumpkick.discovery.IntellijProbe#discoverAllJdks()Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/toolchain-jdk"
+at     = "cc.jumpkick.discovery.IntellijProbe#find(Lcc/jumpkick/discovery/ToolSpec;)Ljava/util/Optional; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/toolchain-jdk"
+at     = "cc.jumpkick.discovery.JbangProbe#discoverAllJdks()Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/toolchain-jdk"
+at     = "cc.jumpkick.discovery.JbangProbe#find(Lcc/jumpkick/discovery/ToolSpec;)Ljava/util/Optional; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/toolchain-jdk"
+at     = "cc.jumpkick.discovery.JenvProbe#discoverAllJdks()Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/toolchain-jdk"
+at     = "cc.jumpkick.discovery.JenvProbe#find(Lcc/jumpkick/discovery/ToolSpec;)Ljava/util/Optional; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/toolchain-jdk"
+at     = "cc.jumpkick.discovery.JkProbe#discoverAllJdks()Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/toolchain-jdk"
+at     = "cc.jumpkick.discovery.JkProbe#find(Lcc/jumpkick/discovery/ToolSpec;)Ljava/util/Optional; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/toolchain-jdk"
+at     = "cc.jumpkick.discovery.MiseProbe#discoverAllJdks()Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/toolchain-jdk"
+at     = "cc.jumpkick.discovery.MiseProbe#find(Lcc/jumpkick/discovery/ToolSpec;)Ljava/util/Optional; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/toolchain-jdk"
+at     = "cc.jumpkick.discovery.SdkmanProbe#discoverAllJdks()Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/toolchain-jdk"
+at     = "cc.jumpkick.discovery.SystemProbe#discoverAllJdks()Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/toolchain-jdk"
+at     = "cc.jumpkick.discovery.SystemProbe#find(Lcc/jumpkick/discovery/ToolSpec;)Ljava/util/Optional; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/toolchain-jdk"
+at     = "cc.jumpkick.discovery.ToolHealth#findVersionInLibByPattern(Ljava/nio/file/Path;Ljava/util/regex/Pattern;)Ljava/util/Optional; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/toolchain-jdk"
+at     = "cc.jumpkick.jdk.IntellijJdkTable#scan()Ljava/util/Set; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/toolchain-jdk"
+at     = "cc.jumpkick.jdk.JdkInstaller#flattenedRoot(Ljava/nio/file/Path;)Ljava/nio/file/Path; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/toolchain-jdk"
+at     = "cc.jumpkick.jdk.JdkInstaller#sweepDir(Ljava/nio/file/Path;)V -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/toolchain-jdk"
+at     = "cc.jumpkick.jdk.JdkInventory#ownedInstallDirs()Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/toolchain-jdk"
+at     = "cc.jumpkick.jdk.JdkRegistry#purge(Lcc/jumpkick/jdk/InstalledJdk;)Z -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/toolchain-jdk"
+at     = "cc.jumpkick.jdk.Platform#hasMuslLoader(Ljava/nio/file/Path;)Z -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "shared/wire"
+at     = "cc.jumpkick.wire.EnginePaths#identitiesIn(Ljava/nio/file/Path;)Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"

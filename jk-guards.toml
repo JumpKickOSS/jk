@@ -10,3 +10,151 @@ kind       = "forbid"
 signatures = ["java.util.Properties#store(**)", "java.util.Properties#storeToXML(**)"]
 instead    = "cc.jumpkick.host.DeterministicProperties.render"
 why        = "Properties.store writes a dated comment in hash order: a non-reproducible artifact"
+
+# G3. jk parses XML in one place, with one hardening posture. A second factory is a second XXE
+# posture to get wrong; DomXml hands out documents, never a factory or a builder.
+[guards.xml-parser-owner]
+kind       = "forbid"
+signatures = [
+  "javax.xml.parsers.DocumentBuilderFactory",
+  "javax.xml.parsers.SAXParserFactory",
+  "javax.xml.stream.XMLInputFactory",
+  "org.xml.sax.helpers.XMLReaderFactory",
+]
+owner      = "cc.jumpkick.host.DomXml"
+instead    = "cc.jumpkick.host.DomXml.parse(byte[] | String | Path | InputStream), or newDocument()"
+why        = "a second XML parser is a second XXE posture to get wrong"
+
+# G68. The six flags DomXml.hardened sets are the only XXE posture jk has; each is checked by name.
+[guards.xml-parser-hardening]
+kind     = "text"
+files    = ["shared/host/src/main/java/cc/jumpkick/host/DomXml.java"]
+patterns = [
+  "setFeature\\(XMLConstants\\.FEATURE_SECURE_PROCESSING,\\s*true\\)",
+  "setFeature\\(\"http://apache\\.org/xml/features/disallow-doctype-decl\",\\s*true\\)",
+  "setFeature\\(\"http://xml\\.org/sax/features/external-general-entities\",\\s*false\\)",
+  "setFeature\\(\"http://xml\\.org/sax/features/external-parameter-entities\",\\s*false\\)",
+  "setFeature\\(\"http://apache\\.org/xml/features/nonvalidating/load-external-dtd\",\\s*false\\)",
+  "setExpandEntityReferences\\(false\\)",
+]
+count    = { exactly = 6, per = "tree" }
+hit      = "f.setExpandEntityReferences(false);"
+instead  = "restore the flag in DomXml.hardened, or change this rule in the same commit and say what jk now accepts from a hostile document"
+why      = "DomXml is the only parser jk builds, so its flags are the only XXE posture jk has"
+
+# G6. jk hashes in one place: a second digest site re-decides the buffer size, the exception
+# policy and the hex spelling — one of them once substituted String.hashCode() for a cache key.
+[guards.one-digest-surface]
+kind       = "forbid"
+signatures = ["java.security.MessageDigest#getInstance(**)"]
+owner      = "cc.jumpkick.host.Hashing"
+instead    = "Hashing.sha256Hex(bytes | String | Path) or Hashing.newSha256()"
+why        = "one digest surface: buffer size, exception policy and hex spelling decided once"
+
+# G69. Hashing's algorithm doors take a name only when a foreign format dictates it (a .sha1
+# sidecar, an SDK feed); jk's own algorithm goes through newSha256 / sha256Hex.
+[guards.own-algorithm-by-name]
+kind       = "forbid"
+signatures = [
+  "cc.jumpkick.host.Hashing#newDigest(**)",
+  "cc.jumpkick.host.Hashing#fileHex(**)",
+  "cc.jumpkick.host.Hashing#hashHex(**)",
+]
+args       = ["SHA-256"]
+owner      = "cc.jumpkick.host.Hashing"
+instead    = "Hashing.newSha256() / Hashing.sha256Hex(..)"
+why        = "spelling jk's own algorithm at a call site is a second place it can change"
+
+# G8. An archive entry is stamped in one place. setTime converts to DOS time through the default
+# timezone, so an archive written with it is a function of the build host's $TZ.
+[guards.archive-instant-owner]
+kind       = "forbid"
+signatures = [
+  "java.util.zip.ZipEntry#setTime(**)",
+  "java.util.zip.ZipEntry#setTimeLocal(**)",
+  "java.util.zip.ZipEntry#setLastModifiedTime(**)",
+  "java.util.zip.ZipEntry#setCreationTime(**)",
+  "java.util.zip.ZipEntry#setLastAccessTime(**)",
+]
+owner      = "cc.jumpkick.host.DeterministicZip"
+instead    = "cc.jumpkick.host.DeterministicZip.entry(name)"
+why        = "an archive stamped through the default timezone is a function of the build host's TZ"
+
+# G9. Bytes become hex in one place. HexFormat.of().formatHex(digest) is fine Java and is banned
+# because it is a second answer to "how does jk spell bytes"; sixteen sites had each answered it.
+[guards.one-hex-spelling]
+kind       = "forbid"
+signatures = ["java.util.HexFormat", "java.lang.Character#forDigit(**)"]
+owner      = "cc.jumpkick.host.Hashing"
+instead    = "Hashing.hex(byte[]) — or sha256Hex, which digests too"
+why        = "bytes become hex in one place; a second spelling is a second answer"
+
+[[guards.one-hex-spelling.allow]]
+in     = "cc.jumpkick.repo.s3.SigV4Signer"
+reason = "uppercase percent-encoding of a URI, not a digest: Character.toUpperCase(Character.forDigit(..)) is a different function"
+
+# G20. The host is read in one place (Os) and the path separator has two owners, one per
+# vocabulary: Classpaths for -cp, SearchPath for PATH. They disagree about blank entries on purpose.
+[guards.one-host-surface]
+kind       = "forbid"
+signatures = ["java.lang.System#getProperty(**)", "java.io.File#pathSeparator", "java.io.File#pathSeparatorChar"]
+args       = ["os.name", "path.separator"]
+owner      = ["cc.jumpkick.host.Os", "cc.jumpkick.host.Classpaths", "cc.jumpkick.host.SearchPath"]
+instead    = "Os.isWindows() / isDarwin() / isLinux() / name(); Classpaths.join / split for -cp; SearchPath.prepend / entries for PATH"
+why        = "a copy of the host predicate that tests contains(\"win\") calls Darwin a Windows box"
+
+# G26. A plugin forks through the SDK's one fork owner; a hand-rolled fork is where the wrong JDK
+# and the missing .exe get in.
+[guards.plugin-fork-owner]
+kind       = "forbid"
+signatures = ["java.lang.ProcessBuilder#<init>(**)", "java.lang.Runtime#exec(**)"]
+scope      = ["plugins/*", "shared/plugin-sdk"]
+owner      = "cc.jumpkick.plugin.build.TaskExec"
+instead    = "exec.tool(name | path), then run() / stream(sink) / start()"
+why        = "a hand-rolled fork is where the wrong JDK and the missing .exe get in"
+
+[[guards.plugin-fork-owner.allow]]
+in     = "cc.jumpkick.plugin.image.AotCacheTrainer"
+reason = "three container-runtime forks (docker/podman info, run, stop): the runtime is a PATH name the user may configure, and ToolRun absolutises its executable head"
+
+# G40. Files.isExecutable is 33.4 µs on Windows against 0.52 on Linux — a security-descriptor read
+# plus an AccessCheck — for a question Windows answers by extension.
+[guards.runnable-owner]
+kind       = "forbid"
+signatures = ["java.nio.file.Files#isExecutable(**)"]
+owner      = "cc.jumpkick.host.PathUtil"
+instead    = "cc.jumpkick.host.PathUtil.isRunnable(path)"
+why        = "an access check off Windows, an extension test on it: 64x cheaper where it matters"
+
+[[guards.runnable-owner.allow]]
+in     = "cc.jumpkick.task.ActionCache"
+reason = "executableBit wants the POSIX bit itself and is already skipped on Windows"
+
+[[guards.runnable-owner.allow]]
+in     = "cc.jumpkick.engine.plugin.WorkerSession"
+reason = "probes /usr/bin/setsid once at class load, behind Os.isWindows(); the text guard exempted the same line by that shape"
+
+# G45. A blind walk discards the attributes it already read and re-resolves each path to ask again;
+# a ratchet, because two hundred sites each need their own read (directories, depth, ordering).
+[guards.blind-tree-walks]
+kind       = "forbid"
+signatures = [
+  "java.nio.file.Files#walk(**)",
+  "java.nio.file.Files#walkFileTree(**)",
+  "java.nio.file.Files#newDirectoryStream(**)",
+  "java.nio.file.Files#list(**)",
+]
+owner      = "cc.jumpkick.host.PathUtil"
+baseline   = true
+instead    = "cc.jumpkick.host.PathUtil.forEachRegularFile(root, (file, attrs) -> …)"
+why        = "re-resolving each path to ask again is the dominant cost of walking a large tree"
+
+# G46. Removing a JDK is minutes of download and may be pinned by an IDE, a shell or another
+# project's lockfile: it happens only when the user asked for it, in an explicit jk jdk verb.
+[guards.jdk-removal-confined]
+kind       = "forbid"
+signatures = ["cc.jumpkick.jdk.JdkGarbage"]
+owner      = "cc.jumpkick.command.JdkUpdateCommand"
+instead    = "provisioning installs; only `jk jdk update` queues a superseded install and drains it, after asking"
+why        = "an ordinary build once deleted the JDK it was running on, twice in one afternoon"
+

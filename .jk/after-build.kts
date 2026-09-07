@@ -553,57 +553,6 @@ guard("G2", "checkNoBareExitCode") {
 }
 
 // ---------------------------------------------------------------------------
-// G3 — one XML parser, one hardening posture.
-//
-// A new `DocumentBuilderFactory` that forgets an XXE flag and then parses third-party XML — an
-// AAR's res/values from any Maven artifact, a git dependency's pom.xml inside the resident
-// engine. Arm 3 checks the six flags by name INSIDE the owner: across files a scan cannot tell
-// which factory instance a `setFeature` call configures, which is why arm 2 exists.
-// ---------------------------------------------------------------------------
-val xmlParserOwner = "shared/host/src/main/java/cc/jumpkick/host/DomXml.java"
-
-val xxeHardening = listOf(
-    "setFeature(XMLConstants.FEATURE_SECURE_PROCESSING,true)",
-    "setFeature(\"http://apache.org/xml/features/disallow-doctype-decl\",true)",
-    "setFeature(\"http://xml.org/sax/features/external-general-entities\",false)",
-    "setFeature(\"http://xml.org/sax/features/external-parameter-entities\",false)",
-    "setFeature(\"http://apache.org/xml/features/nonvalidating/load-external-dtd\",false)",
-    "setExpandEntityReferences(false)")
-
-guard("G3", "checkSingleXmlParserOwner") {
-    val ownerCode = guardText(owner(xmlParserOwner))
-    val bannedFactories = listOf("SAXParserFactory", "XMLInputFactory", "XMLReaderFactory")
-    val banned = mutableListOf<String>()
-    val parsers = mutableListOf<String>()
-    (mainJava + testJava).forEach { f ->
-        val code = guardTextOf(f)
-        val r = rel(f)
-        bannedFactories.filter { code.contains(it) }.forEach { banned.add("$r: $it") }
-        if (r != xmlParserOwner && code.contains("DocumentBuilderFactory")) parsers.add(r)
-    }
-    val faults = mutableListOf<String>()
-    if (banned.isNotEmpty()) {
-        faults.add("jk parses XML in one place, with one hardening posture. These name a JAXP parser"
-            + " that has no owner and no XXE flags at all:\n" + bullets(banned.sorted()))
-    }
-    if (parsers.isNotEmpty()) {
-        faults.add("A second DocumentBuilderFactory is a second XXE posture to get wrong:\n"
-            + bullets(parsers.sorted())
-            + "\n  Parse through cc.jumpkick.host.DomXml — parse(byte[] | String | Path |"
-            + " InputStream) to read, newDocument() to build one. It hands out documents, never a"
-            + " factory or a builder, so there is no unhardened parser to obtain.")
-    }
-    val missing = xxeHardening.filterNot { ownerCode.contains(it) }
-    if (missing.isNotEmpty()) {
-        faults.add("DomXml is the only parser jk builds, so its flags are the only XXE posture jk"
-            + " has. These are gone:\n" + bullets(missing)
-            + "\n  Restore them in DomXml.hardened, or change this list in the same commit and say"
-            + " in the message what jk now accepts from a hostile document.")
-    }
-    if (faults.isNotEmpty()) error(faults.joinToString("\n\n"))
-}
-
-// ---------------------------------------------------------------------------
 // G5 — a fork protocol's line prefix has exactly two ends.
 //
 // Every `##JK<X>:` marker is one end of a parent/child protocol: the plugin declares it and the
@@ -637,40 +586,6 @@ guard("G5", "checkWireProtocolPrefixPairs") {
             }
             + "\n  One site means a dead protocol; three means a copy that will drift. Reference the"
             + " declaring constant instead of re-typing the literal.")
-    }
-}
-
-// ---------------------------------------------------------------------------
-// G6 — one MessageDigest lookup in the tree, and it is `Hashing`'s.
-//
-// Fifteen files once called `MessageDigest.getInstance` directly and each re-decided the
-// surrounding questions — three buffer sizes, four reactions to NoSuchAlgorithmException, one
-// of them a silent fall back to `Integer.toHexString(s.hashCode())` standing in for a cache key.
-// jk's own algorithm is read from the owner, so changing the digest moves the ban with it.
-// ---------------------------------------------------------------------------
-val hashingOwner = "shared/host/src/main/java/cc/jumpkick/host/Hashing.java"
-
-guard("G6", "checkOneDigestSurface") {
-    val ownAlgorithm = Regex("""newSha256\(\)\{returnnewDigest\("([^"]+)"\);}""")
-        .find(guardText(owner(hashingOwner)))?.groupValues?.get(1)
-        ?: error("cannot read jk's algorithm out of Hashing: newSha256() is expected to be"
-            + " `return newDigest(\"<algorithm>\");`")
-    val lookup = Regex("""MessageDigest\.getInstance\(""")
-    val byName = Regex("""(?:newDigest|fileHex|hashHex)\(""" + Regex.escape("\"$ownAlgorithm\""))
-    val hits = mutableListOf<String>()
-    mainJava.filter { rel(it) != hashingOwner }.forEach { f ->
-        val code = guardTextOf(f)
-        val r = rel(f)
-        countIn(code, lookup).let { if (it > 0) hits.add("$r: $it x MessageDigest.getInstance(..)") }
-        countIn(code, byName).let { if (it > 0) hits.add("$r: $it x \"$ownAlgorithm\" passed to a Hashing algorithm door") }
-    }
-    if (hits.isNotEmpty()) {
-        error("jk hashes in one place, cc.jumpkick.host.Hashing — a second digest site re-decides the"
-            + " buffer size, the exception policy and the hex spelling, and one of them silently"
-            + " substituted String.hashCode() for a cache key:\n" + bullets(hits.sorted())
-            + "\n  Hashing.sha256Hex(bytes | String | Path) or Hashing.newSha256() for jk's own"
-            + " hashing. newDigest/fileHex/hashHex take an algorithm name only when a foreign format"
-            + " dictates it — a .sha1 sidecar, an SDK feed — never \"$ownAlgorithm\".")
     }
 }
 
@@ -725,45 +640,7 @@ guard("G7", "checkSingleTruthSet") {
     if (loose.isNotEmpty()) notes.add("truthSetRatchet is loose (these shrank — tighten it in this commit):\n" + bullets(loose))
 }
 
-// ---------------------------------------------------------------------------
-// G8 / G43 — one archive instant, one class that stamps an entry, one byte sink.
-//
-// `ZipEntry.setTime` converts to DOS time through the JVM's default timezone, so identical
-// inputs written under a different $TZ produce different bytes and the raw-archive fingerprints
-// that key the action cache stop matching. `setTimeLocal` is the TZ-free spelling and the two
-// differ by five characters. G43 is the same owner from the other side: ZipOutputStream inherits
-// a 512-byte write buffer, so a 9 MB jar became ~18,000 write(2) calls where 64 KB gives ~143.
-// ---------------------------------------------------------------------------
 val deterministicZip = "shared/host/src/main/java/cc/jumpkick/host/DeterministicZip.java"
-
-guard("G8", "checkSingleArchiveInstant") {
-    val ownerText = owner(deterministicZip)
-    val epoch = Regex("""public static final long EPOCH_SECONDS = ([0-9_]+)L;""")
-        .find(ownerText)?.groupValues?.get(1)
-        ?: error("DeterministicZip no longer declares EPOCH_SECONDS, so this guard has lost the owner it reads.")
-    val numbers = setOf(epoch, epoch.replace("_", ""))
-    val hits = mutableListOf<String>()
-    mainJava.forEach { f ->
-        val code = guardTextOf(f)
-        val r = rel(f)
-        val byTime = countIn(code, Regex("""\.setTime\("""))
-        if (byTime > 0) hits.add("$r: $byTime x setTime(  ->  DeterministicZip.entry")
-        if (r == deterministicZip) return@forEach
-        val byLocal = countIn(code, Regex("""\.setTimeLocal\("""))
-        if (byLocal > 0) hits.add("$r: $byLocal x setTimeLocal(  ->  DeterministicZip.entry")
-        numbers.forEach { v ->
-            val n = countLiteral(code, v)
-            if (n > 0) hits.add("$r: $n x $v  ->  DeterministicZip.EPOCH_SECONDS")
-        }
-    }
-    if (hits.isNotEmpty()) {
-        error("An archive entry is stamped in one place, cc.jumpkick.host.DeterministicZip. These"
-            + " stamp their own:\n" + bullets(hits.sorted())
-            + "\n  setTime converts to DOS time through the default timezone, so an archive written"
-            + " with it is a function of the build host's \$TZ, and a second copy of the epoch is a"
-            + " second instant waiting to drift.")
-    }
-}
 
 guard("G43", "checkArchiveStreamOwner") {
     if (!owner(deterministicZip).contains("public static OutputStream archiveStream(")) {
@@ -793,45 +670,6 @@ guard("G43", "checkArchiveStreamOwner") {
             + "\n  ZipOutputStream buffers at 512 bytes. Take the sink from the one owner:"
             + " new JarOutputStream(DeterministicZip.archiveStream(path)), or"
             + " DeterministicZip.newArchive(path) when a ZipOutputStream will do.")
-    }
-}
-
-// ---------------------------------------------------------------------------
-// G9 — bytes become hex in one place, `Hashing.hex`.
-//
-// Two shapes. A per-byte hex loop allocates a Formatter per byte (a 200-entry classpath cost
-// ~6,400 of them per compile) and is easy to write without the `& 0xff` mask. `java.util.HexFormat`
-// is not a loop and is a perfectly reasonable line of Java — which is exactly why it was written
-// sixteen times before it was swept. Arm 2 is scanned over text that still carries imports,
-// because `import static java.util.HexFormat.of` is invisible to any pattern that drops them.
-//
-// Uppercase hex for a non-digest encoding is a different function: written as
-// `Character.toUpperCase(Character.forDigit(..))` it is exempt BY SHAPE, not by filename.
-// ---------------------------------------------------------------------------
-
-guard("G9", "checkNoHandRolledHex") {
-    val hexLoop = Regex("""%02[xX]|(?<!Character\.toUpperCase\()Character\.forDigit\(""")
-    val hexFormat = Regex("""\bHexFormat\b""")
-    val hits = mutableListOf<String>()
-    mainJava.forEach { f ->
-        val r = rel(f)
-        countIn(guardTextOf(f), hexLoop).let { if (it > 0) hits.add("%5d  %s  per-byte hex loop".format(it, r)) }
-        if (r == hashingOwner) return@forEach
-        val withImports = squashBetweenLiterals(codeOf(f))
-        countIn(withImports, hexFormat).let { if (it > 0) hits.add("%5d  %s  java.util.HexFormat".format(it, r)) }
-    }
-    if (hits.isNotEmpty()) {
-        error("Bytes become hex in one place, cc.jumpkick.host.Hashing.hex. These spell it"
-            + " themselves:\n" + bullets(hits.sorted())
-            + "\n  Call Hashing.hex(byte[]) — or sha256Hex, which does the digest too."
-            + " String.format(\"%02x\", b) allocates a Formatter per byte."
-            + "\n  HexFormat.of().formatHex(digest) looks fine and is not slow; it is banned because"
-            + " it is a SECOND ANSWER to \"how does jk spell bytes\", and sixteen call sites had each"
-            + " answered it separately before the sweep."
-            + "\n  Going the other way (parseHex) has no owner yet: add Hashing.unhex(String) next to"
-            + " hex(byte[]) and call that, rather than reopening the shape here."
-            + "\n  Uppercase hex for a non-digest encoding is a different function: write it as"
-            + " Character.toUpperCase(Character.forDigit(..)), which this guard exempts by shape.")
     }
 }
 
@@ -1257,73 +1095,6 @@ guard("G16", "checkSingleCentralAddress") {
 }
 
 // ---------------------------------------------------------------------------
-// G20 — the host is read in one place, and paths join in one place.
-//
-// `isWindows` once had an owner and fourteen private copies, and the copies tested
-// `os.name.contains("win")` — but "win" is a substring of **Darwin**, so every short copy called
-// a Mac a Windows box. Arm 1 bans the PROPERTY READ, not the predicate derived from it: there is
-// exactly one thing every copy must do first, and banning that bounds the count by the defect
-// rather than by the pattern. Arm 2 has two owners because the vocabulary genuinely overlaps —
-// `File.pathSeparator` is also PATH's separator, and PATH is an executable search path.
-// ---------------------------------------------------------------------------
-
-guard("G20", "checkSingleHostSurface") {
-    val osOwner = "shared/host/src/main/java/cc/jumpkick/host/Os.java"
-    val cpOwner = "shared/host/src/main/java/cc/jumpkick/host/Classpaths.java"
-    val spOwner = "shared/host/src/main/java/cc/jumpkick/host/SearchPath.java"
-    val properties = Regex("""public static final String \w*_?PROPERTY = "([^"]+)";""")
-        .findAll(owner(osOwner)).map { it.groupValues[1] }.toList()
-    if (properties.isEmpty()) error("Os declares no *_PROPERTY constant, so this guard has lost the owner it reads.")
-    val sepConstant = Regex("""public static final String SEPARATOR = ([\w.]+);""")
-        .find(owner(cpOwner))?.groupValues?.get(1)
-        ?: error("Classpaths no longer initialises SEPARATOR from a named constant, so this guard has"
-            + " lost the spelling it reads.")
-    owner(spOwner)
-    val separators = listOf(
-        Regex(Regex.escape(sepConstant) + """\b"""),
-        Regex(Regex.escape(sepConstant) + """Char\b"""),
-        // Not read from the owner, and it cannot drift from it: this is the JDK property
-        // File.pathSeparator is itself initialised from.
-        Regex("""System\.getProperty\("path\.separator""""))
-
-    val unownedOsReads = mutableListOf<String>()
-    val sepHits = LinkedHashMap<String, Int>()
-    mainJava.forEach { f ->
-        val r = rel(f)
-        val code = guardTextOf(f)
-        if (r != osOwner) {
-            properties.forEach { prop ->
-                val n = countIn(code, Regex("""System\.getProperty\(""" + Regex.escape("\"$prop\"")))
-                if (n > 0) unownedOsReads.add("$r: $n x System.getProperty(\"$prop\")")
-            }
-        }
-        if (r != cpOwner && r != spOwner) {
-            val n = separators.sumOf { countIn(code, it) }
-            if (n > 0) sepHits[r] = n
-        }
-    }
-    val faults = mutableListOf<String>()
-    if (unownedOsReads.isNotEmpty()) {
-        faults.add("The host is read in one place, cc.jumpkick.host.Os. These read the property"
-            + " themselves:\n" + bullets(unownedOsReads.sorted())
-            + "\n  Ask Os.isWindows() / isDarwin() / isLinux(), or Os.name() when you need the raw"
-            + " string for a message or a test seam. Do NOT re-derive the predicate: a copy that"
-            + " tests contains(\"win\") calls Darwin a Windows box.")
-    }
-    // No ratchet: SourceProjectBuilder was the last file on it and came clean, so every
-    // remaining spelling is a fault rather than a budgeted one.
-    if (sepHits.isNotEmpty()) {
-        faults.add("The separator has two owners, one per vocabulary: Classpaths for -cp, SearchPath"
-            + " for PATH. These name it themselves:\n"
-            + bullets(sepHits.toSortedMap().map { (r, n) -> "%5d  %s".format(n, r) })
-            + "\n  Call Classpaths.join(entries) / Classpaths.split(cp) for a classpath, or"
-            + " SearchPath.prepend(binDir, existing) / SearchPath.entries(path) for an executable"
-            + " search path — the two disagree about blank entries on purpose.")
-    }
-    if (faults.isNotEmpty()) error(faults.joinToString("\n\n"))
-}
-
-// ---------------------------------------------------------------------------
 // G21 — JSON is escaped in one place and parsed in one place.
 //
 // Exemption is BY SPEC, not by filename, because two escapers can both be correct:
@@ -1574,16 +1345,6 @@ guard("G24", "checkSingleAotMarkerSpelling") {
     }
 }
 
-// ---------------------------------------------------------------------------
-// G25 / G26 — `plugins/` holds two architectures, and a module's family is declared once.
-//
-// An SPI plugin ships a jk-plugin.toml: the engine discovers it by descriptor and takes its wire
-// prefix from [code].protocol-prefix, and NO engine source names the prefix. A forked worker
-// ships no descriptor: the engine hardcodes its argv, so an engine source MUST name the prefix.
-// Comparing siblings across that boundary and "fixing" the difference is what this prevents.
-// G26 is the same family's other rule: a plugin does not roll its own fork.
-// ---------------------------------------------------------------------------
-
 /** [src] with comments blanked to spaces (newlines and offsets kept), string literals verbatim. */
 fun familyGuardCode(src: String): String = blankNonCode(src, blankStrings = false)
 
@@ -1591,12 +1352,6 @@ fun familyGuardCode(src: String): String = blankNonCode(src, blankStrings = fals
  * Plugin sources that legitimately construct their own `ProcessBuilder`, by module-relative path.
  * Every entry is a fork `ToolRun` cannot express, and says which.
  */
-val pluginForkExemptions = mapOf(
-    // Three container-runtime forks (`docker`/`podman` info, run, stop). The runtime is a PATH
-    // *name* the user may configure, not a resolved path, and `ToolRun` absolutises its
-    // executable head — so expressing these needs a PATH-search owner first.
-    "plugins/image-builder/src/main/java/cc/jumpkick/plugin/image/AotCacheTrainer.java" to 3)
-
 val engineMainJava: List<Path> = children(at("server")).flatMap { filesUnder(it.resolve("src/main/java"), ".java") }
 
 guard("G25", "checkPluginFamily") {
@@ -1719,39 +1474,6 @@ guard("G25", "checkPluginFamily") {
         }
     }
     if (faults.isNotEmpty()) error(faults.joinToString("\n\n"))
-}
-
-guard("G26", "checkPluginForkOwner") {
-    val toolRun = owner("shared/plugin-sdk/src/main/java/cc/jumpkick/plugin/build/TaskExec.java")
-    if (!Regex("""Process\s+start\s*\(\s*\)""").containsMatchIn(toolRun)) {
-        error("TaskExec.ToolRun no longer declares `Process start()`, so this guard has lost the fork"
-            + " owner it points plugins at.")
-    }
-    val hits = mutableListOf<String>()
-    pluginModules.forEach { module ->
-        val files = filesUnder(module.resolve("src/main/java"), ".java")
-        if (files.isEmpty()) {
-            hits.add("${module.fileName}: no Java source under src/main/java, so this guard verified nothing for it")
-            return@forEach
-        }
-        files.forEach { f ->
-            val r = rel(f)
-            val code = familyGuardCode(text(f))
-            val found = Regex("""new\s+ProcessBuilder\s*\(""").findAll(code).toList()
-            val allowed = pluginForkExemptions[r] ?: 0
-            if (found.size > allowed) {
-                found.drop(allowed).forEach { m -> hits.add("$r:${lineAt(code, m.range.first)}") }
-                if (allowed > 0) hits.add("  ($r is exempt for $allowed fork(s); it now has ${found.size})")
-            }
-        }
-    }
-    if (hits.isNotEmpty()) {
-        error("A plugin forks a process without going through the SDK's one fork owner. Take a"
-            + " TaskExec.ToolRun from your exec surface — exec.tool(name) for a JDK tool off the"
-            + " build's javaHome, exec.tool(path) for a provisioned binary — then run() /"
-            + " stream(sink), or start() when you need your own drain:\n" + bullets(hits)
-            + "\n  A hand-rolled fork is where the wrong JDK and the missing .exe get in.")
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -2285,21 +2007,6 @@ guard("G38", "checkToolchainEnvFromRequest") {
     }
 }
 
-// ---------------------------------------------------------------------------
-// G39 / G40 / G42 / G45 — the filesystem is asked the cheap question first, through one owner.
-//
-// G39: a walk already read each entry's attributes, and `Files::isRegularFile` re-resolves the
-// path from scratch (10.3 us on NTFS against 1.0 on ext4). One JRE scan stat'ed every file in a
-// ~20,000-file tree before a name test rejected almost all of them.
-// G40: `Files.isExecutable` is 33.4 us on Windows against 0.52 on Linux — 64x — because the JDK
-// implements EXECUTE access there as a security-descriptor read plus an AccessCheck. Windows has
-// no executable bit; what decides whether a file runs is its extension.
-// G42: twelve hand-rolled tree copies shared the same three defects, and the identity check is a
-// correctness property, not a saving — re-copying bumps mtime, and an unchanged jar re-copied
-// forced a full KSP round on every build.
-// G45: a ratchet, deliberately. Two hundred sites remain and each needs its own read.
-// ---------------------------------------------------------------------------
-
 guard("G39", "checkCheapestRejectionFirst") {
     val nameOnly = Regex("""getFileName|endsWith\(|startsWith\(|\.equals\(""")
     val offenders = mutableListOf<String>()
@@ -2323,30 +2030,6 @@ guard("G39", "checkCheapestRejectionFirst") {
             + "\n  Put the string predicate first. The walk already paid for the entry;"
             + " Files::isRegularFile re-resolves the path for a fresh stat, so ordering it first"
             + " spends a syscall on every entry the name test was going to reject.")
-    }
-}
-
-guard("G40", "checkRunnableOwner") {
-    if (!owner(pathUtilOwner).contains("public static boolean isRunnable(")) {
-        error("PathUtil no longer declares isRunnable(Path), so this guard has lost the owner it points callers at.")
-    }
-    val offenders = mutableListOf<String>()
-    mainJava.filter { rel(it) != pathUtilOwner }.forEach { f ->
-        text(f).lines().forEachIndexed { i, raw ->
-            val line = raw.trim()
-            if (line.startsWith("//") || line.startsWith("*")) return@forEachIndexed
-            if (!line.contains("Files.isExecutable(")) return@forEachIndexed
-            // Exempt by shape: already skipped on the platform where the call is 64x, because the
-            // caller wants the POSIX bit itself rather than "can this host run it".
-            if (line.contains("!Os.isWindows()") || line.contains("!WINDOWS")) return@forEachIndexed
-            offenders.add("${rel(f)}:${i + 1}  $line")
-        }
-    }
-    if (offenders.isNotEmpty()) {
-        error("Files.isExecutable outside its owner:\n" + bullets(offenders)
-            + "\n  Use PathUtil.isRunnable(path): an access check off Windows, an extension test on"
-            + " it. Keep Files.isExecutable only when you want the POSIX bit itself, and then guard"
-            + " it with !Os.isWindows() as ActionCache.executableBit does.")
     }
 }
 
@@ -2383,44 +2066,6 @@ guard("G42", "checkTreeCopyOwner") {
     }
 }
 
-guard("G45", "checkBlindWalkRatchet") {
-    if (!owner(pathUtilOwner).contains("public static void forEachRegularFile(")) {
-        error("PathUtil no longer declares forEachRegularFile(...), so this guard has lost the owner"
-            + " it points callers at.")
-    }
-    val allowed = Files.readAllLines(at("walk-baseline.txt"))
-        .filter { it.isNotBlank() && !it.startsWith("#") }
-        .associate { val p = it.trim().split(" "); p[0] to p[1].toInt() }
-    if (allowed.isEmpty()) {
-        error("walk-baseline.txt lists no modules, so this guard would pass over anything.")
-    }
-    val pattern = Regex("""Files\.(walk|walkFileTree|newDirectoryStream|list)\(""")
-    val faults = mutableListOf<String>()
-    moduleDirs.forEach { module ->
-        val here = rel(module)
-        val files = filesUnder(module.resolve("src/main/java"), ".java")
-        if (files.isEmpty() && here !in allowed) return@forEach
-        val found = files.sumOf { pattern.findAll(text(it)).count() }
-        val budget = allowed[here] ?: 0
-        if (found > budget) {
-            faults.add("$here has $found blind tree walks, baseline $budget (+${found - budget})")
-        } else if (found < budget) {
-            faults.add("$here is down to $found blind tree walks from a baseline of $budget — lower"
-                + " the line in walk-baseline.txt so the ratchet tightens. A baseline that lags the"
-                + " tree is the same defect as a registry that lags the code.")
-        }
-    }
-    if (faults.isNotEmpty()) {
-        error("Blind tree walks:\n" + bullets(faults)
-            + "\n  Use PathUtil.forEachRegularFile(root, (file, attrs) -> …): the walk already read"
-            + " each entry's attributes, and re-resolving the path to ask again is the dominant cost"
-            + " of walking a large tree."
-            + "\n  If a walk genuinely cannot use it (it needs directories, a depth limit, or"
-            + " ordering), raise this module's line in walk-baseline.txt in the same change and say"
-            + " which site and why.")
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Rules that read exactly ONE module are not here.
 //
@@ -2443,57 +2088,6 @@ guard("G45", "checkBlindWalkRatchet") {
 // unenforced rule: the self-hosted build is the one contributors run, and it was the one lying.
 // G51 below is the ratchet that stops the next one drifting.
 // ---------------------------------------------------------------------------
-
-// Path -> why this verb may reach JDK removal. A bare list rots; the reason is the point.
-val jdkRemovalCallers = mapOf(
-    "clients/cli/src/main/java/cc/jumpkick/command/JdkUpdateCommand.java"
-        to "`jk jdk update` queues the superseded install and drains it, after asking (default yes)")
-
-guard("G46", "checkJdkRemovalConfined") {
-    // Self-fail: the guard has to keep pointing at code that still exists and still carries the
-    // ownership re-check, or it silently guards nothing.
-    val garbage = owner("shared/toolchain-jdk/src/main/java/cc/jumpkick/jdk/JdkGarbage.java")
-    val missingMembers = listOf("isJkOwned", "drain", "enqueue").filterNot { garbage.contains(it) }
-    if (missingMembers.isNotEmpty()) {
-        error("JdkGarbage no longer has ${missingMembers.joinToString(", ")}, so this guard is"
-            + " guarding a shape that has moved. Update or retire it deliberately.")
-    }
-    val allowedMissing = jdkRemovalCallers.keys.filterNot { Files.isRegularFile(at(it)) }
-    if (allowedMissing.isNotEmpty()) {
-        error("G46's allowlist names files that no longer exist:"
-            + " ${allowedMissing.joinToString(", ")}. The verb was renamed or removed — update the"
-            + " allowlist in the same change.")
-    }
-    val hits = mutableListOf<String>()
-    mainJava.forEach { f ->
-        val here = rel(f)
-        if (here.endsWith("/jdk/JdkGarbage.java")) return@forEach
-        // Comments blanked so the javadoc that explains this rule is not itself a violation.
-        val lines = codeOf(f).lines()
-        if (here.endsWith("/jdk/StableJdkPointer.java")) {
-            lines.forEachIndexed { i, line ->
-                if (line.contains("deleteRecursively")) {
-                    hits.add("$here:${i + 1}: the stable pointer must not delete a tree — a"
-                        + " populated directory at the pointer name is an install")
-                }
-            }
-            return@forEach
-        }
-        if (here in jdkRemovalCallers) return@forEach
-        lines.forEachIndexed { i, line ->
-            if (line.contains("JdkGarbage")) hits.add("$here:${i + 1}: JdkGarbage is reachable from here")
-        }
-    }
-    if (hits.isNotEmpty()) {
-        error("JDK removal reached from outside an explicit `jk jdk` verb:\n" + bullets(hits)
-            + "\n  Removing a JDK is minutes of download and may be pinned by an IDE, a shell, a"
-            + " .sdkmanrc, or another project's lockfile, so it happens only when the user asked for"
-            + " it. Provisioning installs; it does not collect."
-            + "\n  If a new verb legitimately removes JDKs, add it to `jdkRemovalCallers` and say why."
-            + "\n  Allowed today:\n"
-            + jdkRemovalCallers.entries.joinToString("\n") { "    ${it.key}\n        ${it.value}" })
-    }
-}
 
 guard("G47", "checkCaseConversionLocale") {
     if (mainJava.isEmpty()) {

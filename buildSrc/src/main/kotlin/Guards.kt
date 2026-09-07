@@ -44,6 +44,7 @@ object Guards {
                 "ban",
                 GuardHome.MODULE,
                 description = "Fail the build on an XML parser outside DomXml",
+                ruleId = "xml-parser-owner",
             ),
             spec(
                 4,
@@ -71,6 +72,7 @@ object Guards {
                 "ban",
                 GuardHome.MODULE,
                 description = "Fail the build on a MessageDigest lookup outside Hashing",
+                ruleId = "one-digest-surface",
             ),
             spec(
                 7,
@@ -87,6 +89,7 @@ object Guards {
                 "ban",
                 GuardHome.MODULE,
                 description = "Fail the build on an archive entry stamped outside DeterministicZip",
+                ruleId = "archive-instant-owner",
             ),
             spec(
                 9,
@@ -95,6 +98,7 @@ object Guards {
                 "ban, no allowlist",
                 GuardHome.MODULE,
                 description = "Fail the build on a per-byte hex loop or HexFormat outside Hashing",
+                ruleId = "one-hex-spelling",
             ),
             spec(
                 10,
@@ -198,6 +202,7 @@ object Guards {
                 GuardHome.MODULE,
                 description =
                     "Fail the build on an os.name read outside Os, or a classpath separator outside Classpaths",
+                ruleId = "one-host-surface",
             ),
             spec(
                 21,
@@ -264,6 +269,7 @@ object Guards {
                 "ban, one commented file exemption (a container runtime named on `PATH`, which `ToolRun` cannot express yet)",
                 GuardHome.PLUGIN_MODULE,
                 description = "Fail the build when a plugin hand-rolls a process fork instead of TaskExec.ToolRun",
+                ruleId = "plugin-fork-owner",
             ),
             spec(
                 27,
@@ -418,6 +424,7 @@ object Guards {
                 "ban, one exemption (`ActionCache.executableBit`, which wants the bit itself)",
                 GuardHome.MODULE,
                 description = "Fail the build on Files.isExecutable outside PathUtil.isRunnable",
+                ruleId = "runnable-owner",
             ),
             spec(
                 41,
@@ -464,6 +471,7 @@ object Guards {
                 "ratchet against `walk-baseline.txt`; a module may only shrink",
                 GuardHome.MODULE,
                 description = "Fail the build when a module gains a blind tree walk in src/main/java",
+                ruleId = "blind-tree-walks",
             ),
             spec(
                 46,
@@ -472,6 +480,7 @@ object Guards {
                 "ban + self-fail on `JdkGarbage` still carrying the members it reads",
                 GuardHome.MODULE,
                 description = "Fail the build when JDK removal is reachable from anything but an explicit jk jdk verb",
+                ruleId = "jdk-removal-confined",
             ),
             spec(
                 47,
@@ -665,6 +674,24 @@ object Guards {
                 "ratchet, both directions (`cycle-baseline.txt`)",
                 GuardHome.ROOT,
                 description = "Fail when a module's package-cycle count leaves its cycle-baseline.txt band",
+            ),
+            spec(
+                68,
+                "checkXmlParserHardening",
+                "the six XXE flags inside `DomXml.hardened`, each by name — the only XXE posture jk has",
+                "count, exactly six",
+                GuardHome.JK_ONLY,
+                description = "Fail the build when one of DomXml's six XXE hardening flags is gone",
+                ruleId = "xml-parser-hardening",
+            ),
+            spec(
+                69,
+                "checkOwnAlgorithmByName",
+                "jk's own digest algorithm spelled at a `Hashing` door (`newDigest` / `fileHex` / `hashHex`) instead of `newSha256` / `sha256Hex`",
+                "ban, owner exempt",
+                GuardHome.JK_ONLY,
+                description = "Fail the build when jk's own algorithm name is passed to a Hashing algorithm door",
+                ruleId = "own-algorithm-by-name",
             ),
             spec(
                 61,
