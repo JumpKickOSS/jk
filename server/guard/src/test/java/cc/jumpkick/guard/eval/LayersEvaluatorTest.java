@@ -186,4 +186,24 @@ class LayersEvaluatorTest {
                 run(root, "layers = { web = \"web\" }\naccess = { web = [] }\nexact = true\n", Lane.MODEL);
         assertThat(exactNeedsClasses.outcome()).isEqualTo(Outcome.SCANNER_FAILED);
     }
+
+    @Test
+    void list_layers_closed_edges_and_edge_allows(@TempDir Path dir) throws Exception {
+        Path root = workspace(dir);
+        // web → service → repo; with `closed`, an edge to a module in no layer is a violation too
+        String rule = "layers = { web = \"web\", trusted = [\"service\", \"nothing/*\"] }\n"
+                + "access = { web = [\"trusted\"] }\nclosed = true\nscope = [\"web\"]\n";
+        Evaluation e = run(root, rule, Lane.MODEL);
+        assertThat(e.outcome()).isEqualTo(Outcome.VIOLATIONS);
+        assertThat(e.observations()).extracting(Observation::key).containsExactly("module:web -> repo");
+        assertThat(e.observations().get(0).detail()).contains("in no layer").contains("(closed)");
+        Evaluation open = run(root, rule.replace("closed = true\n", ""), Lane.MODEL);
+        assertThat(open.outcome()).isEqualTo(Outcome.CLEAN);
+        Evaluation edgeAllowed =
+                run(root, rule + "[[guards.r.allow]]\nin = \"web -> repo\"\nreason = \"legacy\"\n", Lane.MODEL);
+        assertThat(edgeAllowed.outcome()).isEqualTo(Outcome.CLEAN);
+        Evaluation otherEdge =
+                run(root, rule + "[[guards.r.allow]]\nin = \"web -> service\"\nreason = \"legacy\"\n", Lane.MODEL);
+        assertThat(otherEdge.outcome()).isEqualTo(Outcome.STALE_ALLOW);
+    }
 }

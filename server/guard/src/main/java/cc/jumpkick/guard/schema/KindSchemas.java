@@ -119,11 +119,15 @@ final class KindSchemas {
                 Kind.LAYERS,
                 InsteadRule.ABSENT,
                 List.of(
-                        required("layers", TABLE, "name = package glob or module glob"),
+                        required("layers", TABLE, "name = package glob, module glob, or a list of module globs"),
                         required("access", TABLE, "name = [layers it may depend on]"),
                         choice("edges", false, "which dependency edges are read", "manifest", "classes", "both"),
                         optional("exports", TABLE, "module = [packages visible across modules]"),
-                        optional("exact", BOOL, "a declared but unused module dependency is a violation")),
+                        optional("exact", BOOL, "a declared but unused module dependency is a violation"),
+                        optional(
+                                "closed",
+                                BOOL,
+                                "an edge from a layered module to a module in no layer is a violation")),
                 List.of(),
                 """
                 [guards.layers]

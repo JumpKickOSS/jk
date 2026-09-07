@@ -386,6 +386,7 @@ object Guards {
                 attach = setOf(GuardAttach.CHECK),
                 description =
                     "Fail when a testFixtures variant reaches a publication, a POM or a production configuration",
+                ruleId = "test-fixtures-stay-out-of-production",
             ),
             spec(
                 35,
@@ -563,6 +564,7 @@ object Guards {
                 tableTask = "`checkNullMarkedApiPackages` (root project) + `.jk/after-build.kts`",
                 attach = emptySet(),
                 description = "Fail when an enforced null-marked package lacks package-level @NullMarked",
+                ruleId = "null-marked-packages",
             ),
             spec(
                 54,
@@ -573,6 +575,7 @@ object Guards {
                 tableTask = "`checkPluginSdkBoundary` (root project) + `.jk/after-build.kts`",
                 attach = emptySet(),
                 description = "Reject unclassified plugin project dependencies and server runtime leaks",
+                ruleId = "plugin-sdk-boundary",
             ),
             spec(
                 55,
@@ -793,12 +796,26 @@ object Guards {
                 description = "Fail when a structural guard is not reachable from checkFast",
             ),
             spec(
-                task = "checkCliRuntimeClasspath",
-                rule = "plugin-sdk, maven-artifact, test-fixtures or JUnit on the CLI runtime classpath",
-                form = "ban",
-                home = GuardHome.MODULE_OWNED,
+                73,
+                "checkCliRuntimeClasspath",
+                "maven-artifact, plexus-utils, jline, test-fixtures or a test/analysis framework on the CLI runtime classpath",
+                "ban",
+                GuardHome.MODULE_OWNED,
                 ownerPath = ":cli",
                 description = "Fail when the CLI runtime classpath contains plugin-sdk, test-fixtures or JUnit",
+                ruleId = "cli-runtime-classpath",
+            ),
+            spec(
+                74,
+                "checkCliRuntimeModules",
+                "a CLI workspace edge to an engine-side module (plugin-sdk, guard, resolver) — the same `checkCliRuntimeClasspath` task on the Gradle side, a `layers` rule here",
+                "ban",
+                GuardHome.FOLDED,
+                tableTask = "*(folded into `checkCliRuntimeClasspath`)*",
+                inFastGate = false,
+                gradleLetter = true,
+                attach = emptySet(),
+                ruleId = "cli-runtime-modules",
             ),
             spec(
                 task = "checkCliNoParseTypes",

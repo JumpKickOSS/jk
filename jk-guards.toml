@@ -581,3 +581,85 @@ matching = "cc.jumpkick.(**)"
 baseline = true
 why      = "a cyclic component has no edge anyone can name to cut, so the count is what the build defends"
 
+# G53. Every production package in a null-marked root carries package-level @NullMarked: NullAway
+# enforces nullness only where the package says so, and a package that forgets the marker is a
+# package where every finding is silently off. The seven modules are NullMarking.enforcedRoots;
+# a package left unmarked on purpose is an allow entry with its reason, and a stale one is red.
+[guards.null-marked-packages]
+kind    = "annotate"
+require = "org.jspecify.annotations.NullMarked"
+on      = "package"
+scope   = ["shared/jk-api", "shared/wire", "shared/plugin-sdk", "shared/core", "clients/cli", "shared/guard-api", "server/guard"]
+instead = "a package-info.java in the package carrying @NullMarked"
+why     = "NullAway checks a package only where it says @NullMarked; an unmarked package is one where every nullness finding is off"
+
+# G54. First-party plugins compile against the SDK and the host primitives, nothing else: a
+# plugin that reaches into server/ or an unclassified shared module runs engine code inside a
+# worker, and the boundary that lets plugins be published on their own is gone. Every current
+# exception is an edge allow with the product invariant that owns it (docs/contributors/plugins.md,
+# "Dependency boundary"); a plugin-to-plugin edge (grails composes spring-boot) is a same-layer edge.
+[guards.plugin-sdk-boundary]
+kind   = "layers"
+scope  = ["plugins/*"]
+layers = { plugins = "plugins/*", sdk = ["shared/plugin-sdk", "shared/host"] }
+access = { plugins = ["sdk"] }
+closed = true
+why    = "a plugin that depends past the SDK runs engine code inside a worker and cannot be published on its own"
+
+[[guards.plugin-sdk-boundary.allow]]
+in     = "plugins/auditor -> shared/core"
+reason = "the auditor reads the canonical lockfile and emits the shared audit report"
+
+[[guards.plugin-sdk-boundary.allow]]
+in     = "plugins/publisher -> shared/core"
+reason = "publishing reads the canonical manifest, lockfile, and build layout"
+
+[[guards.plugin-sdk-boundary.allow]]
+in     = "plugins/publisher -> shared/client-io"
+reason = "repository uploads use the client-safe HTTP/file/object-store transports, which live there so the worker does not depend on server I/O"
+
+[[guards.plugin-sdk-boundary.allow]]
+in     = "plugins/image-builder -> shared/jk-api"
+reason = "image configuration and repository credentials are public model types"
+
+[[guards.plugin-sdk-boundary.allow]]
+in     = "plugins/minified -> shared/dynamic-surface"
+reason = "R8 keep rules and native reachability share one model"
+
+# G34. A testFixtures variant wired into a production configuration puts test code — and the
+# JUnit it compiles against — on a worker's flattened POM and inside the native image, where
+# nothing else notices until GraalVM fails to see a reflective JUnit lookup at runtime. This is
+# the wiring arm over the Gradle scripts; the classpath arm is G73/G74 below.
+[guards.test-fixtures-stay-out-of-production]
+kind    = "text"
+files   = ["build.gradle.kts", "**/build.gradle.kts", "buildSrc/src/main/kotlin/*.gradle.kts"]
+pattern = "^\\s*(api|implementation|compileOnly|compileOnlyApi|runtimeOnly|annotationProcessor)\\s*\\(\\s*testFixtures\\s*\\("
+hit     = "    implementation(testFixtures(project(\":host\")))"
+miss    = "    testImplementation(testFixtures(project(\":host\")))"
+instead = "testImplementation / testCompileOnly / testRuntimeOnly"
+why     = "a testFixtures variant on a production configuration ships test code in a worker POM and the native image"
+
+# G73. The native client's runtime is the native image: a test framework, an analysis library or a
+# resolver-side Maven helper on its classpath is a mis-scoped dependency the image would carry and
+# GraalVM would fail to see through, caught here rather than merely absent.
+[guards.cli-runtime-classpath]
+kind    = "depend"
+scope   = ["clients/cli"]
+scopes  = ["dependencies", "runtime-dependencies", "provided-dependencies"]
+ban     = ["org.junit.jupiter:*", "org.junit.platform:*", "org.assertj:*", "org.opentest4j:*", "org.apiguardian:*", "com.tngtech.archunit:*", "org.apache.maven:maven-artifact", "org.codehaus.plexus:plexus-utils", "org.jline:*"]
+instead = "test-dependencies; Maven helpers stay engine-side"
+why     = "the CLI runtime is the native image; a test or build-time library there is a mis-scoped dependency"
+
+# G74. The CLI links the client-side modules only: plugin-sdk, the guard engine and the resolver
+# are engine-side, and a workspace edge to one of them puts engine code in the native image.
+[guards.cli-runtime-modules]
+kind   = "layers"
+scope  = ["clients/cli"]
+layers = { cli = "clients/cli", client = ["shared/jk-api", "shared/core", "shared/client-io", "shared/toolchain-jdk", "shared/wire", "shared/host", "clients/cli-terminal"] }
+access = { cli = ["client"] }
+closed = true
+why    = "a CLI edge to an engine-side module puts engine code in the native image"
+
+[[guards.cli-runtime-modules.allow]]
+in     = "clients/cli -> plugins/*"
+reason = "the CLI embeds the bundled worker plugins' jar digests: build-order inputs, never classes on its classpath"

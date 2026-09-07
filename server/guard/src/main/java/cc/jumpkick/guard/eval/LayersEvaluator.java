@@ -40,8 +40,9 @@ final class LayersEvaluator implements Evaluator {
         TomlTable layersTable = t.getTable("layers");
         TomlTable accessTable = t.getTable("access");
         if (layersTable == null || accessTable == null) return Evaluation.failed("`layers` and `access` are required");
-        Map<String, String> layers = new LinkedHashMap<>();
-        for (String name : layersTable.keySet()) layers.put(name, String.valueOf(layersTable.get(name)));
+        Map<String, List<String>> layers = new LinkedHashMap<>();
+        for (String name : layersTable.keySet()) layers.put(name, strings(layersTable.get(name)));
+        boolean closed = Boolean.TRUE.equals(t.getBoolean("closed"));
         Map<String, Set<String>> access = new LinkedHashMap<>();
         for (String name : accessTable.keySet()) {
             if (!layers.containsKey(name)) return Evaluation.failed("access names an unknown layer `" + name + "`");
@@ -69,18 +70,30 @@ final class LayersEvaluator implements Evaluator {
         // ---- manifest edges: module → sibling module
         Map<String, Set<String>> manifestEdges = new TreeMap<>();
         for (String module : model.modules()) {
-            if (!rule.applies(module)) continue;
+            // Membership is the workspace's; `scope` only picks whose edges are judged.
             Set<String> from = moduleLayers(layers, module);
             for (String l : from) members.merge(l, 1L, Long::sum);
+            if (!rule.applies(module)) continue;
             Set<String> to = model.edgesFrom(module, ModuleOrder.PRODUCTION_SCOPES);
             manifestEdges.put(module, to);
             if (edges.equals("classes")) continue;
             for (String target : to) {
                 edgeCount++;
+                Set<String> targetLayers = moduleLayers(layers, target);
                 for (String a : from) {
-                    for (String b : moduleLayers(layers, target)) {
+                    if (closed && targetLayers.isEmpty()) {
+                        if (allowed(rule, allowUsed, module, target)) continue;
+                        sites.add(Observation.site(
+                                "module:" + module + " -> " + target,
+                                module + "/" + ManifestPaths.MANIFEST,
+                                0,
+                                module + " (" + a + ") depends on " + target + ", which is in no layer; " + a
+                                        + " may depend on " + describe(access.get(a)) + " (closed)"));
+                        continue;
+                    }
+                    for (String b : targetLayers) {
                         if (a.equals(b) || access.getOrDefault(a, Set.of()).contains(b)) continue;
-                        if (allowed(rule, allowUsed, module)) continue;
+                        if (allowed(rule, allowUsed, module, target)) continue;
                         sites.add(Observation.site(
                                 "module:" + module + " -> " + target,
                                 module + "/" + ManifestPaths.MANIFEST,
@@ -181,33 +194,51 @@ final class LayersEvaluator implements Evaluator {
     }
 
     /** The layers a module belongs to: values that are module globs ({@code plugins/*}, {@code shared/host}). */
-    static Set<String> moduleLayers(Map<String, String> layers, String module) {
+    static Set<String> moduleLayers(Map<String, List<String>> layers, String module) {
         Set<String> out = new LinkedHashSet<>();
         for (var e : layers.entrySet()) {
-            String v = e.getValue();
-            if (v.contains("..")) continue; // a package pattern
-            if (v.equals(module) || Rule.globMatches(v, module)) out.add(e.getKey());
-        }
-        return out;
-    }
-
-    /** The layers a class belongs to: by package pattern, or by its module's glob. */
-    static Set<String> classLayers(Map<String, String> layers, ClassFacts c, String module) {
-        Set<String> out = new LinkedHashSet<>();
-        for (var e : layers.entrySet()) {
-            String v = e.getValue();
-            if (v.contains("..")) {
-                if (ClassPredicates.packageMatches(v, c.packageName())) out.add(e.getKey());
-            } else if (!module.isEmpty() && (v.equals(module) || Rule.globMatches(v, module))) {
-                out.add(e.getKey());
+            for (String v : e.getValue()) {
+                if (v.contains("..")) continue; // a package pattern
+                if (v.equals(module) || Rule.globMatches(v, module)) out.add(e.getKey());
             }
         }
         return out;
     }
 
+    /** The layers a class belongs to: by package pattern, or by its module's glob. */
+    static Set<String> classLayers(Map<String, List<String>> layers, ClassFacts c, String module) {
+        Set<String> out = new LinkedHashSet<>();
+        for (var e : layers.entrySet()) {
+            for (String v : e.getValue()) {
+                if (v.contains("..")) {
+                    if (ClassPredicates.packageMatches(v, c.packageName())) out.add(e.getKey());
+                } else if (!module.isEmpty() && (v.equals(module) || Rule.globMatches(v, module))) {
+                    out.add(e.getKey());
+                }
+            }
+        }
+        return out;
+    }
+
+    /** An allow names a module (every edge from it) or an edge, {@code "a -> b"}, either side a glob. */
+    private static boolean allowed(Rule rule, Map<Allow, Boolean> used, String module, String target) {
+        String edge = module + " -> " + target;
+        for (Allow a : rule.allow()) {
+            String in = a.in().replaceAll("\\s*->\\s*", " -> ");
+            boolean hit = in.contains(" -> ")
+                    ? in.equals(edge) || Rule.globMatches(in, edge)
+                    : in.equals(module) || Rule.globMatches(in, module);
+            if (hit) {
+                used.put(a, true);
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static boolean allowed(Rule rule, Map<Allow, Boolean> used, String module) {
         for (Allow a : rule.allow()) {
-            if (a.in().equals(module) || Rule.globMatches(a.in(), module)) {
+            if (!a.in().contains("->") && (a.in().equals(module) || Rule.globMatches(a.in(), module))) {
                 used.put(a, true);
                 return true;
             }

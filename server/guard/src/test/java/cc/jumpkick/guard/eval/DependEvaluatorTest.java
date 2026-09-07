@@ -221,4 +221,28 @@ class DependEvaluatorTest {
                 .extracting(Observation::key)
                 .isEqualTo("m [dependencies] junit:junit");
     }
+
+    @Test
+    void a_scoped_rule_reads_the_scoped_manifests_and_not_the_lock(@TempDir Path root) throws Exception {
+        Map<String, Evaluation> r = run(root, """
+                [guards.app-only]
+                kind = "depend"
+                scope = ["app"]
+                ban = ["org.apache.logging.log4j:*", "junit:junit"]
+                instead = "slf4j"
+                why = "w"
+
+                [guards.scoped-floor]
+                kind = "depend"
+                scope = ["app"]
+                require = { "junit:junit" = ">=5" }
+                why = "w"
+                """);
+        Evaluation e = ev(r, "app-only");
+        // lib declares log4j and the lock resolves it, but the rule is scoped to app: only app's junit is a site
+        assertThat(e.observations()).extracting(Observation::key).containsExactly("app [dependencies] junit:junit");
+        assertThat(e.population()).containsEntry("declared", 4L).containsEntry("artifacts", 0L);
+        assertThat(ev(r, "scoped-floor").outcome()).isEqualTo(Outcome.NOT_EVALUATED);
+        assertThat(ev(r, "scoped-floor").note()).contains("workspace-wide");
+    }
 }

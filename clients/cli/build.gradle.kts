@@ -61,6 +61,8 @@ sourceSets.test { java.srcDir(intellijParserSrc.map { it.destinationDir }) }
 // and JUnit, which they compile against — are one wrong configuration keyword away from the native
 // image. That mistake would not fail anything else: the image would just get bigger and start
 // reaching reflective JUnit machinery that GraalVM cannot see. This is the arm that notices.
+// Guard G73: no build-time, test or analysis jar on the CLI runtime classpath.
+// Guard G74: no engine-side workspace module (plugin-sdk, guard, resolver) on it either.
 val checkCliRuntimeClasspath = registerGuard("checkCliRuntimeClasspath") {
     val runtime = configurations.named("runtimeClasspath")
     inputs.files(runtime)

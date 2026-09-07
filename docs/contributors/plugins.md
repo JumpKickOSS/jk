@@ -54,7 +54,11 @@ The guarded exceptions each carry a current product invariant:
 
 Publisher may use `core` test fixtures, and image-builder may use `host` test fixtures. These
 test-only edges do not enter worker publication or runtime classpaths.
-`checkPluginSdkBoundary` rejects every other project edge and stale exception row.
+`checkPluginSdkBoundary` (Gradle) and the `plugin-sdk-boundary` rule in `jk-guards.toml` (a
+`layers` rule: `plugins` may depend on `sdk` = plugin-sdk + host, `closed`) reject every other
+project edge; each exception above is one `allow` edge with the same reason, and an allow whose
+edge is gone is red (`stale-allow`). Keep this list and the rule's allow entries in step by hand
+until a `generated` rule can hold them to each other.
 
 ## Manifest essentials
 

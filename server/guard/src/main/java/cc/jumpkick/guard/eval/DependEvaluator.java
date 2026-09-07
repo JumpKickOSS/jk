@@ -52,8 +52,11 @@ final class DependEvaluator implements Evaluator {
             Path f = m.resolve(ManifestPaths.MANIFEST);
             if (Files.isRegularFile(f)) manifests.add(manifest(rel(ctx.root(), m), JkBuildParser.parse(f)));
         }
+        // A scoped rule reads the scoped manifests. The lock is workspace-wide and names no module,
+        // so it is read only by an unscoped rule: a ban scoped to one module cannot judge it honestly.
+        if (!rule.scope().isEmpty()) manifests.removeIf(m -> !rule.applies(m.module()));
         Path lockFile = ctx.root().resolve(ManifestPaths.LOCK);
-        Lockfile lock = Files.isRegularFile(lockFile) ? LockfileReader.read(lockFile) : null;
+        Lockfile lock = rule.scope().isEmpty() && Files.isRegularFile(lockFile) ? LockfileReader.read(lockFile) : null;
         return evaluate(rule, manifests, lock);
     }
 
@@ -209,7 +212,10 @@ final class DependEvaluator implements Evaluator {
                 }
             }
         } else if (require != null || convergence) {
-            return Evaluation.notEvaluated("no lockfile; run jk lock first");
+            return Evaluation.notEvaluated(
+                    rule.scope().isEmpty()
+                            ? "no lockfile; run jk lock first"
+                            : "require/convergence read the lock, which is workspace-wide; drop `scope` from this rule");
         }
 
         Map<String, Long> population = Map.of("declared", declared, "artifacts", artifacts);
