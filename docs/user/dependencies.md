@@ -15,9 +15,10 @@ map to `group:artifact` only — versions live on the dependency or a BOM, never
 catalog. See [Catalogs](#library-catalog) below and [Platforms](platforms.md).
 
 A project with [guards](guards.md) may carry `depend` rules — banned coordinates, scopes a
-library must stay in, version floors, licence and snapshot policy — judged over the manifest
-and the resolved lock in the model lane of the next build, so a `jk add` that breaks one is
-reported before anything compiles.
+library must stay in, version floors, licence and snapshot policy. `jk add` and `jk remove`
+evaluate them before writing: an edit a rule bans is refused with the rule's card (`Instead`,
+`Why`, the `allow` path), and the manifest is left as it was. The same rules run over the
+manifest and the resolved lock in the model lane of every build.
 
 ## Coordinates
 

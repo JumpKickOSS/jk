@@ -269,8 +269,8 @@ Need the live event stream? `jk test --output json` or `jk results --details`.
 ## Guards (house rules)
 
 A project may carry **`jk-guards.toml`**: declarative rules the build enforces — banned calls,
-annotations, layer edges, text patterns, size caps. They run inside `jk build` as `guard` steps;
-`jk guard` runs every lane now. No rule file, no cost.
+annotations, layer edges, text patterns, size caps. Bytecode and model rules run inside `jk build`;
+text, metric and parity rules (the tree lane) run on `jk guard` / `--gate`. No rule file, no cost.
 
 A guard failure in `target/jk-results.md` / `jk_diagnostics`:
 

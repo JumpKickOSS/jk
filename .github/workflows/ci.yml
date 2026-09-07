@@ -140,10 +140,15 @@ jobs:
       - name: Engine smoke
         run: jk engine status
 
-      - name: Self-host build and house-rule gate
+      - name: Self-host build
         run: |
           set -euo pipefail
           jk build --skip-tests --no-ansi 2>&1 | tee "$RUNNER_TEMP/self-host-build.log"
+
+      # Every lane, the tree lane included: text, metric, parity and generated rules run on
+      # `jk guard` and `--gate`, not on an inner `jk build`, so this step is the house-rule gate.
+      - name: House-rule gate (every lane)
+        run: jk guard --no-ansi
 
       # The machine view of the house-rule lanes, for anyone reading the run after the fact; the
       # human view is the step's log. Uploaded whether or not the gate went red.

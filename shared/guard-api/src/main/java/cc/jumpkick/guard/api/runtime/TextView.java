@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.TreeSet;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
@@ -22,6 +23,12 @@ public final class TextView implements Text {
     private final List<Path> sources;
     private final boolean fixture;
     private final @Nullable String outputDir;
+    // One instance serves every guard of a run, and every guard walks and reads the same tree: the walk
+    // happens once, a file is read once, and a blanked view is computed once per mode.
+    private final ConcurrentHashMap<String, String> texts = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, String> views = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, List<String>> matches = new ConcurrentHashMap<>();
+    private volatile @Nullable List<String> walked;
 
     public TextView(Path root, List<Path> sources) {
         this(root, sources, false, null);
@@ -41,22 +48,36 @@ public final class TextView implements Text {
 
     @Override
     public List<String> files(String glob) {
-        Pattern p = globPattern(fixture ? glob.substring(glob.lastIndexOf('/') + 1) : glob);
-        TreeSet<String> out = new TreeSet<>();
-        for (Path src : sources) {
-            Path dir = src.isAbsolute() ? src : root.resolve(src);
-            if (!Files.isDirectory(dir)) continue;
-            try {
-                PathUtil.forEachRegularFile(dir, d -> skipped(rel(d)), (f, attrs) -> {
-                    String rel = rel(f);
-                    if (p.matcher(fixture ? rel.substring(rel.lastIndexOf('/') + 1) : rel)
-                            .matches()) out.add(rel);
-                });
-            } catch (IOException e) {
-                throw new UncheckedIOException(e);
+        return matches.computeIfAbsent(glob, g -> {
+            Pattern p = globPattern(fixture ? g.substring(g.lastIndexOf('/') + 1) : g);
+            List<String> out = new ArrayList<>();
+            for (String rel : walk()) {
+                if (p.matcher(fixture ? rel.substring(rel.lastIndexOf('/') + 1) : rel)
+                        .matches()) out.add(rel);
             }
+            return List.copyOf(out);
+        });
+    }
+
+    /** Every regular file under the sources, sorted, walked once per instance. */
+    private List<String> walk() {
+        List<String> w = walked;
+        if (w != null) return w;
+        synchronized (this) {
+            if (walked != null) return walked;
+            TreeSet<String> out = new TreeSet<>();
+            for (Path src : sources) {
+                Path dir = src.isAbsolute() ? src : root.resolve(src);
+                if (!Files.isDirectory(dir)) continue;
+                try {
+                    PathUtil.forEachRegularFile(dir, d -> skipped(rel(d)), (f, attrs) -> out.add(rel(f)));
+                } catch (IOException e) {
+                    throw new UncheckedIOException(e);
+                }
+            }
+            walked = List.copyOf(out);
+            return walked;
         }
-        return new ArrayList<>(out);
     }
 
     private String rel(Path f) {
@@ -65,13 +86,16 @@ public final class TextView implements Text {
 
     @Override
     public String blanked(String path, Blank mode) {
-        String text = read(path);
-        return switch (mode) {
-            case NONE -> text;
-            case COMMENTS -> Blanker.blank(text, true, false, false);
-            case COMMENTS_AND_STRINGS -> Blanker.blank(text, true, true, false);
-            case CODE -> Blanker.blank(text, false, true, true);
-        };
+        if (mode == Blank.NONE) return read(path);
+        return views.computeIfAbsent(mode.name() + ":" + path, k -> {
+            String text = read(path);
+            return switch (mode) {
+                case NONE -> text;
+                case COMMENTS -> Blanker.blank(text, true, false, false);
+                case COMMENTS_AND_STRINGS -> Blanker.blank(text, true, true, false);
+                case CODE -> Blanker.blank(text, false, true, true);
+            };
+        });
     }
 
     @Override
@@ -85,9 +109,13 @@ public final class TextView implements Text {
     }
 
     private String read(String path) {
+        String cached = texts.get(path);
+        if (cached != null) return cached;
         Path p = root.resolve(path);
         try {
-            return Files.readString(p, StandardCharsets.UTF_8);
+            String text = Files.readString(p, StandardCharsets.UTF_8);
+            texts.put(path, text);
+            return text;
         } catch (IOException e) {
             throw new UncheckedIOException("Text: " + path + " is not readable under " + root, e);
         }

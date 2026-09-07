@@ -72,9 +72,12 @@ The **substrate** is what a kind reads: `bytecode` rules read the module's compi
 (with a facts index the engine keeps beside them), `model` rules read the manifests and the
 lock, `text` rules read the source tree as text, `output` rules read the packaged artefacts,
 and `hybrid` rules read two of these. The **lane** is when it runs: `model` before compile,
-`module` after each module compiles, `workspace` and `tree` once the whole tree is on disk,
-`output` after packaging, `hook` at commit time. A lane is keyed to what it reads, so an
-unchanged input skips it and an edit re-runs only the lanes it can affect.
+`module` after each module compiles, `workspace` once every module's facts are on disk,
+`output` after packaging, `hook` at commit time — all inside `jk build`. The `tree` lane
+(text, metric, parity and generated rules) and the fixture proofs run on `jk guard`,
+`jk test --gate` and `jk build --gate`, never on an inner `jk build`, so a tree scan is a
+share-the-commit cost. A lane is keyed to what it reads, so an unchanged input skips it and
+an edit re-runs only the lanes it can affect.
 
 ## Keys
 

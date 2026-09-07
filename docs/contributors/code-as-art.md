@@ -750,8 +750,11 @@ Every rule states the population it examined, and a rule that examined nothing
 is not green: the floor under the scans is each rule's own, so no separate
 corpus guard is needed (G0 is subsumed by it).
 
-**When each build runs them.** `jk build` runs the lanes on every build that
-does work, and `jk guard` runs them alone. The Gradle build runs the one letter
+**When each build runs them.** `jk build` runs the model, module, workspace and
+output lanes on every build that does work; the tree lane (text, metric, parity
+and generated rules) and the fixture proofs run on `jk guard`, `jk test --gate`
+and `jk build --gate`, so an inner `jk build` never pays a tree scan. CI's
+self-host job runs `jk guard` after the build. The Gradle build runs the one letter
 its task graph alone can see, G64 (`checkNoDisabledCompile`, on every module's
 `check`), and two registry tasks at the root: `checkGuardRegistry` renders the
 table below, and `checkGuardParity` fails a letter that has a Gradle task and no
@@ -759,7 +762,7 @@ jk side, an excuse in `guard-parity.txt` for a letter that has one, and a
 `jk-guards.toml` whose digest differs from the one the last `jk build` recorded
 under `target/` — the two builds must have enforced the same rules. `./gradlew
 checkFast` therefore means the unit tier, buildSrc's tests and those three
-tasks; the house rules are the self-host lane's, under `jk build`. Gradle
+tasks; the house rules are the self-host lane's, under `jk guard`. Gradle
 running `jk-guards.toml` itself (a `JavaExec` over `server/guard`) is the
 follow-up `guard-parity.txt` records.
 
