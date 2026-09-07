@@ -36,6 +36,7 @@ public final class Evaluators {
         BY_KIND.put(Kind.TEST, new TestEvaluator());
         BY_KIND.put(Kind.PARITY, new ParityEvaluator());
         BY_KIND.put(Kind.GENERATED, new GeneratedEvaluator());
+        BY_KIND.put(Kind.OUTPUT, new OutputEvaluator());
     }
 
     /** Test seam: drop every registration and reinstall the shipped evaluators. */

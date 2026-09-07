@@ -133,6 +133,46 @@ class GuardLanePlanTest {
         assertThat(byName).containsKeys(TaskNames.GUARD, TaskNames.GUARD_MODEL);
     }
 
+    private static final String OUTPUT_RULES = """
+            [guards.jar-shape]
+            kind = "output"
+            jar  = { require-entries = ["META-INF/MANIFEST.MF"] }
+            why  = "a jar is a contract"
+            """;
+
+    @Test
+    void an_output_rule_plans_the_output_lane_after_packaging_and_nothing_else_does(@TempDir Path dir)
+            throws Exception {
+        Path project = scaffold(dir, true);
+        Map<String, Task> without = index(plan(project, dir.resolve("cache"), TestSelection.DEFAULT));
+        assertThat(without).as("no output rule, no output lane").doesNotContainKey(TaskNames.GUARD_OUTPUT);
+        Files.writeString(project.resolve("jk-guards.toml"), RULES + OUTPUT_RULES);
+        Map<String, Task> with = index(plan(project, dir.resolve("cache"), TestSelection.DEFAULT));
+        assertThat(with).containsKey(TaskNames.GUARD_OUTPUT);
+        assertThat(with.get(TaskNames.GUARD_OUTPUT).requires()).containsExactly(TaskNames.PACKAGE_JAR);
+        // a test-only plan packages nothing: the lane follows the root lanes instead
+        BuildPlanner.Inputs testOnly = inputs(project, dir.resolve("cache"), TestSelection.DEFAULT);
+        BuildPlan.Builder b = BuildPlanner.coreBuilder(new BuildPlanner.Inputs(
+                testOnly.dir(),
+                testOnly.cache(),
+                testOnly.buildFile(),
+                testOnly.lockFile(),
+                testOnly.lockDir(),
+                1,
+                0,
+                null,
+                null,
+                false,
+                false,
+                true,
+                false,
+                Set.of(),
+                testOnly.session()));
+        Map<String, Task> gated = index(b.build());
+        assertThat(gated).containsKey(TaskNames.GUARD_OUTPUT);
+        assertThat(gated.get(TaskNames.GUARD_OUTPUT).requires()).doesNotContain(TaskNames.PACKAGE_JAR);
+    }
+
     private static Map<String, Task> index(BuildPlan plan) {
         Map<String, Task> byName = new LinkedHashMap<>();
         for (Task t : plan.steps()) byName.put(t.name(), t);

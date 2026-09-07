@@ -2,11 +2,15 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.WorkspaceScan;
+import cc.jumpkick.guard.eval.Evaluators;
 import cc.jumpkick.guard.eval.GuardSuites;
+import cc.jumpkick.guard.eval.OutputArtifacts;
 import cc.jumpkick.guard.eval.WorkspaceModules;
 import cc.jumpkick.guard.extract.FactsIndexing;
 import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.guard.rules.LoadResult;
+import cc.jumpkick.guard.rules.Rule;
+import cc.jumpkick.guard.schema.Lane;
 import cc.jumpkick.guard.validate.CatalogLockParity;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
@@ -21,9 +25,11 @@ import cc.jumpkick.wire.runtime.TaskForecast;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The one owner of a guard lane's action key, called by the lane ({@link PlannerGuards}) and by
@@ -134,6 +140,53 @@ final class GuardKeys {
         }
     }
 
+    /**
+     * The output lane's key material: each module's jar, POM, native binary and coverage report by
+     * content, through the stat-memoized hash — the sidecar POM is rewritten on every packaging
+     * pass and an untouched jar is never re-read, so only a real change moves the key.
+     */
+    static List<String> outputTokens(Path root, List<Path> modules, @Nullable String coverageReport)
+            throws IOException {
+        List<String> tokens = new ArrayList<>();
+        for (OutputArtifacts.Module m : OutputArtifacts.of(root, modules, coverageReport)) {
+            for (Path p : List.of(m.jar(), m.pom(), m.nativeBinary(), m.coverage())) {
+                String stamp = "absent";
+                if (Files.isRegularFile(p)) {
+                    BasicFileAttributes a = Files.readAttributes(p, BasicFileAttributes.class);
+                    stamp = FileHashMemo.contentHash(p.toAbsolutePath().normalize(), a);
+                }
+                tokens.add("out:" + PlannerGuards.relModule(root, p) + ":" + stamp);
+            }
+        }
+        return tokens;
+    }
+
+    /** The forecast's {@code guard-output} step, or empty when no rule is on the output lane. */
+    static Optional<TaskForecast.Task> forecastOutputLane(Path root, ActionCache actionCache) {
+        PlannerGuards.GuardsPlan g = PlannerGuards.detectAt(root);
+        if (!g.enabled()) return Optional.empty();
+        try {
+            LoadResult load = PlannerGuards.rules(g);
+            if (load.hasErrors()) return Optional.empty();
+            boolean any = false;
+            for (Rule r : load.rules().rules().values()) if (Evaluators.laneOf(r) == Lane.OUTPUT) any = true;
+            if (!any) return Optional.empty();
+            List<String> tokens =
+                    outputTokens(root, WorkspaceModules.of(root), g.config().coverageReport());
+            addRuleTokens(tokens, load);
+            String key = laneKey(ActionKey.qualifiedTaskId(TaskNames.GUARD_OUTPUT, root), tokens, baselineSha(root));
+            if (actionCache.lookup(key).isPresent()) {
+                return Optional.of(new TaskForecast.Task(
+                        TaskNames.GUARD_OUTPUT, TaskForecast.Status.CACHED, "", key.substring(0, 8)));
+            }
+            return Optional.of(new TaskForecast.Task(
+                    TaskNames.GUARD_OUTPUT, TaskForecast.Status.RUN, "guards · output rules to evaluate", ""));
+        } catch (IOException e) {
+            return Optional.of(new TaskForecast.Task(
+                    TaskNames.GUARD_OUTPUT, TaskForecast.Status.RUN, "guards · " + e.getMessage(), ""));
+        }
+    }
+
     /** The root lanes' forecast, in plan order: model, workspace, tree (gate), fixtures (gate). */
     static List<TaskForecast.Task> forecastRootLanes(Path root, JkBuild project, ActionCache actionCache) {
         List<TaskForecast.Task> out = new ArrayList<>();
@@ -141,6 +194,7 @@ final class GuardKeys {
         forecastWorkspaceLane(root, actionCache).ifPresent(out::add);
         forecastTreeLane(root, actionCache).ifPresent(out::add);
         forecastFixtures(root).ifPresent(out::add);
+        forecastOutputLane(root, actionCache).ifPresent(out::add);
         return out;
     }
 

@@ -9,6 +9,7 @@ import static cc.jumpkick.runtime.BuildPlanner.PROJECT;
 import static cc.jumpkick.runtime.BuildPlanner.TEST_CLASSES;
 import static cc.jumpkick.runtime.BuildPlanner.TEST_RUNTIME_CP;
 
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceScan;
@@ -19,6 +20,7 @@ import cc.jumpkick.guard.baseline.Observation;
 import cc.jumpkick.guard.baseline.Reconciliation;
 import cc.jumpkick.guard.baseline.RuleBaseline;
 import cc.jumpkick.guard.eval.EvalContext;
+import cc.jumpkick.guard.eval.Evaluators;
 import cc.jumpkick.guard.eval.GuardMessages;
 import cc.jumpkick.guard.eval.GuardSuites;
 import cc.jumpkick.guard.eval.LaneRun;
@@ -38,6 +40,7 @@ import cc.jumpkick.guard.rules.Rule;
 import cc.jumpkick.guard.schema.Lane;
 import cc.jumpkick.guard.validate.EngineValidations;
 import cc.jumpkick.guard.validate.Fault;
+import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.TestSuites;
@@ -164,7 +167,12 @@ final class PlannerGuards {
         return session != null && session.testSelection().runGateScripts();
     }
 
-    static @Nullable String appendRootLanes(BuildPlan.Builder b, BuildPlanner.Ctx cx, String after) {
+    /**
+     * @param packagesHere whether this plan packages (then the output lane hangs off the packaging
+     *     tails, see {@link PlannerTails}); otherwise it follows the last root lane here
+     */
+    static @Nullable String appendRootLanes(
+            BuildPlan.Builder b, BuildPlanner.Ctx cx, String after, boolean packagesHere) {
         if (!cx.guards().enabled() || !PlannerResources.invocationRoot(cx.in().dir())) return null;
         b.addTask(modelStep(cx));
         String last = TaskNames.GUARD_MODEL;
@@ -180,6 +188,10 @@ final class PlannerGuards {
             b.addTask(treeStep(cx, last, after));
             b.addTask(fixturesStep(cx, TaskNames.GUARD_TREE));
             last = TaskNames.GUARD_FIXTURES;
+        }
+        if (!packagesHere && outputLaneWanted(cx.in())) {
+            b.addTask(outputStep(env(cx), last));
+            last = TaskNames.GUARD_OUTPUT;
         }
         return last;
     }
@@ -418,6 +430,71 @@ final class PlannerGuards {
                 .build();
     }
 
+    /** What a lane needs of the planner: the guards plan, the action cache and the inputs. */
+    record LaneEnv(GuardsPlan guards, ActionCache actionCache, BuildPlanner.Inputs in) {}
+
+    static LaneEnv env(BuildPlanner.Ctx cx) {
+        return new LaneEnv(cx.guards(), cx.actionCache(), cx.in());
+    }
+
+    /** From the inputs alone, for a step planned where no planner context exists (the packaging tails). */
+    static LaneEnv env(BuildPlanner.Inputs in) {
+        return new LaneEnv(
+                detect(in), new ActionCache(JkStores.cacheCas(in.cache()), CacheTree.ACTIONS.under(in.cache())), in);
+    }
+
+    /**
+     * Whether this build plans {@code guard-output}: guards enabled and at least one rule on the
+     * output lane. Anything else costs the packaging tasks no new dependant and no key material.
+     */
+    static boolean outputLaneWanted(BuildPlanner.Inputs in) {
+        GuardsPlan g = detect(in);
+        if (!g.enabled()) return false;
+        try {
+            LoadResult load = rules(g);
+            if (load.hasErrors()) return false;
+            for (Rule r : load.rules().rules().values()) if (Evaluators.laneOf(r) == Lane.OUTPUT) return true;
+        } catch (IOException e) {
+            return false;
+        }
+        return false;
+    }
+
+    /**
+     * {@code guard-output}: the artefact assertions and output measures at the root, keyed on the
+     * artefacts' stamps, the coverage report, the rules and the baseline. Runs after packaging (and
+     * the native tail) in a plan that packages; after the other root lanes otherwise.
+     */
+    static Task outputStep(LaneEnv env, String... requires) {
+        GuardsPlan g = env.guards();
+        return Task.builder(TaskNames.GUARD_OUTPUT)
+                .stage(BuildStage.NATIVE)
+                .label("Guards (output)")
+                .kind(TaskKind.IO)
+                .requires(requires)
+                .weight(1)
+                .ticks(1)
+                .execute(ctx -> {
+                    List<Path> modules = moduleDirs(g.root(), ctx.get(PROJECT).orElse(null));
+                    EvalContext.IoSupplier<List<String>> tokens = () ->
+                            GuardKeys.outputTokens(g.root(), modules, g.config().coverageReport());
+                    EvalContext ectx =
+                            new EvalContext(Lane.OUTPUT, g.root(), "", null, modules, noFacts(), () -> null, List::of);
+                    executeLane(
+                            ctx,
+                            env,
+                            Lane.OUTPUT,
+                            ectx,
+                            tokens,
+                            ActionKey.qualifiedTaskId(TaskNames.GUARD_OUTPUT, g.root()),
+                            false,
+                            List.of(),
+                            null);
+                    ctx.progress(1);
+                })
+                .build();
+    }
+
     /** {@code guard-tree}: the text scan at the root; {@code --gate} and {@code jk guard} only. */
     static Task treeStep(BuildPlanner.Ctx cx, String... requires) {
         GuardsPlan g = cx.guards();
@@ -464,7 +541,7 @@ final class PlannerGuards {
             String taskId,
             boolean noClasses)
             throws IOException {
-        execute(ctx, cx, lane, ectx, tokenSupplier, taskId, noClasses, List.of(), null);
+        executeLane(ctx, env(cx), lane, ectx, tokenSupplier, taskId, noClasses, List.of(), null);
     }
 
     /**
@@ -483,7 +560,21 @@ final class PlannerGuards {
             List<Rule> extraRules,
             EvalContext.@Nullable IoRunnable beforeEvaluate)
             throws IOException {
-        GuardsPlan g = cx.guards();
+        executeLane(ctx, env(cx), lane, ectx, tokenSupplier, taskId, noClasses, extraRules, beforeEvaluate);
+    }
+
+    private static void executeLane(
+            TaskContext ctx,
+            LaneEnv env,
+            Lane lane,
+            EvalContext ectx,
+            EvalContext.IoSupplier<List<String>> tokenSupplier,
+            String taskId,
+            boolean noClasses,
+            List<Rule> extraRules,
+            EvalContext.@Nullable IoRunnable beforeEvaluate)
+            throws IOException {
+        GuardsPlan g = env.guards();
         LoadResult load = rules(g);
         if (lane == Lane.MODEL) {
             for (LoadError w : load.warnings()) ctx.warn("guards", w.render());
@@ -530,9 +621,9 @@ final class PlannerGuards {
         GuardKeys.addRuleTokens(tokens, load);
         String baselineSha = GuardKeys.baselineSha(g.root());
         String key = GuardKeys.laneKey(taskId, tokens, baselineSha);
-        ActionCache cache = cx.actionCache();
-        boolean useCache = !cx.in().session().config().forceOr(false)
-                && !cx.in().session().config().rebuildOr(false);
+        ActionCache cache = env.actionCache();
+        boolean useCache = !env.in().session().config().forceOr(false)
+                && !env.in().session().config().rebuildOr(false);
         if (useCache && cache.lookup(key).isPresent()) {
             ctx.label(rules.size() + (rules.size() == 1 ? " rule" : " rules") + " · clean (cached)");
             ctx.cached();

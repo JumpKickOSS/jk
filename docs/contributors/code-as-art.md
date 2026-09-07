@@ -894,7 +894,7 @@ Letters are allocated when a guard lands and are never reused.
 | G16 | `checkSingleCentralAddress` | a Central URL, its `repo1.maven.org` alias, or the repo name `central` typed as a literal (use `RepositorySpec`) | ban | `repository-names` |
 | G17 | `checkNoBareWireType` | a hyphenated wire message type typed as a literal (use `EngineProtocol`) | ban | `wire-types` |
 | G18 | `checkNoBareTargetDir` | jk's build output directory typed as a literal (use `BuildLayout.TARGET`) | ban | `target-dir` |
-| G19 | `checkPublishedPomCoordinates` | a generated POM naming a coordinate this build does not publish (`unspecified`, the `jk` fallback group, or an unpublished artifact in a group we do publish) | ban, no allowlist | — |
+| G19 | `checkPublishedPomCoordinates` | a generated POM naming a coordinate this build does not publish (`unspecified`, the `jk` fallback group, or an unpublished artifact in a group we do publish) | ban, no allowlist | `published-poms` |
 | G20 | `checkSingleHostSurface` | an `os.name` read outside `cc.jumpkick.host.Os`, or a path separator outside `Classpaths` (`-cp`) and `SearchPath` (`PATH`) | ban | `one-host-surface` |
 | G21 | `checkOneJsonCodec` | a JSON escaper or an escape-decoding parser outside `cc.jumpkick.jsonl` — exempt by spec, so `MinimalToml.quote` beside `Jsonl.quote` passes | ban, no allowlist | guard test `one-json-codec` |
 | G22 | *(guard test, `clients/cli/src/guard`)* | an IDE client naming a command, verb, class or wire field that does not exist, or pinning `untilBuild` — five arms, each self-failing on an empty scan | ban, no allowlist | guard test `ide-client-wiring` |
@@ -1013,6 +1013,7 @@ by id, kind and why. This block is a `generated` guard's rendering
 | package-cycles | cycles | a cyclic component has no edge anyone can name to cut, so the count is what the build defends |
 | plugin-fork-owner | forbid | a hand-rolled fork is where the wrong JDK and the missing .exe get in |
 | plugin-sdk-boundary | layers | a plugin that depends past the SDK runs engine code inside a worker and cannot be published on its own |
+| published-poms | output | a POM with an unspecified coordinate is an artifact nobody can depend on |
 | repository-names | vocabulary | a repository name spelled twice is a store that silently never hits |
 | retired-wire-keys | text | a retired spelling back in production source is a reader of a shape nobody writes |
 | runnable-owner | forbid | an access check off Windows, an extension test on it: 64x cheaper where it matters |

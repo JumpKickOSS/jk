@@ -661,13 +661,14 @@ public final class BuildPlanner {
         // `after-build` logic. The graph orders this unit behind every member, so by the time the
         // step executes the whole workspace is built.
         if (workspaceNoSources) {
-            String guardTerminal = PlannerGuards.appendRootLanes(b, cx, TaskNames.RESOLVE_DEPS);
+            String guardTerminal = PlannerGuards.appendRootLanes(b, cx, TaskNames.RESOLVE_DEPS, false);
             if (guardTerminal != null) {
                 b.alsoKeep(
                         TaskNames.GUARD_MODEL,
                         TaskNames.GUARD_WORKSPACE,
                         TaskNames.GUARD_TREE,
-                        TaskNames.GUARD_FIXTURES);
+                        TaskNames.GUARD_FIXTURES,
+                        TaskNames.GUARD_OUTPUT);
             }
             if (BuildLogicToml.resolve(in.dir()).isPresent()) {
                 b.addTask(PlannerResources.buildLogicAfterBuildStep(cx));
@@ -698,19 +699,25 @@ public final class BuildPlanner {
             if (mixed || mixedGroovy) after.add(TaskNames.ASSEMBLE_CLASSES);
             if (hasGuardSuite) after.add(TaskNames.COMPILE_GUARD);
             b.addTask(PlannerGuards.moduleStep(cx, after.toArray(String[]::new)));
-            PlannerGuards.appendRootLanes(b, cx, TaskNames.GUARD);
+            boolean packagesHere = !in.testOnly() && !in.compileOnly();
+            PlannerGuards.appendRootLanes(b, cx, TaskNames.GUARD, packagesHere);
             // Nothing downstream consumes a lane; keep them through the terminal prune.
             b.alsoKeep(
                     TaskNames.GUARD,
                     TaskNames.GUARD_MODEL,
                     TaskNames.GUARD_WORKSPACE,
                     TaskNames.GUARD_TREE,
-                    TaskNames.GUARD_FIXTURES);
+                    TaskNames.GUARD_FIXTURES,
+                    TaskNames.GUARD_OUTPUT);
         } else if (cx.guards().enabled()) {
             // on-build = false: the module lanes wait for the gate; the model lane still runs.
-            PlannerGuards.appendRootLanes(b, cx, TaskNames.RESOLVE_DEPS);
+            PlannerGuards.appendRootLanes(b, cx, TaskNames.RESOLVE_DEPS, !in.testOnly() && !in.compileOnly());
             b.alsoKeep(
-                    TaskNames.GUARD_MODEL, TaskNames.GUARD_WORKSPACE, TaskNames.GUARD_TREE, TaskNames.GUARD_FIXTURES);
+                    TaskNames.GUARD_MODEL,
+                    TaskNames.GUARD_WORKSPACE,
+                    TaskNames.GUARD_TREE,
+                    TaskNames.GUARD_FIXTURES,
+                    TaskNames.GUARD_OUTPUT);
         }
         if (mixed || mixedGroovy) {
             b.addTask(assembleClasses);

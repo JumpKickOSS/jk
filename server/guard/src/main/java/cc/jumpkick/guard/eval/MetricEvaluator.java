@@ -12,6 +12,7 @@ import cc.jumpkick.guard.schema.Lane;
 import cc.jumpkick.host.CodeText;
 import cc.jumpkick.host.Hashing;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -51,10 +52,8 @@ final class MetricEvaluator implements Evaluator {
             default -> {
                 if (measure.startsWith("matches:"))
                     yield matchesMeasure(rule, ctx, measure.substring("matches:".length()), per, bound);
-                if (measure.startsWith("coverage.") || measure.equals("jar-size") || measure.equals("native-size")) {
-                    yield Evaluation.unsupported(
-                            "measure " + measure + " needs the output lane, which has not landed yet");
-                }
+                if (measure.startsWith("coverage.") || measure.equals("jar-size") || measure.equals("native-size"))
+                    yield outputMeasure(rule, ctx, measure, bound);
                 yield Evaluation.failed("unknown measure `" + measure + "`");
             }
         };
@@ -315,6 +314,79 @@ final class MetricEvaluator implements Evaluator {
             }
         }
         return finish(rule, units, out, allowUsed, ctx.facts(), ctx.module());
+    }
+
+    // ---- output -------------------------------------------------------------------------------
+
+    /**
+     * {@code jar-size} / {@code native-size} in bytes and {@code coverage.line} / {@code coverage.branch}
+     * in percent, one unit per module, read from what the build packaged and the coverage XML it
+     * left. A module with no artefact is skipped; no artefact anywhere is {@code not-evaluated},
+     * naming the path looked for, so a missing report can never read as a passing floor.
+     */
+    private Evaluation outputMeasure(Rule rule, EvalContext ctx, String measure, Bound bound) throws IOException {
+        Double limit = bound.limitFor("");
+        if (limit == null) return Evaluation.failed("output measures take a scalar cap or min");
+        List<OutputArtifacts.Module> modules = OutputArtifacts.of(
+                ctx.root(), ctx.modules(), ctx.rules().config().coverageReport());
+        List<Observation> out = new ArrayList<>();
+        Map<Allow, Boolean> allowUsed = new LinkedHashMap<>();
+        for (Allow a : rule.allow()) allowUsed.put(a, false);
+        long units = 0;
+        String lookedFor = "";
+        for (OutputArtifacts.Module m : modules) {
+            Allow allow = allowing(rule.allow(), m.label());
+            if (allow != null) allowUsed.put(allow, true);
+            Path file;
+            double value;
+            String what;
+            switch (measure) {
+                case "jar-size" -> {
+                    file = m.existingJar();
+                    if (file == null) {
+                        lookedFor = m.jar().toString();
+                        continue;
+                    }
+                    value = Files.size(file);
+                    what = "jar-size = " + number(value) + " bytes";
+                }
+                case "native-size" -> {
+                    file = m.existingNative();
+                    if (file == null) {
+                        lookedFor = m.nativeBinary().toString();
+                        continue;
+                    }
+                    value = Files.size(file);
+                    what = "native-size = " + number(value) + " bytes";
+                }
+                default -> {
+                    file = m.existingCoverage();
+                    if (file == null) {
+                        lookedFor = m.coverage().toString();
+                        continue;
+                    }
+                    Double pct = CoverageReport.percent(file, measure.substring("coverage.".length()));
+                    if (pct == null)
+                        return Evaluation.failed(file + " has no " + measure.substring("coverage.".length())
+                                + " counter; is it a JaCoCo XML report?");
+                    value = pct;
+                    what = measure + " = " + number(value) + "%";
+                }
+            }
+            units++;
+            if (allow == null && bound.breached(value, limit)) {
+                out.add(Observation.metric(
+                        m.label(),
+                        value,
+                        OutputArtifacts.rel(ctx.root(), file),
+                        what + " in " + m.label() + " (" + bound.describe(limit) + ")"));
+            }
+        }
+        if (units == 0) {
+            return Evaluation.notEvaluated("no " + (measure.startsWith("coverage.") ? "coverage report" : "artefact")
+                    + " this build; looked for " + (lookedFor.isEmpty() ? "a module manifest" : lookedFor));
+        }
+        return finish(rule, units, out, allowUsed);
     }
 
     // ---- shared -------------------------------------------------------------------------------

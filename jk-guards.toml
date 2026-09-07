@@ -703,3 +703,10 @@ template = { table = ["id", "kind", "why"] }
 into     = "docs/contributors/code-as-art.md"
 markers  = "guard-rules"
 why      = "the registry drifted twice by hand; the third reconciliation is not by hand"
+
+# G19. Every sidecar POM jk packages names a coordinate this build publishes: no `unspecified`, no
+# fallback group, and no dependency on a cc.jumpkick artifact the workspace does not package.
+[guards.published-poms]
+kind = "output"
+pom  = { no-unspecified = true, groups = ["cc.jumpkick"] }
+why  = "a POM with an unspecified coordinate is an artifact nobody can depend on"

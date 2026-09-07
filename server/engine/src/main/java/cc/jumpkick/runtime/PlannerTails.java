@@ -105,13 +105,22 @@ public final class PlannerTails {
             // `jk build` entirely. Joining keeps tests scheduled — concurrently with
             // packaging — while a failure still fails the plan.
             List<String> joined = new ArrayList<>(leaves.isEmpty() ? List.of(TaskNames.PACKAGE_JAR) : leaves);
+            // The output lane reads what the tails wrote, so it hangs off every packaging leaf and
+            // re-roots the terminal; a plan without an output rule never plans it.
+            boolean outputLane = PlannerResources.invocationRoot(in.dir()) && PlannerGuards.outputLaneWanted(in);
+            if (outputLane) {
+                b.addTask(PlannerGuards.outputStep(PlannerGuards.env(in), joined.toArray(String[]::new)));
+                joined = new ArrayList<>(List.of(TaskNames.GUARD_OUTPUT));
+                if (joinStage.ordinal() < BuildStage.NATIVE.ordinal()) joinStage = BuildStage.NATIVE;
+            }
             if (!PlannerResources.skipJUnit(in)) {
                 joined.add(TaskNames.RUN_TESTS);
             }
             if (PlannerResources.runGateScripts(in) && PlannerResources.invocationRoot(in.dir())) {
                 joined.add(TaskNames.BUILD_LOGIC_GATE);
             }
-            if (joined.size() == 1 && leaves.isEmpty()) return; // skip-tests, no tails: package-jar stays terminal
+            if (joined.size() == 1 && leaves.isEmpty() && !outputLane)
+                return; // skip-tests, no tails: package-jar stays terminal
             if (joined.size() == 1) {
                 b.terminal(joined.get(0));
                 return;

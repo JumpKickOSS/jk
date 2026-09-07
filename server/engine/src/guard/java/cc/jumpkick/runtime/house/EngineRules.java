@@ -49,7 +49,8 @@ final class EngineRules {
                             "PlannerGuards.java|GuardKeys.laneKey(",
                             "TaskForecaster.java|GuardKeys.forecastModuleLane(",
                             "GuardKeys.java|forecastWorkspaceLane(root, actionCache)",
-                            "GuardKeys.java|forecastTreeLane(root, actionCache)"));
+                            "GuardKeys.java|forecastTreeLane(root, actionCache)",
+                            "GuardKeys.java|forecastOutputLane(root, actionCache)"));
 
     /** Sites with no forecast twin: task name, whether the forecast emits a step for it, and why. */
     private static final Map<String, Object[]> UNPAIRED = Map.of(

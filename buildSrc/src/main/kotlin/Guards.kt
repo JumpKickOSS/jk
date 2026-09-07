@@ -207,6 +207,7 @@ object Guards {
                 GuardHome.MODULE,
                 mavenPublishOnly = true,
                 description = "Fail the build on a generated POM naming a coordinate this build does not publish",
+                ruleId = "published-poms",
             ),
             spec(
                 20,
