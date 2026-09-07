@@ -756,7 +756,7 @@ at     = "cc.jumpkick.wire.EnginePaths#identitiesIn(Ljava/nio/file/Path;)Ljava/u
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 
 [no-fqcn]
-population = { units = 2703 }
+population = { units = 2762 }
 [[no-fqcn.entries]]
 unit   = "clients/cli-terminal/src/main/java/cc/jumpkick/terminal/package-info.java"
 value  = 1
@@ -1005,6 +1005,10 @@ reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reason
 unit   = "shared/core/src/test/java/cc/jumpkick/templates/OfficialTemplatesFreshenTest.java"
 value  = 3
 reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "shared/guard-api/src/main/java/cc/jumpkick/guard/api/CallSite.java"
+value  = 1
+reason = "the guard-test API's CallSite wraps the facts index's CallSite of the same simple name; a genuine collision keeps its FQCN (fqcn-baseline.txt ## collisions)"
 [[no-fqcn.entries]]
 unit   = "shared/jk-api/src/test/java/cc/jumpkick/run/BuildStageTest.java"
 value  = 2

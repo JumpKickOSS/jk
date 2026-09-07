@@ -60,6 +60,11 @@
     1  server/engine/src/main/java/cc/jumpkick/compile/CompileResult.java
 
 
+# The guard-test API's `CallSite` (an invocation with the class and method it is in, a `Site`)
+# wraps the facts index's `cc.jumpkick.guard.facts.CallSite` (the raw invocation); the PRD names the
+# user-facing one `CallSite`, so the wrapped one keeps its package in the one file that holds both.
+    1  shared/guard-api/src/main/java/cc/jumpkick/guard/api/CallSite.java
+
 ## unreachable-by-the-formatter
 # 111 of the tree's 2,088 Java files fail OpenRewrite's own print-idempotence check: its Javadoc
 # printer mangles the continuation line of a wrapped `@param` (it eats one space of indent and
