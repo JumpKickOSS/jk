@@ -573,7 +573,7 @@ public final class EffortWeights {
     /**
      * Cold reservation when a running step has no metrics and no residual rate. Prefers host
      * {@link Calibration} continuous/probe priors (absolute ms → flatWeight); falls back to tight
-     * static floors — never the legacy ~1.2s/method {@link #runTestsWeight} for ETA.
+     * static floors. {@link #runTestsWeight} is a bar weight, not an ETA.
      */
     private static int coldStaticWeight(String step, int count) {
         return coldStaticWeight(step, count, 1);
@@ -799,7 +799,7 @@ public final class EffortWeights {
 
             int methods = in.estimatedTestCount();
             int classes = TestSupport.estimateAllSuiteTestClassCount(in.dir(), compact);
-            // Cold bar weight uses the same host priors as ETA (not legacy TEST_METHOD×8).
+            // Cold bar weight uses the same host priors as ETA.
             int testWorkers = resolveTestWorkersForPredict(in, classes);
             int staticTests =
                     coldWorkWeight(TaskNames.RUN_TESTS, methods > 0 ? methods : Math.max(1, classes * 3), testWorkers);

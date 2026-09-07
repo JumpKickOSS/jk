@@ -792,9 +792,11 @@ public final class BuildEta {
             // one crosses kinds: `build` walls are incremental, and this branch is only reached
             // by `build:rebuild`.
             if (!"build".equals(kind)) {
-                var legacy = metrics.invocation("build", BuildMetrics.slashKey(entryDir.toString()))
+                var crossKind = metrics.invocation("build", BuildMetrics.slashKey(entryDir.toString()))
                         .map(BuildMetrics.Entry::ok);
-                if (legacy.isPresent() && legacy.get().count() > 0) return new HistoryMatch(legacy.get(), false);
+                if (crossKind.isPresent() && crossKind.get().count() > 0) {
+                    return new HistoryMatch(crossKind.get(), false);
+                }
             }
         }
         var hostShaped = metrics.invocation(kind, "").map(BuildMetrics.Entry::ok);

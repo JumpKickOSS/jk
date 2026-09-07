@@ -400,8 +400,8 @@ public final class Calibration {
 
     /**
      * Predicted wall-ms for a cold step with unit {@code count} (source/method count). Learned
-     * host rates win; otherwise product baseline × host scale — never the legacy 1.2s/method model
-     * and never empty-probe residual as absolute ms.
+     * host rates win; otherwise product baseline × host scale. An empty-probe residual is never
+     * read as absolute ms.
      */
     public long coldStepWallMs(String step, int count) {
         return coldStepWallMs(step, count, 1);
@@ -642,8 +642,8 @@ public final class Calibration {
     }
 
     /**
-     * Fold a completed build's measured throughput into the stored {@code ms-per-weight} (diagnostic
-     * / legacy). Continuous step rates use {@link #learnFromSuccess}.
+     * Fold a completed build's measured throughput into the stored {@code ms-per-weight}, a
+     * diagnostic figure. Continuous step rates use {@link #learnFromSuccess}.
      */
     public static void refine(double observedMsPerWeight, long nowMillis) {
         if (!(observedMsPerWeight > 0)) return;

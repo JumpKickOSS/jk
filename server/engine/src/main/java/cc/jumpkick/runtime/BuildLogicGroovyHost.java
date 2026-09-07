@@ -43,7 +43,7 @@ final class BuildLogicGroovyHost {
     static final String GROOVY_VER = "5.0.4";
 
     private static final String ANT_VER = "1.10.14";
-    /** Legacy optional tasks (regexpmapper, …) still used by Netty codegen.groovy. */
+    /** Ant's optional tasks (regexpmapper, …), which Netty's codegen.groovy still uses. */
     private static final String ANT_OPTIONAL_VER = "1.5.3-1";
 
     private static final String IVY_VER = "2.5.3";

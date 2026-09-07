@@ -23,7 +23,7 @@ class MetricsHarvestTest {
         ProjectBuilds.RunDir run = ProjectBuilds.openRun(root, "g:demo", root.resolve("proj"));
         Files.writeString(run.metricsFile(), """
                 workspace.wall-ms = 1000
-                step.compile-java.wall-ms = 200
+                task.compile-java.wall-ms = 200
                 host.run-tests-per-method-ms = 12
                 """);
         MetricsHarvest.get().configure(50, 90);
@@ -41,7 +41,7 @@ class MetricsHarvestTest {
         Path host = ProjectBuilds.hostMetricsFile(root);
         assertThat(Files.isRegularFile(host)).isTrue();
         String hm = Files.readString(host);
-        assertThat(hm).contains("host.run-tests-per-method-ms").contains("step.compile-java.wall-ms");
+        assertThat(hm).contains("host.run-tests-per-method-ms").contains("task.compile-java.wall-ms");
         assertThat(hm).doesNotContain("workspace.wall-ms");
     }
 
@@ -68,12 +68,14 @@ class MetricsHarvestTest {
         // while a prefixed *rate* row from an older store is still one by its suffix.
         assertThat(MetricsHarvest.isHostKey("host.x")).isFalse();
         assertThat(MetricsHarvest.isHostKey("host.run-tests-per-method-ms")).isTrue();
-        assertThat(MetricsHarvest.isHostKey("step.compile-java.wall-ms")).isTrue();
+        assertThat(MetricsHarvest.isHostKey("task.compile-java.wall-ms")).isTrue();
         assertThat(MetricsHarvest.isHostKey("run-tests-per-method-ms")).isTrue();
         assertThat(MetricsHarvest.isHostKey("native-image-ms-per-mib")).isTrue();
         assertThat(MetricsHarvest.isHostKey("native-image-floor-ms")).isTrue();
         assertThat(MetricsHarvest.isHostKey("workspace.wall-ms")).isFalse();
-        assertThat(MetricsHarvest.isHostKey("module./p.step.x.wall-ms")).isFalse();
+        assertThat(MetricsHarvest.isHostKey("module./p.task.x.wall-ms")).isFalse();
+        // The step.* key family was renamed to task.*; a row in the retired shape is not read.
+        assertThat(MetricsHarvest.isHostKey("step.compile-java.wall-ms")).isFalse();
     }
 
     @Test
@@ -106,14 +108,14 @@ class MetricsHarvestTest {
                 ms-per-weight = 150
                 """);
         ProjectBuilds.RunDir run = ProjectBuilds.openRun(root, "g:demo", root.resolve("proj"));
-        Files.writeString(run.metricsFile(), "step.compile-java.wall-ms = 220\n");
+        Files.writeString(run.metricsFile(), "task.compile-java.wall-ms = 220\n");
         MetricsHarvest.get().configure(50, 90);
         MetricsHarvest.get().runOnce(root);
         String hm = Files.readString(host);
         assertThat(hm)
                 .contains("native-image-ms-per-mib = 14500.5")
                 .contains("native-image-floor-ms = 11200")
-                .contains("step.compile-java.wall-ms");
+                .contains("task.compile-java.wall-ms");
     }
 
     @Test

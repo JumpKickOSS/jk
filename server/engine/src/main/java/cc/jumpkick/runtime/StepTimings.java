@@ -53,7 +53,7 @@ public final class StepTimings {
 
     private static final ConcurrentHashMap<Path, StepTimings> MEMO = new ConcurrentHashMap<>();
 
-    /** A learned step rate plus when it was last refreshed (epoch millis; 0 = unknown/legacy). */
+    /** A learned step rate plus when it was last refreshed (epoch millis; 0 = never stamped). */
     private record Entry(double perUnit, long updatedMillis) {}
 
     /** key = {@code dir step} → learned rate + timestamp. */
@@ -131,21 +131,9 @@ public final class StepTimings {
                     String task = body.substring(taskAt + ".task.".length());
                     m.put(key(dir, task), new Entry(v, now));
                 }
-            } else if (k.endsWith(".per-unit-ms") && k.startsWith("module.") && k.contains(".step.")) {
-                // legacy step keys
-                String body = k.substring("module.".length(), k.length() - ".per-unit-ms".length());
-                int stepAt = body.indexOf(".step.");
-                if (stepAt > 0) {
-                    String dir = body.substring(0, stepAt);
-                    String step = body.substring(stepAt + ".step.".length());
-                    m.putIfAbsent(key(dir, step), new Entry(v, now));
-                }
             } else if (k.startsWith("task.") && k.endsWith(".per-unit-ms")) {
                 String task = k.substring("task.".length(), k.length() - ".per-unit-ms".length());
                 m.put(key(HOST_METHOD_MS_DIR, task), new Entry(v, now));
-            } else if (k.startsWith("step.") && k.endsWith(".per-unit-ms")) {
-                String step = k.substring("step.".length(), k.length() - ".per-unit-ms".length());
-                m.putIfAbsent(key(HOST_METHOD_MS_DIR, step), new Entry(v, now));
             } else if (k.endsWith("-per-method-ms") || k.endsWith("-per-source-ms")) {
                 m.put(key(HOST_METHOD_MS_DIR, k), new Entry(v, now));
             }

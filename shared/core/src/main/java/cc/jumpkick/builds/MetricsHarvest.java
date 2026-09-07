@@ -196,7 +196,6 @@ public final class MetricsHarvest {
         if (key.startsWith("lock.") || key.startsWith("fetch.") || key.startsWith("probe.")) return true;
         if (key.startsWith("task.") && !key.contains("module.")) return true;
         if (key.startsWith("phase.") && !key.contains("module.")) return true;
-        if (key.startsWith("step.") && !key.contains("module.")) return true; // legacy
         // Absolute host rate keys from continuous learning
         return key.endsWith("-per-method-ms")
                 || key.endsWith("-per-source-ms")
@@ -306,7 +305,6 @@ public final class MetricsHarvest {
         if (key == null || key.isBlank()) return false;
         if (key.startsWith("task.")
                 || key.startsWith("phase.")
-                || key.startsWith("step.")
                 || key.startsWith("module.")
                 || key.startsWith("invocation.")
                 || key.startsWith("workspace.")) {

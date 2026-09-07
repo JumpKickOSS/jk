@@ -7,6 +7,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TomlValues;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.DirKeys;
 import cc.jumpkick.util.JkDirs;
@@ -140,22 +141,13 @@ public final class BuildMetrics {
     private final Map<String, Entry> steps;
 
     /**
-     * {@code <dir>|<step>} → the runner count a suite wall was produced at.
+     * {@code <dir>|<step>} → that wall normalized to one runner.
      *
      * <p>Kept beside {@link #steps} rather than folded into {@link Entry}: it applies to exactly one
      * step name, and widening the record every consumer constructs would spread a test-only concern
      * across the whole metrics surface.
      */
-    private final Map<String, Integer> stepWorkers;
-
-    /** {@code <dir>|<step>} → that wall normalized to one runner. Same rationale as above. */
     private final Map<String, Long> stepWall1;
-
-    /** Runners that produced {@code dir}'s {@code step} wall, or {@code 0} when not recorded. */
-    public int stepWorkers(String dir, String step) {
-        Integer n = stepWorkers.get(slashKey(dir) + SEP + step);
-        return n == null ? 0 : n;
-    }
 
     /**
      * {@code dir}'s {@code step} wall normalized to a single runner, or {@code 0} when not recorded.
@@ -170,23 +162,18 @@ public final class BuildMetrics {
     }
 
     private BuildMetrics(Map<String, Entry> invocations, Map<String, Entry> steps) {
-        this(invocations, steps, Map.of(), Map.of());
+        this(invocations, steps, Map.of());
     }
 
-    private BuildMetrics(
-            Map<String, Entry> invocations,
-            Map<String, Entry> steps,
-            Map<String, Integer> stepWorkers,
-            Map<String, Long> stepWall1) {
+    private BuildMetrics(Map<String, Entry> invocations, Map<String, Entry> steps, Map<String, Long> stepWall1) {
         this.invocations = invocations;
         this.steps = steps;
-        this.stepWorkers = stepWorkers == null ? Map.of() : Map.copyOf(stepWorkers);
         this.stepWall1 = stepWall1 == null ? Map.of() : Map.copyOf(stepWall1);
     }
 
     /**
-     * Legacy path marker — production ETA hydrates from harvested project/host metrics.
-     * Hermetic tests still pass isolated temp files to {@link #load}/{@link #record}.
+     * The store production ETA names but never reads: {@link #load} answers it from the harvested
+     * project/host aggregates. Hermetic tests pass isolated temp files to {@link #load}/{@link #record}.
      */
     public static Path defaultFile() {
         return JkDirs.builds().resolve("metrics.json");
@@ -195,7 +182,7 @@ public final class BuildMetrics {
     /** Read-only store for {@code file}, memoized for the process. Missing/unreadable → empty. */
     public static BuildMetrics load(Path file) {
         if (file != null && isDefaultMetricsPath(file)) {
-            // Prefer harvested aggregates; do not read legacy metrics.json.
+            // Production reads the harvested aggregates, never a file at this path.
             return fromAggregates();
         }
         return MEMO.computeIfAbsent(file, BuildMetrics::read);
@@ -221,11 +208,10 @@ public final class BuildMetrics {
         Map<String, Entry> steps = new LinkedHashMap<>();
         long now = System.currentTimeMillis();
         // Project means first, then host means (fill host-tier gaps only).
-        Map<String, Integer> workers = new LinkedHashMap<>();
         Map<String, Long> wall1 = new LinkedHashMap<>();
-        foldAggregateEntries(agg.meanMap(), agg, inv, steps, workers, wall1, now, false);
-        foldAggregateEntries(agg.hostMeanMap(), agg, inv, steps, workers, wall1, now, true);
-        return new BuildMetrics(inv, steps, workers, wall1);
+        foldAggregateEntries(agg.meanMap(), agg, inv, steps, wall1, now, false);
+        foldAggregateEntries(agg.hostMeanMap(), agg, inv, steps, wall1, now, true);
+        return new BuildMetrics(inv, steps, wall1);
     }
 
     /**
@@ -283,16 +269,14 @@ public final class BuildMetrics {
     }
 
     /**
-     * Fold harvested scalars into invocation/task maps. Prefer {@code task.*} over legacy {@code
-     * step.*}. When {@code hostOnly}, only fill keys not already present (host tier / missing
-     * modules).
+     * Fold harvested scalars into invocation/task maps. When {@code hostOnly}, only fill keys not
+     * already present (host tier / missing modules).
      */
     private static void foldAggregateEntries(
             Map<String, Double> source,
             AggregatedMetrics agg,
             Map<String, Entry> inv,
             Map<String, Entry> steps,
-            Map<String, Integer> workers,
             Map<String, Long> wall1,
             long now,
             boolean hostOnly) {
@@ -321,20 +305,6 @@ public final class BuildMetrics {
             } else if (key.equals("workspace.wall-ms")) {
                 inv.putIfAbsent(
                         "build" + SEP + "", new Entry("build", "", null, null, ok, Stats.EMPTY, Stats.EMPTY, now));
-            } else if (key.startsWith("module.") && key.contains(".task.") && key.endsWith(".workers")) {
-                // module.<dir>.task.<name>.workers — the concurrency the wall beside it was measured
-                // at, so a forecast can re-schedule that wall instead of re-using it verbatim.
-                String wb = key.substring("module.".length(), key.length() - ".workers".length());
-                int wat = wb.indexOf(".task.");
-                if (wat > 0) {
-                    String wdir = slashKey(wb.substring(0, wat));
-                    String wtask = wb.substring(wat + ".task.".length());
-                    int runners = (int) Math.max(0, Math.round(ms));
-                    if (!wtask.isEmpty() && runners > 0) {
-                        if (hostOnly) workers.putIfAbsent(wdir + SEP + wtask, runners);
-                        else workers.put(wdir + SEP + wtask, runners);
-                    }
-                }
             } else if (key.startsWith("module.") && key.contains(".task.") && key.endsWith(".wall1-ms")) {
                 // module.<dir>.task.<name>.wall1-ms — the wall normalized to one runner, which is
                 // the only form of a suite cost that survives being averaged across build shapes.
@@ -464,7 +434,7 @@ public final class BuildMetrics {
      *
      * <p>When {@code assignedBuildNumber} is positive (allocated at request-start by
      * {@link BuildNumberAllocator}), that value is returned for the journal — finish must not mint a
-     * second number. Otherwise falls back to the post-fold project run count (legacy).
+     * second number. Otherwise (hermetic tests) the post-fold project run count is the number.
      *
      * @return this run's <strong>build number</strong>, or {@code 0} when nothing was recorded.
      */
@@ -694,7 +664,15 @@ public final class BuildMetrics {
         } catch (Exception ignored) {
             // unreadable/corrupt store → treat as empty
         }
-        return new BuildMetrics(inv, ph);
+        // The hermetic store records single-runner runs, so a suite wall is already its own
+        // normalized wall — the same shape the harvested `wall1-ms` gives production.
+        Map<String, Long> wall1 = new LinkedHashMap<>();
+        for (Entry e : ph.values()) {
+            if (TaskNames.RUN_TESTS.equals(e.step()) && e.ok().count() > 0) {
+                wall1.put(e.dir() + SEP + e.step(), e.ok().avgMillis());
+            }
+        }
+        return new BuildMetrics(inv, ph, wall1);
     }
 
     private static @Nullable Entry readEntry(@Nullable Object row, boolean invocation) {

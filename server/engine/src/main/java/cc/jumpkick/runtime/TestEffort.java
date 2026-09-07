@@ -64,14 +64,12 @@ public final class TestEffort {
         // for a known module. (Host-tier suite average is NOT a substitute: it mixes tiny and huge
         // suites and under-prices a cold 1000-test module.)
         if (metrics != null && moduleDir != null && !moduleDir.isBlank()) {
-            // The normalized wall first: it is the only stored suite cost that means the same thing
-            // across runs that sharded the suite differently. See TestSuiteScaling.
+            // The normalized wall is the only stored suite cost that means the same thing across
+            // runs that sharded the suite differently. See TestSuiteScaling. A module with a raw
+            // wall but no normalized one has no usable suite history and is priced from its
+            // classes or methods below.
             long wall1 = metrics.stepWall1Millis(moduleDir, TaskNames.RUN_TESTS);
             if (wall1 > 0) return TestSuiteScaling.forRunners(wall1, testWorkers);
-            long own = EffortWeights.stepOkAvgMillisOwn(metrics, moduleDir, TaskNames.RUN_TESTS);
-            if (own > 0) {
-                return rescaleForRunners(own, metrics.stepWorkers(moduleDir, TaskNames.RUN_TESTS), testWorkers);
-            }
         }
         // Class-wall path: complete selection coverage → Σ walls (no method count).
         if (classesToRun != null && !classesToRun.isEmpty() && classWallsMs != null && !classWallsMs.isEmpty()) {
@@ -116,39 +114,6 @@ public final class TestEffort {
         long body = Math.round(methods * perMethod);
         long parallelBody = w <= 1 ? body : (body + w - 1) / w;
         return startup + parallelBody;
-    }
-
-    /** Most a rescale may stretch a recorded wall. */
-    private static final long RESCALE_UP_CAP = 2;
-
-    /** Most a rescale may shrink a recorded wall — sharding is never linear. */
-    private static final long RESCALE_DOWN_CAP = 4;
-
-    /**
-     * Re-schedule a stored suite wall for the runners this build will hand the module — the
-     * <strong>legacy</strong> path, for modules whose history predates {@code wall1-ms}.
-     *
-     * <p>Prefer {@link TestSuiteScaling}, which is reached above this. The difference is where the
-     * normalization happens: {@code TestSuiteScaling} normalizes at record time, while the wall and
-     * its runner count still belong to the same build, whereas this has to work from two independent
-     * recency-weighted means. That mismatch is not a small inaccuracy — a 12 s wall averaged from
-     * sharded runs beside a runner mean of 8 implies 96 s of "work" that nothing ever took — so the
-     * correction here is deliberately a bounded nudge rather than an arithmetic identity: never more
-     * than {@value #RESCALE_UP_CAP}x up, never below a {@value #RESCALE_DOWN_CAP}th. {@code ScheduleBias}
-     * absorbs what is left. Once every module in a project has been through one successful build,
-     * this stops being consulted.
-     *
-     * <p>{@code ranWith <= 0} means the record predates the concurrency being written at all; the
-     * wall is returned unchanged rather than guessed at.
-     */
-    static long rescaleForRunners(long wallMs, int ranWith, int testWorkers) {
-        if (wallMs <= 0 || ranWith <= 0) return wallMs;
-        int runners = Math.max(1, testWorkers);
-        if (ranWith == runners) return wallMs;
-        long scaled = Math.round(wallMs * (ranWith / (double) runners));
-        long floor = Math.max(1, wallMs / RESCALE_DOWN_CAP);
-        long ceiling = wallMs * RESCALE_UP_CAP;
-        return Math.max(floor, Math.min(ceiling, scaled));
     }
 
     /** Hierarchical method-ms: module residual → project median → host absolute → calibration. */

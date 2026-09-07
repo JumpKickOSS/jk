@@ -33,7 +33,7 @@ public final class KspResolver {
     private KspResolver() {}
 
     /**
-     * Pick the KSP2 version to use: the newest stable standalone release (plain semver — legacy
+     * Pick the KSP2 version to use: the newest stable standalone release (plain semver — KSP1's
      * {@code <kotlin>-<ksp>} compound versions are excluded).
      */
     public static String discoverVersion(RepoGroup repos) throws IOException, InterruptedException {
@@ -49,7 +49,7 @@ public final class KspResolver {
 
     /** True for the KSP2 standalone version shape ({@code 2.3.10}), false for {@code 2.0.0-1.0.21}. */
     static boolean standalone(String version) {
-        // Legacy compound versions carry a second dotted version after a dash (…-1.0.21);
+        // KSP1 compound versions carry a second dotted version after a dash (…-1.0.21);
         // standalone versions have at most a prerelease word there. Three dash-separated
         // dotted-number runs = compound.
         int dash = version.indexOf('-');
