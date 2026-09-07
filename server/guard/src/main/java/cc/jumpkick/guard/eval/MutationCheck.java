@@ -28,7 +28,7 @@ import org.jspecify.annotations.Nullable;
 /**
  * Mutation-time enforcement: judge the manifest text a {@code jk add} / {@code jk remove} /
  * {@code jk_deps} is about to write, before it is written. Only the kinds whose substrate is the
- * model run here ({@code depend}; {@code toolchain} joins when it lands). A project without guards
+ * model run here ({@code depend} and {@code toolchain}). A project without guards
  * pays one stat. There is no {@code --force}: the sanctioned path is a reviewed {@code allow}.
  */
 public final class MutationCheck {
@@ -53,7 +53,8 @@ public final class MutationCheck {
         if (!GuardsPresence.detect(root, false, cfg.declared())) return null;
         LoadResult load = GuardRules.load(root, cfg);
         if (load.hasErrors()) return null; // the build reports the load errors; an edit is not the place
-        List<Rule> rules = load.rules().ofKind(Kind.DEPEND);
+        List<Rule> rules = new ArrayList<>(load.rules().ofKind(Kind.DEPEND));
+        rules.addAll(load.rules().ofKind(Kind.TOOLCHAIN));
         if (rules.isEmpty()) return null;
         String module = root.equals(dir) ? "" : root.relativize(dir).toString().replace('\\', '/');
         Lockfile lock = null;
@@ -69,7 +70,9 @@ public final class MutationCheck {
         for (Rule rule : rules) {
             Evaluation e;
             try {
-                e = DependEvaluator.evaluateProposed(rule, module, proposed, lock);
+                e = rule.kind() == Kind.TOOLCHAIN
+                        ? ToolchainEvaluator.evaluateProposed(rule, module, proposed, lock)
+                        : DependEvaluator.evaluateProposed(rule, module, proposed, lock);
             } catch (RuntimeException failed) {
                 continue; // an unparseable proposal is the editor's error to report
             }
