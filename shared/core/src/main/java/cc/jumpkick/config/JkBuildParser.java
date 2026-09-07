@@ -246,6 +246,11 @@ public final class JkBuildParser {
         // the message names the position rather than surfacing later as a bewildering "no such
         // version".
         Interpolation.guard(result);
+        if (result.contains("guard-dependencies")) {
+            throw new JkBuildParseException(
+                    "[guard-dependencies] is not a scope: a guard suite (src/guard) compiles against"
+                            + " [test-dependencies] plus the jk-guards-junit jk provisions — declare ArchUnit or Konsist there");
+        }
         return result;
     }
 

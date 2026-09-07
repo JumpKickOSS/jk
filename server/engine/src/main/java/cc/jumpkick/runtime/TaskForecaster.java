@@ -581,12 +581,13 @@ public final class TaskForecaster {
             // --skip-tests composes no compile-test/run-tests steps, so don't forecast
             // (or content-hash the inputs of) steps the build will not run.
             List<Path> testCompileCp = PlannerSupport.testCompileClasspath(dir, project, lock, resolver);
-            testDirty = PlannerFixtures.addForecast(
+            testDirty = PlannerGuardSuite.addSuiteForecasts(
                     steps,
                     skipTests,
                     compileDirty,
                     project,
                     dir,
+                    compact,
                     layout,
                     processorCp,
                     release,
@@ -595,7 +596,8 @@ public final class TaskForecaster {
                     cache,
                     actionCache,
                     workerJar,
-                    testCompileCp);
+                    testCompileCp,
+                    cas);
             // ---- guard (module lane): stale verdict → RUN, which is what makes the module dirty ----
             GuardKeys.forecastModuleLane(dir, layout, actionCache, force || compileDirty)
                     .ifPresent(steps::add);

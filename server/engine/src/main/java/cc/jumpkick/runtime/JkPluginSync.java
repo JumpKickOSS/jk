@@ -84,6 +84,18 @@ public final class JkPluginSync {
                 obs.missing(w.artifactId(), e.getMessage());
             }
         }
+        // The guard-test library rides the same path: a `src/guard` suite compiles against it offline.
+        String lib = GuardSuiteLibrary.relativePath();
+        if (localStore.locate(lib).isPresent() || centralStore.locate(lib).isPresent()) {
+            present++;
+            obs.present(GuardSuiteLibrary.ARTIFACT);
+        } else if (GuardSuiteLibrary.stageFromM2(cas) != null) {
+            fetched++;
+            obs.fetched(GuardSuiteLibrary.ARTIFACT);
+        } else {
+            missing++;
+            obs.missing(GuardSuiteLibrary.ARTIFACT, "not found in ~/.m2 or cache");
+        }
         return new Result(present, fetched, missing);
     }
 

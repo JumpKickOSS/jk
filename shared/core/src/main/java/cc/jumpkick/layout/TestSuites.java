@@ -42,6 +42,13 @@ public final class TestSuites {
     /** Default {@code --gate} suite list: unit plus integration (integration is optional). */
     public static final List<String> GATE = List.of(DEFAULT, INTEGRATION);
 
+    /**
+     * The guard suite: {@code src/guard/java} holds guard tests, compiled by {@code compile-guard}
+     * and run by the guard lanes — never by {@code jk test}, {@code --all} or the gate. Reserved,
+     * like {@code fixtures}: discovery does not return it and a {@code --suite guard} is an error.
+     */
+    public static final String GUARD = "guard";
+
     /** Top-level names that are never treated as optional test suites in simple layout. */
     static final Set<String> SIMPLE_RESERVED = Set.of(
             "src",
@@ -108,7 +115,7 @@ public final class TestSuites {
                         .map(p -> p.getFileName().toString())
                         .filter(n -> !n.startsWith("."))
                         .filter(n -> !SIMPLE_RESERVED.contains(n.toLowerCase(Locale.ROOT)))
-                        .filter(n -> !FIXTURES_DIR.equals(n))
+                        .filter(n -> !FIXTURES_DIR.equals(n) && !GUARD.equals(n))
                         .filter(n -> isSuiteName(n))
                         .sorted()
                         .forEach(n -> {
@@ -130,7 +137,7 @@ public final class TestSuites {
                     stream.filter(Files::isDirectory)
                             .map(p -> p.getFileName().toString())
                             .filter(n -> !"main".equals(n) && !"test".equals(n))
-                            .filter(n -> !FIXTURES_DIR.equals(n))
+                            .filter(n -> !FIXTURES_DIR.equals(n) && !GUARD.equals(n))
                             .filter(TestSuites::isSuiteName)
                             .sorted()
                             .forEach(n -> {
@@ -155,6 +162,20 @@ public final class TestSuites {
             }
         }
         return List.copyOf(names);
+    }
+
+    /** Whether the module carries a guard suite: Java sources under its {@link #GUARD} root. */
+    public static boolean hasGuardSuite(Path projectDir, boolean compact) {
+        return hasSources(javaRoots(projectDir, compact, GUARD), List.of(), List.of(), List.of());
+    }
+
+    /** The guard suite's Java sources, in path order; empty when there is no suite. */
+    public static List<Path> guardSources(Path projectDir, boolean compact) throws IOException {
+        List<Path> out = new ArrayList<>();
+        for (Path root : javaRoots(projectDir, compact, GUARD)) {
+            if (Files.isDirectory(root)) out.addAll(collectExt(root, ".java"));
+        }
+        return out;
     }
 
     /** True if {@code name} is a legal suite identifier ({@code [a-z][a-z0-9_-]*}). */

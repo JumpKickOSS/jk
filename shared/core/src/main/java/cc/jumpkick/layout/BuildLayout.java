@@ -298,6 +298,14 @@ public final class BuildLayout {
     }
 
     /**
+     * {@code target/guard/classes/} — the guard suite's compile output. A directory, never a jar:
+     * guard tests are run by the guard lanes and reach no publication.
+     */
+    public Path guardClassesDir() {
+        return moduleTargetDir().resolve("guard").resolve("classes");
+    }
+
+    /**
      * {@code target/jdt/classes/main/} — main class output for an external IDE language server
      * (Eclipse JDT-LS, used by VS Code's redhat.java). Kept separate from {@link #classesDir} so an
      * IDE's continuous autobuild never collides with jk's incremental compiler, which deletes and

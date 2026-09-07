@@ -33,6 +33,9 @@ public final class TaskNames {
     /** Shared test helpers compiled to a directory that is never an artifact. */
     public static final String COMPILE_TEST_FIXTURES = "compile-test-fixtures";
 
+    /** The guard suite ({@code src/guard/java}) compiled against main, the test classpath and jk-guards-junit. */
+    public static final String COMPILE_GUARD = "compile-guard";
+
     public static final String COPY_RESOURCES = "copy-resources";
 
     /** Forecast-only: test-resource drift. Never discounts {@link #RUN_TESTS}. */

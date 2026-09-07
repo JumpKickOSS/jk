@@ -63,6 +63,11 @@ scripts/publish-maven-repo.sh
 CI (when Actions billing works) should call `publish-maven-repo.sh` after `installLocal` in the
 same tag job that uploads `releases/`.
 
+`jk-guards-junit` (the guard-test library a project's `src/guard` suite compiles against) rides the
+same path as the worker jars: `:guard-api:installLocal` stages `cc/jumpkick/jk-guards-junit/<ver>/`
+(jar + POM) into `store/repos/jk-local`, the engine copies it from `~/.m2` when the store lacks it
+(`jk sync`, or the first `compile-guard`), and the lock pins it under `[[plugin]]` at jk's version.
+
 ## Why not only `releases/`?
 
 - `releases/` is the **product** layout (native client + engine jar + checksums).

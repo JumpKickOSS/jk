@@ -377,13 +377,17 @@ val compileRequestShared = mapOf(
                 "TaskForecaster.java|PlannerCompile.mainCompileRequest(")),
         "compile-test-fixtures" to ("PlannerFixtures.java|public static CompileRequest fixturesCompileRequest(" to listOf(
                 "PlannerFixtures.java|CompileRequest request = fixturesCompileRequest(",
-                "PlannerFixtures.java|CompileRequest fxReq = fixturesCompileRequest(")))
+                "PlannerFixtures.java|CompileRequest fxReq = fixturesCompileRequest(")),
+        "compile-guard" to ("PlannerGuardSuite.java|public static CompileRequest guardCompileRequest(" to listOf(
+                "PlannerGuardSuite.java|CompileRequest request = guardCompileRequest(",
+                "PlannerGuardSuite.java|CompileRequest req = guardCompileRequest(")))
 
 // Every `CompileRequest.builder()` site in the module and how many times it appears, so a new chain
 // has to be declared as keyed (above) or unkeyed (here) before the build will run.
 val compileRequestSites = mapOf(
         "PlannerCompile.java" to 1, // shared: the one compile-main body, build + forecast
         "PlannerFixtures.java" to 1, // shared: compile-test-fixtures, build + forecast
+        "PlannerGuardSuite.java" to 1, // shared: compile-guard, build + forecast
         "TestSupport.java" to 1, // keyed: compile-test build
         "TaskForecaster.java" to 1, // keyed: compile-test forecast
         "LocalProjectBuilder.java" to 1, // unkeyed: source-dependency build calls JavacRunner directly

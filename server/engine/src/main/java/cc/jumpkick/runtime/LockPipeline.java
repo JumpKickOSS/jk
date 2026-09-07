@@ -13,6 +13,8 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.jdk.ToolchainLockStamp;
+import cc.jumpkick.layout.ModuleLayout;
+import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.lock.LockManifestDigest;
 import cc.jumpkick.lock.LockNativePin;
 import cc.jumpkick.lock.LockPaths;
@@ -452,7 +454,35 @@ public final class LockPipeline {
             }
             floor = PluginDescriptors.maxFloor(floor, PluginDescriptors.jkCompatFloor(d.jkCompat()));
         }
+        // A guard suite anywhere in the workspace pins the provisioned jk-guards-junit like a built-in
+        // plugin: same version, same store. jk's own tree compiles against its workspace module, which
+        // has no jar to pin.
+        if (hasGuardSuite()) {
+            Path jar = GuardSuiteLibrary.stored(cas);
+            if (jar != null) {
+                try {
+                    String coord = GuardSuiteLibrary.COORDINATE;
+                    if (seen.add(coord + ":" + JkVersion.VERSION)) {
+                        entries.add(
+                                new Lockfile.PluginEntry(coord, JkVersion.VERSION, "sha256:" + Hashing.sha256Hex(jar)));
+                    }
+                } catch (IOException unreadable) {
+                    progress.note("note: " + GuardSuiteLibrary.COORDINATE + " could not be hashed; not pinned");
+                }
+            }
+        }
         return lock.withPlugins(entries).withJkMin(floor);
+    }
+
+    private boolean hasGuardSuite() {
+        List<Path> dirs = new ArrayList<>();
+        dirs.add(lockDir);
+        if (effective.workspace() != null)
+            for (String m : effective.workspace().modules()) dirs.add(lockDir.resolve(m));
+        for (Path d : dirs) {
+            if (Files.isDirectory(d) && TestSuites.hasGuardSuite(d, ModuleLayout.isCompact(d))) return true;
+        }
+        return false;
     }
 
     private Lockfile.PluginEntry pinDeclared(PluginDeclaration pd, RepoGroup repos, Progress progress) {

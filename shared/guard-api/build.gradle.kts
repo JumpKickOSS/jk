@@ -21,3 +21,47 @@ tasks.compileJava {
 dependencies {
     api(project(":host"))
 }
+
+// Coordinates + version must match cc.jumpkick.model.JkVersion.VERSION, like the worker plugins
+// (jk.plugin-conventions): the engine provisions this exact coordinate for a src/guard suite.
+version = "0.13.0"
+
+// Same destination as the worker jars' `installLocal` (jk.plugin-conventions) and `jk install`:
+// store/repos/jk-local/cc/jumpkick/jk-guards-junit/<ver>/. A project's `src/guard` suite compiles
+// against this coordinate at the installed jk's version, offline; the engine copies it from ~/.m2
+// when the store lacks it, so publishToMavenLocal is the other route.
+tasks.register("installLocal") {
+    description = "Install jk-guards-junit jar+pom into the local Maven store (repos/jk-local)"
+    group = "jk"
+    dependsOn(tasks.jar)
+    val jarProvider = tasks.jar.flatMap { it.archiveFile }
+    inputs.file(jarProvider)
+    val ver = project.version.toString()
+    doLast {
+        val jar = jarProvider.get().asFile
+        val dir = JkLayoutPaths.storeRoot().resolve("repos/jk-local/cc/jumpkick/jk-guards-junit/$ver")
+        dir.mkdirs()
+        val target = dir.resolve("jk-guards-junit-$ver.jar")
+        CopyReplacing.copy(jar, target)
+        val pom = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <project xmlns="http://maven.apache.org/POM/4.0.0">
+              <modelVersion>4.0.0</modelVersion>
+              <groupId>cc.jumpkick</groupId>
+              <artifactId>jk-guards-junit</artifactId>
+              <version>$ver</version>
+              <packaging>jar</packaging>
+              <dependencies>
+                <dependency>
+                  <groupId>cc.jumpkick</groupId>
+                  <artifactId>jk-host</artifactId>
+                  <version>$ver</version>
+                </dependency>
+              </dependencies>
+            </project>
+        """.trimIndent() + "\n"
+        dir.resolve("jk-guards-junit-$ver.pom").writeText(pom)
+        println("Installed jk-guards-junit $ver")
+        println("  path:   $target")
+    }
+}

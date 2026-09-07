@@ -48,6 +48,18 @@ directory still works (`contract`, `mutation`, …) — [layout](layout.md). Cos
 crosses a suite (`slow`, `network`, `bench`) is a **JUnit tag**, not a fourth
 directory.
 
+## The guard suite is not a test suite
+
+`src/guard/java` holds **guard tests** — `@Guard` methods in a `@GuardSuite` class that read the
+same facts, model and text the declarative rules in `jk-guards.toml` read (see
+`jk guard explain --schema guard-test`). jk compiles it as `compile-guard`, against main classes,
+the test compile classpath (so ArchUnit or Konsist come from `[test-dependencies]`; there is no
+`[guard-dependencies]`) and `cc.jumpkick:jk-guards-junit` at the installed jk's version, which jk
+provisions from its local store and pins in `jk-lock.toml` — nothing to declare. Discovery never
+returns `guard`: `jk test`, `--all` and the gate do not collect it, `--suite guard` is an error
+that says so, and the guard lanes run it. `jk ide` exports the directory as a test root so a guard
+test has a debugger.
+
 `--scripts-only` and `--no-scripts` cannot be combined. `--scripts-only` with no
 `gate` stem is a config error. Same flags on `jk build`. See [build logic](build-logic.md).
 

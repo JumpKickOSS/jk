@@ -2,6 +2,8 @@
 package cc.jumpkick.command.ide;
 
 import cc.jumpkick.layout.ModuleLayout;
+import cc.jumpkick.layout.TestSuites;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -35,6 +37,14 @@ public final class IdeSourceRoots {
         List<Root> out = new ArrayList<>();
         for (ModuleLayout.Root r : ModuleLayout.diskRoots(moduleDir)) {
             out.add(new Root(r.relative(), map(r.kind())));
+        }
+        // The guard suite is not a test suite, so discovery never lists it; the IDE still wants it as
+        // a test root — a guard test needs a debugger like any test.
+        boolean compact = ModuleLayout.isCompact(moduleDir);
+        for (Path root : TestSuites.javaRoots(moduleDir, compact, TestSuites.GUARD)) {
+            if (Files.isDirectory(root)) {
+                out.add(new Root(moduleDir.relativize(root).toString().replace('\\', '/'), Kind.TEST));
+            }
         }
         return List.copyOf(out);
     }

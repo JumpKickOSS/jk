@@ -601,6 +601,10 @@ public final class BuildPlanner {
         boolean hasFixtures = parsedBuild != null && PlannerFixtures.declared(parsedBuild);
         Task compileTestFixtures = PlannerFixtures.compileTestFixturesStep(cx);
 
+        // ---- compile-guard ----------------------------------------------
+        boolean hasGuardSuite = PlannerGuardSuite.declared(in.dir(), compact);
+        Task compileGuard = PlannerGuardSuite.compileGuardStep(cx, compact);
+
         // ---- compile-test -----------------------------------------------
         Task compileTest = PlannerTest.compileTestStep(cx, hasFixtures);
 
@@ -743,6 +747,12 @@ public final class BuildPlanner {
         if (!skipJUnit) {
             if (hasFixtures) b.addTask(compileTestFixtures);
             b.addTask(compileTest).addTask(runTests);
+        }
+        // The guard suite is not a test: it compiles whether or not tests are skipped, and stays in
+        // the plan when a target closure would otherwise prune it.
+        if (hasGuardSuite) {
+            b.addTask(compileGuard);
+            b.alsoKeep(TaskNames.COMPILE_GUARD);
         }
         // `jk test` stops at run-tests — it never packages a jar. Plugin steps run only
         // when packaging does: they exist to feed the packaged/native artifact. The exception
