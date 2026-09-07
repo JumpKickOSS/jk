@@ -3,6 +3,7 @@ package cc.jumpkick.guard.eval;
 
 import cc.jumpkick.guard.baseline.Observation;
 import cc.jumpkick.guard.extract.FactsExtractor;
+import cc.jumpkick.guard.extract.WorkspaceFacts;
 import cc.jumpkick.guard.facts.CallSite;
 import cc.jumpkick.guard.facts.ClassFacts;
 import cc.jumpkick.guard.facts.Descriptors;
@@ -16,6 +17,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -71,6 +73,7 @@ final class VocabularyEvaluator implements Evaluator {
         String ownerSource = ownerSourceRel(ownerFacts, ctx);
         Map<Allow, Boolean> allowUsed = new LinkedHashMap<>();
         for (Allow a : rule.allow()) allowUsed.put(a, false);
+        Set<Allow> applicable = new HashSet<>();
 
         boolean all = rule.sourceSet().equals("all");
         long files = 0;
@@ -85,7 +88,8 @@ final class VocabularyEvaluator implements Evaluator {
             String text = TextFiles.read(f.file());
             if (text == null) continue;
             files++;
-            Allow allow = allowing(rule.allow(), f.rel());
+            Allow allow = allowing(rule.allow(), f.rel(), ctx.module());
+            if (allow != null) applicable.add(allow);
             for (CodeText.Literal l : CodeText.literals(text)) {
                 literals++;
                 String value = l.body();
@@ -128,8 +132,11 @@ final class VocabularyEvaluator implements Evaluator {
         Map<String, Long> population =
                 Map.of("files", files, "literals", literals, "constants", (long) vocabulary.size());
         List<String> stale = new ArrayList<>();
-        for (var e : allowUsed.entrySet())
-            if (!e.getValue()) stale.add(e.getKey().in());
+        for (var e : allowUsed.entrySet()) {
+            // An allow naming a file of another module is judged there, not stale here.
+            if (!e.getValue() && applicable.contains(e.getKey()))
+                stale.add(e.getKey().in());
+        }
         if (!stale.isEmpty() && files > 0) {
             return new Evaluation(
                     Outcome.STALE_ALLOW,
@@ -160,12 +167,23 @@ final class VocabularyEvaluator implements Evaluator {
         return out;
     }
 
+    /**
+     * The owner's facts: this module's, its classpath's, the JDK's — or, since the ban list is the
+     * owner's and the scan is this module's text, any module's main index in the workspace. A module
+     * that does not depend on the owner can still type its literals.
+     */
     private static @Nullable ClassFacts ownerFacts(String owner, EvalContext ctx) {
         String internal = Descriptors.internalName(owner);
         ClassFacts own = ctx.facts().classes().get(internal);
         if (own != null) return own;
         byte[] bytes = ctx.hierarchy().bytesOf(internal);
-        return bytes == null ? null : FactsExtractor.extract(bytes);
+        if (bytes != null) return FactsExtractor.extract(bytes);
+        try {
+            return WorkspaceFacts.lookup(WorkspaceModules.of(ctx.root()), internal)
+                    .orElse(null);
+        } catch (IOException e) {
+            return null;
+        }
     }
 
     private static @Nullable String ownerSourceRel(ClassFacts owner, EvalContext ctx) {
@@ -206,9 +224,15 @@ final class VocabularyEvaluator implements Evaluator {
         return null;
     }
 
-    private static @Nullable Allow allowing(List<Allow> allow, String rel) {
-        for (Allow a : allow)
-            if (Rule.globMatches(a.in(), rel) || rel.equals(a.in()) || rel.startsWith(a.in() + "/")) return a;
+    /** By module-relative path ({@code src/main/java/…}) or workspace-relative ({@code shared/host/src/…}). */
+    private static @Nullable Allow allowing(List<Allow> allow, String rel, String module) {
+        String full = module.isEmpty() ? rel : module + "/" + rel;
+        for (Allow a : allow) {
+            for (String p : List.of(rel, full)) {
+                if (Rule.globMatches(a.in(), p) || p.equals(a.in()) || p.startsWith(a.in() + "/")) return a;
+            }
+            if (a.in().equals(module)) return a;
+        }
         return null;
     }
 

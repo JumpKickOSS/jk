@@ -19,7 +19,6 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.GuardsConfig;
 import cc.jumpkick.model.JkBuild;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -99,7 +98,7 @@ public final class Freezer {
 
     /** One context per module for the module lane; one root context otherwise. */
     private static List<EvalContext> contexts(Path root, Lane lane, Rule rule) throws IOException {
-        List<Path> modules = moduleDirs(root);
+        List<Path> modules = WorkspaceModules.of(root);
         List<EvalContext> out = new ArrayList<>();
         if (lane == Lane.MODULE) {
             for (Path m : modules) {
@@ -123,19 +122,6 @@ public final class Freezer {
             return out;
         }
         out.add(new EvalContext(lane, root, "", null, modules, () -> FactsIndex.EMPTY, () -> null, List::of));
-        return out;
-    }
-
-    private static List<Path> moduleDirs(Path root) throws IOException {
-        Path manifest = root.resolve(ManifestPaths.MANIFEST);
-        List<Path> out = new ArrayList<>();
-        if (!Files.isRegularFile(manifest)) return out;
-        JkBuild build = JkBuildParser.parse(manifest);
-        if (build.workspace() != null && !build.workspace().modules().isEmpty()) {
-            for (String m : build.workspace().modules()) out.add(root.resolve(m));
-        } else {
-            out.add(root);
-        }
         return out;
     }
 }
