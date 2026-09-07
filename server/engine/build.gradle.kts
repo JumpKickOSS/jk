@@ -24,7 +24,14 @@ dependencies {
     implementation(project(":resolver"))
     implementation(project(":toolchain"))
     implementation(project(":guard"))
-    implementation(project(":guard-api"))
+    // The engine writes a guard suite's GuardConfig and forks the launcher that runs it; it never
+    // runs JUnit itself, so guard-api's JUnit API — an `api` dependency for the suites that compile
+    // against @Guard — stays off the engine classpath and out of the fat jar.
+    implementation(project(":guard-api")) {
+        exclude(group = "org.junit")
+        exclude(group = "org.junit.jupiter")
+        exclude(group = "org.junit.platform")
+    }
     implementation(project(":dynamic-surface"))
     // The web dashboard's static assets ride the engine's runtime classpath as /web/* (served by
     // StaticContent) and get bundled into the jk-engine fat jar. Kept resources-only + runtimeOnly
@@ -248,7 +255,7 @@ val integrationWorkerJars = listOf(
 val testApksig by configurations.creating {
     isCanBeConsumed = false; isCanBeResolved = true
 }
-dependencies { testApksig("com.android.tools.build:apksig:8.7.3") }
+dependencies { testApksig(libs.apksig) }
 
 // networkTest and slowTest get the same wiring: the shipped-template scaffold-and-build tests and
 // the framework e2e suites fork the same plugin workers, and a nightly run of either builds nothing

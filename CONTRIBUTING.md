@@ -57,6 +57,22 @@ prepare, schedule). Add a `WorkspaceTarget` + module filter. See
 #   .\install.cmd clients\cli\build\install\jk\bin\jk.bat
 ```
 
+### Dependency locking
+
+Every Gradle configuration is locked: the `gradle.lockfile` beside each build script and
+`gradle/verification-metadata.xml` (a sha256 for every artifact) are the Gradle side of what
+`jk-lock.toml` is for jk. Versions live in `gradle/libs.versions.toml` only — the
+`catalog-is-the-version-source` guard refuses a literal coordinate in a build script. After a
+catalog edit, re-lock and re-record:
+
+```bash
+./gradlew resolveAndLockAll --write-locks
+./gradlew --write-verification-metadata sha256 resolveAndLockAll
+```
+
+A resolution that disagrees with a lock, or an artifact whose checksum the metadata does not carry,
+fails the build instead of drifting.
+
 **The native binary is the preferred shipped client** — a slim GraalVM native image, sub-50 ms
 cold start, and the only client that can self-heal a missing engine (`EngineJarFetcher`). Building
 one needs a GraalVM-capable JDK (SDKMAN is the least ceremony):

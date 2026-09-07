@@ -13,12 +13,12 @@ dependencies {
     // Keep in sync with cc.jumpkick.model.ToolDefaults.QUARKUS_TOOLING_BOM_VERSION: a Gradle script
     // cannot read a Java constant, so this is the one copy jk keeps by necessity.
     val quarkusBootstrap = "3.38.0"
-    compileOnly("io.quarkus:quarkus-bootstrap-core:$quarkusBootstrap")
-    compileOnly("io.quarkus:quarkus-bootstrap-maven-resolver:$quarkusBootstrap")
-    compileOnly("io.quarkus:quarkus-bootstrap-app-model:$quarkusBootstrap")
+    compileOnly(libs.quarkus.bootstrap.core)
+    compileOnly(libs.quarkus.bootstrap.maven.resolver)
+    compileOnly(libs.quarkus.bootstrap.app.model)
     // Real PlatformImportsImpl for the platform-properties injection tests — the injection is
     // pure model + file I/O, so the tests exercise the production types, not stand-ins.
-    testImplementation("io.quarkus:quarkus-bootstrap-app-model:$quarkusBootstrap")
+    testImplementation(libs.quarkus.bootstrap.app.model)
     // `FakeBuildIo` — the shared engine-side fake for a packager/step body.
     testImplementation(testFixtures(project(":plugin-sdk")))
 }

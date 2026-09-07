@@ -4,12 +4,15 @@ plugins {
     `kotlin-dsl`
 }
 
+// The build of the build is locked like the build: gradle.lockfile beside this script.
+dependencyLocking { lockAllConfigurations() }
+
 dependencies {
-    implementation("net.ltgt.gradle:gradle-errorprone-plugin:5.1.0")
-    implementation("net.ltgt.gradle:gradle-nullaway-plugin:3.1.0")
-    testImplementation("org.junit.jupiter:junit-jupiter:6.1.0")
-    testImplementation("org.assertj:assertj-core:3.27.7")
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher:6.1.0")
+    implementation(libs.errorprone.gradle)
+    implementation(libs.nullaway.gradle)
+    testImplementation(libs.junit.jupiter)
+    testImplementation(libs.assertj.core)
+    testRuntimeOnly(libs.junit.platform.launcher)
 }
 
 tasks.test {

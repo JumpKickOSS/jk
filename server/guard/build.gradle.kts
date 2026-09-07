@@ -15,7 +15,12 @@ dependencies {
     implementation(project(":core"))
     // The published guard-test library: the facts-index reader and the Site/fingerprint types are
     // defined once there and consumed here, so a guard test and a TOML rule read the same index.
-    implementation(project(":guard-api"))
+    // Its JUnit API is for the suites that compile against @Guard, not for this evaluator.
+    implementation(project(":guard-api")) {
+        exclude(group = "org.junit")
+        exclude(group = "org.junit.jupiter")
+        exclude(group = "org.junit.platform")
+    }
     implementation(libs.asm)
     implementation(libs.asm.tree)
     implementation(libs.asm.commons)

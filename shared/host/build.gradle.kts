@@ -61,7 +61,7 @@ listOf("testFixturesApiElements", "testFixturesRuntimeElements").forEach { name 
 // `jk.plugin-conventions` pins), NOT the SPI's independent 0.1.0 line, because :host is the floor
 // the engine, the native client and all 16 workers link — jk's own `jk.toml` / `jk-lock.toml`
 // already name it `cc.jumpkick:jk-host` at this version, and the flattened worker POMs resolve it
-// here too. The SDK's version line stays independent: `jk-plugin-sdk:0.1.0` simply pins the floor
+// here too. The SDK's version line stays independent: `jk-plugin-sdk` at 0.1.0 simply pins the floor
 // it compiles against. Cost accepted: :host's version is public API from now on.
 group = "cc.jumpkick"
 version = "0.13.0"

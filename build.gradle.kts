@@ -388,6 +388,18 @@ tasks.register("installLocal") {
     finalizedBy(":engine:installLocal")
 }
 
+// Every resolvable configuration is locked: gradle.lockfile beside each build script is the Gradle
+// side of what jk-lock.toml is for jk. `./gradlew resolveAndLockAll --write-locks` re-locks after a
+// catalog edit; a resolution that disagrees with the lock fails the build instead of drifting.
+allprojects {
+    dependencyLocking { lockAllConfigurations() }
+    tasks.register("resolveAndLockAll") {
+        description = "Resolves every configuration so --write-locks / --write-verification-metadata see them all"
+        notCompatibleWithConfigurationCache("resolves every configuration at execution time")
+        doLast { configurations.filter { it.isCanBeResolved }.forEach { it.resolve() } }
+    }
+}
+
 // Prints the generated guard table so a registry change can be pasted between the markers in
 // docs/contributors/code-as-art.md; `checkGuardRegistry` is the check, this is the pen.
 tasks.register("printGuardRegistry") {

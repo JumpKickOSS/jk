@@ -939,3 +939,16 @@ hit      = "@Deprecated static int old() {}"
 miss     = "// @Deprecated in prose"
 instead  = "delete the alias or the helper"
 why      = "a deprecated alias is a dual path with no users to protect"
+
+# A pin lives in gradle/libs.versions.toml or it does not exist: the lockfiles and the verification
+# metadata are written from the catalog, so a literal coordinate in a build script is a version they
+# never saw. Plugin ids use `version "x"` syntax and are not coordinates.
+[guards.catalog-is-the-version-source]
+kind     = "text"
+files    = ["**/*.gradle.kts"]
+blank    = "comments"
+patterns = ['"[A-Za-z0-9_.-]+:[A-Za-z0-9_.-]+:[0-9]+\.[0-9]+[^"]*"']
+why      = "a version pinned in a build script is one the lockfiles and verification metadata were never written from, so it drifts unseen"
+instead  = "add the coordinate to gradle/libs.versions.toml and reference it as libs.<alias>"
+hit      = 'implementation("org.example:lib:1.2.3")'
+miss     = 'implementation(libs.example.lib)'

@@ -901,6 +901,18 @@ object Guards {
                 attach = emptySet(),
                 ruleId = "method-size",
             ),
+            spec(
+                89,
+                "catalog-is-the-version-source",
+                "a literal `group:artifact:version` coordinate in a Gradle script — every pin lives in gradle/libs.versions.toml, which the lockfiles and verification metadata are written from",
+                "text, `**/*.gradle.kts`, code only",
+                GuardHome.SELF_HOSTED,
+                tableTask = "`catalog-is-the-version-source` (jk-guards.toml, `text`)",
+                inFastGate = false,
+                gradleLetter = false,
+                attach = emptySet(),
+                ruleId = "catalog-is-the-version-source",
+            ),
         )
 
     val tableRows: List<GuardSpec>

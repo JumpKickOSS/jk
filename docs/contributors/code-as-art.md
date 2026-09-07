@@ -956,6 +956,7 @@ letter — is the Gradle-side follow-up recorded in `guard-parity.txt`.
 | G86 | `lock-version-is-one` (jk-guards.toml, `text`) | a committed `jk-lock.toml` whose `version` is not 1 | text, max 0 matches over every lock in the tree | `lock-version-is-one` (text) |
 | G87 | `no-retired-code-markers` (jk-guards.toml, `text`) | `@Deprecated` or `@SuppressWarnings("unused")` in main code — a dual path or a parked helper the charter says to delete on touch | text, max 0 matches over `**/src/main/**/*.java` | `no-retired-code-markers` (text) |
 | G88 | `method-size` (jk-guards.toml, `metric`) | a method or constructor body over 120 code lines in main, test or fixture Java — the file cap alone let 34 members pass 150 inside files parked under 800 | metric, `lines` per method, baselined and tightened on every build | `method-size` (metric) |
+| G89 | `catalog-is-the-version-source` (jk-guards.toml, `text`) | a literal `group:artifact:version` coordinate in a Gradle script — every pin lives in gradle/libs.versions.toml, which the lockfiles and verification metadata are written from | text, `**/*.gradle.kts`, code only | `catalog-is-the-version-source` (text) |
 <!-- guards:end -->
 
 `checkCliRuntimeClasspath` and `checkCliNoParseTypes` predate the letters.
@@ -993,6 +994,7 @@ by id, kind and why. This block is a `generated` guard's rendering
 | both-builds-see-modules | parity | a module one build cannot see is built half the time |
 | cache-tiers | vocabulary | a cache tier is named once; the homonyms each have their own owner |
 | case-conversion-locale | forbid | a case conversion in the default locale misparses identifiers under tr_TR and az |
+| catalog-is-the-version-source | text | a version pinned in a build script is one the lockfiles and verification metadata were never written from, so it drifts unseen |
 | central-address | text | the mirror and the cooldown key on the canonical host; an alias matches neither |
 | cli-runtime-classpath | depend | the CLI runtime is the native image; a test or build-time library there is a mis-scoped dependency |
 | cli-runtime-modules | layers | a CLI edge to an engine-side module puts engine code in the native image |

@@ -14,9 +14,11 @@ nullaway {
     jspecifyMode = true
 }
 
+val libs = extensions.getByType<VersionCatalogsExtension>().named("libs")
+
 dependencies {
-    errorprone("com.google.errorprone:error_prone_core:2.50.0")
-    errorprone("com.uber.nullaway:nullaway:0.14.1")
+    "errorprone"(libs.findLibrary("errorprone-core").orElseThrow())
+    "errorprone"(libs.findLibrary("nullaway").orElseThrow())
 }
 
 tasks.withType<JavaCompile>().configureEach {

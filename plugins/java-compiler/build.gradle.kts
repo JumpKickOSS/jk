@@ -23,8 +23,8 @@ dependencies {
     implementation(libs.zinc)
     testImplementation(project(":plugin-sdk"))
     // Mixed compile tests load a real Scala 3 compiler; the worker's production -cp stays Zinc-only.
-    testImplementation("org.scala-lang:scala3-compiler_3:3.8.4")
-    testImplementation("org.scala-lang:scala3-sbt-bridge:3.8.4")
+    testImplementation(libs.scala3.compiler)
+    testImplementation(libs.scala3.sbt.bridge)
 }
 
 tasks.jar {
