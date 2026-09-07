@@ -956,6 +956,8 @@ Letters are allocated when a guard lands and are never reused.
 | G78 | `checkDocLinks` (root project) + guard test `doc-links-resolve` | a relative link under `docs/` that resolves to nothing — code spans and fenced blocks are prose, not navigation | ban | guard test `doc-links-resolve` |
 | G79 | `checkGuardRegistry` (root project) + guard test `guard-letters-registry` | the guard registry table in `code-as-art.md` not listing exactly the letters `Guards.kt` declares, or a `ruleId` / `guardTestId` naming a rule that does not exist | generated table (Gradle renders the cells; jk checks the letters and the ids) | guard test `guard-letters-registry` |
 | G80 | `no-agent-trailers` (jk-guards.toml, `commit`) + `scripts/check-no-agent-attribution.sh` (CI) | a commit message carrying a tool's co-author, generator or assistant trailer — refused at the commit boundary by the `commit-msg` hook `jk guard hooks install` writes | commit rule, forbid-trailers globs; CI's history scan is the other half | `no-agent-trailers` |
+| G81 | `checkPublishedInstallers` (root project) + `published-installer-sh` (jk-guards.toml, `parity`) | `hosting/public/install.sh` differing from the repo-root copy — served to `curl | bash` users, so a stale copy installs jk where the CLI does not look | parity, line sets of the two copies (Gradle: byte identity) | `published-installer-sh` |
+| G82 | `published-installer-ps1` (jk-guards.toml, `parity`) | `hosting/public/install.ps1` differing from the repo-root copy — the PowerShell half of G81 | parity, line sets of the two copies | `published-installer-ps1` |
 <!-- guards:end -->
 
 `checkCliRuntimeClasspath` and `checkCliNoParseTypes` predate the letters.
@@ -1015,6 +1017,8 @@ by id, kind and why. This block is a `generated` guard's rendering
 | package-cycles | cycles | a cyclic component has no edge anyone can name to cut, so the count is what the build defends |
 | plugin-fork-owner | forbid | a hand-rolled fork is where the wrong JDK and the missing .exe get in |
 | plugin-sdk-boundary | layers | a plugin that depends past the SDK runs engine code inside a worker and cannot be published on its own |
+| published-installer-ps1 | parity | a published installer that drifts from the repo copy installs jk where the CLI does not look |
+| published-installer-sh | parity | a published installer that drifts from the repo copy installs jk where the CLI does not look |
 | published-poms | output | a POM with an unspecified coordinate is an artifact nobody can depend on |
 | repository-names | vocabulary | a repository name spelled twice is a store that silently never hits |
 | retired-wire-keys | text | a retired spelling back in production source is a reader of a shape nobody writes |

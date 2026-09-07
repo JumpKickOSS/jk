@@ -719,3 +719,18 @@ kind            = "commit"
 forbid-trailers = ["Co-Authored-By: *noreply@*", "Generated-By: *", "Assisted-By: *"]
 instead         = "author the commit as a human contributor; drop the trailer"
 why             = "attribution trailers are noise in blame"
+
+# G81/G82. The installers served to `curl | bash` users are the repo-root copies, line for line; a
+# copy that drifts installs jk somewhere the CLI does not look. Regenerate with `cp install.sh
+# hosting/public/install.sh` (same for install.ps1), never by editing the copy under hosting/.
+[guards.published-installer-sh]
+kind  = "parity"
+left  = { regex = { file = "install.sh", pattern = '(?m)^(.*)$' } }
+right = { regex = { file = "hosting/public/install.sh", pattern = '(?m)^(.*)$' } }
+why   = "a published installer that drifts from the repo copy installs jk where the CLI does not look"
+
+[guards.published-installer-ps1]
+kind  = "parity"
+left  = { regex = { file = "install.ps1", pattern = '(?m)^(.*)$' } }
+right = { regex = { file = "hosting/public/install.ps1", pattern = '(?m)^(.*)$' } }
+why   = "a published installer that drifts from the repo copy installs jk where the CLI does not look"

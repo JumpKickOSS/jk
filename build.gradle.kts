@@ -1471,7 +1471,7 @@ tasks.register("checkSingleHomeRoot") {
             val rel = f.relativeTo(treeRoot).invariantSeparatorsPath
             var text = f.readText()
             val markers = when (rel) {
-                "build.gradle.kts" -> "// Guard G49:" to "// Guard: the published installers"
+                "build.gradle.kts" -> "// Guard G49:" to "// Guard G81: the published installers"
                 // The jk-side rule spells the same shapes; its table sits between these two comments.
                 "jk-guards.toml" -> "# G49." to "# G50."
                 else -> null
@@ -1517,7 +1517,7 @@ tasks.register("checkSingleHomeRoot") {
     }
 }
 
-// Guard: the published installers are byte-identical to the ones in the repo root. They were kept
+// Guard G81: the published installers are byte-identical to the ones in the repo root. They were kept
 // in sync by hand, so every edit to the bin-dir or store resolution had to be made twice and the
 // two copies could — and did — disagree about where jk installs. A diff is cheaper than a
 // convention nobody enforces; regenerate with `cp install.sh hosting/public/install.sh` (same for

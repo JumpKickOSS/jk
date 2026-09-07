@@ -58,3 +58,5 @@ G76 rule about the declarative tier, which the Gradle build does not read. 2026-
 G80 no-agent-trailers is a `commit` rule: it runs in the commit-msg hook, not in a build, so neither
 G80 build enforces it — the Gradle side has no commit boundary; CI's check-no-agent-attribution.sh
 G80 scans the history instead. 2026-09-07.
+G82 published-installer-ps1 is the PowerShell half of G81's installer parity; Gradle's
+G82 checkPublishedInstallers compares both copies inside G81. 2026-09-07.
