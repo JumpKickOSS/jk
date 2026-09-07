@@ -3,6 +3,7 @@ package cc.jumpkick.compile;
 
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import cc.jumpkick.testing.BenchBand;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -93,6 +94,8 @@ class ForkedJavacAotBenchTest {
             System.out.printf(
                     "ForkedJavac (java PluginMain)  host=%s%n  AOT-on  median=%d ms  samples=%s%n  AOT-off median=%d ms  samples=%s%n",
                     javaHome, median(on), on, median(off), off);
+            BenchBand.within("forked-javac-aot-on", median(on));
+            BenchBand.within("forked-javac-aot-off", median(off));
         } finally {
             System.clearProperty("jk.worker.aot");
         }

@@ -10,6 +10,8 @@ description = "jk-formatter: child-JVM worker that formats Java, Kotlin, Groovy,
         "by jk and handed in, keeping them out of the main jk binary."
 
 dependencies {
+    // BenchBand: the bench tier's ratchet helper lives in the host fixtures.
+    testImplementation(testFixtures(project(":host")))
     implementation(project(":plugin-sdk"))
     // The Spotless formatting engine. Zero runtime deps of its own; the actual
     // formatter implementations are loaded at runtime via a Provisioner from

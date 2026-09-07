@@ -1,7 +1,54 @@
-# Moved
+# Performance records and the wall ratchet
 
-Contributor progress/ETA: [../contributors/progress-contract.md](../contributors/progress-contract.md).
+Decision records and benches live in KanArtist (`projects/jk/docs/perf/`). This directory keeps the
+two records that describe jk's own behaviour ([engine-heap-monorepo.md](engine-heap-monorepo.md),
+[junit-parallel-vs-jk-workers.md](junit-parallel-vs-jk-workers.md)) and the contract the progress bar
+and ETA follow ([../contributors/progress-contract.md](../contributors/progress-contract.md)).
 
-Test tiers for this repo: [../contributors/test-suite-tiers.md](../contributors/test-suite-tiers.md).
+## The scheduled wall measurement, and its ratchet
 
-Benches and decision records: KanArtist `projects/jk/docs/perf/`.
+`.github/workflows/wall-measure.yml` runs `scripts/dogfood-wall-measure.sh` on a schedule (Mondays,
+07:40 UTC; also on demand). It times this tree on both builds, three rows by three sides:
+
+| row | what is timed |
+|---|---|
+| `rebuild` | everything from scratch: `./gradlew build dist --no-build-cache --rerun-tasks` vs `jk build -r` |
+| `noop` | a warm build with nothing changed |
+| `touched` | a warm build after one production file is edited |
+
+| side | meaning |
+|---|---|
+| `gradle` | the comparison; recorded, never gated |
+| `jk` | `jk build` raw — `[guards] on-build = false`, the Gradle-comparable number |
+| `jk-guards` | `jk build` as contributors run it, house-rule guards on (the opt-in number, its own series) |
+
+The rows land in `build/dogfood-wall/row.jsonl` (an `env` object, then one `measurement` per side and
+row with its timed walls). `scripts/wall-band.py` compares each row's median with
+[`wall-baseline.toml`](../../wall-baseline.toml):
+
+- a **jk** row more than **15 %** above its banked median fails the run and prints the commit range
+  since the line was banked (`commit` in the table), so the regression is bisectable;
+- any row more than **5 %** below its median has its line rewritten in the same run — an improvement is
+  banked, never a failure; the job cannot commit, so the diff is in the step summary and the
+  `dogfood-wall` artifact for a contributor to commit;
+- a row the file has never seen is added at its measured median: the first scheduled run seeds the
+  file, and the band is tuned from the noise the following runs record.
+
+The guards-off invariant this holds: a project without `jk-guards.toml` pays nothing for jk's own
+guards. The `jk` and `jk-guards` rows are separate series so the guards' cost never reads as drift in
+the Gradle comparison.
+
+### Re-baselining after an intentional change
+
+Edit the row's `median-s` (and `date`, `commit`) in `wall-baseline.toml` in the same commit as the
+change, and say why in the commit message. The ratchet never raises a jk line by itself. A run that
+is red because the runner was slow is re-run from the Actions tab; three consecutive green scheduled
+runs are the bar for tightening the band.
+
+### Microbenchmarks
+
+The nightly `benchTest` tier (`@Tag("bench")`) reports each bench's median through
+`cc.jumpkick.testing.BenchBand`. A bench with a `[bench.<name>]` table in `wall-baseline.toml` fails
+when its median exceeds the banked `median-ms` by the same 15 % band; one without prints its number
+as `unbaselined` so it can be banked from the job log. `./scripts/wall-band.py --selftest` and the
+`BenchBand` unit test cover the arithmetic without a runner.

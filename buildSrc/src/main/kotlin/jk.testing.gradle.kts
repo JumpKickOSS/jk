@@ -117,6 +117,8 @@ fun slowTier(tierName: String, budget: Duration, describe: String) {
         classpath = testSourceSet.runtimeClasspath
         useJUnitPlatform { tier(tierName).applyTo(this) }
         shouldRunAfter(tasks.named("test"))
+        // The bench tier's ratchet reads the banked medians here (cc.jumpkick.testing.BenchBand).
+        systemProperty("jk.wallBaseline", rootProject.layout.projectDirectory.file("wall-baseline.toml").asFile.absolutePath)
         systemProperty("junit.jupiter.execution.timeout.default", "300s")
         systemProperty("junit.jupiter.execution.timeout.mode", "disabled_on_debug")
         timeout.set(budget)

@@ -3,6 +3,7 @@ package cc.jumpkick.format;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.testing.BenchBand;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -45,6 +46,7 @@ class FqcnShortenerBenchTest {
         long ms = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0);
         assertThat(changed).isEqualTo(16);
         assertThat(ms).as("16-file FQCN pass took %d ms", ms).isLessThan(200);
+        BenchBand.within("fqcn-shorten-16-files", ms);
     }
 
     @Test
@@ -60,6 +62,7 @@ class FqcnShortenerBenchTest {
         long ms = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0);
         assertThat(changed).isEqualTo(200);
         assertThat(ms).as("200-file FQCN pass took %d ms", ms).isLessThan(2_000);
+        BenchBand.within("fqcn-shorten-200-files", ms);
     }
 
     private static Fixture fixture(Path tmp, int n) throws Exception {

@@ -1,0 +1,13 @@
+# wall-baseline.toml — the ratchet behind the scheduled dogfood wall measurement
+# (.github/workflows/wall-measure.yml, scripts/wall-band.py).
+#
+# One table per subject, `[<row>.<side>]`: rows are rebuild / noop / touched, sides are gradle /
+# jk / jk-guards (jk with its house-rule guards on, the opt-in number). Each holds the banked
+# `median-s`, the `date` it was banked, the `runs` the median came from and the `commit` measured.
+#
+# A jk subject more than 15 % ABOVE its median fails the scheduled run and prints the commit range
+# since the line was banked. Any subject more than 5 % BELOW its median has the line rewritten in
+# the same run — an improvement is banked, never a failure; commit the rewritten file. A subject
+# this file has never seen is added at its measured median, so the first run seeds it. Gradle rows
+# are the comparison and never fail. Re-baseline after an intentional change by editing the line
+# and saying why in the commit; the ratchet never raises a jk line by itself.

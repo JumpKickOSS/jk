@@ -1,9 +1,10 @@
 # Gradle vs JumpKick wall-clock comparison of this tree, on a schedule.
 # Manual re-run: Actions → "Dogfood wall measurement" → Run workflow.
 #
-# Informational, never a gate. A hosted runner's wall time moves with the runner it lands on, so
-# a single row proves nothing about a change; the point is a machine-readable series long enough
-# that drift becomes visible. When a stable baseline exists, this is where a threshold would go.
+# A ratchet with a wide band, not a benchmark. A hosted runner's wall time moves with the runner
+# it lands on, so the band starts at 15 % and is tuned from the noise the series records; within
+# it nothing happens, above it a jk row fails this run and names the commit range since its line
+# was banked, below it by 5 % the line is rewritten (scripts/wall-band.py, wall-baseline.toml).
 #
 # The jk side is a raw build (`[guards] on-build = false`, the Gradle-comparable number) and, on
 # the same rows, the dogfooded build with jk's house-rule guards on, labelled opt-in — so the
@@ -66,6 +67,22 @@ jobs:
         if: always()
         run: cat "$OUT_DIR/row.md" >> "$GITHUB_STEP_SUMMARY" || true
 
+      # The ratchet. Fails only when a jk row regressed past its band; a banked improvement or a
+      # newly seeded row is a rewritten wall-baseline.toml this run cannot commit — the diff is the
+      # summary and the artifact, for a contributor to bank.
+      - name: Wall ratchet
+        run: python3 scripts/wall-band.py "$OUT_DIR/row.jsonl" wall-baseline.toml --commit "${GITHUB_SHA::9}" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Report a rewritten baseline
+        if: always()
+        run: |
+          if ! git diff --quiet -- wall-baseline.toml; then
+            echo "## wall-baseline.toml rewritten — commit this" >> "$GITHUB_STEP_SUMMARY"
+            echo '```diff' >> "$GITHUB_STEP_SUMMARY"
+            git diff -- wall-baseline.toml >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -74,5 +91,6 @@ jobs:
             build/dogfood-wall/row.md
             build/dogfood-wall/row.jsonl
             build/dogfood-wall/*.log
+            wall-baseline.toml
           if-no-files-found: error
           retention-days: 90
