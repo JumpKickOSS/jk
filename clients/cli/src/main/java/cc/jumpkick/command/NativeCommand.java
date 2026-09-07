@@ -74,6 +74,7 @@ public final class NativeCommand implements CliCommand {
         opts.add(CommonOpts.cacheDirHidden());
         opts.add(CommonOpts.jdksDir());
         opts.add(CommonOpts.skipTests());
+        opts.add(CommonOpts.guard());
         opts.addAll(CommonOpts.moduleSelection());
         opts.addAll(VariantSelection.options());
         return opts;
@@ -121,6 +122,7 @@ public final class NativeCommand implements CliCommand {
         this.global = GlobalOptions.from(in);
         this.modulesSpec = in.value("modules").orElse(null);
         this.affectedSince = in.value("affected-since").orElse(null);
+        if (!TestCommand.installSelection(in, "Native")) return Exit.CONFIG;
         this.affectedWip = in.isSet("affected");
         if (ModuleSelectors.bothSelectors(affectedWip, affectedSince)) {
             CommandWedge.printFail("Native", ModuleSelectors.BOTH_MESSAGE);

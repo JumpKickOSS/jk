@@ -100,6 +100,15 @@ public final class CommonOpts {
         return Opt.flag("Skip compiling and running tests.", "--skip-tests");
     }
 
+    /**
+     * {@code --guard}: the guard lanes (tree, fixtures), the integration suite and the root's guard
+     * scripts — on every verb that builds through the test stage, so the share-the-commit bar is one
+     * flag wherever a build is asked for.
+     */
+    public static Opt guard() {
+        return Opt.flag("Guards + integration: share the commit", "--guard");
+    }
+
     /** {@code --continue}: finish the graph and report every failure, not just the first. */
     public static Opt keepGoing() {
         return Opt.flag("Keep going; report all failures", "--continue");

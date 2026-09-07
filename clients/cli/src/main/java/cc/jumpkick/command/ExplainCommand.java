@@ -90,7 +90,7 @@ public final class ExplainCommand implements CliCommand {
         opts.add(Opt.value("<name>", "Test suite directory (repeatable)", "-s", "--suite")
                 .repeat());
         opts.add(Opt.flag("Run every test suite (tags included)", "--all"));
-        opts.add(Opt.flag("Guards + integration: share the commit", "--guard"));
+        opts.add(CommonOpts.guard());
         opts.add(Opt.flag("Guard scripts, no JUnit", "--scripts-only"));
         opts.add(Opt.flag("Skip guard scripts", "--no-scripts"));
         opts.add(Opt.value("<tags>", "JUnit tags to include (CSV)", "--include-tags")

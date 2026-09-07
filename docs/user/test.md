@@ -16,7 +16,7 @@ jk test --exclude-tags slow,bench
 jk test --include-tags smoke
 jk test --affected                   # ranked classes for the working tree (does not run them)
 jk test --affected-since=HEAD~2      # ranked classes since that ref (does not run them)
-jk build --guard                      # package with the guards green
+jk build --guard                      # package with the guards green (same flag on assemble, image, native, install)
 jk build --all                       # package with the full suite green
 ```
 

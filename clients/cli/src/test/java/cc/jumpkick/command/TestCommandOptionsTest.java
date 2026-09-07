@@ -9,6 +9,7 @@ import cc.jumpkick.cli.args.ArgParser;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import java.util.List;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 
 /** Short-flag parity for {@code jk test}: {@code -s}/{@code --suite}, {@code -p}/{@code --profile}. */
@@ -45,6 +46,24 @@ class TestCommandOptionsTest {
     void short_suite_is_repeatable() throws Exception {
         Invocation in = parse("-s", "test", "-s", "integration");
         assertThat(in.values("suite")).containsExactly("test", "integration");
+    }
+
+    /** One flag, one meaning, on every verb that builds through the test stage. */
+    @Test
+    void guard_is_on_every_build_type_verb() {
+        for (var verb : List.<Supplier<List<Opt>>>of(
+                () -> new BuildCommand().options(),
+                () -> new TestCommand().options(),
+                () -> new AssemblyCommand().options(),
+                () -> new ImageCommand().options(),
+                () -> new NativeCommand().options(),
+                () -> new ToolInstallCommand().options(),
+                () -> new ExplainCommand().options())) {
+            assertThat(verb.get().stream()
+                            .filter(o -> o.names().contains("--guard"))
+                            .count())
+                    .isEqualTo(1);
+        }
     }
 
     @Test

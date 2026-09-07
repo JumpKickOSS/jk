@@ -74,9 +74,11 @@ lock, `text` rules read the source tree as text, `output` rules read the package
 and `hybrid` rules read two of these. The **lane** is when it runs: `model` before compile,
 `module` after each module compiles, `workspace` once every module's facts are on disk,
 `output` after packaging, `hook` at commit time — all inside `jk build`. The `tree` lane
-(text, metric, parity and generated rules) and the fixture proofs run on `jk guard`,
-`jk test --guard` and `jk build --guard`, never on an inner `jk build`, so a tree scan is a
-share-the-commit cost. A lane is keyed to what it reads, so an unchanged input skips it and
+(text, metric, parity and generated rules) and the fixture proofs run on `jk guard` and on
+`--guard`, never on a plain `jk build`, so a tree scan is a share-the-commit cost. `--guard`
+is one flag on every verb that builds through the test stage — `jk build`, `jk test`,
+`jk assemble`, `jk image`, `jk native`, `jk install`, `jk explain` — and it means the same
+thing on each: the guard lanes, the integration suite and the root's guard scripts. A lane is keyed to what it reads, so an unchanged input skips it and
 an edit re-runs only the lanes it can affect.
 
 ## Keys

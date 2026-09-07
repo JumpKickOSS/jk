@@ -67,7 +67,8 @@ public final class ImageCommand implements CliCommand {
                                 "--cache-dir")
                         .hide(),
                 CommonOpts.jdksDir(),
-                CommonOpts.skipTests()));
+                CommonOpts.skipTests(),
+                CommonOpts.guard()));
         opts.addAll(CommonOpts.moduleSelection());
         opts.addAll(VariantSelection.options());
         return opts;
@@ -109,6 +110,7 @@ public final class ImageCommand implements CliCommand {
         this.buildOpts = new BuildOptions();
         this.buildOpts.skipTests = in.isSet("skip-tests");
         this.global = GlobalOptions.from(in);
+        if (!TestCommand.installSelection(in, "Image")) return Exit.CONFIG;
         Path projectDir = global.workingDir();
         VariantSelection.install(in, projectDir);
         Path jkBuildPath = projectDir.resolve(ManifestPaths.MANIFEST);

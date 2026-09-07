@@ -3,7 +3,7 @@
 ```bash
 jk compile              # type-check
 jk build                # compile + package + default (unit) tests
-jk build --guard         # package with unit + integration green
+jk build --guard         # guards + unit + integration green; the same flag on assemble / image / native / install
 jk build --guard --skip-tests   # package graph + guard scripts, no JUnit
 jk build --scripts-only        # guard scripts, no JUnit (same as test --scripts-only)
 jk build --skip-tests

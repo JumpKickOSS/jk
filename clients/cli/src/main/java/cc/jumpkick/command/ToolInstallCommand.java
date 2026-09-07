@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import cc.jumpkick.cli.BuildOptions;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.CliPaths;
+import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
@@ -75,6 +76,7 @@ public final class ToolInstallCommand implements CliCommand {
                 Opt.value("<name>", "Maven artifactId for a local-cache file install.", "--name"),
                 Opt.value("<ver>", "Version for a local-cache file install.", "--ver"),
                 Opt.flag("Skip compiling and running tests (project targets).", "--skip-tests"),
+                CommonOpts.guard(),
                 Opt.flag("Download a build tool rather than linking a host install.", "--no-discover"),
                 Opt.value(
                                 "<dir>",
@@ -160,6 +162,8 @@ public final class ToolInstallCommand implements CliCommand {
         this.m2DirOverride = in.value("m2-dir").map(Path::of).orElse(null);
         this.repoUrl = in.value("repo-url").map(URI::create).orElse(null);
         this.global = GlobalOptions.from(in);
+        // A project install builds through the test stage, so --guard means what it means on build.
+        if (!TestCommand.installSelection(in, "Install")) return Exit.CONFIG;
 
         Path base = global.workingDir();
         if (in.positionals().isEmpty()) {

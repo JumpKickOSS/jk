@@ -93,7 +93,7 @@ public final class TestCommand implements CliCommand {
         opts.add(Opt.value("<name>", "Test suite directory (repeatable)", "-s", "--suite")
                 .repeat());
         opts.add(Opt.flag("Run every discovered test suite", "--all"));
-        opts.add(Opt.flag("Guards + integration: share the commit", "--guard"));
+        opts.add(CommonOpts.guard());
         opts.add(Opt.flag("Guard scripts, no JUnit", "--scripts-only"));
         opts.add(Opt.flag("Skip guard scripts", "--no-scripts"));
         opts.add(Opt.value("<tags>", "JUnit tags to include (CSV)", "--include-tags")
@@ -529,6 +529,22 @@ public final class TestCommand implements CliCommand {
     /** {@code --guard} is one option identity. */
     static boolean guardRequested(Invocation in) {
         return in.isSet("guard");
+    }
+
+    /**
+     * A build-type verb's test selection into the session: {@code --guard} on {@code jk image},
+     * {@code jk native} and their kin rides the same {@link TestSelection} the build and test verbs
+     * use, so the engine plans the guard lanes and the guard scripts from one field. Options the verb
+     * does not declare read as unset. Returns {@code false} after printing the config error.
+     */
+    static boolean installSelection(Invocation in, String verb) {
+        try {
+            SessionContext.install(SessionContext.current().withTestSelection(resolveTestSelection(in)));
+            return true;
+        } catch (IllegalArgumentException e) {
+            CommandWedge.printFail(verb, e.getMessage());
+            return false;
+        }
     }
 
     static final String GUARD_SUITE_OVERRIDE_WARNING = "--guard ignored because --suite was set";
