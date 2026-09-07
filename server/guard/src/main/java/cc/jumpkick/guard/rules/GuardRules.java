@@ -2,6 +2,8 @@
 package cc.jumpkick.guard.rules;
 
 import cc.jumpkick.guard.rules.LoadError.Severity;
+import cc.jumpkick.guard.schema.ExtractorVocabulary;
+import cc.jumpkick.guard.schema.GeneratedMarkers;
 import cc.jumpkick.guard.schema.KeySpec;
 import cc.jumpkick.guard.schema.KeyType;
 import cc.jumpkick.guard.schema.Kind;
@@ -63,6 +65,7 @@ public final class GuardRules {
         }
         Map<String, Rule> rules = loadText(file, text, RuleSource.Layer.ROOT, problems);
         checkTagVocabulary(root, file, rules, problems);
+        checkGeneratedMarkers(root, file, rules, problems);
         Map<String, String> digests =
                 Map.of(root.relativize(file).toString().replace('\\', '/'), Hashing.sha256Hex(text));
         return new LoadResult(new RuleSet(rules, digests, config), problems);
@@ -95,6 +98,36 @@ public final class GuardRules {
                                         ? "(no manifest declares [test] include-tags/exclude-tags or a profile's tags)"
                                         : vocabulary)
                                 + "; a tag no tier owns is a test no build runs"));
+            }
+        }
+    }
+
+    /**
+     * A {@code generated} rule's {@code into} file, when it exists, must carry the rule's markers: a
+     * block nobody delimited is a rendering with nowhere to go, so naming one is a load error. An
+     * absent file is the evaluation's to report.
+     */
+    private static void checkGeneratedMarkers(Path root, Path file, Map<String, Rule> rules, List<LoadError> problems) {
+        for (Rule r : rules.values()) {
+            if (r.kind() != Kind.GENERATED) continue;
+            String into = String.valueOf(r.table().getString("into"));
+            Path target = root.resolve(into);
+            if (!Files.isRegularFile(target)) continue;
+            String name =
+                    r.table().isString("markers") ? String.valueOf(r.table().getString("markers")) : r.id();
+            try {
+                if (GeneratedMarkers.find(Files.readAllLines(target, StandardCharsets.UTF_8), name) == null) {
+                    problems.add(new LoadError(
+                            Severity.ERROR,
+                            file,
+                            r.source().line(),
+                            r.id(),
+                            into + " has no `" + name + ":start` … `" + name + ":end` marker pair; add the two"
+                                    + " comment lines where the block belongs"));
+                }
+            } catch (IOException e) {
+                problems.add(
+                        new LoadError(Severity.ERROR, file, r.source().line(), r.id(), into + ": " + e.getMessage()));
             }
         }
     }
@@ -254,6 +287,18 @@ public final class GuardRules {
                 problems.add(
                         err(file, source.line(), id, "exactly one of " + String.join(", ", g.keys()) + " may be set"));
             }
+        }
+        if (kind == Kind.PARITY) {
+            for (String side : List.of("left", "right")) {
+                String p = ExtractorVocabulary.extractorProblem(side, t.getTable(side));
+                if (p != null) problems.add(err(file, lineOf(doc, List.of("guards", id, side)), id, p));
+            }
+        }
+        if (kind == Kind.GENERATED) {
+            String p = ExtractorVocabulary.extractorProblem("source", t.getTable("source"));
+            if (p != null) problems.add(err(file, lineOf(doc, List.of("guards", id, "source")), id, p));
+            String tp = ExtractorVocabulary.templateProblem(t.getTable("template"));
+            if (tp != null) problems.add(err(file, lineOf(doc, List.of("guards", id, "template")), id, tp));
         }
         List<Allow> allow = readAllow(id, t, doc, file, problems);
         if (problems.size() > start) return null;

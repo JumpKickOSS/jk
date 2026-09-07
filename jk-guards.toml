@@ -663,3 +663,43 @@ why    = "a CLI edge to an engine-side module puts engine code in the native ima
 [[guards.cli-runtime-modules.allow]]
 in     = "clients/cli -> plugins/*"
 reason = "the CLI embeds the bundled worker plugins' jar digests: build-order inputs, never classes on its classpath"
+
+# G44. Both builds see the same modules: a module only one build knows about is outside half the
+# self-host gate (`plugins/micronaut` sat in settings.gradle.kts and in no jk.toml for a release).
+[guards.both-builds-see-modules]
+kind  = "parity"
+left  = { workspace-modules = "jk.toml" }
+right = { gradle-includes = "settings.gradle.kts" }
+why   = "a module one build cannot see is built half the time"
+
+# G56. The wrapper task and gradle-wrapper.properties pin the same Gradle; the Node pin stays in the
+# gate script, where the workflow's setup-node arms live.
+[guards.wrapper-version-parity]
+kind  = "parity"
+left  = { regex = { file = "gradle/wrapper/gradle-wrapper.properties", pattern = 'gradle-(\d+\.\d+(?:\.\d+)?)' } }
+right = { regex = { file = "build.gradle.kts", pattern = 'gradleVersion\s*=\s*"([^"]+)"' } }
+why   = "a wrapper task that pins one Gradle while the properties download another builds with the wrong one"
+
+# G62. The ship layout is one directory name, spelled by the installer and by both dist writers; a
+# rename in one is silent in the others and pairs a fresh client with the released engine.
+[guards.ship-layout-installer-gradle]
+kind  = "parity"
+left  = { regex = { file = "install.sh", pattern = 'SRC_LIB=.*pwd\)/([A-Za-z0-9_-]+)"' } }
+right = { regex = { file = "build.gradle.kts", pattern = 'shadowJar"\)\) \{ into\("([A-Za-z0-9_-]+)"\)' } }
+why   = "install.sh reads <dir-of-binary>/<name>/; a dist that writes another name is one the installer walks past"
+
+[guards.ship-layout-installer-jk]
+kind  = "parity"
+left  = { regex = { file = "install.sh", pattern = 'SRC_LIB=.*pwd\)/([A-Za-z0-9_-]+)"' } }
+right = { regex = { file = ".jk/after-build-dist.kts", pattern = 'dist\.resolve\("([A-Za-z0-9_-]+)"\)' } }
+why   = "install.sh reads <dir-of-binary>/<name>/; a dist that writes another name is one the installer walks past"
+
+# The rules of this file, listed where contributors read about the house rules; the block is
+# rendered, never edited.
+[guards.guard-registry-doc]
+kind     = "generated"
+source   = { guard-ids = true }
+template = { table = ["id", "kind", "why"] }
+into     = "docs/contributors/code-as-art.md"
+markers  = "guard-rules"
+why      = "the registry drifted twice by hand; the third reconciliation is not by hand"

@@ -58,3 +58,7 @@ G72 checkCharterTableParity compares docs/contributors/code-as-art.md against jk
 G72 file-size caps and against its own headings: a question about this repository's charter and
 G72 this gate, with nothing for a Gradle twin to enforce. Split from G10 when G10 became the
 G72 file-size metric rule. 2026-09-06.
+G75 ship-layout-installer-jk is G62's installer-vs-jk-dist pair as a `parity` rule; Gradle's
+G75 checkShipLayoutAgrees still compares all three anchors inside G62. 2026-09-07.
+G76 guard-registry-doc renders jk-guards.toml's own registry into code-as-art.md — a `generated`
+G76 rule about the declarative tier, which the Gradle build does not read. 2026-09-07.

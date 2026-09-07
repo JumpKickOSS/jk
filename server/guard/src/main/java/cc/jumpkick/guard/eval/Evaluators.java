@@ -34,6 +34,8 @@ public final class Evaluators {
         BY_KIND.put(Kind.TIERS, new TiersEvaluator());
         BY_KIND.put(Kind.TOOLCHAIN, new ToolchainEvaluator());
         BY_KIND.put(Kind.TEST, new TestEvaluator());
+        BY_KIND.put(Kind.PARITY, new ParityEvaluator());
+        BY_KIND.put(Kind.GENERATED, new GeneratedEvaluator());
     }
 
     /** Test seam: drop every registration and reinstall the shipped evaluators. */

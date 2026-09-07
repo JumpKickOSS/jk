@@ -540,11 +540,6 @@ guard("G43", "checkArchiveStreamOwner") {
     }
 }
 /** `key = ["a", "b"]` from a flat TOML section, or null when the key is absent. */
-fun tomlStringList(section: String, key: String): List<String>? {
-    val m = Regex("""(?m)^\s*${Regex.escape(key)}\s*=\s*\[([^\]]*)]""").find(section) ?: return null
-    return Regex(""""([^"]*)"""").findAll(m.groupValues[1]).map { it.groupValues[1] }.toList()
-}
-
 /** The body of `[name]` in [toml], up to the next table header. */
 fun tomlSection(toml: String, name: String): String? {
     val start = Regex("""(?m)^\s*\[${Regex.escape(name)}]\s*$""").find(toml) ?: return null
@@ -737,7 +732,7 @@ guard("G36", "checkManifestDepParity") {
         val script = module.resolve("build.gradle.kts")
         val manifest = module.resolve("jk.toml")
         // A module built by only one of the two builds has nothing to reconcile here; the
-        // both-builds-see-it rule is G44's, below.
+        // both-builds-see-it rule is `both-builds-see-modules` in jk-guards.toml.
         if (!Files.isRegularFile(script) || !Files.isRegularFile(manifest)) return@forEach
 
         val gradleMain = mutableSetOf<String>()
@@ -808,56 +803,6 @@ guard("G36", "checkManifestDepParity") {
             + "\n\n  jk's `fixtures = true` is Gradle's `testFixtures(...)`; jk's [test-dependencies]"
             + " is Gradle's testImplementation. Fix whichever manifest is wrong — do not silence this"
             + " by deleting the other declaration.")
-    }
-}
-
-// ---------------------------------------------------------------------------
-// G44 — both builds see the same set of modules.
-//
-// G36 reconciles the dependencies of a module both builds know about. This is the arm above it:
-// a module that only ONE build knows about at all. `plugins/micronaut` was in
-// settings.gradle.kts and in no jk.toml, so `jk build` never compiled it and `jk test` never ran
-// its suite — a whole module outside the self-host gate, invisible to a guard that only compares
-// modules present on both sides.
-//
-// `clients/intellij` is the one deliberate exception: a standalone Gradle build that must never
-// see a jk jar, and is not in settings.gradle.kts either.
-// ---------------------------------------------------------------------------
-val singleBuildModules = mapOf(
-    "clients/intellij" to "a standalone IntelliJ plugin build; it is in neither this Gradle build nor the workspace")
-
-guard("G44", "checkBothBuildsSeeEveryModule") {
-    val settings = at("settings.gradle.kts")
-    if (!Files.isRegularFile(settings)) return@guard
-    val gradleDirs = Regex("""project\("(:[\w-]+)"\)\.projectDir\s*=\s*file\("([^"]+)"\)""")
-        .findAll(text(settings)).map { it.groupValues[2] }.toSortedSet()
-    if (gradleDirs.size < 25) {
-        error("settings.gradle.kts yielded ${gradleDirs.size} module directories; measured against 30.")
-    }
-    val workspaceDirs = tomlStringList(text(at("jk.toml")).substringAfter("[workspace]"), "modules").orEmpty().toSortedSet()
-    if (workspaceDirs.size < 25) {
-        error("the root jk.toml lists ${workspaceDirs.size} workspace modules; measured against 31.")
-    }
-    val lines = mutableListOf<String>()
-    (gradleDirs - workspaceDirs).filterNot { it in singleBuildModules }.forEach {
-        lines.add("$it is in settings.gradle.kts and not in the root jk.toml's [workspace] modules —"
-            + " `jk build` never compiles it and `jk test` never runs its suite")
-    }
-    (workspaceDirs - gradleDirs).filterNot { it in singleBuildModules }.forEach {
-        // A jk-only module is legal when it carries no Gradle script at all — the gate itself is
-        // one. It is a defect only when Gradle is expected to build it.
-        if (Files.isRegularFile(at("$it/build.gradle.kts"))) {
-            lines.add("$it has a build.gradle.kts and is not in settings.gradle.kts — Gradle never builds it")
-        }
-    }
-    singleBuildModules.forEach { (dir, why) ->
-        if (dir in gradleDirs || dir in workspaceDirs) {
-            lines.add("$dir is declared a single-build exception ($why) but one of the two builds now"
-                + " includes it. Delete the exception, or the build entry.")
-        }
-    }
-    if (lines.isNotEmpty()) {
-        error("A module only one build knows about is a module outside half the gate:\n" + bullets(lines))
     }
 }
 
@@ -1148,20 +1093,9 @@ guard("G55", "checkEngineConfigDocs") {
 }
 
 guard("G56", "checkBootstrapVersions") {
+    // The Gradle wrapper arm is the `wrapper-version-parity` rule in jk-guards.toml; this block
+    // keeps the Node pin, which reads workflow files the parity vocabulary does not.
     val problems = mutableListOf<String>()
-    val fromProps = Regex("""gradle-(\d+\.\d+(?:\.\d+)?)""")
-        .find(text(at("gradle/wrapper/gradle-wrapper.properties")))?.groupValues?.get(1)
-    val fromTask = Regex("""gradleVersion\s*=\s*"([^"]+)"""")
-        .find(text(at("build.gradle.kts")))?.groupValues?.get(1)
-    if (fromProps.isNullOrBlank()) {
-        problems.add("gradle-wrapper.properties has no gradle-N.N.N distribution")
-    }
-    if (fromTask.isNullOrBlank()) {
-        problems.add("tasks.wrapper in build.gradle.kts does not set gradleVersion")
-    }
-    if (!fromProps.isNullOrBlank() && !fromTask.isNullOrBlank() && fromProps != fromTask) {
-        problems.add("wrapper task is $fromTask but gradle-wrapper.properties is $fromProps")
-    }
     val nvmrcFile = at(".nvmrc")
     val pin = if (Files.isRegularFile(nvmrcFile)) text(nvmrcFile).trim() else ""
     if (!Regex("""^\d+(\.\d+)*$""").matches(pin)) {
@@ -1292,49 +1226,6 @@ guard("G58", "checkSecurityDocs") {
     }
     if (problems.isNotEmpty()) {
         error("Security docs are incomplete:\n" + bullets(problems))
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Guard G62: the ship layout is one shape, and three files have to agree on it.
-//
-// `install.sh <binary>` reads the engine from `<dir-of-binary>/lib/`. Two builds write that
-// directory — Gradle's `dist` task and `.jk/after-build-dist.kts` — and neither can see the other.
-// A rename in one is silent in the other: the installer keeps reading `lib/`, one build keeps
-// filling it, and the other produces a directory the installer walks straight past. That failure
-// mode is a local install that silently pairs a freshly built client with the RELEASED engine —
-// the binary you just built running an engine you did not, with nothing on screen saying so.
-//
-// So the name is compared, not just present: all three must spell the same directory. Self-fails
-// when any of the three anchors stops matching, because a guard that quietly finds nothing to
-// compare is worse than no guard.
-// ---------------------------------------------------------------------------
-
-guard("G62", "checkShipLayoutAgrees") {
-    val readers = listOf(
-        Triple("install.sh", Regex("""SRC_LIB=.*pwd\)/([A-Za-z0-9_-]+)""""), "the installer's engine dir"),
-        Triple("build.gradle.kts", Regex("""shadowJar"\)\) \{ into\("([A-Za-z0-9_-]+)"\)"""), "Gradle's dist task"),
-        Triple(".jk/after-build-dist.kts", Regex("""dist\.resolve\("([A-Za-z0-9_-]+)"\)"""), "jk's dist script"))
-
-    val found = LinkedHashMap<String, String>()
-    val lost = mutableListOf<String>()
-    readers.forEach { (rel, pattern, label) ->
-        val file = at(rel)
-        val hit = if (Files.isRegularFile(file)) pattern.find(text(file)) else null
-        if (hit == null) lost.add("  $rel — $label") else found[rel] = hit.groupValues[1]
-    }
-    if (lost.isNotEmpty()) {
-        error("G62 can no longer read the ship layout out of these, so it is comparing nothing:\n"
-            + lost.joinToString("\n")
-            + "\n  Re-anchor the scan on how the file spells it now, or retire the guard deliberately.")
-    }
-    val names = found.values.toSet()
-    if (names.size != 1) {
-        error("the ship layout is one directory and these disagree about its name:\n"
-            + found.entries.joinToString("\n") { "  ${it.key}: ${it.value}" }
-            + "\n  install.sh reads <dir-of-binary>/<name>/jk-engine-<version>.jar, so a build that"
-            + " writes a different name produces a dist the installer ignores — and a local install"
-            + " that falls back to the released engine without saying so.")
     }
 }
 

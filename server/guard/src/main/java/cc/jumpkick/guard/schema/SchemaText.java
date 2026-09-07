@@ -42,6 +42,24 @@ public final class SchemaText {
                     .append(String.join(", ", g.keys()))
                     .append('\n');
         }
+        if (kind == Kind.PARITY || kind == Kind.GENERATED) {
+            sb.append("extractors (one per left/right/source, `{ name = arg }` or `{ name = { arg = … } }`):\n");
+            for (var e : ExtractorVocabulary.EXTRACTORS.entrySet())
+                sb.append("  ")
+                        .append(e.getKey())
+                        .append(' ')
+                        .append(e.getValue())
+                        .append('\n');
+        }
+        if (kind == Kind.GENERATED) {
+            sb.append("templates:\n");
+            for (var e : ExtractorVocabulary.TEMPLATES.entrySet())
+                sb.append("  ")
+                        .append(e.getKey())
+                        .append(' ')
+                        .append(e.getValue())
+                        .append('\n');
+        }
         sb.append("common keys:\n");
         for (KeySpec k : KindSchemas.COMMON) {
             if (k.name().equals("kind")) continue;
