@@ -682,6 +682,7 @@ object Guards {
                 GuardHome.ROOT,
                 description =
                     "Fail when a production package is declared by more than one module without an allowlist row",
+                ruleId = "one-module-per-package",
             ),
             spec(
                 67,
@@ -690,6 +691,7 @@ object Guards {
                 "ratchet, both directions (`cycle-baseline.txt`)",
                 GuardHome.ROOT,
                 description = "Fail when a module's package-cycle count leaves its cycle-baseline.txt band",
+                ruleId = "package-cycles",
             ),
             spec(
                 68,

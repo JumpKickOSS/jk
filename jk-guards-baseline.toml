@@ -1049,3 +1049,60 @@ reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reason
 unit   = "shared/toolchain-jdk/src/test/java/cc/jumpkick/jdk/JdkResolverTest.java"
 value  = 1
 reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+
+[package-cycles]
+[package-cycles.populations]
+"clients/cli" = { edges = 38, slices = 11 }
+"clients/cli-terminal" = { edges = 4, slices = 3 }
+"server/engine" = { edges = 73, slices = 16 }
+"server/resolver" = { edges = 5, slices = 3 }
+"server/toolchain" = { edges = 4, slices = 4 }
+"shared/client-io" = { edges = 8, slices = 6 }
+"shared/core" = { edges = 30, slices = 16 }
+"shared/plugin-sdk" = { edges = 7, slices = 4 }
+"shared/toolchain-jdk" = { edges = 7, slices = 11 }
+[[package-cycles.entries]]
+in     = "clients/cli"
+unit   = "clients/cli:cli"
+value  = 10
+reason = "banked from cycle-baseline.txt on 2026-09-06 — the facts edges found the same 9 components the import regex did; per-module follow-up work shrinks them"
+[[package-cycles.entries]]
+in     = "clients/cli-terminal"
+unit   = "clients/cli-terminal:terminal"
+value  = 3
+reason = "banked from cycle-baseline.txt on 2026-09-06 — the facts edges found the same 9 components the import regex did; per-module follow-up work shrinks them"
+[[package-cycles.entries]]
+in     = "server/engine"
+unit   = "server/engine:compile"
+value  = 15
+reason = "banked from cycle-baseline.txt on 2026-09-06 — the facts edges found the same 9 components the import regex did; per-module follow-up work shrinks them"
+[[package-cycles.entries]]
+in     = "server/resolver"
+unit   = "server/resolver:resolve"
+value  = 3
+reason = "banked from cycle-baseline.txt on 2026-09-06 — the facts edges found the same 9 components the import regex did; per-module follow-up work shrinks them"
+[[package-cycles.entries]]
+in     = "server/toolchain"
+unit   = "server/toolchain:compat"
+value  = 3
+reason = "banked from cycle-baseline.txt on 2026-09-06 — the facts edges found the same 9 components the import regex did; per-module follow-up work shrinks them"
+[[package-cycles.entries]]
+in     = "shared/client-io"
+unit   = "shared/client-io:repo"
+value  = 2
+reason = "banked from cycle-baseline.txt on 2026-09-06 — the facts edges found the same 9 components the import regex did; per-module follow-up work shrinks them"
+[[package-cycles.entries]]
+in     = "shared/core"
+unit   = "shared/core:builds"
+value  = 8
+reason = "banked from cycle-baseline.txt on 2026-09-06 — the facts edges found the same 9 components the import regex did; per-module follow-up work shrinks them"
+[[package-cycles.entries]]
+in     = "shared/plugin-sdk"
+unit   = "shared/plugin-sdk:plugin"
+value  = 3
+reason = "banked from cycle-baseline.txt on 2026-09-06 — the facts edges found the same 9 components the import regex did; per-module follow-up work shrinks them"
+[[package-cycles.entries]]
+in     = "shared/toolchain-jdk"
+unit   = "shared/toolchain-jdk:discovery"
+value  = 2
+reason = "banked from cycle-baseline.txt on 2026-09-06 — the facts edges found the same 9 components the import regex did; per-module follow-up work shrinks them"

@@ -518,3 +518,66 @@ cap      = 0
 baseline = true
 why      = "a package-qualified reference in a body is a name the formatter could not shorten, or a collision that must say so"
 
+# G66. One module owns each production package. A split package is latent rather than active harm:
+# package-private reach works across a jar boundary on a flat classpath and stops working under JPMS,
+# which is why nine of the rows below grew to 30, 25, 27 and 20 files without anything breaking. Each
+# allow states why its split is legal; a row that is no longer split is stale and fails the rule.
+[guards.one-module-per-package]
+kind = "split-package"
+why  = "package-private reach across a jar boundary stops working under JPMS; a split package is breakage that grows quietly"
+
+[[guards.one-module-per-package.allow]]
+in     = "cc.jumpkick.compat"
+reason = "The tool-import model the client renders (BuildTool, ImportReport, InstalledTool, ToolRegistry) is client-safe; the installer and provisioner that fetch and unpack a distribution must run engine-side. (server/toolchain,shared/toolchain-jdk)"
+
+[[guards.one-module-per-package.allow]]
+in     = "cc.jumpkick.compile"
+reason = "Classpath composition (ClasspathResolver, ModuleRuntimeClasspath) is what the thin client needs to launch and to answer `jk tree`; the compilers, packagers and SBOM writer are engine-only and would drag the whole compile stack onto the client. (server/engine,shared/client-io)"
+
+[[guards.one-module-per-package.allow]]
+in     = "cc.jumpkick.config"
+reason = "EnvValues kept its original package when it moved down into the host leaf, which cost zero import churn across ~50 call sites — a move that touches nothing cannot break anything, and it left no delegating shim. Stated in code-as-art.md under \"Primitives live in the host leaf\". (shared/core,shared/host)"
+
+[[guards.one-module-per-package.allow]]
+in     = "cc.jumpkick.gradle"
+reason = "GradleExporter writes files from the client; the importer, resolver and version-catalog reader shell out to Gradle and belong to the engine. (server/toolchain,shared/toolchain-jdk)"
+
+[[guards.one-module-per-package.allow]]
+in     = "cc.jumpkick.jdk"
+reason = "JdkFingerprint kept its original package when it moved down into the host leaf, for the same zero-churn reason as EnvValues above, and is named alongside it in code-as-art.md. (shared/host,shared/toolchain-jdk)"
+
+[[guards.one-module-per-package.allow]]
+in     = "cc.jumpkick.mvn"
+reason = "PomExporter writes a pom from the client; MavenResolver and PomImporter shell out to Maven and belong to the engine. (server/toolchain,shared/toolchain-jdk)"
+
+[[guards.one-module-per-package.allow]]
+in     = "cc.jumpkick.repo"
+reason = "The client's half is the read/link/transport slice a thin client must have (locator, transports, CAS read, m2 layout); the engine's half is POM and Gradle-module-metadata parsing, which the native client must never link. (server/io,shared/client-io)"
+
+[[guards.one-module-per-package.allow]]
+in     = "cc.jumpkick.resolve"
+reason = "ResolveProfile and its package-info are the reporting surface both sides read; ResolveProcessCacheControl clears the solver's process memos and only the engine has them. (server/resolver,shared/core)"
+
+[[guards.one-module-per-package.allow]]
+in     = "cc.jumpkick.resolver"
+reason = "The dependency and lock model the client reads to render `jk tree` / `jk why` is client-safe; the PubGrub solve, orchestrator and artifact materializer are engine-only. (server/resolver,shared/core)"
+
+[[guards.one-module-per-package.allow]]
+in     = "cc.jumpkick.task"
+reason = "Cache-tier policy the client reads and reports (prune scheduler, IO ledger, run notices) is client-safe; the action cache, its keys and its retention are the engine's. (server/engine,shared/core)"
+
+[[guards.one-module-per-package.allow]]
+in     = "cc.jumpkick.tool"
+reason = "Launcher and tool-env model is resolved client-side so `jk run` can exec without the engine; ToolResolver provisions a tool and belongs to the engine. (server/toolchain,shared/toolchain-jdk)"
+
+# G67. A module's package-cycle count may not grow. Slices are the module's own packages; the edges
+# are type references, so static imports and qualified names count where the import regex dropped
+# them. The band is a metric baseline: over it is a regression, under it tightens itself. The report
+# names a component's packages, never its cycles — a 15-node component has thousands of elementary
+# cycles and none of them says which edge to cut.
+[guards.package-cycles]
+kind     = "cycles"
+matching = "cc.jumpkick.(**)"
+baseline = true
+why      = "a cyclic component has no edge anyone can name to cut, so the count is what the build defends"
+
