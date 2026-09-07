@@ -22,6 +22,9 @@ dependencies {
     api(project(":host"))
     // The runtime is a JUnit 5 extension: @Guard is a composed @Test, @GuardSuite an @ExtendWith.
     api(libs.junit.jupiter.api)
+    // ArchUnit is the user's: JkArchUnit compiles against it, jk-guards-junit never ships it.
+    compileOnly(libs.archunit)
+    testImplementation(libs.archunit)
     testImplementation(libs.junit.platform.launcher)
 }
 

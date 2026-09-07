@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.guard.api;
 
+import static com.tngtech.archunit.library.Architectures.onionArchitecture;
+
+import cc.jumpkick.guard.api.archunit.JkArchUnit;
+import com.tngtech.archunit.core.domain.JavaClasses;
+import com.tngtech.archunit.core.importer.ClassFileImporter;
 import java.util.Set;
 import org.junit.jupiter.api.Disabled;
 
@@ -32,5 +37,11 @@ final class HouseRules {
                         "subset " + subset + " runs in " + model.tiers().running(subset));
         for (TaggedClass t : facts.testClasses())
             if (!vocab.containsAll(t.tags())) v.add(t, "tag not in the vocabulary");
+    }
+
+    @Guard(id = "onion", why = "domain never sees adapters")
+    void archUnit(Facts facts, Violations v) { // ArchUnit, unchanged
+        JavaClasses classes = new ClassFileImporter().importPaths(facts.classDirs());
+        JkArchUnit.check(onionArchitecture().domainModels("..domain.model..").adapter("web", "..web.."), classes, v);
     }
 }

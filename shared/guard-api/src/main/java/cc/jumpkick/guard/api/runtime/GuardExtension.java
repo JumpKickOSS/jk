@@ -77,9 +77,30 @@ public final class GuardExtension
         return rt.output();
     }
 
+    private static final ThreadLocal<@Nullable String> CURRENT = new ThreadLocal<>();
+
+    /** Run {@code body} as guard {@code id} on this thread — what the extension does around a @Guard method. */
+    public static void asGuard(String id, Runnable body) {
+        String before = CURRENT.get();
+        CURRENT.set(id);
+        try {
+            body.run();
+        } finally {
+            if (before == null) CURRENT.remove();
+            else CURRENT.set(before);
+        }
+    }
+
+    /** The id of the guard running on this thread, for stores that key on it; {@code null} between guards. */
+    public static @Nullable String currentGuardId() {
+        return CURRENT.get();
+    }
+
     @Override
     public void beforeEach(ExtensionContext ctx) {
         ctx.getStore(NS).put("collector", new Report.Collector());
+        Guard g = ctx.getRequiredTestMethod().getAnnotation(Guard.class);
+        CURRENT.set(g == null ? null : g.id());
     }
 
     @Override
@@ -92,6 +113,7 @@ public final class GuardExtension
 
     @Override
     public void afterEach(ExtensionContext ctx) throws Exception {
+        CURRENT.remove();
         Method m = ctx.getRequiredTestMethod();
         Guard g = m.getAnnotation(Guard.class);
         if (g == null) return;

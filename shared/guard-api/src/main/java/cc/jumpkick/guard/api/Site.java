@@ -8,7 +8,8 @@ import org.jspecify.annotations.Nullable;
  * baseline stores ({@code Origin#member -> target} for a call, a class name, a path plus content
  * for text, a model key) — and, when it has one, the file and line a diagnostic points at.
  */
-public sealed interface Site permits CallSite, FieldAccess, ClassSite, TaggedClass, TextSite, ModelSite, MetricSite {
+public sealed interface Site
+        permits CallSite, FieldAccess, ClassSite, TaggedClass, TextSite, ModelSite, MetricSite, ToolSite {
 
     /** The baseline identity: stable across unrelated edits above the site. */
     String fingerprint();

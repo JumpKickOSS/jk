@@ -2,7 +2,7 @@ version = 2
 generated-by = "jk 0.13.0"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "3455861fbeb9f354d28471483f3687185a3ef540752488e9bdf828c623415f5b"
+manifests-sha256 = "462d8bb608166a6b1d274c9f2fd5139e6943e7cb0ce6b044a35aa95a332c46e2"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [jdk]
@@ -401,6 +401,16 @@ version  = "2.1.12"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:fd7373889b7a92cf3e97db36c920ba272aec158a9387b3259fca9f2dfaeda914"
 scopes   = ["main"]
+
+[[artifact]]
+name     = "com.tngtech.archunit:archunit:jar:"
+version  = "1.5.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:5ab139643fa5090af181ff8dc9eab48cb38ca306d3e03e66acacc75831a08fe9"
+scopes   = ["provided", "test"]
+deps = [
+  "org.slf4j:slf4j-api:jar:@2.0.18",
+]
 
 [[artifact]]
 name     = "commons-cli:commons-cli:jar:"

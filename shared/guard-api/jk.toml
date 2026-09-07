@@ -8,7 +8,12 @@ java = 17
 jk-host.workspace = true
 junit-jupiter-api = { group = "org.junit.jupiter", version = "latest" }
 
+# ArchUnit is the user's: provided here so JkArchUnit compiles, never on jk-guards-junit's runtime classpath.
+[provided-dependencies]
+archunit = { group = "com.tngtech.archunit", version = "latest" }
+
 [test-dependencies]
+archunit = { group = "com.tngtech.archunit", version = "latest" }
 assertj-core = "latest"
 junit-jupiter = "latest"
 junit-platform-launcher = "latest"

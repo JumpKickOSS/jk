@@ -85,6 +85,11 @@ public final class GuardRuntime {
         return config.report();
     }
 
+    /** The workspace root jk configured. */
+    public Path root() {
+        return config.root();
+    }
+
     static FactsIndex merge(List<Path> files) throws IOException {
         if (files.isEmpty()) return FactsIndex.EMPTY;
         if (files.size() == 1)
