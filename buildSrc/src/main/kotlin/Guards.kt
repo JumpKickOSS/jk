@@ -13,13 +13,14 @@ object Guards {
             spec(
                 0,
                 "checkCorpus",
-                "the gate's own corpus shrinking below the population every scan below it was measured against — module dirs, `src/main/java`, `src/test/java`, `plugins/*`. Not a rule about the code: a floor under the *other* guards, so a broken file tree reports green instead of scanning nothing",
-                "ban, self-hosted build only",
-                GuardHome.JK_ONLY,
-                tableTask = "`checkCorpus` (`.jk/after-build.kts`)",
+                "a scan reporting green over a corpus that has shrunk below the population it was measured against — module dirs, `src/main/java`, `src/test/java`, `plugins/*`. Not a rule about the code: a floor under the *other* guards",
+                "subsumed: every rule reports the population it examined, so the floor is each rule's own",
+                GuardHome.FOLDED,
+                tableTask = "*(subsumed: each rule states its population)*",
                 inFastGate = false,
                 gradleLetter = false,
                 attach = emptySet(),
+                jkSide = "subsumed: each rule states its population",
             ),
             spec(
                 1,
@@ -37,6 +38,7 @@ object Guards {
                 "ban, no allowlist",
                 GuardHome.MODULE,
                 description = "Fail the build on System.exit/halt with an integer literal (use Exit)",
+                ruleId = "named-exit-codes",
             ),
             spec(
                 3,
@@ -333,6 +335,7 @@ object Guards {
                 GuardHome.MODULE_OWNED,
                 ownerPath = ":plugin-sdk",
                 description = "Fail the build on a JK_OFFLINE read in worker sources (use TaskExec.offline())",
+                ruleId = "worker-offline-from-spec",
             ),
             spec(
                 30,
@@ -343,6 +346,7 @@ object Guards {
                 ownerPath = ":host",
                 description =
                     "Fail the build on a Properties.store() call in main sources (use DeterministicProperties.render)",
+                ruleId = "properties-render-owner",
             ),
             spec(
                 31,
@@ -412,6 +416,7 @@ object Guards {
                 GuardHome.MODULE,
                 attach = setOf(GuardAttach.CHECK),
                 description = "Fail the build when a test locates a checkout file from the working directory",
+                ruleId = "test-paths-from-checkout-root",
             ),
             spec(
                 36,
@@ -430,6 +435,7 @@ object Guards {
                 "ban; four commented exemptions, each a *selective* delete rather than a tree delete",
                 GuardHome.MODULE,
                 description = "Fail the build on a hand-rolled recursive delete outside PathUtil",
+                ruleId = "one-recursive-delete",
             ),
             spec(
                 38,
@@ -439,6 +445,7 @@ object Guards {
                 GuardHome.MODULE,
                 description =
                     "Fail the build on a toolchain env var read from the daemon environment instead of the request",
+                ruleId = "toolchain-env-from-request",
             ),
             spec(
                 39,
@@ -476,6 +483,7 @@ object Guards {
                 "ban, commented exemptions, each a copy deliberately not the owner's shape",
                 GuardHome.MODULE,
                 description = "Fail the build on a hand-rolled recursive copy outside PathUtil.copyTree",
+                ruleId = "tree-copy-owner",
             ),
             spec(
                 43,
@@ -484,13 +492,14 @@ object Guards {
                 "ban + self-fail on the owner still offering the sink",
                 GuardHome.MODULE,
                 description = "Fail the build on an archive byte sink that bypasses DeterministicZip",
+                ruleId = "archive-stream-owner",
             ),
             spec(
                 44,
                 "checkBothBuildsSeeEveryModule",
                 "a module `settings.gradle.kts` and the root `jk.toml` `[workspace]` do not both see — Gradle never builds it, or `jk build` never compiles it and `jk test` never runs its suite; plus a stale `singleBuildModules` exception that one of the builds has since picked up",
                 "ban, one declared single-build exception (`clients/intellij`)",
-                GuardHome.JK_ONLY,
+                GuardHome.SELF_HOSTED,
                 tableTask = "`both-builds-see-modules` (jk-guards.toml, `parity`)",
                 inFastGate = false,
                 gradleLetter = false,
@@ -522,6 +531,7 @@ object Guards {
                 "ban + a self-fail arm on scanning zero files",
                 GuardHome.MODULE,
                 description = "Fail the build on a locale-less toLowerCase()/toUpperCase() in src/main",
+                ruleId = "case-conversion-locale",
             ),
             spec(
                 48,
@@ -560,9 +570,11 @@ object Guards {
                 "a guard letter enforced by one build and not the other — G46 through G50 lived on the Gradle side only, so `jk build` printed \"house rules clean\" while enforcing 36 of the 41 it claimed, and neither gate's count was wrong about itself. Deliberately implemented twice: a parity check only one build runs has the shape of the problem it prevents. The exception list is single-owner (`guard-parity.txt`), so a letter cannot be excused on one side and demanded on the other",
                 "ban; exceptions carry the reason parity is impossible, and \"not ported yet\" is not one",
                 GuardHome.ROOT,
-                tableTask = "`checkGuardParity` (root project) + `.jk/after-build.kts`",
+                tableTask = "`checkGuardParity` (root project)",
                 attach = emptySet(),
                 description = "Fail when a guard letter is enforced by one build and not the other",
+                ruleId = "guard-rules-registered",
+                guardTestId = "guard-parity",
             ),
             spec(
                 52,
@@ -581,7 +593,7 @@ object Guards {
                 "a production package in an enforced null-marked root (`shared/jk-api`, `shared/wire`, `shared/plugin-sdk`, `shared/core`) lacks package-level `@NullMarked` without a `NullMarking.excludedPackages` entry, an exclusion goes stale, or the measured 30-package corpus drifts",
                 "ban, no allowlist",
                 GuardHome.ROOT,
-                tableTask = "`checkNullMarkedApiPackages` (root project) + `.jk/after-build.kts`",
+                tableTask = "`checkNullMarkedApiPackages` (root project)",
                 attach = emptySet(),
                 description = "Fail when an enforced null-marked package lacks package-level @NullMarked",
                 ruleId = "null-marked-packages",
@@ -592,7 +604,7 @@ object Guards {
                 "a first-party plugin adds an unclassified project dependency, or an exception disappears without removing its allowlist row",
                 "SDK/host baseline plus the current invariant table in `docs/contributors/plugins.md`; server dependencies are banned",
                 GuardHome.ROOT,
-                tableTask = "`checkPluginSdkBoundary` (root project) + `.jk/after-build.kts`",
+                tableTask = "`checkPluginSdkBoundary` (root project)",
                 attach = emptySet(),
                 description = "Reject unclassified plugin project dependencies and server runtime leaks",
                 ruleId = "plugin-sdk-boundary",
@@ -650,7 +662,7 @@ object Guards {
                 "a comment or doc narrates a previous design instead of the current invariant",
                 "phrase scan in both builds; AGENTS.md and comments.md exempt because they name the ban",
                 GuardHome.ROOT,
-                tableTask = "`checkNoHistoricalNarration` (root project) + `.jk/after-build.kts`",
+                tableTask = "`checkNoHistoricalNarration` (root project)",
                 attach = emptySet(),
                 description = "Fail when comments or docs narrate a previous design",
                 ruleId = "no-historical-narration",
@@ -661,7 +673,7 @@ object Guards {
                 "a JSON object spliced by hand in `src/main/java` — a closing brace chopped and appended to, or a literal `{` opened onto another object's tail — outside `Jsonl.append`",
                 "ban in both builds; self-fail when the owner stops splicing or the scan sees too few sources",
                 GuardHome.ROOT,
-                tableTask = "`checkOneJsonSplicer` (root project) + `.jk/after-build.kts`",
+                tableTask = "`checkOneJsonSplicer` (root project)",
                 attach = emptySet(),
                 description = "Fail when a JSON object is spliced by hand outside Jsonl.append",
                 ruleId = "one-json-splicer",
@@ -697,6 +709,7 @@ object Guards {
                 GuardHome.MODULE,
                 attach = setOf(GuardAttach.CHECK),
                 description = "Fail when a JavaCompile task in this module is disabled",
+                jkSide = "Gradle-only: task-graph state",
             ),
             spec(
                 65,
@@ -704,7 +717,7 @@ object Guards {
                 "build logic deleting or sizing a tree with a walk that follows symbolic links — Kotlin's `File.deleteRecursively`, `walkTopDown`, `walkBottomUp` and `File.walk`, or `FOLLOW_LINKS` — anywhere but `buildSrc/src/main/kotlin/Trees.kt`",
                 "ban in both builds, comment- and string-blind; self-fail when the owner stops using `walkFileTree` or the scan sees too few build files",
                 GuardHome.ROOT,
-                tableTask = "`checkNoLinkFollowingDelete` (root project) + `.jk/after-build.kts`",
+                tableTask = "`checkNoLinkFollowingDelete` (root project)",
                 attach = emptySet(),
                 description = "Fail when build logic deletes or sizes a tree through symbolic links",
                 ruleId = "no-link-following-delete",
@@ -733,7 +746,7 @@ object Guards {
                 "checkXmlParserHardening",
                 "the six XXE flags inside `DomXml.hardened`, each by name — the only XXE posture jk has",
                 "count, exactly six",
-                GuardHome.JK_ONLY,
+                GuardHome.SELF_HOSTED,
                 description = "Fail the build when one of DomXml's six XXE hardening flags is gone",
                 ruleId = "xml-parser-hardening",
             ),
@@ -742,7 +755,7 @@ object Guards {
                 "checkOwnAlgorithmByName",
                 "jk's own digest algorithm spelled at a `Hashing` door (`newDigest` / `fileHex` / `hashHex`) instead of `newSha256` / `sha256Hex`",
                 "ban, owner exempt",
-                GuardHome.JK_ONLY,
+                GuardHome.SELF_HOSTED,
                 description = "Fail the build when jk's own algorithm name is passed to a Hashing algorithm door",
                 ruleId = "own-algorithm-by-name",
             ),
@@ -751,7 +764,7 @@ object Guards {
                 "checkCentralAddress",
                 "Maven Central addressed by its alias host or by a hand-typed URL outside `RepositorySpec.MAVEN_CENTRAL`",
                 "ban, foreign-build readers allowed",
-                GuardHome.JK_ONLY,
+                GuardHome.SELF_HOSTED,
                 description = "Fail the build when Maven Central is addressed outside RepositorySpec",
                 ruleId = "central-address",
             ),
@@ -760,7 +773,7 @@ object Guards {
                 "checkSpaNoClassKey",
                 "`class` read as a field key in the dashboard SPA (the wire says `testClass`)",
                 "ban, SPA assets only",
-                GuardHome.JK_ONLY,
+                GuardHome.SELF_HOSTED,
                 description = "Fail the build when the SPA reads a `class` field key",
                 ruleId = "spa-no-class-key",
             ),
@@ -769,9 +782,11 @@ object Guards {
                 "checkCharterTableParity",
                 "the size caps code-as-art.md states and the caps `[guards.file-size]` enforces disagreeing, or the charter's Contents list drifting from its headings",
                 "parity, self-hosted build only",
-                GuardHome.JK_ONLY,
+                GuardHome.SELF_HOSTED,
+                tableTask = "*(guard test, `server/guard/src/guard`)*",
                 description =
-                    "Fail the build when the charter's size table or Contents list drifts from what the gate enforces",
+                    "Fail the build when the charter's size table or Contents list drifts from what the rules enforce",
+                guardTestId = "charter-parity",
             ),
             spec(
                 61,
@@ -779,7 +794,7 @@ object Guards {
                 "a test that runs the install verb without `--m2-dir`, which publishes the fixture into the developer's real `~/.m2`",
                 "ban in both builds; self-fail when the scan stops finding install invocations",
                 GuardHome.ROOT,
-                tableTask = "`checkInstallTestsRedirectM2` (root project) + `.jk/after-build.kts`",
+                tableTask = "`checkInstallTestsRedirectM2` (root project)",
                 attach = emptySet(),
                 description = "Fail when a test runs the install verb without --m2-dir",
                 ruleId = "install-tests-redirect-m2",
@@ -801,7 +816,7 @@ object Guards {
                 "published-installer-ps1",
                 "`hosting/public/install.ps1` differing from the repo-root copy — the PowerShell half of G81",
                 "parity, line sets of the two copies",
-                GuardHome.JK_ONLY,
+                GuardHome.SELF_HOSTED,
                 tableTask = "`published-installer-ps1` (jk-guards.toml, `parity`)",
                 inFastGate = false,
                 gradleLetter = false,
@@ -843,7 +858,7 @@ object Guards {
                 "ship-layout-installer-jk",
                 "`install.sh` and jk's dist script (`.jk/after-build-dist.kts`) disagreeing on the ship layout's engine directory — G62's third anchor, one `parity` rule per pair",
                 "parity, two extractions must agree",
-                GuardHome.JK_ONLY,
+                GuardHome.SELF_HOSTED,
                 tableTask = "`ship-layout-installer-jk` (jk-guards.toml, `parity`)",
                 inFastGate = false,
                 gradleLetter = false,
@@ -855,7 +870,7 @@ object Guards {
                 "guard-registry-doc",
                 "the declarative rules' registry block in `docs/contributors/code-as-art.md` not being what `jk-guards.toml` renders (id, kind, why)",
                 "generated, rendered from `guard-ids`",
-                GuardHome.JK_ONLY,
+                GuardHome.SELF_HOSTED,
                 tableTask = "`guard-registry-doc` (jk-guards.toml, `generated`)",
                 inFastGate = false,
                 gradleLetter = false,
@@ -900,7 +915,7 @@ object Guards {
                 "no-agent-trailers",
                 "a commit message carrying a tool's co-author, generator or assistant trailer — refused at the commit boundary by the `commit-msg` hook `jk guard hooks install` writes",
                 "commit rule, forbid-trailers globs; CI's history scan is the other half",
-                GuardHome.JK_ONLY,
+                GuardHome.SELF_HOSTED,
                 tableTask =
                     "`no-agent-trailers` (jk-guards.toml, `commit`) + `scripts/check-no-agent-attribution.sh` (CI)",
                 inFastGate = false,
@@ -942,15 +957,20 @@ object Guards {
     fun letter(n: Int): GuardSpec =
         tableRows.singleOrNull { it.letter == n } ?: error("No published guard letter G$n in Guards")
 
-    fun tableMarkdown(): String = buildString {
+    /**
+     * The published table. [kinds] is rule id → `kind` from `jk-guards.toml`, so a letter's jk side reads as the TOML
+     * kind that enforces it; a letter with no jk side says why in [GuardSpec.jkSide].
+     */
+    fun tableMarkdown(kinds: Map<String, String> = emptyMap()): String = buildString {
         appendLine("<!-- guards:start -->")
-        appendLine("| id | task | rule | form | jk rule |")
+        appendLine("| id | task | rule | form | jk side |")
         appendLine("|---|---|---|---|---|")
         tableRows.forEach { spec ->
             val jkRule =
-                spec.ruleId?.let { "`$it`" }
+                spec.ruleId?.let { id -> kinds[id]?.let { "`$id` ($it)" } ?: "`$id`" }
                     ?: spec.engineCode?.let { "engine validation `$it`" }
                     ?: spec.guardTestId?.let { "guard test `$it`" }
+                    ?: spec.jkSide
                     ?: "—"
             appendLine("| G${spec.letter} | ${spec.tableTaskCell} | ${spec.rule} | ${spec.form} | $jkRule |")
         }
@@ -974,6 +994,7 @@ object Guards {
         ruleId: String? = null,
         engineCode: String? = null,
         guardTestId: String? = null,
+        jkSide: String? = null,
     ): GuardSpec =
         GuardSpec(
             letter = letter,
@@ -992,6 +1013,7 @@ object Guards {
             ruleId = ruleId,
             engineCode = engineCode,
             guardTestId = guardTestId,
+            jkSide = jkSide,
         )
 
     private fun defaultAttach(home: GuardHome): Set<GuardAttach> =
@@ -1009,5 +1031,5 @@ object Guards {
             home == GuardHome.MODULE_OWNED
 
     private fun defaultGradleLetter(letter: Int?, home: GuardHome): Boolean =
-        letter != null && home != GuardHome.JK_ONLY && home != GuardHome.FOLDED && home != GuardHome.NEVER
+        letter != null && home != GuardHome.SELF_HOSTED && home != GuardHome.FOLDED && home != GuardHome.NEVER
 }

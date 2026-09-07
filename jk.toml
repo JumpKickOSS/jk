@@ -59,9 +59,9 @@ modules = [
 # goes red.
 #
 # This is that place. `[test] exclude-tags` is the fast tier; each profile below is one
-# slow tier. The gate (`.jk/after-build.kts`) re-derives the partition from
-# this table and proves, over every subset of the vocabulary, that each is run by exactly
-# one tier — so the routing and the check cannot drift.
+# slow tier. The engine's `tiers` validation (G23) re-derives the partition from this
+# table and proves, over every subset of the vocabulary, that each is run by exactly one
+# tier — so the routing and the check cannot drift.
 #
 #   jk test                        fast tier, untagged only. The PR gate.
 #   jk test --profile integration  engine / e2e / worker suites. The pre-merge bar.

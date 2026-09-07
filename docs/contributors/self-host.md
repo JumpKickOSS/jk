@@ -150,26 +150,28 @@ With no `[repositories]` table, remotes are **Maven Central then Google Maven** 
 
 The guards in [code-as-art.md](code-as-art.md#the-guard-registry) run under
 **both** builds. Gradle runs them as `tasks.registering` blocks wired to `check`
-and `jar`; jk runs the tree-wide ones from `.jk/after-build.kts` at the workspace
-root, and the rest are ordinary tests in the module they govern.
+and `jar`; jk runs them as the rules of `jk-guards.toml` and the guard tests under
+each module's `src/guard`, in the guard lanes of every build.
 
 ```bash
-jk build                 # the gate runs last, after every module
-jk test                  # the single-module rules, with everything else
+jk build                 # the lanes run with the build: model, module, workspace, tree, output
+jk guard                 # the lanes alone
+jk guard explain <id>    # one rule, with its source and its exemptions
 ```
 
-A rule that reads more than one module belongs in the gate; a rule whose whole
-corpus is one module belongs beside that module's code, as a test
-(`ForecastKeyParityTest`, `SpikeCacheTempDirTest`, `CliSourceRulesTest`,
-`IdeClientWiringTest`). Both builds cover both homes.
+A rule the closed vocabulary can express is a `[guards.<id>]` table; a rule it
+cannot is a guard test — a `@Guard` method in `HouseRules`, `ParityRules`
+(`server/guard/src/guard`), `EngineRules` or `CliRules`. Both builds cover both
+homes; the registry in code-as-art.md says which side each letter lives on, and
+G51 fails when a letter has a Gradle task and no jk side.
 
-`after-build` is the root's own anchor: the script runs once per build, after
-every member, with the whole tree on disk. Its action key covers every file in
-the checkout except build output and VCS metadata, so an unchanged tree skips it
-(~60 ms) and any edit re-runs it (~9 s). It writes nothing to `outDir`; the cache
-records that as a verdict rather than an artifact, and records only successes, so
-a red gate goes red again instead of replaying itself. It reports every broken
-rule in one message rather than the first to fire.
+Each lane is keyed to what it reads — the model lane to the manifests and lock,
+a module lane to that module's classes, the tree lane to the text corpus — so
+an unchanged input skips its lane and an edit re-runs only the lanes it can
+affect. A lane writes a verdict, never an artifact, and only a success is
+recorded, so a red lane goes red again instead of replaying itself. Every broken
+rule is reported, each with its baseline state and the exemption path, and the
+machine view lands in `target/jk-guards.sarif` and `target/jk-guards.jsonl`.
 
 Two arms stay Gradle-only because they read files `maven-publish` generates and
 jk does not produce until `jk publish`: `checkPublishedPomCoordinates` and the
@@ -191,9 +193,9 @@ jk test --profile bench          # microbenchmarks (nightly)
 jk test --all                    # everything, no tag filter
 ```
 
-That table is the only copy: the gate re-derives the partition from it and
-proves, over every subset of the tag vocabulary, that each is run by exactly one
-tier. A tag excluded from the fast tier and included by no profile fails the
+That table is the only copy: the engine's `tiers` validation (G23) re-derives the
+partition from it and proves, over every subset of the tag vocabulary, that each
+is run by exactly one tier. A tag excluded from the fast tier and included by no profile fails the
 build rather than silently never running.
 
 ## Still Gradle (by design)

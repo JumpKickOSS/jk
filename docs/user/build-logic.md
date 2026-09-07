@@ -122,8 +122,10 @@ the build graph — the root becomes a unit that depends on all its members — 
 `[build] order-after` is not needed for it.
 
 `gate` is the same *shape* (once per graph, whole-tree cache key, a check that writes
-nothing records a verdict) and the other *budget*. House-rule checks belong here so the
-inner loop does not pay them. A standalone project root may use `gate` too; a workspace
+nothing records a verdict) and the other *budget*. Tree-scan checks that are not house
+rules — a release-notes lint, a generated-file freshness probe — belong here so the inner
+loop does not pay them; house rules themselves are `jk-guards.toml`, not a script
+(`jk guard explain` walks them). A standalone project root may use `gate` too; a workspace
 **member** may not.
 
 `--scripts-only` runs the gate stem without JUnit (legal with or without `--gate`).

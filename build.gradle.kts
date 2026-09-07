@@ -856,12 +856,12 @@ tasks.register("checkSecurityDocs") {
     }
 }
 
-// The corpus every tree-wide text guard scans, pruned the way .jk/after-build.kts prunes it: build
-// output and tool directories are skipped only when they sit OUTSIDE a source root, because `build`
-// and `target` also name Java packages under src/ (cc.jumpkick.plugin.build is the plugin SPI) and a
-// `**/build/**` exclude silently scanned one package less than the jk gate did — a gap G51's letter
-// parity cannot see. Extension-blind: every scope a rule was given by extension was how it was missed
-// the next time; binaries are skipped by their own extensions.
+// The corpus every tree-wide text guard scans, pruned the way the guard engine's text corpus is:
+// build output and tool directories are skipped only when they sit OUTSIDE a source root, because
+// `build` and `target` also name Java packages under src/ (cc.jumpkick.plugin.build is the plugin
+// SPI) and a `**/build/**` exclude scans one package less than the jk side does — a gap G51's letter
+// parity cannot see. Extension-blind: a scope given by extension is how a rule misses the next
+// surface; binaries are skipped by their own extensions.
 fun rootTextTree(): ConfigurableFileTree = fileTree(layout.projectDirectory) {
     val pruned = setOf("build", "target", ".git", ".gradle", ".firebase", "node_modules", ".board", ".kotlin")
     val treeRootFile = layout.projectDirectory.asFile
@@ -1214,46 +1214,34 @@ tasks.register("checkStageDocs") {
 // to be total for the diff to mean anything.
 // Guard G51: both builds enforce the same house rules.
 //
-// `./gradlew build` and `jk build` are supposed to check the same charter. Five letters — G46,
-// G47, G48, G49, G50 — were written on the Gradle side and never grew a twin in
-// `.jk/after-build.kts`, so for as long as that lasted the self-hosted build printed "house rules
-// clean" while enforcing 36 of the 41 it claimed. A contributor running `jk build` got a green
-// gate and a rule violation.
-//
-// That is not a drift a reader can notice: both gates print a count, and neither count is wrong
-// about itself. So it is a ratchet, and the exception list lives in `guard-parity.txt` where each
-// entry has to carry the reason the letter cannot live in both — "not ported yet" is not one.
-//
-// Checked from both sides, because a parity check that only one build runs has the shape of the
-// problem it exists to prevent.
+// `./gradlew build` and `jk build` check the same charter, and the registry (`Guards`) is the one
+// record of where each letter lives: a Gradle task, a jk-guards.toml rule, an engine validation, a
+// guard test. A letter with a Gradle task and no jk side is enforced half the time, and neither
+// gate's count is wrong about itself, so this is a ratchet: `guard-parity.txt` carries the reason a
+// letter is Gradle-only, and "not ported yet" is not one. The jk side runs the same check from the
+// same registry as the `guard-parity` guard test.
 tasks.register("checkGuardParity") {
     group = "verification"
     description = "Fail when a guard letter is enforced by one build and not the other"
     val catalog = layout.projectDirectory.file("buildSrc/src/main/kotlin/Guards.kt")
-    val jkGate = layout.projectDirectory.file(".jk/after-build.kts")
     val jkRules = layout.projectDirectory.file("jk-guards.toml")
     val exceptions = layout.projectDirectory.file("guard-parity.txt")
     inputs.file(catalog).withPropertyName("catalog")
-    inputs.file(jkGate).withPropertyName("jkGate")
     inputs.files(jkRules).withPropertyName("jkRules")
     inputs.file(exceptions).withPropertyName("exceptions")
     val stamp = layout.buildDirectory.file("guards/guard-parity.ok")
     outputs.file(stamp)
     doLast {
-        val marker = Regex("""guard\("G(\d+)"""")
         val gradle = Guards.gradleLetters
-        // A letter is jk-enforced when the gate script still carries it OR its registered
-        // jk-guards.toml rule exists. A registered rule with no table, or a table no letter
-        // claims, is the registry lagging the code — the drift this check exists to catch.
+        // A letter is jk-enforced when its registered jk-guards.toml rule exists, when the engine
+        // validates it under a reserved code, or when a guard test declares it. A registered rule
+        // with no table, or a table no letter claims, is the registry lagging the code.
         val tables = if (jkRules.asFile.isFile) {
             Regex("""(?m)^\[guards\.([a-z0-9][a-z0-9-]*)]""").findAll(jkRules.asFile.readText())
                 .map { it.groupValues[1] }.toSortedSet()
         } else sortedSetOf<String>()
         val mapped = Guards.tomlLetters
-        // Engine validations have neither a table nor a script block: the engine runs them in the
-        // guard lanes of every `jk build`, so the registry's engineCode marks the letter jk-enforced.
-        val jk = (marker.findAll(jkGate.asFile.readText()).map { it.groupValues[1].toInt() }
-                + mapped.filterValues { it in tables }.keys
+        val jk = (mapped.filterValues { it in tables }.keys
                 + Guards.engineLetters.keys
                 + Guards.guardTestLetters.keys).toSortedSet()
         val registryProblems = mutableListOf<String>()
@@ -1278,23 +1266,24 @@ tasks.register("checkGuardParity") {
                     + " anything. Fix the file or the pattern.")
         }
         val gradleOnly = (gradle - jk - excused).sorted()
-        val jkOnly = (jk - gradle - excused).sorted()
-        // An exception nobody needs is a rule quietly weakened: the letter now exists in both, so
-        // the entry is telling a reader parity was impossible when it is a fact.
-        val stale = excused.filter { it in gradle && it in jk }.sorted()
+        // A letter the registry places on the jk side alone (SELF_HOSTED, or a guard test with no
+        // Gradle task) needs no excuse: the registry is its record. An excuse nobody needs is a rule
+        // quietly weakened: the letter has both sides, so the entry says parity is impossible when
+        // it is a fact.
+        val stale = excused.filter { it in jk }.sorted()
+        val unknown = (excused - Guards.all.mapNotNull { it.letter }.toSet()).sorted()
         val problems = mutableListOf<String>()
         if (gradleOnly.isNotEmpty()) {
             problems.add("enforced by Gradle only: " + gradleOnly.joinToString(", ") { "G$it" }
-                    + " — add the twin to .jk/after-build.kts")
-        }
-        if (jkOnly.isNotEmpty()) {
-            problems.add("enforced by the jk gate only: " + jkOnly.joinToString(", ") { "G$it" }
-                    + " — add the twin to Guards, or give it a guard-parity.txt entry saying why"
-                    + " it is self-hosted-only (G0 and G44 are)")
+                    + " — give the letter a jk side in Guards (ruleId, engineCode or guardTestId),"
+                    + " or a guard-parity.txt entry saying why it is Gradle-only")
         }
         if (stale.isNotEmpty()) {
-            problems.add("excused in guard-parity.txt but present on BOTH sides: "
+            problems.add("excused in guard-parity.txt but enforced on the jk side too: "
                     + stale.joinToString(", ") { "G$it" } + " — drop the entry, parity is real now")
+        }
+        if (unknown.isNotEmpty()) {
+            problems.add("excused in guard-parity.txt but not a registry letter: " + unknown.joinToString(", ") { "G$it" })
         }
         if (problems.isNotEmpty()) {
             throw GradleException("the two builds do not enforce the same house rules —\n  "
@@ -1316,8 +1305,13 @@ tasks.register("checkGuardRegistry") {
     inputs.file(registry).withPropertyName("registry")
     val stamp = layout.buildDirectory.file("guards/guard-registry.ok")
     outputs.file(stamp)
+    val jkRules = layout.projectDirectory.file("jk-guards.toml")
+    inputs.file(jkRules).withPropertyName("jkRules")
     doLast {
-        val expected = Guards.tableMarkdown()
+        // rule id → kind, so the table says which TOML kind enforces a letter on the jk side
+        val kinds = Regex("""(?m)^\[guards\.([a-z0-9][a-z0-9-]*)]\s*\n\s*kind\s*=\s*"([a-z-]+)"""")
+            .findAll(jkRules.asFile.readText()).associate { it.groupValues[1] to it.groupValues[2] }
+        val expected = Guards.tableMarkdown(kinds)
         val actual = registry.asFile.readText()
         val block = Regex("""(?s)<!-- guards:start -->.*?<!-- guards:end -->""").find(actual)?.value
             ?: throw GradleException(

@@ -547,10 +547,10 @@ public final class BuildEta {
         }
         long base =
                 EffortWeights.scheduleMillis(costs, etaConcurrency, serial, parallelTests, EffortWeights.MS_PER_WEIGHT);
-        // The root's build logic. `.jk/after-build.kts` runs once, after every module, so it belongs
-        // on the schedule as a serial tail rather than inside any module's wall. The forecast
-        // classifies build-logic steps as bookkeeping and never lists them, so this adds the
-        // measured gate cost the schedule would otherwise omit.
+        // The root's build logic. An `after-build` script runs once, after every module, so it
+        // belongs on the schedule as a serial tail rather than inside any module's wall. The
+        // forecast classifies build-logic steps as bookkeeping and never lists them, so this adds
+        // the measured script cost the schedule would otherwise omit.
         base += rootBuildLogicMillis(entryDir);
         long rawSchedule = base;
         // Learned schedule-contention bias (actual/simulated EWMA from real runs, keyed by build

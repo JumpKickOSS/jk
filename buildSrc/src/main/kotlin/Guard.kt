@@ -16,8 +16,8 @@ enum class GuardHome {
     MODULE_OWNED,
     /** Enforced as a JUnit test (parity exception). */
     TEST,
-    /** The self-hosted after-build gate only. */
-    JK_ONLY,
+    /** A `jk-guards.toml` rule or a guard test with no Gradle task: the registry is its only Gradle-side record. */
+    SELF_HOSTED,
     /** Letter retired into another task. */
     FOLDED,
     /** Never allocated; not reusable. */
@@ -50,9 +50,8 @@ data class GuardSpec(
     val mavenPublishOnly: Boolean = false,
     val description: String = "",
     /**
-     * The `[guards.<id>]` table in `jk-guards.toml` that enforces this letter on the self-hosted side, once the letter
-     * has moved out of `.jk/after-build.kts`. Parity (G51) counts the letter as jk-enforced when the table exists, and
-     * fails when the table is missing or unclaimed.
+     * The `[guards.<id>]` table in `jk-guards.toml` that enforces this letter on the self-hosted side. Parity (G51)
+     * counts the letter as jk-enforced when the table exists, and fails when the table is missing or unclaimed.
      */
     val ruleId: String? = null,
     /**
@@ -67,6 +66,11 @@ data class GuardSpec(
      * guard suite, so a letter that is *only* a guard test needs a guard-parity.txt entry saying so.
      */
     val guardTestId: String? = null,
+    /**
+     * For a letter with no jk side: why (Gradle-only task-graph state, or subsumed into the engine). Rendered in the
+     * table.
+     */
+    val jkSide: String? = null,
 ) {
     val id: String
         get() = letter?.let { "G$it" } ?: task

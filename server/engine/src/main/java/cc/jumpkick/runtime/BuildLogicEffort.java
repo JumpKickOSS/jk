@@ -17,12 +17,11 @@ import java.util.Set;
 /**
  * Prices a project's {@code .jk/} build-logic scripts for the ETA.
  *
- * <p>Build logic is the one part of a build jk cannot reason about: it is arbitrary user code, and
- * on this repo it is also the <em>largest single step</em> of a small build — the root
- * {@code after-build.kts} runs 44 house-rule scans and measures around 5 s, against a 7.8 s
- * leaf-module build. It was priced at nothing, because {@link TaskForecaster} classifies build-logic
- * steps as bookkeeping and so never lists them, which means they never reach the step pricer at all.
- * (The {@code BUILD_LOGIC_* -> TOKEN} arm in {@link EffortWeights} is unreachable for that reason.)
+ * <p>Build logic is the one part of a build jk cannot reason about: it is arbitrary user code, and a
+ * root script that walks the whole tree can be the largest single step of a small build. {@link
+ * TaskForecaster} classifies build-logic steps as bookkeeping and never lists them, so they never
+ * reach the step pricer; this class prices them from their own history instead. (The {@code
+ * BUILD_LOGIC_* -> TOKEN} arm in {@link EffortWeights} is unreachable for that reason.)
  *
  * <p><strong>Three rules.</strong>
  *

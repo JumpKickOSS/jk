@@ -6,9 +6,10 @@
 // which the action key (sources, manifests, lock) cannot see: a cached verdict on unchanged sources
 // would let `jk test -t A`, `-t B`, … fill a sandbox past its cap with every build a cache hit.
 //
-// A suffixed stem (`after-build-sweep` resolves to the `after-build` anchor), so this runs at the
-// same point as the house-rule gate without living inside it: `after-build.kts` checks rules, this
-// reclaims disk, and neither has to be read to understand the other.
+// A suffixed stem (`after-build-sweep` resolves to the `after-build` anchor), so the root carries
+// more than one script at the anchor: `after-build-dist.kts` lays out the ship tree, this reclaims
+// disk, and neither has to be read to understand the other. House rules are not scripts at all;
+// they are `jk-guards.toml` and the guard tests under `src/guard`.
 //
 // WHY THIS EXISTS. Every forked test JVM gets a sandbox product home and local m2 from
 // `TestEnv.forModule`, under this workspace's build output. Nothing bounds them: `CacheTier`'s

@@ -5,8 +5,8 @@
  * says so.
  *
  * The data lives in `curated-integration.txt` at the checkout root, not here, because both builds read it — this object
- * owns the parse and the budget, `.jk/after-build.kts` re-derives the same rules from the same file. Membership is a
- * duplicate execution policy layered over [TestTiers], never a tier of its own: every listed class is
+ * owns the parse and the budget, the `curated-integration` guard test re-derives the same rules from the same file.
+ * Membership is a duplicate execution policy layered over [TestTiers], never a tier of its own: every listed class is
  * `@Tag("integration")` and still runs in the nightly integration tier.
  */
 enum class CuratedSurface(val id: String, val what: String) {

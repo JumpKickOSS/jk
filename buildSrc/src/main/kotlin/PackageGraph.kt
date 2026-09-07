@@ -7,9 +7,9 @@ import java.io.File
  * (G66) and the cycle band (G67).
  *
  * <p>One scope definition on purpose. Two guards deriving "the production packages" separately is two things to drift,
- * and a rule whose corpus quietly differs from its sibling's reports two counts for one tree. The self-hosted gate in
- * `.jk/after-build.kts` cannot read `buildSrc`, so it carries a twin of this scope by hand; both sides name the tiers
- * and the one excluded tree explicitly so a reviewer can diff them.
+ * and a rule whose corpus quietly differs from its sibling's reports two counts for one tree. The jk side (the
+ * `one-module-per-package` and `package-cycles` rules in `jk-guards.toml`) cannot read `buildSrc`, so it names the same
+ * scope by hand; both sides name the tiers and the one excluded tree explicitly so a reviewer can diff them.
  */
 object PackageGraph {
 

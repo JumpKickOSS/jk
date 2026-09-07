@@ -863,4 +863,188 @@ final class ParityRules {
                         "Guards.kt names guardTestId `" + gid.group(1) + "` and no @Guard declares it");
         v.population(letters.size());
     }
+    // ---- G51 -------------------------------------------------------------------------------------
+
+    private static final String PARITY_EXCUSES = "guard-parity.txt";
+
+    /**
+     * One registry letter, merged over its entries (a letter may have one per side): whether any entry
+     * is a Gradle task, and whether any names a jk side.
+     */
+    private record Letter(int n, boolean gradle, boolean jkSide) {}
+
+    private static boolean gradleEntry(String block) {
+        Matcher o = Pattern.compile("gradleLetter = (true|false)").matcher(block);
+        if (o.find()) return Boolean.parseBoolean(o.group(1));
+        Matcher h = Pattern.compile("GuardHome\\.(\\w+)").matcher(block);
+        String home = h.find() ? h.group(1) : "";
+        return !home.equals("SELF_HOSTED") && !home.equals("TEST") && !home.equals("FOLDED") && !home.equals("NEVER");
+    }
+
+    private static List<Letter> letters(String kt) {
+        List<Integer> starts = new ArrayList<>();
+        Matcher s = Pattern.compile("spec\\(\\s*(\\d+),").matcher(kt);
+        while (s.find()) starts.add(s.start());
+        int end = kt.indexOf("private fun spec(");
+        if (end < 0) end = kt.length();
+        Map<Integer, boolean[]> byLetter = new TreeMap<>();
+        for (int i = 0; i < starts.size(); i++) {
+            String block = kt.substring(starts.get(i), i + 1 < starts.size() ? starts.get(i + 1) : end);
+            Matcher n = Pattern.compile("spec\\(\\s*(\\d+),").matcher(block);
+            if (!n.find()) continue;
+            boolean[] sides = byLetter.computeIfAbsent(Integer.parseInt(n.group(1)), k -> new boolean[2]);
+            if (gradleEntry(block)) sides[0] = true;
+            if (block.contains("ruleId = \"")
+                    || block.contains("engineCode = \"")
+                    || block.contains("guardTestId = \"")) sides[1] = true;
+        }
+        List<Letter> out = new ArrayList<>();
+        for (var e : byLetter.entrySet()) out.add(new Letter(e.getKey(), e.getValue()[0], e.getValue()[1]));
+        return out;
+    }
+
+    @Guard(
+            id = "guard-parity",
+            why =
+                    "the repo builds itself twice, so a house rule one build enforces and the other does not is enforced half the time; the registry says which side each letter lives on",
+            instead =
+                    "give the letter a jk side in Guards.kt (ruleId, engineCode or guardTestId), or record in guard-parity.txt why it is Gradle-only; drop an entry once the letter has both")
+    void guardParity(Text text, Violations v) {
+        String kt = HouseRules.owner(text, GUARDS_KT);
+        List<Letter> letters = letters(kt);
+        if (letters.size() < 60)
+            throw new IllegalStateException(
+                    "read " + letters.size() + " registry entries from Guards.kt; the parse broke");
+        Set<Integer> excused = new TreeSet<>();
+        List<String> excuseLines = text.lines(PARITY_EXCUSES);
+        for (String line : excuseLines) {
+            Matcher m = Pattern.compile("^G(\\d+)\\s").matcher(line);
+            if (m.find()) excused.add(Integer.parseInt(m.group(1)));
+        }
+        if (excused.isEmpty())
+            throw new IllegalStateException(
+                    PARITY_EXCUSES + " lists no letters, so this guard would pass over anything");
+        Set<Integer> seen = new TreeSet<>();
+        for (Letter l : letters) {
+            seen.add(l.n());
+            if (l.gradle() && !l.jkSide() && !excused.contains(l.n()))
+                v.add(
+                        new TextSite(GUARDS_KT, 0, "G" + l.n()),
+                        "G" + l.n() + " is enforced by Gradle only: name its jk side, or excuse it in "
+                                + PARITY_EXCUSES);
+            if (l.jkSide() && excused.contains(l.n()))
+                v.add(
+                        new TextSite(PARITY_EXCUSES, 0, "G" + l.n()),
+                        "G" + l.n()
+                                + " is excused as Gradle-only but has a jk side; drop the entry, parity is real now");
+        }
+        for (int n : excused)
+            if (!seen.contains(n))
+                v.add(new TextSite(PARITY_EXCUSES, 0, "G" + n), "G" + n + " is excused but is not a registry letter");
+        v.population(letters.size());
+    }
+
+    // ---- G72 -------------------------------------------------------------------------------------
+
+    private static String slug(String heading) {
+        StringBuilder sb = new StringBuilder();
+        for (char c : heading.replace("`", "").toLowerCase(Locale.ROOT).toCharArray())
+            if (Character.isLetterOrDigit(c) || c == ' ' || c == '-') sb.append(c);
+        return sb.toString().strip().replace(' ', '-');
+    }
+
+    @Guard(
+            id = "charter-parity",
+            why =
+                    "a cap the charter states and the build does not enforce is worse than no cap, because a reader trusts the table; the Contents list is a fact about the file",
+            instead =
+                    "make the Size table agree with [guards.file-size].cap in jk-guards.toml, and the Contents list with the headings, in the same commit")
+    void charterParity(Text text, Violations v) {
+        List<String> lines = text.lines(CHARTER);
+        Pattern row = Pattern.compile("^\\|([^|]*)\\|([^|]*)\\|([^|]*)\\|([^|]*)\\|");
+        Map<String, @Nullable Integer> docCaps = new LinkedHashMap<>();
+        Map<String, Integer> docLine = new LinkedHashMap<>();
+        boolean inTable = false;
+        for (int i = 0; i < lines.size(); i++) {
+            String line = lines.get(i).strip();
+            if (line.startsWith("| Language | Extensions |")) {
+                inTable = true;
+                continue;
+            }
+            if (inTable && !line.startsWith("|")) inTable = false;
+            if (!inTable || line.startsWith("|---")) continue;
+            Matcher m = row.matcher(line);
+            if (!m.find()) continue;
+            String hardCell = m.group(4).strip();
+            Integer hard = hardCell.equals("—") ? null : parseIntOrNull(hardCell.replace(",", ""));
+            Matcher ext = Pattern.compile("`\\.([a-z]+)`").matcher(m.group(2));
+            while (ext.find()) {
+                docCaps.put(ext.group(1), hard);
+                docLine.put(ext.group(1), i + 1);
+            }
+        }
+        if (docCaps.isEmpty())
+            v.add(
+                    new TextSite(CHARTER, 0, "Size table"),
+                    "the Size table was not found; it needs a `| Language | Extensions | Soft | Hard | Exception |` header and one backticked extension per language");
+        String rules = text(text, "jk-guards.toml");
+        Matcher cap = Pattern.compile(
+                        "\\[guards\\.file-size]\\n(?:(?!\\n\\[guards\\.).)*?\\ncap\\s*=\\s*\\{([^}]*)}", Pattern.DOTALL)
+                .matcher(rules);
+        if (!cap.find())
+            throw new IllegalStateException(
+                    "jk-guards.toml no longer declares [guards.file-size] with a cap table, so this guard has lost the caps it compares");
+        Map<String, Integer> enforced = new TreeMap<>();
+        Matcher e = Pattern.compile("(\\w+)\\s*=\\s*(\\d+)").matcher(cap.group(1));
+        while (e.find()) enforced.put(e.group(1), Integer.parseInt(e.group(2)));
+        if (enforced.isEmpty())
+            throw new IllegalStateException("[guards.file-size].cap names no language, so this guard compares nothing");
+        Set<String> exts = new TreeSet<>(docCaps.keySet());
+        exts.addAll(enforced.keySet());
+        for (String ext : exts) {
+            String doc = docCaps.containsKey(ext)
+                    ? String.valueOf(docCaps.get(ext) == null ? "exempt" : docCaps.get(ext))
+                    : "absent";
+            String rule = enforced.containsKey(ext) ? String.valueOf(enforced.get(ext)) : "exempt";
+            if (!doc.equals(rule))
+                v.add(
+                        new TextSite(CHARTER, docLine.getOrDefault(ext, 0), "." + ext),
+                        "." + ext + ": the charter says " + doc + ", [guards.file-size] enforces " + rule);
+        }
+        List<String> toc = new ArrayList<>();
+        int tocLine = 0;
+        List<String> headings = new ArrayList<>();
+        for (int i = 0; i < lines.size(); i++) {
+            Matcher t = Pattern.compile("^ *- \\[(.+)]\\(#([a-z0-9-]+)\\)$")
+                    .matcher(lines.get(i).stripTrailing());
+            if (t.find()) {
+                toc.add(t.group(2));
+                if (tocLine == 0) tocLine = i + 1;
+            }
+            Matcher h = Pattern.compile("^(##|###) (.+)$").matcher(lines.get(i));
+            if (h.find() && !h.group(2).equals("Contents")) headings.add(slug(h.group(2)));
+        }
+        boolean drift = false;
+        for (String h : headings)
+            if (!toc.contains(h)) {
+                drift = true;
+                v.add(new TextSite(CHARTER, tocLine, "#" + h), "missing from Contents: #" + h);
+            }
+        for (String t : toc)
+            if (!headings.contains(t)) {
+                drift = true;
+                v.add(new TextSite(CHARTER, tocLine, "#" + t), "in Contents, no such heading: #" + t);
+            }
+        if (!drift && !toc.equals(headings))
+            v.add(new TextSite(CHARTER, tocLine, "Contents"), "Contents lists every heading but in a different order");
+        v.population(exts.size() + headings.size());
+    }
+
+    private static @Nullable Integer parseIntOrNull(String s) {
+        try {
+            return Integer.parseInt(s.strip());
+        } catch (NumberFormatException nan) {
+            return null;
+        }
+    }
 }

@@ -56,6 +56,14 @@ class StarterPacksTest {
                     .as("a pack that bans something proves it with fixtures")
                     .isNotEmpty();
         GuardFixtures.Result r = GuardFixtures.run(root, new Cas(tmp.resolve("store")));
+        if (r.verdicts().stream().anyMatch(v -> !v.outcome().equals("bites"))) {
+            System.out.println("starter-packs: pack=" + pack + " java.home=" + System.getProperty("java.home"));
+            System.out.println(r.text());
+            try (var walk = Files.walk(tmp)) {
+                walk.filter(Files::isRegularFile)
+                        .forEach(f -> System.out.println("starter-packs: file " + tmp.relativize(f)));
+            }
+        }
         assertThat(r.loadErrors()).isEmpty();
         assertThat(r.verdicts()).as(r.text()).allSatisfy(v -> assertThat(v.outcome())
                 .as(v.id() + ": " + v.note())

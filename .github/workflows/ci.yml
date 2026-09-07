@@ -155,25 +155,25 @@ jobs:
           path: target/jk-guards.sarif
           if-no-files-found: ignore
 
-      # The gate reports every broken rule in one message, under a banner per guard. Lift those
-      # banners into annotations so a parity failure is attributed to the guard that owns it
-      # instead of being one more line of build output.
-      - name: Attribute house-rule gate failures
+      # One annotation per broken rule, from the machine view the lanes write after each run: a
+      # failure is attributed to the rule that owns it instead of being one more line of output.
+      - name: Attribute house-rule failures
         if: failure()
         run: |
-          log="$RUNNER_TEMP/self-host-build.log"
-          [ -f "$log" ] || exit 0
-          found=0
-          while read -r guard; do
-            [ -z "$guard" ] && continue
-            found=1
-            echo "::error title=$guard::the self-host house-rule gate failed this guard; its full message is in the build step's log"
-          done <<EOF
-          $(grep -F '────────' "$log" | tr -d '─' | sed 's/^ *//; s/ *$//')
-          EOF
-          if [ "$found" = 0 ]; then
-            echo "::notice::the self-host build failed before or outside the house-rule gate"
+          report=target/jk-guards.jsonl
+          if [ ! -f "$report" ]; then
+            echo "::notice::the self-host build failed before the house-rule lanes wrote a report"
+            exit 0
           fi
+          codes=$(jq -r 'select(.baseline == "new") | .code' "$report" | sort -u)
+          if [ -z "$codes" ]; then
+            echo "::notice::the self-host build failed outside the house rules (no new violation in $report)"
+            exit 0
+          fi
+          for code in $codes; do
+            n=$(jq -r --arg c "$code" 'select(.code == $c and .baseline == "new") | .file' "$report" | wc -l)
+            echo "::error title=$code::$n new house-rule violation(s); jk guard explain $code prints the rule, the jk-guards-sarif artifact has every site"
+          done
 
       - name: Self-host fast test tier
         run: jk test --no-ansi
