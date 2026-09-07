@@ -106,8 +106,8 @@ Long-form dogfood (Gradle + pure-jk in this same repo): **[docs/contributors/sel
 Bootstrap helper: `./scripts/bootstrap-from-gradle.sh`.
 
 Catalog short names resolve through the **system catalog** (downloaded global registry +
-bundled offline floor) plus optional workspace-root **`jk-libs.toml`**. There is no host-local
-catalog file and no `catalog =` pin in `jk.toml`.
+bundled offline floor); jk's own manifests use registry names only and the tree carries no
+`jk-libs.toml`. There is no host-local catalog file and no `catalog =` pin in `jk.toml`.
 
 The repo is a jk **workspace** (root `jk.toml` + per-module manifests under `shared/`,
 `server/`, `clients/`, and all first-party `plugins/*`). `clients/web` is a resources module;

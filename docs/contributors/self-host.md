@@ -8,7 +8,7 @@ This repository is a **dual-build tree**: the same product sources build under *
 | System | Config | Typical output | Role today |
 |--------|--------|----------------|------------|
 | **Gradle** | `gradlew`, `build.gradle.kts`, `buildSrc/` | `*/build/` | Bootstrap `jk`, unit/integration CI, parity oracle |
-| **JumpKick** | `jk.toml`, module manifests, `jk-libs.toml`, `jk-lock.toml` | `target/` | Self-host compile/package/test/install, worker publish |
+| **JumpKick** | `jk.toml`, module manifests, `jk-lock.toml` | `target/` | Self-host compile/package/test/install, worker publish |
 
 Do not treat dual-build as temporary scaffolding you must hide: both layouts live in this
 repo until a deliberate Gradle cut-over (backlog below).
@@ -138,8 +138,8 @@ see [AGENTS.md](../../AGENTS.md) and [test-suite-tiers.md](test-suite-tiers.md))
   Parallel Gradle work needs a **git worktree**, not a second tool name.
 - **Optional pure-jk worktree** — still fine for isolation (`git worktree add …`), but not
   required for self-host. Prefer dogfooding in the primary clone after bootstrap.
-- **Catalog pins** — workspace short names used by self-host manifests are pinned in
-  root **`jk-libs.toml`** (name → `group:artifact`; versions stay in manifests / lock).
+- **Catalog short names** — every short name a self-host manifest uses resolves from the
+  downloaded global registry (`jk library update`); the tree carries no `jk-libs.toml`.
 
 ## Default repositories
 

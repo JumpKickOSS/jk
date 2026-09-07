@@ -98,7 +98,7 @@ class SelfHostingTomlTest {
     void short_name_manifests_do_not_use_removed_catalog_pin() throws Exception {
         // catalog = … and host-local libs.toml are gone; short names resolve through the layered
         // catalog (project jk-libs.toml → global → bundled). Self-host manifests must not
-        // set a per-manifest pin — the workspace-root jk-libs.toml pins them instead.
+        // set a per-manifest pin — the registry and the bundled floor resolve them.
         for (String rel : List.of(
                 "jk.toml",
                 "clients/cli/jk.toml",
@@ -113,12 +113,11 @@ class SelfHostingTomlTest {
     }
 
     /**
-     * The workspace-root jk-libs.toml must pin every catalog-resolved short name any workspace
-     * manifest uses, each to the bundled coordinate, so a registry edit cannot silently
-     * repoint them. The layered chain must serve those pins from the project layer.
+     * Every catalog-resolved short name a workspace manifest uses exists in the bundled offline
+     * floor, so jk's own tree builds with no registry download and no project catalog file.
      */
     @Test
-    void catalog_pins_cover_every_self_host_short_name() throws Exception {
+    void bundled_catalog_covers_every_self_host_short_name() throws Exception {
         JkBuild root = JkBuildParser.parseLocal(REPO.resolve("jk.toml"));
         List<Path> manifests = new ArrayList<>();
         manifests.add(REPO.resolve("jk.toml"));
@@ -146,27 +145,15 @@ class SelfHostingTomlTest {
         assertThat(shortNames).as("self-host manifests use catalog short names").isNotEmpty();
 
         LibraryCatalog bundled = LibraryCatalog.bundled();
-        LibraryCatalog pins = LibraryCatalog.parse(Files.readString(LibraryCatalog.projectFile(REPO)));
-        LibraryCatalog chain = LibraryCatalog.forProject(REPO);
         for (String name : shortNames) {
-            var expected = bundled.lookup(name);
-            assertThat(expected)
+            assertThat(bundled.lookup(name))
                     .as("%s must exist in the bundled catalog", name)
                     .isPresent();
-            assertThat(pins.lookup(name))
-                    .as("jk-libs.toml must pin %s (add it with the bundled GA)", name)
-                    .contains(expected.get());
-            assertThat(chain.lookup(name))
-                    .as("layered chain must serve the pinned GA for %s", name)
-                    .contains(expected.get());
-            assertThat(chain.source(name))
-                    .as("%s must resolve from the project layer, not a mutable registry", name)
-                    .hasValueSatisfying(s -> assertThat(s.layer()).isEqualTo("project"));
         }
     }
 
     /**
-     *  — the re-lock-in-the-same-commit guard, automated. Any jk.toml / jk-libs.toml edit
+     * The re-lock-in-the-same-commit guard, automated. Any jk.toml edit
      * must land with a re-stamped jk-lock.toml: a stale stamp costs every fresh checkout an ~18s
      * re-resolve, and staleness detection is what stands between an edited catalog pin and a
      * silently wrong resolution. Runs in CI via the plain unit tier.

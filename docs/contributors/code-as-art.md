@@ -1005,7 +1005,7 @@ by id, kind and why. This block is a `generated` guard's rendering
 | no-glued-inline-tag | text | a glued inline tag renders as garbage and blocks the shortener for the whole file |
 | no-historical-narration | text | historical narration describes a tree that no longer exists |
 | no-link-following-delete | text | a walk that follows links can delete the install behind a stable JDK pointer |
-| no-retired-code-markers | text | a deprecated alias is a dual path nobody has users to protect |
+| no-retired-code-markers | text | a deprecated alias is a dual path with no users to protect |
 | no-ticket-ids | text | a ticket id names a tracker the reader does not have; a Giter8 template writes it into a user's project |
 | null-marked-packages | annotate | NullAway checks a package only where it says @NullMarked; an unmarked package is one where every nullness finding is off |
 | one-digest-surface | forbid | one digest surface: buffer size, exception policy and hex spelling decided once |
