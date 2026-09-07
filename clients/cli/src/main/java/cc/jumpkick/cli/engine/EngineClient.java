@@ -13,6 +13,7 @@ import cc.jumpkick.wire.protocol.CatalogReadAck;
 import cc.jumpkick.wire.protocol.DenyReport;
 import cc.jumpkick.wire.protocol.ExecPlan;
 import cc.jumpkick.wire.protocol.GeneratedFiles;
+import cc.jumpkick.wire.protocol.GuardCommitMsgAck;
 import cc.jumpkick.wire.protocol.GuardExplainAck;
 import cc.jumpkick.wire.protocol.GuardFreezeAck;
 import cc.jumpkick.wire.protocol.GuardTestAck;
@@ -241,6 +242,12 @@ public final class EngineClient {
     /** {@code jk guard test}: every fixture-bearing rule and guard test proven to bite; one sync round trip. */
     public static GuardTestAck guardTest(EnginePaths.Paths paths, Path dir) throws IOException {
         return EngineReads.guardTest(paths, dir);
+    }
+
+    /** {@code jk guard commit-msg}: the commit rules over one message; one sync round trip, never a build. */
+    public static GuardCommitMsgAck guardCommitMsg(EnginePaths.Paths paths, Path dir, String message)
+            throws IOException {
+        return EngineReads.guardCommitMsg(paths, dir, message);
     }
 
     /** {@code jk guard freeze}: the engine grows (or retires) one rule's baseline; one sync round trip. */

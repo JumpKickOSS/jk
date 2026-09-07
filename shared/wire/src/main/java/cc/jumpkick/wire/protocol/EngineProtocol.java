@@ -405,6 +405,15 @@ public final class EngineProtocol {
     public static final String GUARD_TEST_ACK = "guard-test-ack";
 
     /**
+     * Client → server: {@code jk guard commit-msg} — judge one commit message against the workspace's
+     * {@code commit} rules; one {@link #GUARD_COMMIT_MSG_ACK}.
+     */
+    public static final String GUARD_COMMIT_MSG_REQUEST = "guard-commit-msg-request";
+
+    /** Server → client, terminal for {@link #GUARD_COMMIT_MSG_REQUEST}. */
+    public static final String GUARD_COMMIT_MSG_ACK = "guard-commit-msg-ack";
+
+    /**
      * Client → server: {@code jk guard explain} — one rule's card, the catalog, or a kind's schema;
      * an inline read that never plans a build. One {@link #GUARD_EXPLAIN_ACK}.
      */

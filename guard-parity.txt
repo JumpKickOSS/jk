@@ -55,3 +55,6 @@ G75 ship-layout-installer-jk is G62's installer-vs-jk-dist pair as a `parity` ru
 G75 checkShipLayoutAgrees still compares all three anchors inside G62. 2026-09-07.
 G76 guard-registry-doc renders jk-guards.toml's own registry into code-as-art.md — a `generated`
 G76 rule about the declarative tier, which the Gradle build does not read. 2026-09-07.
+G80 no-agent-trailers is a `commit` rule: it runs in the commit-msg hook, not in a build, so neither
+G80 build enforces it — the Gradle side has no commit boundary; CI's check-no-agent-attribution.sh
+G80 scans the history instead. 2026-09-07.

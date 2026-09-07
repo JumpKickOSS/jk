@@ -955,6 +955,7 @@ Letters are allocated when a guard lands and are never reused.
 | G77 | `checkStageDocs` (root project) + guard test `stage-docs` | a doc publishing a stage list that is not `BuildStage`'s wire values in pipeline order — `machine-output.md` is a contract consumers integrate against | generated list, read off the enum | guard test `stage-docs` |
 | G78 | `checkDocLinks` (root project) + guard test `doc-links-resolve` | a relative link under `docs/` that resolves to nothing — code spans and fenced blocks are prose, not navigation | ban | guard test `doc-links-resolve` |
 | G79 | `checkGuardRegistry` (root project) + guard test `guard-letters-registry` | the guard registry table in `code-as-art.md` not listing exactly the letters `Guards.kt` declares, or a `ruleId` / `guardTestId` naming a rule that does not exist | generated table (Gradle renders the cells; jk checks the letters and the ids) | guard test `guard-letters-registry` |
+| G80 | `no-agent-trailers` (jk-guards.toml, `commit`) + `scripts/check-no-agent-attribution.sh` (CI) | a commit message carrying a tool's co-author, generator or assistant trailer — refused at the commit boundary by the `commit-msg` hook `jk guard hooks install` writes | commit rule, forbid-trailers globs; CI's history scan is the other half | `no-agent-trailers` |
 <!-- guards:end -->
 
 `checkCliRuntimeClasspath` and `checkCliNoParseTypes` predate the letters.
@@ -998,6 +999,7 @@ by id, kind and why. This block is a `generated` guard's rendering
 | install-tests-redirect-m2 | text | an install test without --m2-dir publishes into the developer's real ~/.m2 |
 | jdk-removal-confined | forbid | an ordinary build once deleted the JDK it was running on, twice in one afternoon |
 | manifest-names | vocabulary | a file jk owns is named once, in ManifestPaths |
+| no-agent-trailers | commit | attribution trailers are noise in blame |
 | no-fqcn | metric | a package-qualified reference in a body is a name the formatter could not shorten, or a collision that must say so |
 | no-glued-inline-tag | text | a glued inline tag renders as garbage and blocks the shortener for the whole file |
 | no-historical-narration | text | historical narration describes a tree that no longer exists |

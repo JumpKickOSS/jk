@@ -710,3 +710,12 @@ why      = "the registry drifted twice by hand; the third reconciliation is not 
 kind = "output"
 pom  = { no-unspecified = true, groups = ["cc.jumpkick"] }
 why  = "a POM with an unspecified coordinate is an artifact nobody can depend on"
+
+# G80. Commits read as ordinary human contributions: a tool's co-author or generator trailer is
+# noise in blame. The commit-msg hook (`jk guard hooks install`) refuses one at commit time; CI's
+# history scan is the other half.
+[guards.no-agent-trailers]
+kind            = "commit"
+forbid-trailers = ["Co-Authored-By: *noreply@*", "Generated-By: *", "Assisted-By: *"]
+instead         = "author the commit as a human contributor; drop the trailer"
+why             = "attribution trailers are noise in blame"

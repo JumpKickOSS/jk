@@ -14,10 +14,12 @@ import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.wire.EnginePaths;
+import cc.jumpkick.wire.protocol.GuardCommitMsgAck;
 import cc.jumpkick.wire.protocol.GuardExplainAck;
 import cc.jumpkick.wire.protocol.GuardFreezeAck;
 import cc.jumpkick.wire.protocol.GuardTestAck;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -52,7 +54,9 @@ public final class GuardCommand implements CliCommand {
                 Arity.ZERO_OR_MORE,
                 "explain [<rule-id>] prints a rule's card or the catalog;\n"
                         + "freeze <rule-id> --reason \"…\" accepts its new violations;\n"
-                        + "test proves every fixture-bearing rule bites."));
+                        + "test proves every fixture-bearing rule bites;\n"
+                        + "commit-msg <file> judges a commit message;\n"
+                        + "hooks [install] prints or installs the git hooks."));
     }
 
     @Override
@@ -61,6 +65,7 @@ public final class GuardCommand implements CliCommand {
         opts.add(Opt.value("<text>", "freeze: why these sites are accepted", "--reason"));
         opts.add(Opt.flag("freeze: drop a removed rule's entries", "--retire"));
         opts.add(Opt.value("<kind>", "explain: a kind's keys and example", "--schema"));
+        opts.add(Opt.flag("hooks install: overwrite hooks", "--replace"));
         return opts;
     }
 
@@ -79,6 +84,12 @@ public final class GuardCommand implements CliCommand {
         if (!positionals.isEmpty() && "test".equals(positionals.get(0))) {
             return test(dir);
         }
+        if (!positionals.isEmpty() && "commit-msg".equals(positionals.get(0))) {
+            return commitMsg(dir, positionals);
+        }
+        if (!positionals.isEmpty() && "hooks".equals(positionals.get(0))) {
+            return hooks(in, dir, positionals);
+        }
         if (in.isSet("schema") || (!positionals.isEmpty() && "explain".equals(positionals.get(0)))) {
             return explain(in, global, dir, positionals);
         }
@@ -86,7 +97,8 @@ public final class GuardCommand implements CliCommand {
             CommandWedge.printFail(
                     "Guard",
                     "unknown subcommand `" + positionals.get(0)
-                            + "`; jk guard [explain [<id>] [--schema <kind>] | freeze <id> --reason \"…\" [--retire] | test]");
+                            + "`; jk guard [explain [<id>] [--schema <kind>] | freeze <id> --reason \"…\" [--retire] | test"
+                            + " | commit-msg <file> | hooks [install] [--replace]]");
             return Exit.USAGE;
         }
         // Every lane, cache-aware: the build with tests skipped and the gate on.
@@ -155,6 +167,69 @@ public final class GuardCommand implements CliCommand {
         return ack.failures() == 0 ? 0 : 1;
     }
 
+    /**
+     * {@code jk guard commit-msg <file>}: the {@code commit-msg} hook's entry point. The message is
+     * read here and judged by the engine against the {@code commit} rules; non-zero refuses the
+     * commit with each rule's {@code instead}.
+     */
+    private int commitMsg(Path dir, List<String> positionals) {
+        if (positionals.size() < 2) {
+            CommandWedge.printFail("Guard", "commit-msg needs the message file: jk guard commit-msg <file>");
+            return Exit.USAGE;
+        }
+        Path file = dir.resolve(positionals.get(1));
+        String message;
+        try {
+            message = Files.readString(file, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            CommandWedge.printFail("Guard", "cannot read the commit message at " + file + ": " + e.getMessage());
+            return Exit.USAGE;
+        }
+        GuardCommitMsgAck ack;
+        try {
+            ack = EngineClient.guardCommitMsg(EnginePaths.current(), dir, message);
+        } catch (IOException e) {
+            CommandWedge.printFail("Guard", e.getMessage());
+            return Exit.SOFTWARE;
+        }
+        if (ack.error() != null) {
+            CommandWedge.printFail("Guard", ack.error());
+            return 1;
+        }
+        CliOutput.out(ack.text().stripTrailing());
+        return ack.failures() == 0 ? 0 : 1;
+    }
+
+    /**
+     * {@code jk guard hooks} prints the {@code commit-msg} and {@code pre-commit} hooks; {@code hooks
+     * install} writes them into the repository's hooks directory and the protected-file list into
+     * {@code target/}. An existing hook with other content is kept unless {@code --replace}.
+     */
+    private int hooks(Invocation in, Path dir, List<String> positionals) {
+        if (positionals.size() == 1) {
+            CliOutput.out(GuardHooks.render());
+            return 0;
+        }
+        if (!"install".equals(positionals.get(1))) {
+            CommandWedge.printFail(
+                    "Guard", "hooks takes no argument or `install`: jk guard hooks [install] [--replace]");
+            return Exit.USAGE;
+        }
+        GuardHooks.Installed done;
+        try {
+            done = GuardHooks.install(dir, in.isSet("replace"));
+        } catch (IOException e) {
+            CommandWedge.printFail("Guard", e.getMessage());
+            return Exit.CONFIG;
+        }
+        for (String w : done.written())
+            CliOutput.out("jk guard: installed " + done.hooksDir().resolve(w));
+        for (String r : done.refused()) CliOutput.out("jk guard: kept " + r);
+        CliOutput.out("jk guard: protected files listed in " + done.protectedList()
+                + " (advisory: a hook is local state; the engine's lanes and CI enforce)");
+        return done.refused().isEmpty() ? 0 : 1;
+    }
+
     private int freeze(Invocation in, Path dir, List<String> positionals) throws IOException {
         boolean retire = in.isSet("retire");
         String reason = in.value("reason").orElse(null);
@@ -180,6 +255,7 @@ public final class GuardCommand implements CliCommand {
             CommandWedge.printFail("Guard", ack.error());
             return 1;
         }
+        GuardHooks.markFreeze(dir);
         if (retire) {
             CliOutput.out("jk guard: retired " + id + " — dropped " + ack.accepted() + " baseline "
                     + (ack.accepted() == 1 ? "entry" : "entries") + "; " + ack.total() + " remain");

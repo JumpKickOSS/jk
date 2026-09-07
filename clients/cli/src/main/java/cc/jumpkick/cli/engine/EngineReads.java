@@ -20,6 +20,8 @@ import cc.jumpkick.wire.protocol.ForecastRequest;
 import cc.jumpkick.wire.protocol.FreshenCatalogRequest;
 import cc.jumpkick.wire.protocol.GenerateRequest;
 import cc.jumpkick.wire.protocol.GeneratedFiles;
+import cc.jumpkick.wire.protocol.GuardCommitMsgAck;
+import cc.jumpkick.wire.protocol.GuardCommitMsgRequest;
 import cc.jumpkick.wire.protocol.GuardExplainAck;
 import cc.jumpkick.wire.protocol.GuardExplainRequest;
 import cc.jumpkick.wire.protocol.GuardFreezeAck;
@@ -364,6 +366,16 @@ final class EngineReads {
                 EngineProtocol.GUARD_TEST_ACK,
                 "guard test",
                 GuardTestAck::decode);
+    }
+
+    /** {@code jk guard commit-msg}: one message against the commit rules — an inline read. */
+    static GuardCommitMsgAck guardCommitMsg(EnginePaths.Paths paths, Path dir, String message) throws IOException {
+        return request(
+                paths,
+                new GuardCommitMsgRequest(dir.toString(), message).encode(),
+                EngineProtocol.GUARD_COMMIT_MSG_ACK,
+                "guard commit-msg",
+                GuardCommitMsgAck::decode);
     }
 
     /** {@code jk guard explain}: one card, the catalog, or a kind's schema — an inline read. */

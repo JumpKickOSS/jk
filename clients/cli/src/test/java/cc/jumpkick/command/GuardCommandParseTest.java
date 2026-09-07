@@ -45,4 +45,14 @@ class GuardCommandParseTest {
     void test_is_a_bare_positional() throws Exception {
         assertThat(parse("test").positionals()).containsExactly("test");
     }
+
+    @Test
+    void commit_msg_takes_the_file_and_hooks_takes_install_with_replace() throws Exception {
+        assertThat(parse("commit-msg", ".git/COMMIT_EDITMSG").positionals())
+                .containsExactly("commit-msg", ".git/COMMIT_EDITMSG");
+        assertThat(parse("hooks").positionals()).containsExactly("hooks");
+        Invocation install = parse("hooks", "install", "--replace");
+        assertThat(install.positionals()).containsExactly("hooks", "install");
+        assertThat(install.isSet("replace")).isTrue();
+    }
 }

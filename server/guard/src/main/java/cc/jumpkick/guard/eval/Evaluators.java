@@ -37,6 +37,10 @@ public final class Evaluators {
         BY_KIND.put(Kind.PARITY, new ParityEvaluator());
         BY_KIND.put(Kind.GENERATED, new GeneratedEvaluator());
         BY_KIND.put(Kind.OUTPUT, new OutputEvaluator());
+        // A commit rule runs in no lane: the commit-msg hook judges one message at commit time.
+        BY_KIND.put(
+                Kind.COMMIT,
+                (rule, ctx) -> Evaluation.notEvaluated("commit rules run at commit time: jk guard commit-msg <file>"));
     }
 
     /** Test seam: drop every registration and reinstall the shipped evaluators. */

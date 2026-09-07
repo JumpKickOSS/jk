@@ -100,6 +100,22 @@ Catalog prompts include **`fix-failing-build`**. Full tool table: [MCP](mcp.md).
 | Import Maven/Gradle | `jk import`, or MCP `jk_import` |
 | Publish | **CLI only** for real uploads. MCP `jk_publish` / `jk_run kind=publish` is always a **dry-run** |
 
+## Hooks and protected files
+
+`jk guard hooks install` writes two git hooks into the repository's hooks directory (the
+common git dir, so worktrees share them):
+
+- **`commit-msg`** runs `jk guard commit-msg <file>`: the project's `commit` rules judge the
+  message (forbidden trailers, required or banned patterns) and a violation refuses the commit
+  with the rule's `Instead`.
+- **`pre-commit`** protects the guard files: a staged `jk-guards-baseline.toml` is refused unless
+  `jk guard freeze` produced it, and a staged line shaped like a guard suppression comment is
+  refused — there is no suppression syntax, only `allow` entries with a reason.
+
+`jk guard hooks` prints the scripts. `install` also writes `target/jk-guards.protected`, the list
+of files an agent must not edit by hand, for harnesses that read one. The hooks are advisory:
+`--no-verify` skips them, and the engine's guard lanes plus CI remain the enforcement.
+
 ## Config for CI / headless agents
 
 ```bash

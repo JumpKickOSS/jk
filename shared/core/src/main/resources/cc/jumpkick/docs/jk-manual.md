@@ -270,7 +270,7 @@ Need the live event stream? `jk test --output json` or `jk results --details`.
 
 A project may carry **`jk-guards.toml`**: declarative rules the build enforces — banned calls, required
 annotations, layer edges, text patterns, size caps. They run inside `jk build` as `guard` steps
-(module, model, tree lanes) and `jk guard` runs every lane now, tests skipped. No rule file, no cost.
+and `jk guard` runs every lane now, tests skipped. No rule file, no cost.
 
 A guard failure looks like this in `target/jk-results.md` / `jk_diagnostics`:
 
@@ -286,21 +286,21 @@ GUARD one-digest-surface  violations
 
 A guard *test* (`@Guard`, `src/guard`) fails the same way.
 **A guard failure's `code` is a rule id. Fix per `Instead`. To exempt, stop and ask the user to add an
-`allow` entry with a reason — never edit the baseline, never add a comment.** Read the catalog
-(`jk guard explain`, MCP `jk://guards`) before large edits.
+`allow` entry with a reason — never edit the baseline, never add a comment.** The catalog is
+`jk guard explain` (MCP `jk://guards`).
 
-The loop: read the `code` → `jk guard explain <id>` (why, instead, source line, last outcome) → change
-the *site* the way `Instead` says → `jk format` → rebuild (`jk build`, or MCP `jk_run kind=guard`).
+The loop: read the `code` → `jk guard explain <id>` → change the *site* the way `Instead` says →
+`jk format` → rebuild (`jk build`, or MCP `jk_run kind=guard`).
 
 Stop and ask the user when:
 - the fix is an exemption (`allow` needs a human reason), or a rule looks wrong;
 - the message says **thrash** or names `jk guard freeze <id> --reason "…"` — accepting existing
   violations into `jk-guards-baseline.toml` is the user's decision;
-- a rule is `blind`, `owner-missing`, `stale-allow`, `no-bite` or `scanner-failed`: the rule, not the
-  tree, is what needs attention.
+- a rule is `blind`, `owner-missing`, `stale-allow`, `no-bite` or `scanner-failed`: the rule needs
+  attention, not the tree.
 
-Never: edit `jk-guards-baseline.toml` by hand; add a suppression comment or annotation; pass `--force`
-to get past a red guard; delete a rule to make a build green.
+Never: hand-edit `jk-guards-baseline.toml`; add a suppression comment; pass `--force` past a red
+guard; delete a rule to go green.
 
 Authoring a rule is three facts — the kind, the thing banned or required, the sanctioned alternative:
 
@@ -312,6 +312,7 @@ jk guard explain --schema guard-test  # the @Guard skeleton for what TOML cannot
 jk guard                            # every lane now; red on any violation
 jk guard test                       # prove fixtures: Bad* fires, Ok* is quiet
 jk guard freeze <id> --reason "…"   # accept a rule's current sites (user-approved); --retire drops a removed rule
+jk guard hooks install              # git hooks: commit rules refuse a message; pre-commit protects the baseline
 ```
 
 Every rule needs `why`; `forbid`/`text`/`vocabulary` need `instead`; a rule that cannot fire anywhere

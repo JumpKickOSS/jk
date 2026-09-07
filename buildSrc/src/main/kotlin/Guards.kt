@@ -880,6 +880,19 @@ object Guards {
                 guardTestId = "guard-letters-registry",
             ),
             spec(
+                80,
+                "no-agent-trailers",
+                "a commit message carrying a tool's co-author, generator or assistant trailer — refused at the commit boundary by the `commit-msg` hook `jk guard hooks install` writes",
+                "commit rule, forbid-trailers globs; CI's history scan is the other half",
+                GuardHome.JK_ONLY,
+                tableTask =
+                    "`no-agent-trailers` (jk-guards.toml, `commit`) + `scripts/check-no-agent-attribution.sh` (CI)",
+                inFastGate = false,
+                gradleLetter = false,
+                attach = emptySet(),
+                ruleId = "no-agent-trailers",
+            ),
+            spec(
                 task = "checkCliNoParseTypes",
                 rule = "CLI main names parser or plugin-schema types",
                 form = "ban",
