@@ -3,6 +3,7 @@ package cc.jumpkick.guard.eval;
 
 import cc.jumpkick.guard.baseline.Observation;
 import cc.jumpkick.guard.facts.ClassFacts;
+import cc.jumpkick.guard.facts.FactsIndex;
 import cc.jumpkick.guard.facts.MethodFacts;
 import cc.jumpkick.guard.rules.Allow;
 import cc.jumpkick.guard.rules.Rule;
@@ -302,16 +303,30 @@ final class MetricEvaluator implements Evaluator {
                 }
             }
         }
-        return finish(rule, units, out, allowUsed);
+        return finish(rule, units, out, allowUsed, ctx.facts(), ctx.module());
     }
 
     // ---- shared -------------------------------------------------------------------------------
 
     private static Evaluation finish(Rule rule, long units, List<Observation> out, Map<Allow, Boolean> allowUsed) {
+        return finish(rule, units, out, allowUsed, null, "");
+    }
+
+    /** Facts measures run per module: an allow naming another module's class is not stale here. */
+    private static Evaluation finish(
+            Rule rule,
+            long units,
+            List<Observation> out,
+            Map<Allow, Boolean> allowUsed,
+            @Nullable FactsIndex facts,
+            String module) {
         Map<String, Long> population = Map.of("units", units);
         List<String> stale = new ArrayList<>();
-        for (var e : allowUsed.entrySet())
-            if (!e.getValue()) stale.add(e.getKey().in());
+        for (var e : allowUsed.entrySet()) {
+            if (e.getValue()) continue;
+            if (facts != null && !ForbidEvaluator.appliesHere(e.getKey(), facts, module)) continue;
+            stale.add(e.getKey().in());
+        }
         if (!stale.isEmpty() && units > 0) {
             return new Evaluation(
                     Outcome.STALE_ALLOW, population, out, "allow entries matched nothing: " + String.join(", ", stale));

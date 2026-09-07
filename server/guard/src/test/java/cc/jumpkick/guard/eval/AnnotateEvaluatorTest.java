@@ -176,9 +176,19 @@ class AnnotateEvaluatorTest {
         assertThat(allowed.outcome()).isEqualTo(Outcome.CLEAN);
         Evaluation stale = run(
                 dir,
+                "forbid = \"java.lang.Deprecated\"\non = \"class\"\n[[guards.r.allow]]\nin = \"" + FIXTURE
+                        + ".Tier\"\nreason = \"gone\"\n",
+                idx);
+        assertThat(stale.outcome())
+                .as("Tier is here and carries no @Deprecated")
+                .isEqualTo(Outcome.STALE_ALLOW);
+        Evaluation elsewhere = run(
+                dir,
                 "forbid = \"java.lang.Deprecated\"\non = \"class\"\n[[guards.r.allow]]\nin = \"com.acme.**\"\nreason = \"gone\"\n",
                 idx);
-        assertThat(stale.outcome()).isEqualTo(Outcome.STALE_ALLOW);
+        assertThat(elsewhere.outcome())
+                .as("another module's exemption is not stale here")
+                .isEqualTo(Outcome.CLEAN);
         Evaluation bad = run(dir, tagged + "matching = { colour = \"red\" }\n", idx);
         assertThat(bad.outcome()).isEqualTo(Outcome.SCANNER_FAILED);
         assertThat(bad.note()).contains("unknown predicate `colour`");

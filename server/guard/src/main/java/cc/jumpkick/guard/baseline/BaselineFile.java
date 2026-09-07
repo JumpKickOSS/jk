@@ -51,12 +51,14 @@ public final class BaselineFile {
         for (String id : toml.keySet()) {
             TomlTable t = toml.getTable(id);
             if (t == null) throw new IOException("baseline: `" + id + "` is not a rule table");
-            Map<String, Long> population = new TreeMap<>();
+            Map<String, Map<String, Long>> populations = new TreeMap<>();
             TomlTable pop = t.getTable("population");
-            if (pop != null) {
-                for (String unit : pop.keySet()) {
-                    Long n = pop.getLong(unit);
-                    if (n != null) population.put(unit, n);
+            if (pop != null) populations.put("", counts(pop));
+            TomlTable lanes = t.getTable("populations");
+            if (lanes != null) {
+                for (String lane : lanes.keySet()) {
+                    TomlTable p = lanes.getTable(List.of(lane));
+                    if (p != null) populations.put(lane, counts(p));
                 }
             }
             List<Entry> entries = new ArrayList<>();
@@ -66,22 +68,32 @@ public final class BaselineFile {
                     TomlTable e = arr.getTable(i);
                     String reason = e.isString("reason") ? e.getString("reason") : "";
                     if (reason == null) reason = "";
+                    String in = e.isString("in") ? String.valueOf(e.getString("in")) : "";
                     if (e.isString("at")) {
-                        entries.add(new Entry.Site(String.valueOf(e.getString("at")), reason));
+                        entries.add(new Entry.Site(String.valueOf(e.getString("at")), reason, in));
                     } else if (e.isString("unit")) {
                         double v = e.isDouble("value")
                                 ? valueOf(e.getDouble("value"))
                                 : e.isLong("value") ? valueOf(e.getLong("value")) : 0;
-                        entries.add(new Entry.Metric(String.valueOf(e.getString("unit")), v, reason));
+                        entries.add(new Entry.Metric(String.valueOf(e.getString("unit")), v, reason, in));
                     } else {
                         throw new IOException(
                                 "baseline: entry " + (i + 1) + " of `" + id + "` has neither `at` nor `unit`");
                     }
                 }
             }
-            rules.put(id, new RuleBaseline(population, entries));
+            rules.put(id, new RuleBaseline(populations, entries));
         }
         return new Baseline(rules);
+    }
+
+    private static Map<String, Long> counts(TomlTable t) {
+        Map<String, Long> out = new TreeMap<>();
+        for (String unit : t.keySet()) {
+            Long n = t.getLong(unit);
+            if (n != null) out.put(unit, n);
+        }
+        return out;
     }
 
     private static double valueOf(@Nullable Number n) {
@@ -97,20 +109,22 @@ public final class BaselineFile {
             String id = e.getKey();
             RuleBaseline rb = e.getValue();
             sb.append('\n').append('[').append(id).append("]\n");
-            if (!rb.population().isEmpty()) {
-                sb.append("population = { ");
-                boolean first = true;
-                for (var p : rb.population().entrySet()) {
-                    if (!first) sb.append(", ");
-                    first = false;
-                    sb.append(p.getKey()).append(" = ").append(p.getValue());
-                }
-                sb.append(" }\n");
+            if (!rb.population().isEmpty())
+                sb.append("population = ").append(inline(rb.population())).append('\n');
+            boolean lanes = false;
+            for (var p : rb.populations().entrySet()) {
+                if (p.getKey().isEmpty()) continue;
+                if (!lanes) sb.append('[').append(id).append(".populations]\n");
+                lanes = true;
+                sb.append(MinimalToml.quote(p.getKey()))
+                        .append(" = ")
+                        .append(inline(p.getValue()))
+                        .append('\n');
             }
-            List<Entry> sorted = new ArrayList<>(rb.entries());
-            sorted.sort((x, y) -> x.key().compareTo(y.key()));
-            for (Entry en : sorted) {
+            for (Entry en : rb.entries()) {
                 sb.append("[[").append(id).append(".entries]]\n");
+                if (!en.in().isEmpty())
+                    sb.append("in     = ").append(MinimalToml.quote(en.in())).append('\n');
                 if (en instanceof Entry.Site s) {
                     sb.append("at     = ").append(MinimalToml.quote(s.at())).append('\n');
                 } else if (en instanceof Entry.Metric m) {
@@ -121,6 +135,17 @@ public final class BaselineFile {
             }
         }
         return sb.toString();
+    }
+
+    private static String inline(Map<String, Long> counts) {
+        StringBuilder sb = new StringBuilder("{ ");
+        boolean first = true;
+        for (var p : counts.entrySet()) {
+            if (!first) sb.append(", ");
+            first = false;
+            sb.append(p.getKey()).append(" = ").append(p.getValue());
+        }
+        return sb.append(" }").toString();
     }
 
     /** Write, or delete the file when the baseline is empty — an empty file is noise in a diff. */

@@ -23,11 +23,11 @@ class BaselineTest {
         Baseline b = Baseline.EMPTY
                 .with(
                         "one-digest-surface",
-                        new RuleBaseline(
+                        RuleBaseline.of(
                                 Map.of("classes", 1266L), List.of(new Entry.Site(SITE, "PGP needs SHA-1 by spec"))))
                 .with(
                         "file-size",
-                        new RuleBaseline(
+                        RuleBaseline.of(
                                 Map.of("files", 2318L),
                                 List.of(
                                         new Entry.Metric(
@@ -50,9 +50,43 @@ class BaselineTest {
     }
 
     @Test
+    void module_lane_slices_round_trip_and_reconcile_apart(@TempDir Path dir) throws IOException {
+        RuleBaseline rb = RuleBaseline.EMPTY
+                .withLane("shared/host", Map.of("classes", 50L), List.of(new Entry.Site("h.H#f()V -> x", "host")))
+                .withLane("clients/cli", Map.of("classes", 200L), List.of(new Entry.Site("c.C#g()V -> x", "cli")));
+        Path f = dir.resolve("jk-guards-baseline.toml");
+        BaselineFile.write(f, Baseline.EMPTY.with("walks", rb));
+        String text = Files.readString(f);
+        assertThat(text)
+                .contains(
+                        "[walks.populations]\n\"clients/cli\" = { classes = 200 }\n\"shared/host\" = { classes = 50 }\n")
+                .contains("[[walks.entries]]\nin     = \"clients/cli\"\nat     = \"c.C#g()V -> x\"");
+        assertThat(BaselineFile.read(f)).isEqualTo(Baseline.EMPTY.with("walks", rb));
+
+        // The host lane sees only its slice: cli's entry is neither matched nor stale, and a shrink
+        // is judged against the host population alone.
+        Reconciliation host = Reconciliation.of("walks", rb, List.of(), Map.of("classes", 50L), "shared/host");
+        assertThat(host.stale()).extracting(Entry::key).containsExactly("h.H#f()V -> x");
+        assertThat(host.tightened().entries("clients/cli")).hasSize(1);
+        assertThat(host.tightened().population("clients/cli")).containsEntry("classes", 200L);
+        Reconciliation shrunk = Reconciliation.of("walks", rb, List.of(), Map.of("classes", 30L), "shared/host");
+        assertThat(shrunk.scopeShrunk()).isEqualTo("classes: 50 → 30");
+        RuleBaseline frozen = Reconciliation.of(
+                        "walks",
+                        rb,
+                        List.of(Observation.site("h.H#k()V -> x", null, 0, "")),
+                        Map.of("classes", 55L),
+                        "shared/host")
+                .frozen("agreed");
+        assertThat(frozen.entries("shared/host")).extracting(Entry::key).containsExactly("h.H#k()V -> x");
+        assertThat(frozen.population("shared/host")).containsEntry("classes", 55L);
+        assertThat(frozen.entries("clients/cli")).hasSize(1);
+    }
+
+    @Test
     void an_empty_baseline_deletes_the_file(@TempDir Path dir) throws IOException {
         Path f = dir.resolve("jk-guards-baseline.toml");
-        BaselineFile.write(f, Baseline.EMPTY.with("x", new RuleBaseline(Map.of(), List.of(new Entry.Site("a", "r")))));
+        BaselineFile.write(f, Baseline.EMPTY.with("x", RuleBaseline.of(Map.of(), List.of(new Entry.Site("a", "r")))));
         assertThat(f).exists();
         BaselineFile.write(f, Baseline.EMPTY);
         assertThat(f).doesNotExist();
@@ -67,7 +101,7 @@ class BaselineTest {
 
     @Test
     void sites_new_baselined_and_stale() {
-        RuleBaseline before = new RuleBaseline(
+        RuleBaseline before = RuleBaseline.of(
                 Map.of("classes", 100L), List.of(new Entry.Site("a", "ra"), new Entry.Site("gone", "rg")));
         Reconciliation r = Reconciliation.of(
                 "x",
@@ -87,7 +121,7 @@ class BaselineTest {
 
     @Test
     void metrics_tighten_on_shrink_and_are_red_on_growth() {
-        RuleBaseline before = new RuleBaseline(Map.of(), List.of(new Entry.Metric("F.java", 1000, "r")));
+        RuleBaseline before = RuleBaseline.of(Map.of(), List.of(new Entry.Metric("F.java", 1000, "r")));
         Reconciliation shrink = Reconciliation.of(
                 "m", before, List.of(Observation.metric("F.java", 900, null, "")), Map.of("files", 1L));
         assertThat(shrink.red()).isFalse();
@@ -107,7 +141,7 @@ class BaselineTest {
 
     @Test
     void scope_shrunk_below_eighty_percent_is_red_and_never_tightens() {
-        RuleBaseline before = new RuleBaseline(Map.of("classes", 100L), List.of(new Entry.Site("a", "r")));
+        RuleBaseline before = RuleBaseline.of(Map.of("classes", 100L), List.of(new Entry.Site("a", "r")));
         Reconciliation r = Reconciliation.of("x", before, List.of(), Map.of("classes", 70L));
         assertThat(r.scopeShrunk()).isEqualTo("classes: 100 → 70");
         assertThat(r.red()).isTrue();
@@ -120,8 +154,8 @@ class BaselineTest {
     @Test
     void orphans_and_ci_policy() {
         Baseline b = Baseline.EMPTY
-                .with("kept", new RuleBaseline(Map.of(), List.of(new Entry.Site("a", "r"))))
-                .with("removed", new RuleBaseline(Map.of(), List.of(new Entry.Site("b", "r"))));
+                .with("kept", RuleBaseline.of(Map.of(), List.of(new Entry.Site("a", "r"))))
+                .with("removed", RuleBaseline.of(Map.of(), List.of(new Entry.Site("b", "r"))));
         assertThat(b.orphans(Set.of("kept"))).containsExactly("removed");
         assertThat(b.without("removed").rules()).containsOnlyKeys("kept");
         assertThat(Baselines.ciMode(k -> "true")).isTrue();

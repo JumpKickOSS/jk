@@ -69,7 +69,7 @@ class FreezerTest {
         // Retire a rule that is gone from the file but still in the baseline.
         BaselineFile.write(
                 GuardsPresence.baselineFile(p),
-                Baseline.EMPTY.with("gone", new RuleBaseline(Map.of(), List.of(new Entry.Site("x", "r")))));
+                Baseline.EMPTY.with("gone", RuleBaseline.of(Map.of(), List.of(new Entry.Site("x", "r")))));
         Freezer.Result retired = Freezer.freeze(p, "gone", null, true);
         assertThat(retired.error()).isNull();
         assertThat(retired.accepted()).isEqualTo(1);

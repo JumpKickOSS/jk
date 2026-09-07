@@ -171,7 +171,7 @@ class MetricEvaluatorTest {
         List<Rule> rules = LaneRun.rulesFor(Lane.TREE, load.rules(), "");
         String unit = "mod-a/src/main/java/a/Big.java";
         Baseline loose = Baseline.EMPTY.with(
-                "m", new RuleBaseline(Map.of("units", 3L), List.of(new Entry.Metric(unit, 20, "legacy"))));
+                "m", RuleBaseline.of(Map.of("units", 3L), List.of(new Entry.Metric(unit, 20, "legacy"))));
         LaneRun.Result r = LaneRun.run(Lane.TREE, rules, ctx(root, load), loose);
         assertThat(r.reports().get(0).outcome()).isEqualTo(Outcome.VIOLATIONS);
         Reconciliation rec = Objects.requireNonNull(r.reports().get(0).reconciliation());
@@ -182,7 +182,7 @@ class MetricEvaluatorTest {
         assertThat(after.value()).isEqualTo(14.0);
 
         Baseline tight = Baseline.EMPTY.with(
-                "m", new RuleBaseline(Map.of("units", 3L), List.of(new Entry.Metric(unit, 12, "legacy"))));
+                "m", RuleBaseline.of(Map.of("units", 3L), List.of(new Entry.Metric(unit, 12, "legacy"))));
         LaneRun.Result grown = LaneRun.run(Lane.TREE, rules, ctx(root, load), tight);
         assertThat(Objects.requireNonNull(grown.reports().get(0).reconciliation())
                         .fresh())

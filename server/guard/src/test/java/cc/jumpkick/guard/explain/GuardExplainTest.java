@@ -87,7 +87,7 @@ class GuardExplainTest {
         tree(root);
         Baseline b = Baseline.EMPTY.with(
                 "digest-owner",
-                new RuleBaseline(
+                RuleBaseline.of(
                         Map.of("classes", 3L),
                         List.of(new Entry.Site("a.A#f()V -> x", "legacy"), new Entry.Site("a.B#g()V -> x", "legacy"))));
         BaselineFile.write(GuardsPresence.baselineFile(root), b);

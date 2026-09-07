@@ -5,7 +5,6 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.guard.baseline.Baseline;
 import cc.jumpkick.guard.baseline.BaselineFile;
 import cc.jumpkick.guard.baseline.Baselines;
-import cc.jumpkick.guard.baseline.Observation;
 import cc.jumpkick.guard.baseline.Reconciliation;
 import cc.jumpkick.guard.baseline.RuleBaseline;
 import cc.jumpkick.guard.extract.FactsIndexing;
@@ -24,8 +23,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.TreeMap;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -70,12 +67,15 @@ public final class Freezer {
                             + String.join(", ", load.rules().ids()),
                     0,
                     0);
-        List<Observation> observed = new ArrayList<>();
-        Map<String, Long> population = new TreeMap<>();
+        RuleBaseline current = baseline.of(ruleId);
+        int accepted = 0;
         Lane lane = Evaluators.laneOf(rule);
         for (EvalContext ctx : contexts(root, lane, rule)) {
             Evaluation e = LaneRun.evaluate(List.of(rule), ctx).get(ruleId);
             if (e == null) continue;
+            // A module with nothing to examine (resources only, never built) is not this rule's
+            // concern; the lane reports it, the freeze skips it.
+            if (e.outcome() == Outcome.BLIND) continue;
             if (e.outcome() != Outcome.CLEAN
                     && e.outcome() != Outcome.VIOLATIONS
                     && e.outcome() != Outcome.STALE_ALLOW) {
@@ -85,15 +85,16 @@ public final class Freezer {
                         0,
                         baseline.entryCount());
             }
-            observed.addAll(e.observations());
-            for (var p : e.population().entrySet()) population.merge(p.getKey(), p.getValue(), Long::sum);
+            String slice = lane == Lane.MODULE ? ctx.module() : "";
+            Reconciliation rec = Reconciliation.of(ruleId, current, e.observations(), e.population(), slice);
+            if (rec.fresh().isEmpty()) continue;
+            accepted += rec.fresh().size();
+            current = rec.frozen(reason == null ? "" : reason);
         }
-        RuleBaseline before = baseline.of(ruleId);
-        Reconciliation rec = Reconciliation.of(ruleId, before, observed, population);
-        if (rec.fresh().isEmpty()) return new Result(null, 0, baseline.entryCount());
-        Baseline after = baseline.with(ruleId, rec.frozen(reason == null ? "" : reason));
+        if (accepted == 0) return new Result(null, 0, baseline.entryCount());
+        Baseline after = baseline.with(ruleId, current);
         BaselineFile.write(baselineFile, after);
-        return new Result(null, rec.fresh().size(), after.entryCount());
+        return new Result(null, accepted, after.entryCount());
     }
 
     /** One context per module for the module lane; one root context otherwise. */

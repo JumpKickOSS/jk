@@ -13,6 +13,8 @@ import cc.jumpkick.guard.baseline.Baseline;
 import cc.jumpkick.guard.baseline.BaselineFile;
 import cc.jumpkick.guard.baseline.Baselines;
 import cc.jumpkick.guard.baseline.Observation;
+import cc.jumpkick.guard.baseline.Reconciliation;
+import cc.jumpkick.guard.baseline.RuleBaseline;
 import cc.jumpkick.guard.eval.EvalContext;
 import cc.jumpkick.guard.eval.GuardMessages;
 import cc.jumpkick.guard.eval.LaneRun;
@@ -311,7 +313,7 @@ final class PlannerGuards {
                         "GUARD baseline  loose\n  Observed: " + result.tightened()
                                 + " entries would tighten\n  Instead:  " + Baselines.CI_MESSAGE);
             } else {
-                BaselineFile.write(baselineFile, result.baseline());
+                mergeTightened(baselineFile, result);
                 storedBaselineSha = GuardKeys.baselineSha(g.root());
                 ctx.output(result.tightened() + " baseline entries tightened");
             }
@@ -345,6 +347,28 @@ final class PlannerGuards {
         if (ci && result.tightened() > 0) throw new GuardsRed(Baselines.CI_MESSAGE);
         String storeKey = GuardKeys.laneKey(taskId, tokens, storedBaselineSha);
         cache.storeVerdict(taskId, storeKey, inputsOf(tokens, storedBaselineSha));
+    }
+
+    private static final Object BASELINE_LOCK = new Object();
+
+    /**
+     * Module lanes run concurrently and each tightens only its own slice of a rule's baseline, so
+     * the write re-reads the file and replaces just those slices: a lane never overwrites what
+     * another lane tightened a moment ago.
+     */
+    private static void mergeTightened(Path baselineFile, LaneRun.Result result) throws IOException {
+        synchronized (BASELINE_LOCK) {
+            Baseline latest = BaselineFile.read(baselineFile);
+            for (RuleReport r : result.reports()) {
+                Reconciliation rec = r.reconciliation();
+                if (rec == null || !rec.tighteningNeeded()) continue;
+                RuleBaseline mine = rec.tightened();
+                RuleBaseline theirs = latest.of(r.id());
+                latest = latest.with(
+                        r.id(), theirs.withLane(rec.lane(), mine.population(rec.lane()), mine.entries(rec.lane())));
+            }
+            BaselineFile.write(baselineFile, latest);
+        }
     }
 
     /** A red lane: the diagnostics already say why; this only fails the step. */

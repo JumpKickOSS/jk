@@ -199,8 +199,10 @@ final class AnnotateEvaluator implements Evaluator {
         Map<String, Long> population =
                 Map.of("elements", examined, "classes", (long) facts.classes().size());
         List<String> stale = new ArrayList<>();
-        for (var e : allowUsed.entrySet())
-            if (!e.getValue()) stale.add(e.getKey().in());
+        for (var e : allowUsed.entrySet()) {
+            if (!e.getValue() && ForbidEvaluator.appliesHere(e.getKey(), facts, module))
+                stale.add(e.getKey().in());
+        }
         if (!stale.isEmpty() && examined > 0) {
             return new Evaluation(
                     Outcome.STALE_ALLOW,

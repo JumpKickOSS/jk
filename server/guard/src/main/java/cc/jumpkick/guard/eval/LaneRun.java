@@ -75,7 +75,8 @@ public final class LaneRun {
             Evaluation ev = evaluations.getOrDefault(rule.id(), Evaluation.failed("the evaluator returned no result"));
             RuleBaseline before = current.of(rule.id());
             if (ev.outcome() == Outcome.CLEAN || ev.outcome() == Outcome.VIOLATIONS) {
-                Reconciliation rec = Reconciliation.of(rule.id(), before, ev.observations(), ev.population());
+                String slice = lane == Lane.MODULE ? ctx.module() : "";
+                Reconciliation rec = Reconciliation.of(rule.id(), before, ev.observations(), ev.population(), slice);
                 if (rec.scopeShrunk() != null) {
                     reports.add(
                             new RuleReport(rule, Outcome.SCOPE_SHRUNK, ev, rec, "scope-shrunk: " + rec.scopeShrunk()));
@@ -83,7 +84,9 @@ public final class LaneRun {
                 }
                 if (rec.tighteningNeeded()) {
                     tightened += rec.stale().size()
-                            + Math.max(0, before.entries().size() - rec.stale().size() - unchanged(before, rec));
+                            + Math.max(
+                                    0,
+                                    before.entries(slice).size() - rec.stale().size() - unchanged(before, rec));
                     current = current.with(rule.id(), rec.tightened());
                 }
                 Outcome outcome =
@@ -151,7 +154,7 @@ public final class LaneRun {
     /** Entries carried over unchanged, so the tightened count is drops plus lowered lines. */
     private static int unchanged(RuleBaseline before, Reconciliation rec) {
         int n = 0;
-        for (var e : before.entries()) if (rec.tightened().entries().contains(e)) n++;
+        for (var e : before.entries(rec.lane())) if (rec.tightened().entries().contains(e)) n++;
         return n;
     }
 }

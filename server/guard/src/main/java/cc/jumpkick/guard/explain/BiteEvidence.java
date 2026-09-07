@@ -12,7 +12,9 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 
 /**
  * Must-bite across module lanes. A module lane sees one module, so a {@code forbid} whose owner and
@@ -40,15 +42,23 @@ public final class BiteEvidence {
             boolean anyRecord = false;
             boolean anyBite = false;
             boolean anyRed = false;
+            Set<String> notes = new TreeSet<>();
             for (RuleSummaries.Summary s : seen) {
                 if (s.bite() == null) continue;
                 anyRecord = true;
                 if (s.bite()) anyBite = true;
                 if (!s.outcome().equals("clean") && !s.outcome().equals("violations")) anyRed = true;
+                if (!s.note().isEmpty()) notes.add(s.note());
             }
             // A rule already red somewhere has its own diagnostic; piling no-bite on it says nothing new.
             if (!anyRecord || anyBite || anyRed) continue;
-            out.add(new Missing(rule, LaneRun.noBiteNote(rule)));
+            String note = LaneRun.noBiteNote(rule);
+            if (!notes.isEmpty() && notes.size() == 1 && seen.size() > 0) {
+                // Every lane said the same thing — a type no module resolves is a typo, or a name
+                // no module depends on.
+                note = "in every module: " + notes.iterator().next() + " — " + note;
+            }
+            out.add(new Missing(rule, note));
         }
         return out;
     }

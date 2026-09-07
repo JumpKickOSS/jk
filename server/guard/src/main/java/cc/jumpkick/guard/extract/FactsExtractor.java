@@ -157,6 +157,9 @@ public final class FactsExtractor {
             @Nullable
             String lastLdc;
 
+            /** String constants loaded since the last invoke, field access or allocation: the argument window. */
+            final List<String> window = new ArrayList<>();
+
             MethodCollector(int access, String mname, String desc) {
                 super(Opcodes.ASM9);
                 this.access = access;
@@ -188,6 +191,7 @@ public final class FactsExtractor {
             public void visitLdcInsn(Object value) {
                 if (value instanceof Type t) refType(t.getDescriptor());
                 lastLdc = value instanceof String s ? s : null;
+                if (lastLdc != null) window.add(lastLdc);
             }
 
             @Override
@@ -199,9 +203,10 @@ public final class FactsExtractor {
                 calls.put(
                         key,
                         prior == null
-                                ? new CallSite(owner, name, mdesc, line, lastLdc, 1)
-                                : prior.merged(line, lastLdc));
+                                ? CallSite.first(owner, name, mdesc, line, lastLdc, window)
+                                : prior.merged(line, lastLdc, window));
                 lastLdc = null;
+                window.clear();
             }
 
             @Override
@@ -218,12 +223,14 @@ public final class FactsExtractor {
                                 : new FieldRef(
                                         owner, name, fdesc, Math.min(prior.line(), line), write, prior.count() + 1));
                 lastLdc = null;
+                window.clear();
             }
 
             @Override
             public void visitTypeInsn(int opcode, String type) {
                 refInternal(type);
                 lastLdc = null;
+                window.clear();
             }
 
             @Override

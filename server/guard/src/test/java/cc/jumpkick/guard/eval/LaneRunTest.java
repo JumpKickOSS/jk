@@ -163,7 +163,7 @@ class LaneRunTest {
                                 Observation.site("c.d", null, 0, "c.d in x and z"))));
         Baseline before = Baseline.EMPTY.with(
                 "one-owner",
-                new RuleBaseline(
+                RuleBaseline.of(
                         Map.of("packages", 40L),
                         List.of(new Entry.Site("a.b", "documented"), new Entry.Site("gone", "was split once"))));
         LaneRun.Result res = LaneRun.run(
@@ -197,7 +197,7 @@ class LaneRunTest {
     void a_shrunk_population_is_scope_shrunk_and_blind_when_zero(@TempDir Path dir) throws IOException {
         LoadResult r = load(dir);
         Evaluators.register(Kind.SPLIT_PACKAGE, (rule, ctx) -> Evaluation.of(Map.of("packages", 10L), List.of()));
-        Baseline before = Baseline.EMPTY.with("one-owner", new RuleBaseline(Map.of("packages", 40L), List.of()));
+        Baseline before = Baseline.EMPTY.with("one-owner", RuleBaseline.of(Map.of("packages", 40L), List.of()));
         LaneRun.Result res = LaneRun.run(
                 Lane.WORKSPACE, LaneRun.rulesFor(Lane.WORKSPACE, r.rules(), ""), ctx(dir, Lane.WORKSPACE, ""), before);
         assertThat(res.reports().get(0).outcome()).isEqualTo(Outcome.SCOPE_SHRUNK);

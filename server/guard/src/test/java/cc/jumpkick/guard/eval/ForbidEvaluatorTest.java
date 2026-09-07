@@ -60,6 +60,14 @@ class ForbidEvaluatorTest {
     }
 
     @Test
+    void a_class_is_never_outside_itself(@TempDir Path dir) throws Exception {
+        // Banning the fixture type: Sample's own members and Inner's reads of Sample are not sites.
+        Evaluation self = run(dir, "signatures = [\"cc.jumpkick.guard.extract.fixture.Sample\"]\n");
+        assertThat(self.outcome()).isEqualTo(Outcome.CLEAN);
+        assertThat(self.observations()).isEmpty();
+    }
+
+    @Test
     void bite_evidence_is_an_owner_site_or_a_current_site(@TempDir Path dir) throws Exception {
         Evaluation none = run(dir, "signatures = [\"java.util.UUID#randomUUID()\"]\n");
         assertThat(none.outcome()).isEqualTo(Outcome.CLEAN);
@@ -133,8 +141,16 @@ class ForbidEvaluatorTest {
         assertThat(allowed.outcome()).isEqualTo(Outcome.CLEAN);
         Evaluation stale = run(
                 dir,
-                "signatures = [\"java.security.MessageDigest#getInstance(**)\"]\nallow = [{ in = \"other/module\", reason = \"nothing here\" }]\n");
-        assertThat(stale.outcome()).isEqualTo(Outcome.STALE_ALLOW);
+                "signatures = [\"java.security.MessageDigest#getInstance(**)\"]\nallow = [{ in = \"cc.jumpkick.guard.extract.fixture.Sample$Inner\", reason = \"nothing here\" }]\n");
+        assertThat(stale.outcome())
+                .as("names a class of this module that has no site")
+                .isEqualTo(Outcome.STALE_ALLOW);
+        Evaluation elsewhere = run(
+                dir,
+                "signatures = [\"java.security.MessageDigest#getInstance(**)\"]\nallow = [{ in = \"other/module\", reason = \"not here\" }]\n");
+        assertThat(elsewhere.outcome())
+                .as("an allow for another module is judged in that module, not stale here")
+                .isEqualTo(Outcome.VIOLATIONS);
         assertThat(stale.observations())
                 .as("the violation is still reported alongside")
                 .hasSize(1);
@@ -142,8 +158,11 @@ class ForbidEvaluatorTest {
 
     @Test
     void a_typo_is_red_and_bundled_sets_resolve(@TempDir Path dir) throws Exception {
+        // A type this module cannot see is nothing this module can reference: clean here, with no
+        // bite evidence and the reason in the note — the tree lane reports the typo once no module bit.
         Evaluation typo = run(dir, "signatures = [\"java.security.MesageDigest#getInstance(**)\"]\n");
-        assertThat(typo.outcome()).isEqualTo(Outcome.SCANNER_FAILED);
+        assertThat(typo.outcome()).isEqualTo(Outcome.CLEAN);
+        assertThat(typo.bites()).isFalse();
         assertThat(typo.note()).contains("does not resolve");
         Evaluation sysout = run(dir, "signatures = [\"@jdk-system-out\"]\n");
         assertThat(sysout.observations()).anySatisfy(o -> assertThat(o.key()).contains("java.lang.System#out"));

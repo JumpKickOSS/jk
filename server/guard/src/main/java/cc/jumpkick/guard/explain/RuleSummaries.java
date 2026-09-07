@@ -38,7 +38,8 @@ public final class RuleSummaries {
             int fresh,
             int baselined,
             long ts,
-            @Nullable Boolean bite) {}
+            @Nullable Boolean bite,
+            String note) {}
 
     public static Path dir(Path root) {
         return root.resolve(BuildLayout.TARGET).resolve("jk-guards");
@@ -60,6 +61,7 @@ public final class RuleSummaries {
             sb.append(",\"fresh\":").append(r.fresh().size());
             sb.append(",\"baselined\":").append(r.baselined().size());
             sb.append(",\"bite\":").append(r.evaluation().bites());
+            sb.append(",\"note\":").append(Jsonl.quote(r.note()));
             sb.append(",\"ts\":").append(now);
             sb.append("}\n");
         }
@@ -112,6 +114,7 @@ public final class RuleSummaries {
                 Jsonl.intValue(line, "fresh", 0),
                 Jsonl.intValue(line, "baselined", 0),
                 Jsonl.longValue(line, "ts", 0),
-                Jsonl.has(line, "bite") ? Jsonl.bool(line, "bite", false) : null);
+                Jsonl.has(line, "bite") ? Jsonl.bool(line, "bite", false) : null,
+                Jsonl.str(line, "note") == null ? "" : Jsonl.str(line, "note"));
     }
 }

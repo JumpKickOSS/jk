@@ -62,19 +62,26 @@ final class ForbidEvaluator implements Evaluator {
         for (Signature s : signatures) {
             String owner = s.ownerToResolve();
             if (owner != null && !types.exists(owner)) {
-                // A bundled set names frameworks the module may not use; a hand-typed one is a typo.
+                // A type this module cannot see is a type no class here can reference: nothing to
+                // judge in this lane. A signature no module resolves is a typo, and the tree lane
+                // says so when no lane found bite evidence.
                 if (!bundled.contains(s.raw())) unresolved.add(s.raw());
                 continue;
             }
             live.add(s);
         }
-        if (!unresolved.isEmpty()) {
-            return Evaluation.failed(
-                    "signature does not resolve on this module's classpath or JDK: " + String.join(", ", unresolved));
+        if (live.isEmpty()) {
+            if (unresolved.isEmpty()) {
+                return Evaluation.notEvaluated(
+                        "none of the bundled signatures resolve here (the framework is not on this module's classpath)");
+            }
+            return new Evaluation(
+                            Outcome.CLEAN,
+                            Map.of("classes", (long) facts.classes().size(), "sites", 0L),
+                            List.of(),
+                            "does not resolve on this module's classpath: " + String.join(", ", unresolved))
+                    .withBite(false);
         }
-        if (live.isEmpty())
-            return Evaluation.notEvaluated(
-                    "none of the bundled signatures resolve here (the framework is not on this module's classpath)");
 
         List<String> owners = strings(t, "owner");
         List<String> args = strings(t, "args");
@@ -83,6 +90,7 @@ final class ForbidEvaluator implements Evaluator {
         for (Allow a : rule.allow()) allowUsed.put(a, false);
 
         long examined = 0;
+        long matched = 0;
         boolean ownerSeen = false;
         boolean ownerHasSite = false;
         List<Observation> sites = new ArrayList<>();
@@ -90,16 +98,19 @@ final class ForbidEvaluator implements Evaluator {
             boolean inOwner = inOwner(c, owners);
             if (inOwner) ownerSeen = true;
             boolean classExempt = annotated(c.annotations(), exceptAnnotated);
+            String self = Descriptors.outermost(c.name());
             for (MethodFacts m : c.methods()) {
                 boolean exempt = classExempt || annotated(m.annotations(), exceptAnnotated);
                 for (CallSite s : m.calls()) {
                     examined++;
                     if (matchCall(live, s, types) == null) continue;
-                    if (!args.isEmpty() && !argMatches(args, s.literalBefore())) continue;
+                    if (!args.isEmpty() && !argMatches(args, s)) continue;
+                    matched++;
                     if (inOwner) {
                         ownerHasSite = true;
                         continue;
                     }
+                    if (Descriptors.outermost(s.owner()).equals(self)) continue; // a class is never outside itself
                     if (exempt) continue;
                     Allow a = allowing(rule.allow(), c, ctx.module());
                     if (a != null) {
@@ -118,10 +129,12 @@ final class ForbidEvaluator implements Evaluator {
                 for (FieldRef r : m.fieldRefs()) {
                     examined++;
                     if (matchField(live, r, types) == null) continue;
+                    matched++;
                     if (inOwner) {
                         ownerHasSite = true;
                         continue;
                     }
+                    if (Descriptors.outermost(r.owner()).equals(self)) continue;
                     if (exempt) continue;
                     Allow a = allowing(rule.allow(), c, ctx.module());
                     if (a != null) {
@@ -141,10 +154,12 @@ final class ForbidEvaluator implements Evaluator {
                 for (String ref : c.typeRefs()) {
                     examined++;
                     if (matchType(live, ref, types) == null) continue;
+                    matched++;
                     if (inOwner) {
                         ownerHasSite = true;
                         continue;
                     }
+                    if (Descriptors.outermost(ref).equals(self)) continue;
                     if (classExempt) continue;
                     Allow a = allowing(rule.allow(), c, ctx.module());
                     if (a != null) {
@@ -172,7 +187,8 @@ final class ForbidEvaluator implements Evaluator {
         }
         List<String> stale = new ArrayList<>();
         for (var e : allowUsed.entrySet())
-            if (!e.getValue()) stale.add(e.getKey().in());
+            if (!e.getValue() && appliesHere(e.getKey(), facts, ctx.module()))
+                stale.add(e.getKey().in());
         if (!stale.isEmpty() && !facts.classes().isEmpty()) {
             return new Evaluation(
                     Outcome.STALE_ALLOW,
@@ -180,7 +196,8 @@ final class ForbidEvaluator implements Evaluator {
                     sites,
                     "allow entries matched nothing: " + String.join(", ", stale));
         }
-        return Evaluation.of(population, sites).withBite(ownerHasSite || !sites.isEmpty());
+        // An allowed or exempt match is still the rule seeing its shape: evidence it can bite.
+        return Evaluation.of(population, sites).withBite(ownerHasSite || matched > 0);
     }
 
     // ---- matching -----------------------------------------------------------------------------
@@ -227,11 +244,13 @@ final class ForbidEvaluator implements Evaluator {
         return null;
     }
 
-    private static boolean argMatches(List<String> args, @Nullable String literal) {
-        if (literal == null) return false;
-        for (String a : args) {
-            if (a.equals(literal)) return true;
-            if (a.contains("*") && Rule.globMatches(a, literal)) return true;
+    /** Any literal in the invoke's argument window matches an {@code args} entry (exact or glob). */
+    private static boolean argMatches(List<String> args, CallSite s) {
+        for (String literal : s.literals()) {
+            for (String a : args) {
+                if (a.equals(literal)) return true;
+                if (a.contains("*") && Rule.globMatches(a, literal)) return true;
+            }
         }
         return false;
     }
@@ -269,6 +288,25 @@ final class ForbidEvaluator implements Evaluator {
             int dot = stripped.lastIndexOf('.');
             String pkg = o.endsWith("*") ? stripped : dot < 0 ? "" : stripped.substring(0, dot);
             if (pkgs.contains(pkg)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Whether an allow entry could have matched in this module at all: it names this module, a
+     * class the facts hold, or a package the facts hold. One that names another module's class is
+     * not stale here — stale is judged where the exemption lives.
+     */
+    static boolean appliesHere(Allow a, FactsIndex facts, String module) {
+        String in = a.in();
+        if (in.equals(module) || Rule.globMatches(in, module)) return true;
+        for (ClassFacts c : facts.classList()) {
+            if (in.equals(c.binaryName()) || Rule.globMatches(in, c.binaryName())) return true;
+            if (in.endsWith(".**")) {
+                String p = in.substring(0, in.length() - 3);
+                if (c.packageName().equals(p) || c.packageName().startsWith(p + ".")) return true;
+            }
+            if (in.endsWith(".*") && c.packageName().equals(in.substring(0, in.length() - 2))) return true;
         }
         return false;
     }

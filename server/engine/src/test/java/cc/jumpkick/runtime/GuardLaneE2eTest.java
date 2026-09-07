@@ -76,7 +76,7 @@ class GuardLaneE2eTest {
         // Freeze the site with a reason, as `jk guard freeze` would.
         Baseline frozen = Baseline.EMPTY.with(
                 "no-app",
-                new RuleBaseline(Map.of("classes", 1L), List.of(new Entry.Site("demo.App -> banned", "agreed"))));
+                RuleBaseline.of(Map.of("classes", 1L), List.of(new Entry.Site("demo.App -> banned", "agreed"))));
         BaselineFile.write(GuardsPresence.baselineFile(project), frozen);
 
         BuildPlanResult second = build(project, cache);

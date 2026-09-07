@@ -22,20 +22,33 @@ import org.jspecify.annotations.Nullable;
  */
 public record Reconciliation(
         String ruleId,
+        String lane,
         List<Observation> fresh,
         List<Observation> baselined,
         List<Entry> stale,
         RuleBaseline tightened,
         boolean tighteningNeeded,
-        @Nullable String scopeShrunk) {
+        @Nullable String scopeShrunk,
+        Map<String, Long> observedPopulation) {
 
     static final double SCOPE_FLOOR = 0.8;
 
+    /** The whole-rule lane. */
     public static Reconciliation of(
             String ruleId, RuleBaseline before, List<Observation> observed, Map<String, Long> population) {
-        String shrunk = scopeShrunk(before.population(), population);
+        return of(ruleId, before, observed, population, "");
+    }
+
+    /**
+     * Lane {@code lane}'s observations against its own slice of the rule's baseline: the other
+     * lanes' entries and populations are carried through untouched.
+     */
+    public static Reconciliation of(
+            String ruleId, RuleBaseline before, List<Observation> observed, Map<String, Long> population, String lane) {
+        String shrunk = scopeShrunk(before.population(lane), population);
         Map<String, Entry> byKey = new LinkedHashMap<>();
-        for (Entry e : before.entries()) byKey.put(e.key(), e);
+        List<Entry> slice = before.entries(lane);
+        for (Entry e : slice) byKey.put(e.key(), e);
         List<Observation> fresh = new ArrayList<>();
         List<Observation> baselined = new ArrayList<>();
         List<Entry> kept = new ArrayList<>();
@@ -60,14 +73,14 @@ public record Reconciliation(
             }
         }
         List<Entry> stale = new ArrayList<>();
-        for (Entry e : before.entries()) if (!seen.contains(e.key())) stale.add(e);
-        Map<String, Long> newPopulation = shrunk == null ? population : before.population();
-        RuleBaseline after = new RuleBaseline(newPopulation, kept);
+        for (Entry e : slice) if (!seen.contains(e.key())) stale.add(e);
+        Map<String, Long> newPopulation = shrunk == null ? population : before.population(lane);
+        RuleBaseline after = before.withLane(lane, newPopulation, kept);
         boolean tightening = shrunk == null
                 && (!stale.isEmpty()
-                        || !after.entries().equals(before.entries())
-                        || !after.population().equals(before.population()));
-        return new Reconciliation(ruleId, fresh, baselined, stale, after, tightening, shrunk);
+                        || !after.entries(lane).equals(slice)
+                        || !after.population(lane).equals(before.population(lane)));
+        return new Reconciliation(ruleId, lane, fresh, baselined, stale, after, tightening, shrunk, population);
     }
 
     private static @Nullable String scopeShrunk(Map<String, Long> recorded, Map<String, Long> now) {
@@ -79,16 +92,19 @@ public record Reconciliation(
         return null;
     }
 
-    /** The baseline grown by every fresh observation, each with {@code reason}: what {@code freeze} writes. */
+    /**
+     * The baseline grown by every fresh observation in this lane, each with {@code reason}, and the
+     * lane's population set to what was observed: what {@code freeze} writes.
+     */
     public RuleBaseline frozen(String reason) {
-        List<Entry> entries = new ArrayList<>(tightened.entries());
+        List<Entry> entries = new ArrayList<>(tightened.entries(lane));
         for (Observation o : fresh) {
             entries.add(
                     o.isMetric()
-                            ? new Entry.Metric(o.key(), o.value() == null ? 0 : o.value(), reason)
-                            : new Entry.Site(o.key(), reason));
+                            ? new Entry.Metric(o.key(), o.value() == null ? 0 : o.value(), reason, lane)
+                            : new Entry.Site(o.key(), reason, lane));
         }
-        return new RuleBaseline(new TreeMap<>(tightened.population()), entries);
+        return tightened.withLane(lane, new TreeMap<>(observedPopulation), entries);
     }
 
     public boolean red() {
