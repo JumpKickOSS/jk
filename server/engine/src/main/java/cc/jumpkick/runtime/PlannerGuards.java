@@ -33,6 +33,8 @@ import cc.jumpkick.guard.rules.LoadError;
 import cc.jumpkick.guard.rules.LoadResult;
 import cc.jumpkick.guard.rules.Rule;
 import cc.jumpkick.guard.schema.Lane;
+import cc.jumpkick.guard.validate.EngineValidations;
+import cc.jumpkick.guard.validate.Fault;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.GuardsConfig;
@@ -359,7 +361,7 @@ final class PlannerGuards {
                                 + " --reason \"…\"`");
             }
         }
-        if (rules.isEmpty()) {
+        if (rules.isEmpty() && !EngineValidations.applies(lane)) {
             ctx.label("no rules for this lane");
             if (orphans) throw new GuardsRed("baseline names retired rules");
             return;
@@ -397,6 +399,12 @@ final class PlannerGuards {
         } else {
             result = LaneRun.run(lane, rules, ectx, baseline);
         }
+        // Engine validations ride the lane: invariants of the build model, not rules, so they
+        // have no table and no baseline, and a workspace without guards runs none.
+        List<Fault> faults = lane == Lane.MODEL
+                ? EngineValidations.model(g.root())
+                : lane == Lane.MODULE ? EngineValidations.module(g.root(), ectx.module(), ectx.testFacts()) : List.of();
+        for (Fault f : faults) ctx.error(f.code(), EngineValidations.render(f));
         boolean ci = Baselines.ciMode();
         String storedBaselineSha = baselineSha;
         if (result.tightened() > 0) {
@@ -432,10 +440,11 @@ final class PlannerGuards {
             ctx.output(GuardMessages.TRAILER);
             throw new GuardsRed(noBite + (noBite == 1 ? " guard has" : " guards have") + " no bite evidence");
         }
-        if (result.red()) {
+        if (result.red() || !faults.isEmpty()) {
             ctx.output(GuardMessages.TRAILER);
             // The diagnostics above carry the detail; the throw is what fails the step.
-            throw new GuardsRed(result.redReports().size() + " of " + rules.size() + " guards red");
+            throw new GuardsRed(result.redReports().size() + " of " + rules.size() + " guards red"
+                    + (faults.isEmpty() ? "" : ", " + faults.size() + " engine validation(s) failed"));
         }
         if (ci && result.tightened() > 0) throw new GuardsRed(Baselines.CI_MESSAGE);
         String storeKey = GuardKeys.laneKey(taskId, tokens, storedBaselineSha);

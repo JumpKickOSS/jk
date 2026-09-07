@@ -108,6 +108,17 @@ stamp: changing selection re-runs tests even if sources are unchanged. A failed 
 skipped: it leaves a red marker under the same stamp, so the next run executes it again and
 `jk explain` prices it as a suite rather than as a stale stamp.
 
+## The tier table partitions its vocabulary
+
+`[test]` and the profiles together form a tier table, and the engine holds it to one invariant
+when guards are on (`jk-guards.toml` present): every combination of tags in the vocabulary is run
+by exactly one tier, and every `@Tag` a compiled test carries is a tag some tier owns. A tag in
+`[test] exclude-tags` with no profile that includes it is a test that never executes and never
+goes red; two profiles including the same tag charge one test to two budgets; a misspelt tag runs
+in the fast tier by default. The check is exhaustive over the vocabulary (up to sixteen tags) and
+reports under the code `tiers` — `jk guard explain tiers` describes it. The `ci` profile is the
+fast tier under another name and is not a tier of its own.
+
 ## Workspace scope: tag filters come from the root
 
 In a workspace, the tag filters are resolved **once, from the invocation root**, and apply to

@@ -6,6 +6,7 @@ import cc.jumpkick.guard.eval.WorkspaceModules;
 import cc.jumpkick.guard.extract.FactsIndexing;
 import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.guard.rules.LoadResult;
+import cc.jumpkick.guard.validate.CatalogLockParity;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
@@ -166,6 +167,7 @@ final class GuardKeys {
             }
         }
         tokens.add(fileToken("lock", root.resolve(ManifestPaths.LOCK)));
+        tokens.add(fileToken("catalog", root.resolve(CatalogLockParity.CATALOG)));
         return tokens;
     }
 

@@ -736,27 +736,6 @@ guard("G21", "checkOneJsonCodec") {
     if (faults.isNotEmpty()) error(faults.joinToString("\n\n"))
 }
 
-// ---------------------------------------------------------------------------
-// G23 — every @Tag is run by exactly one test tier.
-//
-// A `@Tag` is a routing decision, and when the routing lives in two half-tables nobody can see
-// together, a tag ends up excluded by one and included by none — a test that never executes and
-// never goes red. The table is jk's own: `[test]` and `[profiles.*]` in the root manifest, read
-// here rather than restated, so the routing and the check cannot drift.
-//
-// Three arms. TOTALITY is the prover and reads no source at all: every subset of the vocabulary,
-// enumerated rather than sampled, must be run by exactly one tier. NO ORPHAN is the locator —
-// given totality it cannot fail, and it exists to name the FILE AND LINE when totality does.
-// NO UNOWNED VOCABULARY is the closure check that catches `@Tag("intergration")`.
-// ---------------------------------------------------------------------------
-
-/** One tier: the tag filters a `jk test` invocation runs with. */
-data class Tier(val name: String, val include: Set<String>, val exclude: Set<String>) {
-    /** JUnit's own tag semantics: runs when the include set is empty or intersects, and exclude does not. */
-    fun runs(tags: Set<String>): Boolean =
-        (include.isEmpty() || tags.any { it in include }) && tags.none { it in exclude }
-}
-
 /** `key = ["a", "b"]` from a flat TOML section, or null when the key is absent. */
 fun tomlStringList(section: String, key: String): List<String>? {
     val m = Regex("""(?m)^\s*${Regex.escape(key)}\s*=\s*\[([^\]]*)]""").find(section) ?: return null
@@ -769,126 +748,6 @@ fun tomlSection(toml: String, name: String): String? {
     val rest = toml.substring(start.range.last + 1)
     val next = Regex("""(?m)^\s*\[""").find(rest)
     return if (next == null) rest else rest.substring(0, next.range.first)
-}
-
-/** Tags that are deliberately NOT tier routing, one per line as `tag — why`. */
-val testTagFixtures = mapOf(
-    "[slow]" to "LauncherPathTest fixture: a tag with regex metacharacters in it",
-    "brackets" to "LauncherPathTest fixture: the sibling plain tag it is compared against")
-
-guard("G23", "checkNoOrphanTestTags") {
-    val manifest = text(at("jk.toml"))
-    val fast = tomlSection(manifest, "test")
-        ?: error("the root jk.toml has no [test] table, so the tier vocabulary has no baseline.")
-    val tiers = mutableListOf(
-        Tier("jk test",
-            tomlStringList(fast, "include-tags").orEmpty().toSet(),
-            tomlStringList(fast, "exclude-tags").orEmpty().toSet()))
-    // Every profile except `ci`, which is the fast tier under another name (auto-selected on CI)
-    // rather than a tier of its own.
-    Regex("""(?m)^\s*\[profiles\.([A-Za-z0-9_-]+)]\s*$""").findAll(manifest)
-        .map { it.groupValues[1] }
-        .filter { it != "ci" }
-        .forEach { name ->
-            val body = tomlSection(manifest, "profiles.$name")!!
-            tiers.add(Tier("jk test --profile $name",
-                tomlStringList(body, "include-tags").orEmpty().toSet(),
-                tomlStringList(body, "exclude-tags").orEmpty().toSet()))
-        }
-    if (tiers.size < 2) {
-        error("the root jk.toml declares ${tiers.size} tier(s); the tag table needs the fast tier plus"
-            + " one profile per slow tag. This guard is reading nothing.")
-    }
-    val vocabulary = tiers.flatMap { it.include + it.exclude }.distinct().sorted()
-    fun tiersFor(tags: Set<String>) = tiers.filter { it.runs(tags) }.map { it.name }
-
-    val faults = mutableListOf<String>()
-
-    // --- arm 1: TOTALITY. Exhaustive over 2^vocabulary, not sampled. ------------------------
-    val partitionFaults = mutableListOf<String>()
-    for (mask in 0 until (1 shl vocabulary.size)) {
-        val tags = vocabulary.filterIndexed { i, _ -> (mask shr i) and 1 == 1 }.toSet()
-        val run = tiersFor(tags)
-        if (run.size != 1) {
-            val what = if (run.isEmpty()) "no tier runs it" else "run by ${run.size} tiers: $run"
-            partitionFaults.add("@Tag" + (tags.ifEmpty { setOf("(untagged)") }) + " — $what")
-        }
-    }
-    if (partitionFaults.isNotEmpty()) {
-        faults.add("Every tag combination must be run by exactly one tier. The tier table in jk.toml"
-            + " does not partition its own vocabulary:\n" + bullets(partitionFaults)
-            + "\n  Adding a tag to [test] exclude-tags takes it out of the fast tier; it needs a"
-            + " profile that includes it, or the exclusion is a hole. Two tiers running the same"
-            + " combination charges one test to two budgets.")
-    }
-
-    // --- arms 2 + 3: what the tree actually declares -----------------------------------------
-    val tagLiteral = Regex("""@Tag\("([^"]*)"\)""")
-    // Between two @Tag annotations of the SAME declaration there is only whitespace and other
-    // annotations. Anything else — a modifier, a type, a brace — starts a new declaration.
-    val sameDeclaration = Regex("""\s*(?:@\w+(?:\([^)]*\))?\s*)*""")
-    val orphans = mutableListOf<String>()
-    val unowned = mutableListOf<String>()
-    val blind = mutableListOf<String>()
-    var importers = 0
-    var elements = 0
-    testJava.forEach { f ->
-        val raw = text(f)
-        val r = rel(f)
-        val imports = Regex("""^\s*import\s+org\.junit\.jupiter\.api\.Tag\s*;""", RegexOption.MULTILINE)
-            .containsMatchIn(raw)
-        if (imports) importers++
-        val code = blankNonCode(raw, blankStrings = false)
-        val hits = tagLiteral.findAll(code).toList()
-        if (hits.isEmpty()) {
-            if (imports) blind.add("$r: imports org.junit.jupiter.api.Tag and declares no @Tag(\"...\") literal")
-            return@forEach
-        }
-        var i = 0
-        while (i < hits.size) {
-            var j = i
-            while (j + 1 < hits.size
-                && sameDeclaration.matchEntire(code.substring(hits[j].range.last + 1, hits[j + 1].range.first)) != null) {
-                j++
-            }
-            val tags = hits.subList(i, j + 1).map { it.groupValues[1] }.toSet()
-            val line = lineAt(code, hits[i].range.first)
-            elements++
-            val run = tiersFor(tags)
-            if (run.size != 1) {
-                orphans.add("$r:$line: @Tag${tags.sorted()} — " + if (run.isEmpty()) "NO tier runs it" else "run by $run")
-            }
-            tags.filterNot { it in vocabulary || it in testTagFixtures }.sorted()
-                .forEach { unowned.add("$r:$line: @Tag(\"$it\")") }
-            i = j + 1
-        }
-    }
-
-    if (orphans.isNotEmpty()) {
-        faults.add("Every @Tag must be run by exactly one tier. These are not:\n" + bullets(orphans)
-            + "\n  A tag excluded from the fast tier and included by no profile is a test that never"
-            + " executes and never goes red. Give the tag a profile in the root jk.toml, or stop"
-            + " excluding it.")
-    }
-    if (unowned.isNotEmpty()) {
-        faults.add("A @Tag that no tier owns runs in the fast tier by default, which is how a typo"
-            + " becomes a slow `jk test`. These tags are in neither the tier vocabulary nor"
-            + " testTagFixtures:\n" + bullets(unowned.sorted())
-            + "\n  Spell it as one of $vocabulary, give it a profile of its own, or — if it is a"
-            + " fixture for jk's own tag filtering rather than a routing decision — name it in"
-            + " testTagFixtures with the reason.")
-    }
-    if (blind.isNotEmpty()) {
-        faults.add("This guard reads @Tag(\"...\") literals out of the source. These files import the"
-            + " annotation and yield none, so it is reading nothing about them:\n" + bullets(blind)
-            + "\n  Either the annotation is written as @Tag(SOME_CONSTANT) — which no scan can route"
-            + " and which hides the tier a test runs in from anyone grepping — or the import is dead.")
-    }
-    if (importers > 0 && elements == 0) {
-        faults.add("$importers test files import org.junit.jupiter.api.Tag and the scan resolved no"
-            + " tagged element at all. The annotation shape moved; arms 2 and 3 are blind.")
-    }
-    if (faults.isNotEmpty()) error(faults.joinToString("\n\n"))
 }
 
 /** [src] with comments blanked to spaces (newlines and offsets kept), string literals verbatim. */
@@ -1114,60 +973,6 @@ guard("G30", "checkPropertiesStoreOwner") {
         error("Properties.store() writes a #-dated comment line in Hashtable order — a"
             + " non-reproducible artifact. Render through"
             + " cc.jumpkick.host.DeterministicProperties.render instead:\n" + bullets(hits))
-    }
-}
-
-// ---------------------------------------------------------------------------
-// G33 — the Gradle version catalog and jk-lock.toml agree on every coordinate they share.
-//
-// The repo builds itself twice. A module once bundled apksig from an 8.7.3 catalog literal while
-// the self-host lock resolved 9.3.2 — a full major apart — so the two builds shipped worker jars
-// signing with different apksig, and a 9.x-only API would compile under one build and break the
-// other. Known drift rides the ratchet below: a NEW mismatch fails, and a listed entry that no
-// longer mismatches fails until it is removed.
-// ---------------------------------------------------------------------------
-val knownCatalogLockDrift = setOf<String>()
-
-guard("G33", "checkCatalogLockParity") {
-    val catalogPath = at("gradle/libs.versions.toml")
-    if (!Files.isRegularFile(catalogPath)) {
-        error("gradle/libs.versions.toml is gone. If the Gradle build has been retired, retire this"
-            + " guard in the same change; until then the two builds still have to agree.")
-    }
-    val catalogText = text(catalogPath)
-    val versionKeys = Regex("""(?m)^([A-Za-z0-9-]+)\s*=\s*"([^"]+)"""")
-        .findAll(catalogText.substringBefore("[libraries]"))
-        .associate { it.groupValues[1] to it.groupValues[2] }
-    val catalog = Regex(
-        """(?m)^[A-Za-z0-9-]+\s*=\s*\{\s*module\s*=\s*"([^"]+)"\s*,\s*(?:version\.ref\s*=\s*"([A-Za-z0-9-]+)"|version\s*=\s*"([^"]+)")""")
-        .findAll(catalogText)
-        .mapNotNull { m ->
-            val version = m.groupValues[2].takeIf { it.isNotEmpty() }?.let(versionKeys::get)
-                ?: m.groupValues[3].takeIf { it.isNotEmpty() }
-            version?.let { m.groupValues[1] to it }
-        }.toMap()
-    val lock = mutableMapOf<String, MutableSet<String>>()
-    Regex("""name\s*=\s*"([^"]+)"\s*\n\s*version\s*=\s*"([^"]+)"""").findAll(text(at("jk-lock.toml")))
-        .forEach { m ->
-            val parts = m.groupValues[1].split(":")
-            if (parts.size >= 2) lock.getOrPut("${parts[0]}:${parts[1]}") { mutableSetOf() }.add(m.groupValues[2])
-        }
-    if (catalog.size < 25 || lock.size < 180) {
-        error("parsed ${catalog.size} catalog libraries and ${lock.size} lock artifacts; measured"
-            + " against 34 and 202. A regex has stopped seeing its file.")
-    }
-    val mismatches = catalog.filterKeys { it in lock }.filter { (m, v) -> v !in lock.getValue(m) }
-    val unexpected = mismatches.keys - knownCatalogLockDrift
-    val healed = knownCatalogLockDrift - mismatches.keys
-    if (unexpected.isNotEmpty() || healed.isNotEmpty()) {
-        val lines = unexpected.sorted().map {
-            ("NEW MISMATCH $it: catalog=${catalog[it]} lock=${lock.getValue(it).sorted()} — the two"
-                + " builds compile against different bytes; align the catalog with the lock (the"
-                + " lock is the pin), or re-lock")
-        } + healed.sorted().map {
-            "RECONCILED $it: no longer mismatched — delete it from knownCatalogLockDrift so the ratchet tightens"
-        }
-        error("gradle/libs.versions.toml and jk-lock.toml disagree:\n" + bullets(lines))
     }
 }
 
@@ -2159,7 +1964,11 @@ guard("G51", "checkGuardParity") {
     if (registryFaults.isNotEmpty()) {
         error("The guard registry and jk-guards.toml disagree:\n" + bullets(registryFaults))
     }
-    val jk = (lettersIn(text(at(".jk/after-build.kts"))) + mapped.filterValues { it in tables }.keys).toSortedSet()
+    // A letter is also jk-enforced when the registry marks it an engine validation: the engine runs
+    // it in the guard lanes of every `jk build`, so there is no table and no script block to find.
+    val engineBlock = Regex("""spec\(\s*(\d+),(?:(?!spec\().)*?engineCode = "([a-z0-9-]+)"""", RegexOption.DOT_MATCHES_ALL)
+    val engine = engineBlock.findAll(text(at("buildSrc/src/main/kotlin/Guards.kt"))).map { it.groupValues[1].toInt() }.toSet()
+    val jk = (lettersIn(text(at(".jk/after-build.kts"))) + mapped.filterValues { it in tables }.keys + engine).toSortedSet()
     if (gradle.isEmpty() || jk.isEmpty()) {
         error("Read no guard letters from one of the two sides (gradle=${gradle.size},"
             + " jk=${jk.size}) — the scan broke and this guard is passing vacuously.")
@@ -2219,8 +2028,8 @@ guard("G53", "checkNullMarkedApiPackages") {
         .filterNot { it.fileName.toString() == "package-info.java" }
         .mapNotNull { packagePattern.find(text(it))?.groupValues?.get(1) }
         .toSortedSet()
-    if (packages.size != 48) {
-        error("Found ${packages.size} enforced production packages; measured against 48. The source"
+    if (packages.size != 49) {
+        error("Found ${packages.size} enforced production packages; measured against 49. The source"
             + " roots or package parser drifted, so this guard cannot report green.")
     }
     val markers = sources.filter { it.fileName.toString() == "package-info.java" }.associateBy { file ->

@@ -161,9 +161,9 @@ tasks.register("checkNullMarkedApiPackages") {
             .filterNot { it.name == "package-info.java" }
             .mapNotNull { packagePattern.find(it.readText())?.groupValues?.get(1) }
             .toSortedSet()
-        if (packages.size != 48) {
+        if (packages.size != 49) {
             throw GradleException(
-                "The null-marked package guard found ${packages.size} production packages; it was measured against 48."
+                "The null-marked package guard found ${packages.size} production packages; it was measured against 49."
                     + " The source roots or package parser drifted, so do not trust a green result.")
         }
         val marked = packages.filter { pkg ->
@@ -1250,8 +1250,11 @@ tasks.register("checkGuardParity") {
                 .map { it.groupValues[1] }.toSortedSet()
         } else sortedSetOf<String>()
         val mapped = Guards.tomlLetters
+        // Engine validations have neither a table nor a script block: the engine runs them in the
+        // guard lanes of every `jk build`, so the registry's engineCode marks the letter jk-enforced.
         val jk = (marker.findAll(jkGate.asFile.readText()).map { it.groupValues[1].toInt() }
-                + mapped.filterValues { it in tables }.keys).toSortedSet()
+                + mapped.filterValues { it in tables }.keys
+                + Guards.engineLetters.keys).toSortedSet()
         val registryProblems = mutableListOf<String>()
         mapped.filterValues { it !in tables }.forEach { (n, id) ->
             registryProblems.add("Guards says G$n is enforced by [guards.$id] but jk-guards.toml has no such table")

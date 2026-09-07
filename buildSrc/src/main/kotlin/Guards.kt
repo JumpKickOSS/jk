@@ -252,6 +252,7 @@ object Guards {
                 GuardHome.MODULE,
                 attach = setOf(GuardAttach.CHECK),
                 description = "Fail the build when a @Tag is run by no test task, or by more than one",
+                engineCode = "tiers",
             ),
             spec(
                 24,
@@ -371,7 +372,9 @@ object Guards {
                 "ban",
                 GuardHome.MODULE_OWNED,
                 ownerPath = ":android",
-                description = "Fail when gradle/libs.versions.toml and jk-lock.toml disagree on a shared module version",
+                description =
+                    "Fail when gradle/libs.versions.toml and jk-lock.toml disagree on a shared module version",
+                engineCode = "catalog-lock",
             ),
             spec(
                 34,
@@ -817,6 +820,10 @@ object Guards {
     val tomlLetters: Map<Int, String>
         get() = all.filter { it.letter != null && it.ruleId != null }.associate { it.letter!! to it.ruleId!! }
 
+    /** Letter → the engine validation code that enforces it on the self-hosted side. */
+    val engineLetters: Map<Int, String>
+        get() = all.filter { it.letter != null && it.engineCode != null }.associate { it.letter!! to it.engineCode!! }
+
     fun named(task: String): GuardSpec =
         all.singleOrNull { it.task == task && it.registers } ?: error("No Gradle guard task named '$task' in Guards")
 
@@ -828,7 +835,7 @@ object Guards {
         appendLine("| id | task | rule | form | jk rule |")
         appendLine("|---|---|---|---|---|")
         tableRows.forEach { spec ->
-            val jkRule = spec.ruleId?.let { "`$it`" } ?: "—"
+            val jkRule = spec.ruleId?.let { "`$it`" } ?: spec.engineCode?.let { "engine validation `$it`" } ?: "—"
             appendLine("| G${spec.letter} | ${spec.tableTaskCell} | ${spec.rule} | ${spec.form} | $jkRule |")
         }
         append("<!-- guards:end -->")
@@ -849,6 +856,7 @@ object Guards {
         mavenPublishOnly: Boolean = false,
         description: String = "",
         ruleId: String? = null,
+        engineCode: String? = null,
     ): GuardSpec =
         GuardSpec(
             letter = letter,
@@ -865,6 +873,7 @@ object Guards {
             mavenPublishOnly = mavenPublishOnly,
             description = description,
             ruleId = ruleId,
+            engineCode = engineCode,
         )
 
     private fun defaultAttach(home: GuardHome): Set<GuardAttach> =

@@ -132,4 +132,27 @@ class GuardExplainTest {
                 .contains("forbid")
                 .contains("guard-test");
     }
+
+    @Test
+    void engine_validations_are_listed_and_explained_but_are_not_rules(@TempDir Path root) throws Exception {
+        Files.writeString(
+                root.resolve(GuardsPresence.RULES_FILE),
+                "[guards.no-todo]\nkind = \"text\"\npattern = \"TODO\"\ninstead = \"a ticket\"\nwhy = \"w\"\n");
+        GuardExplain.Result catalog = GuardExplain.explain(root, GuardsConfig.ABSENT, null);
+        assertThat(catalog.error()).isNull();
+        assertThat(catalog.text())
+                .contains("engine validations")
+                .contains("tiers")
+                .contains("catalog-lock")
+                .contains("1 rule");
+        GuardExplain.Result tiers = GuardExplain.explain(root, GuardsConfig.ABSENT, "tiers");
+        assertThat(tiers.error()).isNull();
+        assertThat(tiers.text())
+                .startsWith("GUARD tiers  engine validation")
+                .contains("model, module")
+                .contains("not a rule");
+        assertThat(tiers.json()).contains("\"validations\"").contains("\"code\":\"tiers\"");
+        GuardExplain.Result miss = GuardExplain.explain(root, GuardsConfig.ABSENT, "tier");
+        assertThat(miss.error()).contains("no rule `tier`");
+    }
 }

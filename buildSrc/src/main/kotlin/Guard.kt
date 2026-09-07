@@ -55,6 +55,12 @@ data class GuardSpec(
      * fails when the table is missing or unclaimed.
      */
     val ruleId: String? = null,
+    /**
+     * The engine validation that enforces this letter on the self-hosted side: an invariant of the build model the
+     * engine checks in its guard lanes under this reserved code, with no `[guards.<id>]` table and no script block.
+     * Parity (G51) counts the letter as jk-enforced.
+     */
+    val engineCode: String? = null,
 ) {
     val id: String
         get() = letter?.let { "G$it" } ?: task

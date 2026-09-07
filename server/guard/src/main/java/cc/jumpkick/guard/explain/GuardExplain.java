@@ -10,6 +10,7 @@ import cc.jumpkick.guard.rules.LoadResult;
 import cc.jumpkick.guard.rules.Rule;
 import cc.jumpkick.guard.schema.Kind;
 import cc.jumpkick.guard.schema.SchemaText;
+import cc.jumpkick.guard.validate.EngineValidations;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.GuardsConfig;
@@ -77,6 +78,11 @@ public final class GuardExplain {
         Path baselineFile = GuardsPresence.baselineFile(root);
         String baselineSha = Files.isRegularFile(baselineFile) ? Hashing.sha256Hex(baselineFile) : "absent";
         if (ruleId != null) {
+            for (EngineValidations.Info v : EngineValidations.ALL) {
+                if (v.code().equals(ruleId)) {
+                    return new Result(null, renderValidation(v, rulesSha, baselineSha), validationJson(v));
+                }
+            }
             Card hit = null;
             for (Card c : cards) if (c.id().equals(ruleId)) hit = c;
             if (hit == null) {
@@ -200,8 +206,33 @@ public final class GuardExplain {
                     .append(cards.size() == 1 ? " rule" : " rules")
                     .append(" · jk guard explain <id> for the card · --schema <kind> to write one\n\n");
         }
+        sb.append("engine validations (no table, no baseline; they ride the lanes):\n");
+        for (EngineValidations.Info v : EngineValidations.ALL) {
+            sb.append("  ")
+                    .append(pad(v.code(), 14))
+                    .append(pad(v.lanes(), 15))
+                    .append(v.what())
+                    .append('\n');
+        }
+        sb.append('\n');
         shas(sb, rulesSha, baselineSha);
         return sb.toString();
+    }
+
+    static String renderValidation(EngineValidations.Info v, String rulesSha, String baselineSha) {
+        StringBuilder sb = new StringBuilder("GUARD ").append(v.code()).append("  engine validation\n");
+        field(sb, "lanes", v.lanes());
+        field(sb, "checks", v.what());
+        field(sb, "why", v.why());
+        field(sb, "source", "the engine — not a rule; nothing to edit in " + GuardsPresence.RULES_FILE);
+        sb.append('\n');
+        shas(sb, rulesSha, baselineSha);
+        return sb.toString();
+    }
+
+    static String validationJson(EngineValidations.Info v) {
+        return "{\"validations\":[{\"code\":" + Jsonl.quote(v.code()) + ",\"lanes\":" + Jsonl.quote(v.lanes())
+                + ",\"checks\":" + Jsonl.quote(v.what()) + ",\"why\":" + Jsonl.quote(v.why()) + "}]}";
     }
 
     private static void shas(StringBuilder sb, String rulesSha, String baselineSha) {

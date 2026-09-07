@@ -8,6 +8,7 @@ import cc.jumpkick.guard.schema.Kind;
 import cc.jumpkick.guard.schema.Kind.InsteadRule;
 import cc.jumpkick.guard.schema.Kind.KeyGroup;
 import cc.jumpkick.guard.schema.SchemaText;
+import cc.jumpkick.guard.validate.EngineValidations;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.GuardsConfig;
 import java.io.IOException;
@@ -151,6 +152,16 @@ public final class GuardRules {
                         line,
                         key,
                         "rule id must be lower-case letters, digits and hyphens (it is the diagnostic code)"));
+                continue;
+            }
+            if (EngineValidations.CODES.contains(key)) {
+                problems.add(new LoadError(
+                        Severity.ERROR,
+                        file,
+                        line,
+                        key,
+                        "`" + key + "` is an engine validation's code (jk guard explain " + key
+                                + "); a rule cannot take it"));
                 continue;
             }
             if (rules.containsKey(key)) {
