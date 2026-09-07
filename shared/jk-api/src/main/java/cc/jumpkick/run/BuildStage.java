@@ -203,7 +203,7 @@ public enum BuildStage {
                     TaskNames.PACKAGE_ASSEMBLY,
                     TaskNames.BUILD_LOGIC_BEFORE_PACKAGE,
                     TaskNames.BUILD_LOGIC_AFTER_BUILD,
-                    TaskNames.BUILD_LOGIC_GATE -> PACKAGE;
+                    TaskNames.BUILD_LOGIC_GUARD -> PACKAGE;
             case TaskNames.TRAIN -> TRAIN;
             case TaskNames.NATIVE_IMAGE -> NATIVE;
             case TaskNames.WRITE_IMAGE, TaskNames.IMAGE_PLAN -> IMAGE;

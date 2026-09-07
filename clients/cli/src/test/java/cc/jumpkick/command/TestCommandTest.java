@@ -32,19 +32,17 @@ class TestCommandTest {
     }
 
     @Test
-    void gate_is_inner_when_there_is_no_integration_suite(@TempDir Path tempDir) throws Exception {
+    void guard_is_inner_when_there_is_no_integration_suite(@TempDir Path tempDir) throws Exception {
         scaffoldNoDeps(tempDir);
         String cache = tempDir.resolve("cache").toString();
         int inner = run("test", "-C", tempDir.toString(), "--cache-dir", cache);
-        int gate = run("test", "--gate", "-C", tempDir.toString(), "--cache-dir", cache);
-        int pre = run("test", "--pre-merge", "-C", tempDir.toString(), "--cache-dir", cache);
+        int guard = run("test", "--guard", "-C", tempDir.toString(), "--cache-dir", cache);
         assertThat(inner).isEqualTo(0);
-        assertThat(gate).isEqualTo(0);
-        assertThat(pre).isEqualTo(0);
+        assertThat(guard).isEqualTo(0);
     }
 
     @Test
-    void gate_compiles_integration_when_present(@TempDir Path tempDir) throws Exception {
+    void guard_compiles_integration_when_present(@TempDir Path tempDir) throws Exception {
         scaffoldNoDeps(tempDir);
         // Force traditional layout so src/integration/ is a suite, not main sources.
         Files.createDirectories(tempDir.resolve("src/test/java"));
@@ -53,9 +51,7 @@ class TestCommandTest {
         Files.writeString(broken, "package example;\nclass BrokenIT { void t(  // syntax error\n");
         String cache = tempDir.resolve("cache").toString();
         assertThat(run("test", "-C", tempDir.toString(), "--cache-dir", cache)).isEqualTo(0);
-        assertThat(run("test", "--gate", "-C", tempDir.toString(), "--cache-dir", cache))
-                .isNotEqualTo(0);
-        assertThat(run("test", "--pre-merge", "-C", tempDir.toString(), "--cache-dir", cache))
+        assertThat(run("test", "--guard", "-C", tempDir.toString(), "--cache-dir", cache))
                 .isNotEqualTo(0);
     }
 
@@ -71,15 +67,15 @@ class TestCommandTest {
                 "package example; public class App { public static void main(String[] a) {} }\n");
         Files.createDirectories(project.resolve(".jk"));
         Files.writeString(
-                project.resolve(".jk/gate.groovy"),
+                project.resolve(".jk/guard.groovy"),
                 "new File('" + ran.toString().replace("\\", "\\\\") + "').append('x')\n");
         String c = cache.toString();
         String p = project.toString();
         assertThat(run("test", "-C", p, "--cache-dir", c)).isEqualTo(0);
         assertThat(Files.exists(ran)).isFalse();
-        assertThat(run("test", "--gate", "-C", p, "--cache-dir", c)).isEqualTo(0);
+        assertThat(run("test", "--guard", "-C", p, "--cache-dir", c)).isEqualTo(0);
         assertThat(Files.readString(ran)).hasSize(1);
-        assertThat(run("test", "--gate", "--no-scripts", "-C", p, "--cache-dir", c))
+        assertThat(run("test", "--guard", "--no-scripts", "-C", p, "--cache-dir", c))
                 .isEqualTo(0);
         assertThat(Files.readString(ran)).hasSize(1);
         assertThat(run("test", "--scripts-only", "-C", p, "--cache-dir", c)).isEqualTo(0);
@@ -89,7 +85,7 @@ class TestCommandTest {
                 "package example; public class App { public static int n() { return 1; } }\n");
         assertThat(run("test", "--scripts-only", "-C", p, "--cache-dir", c)).isEqualTo(0);
         assertThat(Files.readString(ran)).hasSize(2);
-        assertThat(run("test", "--gate", "--scripts-only", "-C", p, "--cache-dir", c))
+        assertThat(run("test", "--guard", "--scripts-only", "-C", p, "--cache-dir", c))
                 .isEqualTo(0);
         assertThat(Files.readString(ran)).hasSize(2);
     }
@@ -102,7 +98,7 @@ class TestCommandTest {
                 tempDir.resolve("src/main/java/example/App.java"),
                 "package example; public class App { public static void main(String[] a) {} }\n");
         Files.createDirectories(tempDir.resolve(".jk"));
-        Files.writeString(tempDir.resolve(".jk/gate.groovy"), "throw new IllegalStateException('planted-gate')\n");
+        Files.writeString(tempDir.resolve(".jk/guard.groovy"), "throw new IllegalStateException('planted-gate')\n");
         String cache = tempDir.resolve("cache").toString();
         assertThat(run("test", "--scripts-only", "-C", tempDir.toString(), "--cache-dir", cache))
                 .isNotEqualTo(0);
@@ -110,7 +106,7 @@ class TestCommandTest {
         assertThat(results).exists();
         String md = Files.readString(results);
         assertThat(md).contains("FAIL");
-        assertThat(md).containsIgnoringCase("gate");
+        assertThat(md).containsIgnoringCase("guard");
     }
 
     @Test
@@ -139,7 +135,7 @@ class TestCommandTest {
         ScaffoldTestSupport.writeEmptyLock(project.resolve("core"));
         Files.createDirectories(project.resolve(".jk"));
         Files.writeString(
-                project.resolve(".jk/gate.groovy"),
+                project.resolve(".jk/guard.groovy"),
                 "new File('" + ran.toString().replace("\\", "\\\\") + "').append('x')\n");
         String c = cache.toString();
         String p = project.toString();
@@ -147,7 +143,7 @@ class TestCommandTest {
         assertThat(Files.exists(ran)).isFalse();
         assertThat(run("build", "-C", p, "--cache-dir", c, "--skip-tests")).isEqualTo(0);
         assertThat(Files.exists(ran)).isFalse();
-        assertThat(run("test", "--gate", "-C", p, "--cache-dir", c)).isEqualTo(0);
+        assertThat(run("test", "--guard", "-C", p, "--cache-dir", c)).isEqualTo(0);
         assertThat(Files.readString(ran)).hasSize(1);
         assertThat(run("test", "--scripts-only", "-C", p, "--cache-dir", c)).isEqualTo(0);
         assertThat(Files.readString(ran)).hasSize(1);

@@ -50,10 +50,10 @@ class JkBuildParserProjectTest {
                 .hasMessageContaining("plural");
         assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
                         [test]
-                        gate-suite = ["test"]
+                        guard-suite = ["test"]
                         """))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("gate-suites");
+                .hasMessageContaining("guard-suites");
     }
 
     @Test

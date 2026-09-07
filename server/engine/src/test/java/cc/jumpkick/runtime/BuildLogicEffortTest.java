@@ -106,7 +106,7 @@ class BuildLogicEffortTest {
     /** {@code gate} runs only when it was asked for; {@code after-build} whenever there is work. */
     @Test
     void the_gate_is_priced_only_when_requested(@TempDir Path dir) throws Exception {
-        project(dir, "after-build.kts", "gate.kts");
+        project(dir, "after-build.kts", "guard.kts");
 
         assertThat(BuildLogicEffort.rootMillis(dir, null, false)).isEqualTo(TOKEN_MS);
         assertThat(BuildLogicEffort.rootMillis(dir, null, true)).isEqualTo(2 * TOKEN_MS);

@@ -9,7 +9,7 @@ import org.jspecify.annotations.Nullable;
  * file agents edit most.
  *
  * @param onBuild whether the module and workspace lanes run on every {@code jk build} / {@code jk
- *     test} (default) or only on {@code --gate}
+ *     test} (default) or only on {@code --guard}
  * @param coverageReport path of the coverage XML the {@code coverage.*} measures read, relative to
  *     the workspace root; {@code null} means the test task's own report
  * @param declared whether the table was present at all — its presence alone enables the guard

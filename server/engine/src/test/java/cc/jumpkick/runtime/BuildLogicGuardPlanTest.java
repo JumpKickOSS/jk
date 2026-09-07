@@ -21,14 +21,14 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /** Plan shape for the {@code gate} stem and {@code --scripts-only} / {@code --no-scripts}. */
-class BuildLogicGatePlanTest {
+class BuildLogicGuardPlanTest {
 
     @Test
     void default_test_plan_does_not_include_gate(@TempDir Path dir) throws Exception {
         Path project = scaffold(dir, true);
         Map<String, Task> byName = index(plan(project, dir.resolve("cache"), false, true, TestSelection.DEFAULT));
         assertThat(byName).containsKey(TaskNames.RUN_TESTS);
-        assertThat(byName).doesNotContainKey(TaskNames.BUILD_LOGIC_GATE);
+        assertThat(byName).doesNotContainKey(TaskNames.BUILD_LOGIC_GUARD);
     }
 
     @Test
@@ -36,7 +36,7 @@ class BuildLogicGatePlanTest {
         Path project = scaffold(dir, true);
         Map<String, Task> byName = index(plan(project, dir.resolve("cache"), false, false, TestSelection.DEFAULT));
         assertThat(byName).containsKey(TaskNames.PACKAGE_JAR);
-        assertThat(byName).doesNotContainKey(TaskNames.BUILD_LOGIC_GATE);
+        assertThat(byName).doesNotContainKey(TaskNames.BUILD_LOGIC_GUARD);
     }
 
     @Test
@@ -44,9 +44,9 @@ class BuildLogicGatePlanTest {
         Path project = scaffold(dir, true);
         TestSelection gate = TestSelection.of(List.of("test", "integration"), false, List.of(), List.of(), false, true);
         Map<String, Task> byName = index(plan(project, dir.resolve("cache"), false, true, gate));
-        assertThat(byName).containsKey(TaskNames.BUILD_LOGIC_GATE);
+        assertThat(byName).containsKey(TaskNames.BUILD_LOGIC_GUARD);
         assertThat(byName).containsKey(TaskNames.RUN_TESTS);
-        assertThat(byName.get(TaskNames.BUILD_LOGIC_GATE).requires()).contains(TaskNames.RUN_TESTS);
+        assertThat(byName.get(TaskNames.BUILD_LOGIC_GUARD).requires()).contains(TaskNames.RUN_TESTS);
     }
 
     @Test
@@ -54,9 +54,9 @@ class BuildLogicGatePlanTest {
         Path project = scaffold(dir, true);
         TestSelection sel = TestSelection.of(List.of(), false, List.of(), List.of(), false, false, true, false);
         Map<String, Task> byName = index(plan(project, dir.resolve("cache"), false, true, sel));
-        assertThat(byName).containsKey(TaskNames.BUILD_LOGIC_GATE);
+        assertThat(byName).containsKey(TaskNames.BUILD_LOGIC_GUARD);
         assertThat(byName).doesNotContainKey(TaskNames.RUN_TESTS);
-        assertThat(byName.get(TaskNames.BUILD_LOGIC_GATE).requires()).contains(TaskNames.COPY_RESOURCES);
+        assertThat(byName.get(TaskNames.BUILD_LOGIC_GUARD).requires()).contains(TaskNames.COPY_RESOURCES);
     }
 
     @Test
@@ -66,7 +66,7 @@ class BuildLogicGatePlanTest {
                 TestSelection.of(List.of("test", "integration"), false, List.of(), List.of(), false, true, false, true);
         Map<String, Task> byName = index(plan(project, dir.resolve("cache"), false, true, sel));
         assertThat(byName).containsKey(TaskNames.RUN_TESTS);
-        assertThat(byName).doesNotContainKey(TaskNames.BUILD_LOGIC_GATE);
+        assertThat(byName).doesNotContainKey(TaskNames.BUILD_LOGIC_GUARD);
     }
 
     @Test
@@ -74,9 +74,9 @@ class BuildLogicGatePlanTest {
         Path project = scaffold(dir, true);
         TestSelection gate = TestSelection.of(List.of("test", "integration"), false, List.of(), List.of(), false, true);
         Map<String, Task> byName = index(plan(project, dir.resolve("cache"), true, false, gate));
-        assertThat(byName).containsKey(TaskNames.BUILD_LOGIC_GATE);
+        assertThat(byName).containsKey(TaskNames.BUILD_LOGIC_GUARD);
         assertThat(byName).doesNotContainKey(TaskNames.RUN_TESTS);
-        assertThat(byName.get(TaskNames.BUILD_LOGIC_GATE).requires()).contains(TaskNames.PACKAGE_JAR);
+        assertThat(byName.get(TaskNames.BUILD_LOGIC_GUARD).requires()).contains(TaskNames.PACKAGE_JAR);
     }
 
     @Test
@@ -85,7 +85,7 @@ class BuildLogicGatePlanTest {
         TestSelection sel = TestSelection.of(List.of(), false, List.of(), List.of(), false, false, true, false);
         assertThatThrownBy(() -> plan(project, dir.resolve("cache"), false, true, sel))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining(BuildLogicToml.NO_GATE_SCRIPTS);
+                .hasMessageContaining(BuildLogicToml.NO_GUARD_SCRIPTS);
     }
 
     private static Map<String, Task> index(BuildPlan p) {
@@ -106,7 +106,7 @@ class BuildLogicGatePlanTest {
         Files.writeString(project.resolve("src/test/java/demo/AppTest.java"), "package demo; class AppTest {}\n");
         if (withGate) {
             Files.createDirectories(project.resolve(".jk"));
-            Files.writeString(project.resolve(".jk/gate.groovy"), "// gate\n");
+            Files.writeString(project.resolve(".jk/guard.groovy"), "// gate\n");
         }
         return project;
     }

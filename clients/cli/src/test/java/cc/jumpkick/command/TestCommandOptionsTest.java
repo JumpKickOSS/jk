@@ -48,23 +48,23 @@ class TestCommandOptionsTest {
     }
 
     @Test
-    void gate_and_pre_merge_are_one_option() throws Exception {
+    void guard_is_one_option_with_no_alias() throws Exception {
         List<Opt> opts = new TestCommand().options();
-        Opt gate = opts.stream()
-                .filter(o -> o.names().contains("--gate"))
+        Opt guard = opts.stream()
+                .filter(o -> o.names().contains("--guard"))
                 .findFirst()
                 .orElseThrow();
-        assertThat(gate.names()).containsExactly("--gate", "--pre-merge");
-        assertThat(TestCommand.gateRequested(parse("--gate"))).isTrue();
-        assertThat(TestCommand.gateRequested(parse("--pre-merge"))).isTrue();
+        assertThat(guard.names()).containsExactly("--guard");
+        assertThat(TestCommand.guardRequested(parse("--guard"))).isTrue();
         String help = HelpRenderer.renderHelp(CommandModels.from(new TestCommand(), "jk test", List.of()), false);
-        assertThat(help).contains("--gate, --pre-merge");
-        Opt buildGate = new BuildCommand()
+        assertThat(help).contains("--guard");
+        assertThat(help).doesNotContain("--gate").doesNotContain("--pre-merge");
+        Opt buildGuard = new BuildCommand()
                 .options().stream()
-                        .filter(o -> o.names().contains("--gate"))
+                        .filter(o -> o.names().contains("--guard"))
                         .findFirst()
                         .orElseThrow();
-        assertThat(buildGate.names()).containsExactly("--gate", "--pre-merge");
+        assertThat(buildGuard.names()).containsExactly("--guard");
     }
 
     @Test

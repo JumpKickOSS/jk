@@ -152,7 +152,7 @@ The house rules in [code-as-art.md](code-as-art.md#the-guard-registry) are jk's:
 the rules of `jk-guards.toml` and the guard tests under each module's `src/guard`.
 The model, module, workspace and output lanes run in every `jk build`; the tree
 lane (text, metric, parity, generated) and the fixture proofs run on `jk guard`
-and `--gate`, which is what CI's self-host job runs after the build. Gradle keeps the one letter only its
+and `--guard`, which is what CI's self-host job runs after the build. Gradle keeps the one letter only its
 task graph can see (G64, a disabled `JavaCompile`) and two registry tasks:
 `checkGuardRegistry` renders the table, and `checkGuardParity` fails when a letter
 has a Gradle task and no jk side, or when `jk-guards.toml` differs from the file

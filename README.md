@@ -60,7 +60,7 @@ That is it. No `build.gradle.kts` that is itself a software project. No 200-line
 | **Intent** | `jk manual` / MCP `jk_manual` — the system prompt for a tool models were not trained on |
 | **Mutate** | Declarative `jk.toml`; surgical `jk add` / `remove`; MCP preview-before-apply |
 | **Execute** | Lockfile is law; action cache + CAS; slim resident engine (~256 MiB) |
-| **Test rungs** | Default `jk test` is unit (inner loop). `--gate` (alias `--pre-merge`) is the named share-the-commit bar. `--all` is nightly, not a habit. |
+| **Test rungs** | Default `jk test` is unit (inner loop). `--guard` is the named share-the-commit bar. `--all` is nightly, not a habit. |
 | **Observe** | `target/jk-results.md`, MCP diagnostics, JSONL — same facts as the human CLI |
 | **Repair** | Readable PubGrub conflicts, `jk why` / `jk explain`, format after edits |
 
@@ -87,7 +87,7 @@ three skins** (TTY / browser / MCP) — never scrape wedges.
 | You want… | JumpKick gives you… |
 |---|---|
 | **An agent-closed loop** | `jk-results.md`, MCP tools, `jk manual` — diagnose without log archaeology |
-| **Named test rungs** | Cheap unit inner loop; `--gate` before share; e2e / `--all` on purpose — not Surefire folklore |
+| **Named test rungs** | Cheap unit inner loop; `--guard` before share; e2e / `--all` on purpose — not Surefire folklore |
 | **Ergonomics of Cargo / uv** | `jk init` `add` `lock` `build` `test` `tree` `why` — native binary, sub-50 ms cold start |
 | **Data, not a second app** | TOML manifest; plugins extend a finite model; no Kotlin/Groovy DSL as the build |
 | **Reproducible by default** | `jk-lock.toml` is law; `jk build` does not re-resolve |
@@ -135,7 +135,7 @@ jk build        # still fully reproducible from that lock
 ### Lead — agent loop + declarative core
 
 - **`target/jk-results.md`** · MCP `jk_results` / `jk_diagnostics` · `jk manual`
-- **Named test rungs** — `jk test` (unit) · `--gate` / `--pre-merge` (share the commit) · `--all` (nightly)
+- **Named test rungs** — `jk test` (unit) · `--guard` (share the commit) · `--all` (nightly)
 - **`jk.toml`** + `jk add` / `remove` · MCP preview/apply for deps and manifest keys
 - Canonical **`jk-lock.toml`** (commit it); PubGrub with **English conflict diagnostics**
 - `jk why` · `jk explain` · `jk tree` · `jk outdated` / `jk update`

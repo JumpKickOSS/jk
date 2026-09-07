@@ -35,7 +35,7 @@ Canonical extra suite names — use these unless you have a reason not to:
 | Suite | Traditional | Simple | Run with |
 |-------|-------------|---------|----------|
 | **unit** (default) | `src/test/…` | `test/src/` | `jk test` |
-| **integration** | `src/integration/…` | `integration/src/` | `jk test --gate` (share-the-commit) |
+| **integration** | `src/integration/…` | `integration/src/` | `jk test --guard` (share-the-commit) |
 | **e2e** | `src/e2e/…` | `e2e/src/` | `jk test --suite e2e` (CI / judgment) |
 
 Other names (`contract`, `mutation`, …) are discovered the same way. Do not put

@@ -562,14 +562,14 @@ class BuildLogicSupportTest {
                 [workspace]
                 modules = []
                 """);
-        Files.writeString(root.resolve(".jk/gate.groovy"), "outDir.resolve('verdict.txt').toFile().text = 'gate'\n");
+        Files.writeString(root.resolve(".jk/guard.groovy"), "outDir.resolve('verdict.txt').toFile().text = 'gate'\n");
 
         ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
         BuildLayout layout = BuildLayout.of(root, JkBuildParser.parse(root.resolve("jk.toml")));
 
-        assertTrue(BuildLogicSupport.run(root, layout, ac, null, BuildLogicAnchor.GATE, s -> {}));
+        assertTrue(BuildLogicSupport.run(root, layout, ac, null, BuildLogicAnchor.GUARD, s -> {}));
         Path out = layout.generatedSourcesDir("jk-logic-out-gate").resolve("verdict.txt");
-        assertEquals("gate", Files.readString(out).trim());
+        assertEquals("guard", Files.readString(out).trim());
     }
 
     @Test
@@ -594,7 +594,7 @@ class BuildLogicSupportTest {
                 jdk = 25
                 """);
         Files.writeString(core.resolve("src/main/java/demo/A.java"), "package demo; class A {}\n");
-        Files.writeString(core.resolve(".jk/gate.groovy"), "// wrong scope\n");
+        Files.writeString(core.resolve(".jk/guard.groovy"), "// wrong scope\n");
 
         ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
         BuildLayout layout = BuildLayout.of(core, JkBuildParser.parse(core.resolve("jk.toml")));
@@ -604,7 +604,7 @@ class BuildLogicSupportTest {
         IllegalStateException ex = assertThrows(
                 IllegalStateException.class,
                 () -> BuildLogicSupport.run(core, layout, ac, classes, BuildLogicAnchor.AFTER_RESOURCES, s -> {}));
-        assertTrue(ex.getMessage().contains("gate.groovy"), ex.getMessage());
+        assertTrue(ex.getMessage().contains("guard.groovy"), ex.getMessage());
         assertTrue(ex.getMessage().contains("module"), ex.getMessage());
     }
 
@@ -614,7 +614,7 @@ class BuildLogicSupportTest {
         Files.createDirectories(project.resolve(".jk"));
         Path ran = dir.resolve("gate-ran.log");
         Files.writeString(
-                project.resolve(".jk/gate.groovy"),
+                project.resolve(".jk/guard.groovy"),
                 "new File('" + ran.toString().replace("\\", "\\\\") + "').append('x')\n");
 
         ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
@@ -625,9 +625,9 @@ class BuildLogicSupportTest {
         assertTrue(BuildLogicSupport.run(project, layout, ac, classes, BuildLogicAnchor.AFTER_RESOURCES, s -> {}));
         assertFalse(Files.exists(ran), "inner module anchors must not run gate");
 
-        assertTrue(BuildLogicSupport.run(project, layout, ac, null, BuildLogicAnchor.GATE, s -> {}));
+        assertTrue(BuildLogicSupport.run(project, layout, ac, null, BuildLogicAnchor.GUARD, s -> {}));
         assertEquals(1, Files.readString(ran).length());
-        assertTrue(BuildLogicSupport.run(project, layout, ac, null, BuildLogicAnchor.GATE, s -> {}));
+        assertTrue(BuildLogicSupport.run(project, layout, ac, null, BuildLogicAnchor.GUARD, s -> {}));
         assertEquals(1, Files.readString(ran).length(), "unchanged tree caches the gate verdict");
     }
 
@@ -666,12 +666,12 @@ class BuildLogicSupportTest {
     @Test
     void a_host_lifecycle_failure_keeps_its_own_single_prefix() {
         IllegalStateException died =
-                new IllegalStateException("[build] logic: the .kts host died running gate.kts (exit 137)");
-        IllegalStateException wrapped = BuildLogicSupport.scriptFailure(Path.of(".jk/gate.kts"), died);
+                new IllegalStateException("[build] logic: the .kts host died running guard.kts (exit 137)");
+        IllegalStateException wrapped = BuildLogicSupport.scriptFailure(Path.of(".jk/guard.kts"), died);
         assertEquals(died.getMessage(), wrapped.getMessage());
         assertEquals(
                 1,
-                countOccurrences(BuildLogicSupport.taskFailure("gate", wrapped).getMessage(), "[build] logic"));
+                countOccurrences(BuildLogicSupport.taskFailure("guard", wrapped).getMessage(), "[build] logic"));
     }
 
     @Test

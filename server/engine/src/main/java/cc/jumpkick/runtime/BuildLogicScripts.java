@@ -26,11 +26,11 @@ import java.util.Optional;
  *   after-resources.groovy|.kts  → AFTER_RESOURCES
  *   before-package.groovy|.kts   → BEFORE_PACKAGE
  *   after-build.groovy|.kts      → AFTER_BUILD (workspace root only)
- *   gate.groovy|.kts             → GATE (invocation root: workspace root or standalone)
+ *   guard.groovy|.kts             → GUARD (invocation root: workspace root or standalone)
  * </pre>
  *
  * <p>The first four are module anchors and the last two are root-scoped; neither set is legal in
- * the other's scope. {@code gate} is also legal on a standalone project. {@link BuildLogicSupport}
+ * the other's scope. {@code guard} is also legal on a standalone project. {@link BuildLogicSupport}
  * enforces that, because only it knows which one it is looking at.
  *
  * <p>Optional suffix for multiple scripts at one anchor: {@code before-compile-collections.groovy}
@@ -58,7 +58,7 @@ final class BuildLogicScripts {
                         case "after-resources" -> BuildLogicAnchor.AFTER_RESOURCES;
                         case "before-package" -> BuildLogicAnchor.BEFORE_PACKAGE;
                         case "after-build" -> BuildLogicAnchor.AFTER_BUILD;
-                        case "gate" -> BuildLogicAnchor.GATE;
+                        case "guard" -> BuildLogicAnchor.GUARD;
                         default ->
                             throw new IllegalStateException(
                                     "BuildLogicStems.ALL grew '" + stem + "' without an anchor here — add the mapping");
@@ -187,7 +187,7 @@ final class BuildLogicScripts {
         });
     }
 
-    /** One level down is where a misplaced script actually lands ({@code .jk/scripts/gate.kts}). */
+    /** One level down is where a misplaced script actually lands ({@code .jk/scripts/guard.kts}). */
     private static void warnNestedStems(Path logicDir, Path subDir) {
         try {
             PathUtil.forEachChild(subDir, (p, attrs) -> {

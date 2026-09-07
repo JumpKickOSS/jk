@@ -153,21 +153,21 @@ final class PlannerGuards {
 
     /**
      * Add the root lanes to this unit's plan when it is the invocation root and guards are on:
-     * {@code guard-model} always, {@code guard-tree} when the session asked for the gate. Returns the
+     * {@code guard-model} always, {@code guard-tree} when the session asked for the guard. Returns the
      * last lane added, or {@code null} when none was.
      */
     /**
      * Whether this build runs the module lanes: guards are enabled and either {@code [guards]
-     * on-build} is true (the default) or the session asked for the gate. {@code on-build = false}
-     * moves the module lanes to {@code --gate}; the model lane stays on every build.
+     * on-build} is true (the default) or the session asked for the guard. {@code on-build = false}
+     * moves the module lanes to {@code --guard}; the model lane stays on every build.
      */
-    static boolean moduleLanesOnThisBuild(GuardsPlan g, boolean gate) {
-        return g.enabled() && (g.config().onBuild() || gate);
+    static boolean moduleLanesOnThisBuild(GuardsPlan g, boolean guard) {
+        return g.enabled() && (g.config().onBuild() || guard);
     }
 
-    static boolean gateRequested() {
+    static boolean guardRequested() {
         var session = SessionContext.current();
-        return session != null && session.testSelection().runGateScripts();
+        return session != null && session.testSelection().runGuardScripts();
     }
 
     /**
@@ -179,15 +179,15 @@ final class PlannerGuards {
         if (!cx.guards().enabled() || !PlannerResources.invocationRoot(cx.in().dir())) return null;
         b.addTask(modelStep(cx));
         String last = TaskNames.GUARD_MODEL;
-        boolean gate = PlannerResources.runGateScripts(cx.in());
+        boolean guard = PlannerResources.runGuardScripts(cx.in());
         // Cross-module structure needs every module's facts at once: the workspace lane, at the
         // root, which the graph already orders after every member. A standalone project has no
         // second module to relate, so it has no such lane.
-        if (hasMembers(cx) && moduleLanesOnThisBuild(cx.guards(), gate)) {
+        if (hasMembers(cx) && moduleLanesOnThisBuild(cx.guards(), guard)) {
             b.addTask(workspaceStep(cx, TaskNames.GUARD_MODEL, after));
             last = TaskNames.GUARD_WORKSPACE;
         }
-        if (gate) {
+        if (guard) {
             b.addTask(treeStep(cx, last, after));
             b.addTask(fixturesStep(cx, TaskNames.GUARD_TREE));
             last = TaskNames.GUARD_FIXTURES;
@@ -408,7 +408,7 @@ final class PlannerGuards {
                 .build();
     }
 
-    /** {@code guard-fixtures}: {@code jk guard test} as a gate step — every fixture-bearing rule proven to bite. */
+    /** {@code guard-fixtures}: {@code jk guard test} as a guard step — every fixture-bearing rule proven to bite. */
     static Task fixturesStep(BuildPlanner.Ctx cx, String... requires) {
         GuardsPlan g = cx.guards();
         return Task.builder(TaskNames.GUARD_FIXTURES)
@@ -498,7 +498,7 @@ final class PlannerGuards {
                 .build();
     }
 
-    /** {@code guard-tree}: the text scan at the root; {@code --gate} and {@code jk guard} only. */
+    /** {@code guard-tree}: the text scan at the root; {@code --guard} and {@code jk guard} only. */
     static Task treeStep(BuildPlanner.Ctx cx, String... requires) {
         GuardsPlan g = cx.guards();
         return Task.builder(TaskNames.GUARD_TREE)

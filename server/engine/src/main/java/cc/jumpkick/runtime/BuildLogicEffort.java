@@ -73,7 +73,7 @@ final class BuildLogicEffort {
             case AFTER_COMPILE -> TaskNames.BUILD_LOGIC_AFTER_COMPILE;
             case BEFORE_PACKAGE -> TaskNames.BUILD_LOGIC_BEFORE_PACKAGE;
             case AFTER_BUILD -> TaskNames.BUILD_LOGIC_AFTER_BUILD;
-            case GATE -> TaskNames.BUILD_LOGIC_GATE;
+            case GUARD -> TaskNames.BUILD_LOGIC_GUARD;
             case AFTER_RESOURCES -> "";
         };
     }
@@ -103,16 +103,16 @@ final class BuildLogicEffort {
 
     /**
      * The invocation root's build-logic cost in ms. {@code after-build} runs whenever the build does
-     * anything at all — the caller only asks when there is scheduled work — and {@code gate} runs
+     * anything at all — the caller only asks when there is scheduled work — and {@code guard} runs
      * only when it was asked for.
      */
-    static long rootMillis(Path entryDir, BuildMetrics metrics, boolean gateRequested) {
+    static long rootMillis(Path entryDir, BuildMetrics metrics, boolean guardRequested) {
         if (entryDir == null) return 0;
         long total = 0;
         for (var e : scriptsIn(entryDir).entrySet()) {
             BuildLogicAnchor anchor = e.getKey();
             if (!anchor.workspaceScoped()) continue;
-            if (anchor == BuildLogicAnchor.GATE && !gateRequested) continue;
+            if (anchor == BuildLogicAnchor.GUARD && !guardRequested) continue;
             total += millisFor(entryDir, anchor, e.getValue(), metrics);
         }
         return total;

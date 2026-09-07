@@ -75,7 +75,7 @@ and `hybrid` rules read two of these. The **lane** is when it runs: `model` befo
 `module` after each module compiles, `workspace` once every module's facts are on disk,
 `output` after packaging, `hook` at commit time — all inside `jk build`. The `tree` lane
 (text, metric, parity and generated rules) and the fixture proofs run on `jk guard`,
-`jk test --gate` and `jk build --gate`, never on an inner `jk build`, so a tree scan is a
+`jk test --guard` and `jk build --guard`, never on an inner `jk build`, so a tree scan is a
 share-the-commit cost. A lane is keyed to what it reads, so an unchanged input skips it and
 an edit re-runs only the lanes it can affect.
 

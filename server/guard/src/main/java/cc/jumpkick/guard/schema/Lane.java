@@ -9,7 +9,7 @@ public enum Lane {
     MODULE,
     /** Root, after every compile, over all facts indexes. */
     WORKSPACE,
-    /** Root, {@code --gate} and {@code jk guard}: the tree scan. */
+    /** Root, {@code --guard} and {@code jk guard}: the tree scan. */
     TREE,
     /** Root, after package / native / test-with-coverage. */
     OUTPUT,

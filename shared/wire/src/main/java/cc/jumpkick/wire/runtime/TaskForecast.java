@@ -109,7 +109,7 @@ public final class TaskForecast {
                         TaskNames.BUILD_LOGIC_AFTER_COMPILE,
                         TaskNames.BUILD_LOGIC_BEFORE_PACKAGE,
                         TaskNames.BUILD_LOGIC_AFTER_BUILD,
-                        TaskNames.BUILD_LOGIC_GATE -> true;
+                        TaskNames.BUILD_LOGIC_GUARD -> true;
                 default -> false;
             };
         }

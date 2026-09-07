@@ -114,26 +114,26 @@ these):
 | File | When |
 |------|------|
 | `after-build.groovy` / `.kts` | Once per build, after **every member module** has built |
-| `gate.groovy` / `.kts` | Share-the-commit bar: `jk test --gate` / `jk test --scripts-only`. Not on inner `jk test` / `jk build`. |
+| `guard.groovy` / `.kts` | Share-the-commit bar: `jk test --guard` / `jk test --scripts-only`. Not on inner `jk test` / `jk build`. |
 
 `after-build` is the always-on workspace-wide step: every member's sources and outputs
 are on disk, and the script runs once rather than once per module. Ordering comes from
 the build graph — the root becomes a unit that depends on all its members — so
 `[build] order-after` is not needed for it.
 
-`gate` is the same *shape* (once per graph, whole-tree cache key, a check that writes
+`guard` is the same *shape* (once per graph, whole-tree cache key, a check that writes
 nothing records a verdict) and the other *budget*. Tree-scan checks that are not house
 rules — a release-notes lint, a generated-file freshness probe — belong here so the inner
 loop does not pay them; house rules themselves are `jk-guards.toml`, not a script
-(`jk guard explain` walks them). A standalone project root may use `gate` too; a workspace
+(`jk guard explain` walks them). A standalone project root may use `guard` too; a workspace
 **member** may not.
 
-`--scripts-only` runs the gate stem without JUnit (legal with or without `--gate`).
-`--no-scripts` runs `--gate` tests without the extra scripts. Combining the two flags is
-a config error. `--scripts-only` with no `gate` stem is a config error naming the paths
-looked for (`jk/gate.{kts,groovy}`, `.jk/gate.{kts,groovy}` at the root).
-`jk build --gate --skip-tests` packages, then runs gate scripts (no JUnit).
-`--gate --scripts-only` is the same as `--scripts-only`.
+`--scripts-only` runs the guard stem without JUnit (legal with or without `--guard`).
+`--no-scripts` runs `--guard` tests without the extra scripts. Combining the two flags is
+a config error. `--scripts-only` with no `guard` stem is a config error naming the paths
+looked for (`jk/guard.{kts,groovy}`, `.jk/guard.{kts,groovy}` at the root).
+`jk build --guard --skip-tests` packages, then runs guard scripts (no JUnit).
+`--guard --scripts-only` is the same as `--scripts-only`.
 
 The two sets do not mix, in either direction, and using the wrong one **fails the build**
 rather than being skipped:
@@ -141,7 +141,7 @@ rather than being skipped:
 - A module stem (`before-compile`, `after-compile`, `after-resources`, `before-package`)
   at the root is an error. A root compiles and packages nothing, so there is no cut for
   them to be relative to.
-- `after-build` or `gate` inside a module is an error. A module has no "after every
+- `after-build` or `guard` inside a module is an error. A module has no "after every
   member" moment.
 
 A root script has no classes tree to merge into: its `outDir` is its own output and
@@ -153,7 +153,7 @@ my-workspace/
   jk.toml              # [workspace] modules = ["core", "app"]
   .jk/
     after-build.kts    # runs once, after core and app, every build
-    gate.kts           # runs on --gate / --scripts-only, not on inner jk test
+    guard.kts           # runs on --guard / --scripts-only, not on inner jk test
   core/
     jk.toml
     .jk/

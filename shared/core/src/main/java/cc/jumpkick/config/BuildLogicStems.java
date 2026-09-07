@@ -20,7 +20,7 @@ public final class BuildLogicStems {
             List.of("before-compile", "after-compile", "after-resources", "before-package");
 
     /** Invocation-root stems (workspace root, or a standalone project for {@code gate}). */
-    public static final List<String> ROOT = List.of("after-build", "gate");
+    public static final List<String> ROOT = List.of("after-build", "guard");
 
     /** Every recognized base stem, module scope first. */
     public static final List<String> ALL = concat(MODULE, ROOT);

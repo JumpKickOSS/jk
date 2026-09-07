@@ -13,8 +13,8 @@ class BuildLogicStemsTest {
         assertThat(BuildLogicStems.match("before_compile")).contains("before-compile");
         assertThat(BuildLogicStems.match("Before-Compile ")).contains("before-compile");
         assertThat(BuildLogicStems.match("before-compile-collections")).contains("before-compile");
-        assertThat(BuildLogicStems.match("gate-house")).contains("gate");
-        assertThat(BuildLogicStems.match("gate-")).isEmpty();
+        assertThat(BuildLogicStems.match("guard-house")).contains("guard");
+        assertThat(BuildLogicStems.match("guard-")).isEmpty();
         assertThat(BuildLogicStems.match("compile")).isEmpty();
         assertThat(BuildLogicStems.match("random")).isEmpty();
         assertThat(BuildLogicStems.match("")).isEmpty();
@@ -31,7 +31,7 @@ class BuildLogicStemsTest {
     void closest_suggests_only_near_misses() {
         assertThat(BuildLogicStems.closest("befor-compile")).contains("before-compile");
         assertThat(BuildLogicStems.closest("after_resource")).contains("after-resources");
-        assertThat(BuildLogicStems.closest("gaet")).contains("gate");
+        assertThat(BuildLogicStems.closest("gaurd")).contains("guard");
         assertThat(BuildLogicStems.closest("my-helpers")).isEmpty();
     }
 
@@ -39,6 +39,6 @@ class BuildLogicStemsTest {
     void the_table_is_the_six_documented_stems() {
         assertThat(BuildLogicStems.ALL)
                 .containsExactly(
-                        "before-compile", "after-compile", "after-resources", "before-package", "after-build", "gate");
+                        "before-compile", "after-compile", "after-resources", "before-package", "after-build", "guard");
     }
 }

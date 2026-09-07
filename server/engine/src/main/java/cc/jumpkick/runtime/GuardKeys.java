@@ -68,7 +68,7 @@ final class GuardKeys {
             Path dir, BuildLayout layout, ActionCache actionCache, boolean upstreamDirty) {
         Path root = WorkspaceScan.findRoot(dir).orElse(dir).toAbsolutePath().normalize();
         PlannerGuards.GuardsPlan g = PlannerGuards.detectAt(root);
-        if (!PlannerGuards.moduleLanesOnThisBuild(g, PlannerGuards.gateRequested())) return Optional.empty();
+        if (!PlannerGuards.moduleLanesOnThisBuild(g, PlannerGuards.guardRequested())) return Optional.empty();
         // A unit with no classes directory has no module lane (a sourceless root, a never-built module).
         if (!Files.isDirectory(layout.classesDir()) && !upstreamDirty) return Optional.empty();
         if (upstreamDirty) return Optional.of(run("guards · module recompiles"));
@@ -121,7 +121,7 @@ final class GuardKeys {
     /** The forecast's {@code guard-workspace} step at the workspace root, or empty. */
     static Optional<TaskForecast.Task> forecastWorkspaceLane(Path root, ActionCache actionCache) {
         PlannerGuards.GuardsPlan g = PlannerGuards.detectAt(root);
-        if (!PlannerGuards.moduleLanesOnThisBuild(g, PlannerGuards.gateRequested())) return Optional.empty();
+        if (!PlannerGuards.moduleLanesOnThisBuild(g, PlannerGuards.guardRequested())) return Optional.empty();
         try {
             List<Path> modules = WorkspaceModules.of(root);
             if (modules.isEmpty() || modules.equals(List.of(root))) return Optional.empty();
@@ -201,7 +201,7 @@ final class GuardKeys {
     /** {@code guard-tree}, gate only: the text scan's verdict, keyed on the tree's inputs, rules and baseline. */
     static Optional<TaskForecast.Task> forecastTreeLane(Path root, ActionCache actionCache) {
         PlannerGuards.GuardsPlan g = PlannerGuards.detectAt(root);
-        if (!g.enabled() || !PlannerGuards.gateRequested()) return Optional.empty();
+        if (!g.enabled() || !PlannerGuards.guardRequested()) return Optional.empty();
         try {
             LoadResult load = PlannerGuards.rules(g);
             if (load.hasErrors()) return Optional.of(tree("guards · jk-guards.toml does not load"));
@@ -268,7 +268,7 @@ final class GuardKeys {
     static Optional<TaskForecast.Task> forecastFixtures(Path dir) {
         Path root = WorkspaceScan.findRoot(dir).orElse(dir).toAbsolutePath().normalize();
         PlannerGuards.GuardsPlan g = PlannerGuards.detectAt(root);
-        if (!g.enabled() || !PlannerGuards.gateRequested()) return Optional.empty();
+        if (!g.enabled() || !PlannerGuards.guardRequested()) return Optional.empty();
         try {
             LoadResult load = PlannerGuards.rules(g);
             boolean any = load.rules().rules().values().stream().anyMatch(r -> r.fixture() != null);

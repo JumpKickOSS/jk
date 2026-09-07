@@ -496,7 +496,7 @@ final class EngineReads {
                                 session.offline(),
                                 session.force(),
                                 session.config().rebuildOr(false),
-                                session.testSelection().runGateScripts())
+                                session.testSelection().runGuardScripts())
                         .encode(),
                 EngineProtocol.FORECAST_ACK,
                 "forecast request",

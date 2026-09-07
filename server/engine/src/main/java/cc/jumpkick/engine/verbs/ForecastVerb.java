@@ -68,10 +68,10 @@ public final class ForecastVerb implements HostedVerb {
                         .withConfig(config)
                         .withWorkingDir(entryDir)
                         .withCacheDir(cache)
-                        // The gate lanes (tree, fixtures) are planned only under --gate; a forecast
+                        // The guard lanes (tree, fixtures) are planned only under --guard; a forecast
                         // that did not know the flag called a gate "up to date" without them.
                         .withTestSelection(TestSelection.of(
-                                List.of(), false, List.of(), List.of(), false, req.gate(), false, false))
+                                List.of(), false, List.of(), List.of(), false, req.guard(), false, false))
                         // The forecast's run-tests key must equal the one the live build computes,
                         // and [test] env is part of both. Resolving it here against the daemon's
                         // environment and there against the caller's would make them disagree —

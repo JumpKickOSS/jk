@@ -56,8 +56,8 @@ public final class TaskNames {
     public static final String BUILD_LOGIC_BEFORE_PACKAGE = "build-logic-before-package";
     /** AFTER_BUILD anchor — the workspace root's, after every member module has built. */
     public static final String BUILD_LOGIC_AFTER_BUILD = "build-logic-after-build";
-    /** GATE anchor — invocation-root scripts bound to {@code --gate} / {@code --scripts-only}. */
-    public static final String BUILD_LOGIC_GATE = "build-logic-gate";
+    /** GUARD anchor — invocation-root scripts bound to {@code --guard} / {@code --scripts-only}. */
+    public static final String BUILD_LOGIC_GUARD = "build-logic-guard";
 
     /** Guard lane: one module's bytecode rules, after its compile. */
     public static final String GUARD = "guard";
@@ -65,12 +65,12 @@ public final class TaskNames {
     public static final String GUARD_MODEL = "guard-model";
     /** Guard lane: cross-module bytecode rules at the root, after every compile. */
     public static final String GUARD_WORKSPACE = "guard-workspace";
-    /** Guard lane: the tree scan at the root, on {@code --gate} and {@code jk guard}. */
+    /** Guard lane: the tree scan at the root, on {@code --guard} and {@code jk guard}. */
     public static final String GUARD_TREE = "guard-tree";
     /** Guard lane: build-output rules at the root, after package / native / coverage. */
     public static final String GUARD_OUTPUT = "guard-output";
 
-    /** The fixture proof at the root: every fixture-bearing rule bites; {@code --gate} and {@code jk guard} only. */
+    /** The fixture proof at the root: every fixture-bearing rule bites; {@code --guard} and {@code jk guard} only. */
     public static final String GUARD_FIXTURES = "guard-fixtures";
 
     public static final String ENSURE_JDK = "ensure-jdk";

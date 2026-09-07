@@ -98,7 +98,7 @@ public final class BuildLogicSupport {
         boolean member =
                 projectDir != null && WorkspaceScan.findRoot(projectDir).isPresent();
         for (BuildLogicScripts.ScriptTask s : scripts) {
-            if (s.anchor() == BuildLogicAnchor.GATE) {
+            if (s.anchor() == BuildLogicAnchor.GUARD) {
                 if (!member) continue;
                 throw misplaced(
                         logicDir,
@@ -206,7 +206,7 @@ public final class BuildLogicSupport {
         if (scripts.isEmpty()) {
             if (anchor == BuildLogicAnchor.AFTER_RESOURCES
                     || anchor == BuildLogicAnchor.AFTER_BUILD
-                    || anchor == BuildLogicAnchor.GATE) {
+                    || anchor == BuildLogicAnchor.GUARD) {
                 label.accept("build-logic: no scripts in " + c.dir().getFileName());
             }
             return true;

@@ -155,9 +155,9 @@ public final class BuildEta {
      * module-scoped anchors are priced into their own module, not here.
      */
     private static long rootBuildLogicMillis(Path entryDir) {
-        boolean gateRequested = SessionContext.current().testSelection().gate()
+        boolean guardRequested = SessionContext.current().testSelection().guard()
                 || SessionContext.current().testSelection().scriptsOnly();
-        return BuildLogicEffort.rootMillis(entryDir, BuildMetrics.load(BuildMetrics.defaultFile()), gateRequested);
+        return BuildLogicEffort.rootMillis(entryDir, BuildMetrics.load(BuildMetrics.defaultFile()), guardRequested);
     }
 
     /**

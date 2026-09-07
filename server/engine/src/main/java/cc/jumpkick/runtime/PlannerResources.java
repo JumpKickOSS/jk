@@ -316,7 +316,7 @@ public final class PlannerResources {
     }
 
     /**
-     * Anchor {@code GATE}: invocation-root stem scripts bound to {@code --gate} /
+     * Anchor {@code GUARD}: invocation-root stem scripts bound to {@code --guard} /
      * {@code --scripts-only}. Same cache and bindings as {@link #buildLogicAfterBuildStep}.
      */
     static Task buildLogicGateStep(BuildPlanner.Ctx cx, String... requires) {
@@ -324,9 +324,9 @@ public final class PlannerResources {
         ActionCache actionCache = cx.actionCache();
         Supplier<EffortWeights.Plan> plan = cx.plan();
         AtomicReference<@Nullable List<String>> buildLogicInputTokensRef = cx.buildLogicInputTokensRef();
-        return Task.builder(TaskNames.BUILD_LOGIC_GATE)
-                .stage(BuildLogicAnchor.GATE.stage())
-                .label("Build logic (gate)")
+        return Task.builder(TaskNames.BUILD_LOGIC_GUARD)
+                .stage(BuildLogicAnchor.GUARD.stage())
+                .label("Build logic (guard)")
                 .kind(TaskKind.CPU)
                 .requires(requires)
                 .weight(() -> plan.get().fullyCached() ? 0 : 1)
@@ -338,7 +338,7 @@ public final class PlannerResources {
                                 ctx.require(LAYOUT),
                                 actionCache,
                                 /* classesDir */ null,
-                                BuildLogicAnchor.GATE,
+                                BuildLogicAnchor.GUARD,
                                 ctx::label,
                                 ctx::output,
                                 buildLogicInputTokensRef);
@@ -360,8 +360,8 @@ public final class PlannerResources {
         return !in.testOnly() && in.skipTests();
     }
 
-    static boolean runGateScripts(BuildPlanner.Inputs in) {
-        return in.session() != null && in.session().testSelection().runGateScripts();
+    static boolean runGuardScripts(BuildPlanner.Inputs in) {
+        return in.session() != null && in.session().testSelection().runGuardScripts();
     }
 
     static boolean invocationRoot(Path dir) {
@@ -369,15 +369,15 @@ public final class PlannerResources {
     }
 
     /**
-     * Append the GATE step when this unit is the invocation root and the session asked for
-     * scripts. Returns the terminal name, or {@code null} when GATE is not on this plan.
+     * Append the GUARD step when this unit is the invocation root and the session asked for
+     * scripts. Returns the terminal name, or {@code null} when GUARD is not on this plan.
      */
     static @Nullable String appendGate(
             BuildPlan.Builder b, BuildPlanner.Ctx cx, boolean includeTests, boolean testOnly, boolean afterBuild) {
         BuildPlanner.Inputs in = cx.in();
-        if (!runGateScripts(in) || !invocationRoot(in.dir())) return null;
-        if (in.session().testSelection().scriptsOnly() && !BuildLogicToml.hasStem(in.dir(), "gate")) {
-            throw new IllegalArgumentException(BuildLogicToml.NO_GATE_SCRIPTS);
+        if (!runGuardScripts(in) || !invocationRoot(in.dir())) return null;
+        if (in.session().testSelection().scriptsOnly() && !BuildLogicToml.hasStem(in.dir(), "guard")) {
+            throw new IllegalArgumentException(BuildLogicToml.NO_GUARD_SCRIPTS);
         }
         String[] req;
         if (afterBuild) {
@@ -390,7 +390,7 @@ public final class PlannerResources {
             req = new String[] {TaskNames.PACKAGE_JAR};
         }
         b.addTask(buildLogicGateStep(cx, req));
-        return TaskNames.BUILD_LOGIC_GATE;
+        return TaskNames.BUILD_LOGIC_GUARD;
     }
 
     /**

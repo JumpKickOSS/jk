@@ -20,9 +20,9 @@ class BuildLogicOutputTest {
     @Test
     void a_silent_script_emits_nothing_not_even_a_header() {
         List<String> out = new ArrayList<>();
-        BuildLogicSupport.emitLines("gate.kts", "", out::add);
-        BuildLogicSupport.emitLines("gate.kts", "  \n", out::add);
-        BuildLogicSupport.emitLines("gate.kts", null, out::add);
+        BuildLogicSupport.emitLines("guard.kts", "", out::add);
+        BuildLogicSupport.emitLines("guard.kts", "  \n", out::add);
+        BuildLogicSupport.emitLines("guard.kts", null, out::add);
         assertThat(out).isEmpty();
     }
 }

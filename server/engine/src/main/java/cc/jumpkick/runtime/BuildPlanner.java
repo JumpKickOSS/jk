@@ -691,7 +691,7 @@ public final class BuildPlanner {
         if (useKotlin) {
             b.addTask(compileKotlin);
         }
-        if (PlannerGuards.moduleLanesOnThisBuild(cx.guards(), PlannerResources.runGateScripts(in))) {
+        if (PlannerGuards.moduleLanesOnThisBuild(cx.guards(), PlannerResources.runGuardScripts(in))) {
             List<String> after = new ArrayList<>();
             if (useJava) after.add(TaskNames.COMPILE_JAVA);
             if (useKotlin) after.add(TaskNames.COMPILE_KOTLIN);

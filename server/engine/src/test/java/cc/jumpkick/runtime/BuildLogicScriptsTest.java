@@ -32,10 +32,10 @@ class BuildLogicScriptsTest {
                 BuildLogicAnchor.AFTER_RESOURCES,
                 BuildLogicScripts.matchAnchor("after-resources").orElseThrow());
         assertEquals(
-                BuildLogicAnchor.GATE, BuildLogicScripts.matchAnchor("gate").orElseThrow());
+                BuildLogicAnchor.GUARD, BuildLogicScripts.matchAnchor("guard").orElseThrow());
         assertEquals(
-                BuildLogicAnchor.GATE,
-                BuildLogicScripts.matchAnchor("gate-house").orElseThrow());
+                BuildLogicAnchor.GUARD,
+                BuildLogicScripts.matchAnchor("guard-house").orElseThrow());
         assertTrue(BuildLogicScripts.matchAnchor("compile.groovy").isEmpty());
         assertTrue(BuildLogicScripts.matchAnchor("random").isEmpty());
     }
@@ -73,7 +73,7 @@ class BuildLogicScriptsTest {
                     .contains("will not run")
                     .contains("Did you mean before-compile?")
                     .contains("before-compile / after-compile / after-resources / before-package")
-                    .contains("after-build / gate"));
+                    .contains("after-build / guard"));
             assertThat(warned).anySatisfy(w -> assertThat(w)
                     .contains("scripts")
                     .contains("before-package.groovy")

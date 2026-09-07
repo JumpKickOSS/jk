@@ -11,7 +11,6 @@ option. Product prose always uses the canonical name.
 
 | Alias           | Canonical | Origin                     |
 | --------------- | --------- | -------------------------- |
-| `--pre-merge`   | `--gate`  | share-the-commit test bar  |
 
 ## Verb rewrites (first argument only)
 

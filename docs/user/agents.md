@@ -40,7 +40,7 @@ Default **`jk test` is the unit suite only.** That is the inner loop. Do not pas
 |------|---------|
 | Which tests did this edit touch? | `jk test --affected` / `--affected-since` (table; does not run) |
 | Editing a class / fixing a unit assertion | `jk test` |
-| About to push, or the change crossed DB / HTTP / FS | `jk test --gate` (alias `--pre-merge`) |
+| About to push, or the change crossed DB / HTTP / FS | `jk test --guard` |
 | UI / compose / contract change, or reproducing CI | `jk test --suite e2e` |
 | Never as a habit | `jk test --all` |
 
@@ -49,7 +49,7 @@ Write new tests in the lowest suite that can fail for the reason you care about
 (`slow`, `network`, `bench`); do not hide Playwright in `src/test`. After a failure,
 replay the **same** selection; do not escalate to `--all` until this rung is green.
 
-The named share-the-commit bar (`--gate`, alias `--pre-merge`) is the product name
+The named share-the-commit bar (`--guard`) is the product name
 for “unit + integration + optional house-rule scripts.” [Why](why.md#test-rungs-the-execute-moat) ·
 [Test](test.md).
 

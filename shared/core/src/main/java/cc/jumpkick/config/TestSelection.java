@@ -10,7 +10,7 @@ import java.util.Objects;
 /**
  * Which test suites and JUnit tags a {@code jk test} / build-with-tests run should use.
  *
- * <p>{@link #DEFAULT} runs only the {@code test} suite with no tag filters. {@link #gate} is the
+ * <p>{@link #DEFAULT} runs only the {@code test} suite with no tag filters. {@link #guard} is the
  * share-the-commit bar: requested suites (default {@code test} + {@code integration}) with
  * {@code integration} optional when it is not on disk.
  */
@@ -30,13 +30,13 @@ public record TestSelection(
          */
         boolean tagsResolved,
         /**
-         * {@code --gate} / {@code --pre-merge}: {@link TestSuites#INTEGRATION} in {@link #suites}
+         * {@code --guard}: {@link TestSuites#INTEGRATION} in {@link #suites}
          * is optional (skip if the directory is absent) instead of an unknown-suite error.
          */
-        boolean gate,
-        /** {@code --scripts-only}: run gate scripts, skip JUnit. */
+        boolean guard,
+        /** {@code --scripts-only}: run guard scripts, skip JUnit. */
         boolean scriptsOnly,
-        /** {@code --no-scripts}: skip gate scripts even when {@link #gate} is set. */
+        /** {@code --no-scripts}: skip guard scripts even when {@link #guard} is set. */
         boolean noScripts) {
 
     public static final TestSelection DEFAULT =
@@ -68,8 +68,8 @@ public record TestSelection(
             List<String> includeTags,
             List<String> excludeTags,
             boolean tagsResolved,
-            boolean gate) {
-        return of(suites, allSuites, includeTags, excludeTags, tagsResolved, gate, false, false);
+            boolean guard) {
+        return of(suites, allSuites, includeTags, excludeTags, tagsResolved, guard, false, false);
     }
 
     public static TestSelection of(
@@ -78,7 +78,7 @@ public record TestSelection(
             List<String> includeTags,
             List<String> excludeTags,
             boolean tagsResolved,
-            boolean gate,
+            boolean guard,
             boolean scriptsOnly,
             boolean noScripts) {
         return new TestSelection(
@@ -87,14 +87,14 @@ public record TestSelection(
                 includeTags == null ? List.of() : includeTags,
                 excludeTags == null ? List.of() : excludeTags,
                 tagsResolved,
-                gate,
+                guard,
                 scriptsOnly,
                 noScripts);
     }
 
-    /** Gate scripts run with {@code --gate} unless {@link #noScripts}, or with {@link #scriptsOnly}. */
-    public boolean runGateScripts() {
-        return !noScripts && (scriptsOnly || gate);
+    /** Guard scripts run with {@code --guard} unless {@link #noScripts}, or with {@link #scriptsOnly}. */
+    public boolean runGuardScripts() {
+        return !noScripts && (scriptsOnly || guard);
     }
 
     /** Resolve concrete suite names for a module (validates unknown names). */
@@ -107,7 +107,7 @@ public record TestSelection(
             }
             return new Resolved(List.copyOf(discovered), includeTags, excludeTags);
         }
-        List<String> want = suites.isEmpty() ? (gate ? TestSuites.GATE : List.of(TestSuites.DEFAULT)) : suites;
+        List<String> want = suites.isEmpty() ? (guard ? TestSuites.GUARD_SUITES : List.of(TestSuites.DEFAULT)) : suites;
         List<String> missing = new ArrayList<>();
         LinkedHashSet<String> known = new LinkedHashSet<>(discovered);
         // Default suite may be requested even when empty (no-op compile).
@@ -116,8 +116,8 @@ public record TestSelection(
         for (String s : want) {
             if (known.contains(s) || s.equals(TestSuites.DEFAULT)) {
                 if (!ordered.contains(s)) ordered.add(s);
-            } else if (gate && TestSuites.INTEGRATION.equals(s)) {
-                // --gate includes integration when the directory exists; skip otherwise.
+            } else if (guard && TestSuites.INTEGRATION.equals(s)) {
+                // --guard includes integration when the directory exists; skip otherwise.
             } else {
                 missing.add(s);
             }
@@ -141,7 +141,7 @@ public record TestSelection(
         LinkedHashSet<String> merged = new LinkedHashSet<>(excludeTags);
         merged.addAll(normalizeNames(more));
         return new TestSelection(
-                suites, allSuites, includeTags, List.copyOf(merged), tagsResolved, gate, scriptsOnly, noScripts);
+                suites, allSuites, includeTags, List.copyOf(merged), tagsResolved, guard, scriptsOnly, noScripts);
     }
 
     public TestSelection withIncludeTags(List<String> more) {
@@ -149,7 +149,7 @@ public record TestSelection(
         LinkedHashSet<String> merged = new LinkedHashSet<>(includeTags);
         merged.addAll(normalizeNames(more));
         return new TestSelection(
-                suites, allSuites, List.copyOf(merged), excludeTags, tagsResolved, gate, scriptsOnly, noScripts);
+                suites, allSuites, List.copyOf(merged), excludeTags, tagsResolved, guard, scriptsOnly, noScripts);
     }
 
     private static List<String> normalizeNames(List<String> in) {

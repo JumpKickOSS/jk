@@ -116,8 +116,8 @@ public final class PlannerTails {
             if (!PlannerResources.skipJUnit(in)) {
                 joined.add(TaskNames.RUN_TESTS);
             }
-            if (PlannerResources.runGateScripts(in) && PlannerResources.invocationRoot(in.dir())) {
-                joined.add(TaskNames.BUILD_LOGIC_GATE);
+            if (PlannerResources.runGuardScripts(in) && PlannerResources.invocationRoot(in.dir())) {
+                joined.add(TaskNames.BUILD_LOGIC_GUARD);
             }
             if (joined.size() == 1 && leaves.isEmpty() && !outputLane)
                 return; // skip-tests, no tails: package-jar stays terminal

@@ -628,7 +628,7 @@ public final class PlannerSupport {
                 fromToml.includeTags(),
                 fromToml.excludeTags(),
                 false,
-                sel.gate(),
+                sel.guard(),
                 sel.scriptsOnly(),
                 sel.noScripts());
     }

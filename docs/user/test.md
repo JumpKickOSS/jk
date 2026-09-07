@@ -6,10 +6,9 @@ turn requires. Product bet: [Why JumpKick](why.md#test-rungs-the-execute-moat).
 
 ```bash
 jk test                              # unit rung — default suite only. Inner loop.
-jk test --gate                       # share-the-commit: unit + integration (if present) + gate scripts
-jk test --pre-merge                  # silent alias of --gate
-jk test --scripts-only               # gate scripts, no JUnit
-jk test --gate --no-scripts          # gate suites, skip extra scripts
+jk test --guard                       # share-the-commit: unit + integration (if present) + guard scripts
+jk test --scripts-only               # guard scripts, no JUnit
+jk test --guard --no-scripts          # guard suites, skip extra scripts
 jk test --suite integration          # -s is the short form. Climb one named suite.
 jk test --suite e2e                  # UI / compose / contract; not a habit
 jk test --all                        # every suite; tag excludes cleared. Nightly / release.
@@ -17,7 +16,7 @@ jk test --exclude-tags slow,bench
 jk test --include-tags smoke
 jk test --affected                   # ranked classes for the working tree (does not run them)
 jk test --affected-since=HEAD~2      # ranked classes since that ref (does not run them)
-jk build --gate                      # package with the gate green
+jk build --guard                      # package with the guards green
 jk build --all                       # package with the full suite green
 ```
 
@@ -28,19 +27,18 @@ the git working tree (unstaged + untracked; last commit if the tree is clean).
 be combined (`--aff` is ambiguous). Refuse exits **2**; that file is not `jk-results.md`.
 
 `--all` is **not** the inner loop. Agents and humans fixing a unit assertion should
-run `jk test`, not `--all`. Before you share a commit, run **`--gate`** (silent
-alias `--pre-merge`): unit + `integration` when that directory exists. Tag excludes
-from `[test]` still apply (`slow` / `network` / `bench` stay out). `--gate` cannot
-combine with `--all`. `--suite` wins over `--gate` (a warning is printed).
+run `jk test`, not `--all`. Before you share a commit, run **`--guard`**: unit + `integration` when that directory exists. Tag excludes
+from `[test]` still apply (`slow` / `network` / `bench` stay out). `--guard` cannot
+combine with `--all`. `--suite` wins over `--guard` (a warning is printed).
 
-Override the gate suite list:
+Override the guard suite list:
 
 ```toml
 [test]
-gate-suites = ["test", "integration", "contract"]
+guard-suites = ["test", "integration", "contract"]
 ```
 
-Unknown names in `gate-suites` fail with the discovered-suite list. Missing
+Unknown names in `guard-suites` fail with the discovered-suite list. Missing
 `integration` on the default list is not an error.
 
 Canonical extra suite **names** are `integration` and `e2e`. Any other suite
@@ -56,15 +54,15 @@ same facts, model and text the declarative rules in `jk-guards.toml` read (see
 the test compile classpath (so ArchUnit or Konsist come from `[test-dependencies]`; there is no
 `[guard-dependencies]`) and `cc.jumpkick:jk-guards-junit` at the installed jk's version, which jk
 provisions from its local store and pins in `jk-lock.toml` — nothing to declare. Discovery never
-returns `guard`: `jk test`, `--all` and the gate do not collect it, `--suite guard` is an error
+returns `guard`: `jk test`, `--all` and `--guard` do not collect it, `--suite guard` is an error
 that says so, and the guard lanes run it. `jk ide` exports the directory as a test root so a guard
 test has a debugger. The rules themselves, their kinds and their baseline: [Guards](guards.md).
 
 `--scripts-only` and `--no-scripts` cannot be combined. `--scripts-only` with no
-`gate` stem is a config error. Same flags on `jk build`. See [build logic](build-logic.md).
+`guard` stem is a config error. Same flags on `jk build`. See [build logic](build-logic.md).
 
-`--all` and `--suite` cannot be combined. `--all` and `--gate` cannot be combined.
-Unknown suite names error with the available list (`--gate`'s default `integration`
+`--all` and `--suite` cannot be combined. `--all` and `--guard` cannot be combined.
+Unknown suite names error with the available list (`--guard`'s default `integration`
 is the exception: skip if absent). `--all` means “everything”: every suite directory
 **and** cleared `[test]` / profile tag excludes. Explicit `--include-tags` /
 `--exclude-tags` still compose on top. `jk build` accepts the same selection flags.
@@ -101,7 +99,7 @@ workers = 1
 exclude-tags = ["slow", "network", "bench"]
 
 [profiles.ci]
-# Auto-selected when CI is set. Keep the inner/gate excludes — do not clear them
+# Auto-selected when CI is set. Keep the inner/guard excludes — do not clear them
 # just because it is CI. Nightly is `jk test --all` (or a dedicated nightly profile),
 # not the PR job.
 exclude-tags = ["slow", "network", "bench"]
@@ -137,7 +135,7 @@ In a workspace, the tag filters are resolved **once, from the invocation root**,
 every member:
 
 - `[test] include-tags` / `exclude-tags`
-- `[test] gate-suites`
+- `[test] guard-suites`
 - `[profiles.<name>] include-tags` / `exclude-tags`
 
 A member's own tags are used only when the root resolved none — the root wins outright rather

@@ -210,7 +210,7 @@ public final class BuildGraph {
             // after every member, with the scheduler and the report the graph already has.
             boolean rootHasGuards = PlannerGuards.enabledAt(rootDir);
             boolean rootHasBuildLogic = !rootHasSources && (rootHasLogicDir || rootHasGuards);
-            boolean rootHasGate = rootHasLogicDir && BuildLogicToml.hasStem(rootDir, "gate");
+            boolean rootHasGuard = rootHasLogicDir && BuildLogicToml.hasStem(rootDir, "guard");
             boolean rootBuildable = rootHasSources || rootHasBuildLogic;
             if (rootBuildable) {
                 addUnit(rootDir, root, Origin.ROOT);
@@ -241,7 +241,7 @@ public final class BuildGraph {
             // `after-build` means after every member, so the sourceless root depends on all of
             // them. A root that builds nothing publishes nothing, so no member can depend back on
             // it and these edges cannot close a cycle.
-            if (rootHasBuildLogic || (rootHasSources && (rootHasGate || rootHasGuards))) {
+            if (rootHasBuildLogic || (rootHasSources && (rootHasGuard || rootHasGuards))) {
                 for (Path moduleDir : modules.keySet()) {
                     addEdge(rootDir, canonical(moduleDir));
                 }

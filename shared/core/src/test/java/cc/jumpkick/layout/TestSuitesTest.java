@@ -54,7 +54,7 @@ class TestSuitesTest {
 
     @Test
     void gate_includes_integration_when_discovered() {
-        var r = TestSelection.of(TestSuites.GATE, false, List.of(), List.of(), true, true)
+        var r = TestSelection.of(TestSuites.GUARD_SUITES, false, List.of(), List.of(), true, true)
                 .resolve(List.of("test", "integration"));
         assertThat(r.ok()).isTrue();
         assertThat(r.suites()).containsExactly("test", "integration");
@@ -62,7 +62,7 @@ class TestSuitesTest {
 
     @Test
     void gate_skips_missing_integration() {
-        var r = TestSelection.of(TestSuites.GATE, false, List.of(), List.of(), true, true)
+        var r = TestSelection.of(TestSuites.GUARD_SUITES, false, List.of(), List.of(), true, true)
                 .resolve(List.of("test"));
         assertThat(r.ok()).isTrue();
         assertThat(r.suites()).containsExactly("test");
@@ -70,7 +70,7 @@ class TestSuitesTest {
 
     @Test
     void gate_without_integration_dir_is_the_default_suite() {
-        var r = TestSelection.of(TestSuites.GATE, false, List.of(), List.of(), true, true)
+        var r = TestSelection.of(TestSuites.GUARD_SUITES, false, List.of(), List.of(), true, true)
                 .resolve(List.of());
         assertThat(r.ok()).isTrue();
         assertThat(r.suites()).containsExactly("test");

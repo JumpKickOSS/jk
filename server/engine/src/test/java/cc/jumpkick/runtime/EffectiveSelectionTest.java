@@ -67,7 +67,7 @@ class EffectiveSelectionTest {
         moduleWithExcludes(dir);
         var gate = TestSelection.of(List.of("test", "integration"), false, List.of(), List.of(), false, true);
         var eff = PlannerSupport.effectiveSelection(gate, dir);
-        assertThat(eff.gate()).isTrue();
+        assertThat(eff.guard()).isTrue();
         assertThat(eff.suites()).containsExactly("test", "integration");
         assertThat(eff.excludeTags()).containsExactly("slow", "integration");
     }

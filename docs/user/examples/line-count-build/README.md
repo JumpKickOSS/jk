@@ -109,5 +109,5 @@ jk: ! Build > Failed to build demo:line-count-build - took 225ms
 - `[build] logic = "tools/codegen"` points the convention elsewhere; `logic = "off"` disables
   it. Omit the table to use `jk/` / `.jk/`, as this sample does.
 - Other anchors (`before-compile`, `after-compile`, `before-package`), `.kts` scripts, and
-  the workspace-root stems (`after-build`, `gate`) work the same way; this sample stays at
+  the workspace-root stems (`after-build`, `guard`) work the same way; this sample stays at
   one anchor on purpose. See [build-logic.md](../../build-logic.md).

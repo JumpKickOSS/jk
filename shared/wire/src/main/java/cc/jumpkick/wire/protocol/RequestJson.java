@@ -87,7 +87,7 @@ final class RequestJson {
                 .array("includeTags", value.includeTags())
                 .array("excludeTags", value.excludeTags())
                 .bool("tagsResolved", value.tagsResolved())
-                .optionalTrue("gate", value.gate())
+                .optionalTrue("guard", value.guard())
                 .optionalTrue("scriptsOnly", value.scriptsOnly())
                 .optionalTrue("noScripts", value.noScripts());
     }

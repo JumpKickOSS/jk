@@ -93,9 +93,9 @@ public final class TestCommand implements CliCommand {
         opts.add(Opt.value("<name>", "Test suite directory (repeatable)", "-s", "--suite")
                 .repeat());
         opts.add(Opt.flag("Run every discovered test suite", "--all"));
-        opts.add(Opt.flag("Share-the-commit: unit + integration", "--gate", "--pre-merge"));
-        opts.add(Opt.flag("Gate scripts, no JUnit", "--scripts-only"));
-        opts.add(Opt.flag("Skip gate scripts", "--no-scripts"));
+        opts.add(Opt.flag("Guards + integration: share the commit", "--guard"));
+        opts.add(Opt.flag("Guard scripts, no JUnit", "--scripts-only"));
+        opts.add(Opt.flag("Skip guard scripts", "--no-scripts"));
         opts.add(Opt.value("<tags>", "JUnit tags to include (CSV)", "--include-tags")
                 .splitOn(","));
         opts.add(Opt.value("<tags>", "JUnit tags to exclude (CSV)", "--exclude-tags")
@@ -526,23 +526,23 @@ public final class TestCommand implements CliCommand {
         return (testResult != null && !testResult.allPassed()) ? "Tests failed" : "Build failed";
     }
 
-    /** {@code --gate} and its silent alias {@code --pre-merge} share one option identity. */
-    static boolean gateRequested(Invocation in) {
-        return in.isSet("gate") || in.isSet("pre-merge");
+    /** {@code --guard} is one option identity. */
+    static boolean guardRequested(Invocation in) {
+        return in.isSet("guard");
     }
 
-    static final String GATE_SUITE_OVERRIDE_WARNING = "--gate ignored because --suite was set";
+    static final String GUARD_SUITE_OVERRIDE_WARNING = "--guard ignored because --suite was set";
     static final String SCRIPTS_FLAGS_CONFLICT = "--scripts-only and --no-scripts cannot be combined";
 
     static void warnGateOverride(Invocation in, GlobalOptions global) {
-        if (!gateRequested(in) || in.values("suite").isEmpty()) return;
+        if (!guardRequested(in) || in.values("suite").isEmpty()) return;
         if (global.outputIsJson()) return;
-        CliOutput.err(Theme.colorize(Glyphs.BANG, Theme.active().warning()) + " " + GATE_SUITE_OVERRIDE_WARNING);
+        CliOutput.err(Theme.colorize(Glyphs.BANG, Theme.active().warning()) + " " + GUARD_SUITE_OVERRIDE_WARNING);
     }
 
     /**
      * CLI + {@code [test]} / profile tags → {@link cc.jumpkick.config.TestSelection}. Throws if
-     * {@code --all} and {@code --suite} / {@code --gate} are combined.
+     * {@code --all} and {@code --suite} / {@code --guard} are combined.
      *
      * <p>Precedence (each layer replaces the previous for a given list when it speaks):
      *
@@ -553,12 +553,12 @@ public final class TestCommand implements CliCommand {
      * </ol>
      *
      * Auto profile defers when CLI set any tag option so explicit CLI selection is not overridden
-     * by profile filters. {@code --gate} / {@code --pre-merge} select {@code test} +
-     * {@code integration} (or {@code [test] gate-suites}); {@code --suite} wins over {@code --gate}.
+     * by profile filters. {@code --guard} select {@code test} +
+     * {@code integration} (or {@code [test] guard-suites}); {@code --suite} wins over {@code --guard}.
      */
     static TestSelection resolveTestSelection(Invocation in) {
         boolean all = in.isSet("all");
-        boolean gate = gateRequested(in);
+        boolean guard = guardRequested(in);
         boolean scriptsOnly = in.isSet("scripts-only");
         boolean noScripts = in.isSet("no-scripts");
         if (scriptsOnly && noScripts) {
@@ -570,17 +570,17 @@ public final class TestCommand implements CliCommand {
         if (all && !suites.isEmpty()) {
             throw new IllegalArgumentException("--all and --suite cannot be combined");
         }
-        if (all && gate) {
-            throw new IllegalArgumentException("--all and --gate cannot be combined");
+        if (all && guard) {
+            throw new IllegalArgumentException("--all and --guard cannot be combined");
         }
         Path wd = GlobalOptions.from(in).workingDir();
-        // Tags, gate suites and profiles are workspace facts: from a member directory the root's
+        // Tags, guard suites and profiles are workspace facts: from a member directory the root's
         // manifest is the baseline layer, exactly as when invoked at the root. Reading the
         // member's own manifest here made the member's (usually empty) tags the baseline and
         // dropped the root's, so a root exclude-tags = ["slow"] ran slow tests from inside a member.
         Path root = WorkspaceScan.owningRoot(wd).orElse(wd);
-        if (scriptsOnly && !BuildLogicToml.hasStem(root, "gate")) {
-            throw new IllegalArgumentException(BuildLogicToml.NO_GATE_SCRIPTS);
+        if (scriptsOnly && !BuildLogicToml.hasStem(root, "guard")) {
+            throw new IllegalArgumentException(BuildLogicToml.NO_GUARD_SCRIPTS);
         }
         Path toml = root.resolve(ManifestPaths.MANIFEST);
         String explicit = in.value("profile").orElse(null);
@@ -589,7 +589,7 @@ public final class TestCommand implements CliCommand {
         List<String> scanKeys = new ArrayList<>();
         scanKeys.add("test.include-tags");
         scanKeys.add("test.exclude-tags");
-        scanKeys.add("test.gate-suites");
+        scanKeys.add("test.guard-suites");
         if (profileName != null && !profileName.isBlank()) {
             scanKeys.add("profiles." + profileName + ".include-tags");
             scanKeys.add("profiles." + profileName + ".exclude-tags");
@@ -639,20 +639,20 @@ public final class TestCommand implements CliCommand {
             if (!cliExclude) exclude = new ArrayList<>();
             spoke = true;
         }
-        boolean applyGate = gate && suites.isEmpty();
-        if (applyGate) {
-            if (scan.hasKey("test.gate-suites")) {
-                suites = new ArrayList<>(scan.stringArray("test.gate-suites"));
+        boolean applyGuard = guard && suites.isEmpty();
+        if (applyGuard) {
+            if (scan.hasKey("test.guard-suites")) {
+                suites = new ArrayList<>(scan.stringArray("test.guard-suites"));
                 if (suites.isEmpty()) suites.add(TestSuites.DEFAULT);
                 for (String name : suites) {
                     if (!TestSuites.isSuiteName(name)) {
-                        throw new IllegalArgumentException("unknown test suite '" + name + "' in [test] gate-suites");
+                        throw new IllegalArgumentException("unknown test suite '" + name + "' in [test] guard-suites");
                     }
                 }
             } else {
-                suites = new ArrayList<>(TestSuites.GATE);
+                suites = new ArrayList<>(TestSuites.GUARD_SUITES);
             }
         }
-        return TestSelection.of(suites, all, include, exclude, spoke, applyGate, scriptsOnly, noScripts);
+        return TestSelection.of(suites, all, include, exclude, spoke, applyGuard, scriptsOnly, noScripts);
     }
 }

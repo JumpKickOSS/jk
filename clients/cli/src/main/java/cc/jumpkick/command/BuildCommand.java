@@ -80,9 +80,9 @@ public final class BuildCommand implements CliCommand {
         opts.add(Opt.value("<name>", "Test suite directory (repeatable)", "-s", "--suite")
                 .repeat());
         opts.add(Opt.flag("Run every test suite (tags included)", "--all"));
-        opts.add(Opt.flag("Share-the-commit: unit + integration", "--gate", "--pre-merge"));
-        opts.add(Opt.flag("Gate scripts, no JUnit", "--scripts-only"));
-        opts.add(Opt.flag("Skip gate scripts", "--no-scripts"));
+        opts.add(Opt.flag("Guards + integration: share the commit", "--guard"));
+        opts.add(Opt.flag("Guard scripts, no JUnit", "--scripts-only"));
+        opts.add(Opt.flag("Skip guard scripts", "--no-scripts"));
         opts.add(Opt.value("<tags>", "JUnit tags to include (CSV)", "--include-tags")
                 .splitOn(","));
         opts.add(Opt.value("<tags>", "JUnit tags to exclude (CSV)", "--exclude-tags")

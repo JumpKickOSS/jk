@@ -3,9 +3,9 @@
 ```bash
 jk compile              # type-check
 jk build                # compile + package + default (unit) tests
-jk build --gate         # package with unit + integration green
-jk build --gate --skip-tests   # package graph + gate scripts, no JUnit
-jk build --scripts-only        # gate scripts, no JUnit (same as test --scripts-only)
+jk build --guard         # package with unit + integration green
+jk build --guard --skip-tests   # package graph + guard scripts, no JUnit
+jk build --scripts-only        # guard scripts, no JUnit (same as test --scripts-only)
 jk build --skip-tests
 jk build --redo         # ignore action cache (full rebuild)
 jk clean                # delete target/; unchanged inputs restore from cache

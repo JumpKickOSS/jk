@@ -612,7 +612,7 @@ public final class EffortWeights {
                     TaskNames.BUILD_LOGIC_AFTER_COMPILE,
                     TaskNames.BUILD_LOGIC_BEFORE_PACKAGE,
                     TaskNames.BUILD_LOGIC_AFTER_BUILD,
-                    TaskNames.BUILD_LOGIC_GATE -> TOKEN;
+                    TaskNames.BUILD_LOGIC_GUARD -> TOKEN;
             // Post-jk-clean gate: action keys hit, target/ wiped — live work is CAS restore.
             case TaskNames.RESTORE_OUTPUTS -> RESTORE;
             default -> 0;

@@ -34,7 +34,7 @@ or remove a tool-switch.
 | **Observe & repair** | Structured, token-cheap failures — not Gradle/Maven log archaeology |
 | **Mutate without fear** | Small declarative surface agents and humans edit the same way |
 | **Execute cheaply** | The *Nth* rebuild in a session feels free (cache + warm engine + low RSS) |
-| **Run the right tests** | Inner loop is unit; a named **gate** before share; `--all` is nightly; the report discloses what was skipped |
+| **Run the right tests** | Inner loop is unit; the named **`--guard`** rung before share; `--all` is nightly; the report discloses what was skipped |
 | **Stabilize the environment** | No turns burned on `JAVA_HOME`, wrappers, or bootstrap scripts |
 | **Enter the ecosystem** | Import/export so migration time counts in cycle time |
 | **Shared reality** | One build model; TTY, web UI, and MCP show the same facts |
@@ -57,7 +57,7 @@ Think in **layers of the switch decision**, not a flat checklist.
 | **1** | **Agent-native results + MCP** (`jk-results.md`, diagnostics, `jk manual`, MCP tools) | Agents stop scraping logs. Failures become structured, token-cheap, re-enterable. This is the unique moat vs Maven *and* Gradle. |
 | **2** | **Declarative TOML + surgical edits** (`jk.toml`, `jk add`/`remove`, MCP `jk_deps` / `jk_manifest`) | Agents and humans share one small surface. Mutation is cheap and reviewable. |
 | **3** | **Lockfile-as-law + PubGrub diagnostics** (`jk-lock.toml`, `why`, readable conflicts) | Removes overnight CI drift and “agent guessed a version.” Predictability is what Maven users actually loved. |
-| **4** | **Named test rungs** (unit inner loop · `--gate` / `--pre-merge` before share · `--all` nightly) | Agents stop running Playwright on every assertion fix *and* stop shipping wiring bugs the default suite never saw. Results disclose what was skipped. Maven Surefire/Failsafe and Gradle `sourceSets` have no such voice. |
+| **4** | **Named test rungs** (unit inner loop · `--guard` before share · `--all` nightly) | Agents stop running Playwright on every assertion fix *and* stop shipping wiring bugs the default suite never saw. Results disclose what was skipped. Maven Surefire/Failsafe and Gradle `sourceSets` have no such voice. |
 
 Alone, each is nice. Together they make the agent loop *possible* — and keep the execute step from destroying it.
 
@@ -103,7 +103,7 @@ builds; the win is fewer failed cycles and less agent thrash.
 2. **Proof:** `jk new` → `jk add` → `jk test` → open `target/jk-results.md` (or MCP).  
 3. **Why leave Maven:** same declarative philosophy, modern surface, real lockfile, agent-readable outcomes.  
 4. **Why leave Gradle:** warm/incremental ambition without “build is a second app.”  
-5. **Tests (the execute moat):** default `jk test` is the cheap unit rung; `--gate` (alias `--pre-merge`) is the named share-the-commit bar; `--all` is nightly — not a habit. The report says what was *not* run.  
+5. **Tests (the execute moat):** default `jk test` is the cheap unit rung; `--guard` is the named share-the-commit bar; `--all` is nightly — not a habit. The report says what was *not* run.  
 6. **Speed (humble):** competitive with modern Gradle; designed so *repeated* local/agent cycles stay small.  
 7. **Batteries (one line):** toolchain, format, audit/SBOM, images, git deps, web UI — delete five side tools.  
 8. **Adoption:** import Maven today; keep `~/.m2`; escape hatches for Gradle.
@@ -182,7 +182,7 @@ ergonomics — and adds an **agent-closed loop** as a first-class surface.
 | Principle | What it means |
 |-----------|----------------|
 | **Closed loop for agents** | `jk manual`, `jk-results.md`, MCP diagnostics/run — same model as the human CLI |
-| **Cheapest test rung first** | Unit on every edit; named **gate** before share; e2e / `--all` on purpose. Suites are scope; tags are cost. |
+| **Cheapest test rung first** | Unit on every edit; the named `--guard` rung before share; e2e / `--all` on purpose. Suites are scope; tags are cost. |
 | **Data, not a program** | `jk.toml` is TOML — readable, editable, reviewable |
 | **Finite shape** | Convention-over-configuration; plugins extend a known model |
 | **Lockfile is law** | `jk-lock.toml` at the workspace root; `jk build` does not re-resolve when valid |
@@ -222,14 +222,14 @@ JumpKick’s bet is a **pyramid for writing tests** and a **named ladder for run
 | Rung | Where it lives | What is real | Who runs it |
 |------|----------------|--------------|-------------|
 | **Unit** | `src/test/…` (or `test/src/`) | The class under test | Every inner-loop turn. `jk test`. |
-| **Integration** | `src/integration/…` | One module + nearby collaborators (one Testcontainer is fine) | Before share. Named **`--gate`** (silent alias `--pre-merge`). |
+| **Integration** | `src/integration/…` | One module + nearby collaborators (one Testcontainer is fine) | Before share. Named **`--guard`**. |
 | **E2E** | `src/e2e/…` | The product as a user/CI would: Playwright, compose, full fixtures | CI / nightly. Locally a judgment call. `jk test --all` is not a habit. |
 
 Cost is a **tag**, not a fourth directory: `@Tag("slow")`, `@Tag("network")`. A 90-second
-Kafka test is still integration *scope*; it is the wrong *budget* for `--gate`.
+Kafka test is still integration *scope*; it is the wrong *budget* for `--guard`.
 
 House-rule / check scripts (the things JumpKick itself runs from `.jk/` today on every
-build) belong on that same named bar: runnable **with** `--gate`, **alone**
+build) belong on that same named bar: runnable **with** `--guard`, **alone**
 (`--scripts-only`), or **skipped** (`--no-scripts`). They are not a surprise tax on
 `jk test` while you fix `assertEquals`.
 
@@ -278,8 +278,8 @@ If that number does not win, polish the Tier 0 surfaces until it does. Feature c
 not save it.
 
 Honesty today: the skeleton is real (`jk manual`, results, MCP, TOML edits, lockfile,
-cache, **directory suites** so `jk test` is already the unit rung). The named `--gate`
-bar, gate-script stem, results Selection block, and MCP `rung` are the remaining
+cache, **directory suites** so `jk test` is already the unit rung). The named `--guard`
+bar, guard-script stem, results Selection block, and MCP `rung` are the remaining
 execute-step work (tracked in KanArtist). The north star becomes *true* when failure
 coverage, recipe reliability, **cheap default tests**, and measured turns-to-green beat
 the incumbents — not when the README says so.

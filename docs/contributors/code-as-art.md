@@ -752,8 +752,8 @@ corpus guard is needed (G0 is subsumed by it).
 
 **When each build runs them.** `jk build` runs the model, module, workspace and
 output lanes on every build that does work; the tree lane (text, metric, parity
-and generated rules) and the fixture proofs run on `jk guard`, `jk test --gate`
-and `jk build --gate`, so an inner `jk build` never pays a tree scan. CI's
+and generated rules) and the fixture proofs run on `jk guard`, `jk test --guard`
+and `jk build --guard`, so an inner `jk build` never pays a tree scan. CI's
 self-host job runs `jk guard` after the build. The Gradle build runs the one letter
 its task graph alone can see, G64 (`checkNoDisabledCompile`, on every module's
 `check`), and two registry tasks at the root: `checkGuardRegistry` renders the

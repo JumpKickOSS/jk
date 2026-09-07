@@ -47,11 +47,11 @@ public final class BuildLogicToml {
     private static final List<String> RETIRED_DIRS = List.of(".jk-build", "jk-build");
 
     /**
-     * {@code --scripts-only} with no {@code gate} stem at the invocation root. Canonical paths the
+     * {@code --scripts-only} with no {@code guard} stem at the invocation root. Canonical paths the
      * lookup covers; {@code [build].logic} still resolves first when set.
      */
-    public static final String NO_GATE_SCRIPTS =
-            "no gate scripts in this project (looked for jk/gate.{kts,groovy} / .jk/gate.{kts,groovy} at the root)";
+    public static final String NO_GUARD_SCRIPTS =
+            "no guard scripts in this project (looked for jk/guard.{kts,groovy} / .jk/guard.{kts,groovy} at the root)";
 
     private BuildLogicToml() {}
 

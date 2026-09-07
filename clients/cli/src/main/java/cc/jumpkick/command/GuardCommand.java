@@ -29,7 +29,7 @@ import java.util.List;
 
 /**
  * {@code jk guard} — run every house-rule lane now, cache-aware; non-zero on any red. It is the
- * build with tests skipped and the gate lanes on, so packaging is a cache hit and every guard lane
+ * build with tests skipped and the guard lanes on, so packaging is a cache hit and every guard lane
  * — model, module, workspace, tree, output — runs and reports. {@code jk guard freeze <id> --reason}
  * accepts a rule's current new violations into the baseline; {@code --retire} drops a removed rule's
  * entries. {@code jk guard explain [<id>]} prints a rule's card or the catalog and {@code --schema
@@ -104,7 +104,7 @@ public final class GuardCommand implements CliCommand {
                             + " | commit-msg <file> | hooks [install] [--replace]]");
             return Exit.USAGE;
         }
-        // Every lane, cache-aware: the build with tests skipped and the gate on.
+        // Every lane, cache-aware: the build with tests skipped and the guard flag on.
         String output = in.value("output").orElse("").trim();
         boolean sarif = output.equalsIgnoreCase("sarif");
         Invocation.Builder b = Invocation.builder();
@@ -115,7 +115,7 @@ public final class GuardCommand implements CliCommand {
         }
         if (sarif) b.flag("quiet", true);
         b.flag("skip-tests", true);
-        b.flag("gate", true);
+        b.flag("guard", true);
         Invocation run = b.build();
         int exit;
         if (sarif) {

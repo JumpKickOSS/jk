@@ -221,7 +221,7 @@
     },
     "guards": {
       "type": "object",
-      "description": "[guards] table: on-build (default true) moves the module and workspace guard lanes to --gate when false; coverage-report names the coverage XML the coverage.* measures read. Rules live in jk-guards.toml.",
+      "description": "[guards] table: on-build (default true) moves the module and workspace guard lanes to --guard when false; coverage-report names the coverage XML the coverage.* measures read. Rules live in jk-guards.toml.",
       "properties": {
         "on-build": { "type": "boolean" },
         "coverage-report": { "type": "string" }

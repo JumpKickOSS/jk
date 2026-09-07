@@ -111,7 +111,7 @@ class TestSelectionResolveTest {
 
                 [test]
                 exclude-tags = ["slow"]
-                gate-suites = ["test", "integration"]
+                guard-suites = ["test", "integration"]
                 """);
         Path member = Files.createDirectories(dir.resolve("member"));
         writeToml(member, "");
@@ -120,7 +120,7 @@ class TestSelectionResolveTest {
         assertThat(sel.excludeTags()).containsExactly("slow");
         assertThat(sel.tagsResolved()).isTrue();
 
-        var gate = TestCommand.resolveTestSelection(parse("-C", member.toString(), "--gate"));
+        var gate = TestCommand.resolveTestSelection(parse("-C", member.toString(), "--guard"));
         assertThat(gate.suites()).containsExactly("test", "integration");
     }
 
@@ -186,33 +186,27 @@ class TestSelectionResolveTest {
                 [test]
                 exclude-tags = ["slow", "network", "bench"]
                 """);
-        var gate = TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--gate"));
-        var pre = TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--pre-merge"));
-        assertThat(gate).isEqualTo(pre);
-        assertThat(gate.gate()).isTrue();
-        assertThat(gate.suites()).containsExactly("test", "integration");
-        assertThat(gate.excludeTags()).containsExactly("slow", "network", "bench");
-        assertThat(gate.allSuites()).isFalse();
-        assertThat(gate.identityToken()).isEqualTo(pre.identityToken());
+        var guard = TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--guard"));
+        assertThat(guard.guard()).isTrue();
+        assertThat(guard.suites()).containsExactly("test", "integration");
+        assertThat(guard.excludeTags()).containsExactly("slow", "network", "bench");
+        assertThat(guard.allSuites()).isFalse();
     }
 
     @Test
     void gate_and_all_cannot_combine(@TempDir Path dir) throws Exception {
         writeToml(dir, "");
-        assertThatThrownBy(() -> TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--gate", "--all")))
+        assertThatThrownBy(() -> TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--guard", "--all")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("--all")
-                .hasMessageContaining("--gate");
-        assertThatThrownBy(() -> TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--pre-merge", "--all")))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("--gate");
+                .hasMessageContaining("--guard");
     }
 
     @Test
     void suite_wins_over_gate(@TempDir Path dir) throws Exception {
         writeToml(dir, "");
-        var sel = TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--gate", "-s", "e2e"));
-        assertThat(sel.gate()).isFalse();
+        var sel = TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--guard", "-s", "e2e"));
+        assertThat(sel.guard()).isFalse();
         assertThat(sel.suites()).containsExactly("e2e");
     }
 
@@ -220,10 +214,10 @@ class TestSelectionResolveTest {
     void gate_suites_override_the_default_list(@TempDir Path dir) throws Exception {
         writeToml(dir, """
                 [test]
-                gate-suites = ["test", "contract"]
+                guard-suites = ["test", "contract"]
                 """);
-        var sel = TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--gate"));
-        assertThat(sel.gate()).isTrue();
+        var sel = TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--guard"));
+        assertThat(sel.guard()).isTrue();
         assertThat(sel.suites()).containsExactly("test", "contract");
     }
 
@@ -231,31 +225,31 @@ class TestSelectionResolveTest {
     void empty_gate_suites_is_the_unit_suite(@TempDir Path dir) throws Exception {
         writeToml(dir, """
                 [test]
-                gate-suites = []
+                guard-suites = []
                 """);
-        var sel = TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--gate"));
+        var sel = TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--guard"));
         assertThat(sel.suites()).containsExactly("test");
-        assertThat(sel.gate()).isTrue();
+        assertThat(sel.guard()).isTrue();
     }
 
     @Test
     void suite_plus_gate_warns_once(@TempDir Path dir) throws Exception {
         writeToml(dir, "");
-        Invocation in = parse("-C", dir.toString(), "--gate", "-s", "e2e");
+        Invocation in = parse("-C", dir.toString(), "--guard", "-s", "e2e");
         String err = Capture.stderr(() -> TestCommand.warnGateOverride(in, GlobalOptions.from(in)));
-        assertThat(err).contains(TestCommand.GATE_SUITE_OVERRIDE_WARNING);
+        assertThat(err).contains(TestCommand.GUARD_SUITE_OVERRIDE_WARNING);
     }
 
     @Test
     void illegal_gate_suites_name_errors(@TempDir Path dir) throws Exception {
         writeToml(dir, """
                 [test]
-                gate-suites = ["Nope"]
+                guard-suites = ["Nope"]
                 """);
-        assertThatThrownBy(() -> TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--gate")))
+        assertThatThrownBy(() -> TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--guard")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Nope")
-                .hasMessageContaining("gate-suites");
+                .hasMessageContaining("guard-suites");
     }
 
     @Test
@@ -268,12 +262,12 @@ class TestSelectionResolveTest {
     }
 
     @Test
-    void scripts_only_without_a_gate_stem_errors(@TempDir Path dir) throws Exception {
+    void scripts_only_without_a_guard_stem_errors(@TempDir Path dir) throws Exception {
         writeToml(dir, "");
         assertThatThrownBy(() -> TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--scripts-only")))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("no gate scripts")
-                .hasMessageContaining("jk/gate");
+                .hasMessageContaining("no guard scripts")
+                .hasMessageContaining("jk/guard");
     }
 
     @Test
@@ -282,8 +276,8 @@ class TestSelectionResolveTest {
         writeGate(dir);
         var sel = TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--scripts-only"));
         assertThat(sel.scriptsOnly()).isTrue();
-        assertThat(sel.gate()).isFalse();
-        assertThat(sel.runGateScripts()).isTrue();
+        assertThat(sel.guard()).isFalse();
+        assertThat(sel.runGuardScripts()).isTrue();
         assertThat(sel.noScripts()).isFalse();
     }
 
@@ -292,25 +286,25 @@ class TestSelectionResolveTest {
         writeToml(dir, "");
         writeGate(dir);
         var only = TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--scripts-only"));
-        var both = TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--gate", "--scripts-only"));
+        var both = TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--guard", "--scripts-only"));
         assertThat(only.scriptsOnly()).isTrue();
         assertThat(both.scriptsOnly()).isTrue();
-        assertThat(only.runGateScripts()).isTrue();
-        assertThat(both.runGateScripts()).isTrue();
+        assertThat(only.runGuardScripts()).isTrue();
+        assertThat(both.runGuardScripts()).isTrue();
     }
 
     @Test
     void gate_no_scripts_skips_gate_scripts(@TempDir Path dir) throws Exception {
         writeToml(dir, "");
-        var sel = TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--gate", "--no-scripts"));
-        assertThat(sel.gate()).isTrue();
+        var sel = TestCommand.resolveTestSelection(parse("-C", dir.toString(), "--guard", "--no-scripts"));
+        assertThat(sel.guard()).isTrue();
         assertThat(sel.noScripts()).isTrue();
-        assertThat(sel.runGateScripts()).isFalse();
+        assertThat(sel.runGuardScripts()).isFalse();
         assertThat(sel.suites()).containsExactly("test", "integration");
     }
 
     private static void writeGate(Path dir) throws Exception {
         Files.createDirectories(dir.resolve(".jk"));
-        Files.writeString(dir.resolve(".jk/gate.groovy"), "// gate\n");
+        Files.writeString(dir.resolve(".jk/guard.groovy"), "// gate\n");
     }
 }

@@ -297,7 +297,7 @@ public final class TaskForecaster {
         Path lockFile = LockPaths.lockFile(dir);
         // 0 = auto at run-tests (JUnitLauncher); forecast treats as 1 for cost estimates.
         int workerCount = workers > 0 ? workers : 1;
-        // testOnly still runs tests unless --scripts-only (gate scripts, no JUnit).
+        // testOnly still runs tests unless --scripts-only (guard scripts, no JUnit).
         boolean skip = SessionContext.current().testSelection().scriptsOnly() || (!testOnly && skipTests);
         boolean compactEst = CompileSupport.isSimpleLayout(dir);
         int estimatedTestCount = skip ? 0 : TestSupport.estimateAllSuiteTestCount(dir, compactEst);
