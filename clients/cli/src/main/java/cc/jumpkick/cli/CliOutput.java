@@ -7,7 +7,9 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.IntSupplier;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -229,6 +231,22 @@ public final class CliOutput {
     /** Rewrite {@code line} for plain consoles unless it is machine-bound stdout. */
     private static @Nullable String render(@Nullable String line, boolean err) {
         return err || !SCRIPT_MODE.get() ? PlainAscii.apply(line) : line;
+    }
+
+    /**
+     * Run {@code body} with stdout discarded — for a command whose result is one document printed
+     * afterwards ({@code jk guard --output sarif}), where the build's own lines would corrupt the
+     * stream. stderr is untouched, so failures still reach the terminal.
+     */
+    public static int silenced(IntSupplier body) {
+        PrintStream real = System.out;
+        PrintStream discard = new PrintStream(OutputStream.nullOutputStream(), true, StandardCharsets.UTF_8);
+        System.setOut(discard);
+        try {
+            return body.getAsInt();
+        } finally {
+            System.setOut(real);
+        }
     }
 
     /** Print a line to stdout (result output). */

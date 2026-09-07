@@ -407,6 +407,21 @@ public final class JsonlShape {
                 .toString();
     }
 
+    /**
+     * One guard violation row of the last run, as {@code jk guard --output json|jsonl} streams them
+     * after the build: the fields of {@code target/jk-guards.jsonl} under the envelope.
+     */
+    public static String guard(String rowJson) {
+        // the row is already an object; splice its fields after the envelope prefix
+        String body = rowJson.strip();
+        if (body.length() < 2 || body.charAt(0) != '{')
+            return open(EngineProtocol.GUARD_EVENT).append('}').toString();
+        return open(EngineProtocol.GUARD_EVENT)
+                .append(',')
+                .append(body, 1, body.length())
+                .toString();
+    }
+
     /** A workspace module finished (success or failure). */
     public static String moduleFinish(String dir, String coord, boolean success, long durationMs) {
         return open(EngineProtocol.MODULE_FINISH)

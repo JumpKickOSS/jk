@@ -5,7 +5,9 @@ import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.PathDisplay;
 import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
@@ -56,7 +58,8 @@ public final class GuardCommand implements CliCommand {
                         + "freeze <rule-id> --reason \"…\" accepts its new violations;\n"
                         + "test proves every fixture-bearing rule bites;\n"
                         + "commit-msg <file> judges a commit message;\n"
-                        + "hooks [install] prints or installs the git hooks."));
+                        + "hooks [install] prints or installs the git hooks.\n"
+                        + "--output sarif prints target/jk-guards.sarif after the run."));
     }
 
     @Override
@@ -102,13 +105,55 @@ public final class GuardCommand implements CliCommand {
             return Exit.USAGE;
         }
         // Every lane, cache-aware: the build with tests skipped and the gate on.
+        String output = in.value("output").orElse("").trim();
+        boolean sarif = output.equalsIgnoreCase("sarif");
         Invocation.Builder b = Invocation.builder();
         for (Opt opt : build.options()) copy(in, opt, b);
-        for (Opt opt : GlobalOptions.globalOpts()) copy(in, opt, b);
+        for (Opt opt : GlobalOptions.globalOpts()) {
+            if (sarif && opt.canonicalName().equals("output")) continue; // the build runs in text mode, quietly
+            copy(in, opt, b);
+        }
+        if (sarif) b.flag("quiet", true);
         b.flag("skip-tests", true);
         b.flag("gate", true);
-        return build.run(b.build());
+        Invocation run = b.build();
+        int exit;
+        if (sarif) {
+            // stdout carries the document alone; the build's lines are noise to a SARIF consumer
+            exit = CliOutput.silenced(() -> {
+                try {
+                    return build.run(run);
+                } catch (Exception e) {
+                    CommandWedge.printFail("Guard", e.getMessage());
+                    return Exit.SOFTWARE;
+                }
+            });
+        } else {
+            exit = build.run(run);
+        }
+        Path target = dir.resolve(BuildLayout.TARGET);
+        if (sarif) {
+            // The document the lanes left; printed whole so a pipe gets exactly the file.
+            Path file = target.resolve(SARIF_FILE);
+            if (Files.isRegularFile(file))
+                CliOutput.out(Files.readString(file, StandardCharsets.UTF_8).stripTrailing());
+            else CommandWedge.printFail("Guard", "no " + file + " was written: no guard lane ran");
+        } else if (global.outputIsJson()) {
+            // One `guard` event per violation row of the run, after the build's own events.
+            Path rows = target.resolve(JSONL_FILE);
+            if (Files.isRegularFile(rows)) {
+                for (String line : Files.readAllLines(rows, StandardCharsets.UTF_8)) {
+                    if (!line.isBlank()) CliOutput.out(JsonlShape.guard(line));
+                }
+            }
+        }
+        return exit;
     }
+
+    /** The files the engine writes under {@code target/}; named here so the CLI never links the guard engine. */
+    static final String SARIF_FILE = "jk-guards.sarif";
+
+    static final String JSONL_FILE = "jk-guards.jsonl";
 
     private static void copy(Invocation in, Opt opt, Invocation.Builder b) {
         String name = opt.canonicalName();

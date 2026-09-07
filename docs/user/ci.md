@@ -65,6 +65,25 @@ Format gate: `jk format --check`. Outdated deps: parse `jk outdated --output jso
 
 MCP: `jk_config apply_preset=ci`. Selective prepare/run: [Workspaces](workspaces.md#selective-ci-plan).
 
+## Guards
+
+A project with `jk-guards.toml` runs its house rules inside `jk build` / `jk test`; `jk guard`
+runs every lane and exits non-zero on any red. Each run leaves `target/jk-guards.sarif`, which
+GitHub code scanning reads unchanged:
+
+```yaml
+- run: jk guard --no-ansi
+- uses: github/codeql-action/upload-sarif@v3
+  if: always()
+  with:
+    sarif_file: target/jk-guards.sarif
+    category: jk-guard
+```
+
+`jk guard --output sarif` prints the same document; `--output json` streams one `guard` event per
+violation — [Machine output](machine-output.md#guards). Baselined sites arrive as suppressed
+results with the baseline's reason, so the code-scanning view shows what the team accepted and why.
+
 ## Related
 
 [Cache](cache.md) · [Test](test.md) · [Install](install.md) · [Machine output](machine-output.md)

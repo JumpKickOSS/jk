@@ -176,6 +176,12 @@ public final class EngineProtocol {
     /** Server → client: {@code onModuleFinish}. */
     public static final String MODULE_FINISH = "module-finish";
 
+    /**
+     * Client-side machine output: one guard violation row of the last run ({@code jk guard --output
+     * json|jsonl}), the same fields as {@code target/jk-guards.jsonl}.
+     */
+    public static final String GUARD_EVENT = "guard";
+
     /** Server → client, terminal: {@code onWorkspaceFinish}. */
     public static final String WORKSPACE_FINISH = "workspace-finish";
 

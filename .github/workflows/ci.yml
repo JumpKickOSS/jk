@@ -145,6 +145,16 @@ jobs:
           set -euo pipefail
           jk build --skip-tests --no-ansi 2>&1 | tee "$RUNNER_TEMP/self-host-build.log"
 
+      # The machine view of the house-rule lanes, for anyone reading the run after the fact; the
+      # human view is the step's log. Uploaded whether or not the gate went red.
+      - name: Upload the house-rule SARIF
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jk-guards-sarif
+          path: target/jk-guards.sarif
+          if-no-files-found: ignore
+
       # The gate reports every broken rule in one message, under a banner per guard. Lift those
       # banners into annotations so a parity failure is attributed to the guard that owns it
       # instead of being one more line of build output.

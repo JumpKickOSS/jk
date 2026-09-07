@@ -109,6 +109,7 @@ differs; field **names** match.
 | Plan / ETA | `plan`, `eta` (web; CLI via explain) |
 | Module | `module-start` / `module-finish` (paired) |
 | Workspace end | `workspace-finish` (exactly one, on every outcome) |
+| Guard violation | `guard` — one per violation row of the last `jk guard` run, after the build's events: `code`, `kind`, `baseline` (`new`/`baselined`), `file`, `line`, `at` (fingerprint), `message`, `instead`, `why`, `source` |
 
 `stage` is a **closed** set, in pipeline order: `resolve`, `generate`, `compile`, `test`,
 `package`, `train`, `native`, `image`, `publish`, `other`. The field is always present, but a
@@ -118,6 +119,15 @@ journal spells that same case `other`. `jid` is the public job handle on every s
 SSE `event` name always equals `data.type`. MCP live frames are
 `notifications/jk/event` with the same params. Dashboard-only chrome (`status`/`cache`
 sample frames) is **not** sent on MCP SSE.
+
+## Guards
+
+Every run that evaluates a guard lane leaves `target/jk-guards.sarif` (SARIF 2.1.0: `ruleId`,
+`partialFingerprints`, `baselineState` `new`/`unchanged`, `suppressions` with the baseline reason
+as `justification`, `invocations[0].executionSuccessful` false on any `scanner-failed`) and
+`target/jk-guards.jsonl` (every violation row). `jk guard --output sarif` prints the SARIF file
+whole; `--output json|jsonl` streams the rows as `guard` events. `target/jk-results.md` stays the
+agent view. Upload the SARIF to code scanning from CI — [CI](ci.md#guards).
 
 ## Timeline
 

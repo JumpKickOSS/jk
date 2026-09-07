@@ -272,7 +272,7 @@ A project may carry **`jk-guards.toml`**: declarative rules the build enforces �
 annotations, layer edges, text patterns, size caps. They run inside `jk build` as `guard` steps
 and `jk guard` runs every lane now, tests skipped. No rule file, no cost.
 
-A guard failure looks like this in `target/jk-results.md` / `jk_diagnostics`:
+A guard failure in `target/jk-results.md` / `jk_diagnostics`:
 
 ```
 GUARD one-digest-surface  violations
@@ -286,14 +286,14 @@ GUARD one-digest-surface  violations
 
 A guard *test* (`@Guard`, `src/guard`) fails the same way.
 **A guard failure's `code` is a rule id. Fix per `Instead`. To exempt, stop and ask the user to add an
-`allow` entry with a reason — never edit the baseline, never add a comment.** The catalog is
+`allow` entry with a reason — never edit the baseline, never add a comment.** Catalog:
 `jk guard explain` (MCP `jk://guards`).
 
 The loop: read the `code` → `jk guard explain <id>` → change the *site* the way `Instead` says →
 `jk format` → rebuild (`jk build`, or MCP `jk_run kind=guard`).
 
 Stop and ask the user when:
-- the fix is an exemption (`allow` needs a human reason), or a rule looks wrong;
+- the fix is an exemption (`allow` needs a human reason) or a rule looks wrong;
 - the message says **thrash** or names `jk guard freeze <id> --reason "…"` — accepting existing
   violations into `jk-guards-baseline.toml` is the user's decision;
 - a rule is `blind`, `owner-missing`, `stale-allow`, `no-bite` or `scanner-failed`: the rule needs
@@ -302,7 +302,7 @@ Stop and ask the user when:
 Never: hand-edit `jk-guards-baseline.toml`; add a suppression comment; pass `--force` past a red
 guard; delete a rule to go green.
 
-Authoring a rule is three facts — the kind, the thing banned or required, the sanctioned alternative:
+Authoring a rule is three facts: kind, the thing banned or required, the alternative:
 
 ```bash
 jk guard explain --schema <kind>    # keys + one example; kinds: forbid annotate classes layers cycles
@@ -313,10 +313,11 @@ jk guard                            # every lane now; red on any violation
 jk guard test                       # prove fixtures: Bad* fires, Ok* is quiet
 jk guard freeze <id> --reason "…"   # accept a rule's current sites (user-approved); --retire drops a removed rule
 jk guard hooks install              # git hooks: commit rules refuse a message; pre-commit protects the baseline
+jk guard --output sarif             # print target/jk-guards.sarif
 ```
 
-Every rule needs `why`; `forbid`/`text`/`vocabulary` need `instead`; a rule that cannot fire anywhere
-is red (`no-bite`) — give `forbid` an `owner`, `text` a `hit`.
+Every rule needs `why`; `forbid`/`text`/`vocabulary` need `instead`; a rule that cannot fire is red
+(`no-bite`) — give `forbid` an `owner`, `text` a `hit`.
 
 ---
 

@@ -32,6 +32,26 @@ class JsonlShapeTest {
     }
 
     @Test
+    void a_guard_event_carries_the_violation_row_under_the_envelope() {
+        String row =
+                "{\"code\":\"one-digest-surface\",\"kind\":\"forbid\",\"baseline\":\"new\",\"file\":\"a/A.java\",\"line\":12,"
+                        + "\"at\":\"a.A#f\",\"message\":\"m\",\"instead\":\"i\",\"why\":\"w\",\"source\":\"jk-guards.toml:1\"}";
+        String line = JsonlShape.guard(row);
+        assertThat(line).startsWith("{\"schema\":" + JsonlShape.SCHEMA);
+        assertThat(line).contains("\"type\":\"guard\"");
+        assertThat(line)
+                .contains("\"code\":\"one-digest-surface\"")
+                .contains("\"baseline\":\"new\"")
+                .endsWith("\"source\":\"jk-guards.toml:1\"}");
+        assertThat(JsonlShape.guard("not json"))
+                .isEqualTo(JsonlShape.guard("not json")
+                        .replaceAll(",\"ts\":\\d+", ",\"ts\":0")
+                        .replace(
+                                ",\"ts\":0",
+                                ",\"ts\":" + JsonlShape.guard("not json").replaceAll(".*\"ts\":(\\d+).*", "$1")));
+    }
+
+    @Test
     void withProgress_attaches_percent_only() {
         LiveProgress.get().update(25, 100);
         String base = JsonlShape.stepStart("compile-main", "compile", 10);

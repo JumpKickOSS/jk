@@ -29,6 +29,7 @@ import cc.jumpkick.guard.eval.RuleReport;
 import cc.jumpkick.guard.eval.WorkspaceModules;
 import cc.jumpkick.guard.explain.BiteEvidence;
 import cc.jumpkick.guard.explain.RuleSummaries;
+import cc.jumpkick.guard.explain.SarifWriter;
 import cc.jumpkick.guard.extract.FactsIndexing;
 import cc.jumpkick.guard.extract.WorkspaceFacts;
 import cc.jumpkick.guard.facts.FactsIndex;
@@ -670,6 +671,13 @@ final class PlannerGuards {
             }
         }
         writeJsonl(g.root(), taskId, result);
+        // The machine view of the whole run, re-rendered from every lane's output: cheap, and always
+        // current after the lane that just wrote.
+        try {
+            SarifWriter.write(g.root(), load.rules(), BaselineFile.read(baselineFile));
+        } catch (IOException e) {
+            ctx.warn("guards", "could not write " + SarifWriter.SARIF_FILE + ": " + e.getMessage());
+        }
         for (RuleReport r : result.redReports()) {
             if (r.outcome() == Outcome.VIOLATIONS) {
                 for (Observation o : r.fresh()) ctx.error(r.id(), GuardMessages.site(r, o));
