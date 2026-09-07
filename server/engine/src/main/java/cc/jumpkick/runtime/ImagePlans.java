@@ -148,7 +148,25 @@ public final class ImagePlans {
                 SessionContext.current());
         if (decorate != null) inputs = decorate.apply(inputs);
 
-        Task imagePlan = Task.builder(TaskNames.IMAGE_PLAN)
+        BuildPlan.Builder builder = BuildPlanner.coreBuilder(inputs);
+        builder.stateKeys(CONFIG, TARBALL_PATH, DEP_JARS, SNAPSHOT_JARS, IMAGE_REF)
+                .addTask(imagePlanStep(
+                        projectDir, cache, jkBuildPath, mainClass, registry, tag, tarballArg, dockerExecutableArg))
+                .addTask(writeImageStep(projectDir, cache, mainClass));
+        return builder.terminal(TaskNames.WRITE_IMAGE).build();
+    }
+
+    /** Resolve the image config and, in Jib mode, the main class and the dependency layers. */
+    private static Task imagePlanStep(
+            Path projectDir,
+            Path cache,
+            Path jkBuildPath,
+            @Nullable String mainClass,
+            @Nullable String registry,
+            @Nullable String tag,
+            @Nullable String tarballArg,
+            @Nullable String dockerExecutableArg) {
+        return Task.builder(TaskNames.IMAGE_PLAN)
                 .stage(BuildStage.IMAGE)
                 .requires(TaskNames.PACKAGE_JAR)
                 .ticks(1)
@@ -190,8 +208,11 @@ public final class ImagePlans {
                     ctx.progress(1);
                 })
                 .build();
+    }
 
-        Task writeImage = Task.builder(TaskNames.WRITE_IMAGE)
+    /** Dockerfile mode shells out to docker/podman; Jib mode restores from the cache or forks the worker. */
+    private static Task writeImageStep(Path projectDir, Path cache, @Nullable String mainClass) {
+        return Task.builder(TaskNames.WRITE_IMAGE)
                 .stage(BuildStage.IMAGE)
                 .kind(TaskKind.IO)
                 .requires(TaskNames.IMAGE_PLAN)
@@ -262,12 +283,6 @@ public final class ImagePlans {
                                     tarballPath));
                 })
                 .build();
-
-        BuildPlan.Builder builder = BuildPlanner.coreBuilder(inputs);
-        builder.stateKeys(CONFIG, TARBALL_PATH, DEP_JARS, SNAPSHOT_JARS, IMAGE_REF)
-                .addTask(imagePlan)
-                .addTask(writeImage);
-        return builder.terminal(TaskNames.WRITE_IMAGE).build();
     }
 
     private static @Nullable Path resolveTarballPath(@Nullable String tarballArg, BuildLayout layout) {

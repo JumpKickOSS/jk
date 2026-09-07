@@ -126,75 +126,94 @@ final class ApiEvaluator implements Evaluator {
                 change(sites, ignore, "CLASS_REMOVED", cls, cls + " is gone from the public API");
                 continue;
             }
-            if (!was.hasFlag(Opcodes.ACC_FINAL) && is.hasFlag(Opcodes.ACC_FINAL) && !was.hasFlag(Opcodes.ACC_ENUM))
-                change(sites, ignore, "CLASS_NOW_FINAL", cls, cls + " became final");
-            if (!was.hasFlag(Opcodes.ACC_ABSTRACT)
-                    && is.hasFlag(Opcodes.ACC_ABSTRACT)
-                    && !is.hasFlag(Opcodes.ACC_INTERFACE))
-                change(sites, ignore, "CLASS_NOW_ABSTRACT", cls, cls + " became abstract");
-            if (was.hasFlag(Opcodes.ACC_PUBLIC) && !is.hasFlag(Opcodes.ACC_PUBLIC))
-                change(sites, ignore, "CLASS_LESS_ACCESSIBLE", cls, cls + " is no longer public");
-            Map<String, MethodFacts> newMethods = new HashMap<>();
-            for (MethodFacts m : is.methods()) if (exposed(m.access())) newMethods.put(m.name() + params(m.desc()), m);
-            for (MethodFacts m : was.methods()) {
-                if (!exposed(m.access()) || m.name().equals("<clinit>")) continue;
-                String sig = cls + "#" + m.name() + params(m.desc());
-                MethodFacts n = newMethods.get(m.name() + params(m.desc()));
-                if (n == null) {
-                    change(sites, ignore, "METHOD_REMOVED", sig, sig + " is gone");
-                    continue;
-                }
-                if (!returnOf(m.desc()).equals(returnOf(n.desc())))
-                    change(
-                            sites,
-                            ignore,
-                            "METHOD_RETURN_TYPE_CHANGED",
-                            sig,
-                            sig + " now returns " + returnOf(n.desc()) + ", was " + returnOf(m.desc()));
-                if (!has(m, Opcodes.ACC_FINAL) && has(n, Opcodes.ACC_FINAL))
-                    change(sites, ignore, "METHOD_NOW_FINAL", sig, sig + " became final");
-                if (!has(m, Opcodes.ACC_STATIC) && has(n, Opcodes.ACC_STATIC))
-                    change(sites, ignore, "METHOD_NOW_STATIC", sig, sig + " became static");
-                if (has(m, Opcodes.ACC_STATIC) && !has(n, Opcodes.ACC_STATIC))
-                    change(sites, ignore, "METHOD_NO_LONGER_STATIC", sig, sig + " is no longer static");
-                if (has(m, Opcodes.ACC_PUBLIC) && !has(n, Opcodes.ACC_PUBLIC))
-                    change(sites, ignore, "METHOD_LESS_ACCESSIBLE", sig, sig + " is no longer public");
-            }
-            if (is.hasFlag(Opcodes.ACC_INTERFACE)) {
-                Set<String> hadMethods = new TreeSet<>();
-                for (MethodFacts m : was.methods()) hadMethods.add(m.name() + params(m.desc()));
-                for (MethodFacts n : is.methods()) {
-                    if (!exposed(n.access()) || has(n, Opcodes.ACC_STATIC) || !has(n, Opcodes.ACC_ABSTRACT)) continue;
-                    String key = n.name() + params(n.desc());
-                    if (!hadMethods.contains(key))
-                        change(
-                                sites,
-                                ignore,
-                                "INTERFACE_ADDED_METHOD",
-                                cls + "#" + key,
-                                cls + "#" + key + " is a new abstract method every implementor must add");
-                }
-            }
-            Map<String, FieldFacts> newFields = new HashMap<>();
-            for (FieldFacts f : is.fields()) if (exposed(f.access())) newFields.put(f.name(), f);
-            for (FieldFacts f : was.fields()) {
-                if (!exposed(f.access())) continue;
-                String sig = cls + "." + f.name();
-                FieldFacts n = newFields.get(f.name());
-                if (n == null) {
-                    change(sites, ignore, "FIELD_REMOVED", sig, sig + " is gone");
-                    continue;
-                }
-                if (!f.desc().equals(n.desc())) change(sites, ignore, "FIELD_TYPE_CHANGED", sig, sig + " changed type");
-                if ((f.access() & Opcodes.ACC_FINAL) == 0 && (n.access() & Opcodes.ACC_FINAL) != 0)
-                    change(sites, ignore, "FIELD_NOW_FINAL", sig, sig + " became final");
-                if ((f.access() & Opcodes.ACC_PUBLIC) != 0 && (n.access() & Opcodes.ACC_PUBLIC) == 0)
-                    change(sites, ignore, "FIELD_LESS_ACCESSIBLE", sig, sig + " is no longer public");
-            }
+            compareClass(sites, ignore, was, is, cls);
         }
         List<Observation> located = new ArrayList<>();
         for (Observation o : sites) located.add(Observation.site(o.key(), file, 0, o.detail()));
         return Evaluation.of(population, located);
+    }
+
+    /** The class-level codes, then its methods, its new abstract interface methods, and its fields. */
+    private static void compareClass(
+            List<Observation> sites, Set<String> ignore, ClassFacts was, ClassFacts is, String cls) {
+        if (!was.hasFlag(Opcodes.ACC_FINAL) && is.hasFlag(Opcodes.ACC_FINAL) && !was.hasFlag(Opcodes.ACC_ENUM))
+            change(sites, ignore, "CLASS_NOW_FINAL", cls, cls + " became final");
+        if (!was.hasFlag(Opcodes.ACC_ABSTRACT)
+                && is.hasFlag(Opcodes.ACC_ABSTRACT)
+                && !is.hasFlag(Opcodes.ACC_INTERFACE))
+            change(sites, ignore, "CLASS_NOW_ABSTRACT", cls, cls + " became abstract");
+        if (was.hasFlag(Opcodes.ACC_PUBLIC) && !is.hasFlag(Opcodes.ACC_PUBLIC))
+            change(sites, ignore, "CLASS_LESS_ACCESSIBLE", cls, cls + " is no longer public");
+        compareMethods(sites, ignore, was, is, cls);
+        if (is.hasFlag(Opcodes.ACC_INTERFACE)) compareInterfaceAdditions(sites, ignore, was, is, cls);
+        compareFields(sites, ignore, was, is, cls);
+    }
+
+    private static void compareMethods(
+            List<Observation> sites, Set<String> ignore, ClassFacts was, ClassFacts is, String cls) {
+        Map<String, MethodFacts> newMethods = new HashMap<>();
+        for (MethodFacts m : is.methods()) if (exposed(m.access())) newMethods.put(m.name() + params(m.desc()), m);
+        for (MethodFacts m : was.methods()) {
+            if (!exposed(m.access()) || m.name().equals("<clinit>")) continue;
+            String sig = cls + "#" + m.name() + params(m.desc());
+            MethodFacts n = newMethods.get(m.name() + params(m.desc()));
+            if (n == null) {
+                change(sites, ignore, "METHOD_REMOVED", sig, sig + " is gone");
+                continue;
+            }
+            if (!returnOf(m.desc()).equals(returnOf(n.desc())))
+                change(
+                        sites,
+                        ignore,
+                        "METHOD_RETURN_TYPE_CHANGED",
+                        sig,
+                        sig + " now returns " + returnOf(n.desc()) + ", was " + returnOf(m.desc()));
+            if (!has(m, Opcodes.ACC_FINAL) && has(n, Opcodes.ACC_FINAL))
+                change(sites, ignore, "METHOD_NOW_FINAL", sig, sig + " became final");
+            if (!has(m, Opcodes.ACC_STATIC) && has(n, Opcodes.ACC_STATIC))
+                change(sites, ignore, "METHOD_NOW_STATIC", sig, sig + " became static");
+            if (has(m, Opcodes.ACC_STATIC) && !has(n, Opcodes.ACC_STATIC))
+                change(sites, ignore, "METHOD_NO_LONGER_STATIC", sig, sig + " is no longer static");
+            if (has(m, Opcodes.ACC_PUBLIC) && !has(n, Opcodes.ACC_PUBLIC))
+                change(sites, ignore, "METHOD_LESS_ACCESSIBLE", sig, sig + " is no longer public");
+        }
+    }
+
+    private static void compareInterfaceAdditions(
+            List<Observation> sites, Set<String> ignore, ClassFacts was, ClassFacts is, String cls) {
+        Set<String> hadMethods = new TreeSet<>();
+        for (MethodFacts m : was.methods()) hadMethods.add(m.name() + params(m.desc()));
+        for (MethodFacts n : is.methods()) {
+            if (!exposed(n.access()) || has(n, Opcodes.ACC_STATIC) || !has(n, Opcodes.ACC_ABSTRACT)) continue;
+            String key = n.name() + params(n.desc());
+            if (!hadMethods.contains(key))
+                change(
+                        sites,
+                        ignore,
+                        "INTERFACE_ADDED_METHOD",
+                        cls + "#" + key,
+                        cls + "#" + key + " is a new abstract method every implementor must add");
+        }
+    }
+
+    private static void compareFields(
+            List<Observation> sites, Set<String> ignore, ClassFacts was, ClassFacts is, String cls) {
+        Map<String, FieldFacts> newFields = new HashMap<>();
+        for (FieldFacts f : is.fields()) if (exposed(f.access())) newFields.put(f.name(), f);
+        for (FieldFacts f : was.fields()) {
+            if (!exposed(f.access())) continue;
+            String sig = cls + "." + f.name();
+            FieldFacts n = newFields.get(f.name());
+            if (n == null) {
+                change(sites, ignore, "FIELD_REMOVED", sig, sig + " is gone");
+                continue;
+            }
+            if (!f.desc().equals(n.desc())) change(sites, ignore, "FIELD_TYPE_CHANGED", sig, sig + " changed type");
+            if ((f.access() & Opcodes.ACC_FINAL) == 0 && (n.access() & Opcodes.ACC_FINAL) != 0)
+                change(sites, ignore, "FIELD_NOW_FINAL", sig, sig + " became final");
+            if ((f.access() & Opcodes.ACC_PUBLIC) != 0 && (n.access() & Opcodes.ACC_PUBLIC) == 0)
+                change(sites, ignore, "FIELD_LESS_ACCESSIBLE", sig, sig + " is no longer public");
+        }
     }
 
     /** {@code breaking = "baseline"} lets a change be frozen with a reason; the default {@code forbid} never consults the baseline. */

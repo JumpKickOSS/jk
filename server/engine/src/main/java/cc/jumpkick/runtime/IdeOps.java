@@ -80,22 +80,9 @@ public final class IdeOps {
         if (!Files.exists(buildFile)) {
             return IdeWireModel.error("no jk.toml in " + startDir);
         }
-        JkBuild rootBuild = JkBuildParser.parse(buildFile);
-        Path wsRoot;
-        if (rootBuild.isWorkspaceRoot()) {
-            wsRoot = startDir;
-        } else {
-            var rootOpt = WorkspaceLocator.findRoot(startDir);
-            wsRoot = rootOpt.orElse(startDir);
-            rootBuild = JkBuildParser.parse(wsRoot.resolve(ManifestPaths.MANIFEST));
-        }
-        // Canonicalize wsRoot so paths from BuildGraph (which calls toRealPath) and workspace-loader
-        // paths are consistent — critical for correct relativize() on systems where the temp/project
-        // dir is reached via a symlink (e.g. macOS /var/folders → /private/var/folders).
-        try {
-            wsRoot = wsRoot.toRealPath();
-        } catch (IOException ignored) {
-        }
+        Workspace ws = workspace(startDir, JkBuildParser.parse(buildFile));
+        Path wsRoot = ws.root();
+        JkBuild rootBuild = ws.rootBuild();
 
         Map<Path, JkBuild> modules =
                 rootBuild.isWorkspaceRoot() ? WorkspaceLoader.loadModules(wsRoot, rootBuild) : Map.of();
@@ -121,8 +108,74 @@ public final class IdeOps {
         String[] defaultSdk =
                 defaultSdkRef(wsRoot, rootBuild, modules, sdkRefs, jdkRegistry, pointer, sdkEntries, seenSdk);
 
-        // Per-module dependency edges, external-library refs, processor jars.
         List<Path> dirs = new ArrayList<>(allModules.keySet());
+        Edges edges = edges(dirs, allModules, modules, allLibs);
+        ModuleColumns m = moduleColumns(dirs, allModules, sdkRefs);
+        LibColumns libs = libColumns(allLibs);
+
+        return new IdeWireModel(
+                null,
+                wsRoot.toString(),
+                rootBuild.project().name(),
+                !modules.isEmpty(),
+                m.moduleDirs(),
+                m.names(),
+                m.javaReleases(),
+                m.mainClasses(),
+                m.classesDirs(),
+                m.testClassesDirs(),
+                m.jdtClassesDirs(),
+                m.jdtTestClassesDirs(),
+                m.genSrcDirs(),
+                m.genTestSrcDirs(),
+                libs.names(),
+                libs.files(),
+                libs.jars(),
+                libs.sources(),
+                edges.siblingRefs(),
+                edges.libEntries(),
+                edges.processorJars(),
+                m.sdkStableNames(),
+                m.sdkNames(),
+                m.sdkLevels(),
+                m.sdkHomes(),
+                m.sdkVersions(),
+                defaultSdk[0],
+                defaultSdk[1],
+                Integer.parseInt(defaultSdk[2]),
+                defaultSdk[3],
+                defaultSdk[4],
+                sdkEntries);
+    }
+
+    /** The workspace root and its parsed manifest, whichever module the IDE opened. */
+    private record Workspace(Path root, JkBuild rootBuild) {}
+
+    private static Workspace workspace(Path startDir, JkBuild rootBuild) throws IOException {
+        Path wsRoot;
+        if (rootBuild.isWorkspaceRoot()) {
+            wsRoot = startDir;
+        } else {
+            var rootOpt = WorkspaceLocator.findRoot(startDir);
+            wsRoot = rootOpt.orElse(startDir);
+            rootBuild = JkBuildParser.parse(wsRoot.resolve(ManifestPaths.MANIFEST));
+        }
+        // Canonicalize wsRoot so paths from BuildGraph (which calls toRealPath) and workspace-loader
+        // paths are consistent — critical for correct relativize() on systems where the temp/project
+        // dir is reached via a symlink (e.g. macOS /var/folders → /private/var/folders).
+        try {
+            wsRoot = wsRoot.toRealPath();
+        } catch (IOException ignored) {
+        }
+        return new Workspace(wsRoot, rootBuild);
+    }
+
+    /** Per-module dependency edges, external-library refs, processor jars — each row prefixed by the module index. */
+    private record Edges(List<String> siblingRefs, List<String> libEntries, List<String> processorJars) {}
+
+    private static Edges edges(
+            List<Path> dirs, Map<Path, JkBuild> allModules, Map<Path, JkBuild> modules, Map<String, String[]> allLibs)
+            throws IOException {
         List<String> siblingRefs = new ArrayList<>(); // "i|name|scope"
         List<String> libEntries = new ArrayList<>(); // "i|libName|SCOPE1,SCOPE2"
         List<String> processorJars = new ArrayList<>(); // "i|path"
@@ -139,88 +192,85 @@ public final class IdeOps {
                 processorJars.add(i + "|" + jar);
             }
         }
+        return new Edges(siblingRefs, libEntries, processorJars);
+    }
 
-        // Per-module facts + layout paths.
-        List<String> moduleDirs = new ArrayList<>();
-        List<String> names = new ArrayList<>();
-        List<String> javaReleases = new ArrayList<>();
-        List<String> mainClasses = new ArrayList<>();
-        List<String> classesDirs = new ArrayList<>();
-        List<String> testClassesDirs = new ArrayList<>();
-        List<String> jdtClassesDirs = new ArrayList<>();
-        List<String> jdtTestClassesDirs = new ArrayList<>();
-        List<String> genSrcDirs = new ArrayList<>();
-        List<String> genTestSrcDirs = new ArrayList<>();
-        List<String> sdkStableNames = new ArrayList<>();
-        List<String> sdkNames = new ArrayList<>();
-        List<String> sdkLevels = new ArrayList<>();
-        List<String> sdkHomes = new ArrayList<>();
-        List<String> sdkVersions = new ArrayList<>();
+    /** Per-module facts + layout paths + SDK refs, one entry per module in {@code dirs} order. */
+    private record ModuleColumns(
+            List<String> moduleDirs,
+            List<String> names,
+            List<String> javaReleases,
+            List<String> mainClasses,
+            List<String> classesDirs,
+            List<String> testClassesDirs,
+            List<String> jdtClassesDirs,
+            List<String> jdtTestClassesDirs,
+            List<String> genSrcDirs,
+            List<String> genTestSrcDirs,
+            List<String> sdkStableNames,
+            List<String> sdkNames,
+            List<String> sdkLevels,
+            List<String> sdkHomes,
+            List<String> sdkVersions) {
+        static ModuleColumns empty() {
+            return new ModuleColumns(
+                    new ArrayList<>(),
+                    new ArrayList<>(),
+                    new ArrayList<>(),
+                    new ArrayList<>(),
+                    new ArrayList<>(),
+                    new ArrayList<>(),
+                    new ArrayList<>(),
+                    new ArrayList<>(),
+                    new ArrayList<>(),
+                    new ArrayList<>(),
+                    new ArrayList<>(),
+                    new ArrayList<>(),
+                    new ArrayList<>(),
+                    new ArrayList<>(),
+                    new ArrayList<>());
+        }
+    }
+
+    private static ModuleColumns moduleColumns(
+            List<Path> dirs, Map<Path, JkBuild> allModules, Map<Path, String[]> sdkRefs) {
+        ModuleColumns m = ModuleColumns.empty();
         for (Path dir : dirs) {
             JkBuild module = Objects.requireNonNull(allModules.get(dir), "module");
             BuildLayout layout = BuildLayout.of(dir, module);
-            moduleDirs.add(dir.toString());
-            names.add(module.project().name());
-            javaReleases.add(String.valueOf(module.project().javaRelease()));
-            mainClasses.add(module.mainClass() == null ? "" : module.mainClass());
-            classesDirs.add(layout.classesDir().toString());
-            testClassesDirs.add(layout.testClassesDir().toString());
-            jdtClassesDirs.add(layout.jdtClassesDir().toString());
-            jdtTestClassesDirs.add(layout.jdtTestClassesDir().toString());
-            genSrcDirs.add(layout.generatedSourcesDir("annotations").toString());
-            genTestSrcDirs.add(layout.generatedSourcesDir("annotations", "test").toString());
+            m.moduleDirs().add(dir.toString());
+            m.names().add(module.project().name());
+            m.javaReleases().add(String.valueOf(module.project().javaRelease()));
+            m.mainClasses().add(module.mainClass() == null ? "" : module.mainClass());
+            m.classesDirs().add(layout.classesDir().toString());
+            m.testClassesDirs().add(layout.testClassesDir().toString());
+            m.jdtClassesDirs().add(layout.jdtClassesDir().toString());
+            m.jdtTestClassesDirs().add(layout.jdtTestClassesDir().toString());
+            m.genSrcDirs().add(layout.generatedSourcesDir("annotations").toString());
+            m.genTestSrcDirs()
+                    .add(layout.generatedSourcesDir("annotations", "test").toString());
             String[] sdk = Objects.requireNonNull(sdkRefs.get(dir), "sdk ref");
-            sdkStableNames.add(sdk[0]);
-            sdkNames.add(sdk[1]);
-            sdkLevels.add(sdk[2]);
-            sdkHomes.add(sdk[3]);
-            sdkVersions.add(sdk[4]);
+            m.sdkStableNames().add(sdk[0]);
+            m.sdkNames().add(sdk[1]);
+            m.sdkLevels().add(sdk[2]);
+            m.sdkHomes().add(sdk[3]);
+            m.sdkVersions().add(sdk[4]);
         }
+        return m;
+    }
 
-        List<String> libNames = new ArrayList<>();
-        List<String> libFiles = new ArrayList<>();
-        List<String> libJars = new ArrayList<>();
-        List<String> libSources = new ArrayList<>();
+    /** The library table as columns: name, file name, jar, sources ("" when none). */
+    private record LibColumns(List<String> names, List<String> files, List<String> jars, List<String> sources) {}
+
+    private static LibColumns libColumns(Map<String, String[]> allLibs) {
+        LibColumns libs = new LibColumns(new ArrayList<>(), new ArrayList<>(), new ArrayList<>(), new ArrayList<>());
         for (Map.Entry<String, String[]> e : allLibs.entrySet()) {
-            libNames.add(e.getKey());
-            libFiles.add(e.getValue()[0]);
-            libJars.add(e.getValue()[1]);
-            libSources.add(e.getValue()[2] == null ? "" : e.getValue()[2]);
+            libs.names().add(e.getKey());
+            libs.files().add(e.getValue()[0]);
+            libs.jars().add(e.getValue()[1]);
+            libs.sources().add(e.getValue()[2] == null ? "" : e.getValue()[2]);
         }
-
-        return new IdeWireModel(
-                null,
-                wsRoot.toString(),
-                rootBuild.project().name(),
-                !modules.isEmpty(),
-                moduleDirs,
-                names,
-                javaReleases,
-                mainClasses,
-                classesDirs,
-                testClassesDirs,
-                jdtClassesDirs,
-                jdtTestClassesDirs,
-                genSrcDirs,
-                genTestSrcDirs,
-                libNames,
-                libFiles,
-                libJars,
-                libSources,
-                siblingRefs,
-                libEntries,
-                processorJars,
-                sdkStableNames,
-                sdkNames,
-                sdkLevels,
-                sdkHomes,
-                sdkVersions,
-                defaultSdk[0],
-                defaultSdk[1],
-                Integer.parseInt(defaultSdk[2]),
-                defaultSdk[3],
-                defaultSdk[4],
-                sdkEntries);
+        return libs;
     }
 
     // =========================================================================

@@ -242,7 +242,44 @@ public final class PluginDescriptors {
             TomlParseResult result, Set<String> schemaKeys, String displayPath) {
         TomlTable contribute = result.getTable("contribute");
         if (contribute == null) return PluginDescriptor.Contributions.NONE;
+        // Table by table, in manifest order, so the first malformed table is the one reported.
+        List<PluginDescriptor.PlatformDependency> platformDeps =
+                parsePlatformDependencies(contribute, schemaKeys, displayPath);
+        List<PluginDescriptor.CompilerArgs> compilerArgs = parseCompilerArgs(contribute, schemaKeys, displayPath);
+        List<PluginDescriptor.NativeArgs> nativeArgs = parseNativeArgs(contribute, schemaKeys, displayPath);
+        List<PluginDescriptor.SourceRoot> sourceRoots = parseSourceRoots(contribute, displayPath);
+        List<PluginDescriptor.KotlinPlugin> kotlinPlugins = parseKotlinPlugins(contribute, schemaKeys, displayPath);
+        List<PluginDescriptor.PackagerDependency> packagerDeps =
+                parsePackagerDependencies(contribute, schemaKeys, displayPath);
+        List<PluginDescriptor.StepDependency> stepDeps =
+                parseToolDependencies(contribute, "step-dependency", schemaKeys, displayPath);
+        List<PluginDescriptor.StepDependency> commandDeps =
+                parseToolDependencies(contribute, "command-dependency", schemaKeys, displayPath);
+        for (PluginDescriptor.StepDependency cd : commandDeps) {
+            if (stepDeps.stream().anyMatch(sd -> sd.artifact().equals(cd.artifact()))) {
+                throw new JkBuildParseException(displayPath + ".contribute.command-dependency: `" + cd.artifact()
+                        + "` is already a [[contribute.step-dependency]] — commands read step tools too;"
+                        + " declare it once, in the step lane");
+            }
+        }
+        List<PluginDescriptor.ProvidedClasspath> provided =
+                parseProvidedClasspath(contribute, displayPath, stepDeps, commandDeps);
+        String jvmEnvironment = parseJvmEnvironment(contribute, displayPath);
+        return new PluginDescriptor.Contributions(
+                platformDeps,
+                compilerArgs,
+                nativeArgs,
+                kotlinPlugins,
+                packagerDeps,
+                stepDeps,
+                commandDeps,
+                provided,
+                sourceRoots,
+                jvmEnvironment);
+    }
 
+    private static List<PluginDescriptor.PlatformDependency> parsePlatformDependencies(
+            TomlTable contribute, Set<String> schemaKeys, String displayPath) {
         List<PluginDescriptor.PlatformDependency> platformDeps = new ArrayList<>();
         for (TomlTable t : tableArray(contribute, "platform-dependency", displayPath)) {
             String where = displayPath + ".contribute.platform-dependency";
@@ -257,7 +294,11 @@ public final class PluginDescriptors {
             }
             platformDeps.add(new PluginDescriptor.PlatformDependency(coordinate, when));
         }
+        return platformDeps;
+    }
 
+    private static List<PluginDescriptor.CompilerArgs> parseCompilerArgs(
+            TomlTable contribute, Set<String> schemaKeys, String displayPath) {
         List<PluginDescriptor.CompilerArgs> compilerArgs = new ArrayList<>();
         for (TomlTable t : tableArray(contribute, "compiler-args", displayPath)) {
             String where = displayPath + ".contribute.compiler-args";
@@ -271,7 +312,11 @@ public final class PluginDescriptors {
             for (String arg : ksp) Interpolation.validate(arg, schemaKeys, where + ".ksp");
             compilerArgs.add(new PluginDescriptor.CompilerArgs(javac, kotlin, groovy, ksp, parseCondition(t, where)));
         }
+        return compilerArgs;
+    }
 
+    private static List<PluginDescriptor.NativeArgs> parseNativeArgs(
+            TomlTable contribute, Set<String> schemaKeys, String displayPath) {
         // [[contribute.native-args]] — class-initialization policy and other native-image flags
         // the framework needs. Not reachability metadata: no amount of it expresses which types
         // may be initialized while the image is built.
@@ -282,7 +327,10 @@ public final class PluginDescriptors {
             for (String arg : args) Interpolation.validate(arg, schemaKeys, where + ".args");
             nativeArgs.add(new PluginDescriptor.NativeArgs(args, parseCondition(t, where)));
         }
+        return nativeArgs;
+    }
 
+    private static List<PluginDescriptor.SourceRoot> parseSourceRoots(TomlTable contribute, String displayPath) {
         // [[contribute.source-roots]] — extra module input roots (Grails' grails-app tree).
         // Dirs must stay inside the module: absolute or ..-escaping entries fail at load.
         List<PluginDescriptor.SourceRoot> sourceRoots = new ArrayList<>();
@@ -310,7 +358,11 @@ public final class PluginDescriptors {
             }
             sourceRoots.add(new PluginDescriptor.SourceRoot(normalized, "resource".equals(kind), when));
         }
+        return sourceRoots;
+    }
 
+    private static List<PluginDescriptor.KotlinPlugin> parseKotlinPlugins(
+            TomlTable contribute, Set<String> schemaKeys, String displayPath) {
         List<PluginDescriptor.KotlinPlugin> kotlinPlugins = new ArrayList<>();
         for (TomlTable t : tableArray(contribute, "kotlin-plugin", displayPath)) {
             String where = displayPath + ".contribute.kotlin-plugin";
@@ -321,7 +373,11 @@ public final class PluginDescriptors {
             for (String opt : options) Interpolation.validate(opt, schemaKeys, where + ".options");
             kotlinPlugins.add(new PluginDescriptor.KotlinPlugin(id, coordinate, options, parseCondition(t, where)));
         }
+        return kotlinPlugins;
+    }
 
+    private static List<PluginDescriptor.PackagerDependency> parsePackagerDependencies(
+            TomlTable contribute, Set<String> schemaKeys, String displayPath) {
         List<PluginDescriptor.PackagerDependency> packagerDeps = new ArrayList<>();
         for (TomlTable t : tableArray(contribute, "packager-dependency", displayPath)) {
             String where = displayPath + ".contribute.packager-dependency";
@@ -336,19 +392,15 @@ public final class PluginDescriptors {
             }
             packagerDeps.add(new PluginDescriptor.PackagerDependency(artifact, coordinate, when));
         }
+        return packagerDeps;
+    }
 
-        List<PluginDescriptor.StepDependency> stepDeps =
-                parseToolDependencies(contribute, "step-dependency", schemaKeys, displayPath);
-        List<PluginDescriptor.StepDependency> commandDeps =
-                parseToolDependencies(contribute, "command-dependency", schemaKeys, displayPath);
-        for (PluginDescriptor.StepDependency cd : commandDeps) {
-            if (stepDeps.stream().anyMatch(sd -> sd.artifact().equals(cd.artifact()))) {
-                throw new JkBuildParseException(displayPath + ".contribute.command-dependency: `" + cd.artifact()
-                        + "` is already a [[contribute.step-dependency]] — commands read step tools too;"
-                        + " declare it once, in the step lane");
-            }
-        }
-
+    /** Every provided-classpath entry must name a declared step tool — a command-only tool never joins a compile classpath. */
+    private static List<PluginDescriptor.ProvidedClasspath> parseProvidedClasspath(
+            TomlTable contribute,
+            String displayPath,
+            List<PluginDescriptor.StepDependency> stepDeps,
+            List<PluginDescriptor.StepDependency> commandDeps) {
         List<PluginDescriptor.ProvidedClasspath> provided = new ArrayList<>();
         for (TomlTable t : tableArray(contribute, "provided-classpath", displayPath)) {
             String where = displayPath + ".contribute.provided-classpath";
@@ -366,7 +418,10 @@ public final class PluginDescriptors {
             }
             provided.add(new PluginDescriptor.ProvidedClasspath(dependency, parseCondition(t, where)));
         }
+        return provided;
+    }
 
+    private static @Nullable String parseJvmEnvironment(TomlTable contribute, String displayPath) {
         // [contribute.resolution] — a single table (not an array): the GMM jvm-environment
         // this plugin's projects select KMP runtime variants for.
         String jvmEnvironment = null;
@@ -379,18 +434,7 @@ public final class PluginDescriptors {
                         + " — got: " + jvmEnvironment);
             }
         }
-
-        return new PluginDescriptor.Contributions(
-                platformDeps,
-                compilerArgs,
-                nativeArgs,
-                kotlinPlugins,
-                packagerDeps,
-                stepDeps,
-                commandDeps,
-                provided,
-                sourceRoots,
-                jvmEnvironment);
+        return jvmEnvironment;
     }
 
     /**

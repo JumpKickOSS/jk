@@ -171,7 +171,45 @@ public final class JdkInstallCommand implements CliCommand {
             return Exit.USAGE;
         }
 
-        Task fetchCatalog = Task.builder(TaskNames.FETCH_CATALOG)
+        Task fetchCatalog = fetchCatalogStep(service);
+        Task select = selectStep(service, haveSpec, os, arch);
+        Task install = installStep(service, registry);
+        Task setDefault = setDefaultStep(registry);
+
+        BuildPlan plan = BuildPlan.builder("jdk-install")
+                .interactive(true)
+                .stateKeys(CATALOG, ENTRY, INSTALLED, WANT_DEFAULT, WIZARD_RAN)
+                .addTask(fetchCatalog)
+                .addTask(select)
+                .addTask(install)
+                .addTask(setDefault)
+                .build();
+
+        BuildPlanResult result = BuildPlanConsole.run(plan, BuildPlanConsole.modeFor(global), cache);
+        if (!result.success()) return 1;
+
+        // Offer to adopt the new install as the default JDK / default GraalVM.
+        // Runs AFTER the plan console closes, so the prompt never lands inside a
+        // captured-output region. Skipped on a non-TTY (and when --make-default
+        // already set the java default).
+        //
+        // Skipped entirely when the wizard ran: it already asked "Make this the
+        // default JDK?", so re-asking here would be a duplicate prompt — and the
+        // wizard's own terminal has been closed (taking System.in with it), so a
+        // fresh Confirm would fail with "Stream Closed". The post-plan offer is
+        // for the non-interactive spec path (e.g. `jk jdk install 25`), which
+        // never opened a terminal and never asked about the default.
+        // Wizard already settled the java-default question; still adopt Graal (0→1 auto or
+        // Confirm when peers exist). Spec path asks both. Non-TTY still auto-adopts sole installs.
+        boolean wizardRan = Boolean.TRUE.equals(plan.get(WIZARD_RAN).orElse(false));
+        boolean wantedDefault = Boolean.TRUE.equals(plan.get(WANT_DEFAULT).orElse(false));
+        plan.get(INSTALLED).ifPresent(jdk -> offerDefaults(jdk, wizardRan || wantedDefault));
+        return 0;
+    }
+
+    /** Fetch the JetBrains feed, freshening through a running engine when one is there. */
+    private Task fetchCatalogStep(JdkService service) {
+        return Task.builder(TaskNames.FETCH_CATALOG)
                 .kind(TaskKind.IO)
                 .ticks(1)
                 .execute(ctx -> {
@@ -197,8 +235,11 @@ public final class JdkInstallCommand implements CliCommand {
                     ctx.progress(1);
                 })
                 .build();
+    }
 
-        Task select = Task.builder(TaskNames.SELECT)
+    /** Resolve the spec against the catalog, or run the wizard when there is none. */
+    private Task selectStep(JdkService service, boolean haveSpec, String os, String arch) {
+        return Task.builder(TaskNames.SELECT)
                 .requires(TaskNames.FETCH_CATALOG)
                 .ticks(1)
                 .execute(ctx -> {
@@ -254,14 +295,20 @@ public final class JdkInstallCommand implements CliCommand {
                     ctx.progress(1);
                 })
                 .build();
+    }
 
+    /**
+     * Download and extract, owned by {@code JdkService.install}; the CLI keeps only the
+     * presentation.
+     */
+    private Task installStep(JdkService service, JdkRegistry registry) {
         // download + extract are owned by JdkService.install; the CLI keeps only
         // the presentation — an InstallView that drives the download bar and the
         // installing spinner off the facade's listener events, plus the done
         // lines. Merged into one step because install() is a single atomic call;
         // interactive plans render via SilentListener, so step labels aren't
         // shown and the bars/done-lines are the only visible output.
-        Task install = Task.builder(TaskNames.INSTALL)
+        return Task.builder(TaskNames.INSTALL)
                 .kind(TaskKind.IO)
                 .requires(TaskNames.SELECT)
                 .ticks(1)
@@ -281,8 +328,11 @@ public final class JdkInstallCommand implements CliCommand {
                     ctx.progress(1);
                 })
                 .build();
+    }
 
-        Task setDefault = Task.builder(TaskNames.SET_DEFAULT)
+    /** Make the installed JDK the default when the spec or the wizard asked for it. */
+    private Task setDefaultStep(JdkRegistry registry) {
+        return Task.builder(TaskNames.SET_DEFAULT)
                 .requires(TaskNames.INSTALL)
                 .ticks(1)
                 .execute(ctx -> {
@@ -313,36 +363,6 @@ public final class JdkInstallCommand implements CliCommand {
                     ctx.progress(1);
                 })
                 .build();
-
-        BuildPlan plan = BuildPlan.builder("jdk-install")
-                .interactive(true)
-                .stateKeys(CATALOG, ENTRY, INSTALLED, WANT_DEFAULT, WIZARD_RAN)
-                .addTask(fetchCatalog)
-                .addTask(select)
-                .addTask(install)
-                .addTask(setDefault)
-                .build();
-
-        BuildPlanResult result = BuildPlanConsole.run(plan, BuildPlanConsole.modeFor(global), cache);
-        if (!result.success()) return 1;
-
-        // Offer to adopt the new install as the default JDK / default GraalVM.
-        // Runs AFTER the plan console closes, so the prompt never lands inside a
-        // captured-output region. Skipped on a non-TTY (and when --make-default
-        // already set the java default).
-        //
-        // Skipped entirely when the wizard ran: it already asked "Make this the
-        // default JDK?", so re-asking here would be a duplicate prompt — and the
-        // wizard's own terminal has been closed (taking System.in with it), so a
-        // fresh Confirm would fail with "Stream Closed". The post-plan offer is
-        // for the non-interactive spec path (e.g. `jk jdk install 25`), which
-        // never opened a terminal and never asked about the default.
-        // Wizard already settled the java-default question; still adopt Graal (0→1 auto or
-        // Confirm when peers exist). Spec path asks both. Non-TTY still auto-adopts sole installs.
-        boolean wizardRan = Boolean.TRUE.equals(plan.get(WIZARD_RAN).orElse(false));
-        boolean wantedDefault = Boolean.TRUE.equals(plan.get(WANT_DEFAULT).orElse(false));
-        plan.get(INSTALLED).ifPresent(jdk -> offerDefaults(jdk, wizardRan || wantedDefault));
-        return 0;
     }
 
     /**

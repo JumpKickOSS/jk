@@ -77,345 +77,443 @@ public final class PlannerNative {
                 // without this the bar sits near 100% for most of a multi-minute native-image.
                 .interpolated()
                 .ticks(10) // preamble(1) + 8 native-image stages + done(1)
-                .execute(ctx -> {
-                    // Fail-fast: verify native-image is available before compilation
-                    // has already run and the user has waited for potentially minutes.
-                    // Resolution: the client-resolved home → the request's $GRAALVM_HOME → the
-                    // installed Graal the CLI would have picked (spec, lock pin, jk jdk graal
-                    // pointer, policy) → project JDK → running JVM. jk build, jk install and jk
-                    // native all ship the first for every module that links a native image; a
-                    // build submitted over HTTP or MCP ships none, and the third tier is what keeps
-                    // it from linking against whatever the daemon's shell knew.
-                    Path javaHomeEarly = resolveNativeImageHome(
-                            graalHome, dir, jdksDir, ctx.require(PROJECT).graal());
-                    if (cc.jumpkick.tool.NativeImageDriver.resolve(javaHomeEarly)
-                            .isEmpty()) {
-                        ctx.error(
-                                "native", Errors.text(cc.jumpkick.tool.NativeImageDriver.notFoundError(javaHomeEarly)));
-                        throw new RuntimeException("native-image not found");
-                    }
-
-                    JkBuild project = ctx.require(PROJECT);
-                    JkBuild.NativeConfig nativeCfg = project.nativeConfigOpt()
-                            .orElseGet(() -> new JkBuild.NativeConfig(
-                                    null, null, List.of(), null, JkBuild.NativeMode.SUPPORTED, null));
-                    BuildLayout layout = ctx.require(LAYOUT);
-                    Path mainJar = layout.mainJar();
-                    if (!Files.exists(mainJar)) {
-                        ctx.error("native", "jar not found at " + mainJar);
-                        throw new RuntimeException("missing main jar for native-image");
-                    }
-                    // Resolution order: --main CLI flag > [native].main > [application].main.
-                    // A resolvable main → executable; none → shared library (--shared) on jk
-                    // build. jk native requires a unique main (allowShared=false).
-                    String mainClass = (mainOverride != null && !mainOverride.isBlank())
-                            ? mainOverride
-                            : (nativeCfg.mainClass() != null ? nativeCfg.mainClass() : project.mainClass());
-                    if (mainClass == null || mainClass.isBlank()) {
-                        boolean scan = !allowShared
-                                || PluginBuild.shape(project, dir)
-                                        .map(sh -> sh.mainScan())
-                                        .orElse(false);
-                        if (scan) {
-                            try {
-                                mainClass = cc.jumpkick.layout.MainClassScanner.scanUnique(layout.classesDir());
-                            } catch (cc.jumpkick.layout.MainClassScanner.AmbiguousMainException e) {
-                                ctx.error("native", cc.jumpkick.layout.NativePreflight.MANY_MAINS);
-                                throw new RuntimeException(cc.jumpkick.layout.NativePreflight.MANY_MAINS);
-                            } catch (cc.jumpkick.layout.MainClassScanner.NoMainFoundException e) {
-                                if (!allowShared) {
-                                    ctx.error("native", cc.jumpkick.layout.NativePreflight.NO_MAIN);
-                                    throw new RuntimeException(cc.jumpkick.layout.NativePreflight.NO_MAIN);
-                                }
-                                mainClass = null;
-                            }
-                        }
-                    }
-                    boolean shared = (mainClass == null || mainClass.isBlank());
-                    if (shared) {
-                        if (!allowShared) {
-                            ctx.error("native", cc.jumpkick.layout.NativePreflight.NO_MAIN);
-                            throw new RuntimeException(cc.jumpkick.layout.NativePreflight.NO_MAIN);
-                        }
-                        mainClass = null;
-                    }
-                    // Output path: [native].name overrides the artifact-derived name.
-                    // Executable → target/<name>[.exe]; library → target/lib<name> (native-image
-                    // appends the platform extension.so/.dylib/.dll and emits C headers).
-                    Path out;
-                    if (shared) {
-                        if (nativeCfg.name() != null) {
-                            String nm = nativeCfg.name();
-                            out = layout.moduleTargetDir().resolve(nm.startsWith("lib") ? nm : "lib" + nm);
-                        } else {
-                            out = layout.nativeLibrary();
-                        }
-                    } else {
-                        // Includes [native].name and the Windows .exe suffix — the file
-                        // native-image writes, which the action cache stores.
-                        out = layout.nativeBinary();
-                    }
-                    Files.createDirectories(out.getParent());
-                    // Args, least specific first so the more specific wins on conflict: what the
-                    // active plugins' frameworks require (class-initialization policy, which no
-                    // amount of reachability metadata expresses), then [native].args, then the
-                    // CLI's trailing args.
-                    // A framework that computed its own invocation gets none of jk's automatic
-                    // additions. Its list is complete by construction — Quarkus even passes
-                    // --exclude-config to suppress library metadata it does not want, and layering
-                    // the community metadata repository on top of that reintroduces exactly what it
-                    // excluded. `[native] args` and CLI extras still apply: those are the user
-                    // speaking, not jk guessing.
-                    Path frameworkSources = nativeImageSourcesDir(project, dir, cache, layout);
-                    if (frameworkSources == null && packagerDeclaresNativeSources(project, dir)) {
-                        // The packager owns the native invocation but its augment ran in
-                        // JVM mode — without a [native] table the build never asked for native
-                        // sources. Falling through to the generic classpath build is exactly the
-                        // "main entry point not found" failure  fixed; fail with the cure
-                        // instead.
-                        String msg = "this framework builds its own native image, but no native-image"
-                                + " sources were produced. Add a `[native]` table (it can be empty) to"
-                                + " jk.toml so the framework's augment runs in native mode, then re-run"
-                                + " `jk native`.";
-                        ctx.error("native-sources-missing", msg);
-                        throw new RuntimeException(msg);
-                    }
-                    List<String> pluginNativeArgs = frameworkSources != null
-                            ? List.of()
-                            : cc.jumpkick.plugin.manifest.PluginContributions.nativeArgs(project, dir);
-                    if (!pluginNativeArgs.isEmpty()) {
-                        ctx.label(pluginNativeArgs.size() + " native-image "
-                                + (pluginNativeArgs.size() == 1 ? "arg" : "args") + " from plugins");
-                    }
-                    List<String> allArgs = new ArrayList<>(pluginNativeArgs);
-                    allArgs.addAll(nativeCfg.args());
-                    allArgs.addAll(extra);
-
-                    Path javaHome = javaHomeEarly; // resolved above in fail-fast check
-
-                    List<Path> classpath = new ArrayList<>();
-                    if (PluginBuild.shape(project, dir)
-                            .map(sh -> sh.classesRun())
-                            .orElse(false)) {
-                        // A classes-run packager's jar is not classpath-able (e.g. Boot's
-                        // BOOT-INF nesting) — native-image gets the exploded classes plus
-                        // whatever the plugin's steps contributed (generated classes +
-                        // META-INF/native-image hints), produced just before this step.
-                        classpath.add(layout.classesDir());
-                        var activeOpt = PluginBuild.activeCodePlugin(project, dir);
-                        if (activeOpt.isPresent()) {
-                            var decls = PluginBuild.declarations(
-                                    activeOpt.get(), project, dir, cache, layout.moduleTargetDir());
-                            for (Path contributed : PluginBuild.contributedDirs(decls, layout)) {
-                                if (Files.isDirectory(contributed)) classpath.add(contributed);
-                            }
-                        }
-                    } else {
-                        classpath.add(mainJar);
-                    }
-                    // Module-scoped runtime closure + workspace sibling jars.
-                    for (Path p : assemblyDependencyJars(dir, project, lockFile, cache)) {
-                        if (!classpath.contains(p)) classpath.add(p);
-                    }
-
-                    // Reachability metadata (general, not Boot-specific): third-party libs
-                    // publish native-image config to the GraalVM metadata repository rather
-                    // than their own jars. Matched dirs ride -H:ConfigurationFileDirectories;
-                    // unavailable (offline) degrades to building without it.
-                    List<Path> metadataDirs = List.of();
-                    if (Files.exists(lockFile)) {
-                        Lockfile metaLock = LockfileReader.read(lockFile);
-                        List<Lockfile.Artifact> runtimeArtifacts = new ArrayList<>();
-                        for (Lockfile.Artifact a : metaLock.artifacts()) {
-                            if (a.inAnyScope(ClasspathResolver.RUNTIME) && a.checksum() != null) {
-                                runtimeArtifacts.add(a);
-                            }
-                        }
-                        cc.jumpkick.repo.RepoGroup metaRepos =
-                                RepoGroupBuilder.buildFor(project, null, JkStores.storeCas());
-                        metadataDirs = ReachabilityMetadata.configDirs(
-                                JkStores.store(),
-                                metaRepos,
-                                metaLock.nativeMetadata(),
-                                runtimeArtifacts,
-                                msg -> ctx.label(msg));
-                    }
-                    if (frameworkSources != null) {
-                        metadataDirs = List.of();
-                    }
-                    // Trained reachability from `jk train` (target/train/merged/reachability).
-                    Path trainReach = layout.moduleTargetDir()
-                            .resolve(cc.jumpkick.surface.TrainLayout.ROOT)
-                            .resolve("merged")
-                            .resolve(cc.jumpkick.surface.TrainLayout.REACHABILITY);
-                    if (Files.isDirectory(trainReach)
-                            && Files.isRegularFile(trainReach.resolve("reachability-metadata.json"))) {
-                        ArrayList<Path> withTrain = new ArrayList<>(metadataDirs);
-                        withTrain.add(0, trainReach);
-                        metadataDirs = withTrain;
-                        // Refuse to native-build on stale train outputs when configured.
-                        try {
-                            var trainCfg =
-                                    cc.jumpkick.config.JkBuildParser.trainConfig(dir.resolve(ManifestPaths.MANIFEST));
-                            String stale =
-                                    TrainRunner.staleReason(dir, project, layout, lockFile, javaHomeEarly, trainCfg);
-                            if (stale != null) {
-                                ctx.error("train-stale", stale);
-                                throw new RuntimeException(stale);
-                            }
-                        } catch (IOException e) {
-                            throw new RuntimeException(e);
-                        }
-                    }
-                    if (!metadataDirs.isEmpty()) {
-                        StringBuilder dirsArg = new StringBuilder();
-                        for (Path d : metadataDirs) {
-                            if (dirsArg.length() > 0) dirsArg.append(',');
-                            dirsArg.append(d.toAbsolutePath());
-                        }
-                        // Prepended (before [native].args + CLI extras) so user flags win;
-                        // the unlock pair scopes the experimental option to just this flag.
-                        List<String> withMeta = new ArrayList<>();
-                        withMeta.add("-H:+UnlockExperimentalVMOptions");
-                        withMeta.add("-H:ConfigurationFileDirectories=" + dirsArg);
-                        withMeta.add("-H:-UnlockExperimentalVMOptions");
-                        withMeta.addAll(allArgs);
-                        allArgs = withMeta;
-                    }
-
-                    // Packaging cache (executable only): the binary is a pure function of
-                    // the runtime classpath, the build args, the main class, and the GraalVM
-                    // toolchain. Shared libraries (+ generated C headers) aren't cached yet.
-                    Path releaseFile = javaHome.resolve("release");
-                    String graalTok = Files.isRegularFile(releaseFile)
-                            ? cc.jumpkick.host.Hashing.sha256Hex(releaseFile)
-                            : javaHome.toString();
-                    List<String> nativeTokens = List.of(
-                            "cp:" + cc.jumpkick.task.ClasspathFingerprint.of(classpath),
-                            "args:" + String.join(" ", allArgs),
-                            "main:" + (mainClass == null ? "" : mainClass),
-                            "shared:" + shared,
-                            "out:" + out.getFileName(),
-                            "graal:" + graalTok,
-                            // Framework mode consumes the whole native-sources tree (computed args,
-                            // runner jar) — a plugin-only change to it must miss the cache.
-                            "framework:"
-                                    + (frameworkSources == null
-                                            ? ""
-                                            : cc.jumpkick.task.ClasspathFingerprint.entry(frameworkSources)));
-                    String nTask = ActionKey.qualifiedTaskId(TaskNames.NATIVE_IMAGE, out);
-                    String nKey = ActionKey.forArtifact(
-                            nTask, cc.jumpkick.model.BuildIdentity.cacheKeyVersion(), nativeTokens);
-                    if (!shared && restorePackaged(cache, nKey, out.getParent())) {
-                        // Shrink only: cache restore is a token touch. Never reweight *up* mid-run
-                        // (bar must not jump; accurate native weight is reserved up front).
-                        ctx.reweight(EffortWeights.RESTORE);
-                        ctx.label(out.getFileName() + " up-to-date");
-                        ctx.cached();
-                        ctx.progress(1);
-                        return;
-                    }
-
-                    // Effective size (app full + discounted deps) for ETA learning / reweight.
-                    long effectiveBytes = NativeEffort.estimateInputBytes(dir);
-                    if (effectiveBytes < 1024) effectiveBytes = NativeEffort.sumExistingBytes(classpath);
-                    NativeEffort.recordSuccessInputBytes(dir, effectiveBytes);
-                    // Size-aware reservation; reweight may shrink only (never grow the bar).
-                    int sized = NativeEffort.weight(dir);
-                    try {
-                        ctx.reweight(sized);
-                    } catch (RuntimeException ignored) {
-                    }
-                    // Human label: output binary basename + full classpath byte sum.
-                    // CLI colors filename with Theme.path (periwinkle) and the size as bold white.
-                    // Effective/discounted bytes stay internal for ETA learning.
-                    long classpathBytes = NativeEffort.sumExistingBytes(classpath);
-                    long labelBytes = classpathBytes > 0 ? classpathBytes : effectiveBytes;
-                    String binName = nativeOutputDisplayName(out);
-                    ctx.label(
-                            labelBytes > 0
-                                    ? binName + " · classpath input size: ~" + formatNativeInputMib(labelBytes) + " MiB"
-                                    : binName);
-
-                    // Progress listener: parse [N/M] headers from native-image stdout.
-                    // ticks(10) is declared upfront (preamble + 8 GraalVM stages + done).
-                    // Ticks: 1 preamble (when step 1 first appears) +
-                    // 8 steps ([1/8]…[8/8]) +
-                    // 1 final (ctx.progress after run returns) = 10.
-                    // Fallback: if no [N/M] headers appear (older GraalVM, --quiet),
-                    // the listener never fires and the single ctx.progress(1) at the end
-                    // is the only tick — the bar jumps to 1/10, which is acceptable.
-                    java.util.concurrent.atomic.AtomicBoolean preambleDone =
-                            new java.util.concurrent.atomic.AtomicBoolean(false);
-                    cc.jumpkick.tool.NativeImageDriver.ProgressListener listener = (current, total, label) -> {
-                        if (preambleDone.compareAndSet(false, true)) {
-                            ctx.progress(1); // preamble done (output before [1/N])
-                        }
-                        ctx.label("[" + current + "/" + total + "] " + label);
-                        ctx.progress(1); // stage N started = stage N-1 done
-                    };
-
-                    // Run the framework's list; jk's classpath and [application] main describe a
-                    // different image entirely (Quarkus enters through a generated --features
-                    // class, not a main method).
-                    var request = frameworkSources != null
-                            ? cc.jumpkick.tool.NativeImageDriver.Request.verbatim(
-                                    javaHome, frameworkSources, frameworkNativeArgs(frameworkSources, allArgs), out)
-                            : new cc.jumpkick.tool.NativeImageDriver.Request(
-                                    javaHome, classpath, mainClass, out, allArgs, shared);
-                    if (frameworkSources != null) {
-                        ctx.label("native-image from "
-                                + PluginBuild.activeCodePlugin(project, dir)
-                                        .map(a -> a.manifest().id())
-                                        .orElse("plugin")
-                                + " sources");
-                    }
-                    // Capture Graal stdout/stderr for progress parsing, a durable report, and the
-                    // plan output channel. The CLI buffers output for Ctrl-O peek (hidden by
-                    // default); --verbose streams it live. Do not gate on verbose/failure only —
-                    // that left the peek buffer empty during a successful native-image run.
-                    List<String> niLog = java.util.Collections.synchronizedList(new ArrayList<>());
-                    int exit = cc.jumpkick.tool.NativeImageDriver.run(request, listener, line -> {
-                        niLog.add(line);
-                        ctx.output(line);
-                    });
-                    Path niReport = layout.reportsDir().resolve("native-image.out");
-                    try {
-                        Files.createDirectories(niReport.getParent());
-                        String body = niLog.isEmpty() ? "" : String.join("\n", niLog) + "\n";
-                        Files.writeString(niReport, body);
-                    } catch (IOException ioe) {
-                        // Best-effort report; never fail the image over log write.
-                    }
-                    if (exit != 0) {
-                        ctx.error(
-                                "native",
-                                "native-image exited " + exit
-                                        + (Files.isRegularFile(niReport) ? " (full log: " + niReport + ")" : ""));
-                        throw new RuntimeException("native-image failed (exit " + exit + ")");
-                    }
-                    // The framework's args name their own output, inside its sources dir.
-                    if (frameworkSources != null) {
-                        Path produced = frameworkBinary(frameworkSources);
-                        if (produced == null) {
-                            throw new IOException(
-                                    "native-image reported success but produced no binary in " + frameworkSources);
-                        }
-                        Files.createDirectories(out.getParent());
-                        Files.move(produced, out, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-                        out.toFile().setExecutable(true);
-                    }
-                    // Final tick: completes the last native-image step (or the only tick
-                    // when no progress headers were emitted).
-                    ctx.progress(1);
-                    if (!shared) {
-                        if (!Files.isRegularFile(out)) {
-                            throw new IOException("native-image reported success but produced no binary at " + out);
-                        }
-                        storePackaged(cache, nTask, nKey, nativeTokens, out.getParent(), List.of(out), persist);
-                    }
-                })
+                .execute(ctx -> runNativeImage(
+                        ctx, dir, cache, lockFile, jdksDir, graalHome, mainOverride, extra, allowShared, persist))
                 .build();
+    }
+
+    /** The step body: preflight, main class, output, args, classpath, metadata, cache, run, store. */
+    private static void runNativeImage(
+            TaskContext ctx,
+            Path dir,
+            Path cache,
+            Path lockFile,
+            @Nullable Path jdksDir,
+            @Nullable Path graalHome,
+            @Nullable String mainOverride,
+            List<String> extra,
+            boolean allowShared,
+            boolean persist)
+            throws Exception {
+        Path javaHome = preflightNativeImageHome(ctx, graalHome, dir, jdksDir);
+        JkBuild project = ctx.require(PROJECT);
+        JkBuild.NativeConfig nativeCfg = project.nativeConfigOpt()
+                .orElseGet(() ->
+                        new JkBuild.NativeConfig(null, null, List.of(), null, JkBuild.NativeMode.SUPPORTED, null));
+        BuildLayout layout = ctx.require(LAYOUT);
+        Path mainJar = layout.mainJar();
+        if (!Files.exists(mainJar)) {
+            ctx.error("native", "jar not found at " + mainJar);
+            throw new RuntimeException("missing main jar for native-image");
+        }
+        String mainClass = resolveMainClass(ctx, project, dir, layout, nativeCfg, mainOverride, allowShared);
+        boolean shared = mainClass == null;
+        Path out = outputPath(layout, nativeCfg, shared);
+        Files.createDirectories(out.getParent());
+        Path frameworkSources = frameworkSources(ctx, project, dir, cache, layout);
+        List<String> allArgs = imageArgs(ctx, project, dir, nativeCfg, extra, frameworkSources);
+        List<Path> classpath = imageClasspath(project, dir, cache, lockFile, layout, mainJar);
+        allArgs = withReachabilityMetadata(ctx, dir, project, layout, lockFile, javaHome, frameworkSources, allArgs);
+        ImageKey key = imageKey(javaHome, classpath, allArgs, mainClass, shared, out, frameworkSources);
+        if (!shared && restorePackaged(cache, key.key(), out.getParent())) {
+            // Shrink only: cache restore is a token touch. Never reweight *up* mid-run
+            // (bar must not jump; accurate native weight is reserved up front).
+            ctx.reweight(EffortWeights.RESTORE);
+            ctx.label(out.getFileName() + " up-to-date");
+            ctx.cached();
+            ctx.progress(1);
+            return;
+        }
+        reserveNativeWeight(ctx, dir, classpath, out);
+        runDriver(ctx, project, dir, layout, javaHome, frameworkSources, allArgs, classpath, mainClass, out, shared);
+        // Final tick: completes the last native-image step (or the only tick
+        // when no progress headers were emitted).
+        ctx.progress(1);
+        if (!shared) {
+            if (!Files.isRegularFile(out)) {
+                throw new IOException("native-image reported success but produced no binary at " + out);
+            }
+            storePackaged(cache, key.task(), key.key(), key.tokens(), out.getParent(), List.of(out), persist);
+        }
+    }
+
+    /**
+     * Fail-fast: verify native-image is available before compilation has already run and the user
+     * has waited for potentially minutes. Resolution: the client-resolved home → the request's
+     * $GRAALVM_HOME → the installed Graal the CLI would have picked (spec, lock pin, jk jdk graal
+     * pointer, policy) → project JDK → running JVM. jk build, jk install and jk native all ship the
+     * first for every module that links a native image; a build submitted over HTTP or MCP ships
+     * none, and the third tier is what keeps it from linking against whatever the daemon's shell
+     * knew.
+     */
+    private static Path preflightNativeImageHome(
+            TaskContext ctx, @Nullable Path graalHome, Path dir, @Nullable Path jdksDir) throws Exception {
+        Path javaHomeEarly = resolveNativeImageHome(
+                graalHome, dir, jdksDir, ctx.require(PROJECT).graal());
+        if (cc.jumpkick.tool.NativeImageDriver.resolve(javaHomeEarly).isEmpty()) {
+            ctx.error("native", Errors.text(cc.jumpkick.tool.NativeImageDriver.notFoundError(javaHomeEarly)));
+            throw new RuntimeException("native-image not found");
+        }
+        return javaHomeEarly;
+    }
+
+    /**
+     * Resolution order: --main CLI flag > [native].main > [application].main. A resolvable main →
+     * executable; none → shared library (--shared) on jk build, returned as null. jk native requires
+     * a unique main (allowShared=false).
+     */
+    private static @Nullable String resolveMainClass(
+            TaskContext ctx,
+            JkBuild project,
+            Path dir,
+            BuildLayout layout,
+            JkBuild.NativeConfig nativeCfg,
+            @Nullable String mainOverride,
+            boolean allowShared)
+            throws Exception {
+        String mainClass = (mainOverride != null && !mainOverride.isBlank())
+                ? mainOverride
+                : (nativeCfg.mainClass() != null ? nativeCfg.mainClass() : project.mainClass());
+        if (mainClass == null || mainClass.isBlank()) {
+            boolean scan = !allowShared
+                    || PluginBuild.shape(project, dir).map(sh -> sh.mainScan()).orElse(false);
+            if (scan) {
+                try {
+                    mainClass = cc.jumpkick.layout.MainClassScanner.scanUnique(layout.classesDir());
+                } catch (cc.jumpkick.layout.MainClassScanner.AmbiguousMainException e) {
+                    ctx.error("native", cc.jumpkick.layout.NativePreflight.MANY_MAINS);
+                    throw new RuntimeException(cc.jumpkick.layout.NativePreflight.MANY_MAINS);
+                } catch (cc.jumpkick.layout.MainClassScanner.NoMainFoundException e) {
+                    if (!allowShared) {
+                        ctx.error("native", cc.jumpkick.layout.NativePreflight.NO_MAIN);
+                        throw new RuntimeException(cc.jumpkick.layout.NativePreflight.NO_MAIN);
+                    }
+                    mainClass = null;
+                }
+            }
+        }
+        if (mainClass == null || mainClass.isBlank()) {
+            if (!allowShared) {
+                ctx.error("native", cc.jumpkick.layout.NativePreflight.NO_MAIN);
+                throw new RuntimeException(cc.jumpkick.layout.NativePreflight.NO_MAIN);
+            }
+            return null;
+        }
+        return mainClass;
+    }
+
+    /**
+     * Output path: [native].name overrides the artifact-derived name. Executable →
+     * target/<name>[.exe]; library → target/lib<name> (native-image appends the platform
+     * extension.so/.dylib/.dll and emits C headers).
+     */
+    private static Path outputPath(BuildLayout layout, JkBuild.NativeConfig nativeCfg, boolean shared) {
+        if (shared) {
+            if (nativeCfg.name() != null) {
+                String nm = nativeCfg.name();
+                return layout.moduleTargetDir().resolve(nm.startsWith("lib") ? nm : "lib" + nm);
+            }
+            return layout.nativeLibrary();
+        }
+        // Includes [native].name and the Windows .exe suffix — the file
+        // native-image writes, which the action cache stores.
+        return layout.nativeBinary();
+    }
+
+    /**
+     * The native-image sources a framework computed for its own invocation, or null when jk builds
+     * the image from the classpath. A framework that computed its own invocation gets none of jk's
+     * automatic additions. Its list is complete by construction — Quarkus even passes
+     * --exclude-config to suppress library metadata it does not want, and layering the community
+     * metadata repository on top of that reintroduces exactly what it excluded. `[native] args` and
+     * CLI extras still apply: those are the user speaking, not jk guessing.
+     */
+    private static @Nullable Path frameworkSources(
+            TaskContext ctx, JkBuild project, Path dir, Path cache, BuildLayout layout) throws Exception {
+        Path frameworkSources = nativeImageSourcesDir(project, dir, cache, layout);
+        if (frameworkSources == null && packagerDeclaresNativeSources(project, dir)) {
+            // The packager owns the native invocation but its augment ran in
+            // JVM mode — without a [native] table the build never asked for native
+            // sources. Falling through to the generic classpath build is exactly the
+            // "main entry point not found" failure  fixed; fail with the cure
+            // instead.
+            String msg = "this framework builds its own native image, but no native-image"
+                    + " sources were produced. Add a `[native]` table (it can be empty) to"
+                    + " jk.toml so the framework's augment runs in native mode, then re-run"
+                    + " `jk native`.";
+            ctx.error("native-sources-missing", msg);
+            throw new RuntimeException(msg);
+        }
+        return frameworkSources;
+    }
+
+    /**
+     * Args, least specific first so the more specific wins on conflict: what the active plugins'
+     * frameworks require (class-initialization policy, which no amount of reachability metadata
+     * expresses), then [native].args, then the CLI's trailing args.
+     */
+    private static List<String> imageArgs(
+            TaskContext ctx,
+            JkBuild project,
+            Path dir,
+            JkBuild.NativeConfig nativeCfg,
+            List<String> extra,
+            @Nullable Path frameworkSources)
+            throws Exception {
+        List<String> pluginNativeArgs = frameworkSources != null
+                ? List.of()
+                : cc.jumpkick.plugin.manifest.PluginContributions.nativeArgs(project, dir);
+        if (!pluginNativeArgs.isEmpty()) {
+            ctx.label(pluginNativeArgs.size() + " native-image " + (pluginNativeArgs.size() == 1 ? "arg" : "args")
+                    + " from plugins");
+        }
+        List<String> allArgs = new ArrayList<>(pluginNativeArgs);
+        allArgs.addAll(nativeCfg.args());
+        allArgs.addAll(extra);
+        return allArgs;
+    }
+
+    /** The image classpath: the jar (or a classes-run packager's exploded output) plus the runtime closure. */
+    private static List<Path> imageClasspath(
+            JkBuild project, Path dir, Path cache, Path lockFile, BuildLayout layout, Path mainJar) throws Exception {
+        List<Path> classpath = new ArrayList<>();
+        if (PluginBuild.shape(project, dir).map(sh -> sh.classesRun()).orElse(false)) {
+            // A classes-run packager's jar is not classpath-able (e.g. Boot's
+            // BOOT-INF nesting) — native-image gets the exploded classes plus
+            // whatever the plugin's steps contributed (generated classes +
+            // META-INF/native-image hints), produced just before this step.
+            classpath.add(layout.classesDir());
+            var activeOpt = PluginBuild.activeCodePlugin(project, dir);
+            if (activeOpt.isPresent()) {
+                var decls = PluginBuild.declarations(activeOpt.get(), project, dir, cache, layout.moduleTargetDir());
+                for (Path contributed : PluginBuild.contributedDirs(decls, layout)) {
+                    if (Files.isDirectory(contributed)) classpath.add(contributed);
+                }
+            }
+        } else {
+            classpath.add(mainJar);
+        }
+        // Module-scoped runtime closure + workspace sibling jars.
+        for (Path p : assemblyDependencyJars(dir, project, lockFile, cache)) {
+            if (!classpath.contains(p)) classpath.add(p);
+        }
+        return classpath;
+    }
+
+    /**
+     * Reachability metadata (general, not Boot-specific): third-party libs publish native-image
+     * config to the GraalVM metadata repository rather than their own jars. Matched dirs ride
+     * -H:ConfigurationFileDirectories; unavailable (offline) degrades to building without it.
+     * Trained reachability from `jk train` (target/train/merged/reachability) goes first. Returns
+     * the args with the metadata flags prepended, or unchanged when there is none.
+     */
+    private static List<String> withReachabilityMetadata(
+            TaskContext ctx,
+            Path dir,
+            JkBuild project,
+            BuildLayout layout,
+            Path lockFile,
+            Path javaHome,
+            @Nullable Path frameworkSources,
+            List<String> allArgs)
+            throws Exception {
+        List<Path> metadataDirs = List.of();
+        if (Files.exists(lockFile)) {
+            Lockfile metaLock = LockfileReader.read(lockFile);
+            List<Lockfile.Artifact> runtimeArtifacts = new ArrayList<>();
+            for (Lockfile.Artifact a : metaLock.artifacts()) {
+                if (a.inAnyScope(ClasspathResolver.RUNTIME) && a.checksum() != null) {
+                    runtimeArtifacts.add(a);
+                }
+            }
+            cc.jumpkick.repo.RepoGroup metaRepos = RepoGroupBuilder.buildFor(project, null, JkStores.storeCas());
+            metadataDirs = ReachabilityMetadata.configDirs(
+                    JkStores.store(), metaRepos, metaLock.nativeMetadata(), runtimeArtifacts, msg -> ctx.label(msg));
+        }
+        if (frameworkSources != null) {
+            metadataDirs = List.of();
+        }
+        Path trainReach = layout.moduleTargetDir()
+                .resolve(cc.jumpkick.surface.TrainLayout.ROOT)
+                .resolve("merged")
+                .resolve(cc.jumpkick.surface.TrainLayout.REACHABILITY);
+        if (Files.isDirectory(trainReach) && Files.isRegularFile(trainReach.resolve("reachability-metadata.json"))) {
+            ArrayList<Path> withTrain = new ArrayList<>(metadataDirs);
+            withTrain.add(0, trainReach);
+            metadataDirs = withTrain;
+            // Refuse to native-build on stale train outputs when configured.
+            try {
+                var trainCfg = cc.jumpkick.config.JkBuildParser.trainConfig(dir.resolve(ManifestPaths.MANIFEST));
+                String stale = TrainRunner.staleReason(dir, project, layout, lockFile, javaHome, trainCfg);
+                if (stale != null) {
+                    ctx.error("train-stale", stale);
+                    throw new RuntimeException(stale);
+                }
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        if (metadataDirs.isEmpty()) return allArgs;
+        StringBuilder dirsArg = new StringBuilder();
+        for (Path d : metadataDirs) {
+            if (dirsArg.length() > 0) dirsArg.append(',');
+            dirsArg.append(d.toAbsolutePath());
+        }
+        // Prepended (before [native].args + CLI extras) so user flags win;
+        // the unlock pair scopes the experimental option to just this flag.
+        List<String> withMeta = new ArrayList<>();
+        withMeta.add("-H:+UnlockExperimentalVMOptions");
+        withMeta.add("-H:ConfigurationFileDirectories=" + dirsArg);
+        withMeta.add("-H:-UnlockExperimentalVMOptions");
+        withMeta.addAll(allArgs);
+        return withMeta;
+    }
+
+    /** An executable image's packaging-cache identity: task id, action key and the tokens behind it. */
+    private record ImageKey(String task, String key, List<String> tokens) {}
+
+    /**
+     * Packaging cache (executable only): the binary is a pure function of the runtime classpath,
+     * the build args, the main class, and the GraalVM toolchain. Shared libraries (+ generated C
+     * headers) aren't cached yet.
+     */
+    private static ImageKey imageKey(
+            Path javaHome,
+            List<Path> classpath,
+            List<String> allArgs,
+            @Nullable String mainClass,
+            boolean shared,
+            Path out,
+            @Nullable Path frameworkSources)
+            throws Exception {
+        Path releaseFile = javaHome.resolve("release");
+        String graalTok = Files.isRegularFile(releaseFile)
+                ? cc.jumpkick.host.Hashing.sha256Hex(releaseFile)
+                : javaHome.toString();
+        List<String> nativeTokens = List.of(
+                "cp:" + cc.jumpkick.task.ClasspathFingerprint.of(classpath),
+                "args:" + String.join(" ", allArgs),
+                "main:" + (mainClass == null ? "" : mainClass),
+                "shared:" + shared,
+                "out:" + out.getFileName(),
+                "graal:" + graalTok,
+                // Framework mode consumes the whole native-sources tree (computed args,
+                // runner jar) — a plugin-only change to it must miss the cache.
+                "framework:"
+                        + (frameworkSources == null
+                                ? ""
+                                : cc.jumpkick.task.ClasspathFingerprint.entry(frameworkSources)));
+        String nTask = ActionKey.qualifiedTaskId(TaskNames.NATIVE_IMAGE, out);
+        String nKey = ActionKey.forArtifact(nTask, cc.jumpkick.model.BuildIdentity.cacheKeyVersion(), nativeTokens);
+        return new ImageKey(nTask, nKey, nativeTokens);
+    }
+
+    /** Effective size (app full + discounted deps) for ETA learning / reweight, and the human label. */
+    private static void reserveNativeWeight(TaskContext ctx, Path dir, List<Path> classpath, Path out)
+            throws Exception {
+        long effectiveBytes = NativeEffort.estimateInputBytes(dir);
+        if (effectiveBytes < 1024) effectiveBytes = NativeEffort.sumExistingBytes(classpath);
+        NativeEffort.recordSuccessInputBytes(dir, effectiveBytes);
+        // Size-aware reservation; reweight may shrink only (never grow the bar).
+        int sized = NativeEffort.weight(dir);
+        try {
+            ctx.reweight(sized);
+        } catch (RuntimeException ignored) {
+        }
+        // Human label: output binary basename + full classpath byte sum.
+        // CLI colors filename with Theme.path (periwinkle) and the size as bold white.
+        // Effective/discounted bytes stay internal for ETA learning.
+        long classpathBytes = NativeEffort.sumExistingBytes(classpath);
+        long labelBytes = classpathBytes > 0 ? classpathBytes : effectiveBytes;
+        String binName = nativeOutputDisplayName(out);
+        ctx.label(
+                labelBytes > 0
+                        ? binName + " · classpath input size: ~" + formatNativeInputMib(labelBytes) + " MiB"
+                        : binName);
+    }
+
+    /**
+     * Run native-image with the stage-progress listener, keep its output as a report, fail on a
+     * non-zero exit, and move a framework's own binary to {@code out}.
+     */
+    private static void runDriver(
+            TaskContext ctx,
+            JkBuild project,
+            Path dir,
+            BuildLayout layout,
+            Path javaHome,
+            @Nullable Path frameworkSources,
+            List<String> allArgs,
+            List<Path> classpath,
+            @Nullable String mainClass,
+            Path out,
+            boolean shared)
+            throws Exception {
+        // Progress listener: parse [N/M] headers from native-image stdout.
+        // ticks(10) is declared upfront (preamble + 8 GraalVM stages + done).
+        // Ticks: 1 preamble (when step 1 first appears) +
+        // 8 steps ([1/8]…[8/8]) +
+        // 1 final (ctx.progress after run returns) = 10.
+        // Fallback: if no [N/M] headers appear (older GraalVM, --quiet),
+        // the listener never fires and the single ctx.progress(1) at the end
+        // is the only tick — the bar jumps to 1/10, which is acceptable.
+        java.util.concurrent.atomic.AtomicBoolean preambleDone = new java.util.concurrent.atomic.AtomicBoolean(false);
+        cc.jumpkick.tool.NativeImageDriver.ProgressListener listener = (current, total, label) -> {
+            if (preambleDone.compareAndSet(false, true)) {
+                ctx.progress(1); // preamble done (output before [1/N])
+            }
+            ctx.label("[" + current + "/" + total + "] " + label);
+            ctx.progress(1); // stage N started = stage N-1 done
+        };
+
+        // Run the framework's list; jk's classpath and [application] main describe a
+        // different image entirely (Quarkus enters through a generated --features
+        // class, not a main method).
+        var request = frameworkSources != null
+                ? cc.jumpkick.tool.NativeImageDriver.Request.verbatim(
+                        javaHome, frameworkSources, frameworkNativeArgs(frameworkSources, allArgs), out)
+                : new cc.jumpkick.tool.NativeImageDriver.Request(javaHome, classpath, mainClass, out, allArgs, shared);
+        if (frameworkSources != null) {
+            ctx.label("native-image from "
+                    + PluginBuild.activeCodePlugin(project, dir)
+                            .map(a -> a.manifest().id())
+                            .orElse("plugin")
+                    + " sources");
+        }
+        // Capture Graal stdout/stderr for progress parsing, a durable report, and the
+        // plan output channel. The CLI buffers output for Ctrl-O peek (hidden by
+        // default); --verbose streams it live. Do not gate on verbose/failure only —
+        // that left the peek buffer empty during a successful native-image run.
+        List<String> niLog = java.util.Collections.synchronizedList(new ArrayList<>());
+        int exit = cc.jumpkick.tool.NativeImageDriver.run(request, listener, line -> {
+            niLog.add(line);
+            ctx.output(line);
+        });
+        Path niReport = layout.reportsDir().resolve("native-image.out");
+        try {
+            Files.createDirectories(niReport.getParent());
+            String body = niLog.isEmpty() ? "" : String.join("\n", niLog) + "\n";
+            Files.writeString(niReport, body);
+        } catch (IOException ioe) {
+            // Best-effort report; never fail the image over log write.
+        }
+        if (exit != 0) {
+            ctx.error(
+                    "native",
+                    "native-image exited " + exit
+                            + (Files.isRegularFile(niReport) ? " (full log: " + niReport + ")" : ""));
+            throw new RuntimeException("native-image failed (exit " + exit + ")");
+        }
+        // The framework's args name their own output, inside its sources dir.
+        if (frameworkSources != null) {
+            Path produced = frameworkBinary(frameworkSources);
+            if (produced == null) {
+                throw new IOException("native-image reported success but produced no binary in " + frameworkSources);
+            }
+            Files.createDirectories(out.getParent());
+            Files.move(produced, out, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            out.toFile().setExecutable(true);
+        }
     }
 
     // ---- helpers --------------------------------------------------------

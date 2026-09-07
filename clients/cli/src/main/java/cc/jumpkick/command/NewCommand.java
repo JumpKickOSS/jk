@@ -320,7 +320,34 @@ public final class NewCommand implements CliCommand {
     private int runWizardBuildPlan(Path cwd) throws IOException {
         Path cache = JkDirs.cache();
 
-        Task prewarm = Task.builder(TaskNames.PREWARM)
+        Task prewarm = prewarmStep();
+        Task wizardStep = wizardStep(cwd);
+        Task installJdk = installJdkStep();
+        Task scaffold = scaffoldStep(cwd);
+
+        BuildPlan plan = BuildPlan.builder("new")
+                .interactive(true)
+                .stateKeys(CANDIDATES, TERMINAL, CATALOG, ANSWERS, PICKED, INPUTS)
+                .addTask(prewarm)
+                .addTask(wizardStep)
+                .addTask(installJdk)
+                .addTask(scaffold)
+                .build();
+
+        BuildPlanResult result = BuildPlanConsole.run(plan, BuildPlanConsole.modeFor(global), cache);
+
+        if (!result.success()) return wizardFailure(plan, result);
+
+        NewInputs inputs = plan.get(INPUTS).orElseThrow();
+        boolean isInit = directory != null && NewWizard.isCurrentDirArg(directory);
+        NewChrome.created(
+                inputs, parentProjectName(), isInit, plan.get(TERMINAL).orElse(null));
+        return 0;
+    }
+
+    /** Discover JDKs, fetch the catalog and open the terminal, in parallel. */
+    private Task prewarmStep() {
+        return Task.builder(TaskNames.PREWARM)
                 .kind(TaskKind.IO)
                 .ticks(1)
                 .execute(ctx -> {
@@ -346,8 +373,11 @@ public final class NewCommand implements CliCommand {
                     ctx.progress(1);
                 })
                 .build();
+    }
 
-        Task wizardStep = Task.builder(TaskNames.WIZARD)
+    /** Run the wizard on the prewarmed terminal; Ctrl-C halts with the cancellation marker. */
+    private Task wizardStep(Path cwd) {
+        return Task.builder(TaskNames.WIZARD)
                 .requires(TaskNames.PREWARM)
                 .ticks(1)
                 .execute(ctx -> {
@@ -386,8 +416,11 @@ public final class NewCommand implements CliCommand {
                     ctx.progress(1);
                 })
                 .build();
+    }
 
-        Task installJdk = Task.builder(TaskNames.INSTALL_JDK)
+    /** Install the picked JDK when it is not on this machine yet. */
+    private Task installJdkStep() {
+        return Task.builder(TaskNames.INSTALL_JDK)
                 .kind(TaskKind.IO)
                 .requires(TaskNames.WIZARD)
                 .ticks(1)
@@ -408,8 +441,11 @@ public final class NewCommand implements CliCommand {
                     ctx.progress(1);
                 })
                 .build();
+    }
 
-        Task scaffold = Task.builder(TaskNames.SCAFFOLD)
+    /** Scaffold the project from the answers and register it. */
+    private Task scaffoldStep(Path cwd) {
+        return Task.builder(TaskNames.SCAFFOLD)
                 .requires(TaskNames.INSTALL_JDK)
                 .ticks(1)
                 .execute(ctx -> {
@@ -430,41 +466,25 @@ public final class NewCommand implements CliCommand {
                     ctx.progress(1);
                 })
                 .build();
+    }
 
-        BuildPlan plan = BuildPlan.builder("new")
-                .interactive(true)
-                .stateKeys(CANDIDATES, TERMINAL, CATALOG, ANSWERS, PICKED, INPUTS)
-                .addTask(prewarm)
-                .addTask(wizardStep)
-                .addTask(installJdk)
-                .addTask(scaffold)
-                .build();
-
-        BuildPlanResult result = BuildPlanConsole.run(plan, BuildPlanConsole.modeFor(global), cache);
-
-        if (!result.success()) {
-            for (BuildPlanResult.Diagnostic d : result.errors()) {
-                if ("no-jdks".equals(d.code())) {
-                    NewChrome.noJdks();
-                    return Exit.CONFIG;
-                }
-                if ("exists".equals(d.code())) {
-                    NewInputs partial = plan.get(INPUTS).orElse(null);
-                    String coord = partial != null ? partial.group() + ":" + partial.name() : "project";
-                    boolean isInit = directory != null && NewWizard.isCurrentDirArg(directory);
-                    TerminalSession term = plan.get(TERMINAL).orElse(null);
-                    NewChrome.projectExists(coord, parent != null, isInit, term);
-                    return Exit.CONFIG;
-                }
+    /** The wizard plan failed: the chrome for a missing JDK or an existing project, else the bare code. */
+    private int wizardFailure(BuildPlan plan, BuildPlanResult result) {
+        for (BuildPlanResult.Diagnostic d : result.errors()) {
+            if ("no-jdks".equals(d.code())) {
+                NewChrome.noJdks();
+                return Exit.CONFIG;
             }
-            return Exit.CONFIG;
+            if ("exists".equals(d.code())) {
+                NewInputs partial = plan.get(INPUTS).orElse(null);
+                String coord = partial != null ? partial.group() + ":" + partial.name() : "project";
+                boolean isInit = directory != null && NewWizard.isCurrentDirArg(directory);
+                TerminalSession term = plan.get(TERMINAL).orElse(null);
+                NewChrome.projectExists(coord, parent != null, isInit, term);
+                return Exit.CONFIG;
+            }
         }
-
-        NewInputs inputs = plan.get(INPUTS).orElseThrow();
-        boolean isInit = directory != null && NewWizard.isCurrentDirArg(directory);
-        NewChrome.created(
-                inputs, parentProjectName(), isInit, plan.get(TERMINAL).orElse(null));
-        return 0;
+        return Exit.CONFIG;
     }
 
     /**

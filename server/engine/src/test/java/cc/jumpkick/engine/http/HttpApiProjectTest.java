@@ -226,13 +226,21 @@ class HttpApiProjectTest extends HttpEngineServerHarness {
         }
     }
 
-    @Test
-    void api_project_files_and_file_are_identity_scoped() throws Exception {
-        Path buildsRoot = stateDir.resolve("file-state");
-        Path buildsDir = buildsRoot.resolve("builds");
-        System.setProperty("jk.env.JK_STATE_DIR", buildsRoot.toString());
+    /** A registered checkout — {@code jk.toml} plus {@code src/Main.java} — and its project id. */
+    private record ScopedCheckout(Path checkout, String id) {}
+
+    private interface ScopedBody {
+        void run(ScopedCheckout c) throws Exception;
+    }
+
+    /**
+     * Points {@code JK_STATE_DIR} at a fresh state root, writes a checkout with its identity file
+     * where the project home lives, runs {@code body}, and clears the property again.
+     */
+    private void withScopedCheckout(String stateName, String checkoutName, ScopedBody body) throws Exception {
+        System.setProperty("jk.env.JK_STATE_DIR", stateDir.resolve(stateName).toString());
         try {
-            Path checkout = stateDir.resolve("src-app");
+            Path checkout = stateDir.resolve(checkoutName);
             Files.createDirectories(checkout.resolve("src"));
             Files.writeString(checkout.resolve("jk.toml"), """
                     group = "g"
@@ -240,19 +248,32 @@ class HttpApiProjectTest extends HttpEngineServerHarness {
                     version = "1"
                     """);
             Files.writeString(checkout.resolve("src/Main.java"), "class Main {}\n");
-            Files.createDirectories(checkout.resolve("target"));
-            Files.createDirectories(checkout.resolve("build"));
-            Files.writeString(checkout.resolve("target/Gen.java"), "class Gen {}");
-            Files.writeString(checkout.resolve("target/report.md"), "# report\n");
-            Files.writeString(checkout.resolve("build/Skip.java"), "class Skip {}");
-            Files.writeString(checkout.resolve(".env"), "SECRET=1");
             var identity = ProjectIdentity.resolve(checkout);
             ProjectIdentity.IdentityFile.write(ProjectBuilds.projectHome(identity.id()), identity);
-            String id = identity.id();
+            body.run(new ScopedCheckout(checkout, identity.id()));
+        } finally {
+            System.clearProperty("jk.env.JK_STATE_DIR");
+        }
+    }
 
+    /** {@code PUT /api/project/file} with the token, the epoch and a JSON body. */
+    private HttpResponse<String> putFile(String json) throws Exception {
+        return client.send(
+                HttpRequest.newBuilder(URI.create(baseUrl + "api/project/file"))
+                        .header("Authorization", "Bearer " + token())
+                        .header("X-Jk-Engine-Epoch", SNAPSHOT.engineEpoch())
+                        .header("Content-Type", "application/json")
+                        .PUT(HttpRequest.BodyPublishers.ofString(json))
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
+    }
+
+    @Test
+    void api_project_file_requires_a_token_and_a_project_id() throws Exception {
+        withScopedCheckout("file-auth-state", "src-auth", c -> {
             HttpResponse<String> noToken = client.send(
                     HttpRequest.newBuilder(
-                                    URI.create(baseUrl + "api/project/file?project=" + id + "&path=src/Main.java"))
+                                    URI.create(baseUrl + "api/project/file?project=" + c.id() + "&path=src/Main.java"))
                             .build(),
                     HttpResponse.BodyHandlers.ofString());
             assertThat(noToken.statusCode()).isEqualTo(401);
@@ -261,14 +282,27 @@ class HttpApiProjectTest extends HttpEngineServerHarness {
             assertThat(missing.statusCode()).isEqualTo(400);
             assertThat(missing.body()).contains("missing");
 
-            HttpResponse<String> dirOnly = get("/api/project/file?dir=" + encDir(checkout) + "&path=src/Main.java");
+            HttpResponse<String> dirOnly = get("/api/project/file?dir=" + encDir(c.checkout()) + "&path=src/Main.java");
             assertThat(dirOnly.statusCode()).isEqualTo(400);
             assertThat(dirOnly.body()).contains("missing");
 
             HttpResponse<String> unknown = get("/api/project/files?project=zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz");
             assertThat(unknown.statusCode()).isEqualTo(404);
+        });
+    }
 
-            HttpResponse<String> listed = get("/api/project/files?project=" + id);
+    @Test
+    void api_project_files_lists_sources_and_target_but_never_build_or_dotfiles() throws Exception {
+        withScopedCheckout("file-list-state", "src-list", c -> {
+            Path checkout = c.checkout();
+            Files.createDirectories(checkout.resolve("target"));
+            Files.createDirectories(checkout.resolve("build"));
+            Files.writeString(checkout.resolve("target/Gen.java"), "class Gen {}");
+            Files.writeString(checkout.resolve("target/report.md"), "# report\n");
+            Files.writeString(checkout.resolve("build/Skip.java"), "class Skip {}");
+            Files.writeString(checkout.resolve(".env"), "SECRET=1");
+
+            HttpResponse<String> listed = get("/api/project/files?project=" + c.id());
             assertThat(listed.statusCode()).isEqualTo(200);
             assertThat(listed.body())
                     .contains("\"path\":\"src/Main.java\"")
@@ -279,43 +313,49 @@ class HttpApiProjectTest extends HttpEngineServerHarness {
                     .doesNotContain("build/Skip.java")
                     .doesNotContain(".env");
 
-            HttpResponse<String> file = get("/api/project/file?project=" + id + "&path=src%2FMain.java");
+            HttpResponse<String> file = get("/api/project/file?project=" + c.id() + "&path=src%2FMain.java");
             assertThat(file.statusCode()).isEqualTo(200);
             assertThat(file.body()).contains("class Main").contains("\"lang\":\"java\"");
 
-            assertThat(get("/api/project/file?project=" + id + "&path=target%2FGen.java")
+            assertThat(get("/api/project/file?project=" + c.id() + "&path=target%2FGen.java")
                             .statusCode())
                     .isEqualTo(200);
-            assertThat(get("/api/project/file?project=" + id + "&path=build%2FSkip.java")
+            assertThat(get("/api/project/file?project=" + c.id() + "&path=build%2FSkip.java")
                             .statusCode())
                     .isEqualTo(404);
-            assertThat(get("/api/project/file?project=" + id + "&path=.env").statusCode())
+            assertThat(get("/api/project/file?project=" + c.id() + "&path=.env").statusCode())
                     .isEqualTo(404);
-            assertThat(get("/api/project/file?project=" + id + "&path=../jk.toml")
+            assertThat(get("/api/project/file?project=" + c.id() + "&path=../jk.toml")
                             .statusCode())
                     .isEqualTo(400);
+        });
+    }
 
+    @Test
+    void api_project_file_refuses_huge_and_binary_files_and_serves_images_raw() throws Exception {
+        withScopedCheckout("file-kinds-state", "src-kinds", c -> {
+            Path checkout = c.checkout();
             Files.write(checkout.resolve("src/Big.java"), new byte[WorkspaceFileAccess.MAX_FILE_BYTES + 1]);
-            HttpResponse<String> huge = get("/api/project/file?project=" + id + "&path=src%2FBig.java");
+            HttpResponse<String> huge = get("/api/project/file?project=" + c.id() + "&path=src%2FBig.java");
             assertThat(huge.statusCode()).isEqualTo(413);
             assertThat(huge.body()).contains("file too large");
 
             Files.write(checkout.resolve("src/Bin.java"), new byte[] {'x', 0, 'y'});
-            HttpResponse<String> bin = get("/api/project/file?project=" + id + "&path=src%2FBin.java");
+            HttpResponse<String> bin = get("/api/project/file?project=" + c.id() + "&path=src%2FBin.java");
             assertThat(bin.statusCode()).isEqualTo(415);
             assertThat(bin.body()).contains("binary");
 
             Files.createDirectories(checkout.resolve("docs"));
             Files.write(checkout.resolve("docs/logo.png"), new byte[] {(byte) 0x89, 'P', 'N', 'G', 0});
             Files.writeString(checkout.resolve("docs/flow.mmd"), "graph TD; A-->B\n");
-            assertThat(get("/api/project/files?project=" + id).body())
+            assertThat(get("/api/project/files?project=" + c.id()).body())
                     .contains("docs/logo.png")
                     .contains("docs/flow.mmd");
-            HttpResponse<String> imgJson = get("/api/project/file?project=" + id + "&path=docs%2Flogo.png");
+            HttpResponse<String> imgJson = get("/api/project/file?project=" + c.id() + "&path=docs%2Flogo.png");
             assertThat(imgJson.statusCode()).isEqualTo(415);
             HttpResponse<byte[]> imgRaw = client.send(
                     HttpRequest.newBuilder(URI.create(
-                                    baseUrl + "api/project/file/raw?project=" + id + "&path=docs%2Flogo.png"))
+                                    baseUrl + "api/project/file/raw?project=" + c.id() + "&path=docs%2Flogo.png"))
                             .header("Authorization", "Bearer " + token())
                             .header("X-Jk-Engine-Epoch", SNAPSHOT.engineEpoch())
                             .build(),
@@ -323,84 +363,58 @@ class HttpApiProjectTest extends HttpEngineServerHarness {
             assertThat(imgRaw.statusCode()).isEqualTo(200);
             assertThat(imgRaw.headers().firstValue("Content-Type").orElse("")).isEqualTo("image/png");
             assertThat(imgRaw.body()).startsWith((byte) 0x89, (byte) 'P');
+        });
+    }
 
+    @Test
+    void api_project_file_put_saves_on_a_matching_etag_and_flags_a_stale_lock() throws Exception {
+        withScopedCheckout("file-put-state", "src-put", c -> {
+            HttpResponse<String> file = get("/api/project/file?project=" + c.id() + "&path=src%2FMain.java");
             assertThat(file.body()).contains("\"etag\":");
             String etag = file.body().replaceAll("(?s).*\"etag\":\"([0-9a-f]+)\".*", "$1");
             assertThat(etag).hasSize(64);
 
-            HttpResponse<String> put = client.send(
-                    HttpRequest.newBuilder(URI.create(baseUrl + "api/project/file"))
-                            .header("Authorization", "Bearer " + token())
-                            .header("X-Jk-Engine-Epoch", SNAPSHOT.engineEpoch())
-                            .header("Content-Type", "application/json")
-                            .PUT(HttpRequest.BodyPublishers.ofString(
-                                    "{\"project\":\"" + id + "\",\"path\":\"src/Main.java\","
-                                            + "\"content\":\"class Main { int y; }\\n\","
-                                            + "\"etag\":\"" + etag + "\"}"))
-                            .build(),
-                    HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> put = putFile("{\"project\":\"" + c.id() + "\",\"path\":\"src/Main.java\","
+                    + "\"content\":\"class Main { int y; }\\n\","
+                    + "\"etag\":\"" + etag + "\"}");
             assertThat(put.statusCode()).isEqualTo(200);
             assertThat(put.body()).contains("\"path\":\"src/Main.java\"").contains("\"etag\":");
             assertThat(put.body()).doesNotContain("lockStale"); // sources do not stale the lock
-            assertThat(Files.readString(checkout.resolve("src/Main.java"))).isEqualTo("class Main { int y; }\n");
+            assertThat(Files.readString(c.checkout().resolve("src/Main.java"))).isEqualTo("class Main { int y; }\n");
 
             // A manifest save flags the now-stale lock stamp.
-            HttpResponse<String> putManifest = client.send(
-                    HttpRequest.newBuilder(URI.create(baseUrl + "api/project/file"))
-                            .header("Authorization", "Bearer " + token())
-                            .header("X-Jk-Engine-Epoch", SNAPSHOT.engineEpoch())
-                            .header("Content-Type", "application/json")
-                            .PUT(HttpRequest.BodyPublishers.ofString("{\"project\":\"" + id
-                                    + "\",\"path\":\"jk.toml\",\"content\":\"group = \\\"g\\\"\\n"
-                                    + "name = \\\"n\\\"\\nversion = \\\"2\\\"\\n\"}"))
-                            .build(),
-                    HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> putManifest = putFile("{\"project\":\"" + c.id()
+                    + "\",\"path\":\"jk.toml\",\"content\":\"group = \\\"g\\\"\\n"
+                    + "name = \\\"n\\\"\\nversion = \\\"2\\\"\\n\"}");
             assertThat(putManifest.statusCode()).isEqualTo(200);
             assertThat(putManifest.body()).contains("\"lockStale\":true");
 
-            HttpResponse<String> stale = client.send(
-                    HttpRequest.newBuilder(URI.create(baseUrl + "api/project/file"))
-                            .header("Authorization", "Bearer " + token())
-                            .header("X-Jk-Engine-Epoch", SNAPSHOT.engineEpoch())
-                            .header("Content-Type", "application/json")
-                            .PUT(HttpRequest.BodyPublishers.ofString(
-                                    "{\"project\":\"" + id + "\",\"path\":\"src/Main.java\","
-                                            + "\"content\":\"class Main { stale; }\\n\","
-                                            + "\"etag\":\"" + etag + "\"}"))
-                            .build(),
-                    HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> stale = putFile("{\"project\":\"" + c.id() + "\",\"path\":\"src/Main.java\","
+                    + "\"content\":\"class Main { stale; }\\n\","
+                    + "\"etag\":\"" + etag + "\"}");
             assertThat(stale.statusCode()).isEqualTo(409);
             assertThat(stale.body()).contains("file changed on disk");
+        });
+    }
 
-            HttpResponse<String> putImg = client.send(
-                    HttpRequest.newBuilder(URI.create(baseUrl + "api/project/file"))
-                            .header("Authorization", "Bearer " + token())
-                            .header("X-Jk-Engine-Epoch", SNAPSHOT.engineEpoch())
-                            .header("Content-Type", "application/json")
-                            .PUT(HttpRequest.BodyPublishers.ofString("{\"project\":\"" + id
-                                    + "\",\"path\":\"docs/logo.png\"," + "\"content\":\"nope\"}"))
-                            .build(),
-                    HttpResponse.BodyHandlers.ofString());
+    @Test
+    void api_project_file_put_refuses_images_and_accepts_escaped_control_characters() throws Exception {
+        withScopedCheckout("file-put-kinds-state", "src-put-kinds", c -> {
+            Files.createDirectories(c.checkout().resolve("docs"));
+            Files.write(c.checkout().resolve("docs/logo.png"), new byte[] {(byte) 0x89, 'P', 'N', 'G', 0});
+            HttpResponse<String> putImg =
+                    putFile("{\"project\":\"" + c.id() + "\",\"path\":\"docs/logo.png\"," + "\"content\":\"nope\"}");
             assertThat(putImg.statusCode()).isEqualTo(415);
 
             // control chars JSON-escape to six bytes each; a legal file well under the
             // 1 MiB write cap must not 413 on the request-body cap (old factor 3 rejected it).
             String ctlContent = "\u0001".repeat(600 * 1024);
-            String ctlBody = "{\"project\":\"" + id + "\",\"path\":\"src/Main.java\",\"content\":\""
+            String ctlBody = "{\"project\":\"" + c.id() + "\",\"path\":\"src/Main.java\",\"content\":\""
                     + "\\u0001".repeat(600 * 1024) + "\"}";
-            HttpResponse<String> ctl = client.send(
-                    HttpRequest.newBuilder(URI.create(baseUrl + "api/project/file"))
-                            .header("Authorization", "Bearer " + token())
-                            .header("X-Jk-Engine-Epoch", SNAPSHOT.engineEpoch())
-                            .header("Content-Type", "application/json")
-                            .PUT(HttpRequest.BodyPublishers.ofString(ctlBody))
-                            .build(),
-                    HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> ctl = putFile(ctlBody);
             assertThat(ctl.statusCode()).isEqualTo(200);
-            assertThat(Files.readString(checkout.resolve("src/Main.java"))).isEqualTo(ctlContent);
-        } finally {
-            System.clearProperty("jk.env.JK_STATE_DIR");
-        }
+            assertThat(Files.readString(c.checkout().resolve("src/Main.java"))).isEqualTo(ctlContent);
+        });
     }
 
     @Test

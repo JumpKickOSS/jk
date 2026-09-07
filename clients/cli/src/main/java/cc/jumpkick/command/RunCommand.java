@@ -17,6 +17,7 @@ import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Coord;
 import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.cli.tui.ModuleScopeHint;
+import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Exit;
@@ -113,55 +114,9 @@ public final class RunCommand {
             CwdModuleScope.Resolved cwdScope = CwdModuleScope.resolve(projectDir, null, peek);
             if (workspace || cwdScope.workspaceMember()) {
                 // Workspace root: whole graph. Member dir: same as `jk build -m <this-module>`.
-                Path wsRoot = workspace ? projectDir : cwdScope.workspaceRoot();
-                int jobs = global.jobsEffective();
-                List<String> tokens =
-                        cwdScope.workspaceMember() ? ModuleSelectors.tokens(cwdScope.modulesSpec(), null) : List.of();
-                // Session variant/clientEnv ride the request like `jk build` at a root does, so
-                // `jk run --release` builds the release artifacts it is about to exec.
-                var request = new WorkspaceRequest(
-                                wsRoot,
-                                cache,
-                                jdksDir,
-                                1,
-                                null,
-                                buildOpts.skipTests,
-                                global.verbose,
-                                jobs,
-                                null,
-                                true,
-                                true)
-                        .withVariant(session.variant(), session.clientEnv())
-                        .withModules(tokens);
-                boolean liveWorkspace = mode == BuildPlanConsole.Mode.AUTO
-                        && BuildPlanConsole.isInteractiveTerminal()
-                        && !global.outputIsJson();
-                List<String> scopeNames = cwdScope.workspaceMember()
-                        ? (cwdScope.focusLabel() == null ? List.of() : List.of(cwdScope.focusLabel()))
-                        : List.of();
-                ModuleScopeHint.print("building", scopeNames, global.outputIsJson());
-                WorkspaceResult wr;
-                if (liveWorkspace) {
-                    // Same live chrome as `jk build` at a root: aggregate bar + module
-                    // chips from the engine tracker, completions collapse into the region.
-                    wr = runWorkspaceLive(request, scopeNames);
-                    if (wr == null) return 1; // failure already settled on the view
-                } else {
-                    // Quiet / JSON / non-tty: the same append-only block + `✓ [k of N]` line
-                    // `jk build --verbose` prints, and the same event vocabulary.
-                    var run = new WorkspaceRunView(
-                            new WorkspaceRunView.Chrome("Run", true), request.entryDir(), null, global.outputIsJson());
-                    long preBuildStart = System.nanoTime();
-                    try {
-                        wr = EngineClient.buildWorkspace(EnginePaths.current(), request, run.headless());
-                    } catch (IOException e) {
-                        run.finishEvent(false, BuildTails.elapsedMsSince(preBuildStart));
-                        throw e;
-                    }
-                    // The pre-build's terminal, before the exec: see runWorkspaceLive.
-                    run.finishEvent(wr.success(), BuildTails.elapsedMsSince(preBuildStart));
-                }
-                if (wr != null && !wr.success()) {
+                WorkspaceResult wr = buildWorkspaceForRun(projectDir, cache, mode, workspace, cwdScope, session);
+                if (wr == null) return 1; // failure already settled on the view
+                if (!wr.success()) {
                     CommandWedge.printFail("Run", "workspace build failed");
                     return 1;
                 }
@@ -240,6 +195,59 @@ public final class RunCommand {
         // the terminal, and its error wedge has earned the envelope's trailing blank.
         CliOutput.skipTrailingBlank();
         return p.waitFor();
+    }
+
+    /**
+     * The pre-build for a workspace root (whole graph) or a member dir (same as {@code jk build -m
+     * <this-module>}); null when the live view already settled the failure.
+     */
+    private @Nullable WorkspaceResult buildWorkspaceForRun(
+            Path projectDir,
+            Path cache,
+            BuildPlanConsole.Mode mode,
+            boolean workspace,
+            CwdModuleScope.Resolved cwdScope,
+            Session session)
+            throws IOException, InterruptedException {
+        WorkspaceResult wr;
+        Path wsRoot = workspace ? projectDir : cwdScope.workspaceRoot();
+        int jobs = global.jobsEffective();
+        List<String> tokens =
+                cwdScope.workspaceMember() ? ModuleSelectors.tokens(cwdScope.modulesSpec(), null) : List.of();
+        // Session variant/clientEnv ride the request like `jk build` at a root does, so
+        // `jk run --release` builds the release artifacts it is about to exec.
+        var request = new WorkspaceRequest(
+                        wsRoot, cache, jdksDir, 1, null, buildOpts.skipTests, global.verbose, jobs, null, true, true)
+                .withVariant(session.variant(), session.clientEnv())
+                .withModules(tokens);
+        boolean liveWorkspace = mode == BuildPlanConsole.Mode.AUTO
+                && BuildPlanConsole.isInteractiveTerminal()
+                && !global.outputIsJson();
+        List<String> scopeNames = cwdScope.workspaceMember()
+                ? (cwdScope.focusLabel() == null ? List.of() : List.of(cwdScope.focusLabel()))
+                : List.of();
+        ModuleScopeHint.print("building", scopeNames, global.outputIsJson());
+        if (liveWorkspace) {
+            // Same live chrome as `jk build` at a root: aggregate bar + module
+            // chips from the engine tracker, completions collapse into the region.
+            wr = runWorkspaceLive(request, scopeNames);
+            if (wr == null) return null; // failure already settled on the view
+        } else {
+            // Quiet / JSON / non-tty: the same append-only block + `✓ [k of N]` line
+            // `jk build --verbose` prints, and the same event vocabulary.
+            var run = new WorkspaceRunView(
+                    new WorkspaceRunView.Chrome("Run", true), request.entryDir(), null, global.outputIsJson());
+            long preBuildStart = System.nanoTime();
+            try {
+                wr = EngineClient.buildWorkspace(EnginePaths.current(), request, run.headless());
+            } catch (IOException e) {
+                run.finishEvent(false, BuildTails.elapsedMsSince(preBuildStart));
+                throw e;
+            }
+            // The pre-build's terminal, before the exec: see runWorkspaceLive.
+            run.finishEvent(wr.success(), BuildTails.elapsedMsSince(preBuildStart));
+        }
+        return wr;
     }
 
     /**

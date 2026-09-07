@@ -171,9 +171,6 @@ public final class PlannerKsp {
      * cc.jumpkick.compile.KspProcessors}); outputs under {@code target/ksp/} join compile sources.
      */
     static Task kspStep(BuildPlanner.Ctx cx, PluginBuild.@Nullable Declarations pluginDecls) {
-        BuildPlanner.Inputs in = cx.in();
-        Cas cas = cx.cas();
-        boolean compact = cx.compact();
         // Plugin-contributed sources (protoc output, variant extra-src) must exist before the
         // round and join its source roots — a contributed @Module/@Entity is processor input
         // like any hand-written one.
@@ -189,176 +186,215 @@ public final class PlannerKsp {
                 .kind(TaskKind.CPU)
                 .requires(requires.toArray(new String[0]))
                 .ticks(1)
-                .execute(ctx -> {
-                    List<Path> processorCp = ctx.require(PROCESSOR_CP);
-                    var split = KspProcessors.split(processorCp);
-                    ctx.put(JAVAC_PROCESSOR_CP, split.javac());
-                    if (split.ksp().isEmpty()) {
-                        ctx.label("no KSP processors");
-                        ctx.progress(1);
-                        return;
-                    }
-                    BuildLayout layout = ctx.require(LAYOUT);
-                    Path outBase = kspOutBase(layout);
-                    List<Path> classpath = ctx.require(CLASSPATH);
-                    List<Path> ktSources = kotlinSources(ctx);
-                    List<Path> javaSources = javaSources(ctx);
-
-                    List<Path> stampInputs = new ArrayList<>(ktSources);
-                    stampInputs.addAll(javaSources);
-                    // Contributed sources are round input too — an extra-src/protoc edit re-runs.
-                    stampInputs.addAll(pluginContributedSources(ctx.require(LAYOUT), pluginDecls, ".kt"));
-                    stampInputs.addAll(pluginContributedSources(ctx.require(LAYOUT), pluginDecls, ".java"));
-                    List<Path> stampCp = new ArrayList<>(classpath);
-                    stampCp.addAll(split.ksp());
-                    boolean rerun = in.session().config().rebuildOr(false);
-                    if (!rerun
-                            && FreshnessStamp.isFresh(
-                                    outBase, BuildStamps.KSP, stampInputs, stampCp, ctx.require(RELEASE))) {
-                        ctx.reweight(EffortWeights.TOKEN); // cache/stamp skip — token tick
-                        ctx.label("up to date");
-                        ctx.progress(1);
-                        return;
-                    }
-
-                    ctx.label("KSP: " + split.ksp().size() + " processor jar(s)");
-                    JkBuild project = ctx.require(PROJECT);
-                    String kotlinVersion = CompileToolchain.kotlinVersionFor(ctx.require(LOCKFILE), project);
-                    if (kotlinVersion == null || kotlinVersion.isBlank()) {
-                        kotlinVersion = KotlinResolver.DEFAULT_VERSION;
-                    }
-                    List<Path> kspClasspath;
-                    Path stdlib;
-                    try {
-                        RepoGroup repos = RepoGroupBuilder.buildFor(project, null, cas);
-                        String kspVersion = KspResolver.discoverVersion(repos);
-                        kspClasspath = KspResolver.resolveClasspath(repos, cas, kspVersion);
-                        stdlib = KotlinBtaResolver.resolveStdlib(repos, cas, kotlinVersion);
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        throw new RuntimeException("interrupted resolving KSP", e);
-                    }
-
-                    // A stale round's outputs must not survive into the source union.
-                    for (String sub : List.of("kotlin", "java", "classes", "resources")) {
-                        PathUtil.deleteRecursively(outBase.resolve(sub));
-                    }
-                    Files.createDirectories(outBase.resolve("caches"));
-
-                    List<Path> srcRoots = new ArrayList<>(
-                            compact
-                                    ? List.of(in.dir().resolve("src"))
-                                    : List.of(
-                                            in.dir().resolve("src/main/kotlin"),
-                                            in.dir().resolve("src/main/java")));
-                    // Plugin-contributed source dirs (protoc output, generated code) and
-                    // [build] extra-src roots (variant overlays) are processor input like any
-                    // hand-written source.
-                    srcRoots.addAll(pluginContributedSourceDirs(ctx.require(LAYOUT), pluginDecls));
-                    srcRoots.addAll(CompileSupport.extraSrcDirs(project, in.dir()));
-                    List<Path> ktRoots = new ArrayList<>();
-                    for (Path root : srcRoots) {
-                        if (Files.isDirectory(root)) ktRoots.add(root);
-                    }
-                    List<Path> libs = new ArrayList<>(classpath);
-                    libs.add(stdlib);
-
-                    String languageVersion = majorMinor(kotlinVersion);
-                    // KSP is jk's tool: it runs on jk's own runtime, not the project's pinned
-                    // JDK (same rule as every plugin — requirements.md "plugin host"). AGP runs
-                    // KSP in the Gradle daemon's JVM the same way; the project JDK stays the
-                    // -jdk-home cross-compile input below.
-                    Path javaHome = ctx.require(JAVA_HOME);
-                    List<String> cmd = new ArrayList<>();
-                    cmd.add(JdkFingerprint.java(JavaHomes.runningJavaHome()).toString());
-                    cmd.addAll(JvmOptions.batchFlags(1));
-                    cmd.add("-cp");
-                    cmd.add(Classpaths.join(kspClasspath));
-                    cmd.add(KspResolver.KSP_MAIN);
-                    cmd.add("-module-name=" + project.project().name());
-                    cmd.add("-source-roots=" + Classpaths.join(ktRoots));
-                    cmd.add("-java-source-roots=" + Classpaths.join(ktRoots));
-                    cmd.add("-project-base-dir=" + in.dir().toAbsolutePath());
-                    cmd.add("-output-base-dir=" + outBase.toAbsolutePath());
-                    cmd.add("-caches-dir=" + outBase.resolve("caches").toAbsolutePath());
-                    cmd.add("-class-output-dir=" + outBase.resolve("classes").toAbsolutePath());
-                    cmd.add("-kotlin-output-dir=" + outBase.resolve("kotlin").toAbsolutePath());
-                    cmd.add("-java-output-dir=" + outBase.resolve("java").toAbsolutePath());
-                    cmd.add("-resource-output-dir="
-                            + outBase.resolve("resources").toAbsolutePath());
-                    cmd.add("-language-version=" + languageVersion);
-                    cmd.add("-api-version=" + languageVersion);
-                    cmd.add("-jvm-target=" + CompileSupport.kotlinJvmTarget(ctx.require(RELEASE)));
-                    cmd.add("-jdk-home=" + javaHome.toAbsolutePath());
-                    cmd.add("-libraries=" + Classpaths.join(libs));
-                    // Processor options: plugin-contributed ([[contribute.compiler-args]] ksp
-                    // Hilt's superclass-validation toggle) plus project-declared ([build]
-                    // ksp-options — Room's schemaLocation; last wins, so the project overrides).
-                    // KSP's map syntax joins entries with the platform path separator, same as
-                    // its list args; relative option paths resolve against the module dir (the
-                    // KSP process CWD).
-                    List<String> kspOptions = new ArrayList<>(
-                            PluginContributions.kspOptions(project, in.dir(), lockModules(ctx.require(LOCKFILE))));
-                    kspOptions.addAll(project.build().kspOptions());
-                    if (!kspOptions.isEmpty()) {
-                        cmd.add("-processor-options=" + String.join(Classpaths.SEPARATOR, kspOptions));
-                    }
-                    // The trailing processor classpath is the WHOLE [processor-dependencies]
-                    // closure — a provider jar (room-compiler) loads its own deps from it.
-                    cmd.add(Classpaths.join(processorCp));
-
-                    ProcessBuilder pb =
-                            new ProcessBuilder(cmd).directory(in.dir().toFile()).redirectErrorStream(true);
-                    Process proc = JobWorkers.start(pb);
-                    // Read on a drainer thread and bound the wait: on an internal error KSP's JVM
-                    // can linger (non-daemon compiler pools survive the main thread's exception),
-                    // which would hang a plain readAllBytes forever.
-                    StringBuilder captured = new StringBuilder();
-                    Thread drainer = new Thread(() -> {
-                        try (var in2 = proc.getInputStream()) {
-                            byte[] buf = new byte[8192];
-                            int n;
-                            while ((n = in2.read(buf)) >= 0) {
-                                captured.append(new String(buf, 0, n, StandardCharsets.UTF_8));
-                            }
-                        } catch (IOException ignored) {
-                            // stream closed with the process
-                        }
-                    });
-                    drainer.setDaemon(true);
-                    drainer.start();
-                    int exit;
-                    try {
-                        if (!proc.waitFor(15, TimeUnit.MINUTES)) {
-                            proc.destroyForcibly();
-                            ctx.error(TaskNames.KSP, "KSP timed out after 15 minutes\n" + captured);
-                            throw new RuntimeException("KSP timed out");
-                        }
-                        exit = proc.exitValue();
-                        drainer.join(5_000);
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        proc.destroyForcibly();
-                        throw new RuntimeException("interrupted waiting for KSP", e);
-                    }
-                    String output = captured.toString();
-                    if (exit != 0) {
-                        ctx.error(TaskNames.KSP, output.isBlank() ? ("KSP exited " + exit) : output);
-                        throw new RuntimeException("KSP processing failed");
-                    }
-                    // A green round still has things to say. Processor `logger.warn`/`info` is how
-                    // an annotation-driven framework explains what it did and what to do
-                    // differently; dropping it on success meant guidance only ever appeared once
-                    // the build was already broken. Surfaced the same way javac
-                    // diagnostics are, so -q/-v behave consistently.
-                    for (BuildPlanner.KspDiagnostic diagnostic : kspDiagnostics(output)) {
-                        ctx.warn(diagnostic.severity(), diagnostic.message());
-                    }
-                    FreshnessStamp.write(
-                            outBase, BuildStamps.KSP, TaskNames.KSP, "", stampInputs, stampCp, ctx.require(RELEASE));
-                    ctx.progress(1);
-                })
+                .execute(ctx -> runKsp(ctx, cx, pluginDecls))
                 .build();
+    }
+
+    /** The KSP2 round: split the processors, check the stamp, resolve the toolchain, fork, stamp. */
+    private static void runKsp(TaskContext ctx, BuildPlanner.Ctx cx, PluginBuild.@Nullable Declarations pluginDecls)
+            throws Exception {
+        BuildPlanner.Inputs in = cx.in();
+        List<Path> processorCp = ctx.require(PROCESSOR_CP);
+        var split = KspProcessors.split(processorCp);
+        ctx.put(JAVAC_PROCESSOR_CP, split.javac());
+        if (split.ksp().isEmpty()) {
+            ctx.label("no KSP processors");
+            ctx.progress(1);
+            return;
+        }
+        BuildLayout layout = ctx.require(LAYOUT);
+        Path outBase = kspOutBase(layout);
+        List<Path> classpath = ctx.require(CLASSPATH);
+        List<Path> ktSources = kotlinSources(ctx);
+        List<Path> javaSources = javaSources(ctx);
+
+        List<Path> stampInputs = new ArrayList<>(ktSources);
+        stampInputs.addAll(javaSources);
+        // Contributed sources are round input too — an extra-src/protoc edit re-runs.
+        stampInputs.addAll(pluginContributedSources(ctx.require(LAYOUT), pluginDecls, ".kt"));
+        stampInputs.addAll(pluginContributedSources(ctx.require(LAYOUT), pluginDecls, ".java"));
+        List<Path> stampCp = new ArrayList<>(classpath);
+        stampCp.addAll(split.ksp());
+        boolean rerun = in.session().config().rebuildOr(false);
+        if (!rerun && FreshnessStamp.isFresh(outBase, BuildStamps.KSP, stampInputs, stampCp, ctx.require(RELEASE))) {
+            ctx.reweight(EffortWeights.TOKEN); // cache/stamp skip — token tick
+            ctx.label("up to date");
+            ctx.progress(1);
+            return;
+        }
+
+        ctx.label("KSP: " + split.ksp().size() + " processor jar(s)");
+        JkBuild project = ctx.require(PROJECT);
+        String kotlinVersion = CompileToolchain.kotlinVersionFor(ctx.require(LOCKFILE), project);
+        if (kotlinVersion == null || kotlinVersion.isBlank()) {
+            kotlinVersion = KotlinResolver.DEFAULT_VERSION;
+        }
+        KspToolchain toolchain = resolveKspToolchain(project, cx.cas(), kotlinVersion);
+
+        // A stale round's outputs must not survive into the source union.
+        for (String sub : List.of("kotlin", "java", "classes", "resources")) {
+            PathUtil.deleteRecursively(outBase.resolve(sub));
+        }
+        Files.createDirectories(outBase.resolve("caches"));
+
+        List<Path> ktRoots = kspSourceRoots(in, project, layout, pluginDecls, cx.compact());
+        List<Path> libs = new ArrayList<>(classpath);
+        libs.add(toolchain.stdlib());
+        List<String> cmd = kspCommand(
+                ctx, in, project, outBase, toolchain.kspClasspath(), ktRoots, libs, kotlinVersion, processorCp);
+        String output = runKspProcess(ctx, in, cmd);
+        // A green round still has things to say. Processor `logger.warn`/`info` is how
+        // an annotation-driven framework explains what it did and what to do
+        // differently; dropping it on success meant guidance only ever appeared once
+        // the build was already broken. Surfaced the same way javac
+        // diagnostics are, so -q/-v behave consistently.
+        for (BuildPlanner.KspDiagnostic diagnostic : kspDiagnostics(output)) {
+            ctx.warn(diagnostic.severity(), diagnostic.message());
+        }
+        FreshnessStamp.write(outBase, BuildStamps.KSP, TaskNames.KSP, "", stampInputs, stampCp, ctx.require(RELEASE));
+        ctx.progress(1);
+    }
+
+    /** The KSP2 runtime classpath and the Kotlin stdlib the round compiles against. */
+    private record KspToolchain(List<Path> kspClasspath, Path stdlib) {}
+
+    private static KspToolchain resolveKspToolchain(JkBuild project, Cas cas, String kotlinVersion) throws Exception {
+        try {
+            RepoGroup repos = RepoGroupBuilder.buildFor(project, null, cas);
+            String kspVersion = KspResolver.discoverVersion(repos);
+            List<Path> kspClasspath = KspResolver.resolveClasspath(repos, cas, kspVersion);
+            Path stdlib = KotlinBtaResolver.resolveStdlib(repos, cas, kotlinVersion);
+            return new KspToolchain(kspClasspath, stdlib);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("interrupted resolving KSP", e);
+        }
+    }
+
+    /**
+     * The round's source roots: the module's own, plus plugin-contributed source dirs (protoc
+     * output, generated code) and [build] extra-src roots (variant overlays) — processor input
+     * like any hand-written source. Only roots that exist.
+     */
+    private static List<Path> kspSourceRoots(
+            BuildPlanner.Inputs in,
+            JkBuild project,
+            BuildLayout layout,
+            PluginBuild.@Nullable Declarations pluginDecls,
+            boolean compact)
+            throws Exception {
+        List<Path> srcRoots = new ArrayList<>(
+                compact
+                        ? List.of(in.dir().resolve("src"))
+                        : List.of(in.dir().resolve("src/main/kotlin"), in.dir().resolve("src/main/java")));
+        srcRoots.addAll(pluginContributedSourceDirs(layout, pluginDecls));
+        srcRoots.addAll(CompileSupport.extraSrcDirs(project, in.dir()));
+        List<Path> ktRoots = new ArrayList<>();
+        for (Path root : srcRoots) {
+            if (Files.isDirectory(root)) ktRoots.add(root);
+        }
+        return ktRoots;
+    }
+
+    /**
+     * The KSPJvmMain command line. KSP is jk's tool: it runs on jk's own runtime, not the project's
+     * pinned JDK (same rule as every plugin — requirements.md "plugin host"). AGP runs KSP in the
+     * Gradle daemon's JVM the same way; the project JDK stays the -jdk-home cross-compile input.
+     */
+    private static List<String> kspCommand(
+            TaskContext ctx,
+            BuildPlanner.Inputs in,
+            JkBuild project,
+            Path outBase,
+            List<Path> kspClasspath,
+            List<Path> ktRoots,
+            List<Path> libs,
+            String kotlinVersion,
+            List<Path> processorCp)
+            throws Exception {
+        String languageVersion = majorMinor(kotlinVersion);
+        Path javaHome = ctx.require(JAVA_HOME);
+        List<String> cmd = new ArrayList<>();
+        cmd.add(JdkFingerprint.java(JavaHomes.runningJavaHome()).toString());
+        cmd.addAll(JvmOptions.batchFlags(1));
+        cmd.add("-cp");
+        cmd.add(Classpaths.join(kspClasspath));
+        cmd.add(KspResolver.KSP_MAIN);
+        cmd.add("-module-name=" + project.project().name());
+        cmd.add("-source-roots=" + Classpaths.join(ktRoots));
+        cmd.add("-java-source-roots=" + Classpaths.join(ktRoots));
+        cmd.add("-project-base-dir=" + in.dir().toAbsolutePath());
+        cmd.add("-output-base-dir=" + outBase.toAbsolutePath());
+        cmd.add("-caches-dir=" + outBase.resolve("caches").toAbsolutePath());
+        cmd.add("-class-output-dir=" + outBase.resolve("classes").toAbsolutePath());
+        cmd.add("-kotlin-output-dir=" + outBase.resolve("kotlin").toAbsolutePath());
+        cmd.add("-java-output-dir=" + outBase.resolve("java").toAbsolutePath());
+        cmd.add("-resource-output-dir=" + outBase.resolve("resources").toAbsolutePath());
+        cmd.add("-language-version=" + languageVersion);
+        cmd.add("-api-version=" + languageVersion);
+        cmd.add("-jvm-target=" + CompileSupport.kotlinJvmTarget(ctx.require(RELEASE)));
+        cmd.add("-jdk-home=" + javaHome.toAbsolutePath());
+        cmd.add("-libraries=" + Classpaths.join(libs));
+        // Processor options: plugin-contributed ([[contribute.compiler-args]] ksp
+        // Hilt's superclass-validation toggle) plus project-declared ([build]
+        // ksp-options — Room's schemaLocation; last wins, so the project overrides).
+        // KSP's map syntax joins entries with the platform path separator, same as
+        // its list args; relative option paths resolve against the module dir (the
+        // KSP process CWD).
+        List<String> kspOptions =
+                new ArrayList<>(PluginContributions.kspOptions(project, in.dir(), lockModules(ctx.require(LOCKFILE))));
+        kspOptions.addAll(project.build().kspOptions());
+        if (!kspOptions.isEmpty()) {
+            cmd.add("-processor-options=" + String.join(Classpaths.SEPARATOR, kspOptions));
+        }
+        // The trailing processor classpath is the WHOLE [processor-dependencies]
+        // closure — a provider jar (room-compiler) loads its own deps from it.
+        cmd.add(Classpaths.join(processorCp));
+        return cmd;
+    }
+
+    /**
+     * Fork KSP and return its output. Read on a drainer thread and bound the wait: on an internal
+     * error KSP's JVM can linger (non-daemon compiler pools survive the main thread's exception),
+     * which would hang a plain readAllBytes forever. A non-zero exit fails the step with the output.
+     */
+    private static String runKspProcess(TaskContext ctx, BuildPlanner.Inputs in, List<String> cmd) throws Exception {
+        ProcessBuilder pb = new ProcessBuilder(cmd).directory(in.dir().toFile()).redirectErrorStream(true);
+        Process proc = JobWorkers.start(pb);
+        StringBuilder captured = new StringBuilder();
+        Thread drainer = new Thread(() -> {
+            try (var in2 = proc.getInputStream()) {
+                byte[] buf = new byte[8192];
+                int n;
+                while ((n = in2.read(buf)) >= 0) {
+                    captured.append(new String(buf, 0, n, StandardCharsets.UTF_8));
+                }
+            } catch (IOException ignored) {
+                // stream closed with the process
+            }
+        });
+        drainer.setDaemon(true);
+        drainer.start();
+        int exit;
+        try {
+            if (!proc.waitFor(15, TimeUnit.MINUTES)) {
+                proc.destroyForcibly();
+                ctx.error(TaskNames.KSP, "KSP timed out after 15 minutes\n" + captured);
+                throw new RuntimeException("KSP timed out");
+            }
+            exit = proc.exitValue();
+            drainer.join(5_000);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            proc.destroyForcibly();
+            throw new RuntimeException("interrupted waiting for KSP", e);
+        }
+        String output = captured.toString();
+        if (exit != 0) {
+            ctx.error(TaskNames.KSP, output.isBlank() ? ("KSP exited " + exit) : output);
+            throw new RuntimeException("KSP processing failed");
+        }
+        return output;
     }
 
     /**

@@ -72,15 +72,43 @@ final class AnnotateEvaluator implements Evaluator {
             facts = test;
         }
 
-        Map<Allow, Boolean> allowUsed = new LinkedHashMap<>();
-        for (Allow a : rule.allow()) allowUsed.put(a, false);
-        List<Observation> sites = new ArrayList<>();
-        long examined = 0;
-        String module = ctx.module();
-        String verb = require ? "lacks @" : "carries @";
-        String simple = annotation.substring(Math.max(annotation.lastIndexOf('.'), annotation.lastIndexOf('$')) + 1);
-
+        Scan scan = new Scan(rule, ctx, require, annotation, withValue);
         if (on.equals("package")) {
+            scan.packages(facts, matching);
+        } else {
+            Evaluation unknownOn = scan.elements(facts, matching, on);
+            if (unknownOn != null) return unknownOn;
+        }
+        return scan.finish(facts);
+    }
+
+    /** One evaluation's walk: what every element check reads, and the sites and count it leaves. */
+    private static final class Scan {
+        private final Rule rule;
+        private final EvalContext ctx;
+        private final boolean require;
+        private final String annotation;
+        private final @Nullable String withValue;
+        private final Map<Allow, Boolean> allowUsed = new LinkedHashMap<>();
+        private final List<Observation> sites = new ArrayList<>();
+        private long examined = 0;
+        private final String module;
+        private final String verb;
+        private final String simple;
+
+        Scan(Rule rule, EvalContext ctx, boolean require, String annotation, @Nullable String withValue) {
+            this.rule = rule;
+            this.ctx = ctx;
+            this.require = require;
+            this.annotation = annotation;
+            this.withValue = withValue;
+            for (Allow a : rule.allow()) allowUsed.put(a, false);
+            this.module = ctx.module();
+            this.verb = require ? "lacks @" : "carries @";
+            this.simple = annotation.substring(Math.max(annotation.lastIndexOf('.'), annotation.lastIndexOf('$')) + 1);
+        }
+
+        void packages(FactsIndex facts, ClassPredicates.Compiled matching) {
             // A package is in scope when a class of it matches; its package-info carries the fact.
             Map<String, @Nullable ClassFacts> infos = new TreeMap<>();
             Map<String, ClassFacts> byPackage = new TreeMap<>();
@@ -105,7 +133,11 @@ final class AnnotateEvaluator implements Evaluator {
                         : "package " + pkg + " " + verb + simple + valueNote(withValue);
                 sites.add(Observation.site(pkg, info == null ? null : ForbidEvaluator.source(ctx, info), 0, detail));
             }
-        } else {
+        }
+
+        /** Classes, methods, fields or parameters; the failure for an unknown {@code on}, else null. */
+        @Nullable
+        Evaluation elements(FactsIndex facts, ClassPredicates.Compiled matching, String on) {
             for (ClassFacts c : facts.classList()) {
                 if (c.isPackageInfo() || c.hasFlag(Opcodes.ACC_SYNTHETIC)) continue;
                 if (!matching.test(c)) continue;
@@ -115,120 +147,99 @@ final class AnnotateEvaluator implements Evaluator {
                     case "class", "test-class" -> {
                         examined++;
                         if (present(c.annotations(), annotation, withValue) != require) {
-                            add(
-                                    rule,
-                                    ctx,
-                                    allowUsed,
-                                    sites,
-                                    c,
-                                    c.binaryName(),
-                                    src,
-                                    0,
-                                    c.binaryName() + " " + verb + simple + valueNote(withValue));
+                            add(c, c.binaryName(), src, 0, c.binaryName() + " " + verb + simple + valueNote(withValue));
                         }
                     }
-                    case "method" -> {
-                        for (MethodFacts m : c.methods()) {
-                            if (m.name().startsWith("<")
-                                    || (m.access() & (Opcodes.ACC_SYNTHETIC | Opcodes.ACC_BRIDGE)) != 0) continue;
-                            examined++;
-                            if (present(m.annotations(), annotation, withValue) != require) {
-                                add(
-                                        rule,
-                                        ctx,
-                                        allowUsed,
-                                        sites,
-                                        c,
-                                        c.binaryName() + "#" + m.member(),
-                                        src,
-                                        m.firstLine(),
-                                        c.binaryName() + "#" + m.name() + " " + verb + simple + valueNote(withValue));
-                            }
-                        }
-                    }
-                    case "field" -> {
-                        for (FieldFacts f : c.fields()) {
-                            if ((f.access() & Opcodes.ACC_SYNTHETIC) != 0) continue;
-                            examined++;
-                            if (present(f.annotations(), annotation, withValue) != require) {
-                                add(
-                                        rule,
-                                        ctx,
-                                        allowUsed,
-                                        sites,
-                                        c,
-                                        c.binaryName() + "." + f.name(),
-                                        src,
-                                        0,
-                                        c.binaryName() + "." + f.name() + " " + verb + simple + valueNote(withValue));
-                            }
-                        }
-                    }
-                    case "parameter" -> {
-                        for (MethodFacts m : c.methods()) {
-                            if ((m.access() & (Opcodes.ACC_SYNTHETIC | Opcodes.ACC_BRIDGE)) != 0) continue;
-                            int n = m.parameterCount();
-                            for (int i = 0; i < n; i++) {
-                                examined++;
-                                List<AnnotationFacts> pa =
-                                        i < m.parameterAnnotations().size()
-                                                ? m.parameterAnnotations().get(i)
-                                                : List.of();
-                                if (present(pa, annotation, withValue) != require) {
-                                    add(
-                                            rule,
-                                            ctx,
-                                            allowUsed,
-                                            sites,
-                                            c,
-                                            c.binaryName() + "#" + m.member() + "[" + i + "]",
-                                            src,
-                                            m.firstLine(),
-                                            "parameter " + i + " of " + c.binaryName() + "#" + m.name() + " " + verb
-                                                    + simple + valueNote(withValue));
-                                }
-                            }
-                        }
-                    }
+                    case "method" -> methods(c, src);
+                    case "field" -> fields(c, src);
+                    case "parameter" -> parameters(c, src);
                     default -> {
                         return Evaluation.failed("unknown `on` " + on);
                     }
                 }
             }
+            return null;
         }
-        Map<String, Long> population =
-                Map.of("elements", examined, "classes", (long) facts.classes().size());
-        List<String> stale = new ArrayList<>();
-        for (var e : allowUsed.entrySet()) {
-            if (!e.getValue() && ForbidEvaluator.appliesHere(e.getKey(), facts, module))
-                stale.add(e.getKey().in());
-        }
-        if (!stale.isEmpty() && examined > 0) {
-            return new Evaluation(
-                    Outcome.STALE_ALLOW,
-                    population,
-                    sites,
-                    "allow entries matched nothing: " + String.join(", ", stale));
-        }
-        return Evaluation.of(population, sites);
-    }
 
-    private static void add(
-            Rule rule,
-            EvalContext ctx,
-            Map<Allow, Boolean> allowUsed,
-            List<Observation> sites,
-            ClassFacts c,
-            String fingerprint,
-            @Nullable String src,
-            int line,
-            String detail) {
-        Allow a = ForbidEvaluator.allowing(rule.allow(), c, ctx.module());
-        if (a != null) {
-            allowUsed.put(a, true);
-            return;
+        private void methods(ClassFacts c, @Nullable String src) {
+            for (MethodFacts m : c.methods()) {
+                if (m.name().startsWith("<") || (m.access() & (Opcodes.ACC_SYNTHETIC | Opcodes.ACC_BRIDGE)) != 0)
+                    continue;
+                examined++;
+                if (present(m.annotations(), annotation, withValue) != require) {
+                    add(
+                            c,
+                            c.binaryName() + "#" + m.member(),
+                            src,
+                            m.firstLine(),
+                            c.binaryName() + "#" + m.name() + " " + verb + simple + valueNote(withValue));
+                }
+            }
         }
-        sites.add(Observation.site(fingerprint, src, line, detail));
+
+        private void fields(ClassFacts c, @Nullable String src) {
+            for (FieldFacts f : c.fields()) {
+                if ((f.access() & Opcodes.ACC_SYNTHETIC) != 0) continue;
+                examined++;
+                if (present(f.annotations(), annotation, withValue) != require) {
+                    add(
+                            c,
+                            c.binaryName() + "." + f.name(),
+                            src,
+                            0,
+                            c.binaryName() + "." + f.name() + " " + verb + simple + valueNote(withValue));
+                }
+            }
+        }
+
+        private void parameters(ClassFacts c, @Nullable String src) {
+            for (MethodFacts m : c.methods()) {
+                if ((m.access() & (Opcodes.ACC_SYNTHETIC | Opcodes.ACC_BRIDGE)) != 0) continue;
+                int n = m.parameterCount();
+                for (int i = 0; i < n; i++) {
+                    examined++;
+                    List<AnnotationFacts> pa = i < m.parameterAnnotations().size()
+                            ? m.parameterAnnotations().get(i)
+                            : List.of();
+                    if (present(pa, annotation, withValue) != require) {
+                        add(
+                                c,
+                                c.binaryName() + "#" + m.member() + "[" + i + "]",
+                                src,
+                                m.firstLine(),
+                                "parameter " + i + " of " + c.binaryName() + "#" + m.name() + " " + verb + simple
+                                        + valueNote(withValue));
+                    }
+                }
+            }
+        }
+
+        private void add(ClassFacts c, String fingerprint, @Nullable String src, int line, String detail) {
+            Allow a = ForbidEvaluator.allowing(rule.allow(), c, ctx.module());
+            if (a != null) {
+                allowUsed.put(a, true);
+                return;
+            }
+            sites.add(Observation.site(fingerprint, src, line, detail));
+        }
+
+        Evaluation finish(FactsIndex facts) {
+            Map<String, Long> population = Map.of(
+                    "elements", examined, "classes", (long) facts.classes().size());
+            List<String> stale = new ArrayList<>();
+            for (var e : allowUsed.entrySet()) {
+                if (!e.getValue() && ForbidEvaluator.appliesHere(e.getKey(), facts, module))
+                    stale.add(e.getKey().in());
+            }
+            if (!stale.isEmpty() && examined > 0) {
+                return new Evaluation(
+                        Outcome.STALE_ALLOW,
+                        population,
+                        sites,
+                        "allow entries matched nothing: " + String.join(", ", stale));
+            }
+            return Evaluation.of(population, sites);
+        }
     }
 
     private static @Nullable Allow allowingPackage(List<Allow> allow, String pkg, String module) {

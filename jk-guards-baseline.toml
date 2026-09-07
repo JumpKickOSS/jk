@@ -2,14 +2,15 @@
 # Never edit by hand: an entry without a reason is a suppression, and there is no suppression syntax.
 
 [aot-marker]
-population = { constants = 1, files = 2889, literals = 89474 }
+population = { constants = 1, files = 2890, literals = 89626 }
 
 [archive-instant-owner]
 [archive-instant-owner.populations]
+"plugins/quarkus" = { classes = 11, sites = 868 }
 "shared/client-io" = { classes = 73, sites = 4059 }
 
 [archive-stream-owner]
-population = { files = 1638 }
+population = { files = 1640 }
 
 [blind-tree-walks]
 [blind-tree-walks.populations]
@@ -21,7 +22,7 @@ population = { files = 1638 }
 "plugins/micronaut" = { classes = 1, sites = 192 }
 "plugins/minified" = { classes = 5, sites = 536 }
 "plugins/protobuf" = { classes = 2, sites = 104 }
-"plugins/quarkus" = { classes = 11, sites = 834 }
+"plugins/quarkus" = { classes = 11, sites = 868 }
 "plugins/spring-boot" = { classes = 5, sites = 462 }
 "plugins/test-runner" = { classes = 9, sites = 556 }
 "server/engine" = { classes = 842, sites = 53926 }
@@ -199,10 +200,6 @@ reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk
 [[blind-tree-walks.entries]]
 in     = "plugins/quarkus"
 at     = "cc.jumpkick.quarkus.QuarkusAugmentMain#findProducedUberJar(Ljava/nio/file/Path;Ljava/nio/file/Path;)Ljava/nio/file/Path; -> java.nio.file.Files#walk(Ljava/nio/file/Path;I[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
-reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
-[[blind-tree-walks.entries]]
-in     = "plugins/quarkus"
-at     = "cc.jumpkick.quarkus.QuarkusAugmentMain#main([Ljava/lang/String;)V -> java.nio.file.Files#walk(Ljava/nio/file/Path;I[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
 in     = "plugins/quarkus"
@@ -765,203 +762,56 @@ reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk
 population = { left = 37, right = 37 }
 
 [cache-tiers]
-population = { constants = 29, files = 1688, literals = 33412 }
+population = { constants = 29, files = 1690, literals = 33392 }
 
 [case-conversion-locale]
 [case-conversion-locale.populations]
+"plugins/quarkus" = { classes = 11, sites = 868 }
 "shared/client-io" = { classes = 73, sites = 4059 }
 
+[catalog-is-the-version-source]
+population = { files = 50 }
+
 [central-address]
-population = { files = 1714 }
+population = { files = 1716 }
 
 [file-size]
-population = { units = 2890 }
+population = { units = 2891 }
 
 [guard-kinds-doc]
 population = { rows = 18 }
 
 [guard-registry-doc]
-population = { rows = 63 }
+population = { rows = 64 }
 
 [guard-rules-registered]
-population = { left = 63, right = 63 }
+population = { left = 64, right = 64 }
 
 [guard-schemas-doc]
 population = { rows = 83 }
 
 [install-tests-redirect-m2]
-population = { files = 1208 }
+population = { files = 1207 }
 
 [jdk-removal-confined]
 [jdk-removal-confined.populations]
+"plugins/quarkus" = { classes = 11, sites = 0 }
 "shared/client-io" = { classes = 73, sites = 0 }
 
 [lock-version-is-one]
 population = { files = 6 }
 
 [manifest-names]
-population = { constants = 6, files = 1688, literals = 33424 }
+population = { constants = 6, files = 1690, literals = 33404 }
 
 [method-size]
-population = { units = 24027 }
-[[method-size.entries]]
-unit   = "clients/cli/src/main/java/cc/jumpkick/cli/run/TestFailureHighlight.java#paintBlock/1"
-value  = 130
-reason = "members over 120 code lines on 2026-09-07; the ratchet lowers each entry as the planner and forecaster giants are split"
-[[method-size.entries]]
-unit   = "clients/cli/src/main/java/cc/jumpkick/command/ExplainCommand.java#run/1"
-value  = 128
-reason = "members over 120 code lines on 2026-09-07; the ratchet lowers each entry as the planner and forecaster giants are split"
-[[method-size.entries]]
-unit   = "clients/cli/src/main/java/cc/jumpkick/command/FormatCommand.java#run/1"
-value  = 176
-reason = "members over 120 code lines on 2026-09-07; the ratchet lowers each entry as the planner and forecaster giants are split"
-[[method-size.entries]]
-unit   = "clients/cli/src/main/java/cc/jumpkick/command/JdkInstallCommand.java#run/1"
-value  = 164
-reason = "members over 120 code lines on 2026-09-07; the ratchet lowers each entry as the planner and forecaster giants are split"
-[[method-size.entries]]
-unit   = "clients/cli/src/main/java/cc/jumpkick/command/NewCommand.java#runWizardBuildPlan/1"
-value  = 133
-reason = "members over 120 code lines on 2026-09-07; the ratchet lowers each entry as the planner and forecaster giants are split"
-[[method-size.entries]]
-unit   = "clients/cli/src/main/java/cc/jumpkick/command/RunCommand.java#runProject/2"
-value  = 142
-reason = "members over 120 code lines on 2026-09-07; the ratchet lowers each entry as the planner and forecaster giants are split"
-[[method-size.entries]]
-unit   = "clients/cli/src/main/java/cc/jumpkick/command/ToolInstallCommand.java#run/1"
-value  = 139
-reason = "members over 120 code lines on 2026-09-07; the ratchet lowers each entry as the planner and forecaster giants are split"
-[[method-size.entries]]
-unit   = "plugins/quarkus/src/main/java/cc/jumpkick/quarkus/QuarkusAugmentMain.java#main/1"
-value  = 133
-reason = "members over 120 code lines on 2026-09-07; the ratchet lowers each entry as the planner and forecaster giants are split"
-[[method-size.entries]]
-unit   = "server/engine/src/main/java/cc/jumpkick/engine/EngineServer.java#EngineServer/6"
-value  = 134
-reason = "members over 120 code lines on 2026-09-07; the ratchet lowers each entry as the planner and forecaster giants are split"
-[[method-size.entries]]
-unit   = "server/engine/src/main/java/cc/jumpkick/engine/jobs/JobEnvelope.java#submit/3"
-value  = 167
-reason = "members over 120 code lines on 2026-09-07; the ratchet lowers each entry as the planner and forecaster giants are split"
-[[method-size.entries]]
-unit   = "server/engine/src/main/java/cc/jumpkick/runtime/BuildPlanner.java#coreBuilder/2"
-value  = 309
-reason = "members over 120 code lines on 2026-09-07; the ratchet lowers each entry as the planner and forecaster giants are split"
-[[method-size.entries]]
-unit   = "server/engine/src/main/java/cc/jumpkick/runtime/EffortWeights.java#predict/8"
-value  = 121
-reason = "members over 120 code lines on 2026-09-07; the ratchet lowers each entry as the planner and forecaster giants are split"
-[[method-size.entries]]
-unit   = "server/engine/src/main/java/cc/jumpkick/runtime/ExecPlans.java#runPlan/5"
-value  = 169
-reason = "members over 120 code lines on 2026-09-07; the ratchet lowers each entry as the planner and forecaster giants are split"
-[[method-size.entries]]
-unit   = "server/engine/src/main/java/cc/jumpkick/runtime/FormatPlans.java#formatBuildPlan/9"
-value  = 252
-reason = "members over 120 code lines on 2026-09-07; the ratchet lowers each entry as the planner and forecaster giants are split"
-[[method-size.entries]]
-unit   = "server/engine/src/main/java/cc/jumpkick/runtime/IdeOps.java#build/4"
-value  = 134
-reason = "members over 120 code lines on 2026-09-07; the ratchet lowers each entry as the planner and forecaster giants are split"
-[[method-size.entries]]
-unit   = "server/engine/src/main/java/cc/jumpkick/runtime/ImagePlans.java#imageBuildPlan/11"
-value  = 127
-reason = "members over 120 code lines on 2026-09-07; the ratchet lowers each entry as the planner and forecaster giants are split"
-[[method-size.entries]]
-unit   = "server/engine/src/main/java/cc/jumpkick/runtime/PlannerCompile.java#compileJavaStep/2"
-value  = 161
-reason = "members over 120 code lines on 2026-09-07; the ratchet lowers each entry as the planner and forecaster giants are split"
-[[method-size.entries]]
-unit   = "server/engine/src/main/java/cc/jumpkick/runtime/PlannerGuards.java#executeLane/9"
-value  = 126
-reason = "members over 120 code lines on 2026-09-07; the ratchet lowers each entry as the planner and forecaster giants are split"
-[[method-size.entries]]
-unit   = "server/engine/src/main/java/cc/jumpkick/runtime/PlannerKsp.java#kspStep/2"
-value  = 155
-reason = "members over 120 code lines on 2026-09-07; the ratchet lowers each entry as the planner and forecaster giants are split"
-[[method-size.entries]]
-unit   = "server/engine/src/main/java/cc/jumpkick/runtime/PlannerNative.java#nativeStep/8"
-value  = 268
-reason = "members over 120 code lines on 2026-09-07; the ratchet lowers each entry as the planner and forecaster giants are split"
-[[method-size.entries]]
-unit   = "server/engine/src/main/java/cc/jumpkick/runtime/PlannerTest.java#compileTestStep/2"
-value  = 199
-reason = "members over 120 code lines on 2026-09-07; the ratchet lowers each entry as the planner and forecaster giants are split"
-[[method-size.entries]]
-unit   = "server/engine/src/main/java/cc/jumpkick/runtime/PlannerTest.java#runTestsStep/3"
-value  = 174
-reason = "members over 120 code lines on 2026-09-07; the ratchet lowers each entry as the planner and forecaster giants are split"
-[[method-size.entries]]
-unit   = "server/engine/src/main/java/cc/jumpkick/runtime/ProjectInfoPlans.java#projectInfo/5"
-value  = 164
-reason = "members over 120 code lines on 2026-09-07; the ratchet lowers each entry as the planner and forecaster giants are split"
-[[method-size.entries]]
-unit   = "server/engine/src/main/java/cc/jumpkick/runtime/ScriptPlans.java#kotlinScriptBuildPlan/6"
-value  = 128
-reason = "members over 120 code lines on 2026-09-07; the ratchet lowers each entry as the planner and forecaster giants are split"
-[[method-size.entries]]
-unit   = "server/engine/src/main/java/cc/jumpkick/runtime/SyncPlans.java#syncBuildPlan/9"
-value  = 274
-reason = "members over 120 code lines on 2026-09-07; the ratchet lowers each entry as the planner and forecaster giants are split"
-[[method-size.entries]]
-unit   = "server/engine/src/main/java/cc/jumpkick/test/AffectedTestRanker.java#rank/1"
-value  = 165
-reason = "members over 120 code lines on 2026-09-07; the ratchet lowers each entry as the planner and forecaster giants are split"
-[[method-size.entries]]
-unit   = "server/engine/src/test/java/cc/jumpkick/engine/http/HttpApiProjectTest.java#api_project_files_and_file_are_identity_scoped/0"
-value  = 156
-reason = "members over 120 code lines on 2026-09-07; the ratchet lowers each entry as the planner and forecaster giants are split"
-[[method-size.entries]]
-unit   = "server/engine/src/test/java/cc/jumpkick/runtime/AndroidSpikeTest.java#hello_world_apk_via_the_android_plugin/1"
-value  = 152
-reason = "members over 120 code lines on 2026-09-07; the ratchet lowers each entry as the planner and forecaster giants are split"
-[[method-size.entries]]
-unit   = "server/guard/src/main/java/cc/jumpkick/guard/eval/AnnotateEvaluator.java#evaluate/2"
-value  = 164
-reason = "members over 120 code lines on 2026-09-07; the ratchet lowers each entry as the planner and forecaster giants are split"
-[[method-size.entries]]
-unit   = "server/guard/src/main/java/cc/jumpkick/guard/eval/ApiEvaluator.java#evaluate/2"
-value  = 134
-reason = "members over 120 code lines on 2026-09-07; the ratchet lowers each entry as the planner and forecaster giants are split"
-[[method-size.entries]]
-unit   = "server/guard/src/main/java/cc/jumpkick/guard/eval/DependEvaluator.java#evaluate/3"
-value  = 154
-reason = "members over 120 code lines on 2026-09-07; the ratchet lowers each entry as the planner and forecaster giants are split"
-[[method-size.entries]]
-unit   = "server/guard/src/main/java/cc/jumpkick/guard/eval/ForbidEvaluator.java#evaluate/2"
-value  = 155
-reason = "members over 120 code lines on 2026-09-07; the ratchet lowers each entry as the planner and forecaster giants are split"
-[[method-size.entries]]
-unit   = "server/guard/src/main/java/cc/jumpkick/guard/eval/LayersEvaluator.java#evaluate/2"
-value  = 150
-reason = "members over 120 code lines on 2026-09-07; the ratchet lowers each entry as the planner and forecaster giants are split"
-[[method-size.entries]]
-unit   = "shared/core/src/main/java/cc/jumpkick/config/ManifestBuild.java#parseBuild/1"
-value  = 180
-reason = "members over 120 code lines on 2026-09-07; the ratchet lowers each entry as the planner and forecaster giants are split"
-[[method-size.entries]]
-unit   = "shared/core/src/main/java/cc/jumpkick/config/WorkspaceClasspath.java#resolve/3"
-value  = 125
-reason = "members over 120 code lines on 2026-09-07; the ratchet lowers each entry as the planner and forecaster giants are split"
-[[method-size.entries]]
-unit   = "shared/core/src/main/java/cc/jumpkick/lock/LockfileWriter.java#render/1"
-value  = 134
-reason = "members over 120 code lines on 2026-09-07; the ratchet lowers each entry as the planner and forecaster giants are split"
-[[method-size.entries]]
-unit   = "shared/core/src/main/java/cc/jumpkick/plugin/manifest/PluginDescriptors.java#parseContributions/3"
-value  = 134
-reason = "members over 120 code lines on 2026-09-07; the ratchet lowers each entry as the planner and forecaster giants are split"
-[[method-size.entries]]
-unit   = "shared/toolchain-jdk/src/main/java/cc/jumpkick/jdk/JdkCatalogClient.java#parse/2"
-value  = 121
-reason = "members over 120 code lines on 2026-09-07; the ratchet lowers each entry as the planner and forecaster giants are split"
+population = { units = 24219 }
 
 [named-exit-codes]
-population = { files = 1638 }
+population = { files = 1640 }
 
 [no-fqcn]
-population = { units = 2839 }
+population = { units = 2840 }
 [[no-fqcn.entries]]
 unit   = "clients/cli-terminal/src/main/java/cc/jumpkick/terminal/package-info.java"
 value  = 1
@@ -1260,46 +1110,51 @@ value  = 1
 reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
 
 [no-glued-inline-tag]
-population = { files = 2955 }
+population = { files = 2956 }
 
 [no-historical-narration]
-population = { files = 3200 }
+population = { files = 3201 }
 
 [no-link-following-delete]
 population = { files = 70 }
 
 [no-retired-code-markers]
-population = { files = 1714 }
+population = { files = 1716 }
 
 [no-ticket-ids]
-population = { files = 3512 }
+population = { files = 3554 }
 
 [one-digest-surface]
 [one-digest-surface.populations]
+"plugins/quarkus" = { classes = 11, sites = 868 }
 "shared/client-io" = { classes = 73, sites = 4059 }
 
 [one-hex-spelling]
 [one-hex-spelling.populations]
+"plugins/quarkus" = { classes = 11, sites = 868 }
 "shared/client-io" = { classes = 73, sites = 4059 }
 
 [one-host-surface]
 [one-host-surface.populations]
+"plugins/quarkus" = { classes = 11, sites = 640 }
 "shared/client-io" = { classes = 73, sites = 3010 }
 
 [one-json-splicer]
-population = { files = 1657 }
+population = { files = 1659 }
 
 [one-recursive-delete]
-population = { files = 1638 }
+population = { files = 1640 }
 
 [own-algorithm-by-name]
 [own-algorithm-by-name.populations]
+"plugins/quarkus" = { classes = 11, sites = 640 }
 "shared/client-io" = { classes = 73, sites = 3010 }
 
 [package-cycles]
 [package-cycles.populations]
 "clients/cli" = { edges = 38, slices = 11 }
 "clients/cli-terminal" = { edges = 4, slices = 3 }
+"plugins/quarkus" = { edges = 0, slices = 1 }
 "server/engine" = { edges = 73, slices = 16 }
 "server/resolver" = { edges = 5, slices = 3 }
 "server/toolchain" = { edges = 4, slices = 4 }
@@ -1353,8 +1208,13 @@ unit   = "shared/toolchain-jdk:discovery"
 value  = 2
 reason = "banked from cycle-baseline.txt on 2026-09-06 — the facts edges found the same 9 components the import regex did; per-module follow-up work shrinks them"
 
+[plugin-fork-owner]
+[plugin-fork-owner.populations]
+"plugins/quarkus" = { classes = 11, sites = 868 }
+
 [properties-render-owner]
 [properties-render-owner.populations]
+"plugins/quarkus" = { classes = 11, sites = 868 }
 "shared/client-io" = { classes = 73, sites = 4059 }
 
 [published-installer-ps1]
@@ -1364,13 +1224,14 @@ population = { left = 735, right = 735 }
 population = { left = 448, right = 448 }
 
 [repository-names]
-population = { constants = 5, files = 1688, literals = 33397 }
+population = { constants = 5, files = 1690, literals = 33377 }
 
 [retired-wire-keys]
-population = { files = 1740 }
+population = { files = 1742 }
 
 [runnable-owner]
 [runnable-owner.populations]
+"plugins/quarkus" = { classes = 11, sites = 868 }
 "shared/client-io" = { classes = 73, sites = 4059 }
 
 [schema-freeze]
@@ -1383,7 +1244,7 @@ population = { left = 1, right = 1 }
 population = { left = 1, right = 1 }
 
 [single-home-root]
-population = { files = 3269 }
+population = { files = 3270 }
 
 [single-truth-set]
 population = { examined = 1707 }
@@ -1428,29 +1289,30 @@ reason = "readers of foreign formats (POM, giter8, JDK catalog, plugin manifests
 population = { files = 26 }
 
 [target-dir]
-population = { constants = 1, files = 1688, literals = 33366 }
+population = { constants = 1, files = 1690, literals = 33346 }
 
 [task-names]
-population = { constants = 64, files = 1688, literals = 33357 }
+population = { constants = 64, files = 1690, literals = 33337 }
 
 [test-fixtures-stay-out-of-production]
 population = { files = 47 }
 
 [test-paths-from-checkout-root]
-population = { files = 1226 }
+population = { files = 1225 }
 
 [toolchain-env-from-request]
 [toolchain-env-from-request.populations]
+"plugins/quarkus" = { classes = 11, sites = 640 }
 "shared/client-io" = { classes = 73, sites = 3010 }
 
 [tree-copy-owner]
-population = { files = 1638 }
+population = { files = 1640 }
 
 [wire-prefix-pairs]
-population = { files = 1664 }
+population = { files = 1666 }
 
 [wire-types]
-population = { constants = 119, files = 1688, literals = 33288 }
+population = { constants = 119, files = 1690, literals = 33268 }
 
 [worker-offline-from-spec]
 population = { files = 130 }
@@ -1463,4 +1325,5 @@ population = { files = 1 }
 
 [xml-parser-owner]
 [xml-parser-owner.populations]
+"plugins/quarkus" = { classes = 11, sites = 868 }
 "shared/client-io" = { classes = 73, sites = 4059 }

@@ -67,85 +67,17 @@ public final class WorkspaceClasspath {
             }
         }
 
-        // Every build unit in the workspace — the members AND the buildable root — is a
-        // resolvable sibling. Inter-unit dependencies are explicit (`x = { workspace = true }`)
-        // and may point in any acyclic direction: member→member, member→root, or root→member
-        // (Cargo/uv style; no implicit "root depends on all members"). The unit doing the
-        // resolving is excluded from its own sibling set.
-        Path self = projectDir.toAbsolutePath().normalize();
-        Map<String, Path> siblingDirByModule = new HashMap<>();
-        Map<String, Path> siblingJarByModule = new HashMap<>();
-        Map<String, Path> siblingTestClassesByModule = new HashMap<>();
-        Map<String, Path> siblingTestResourcesByModule = new HashMap<>();
-        Map<String, Path> siblingFixturesByModule = new HashMap<>();
-        Map<String, JkBuild> siblingManifestByCoord = new HashMap<>();
-        Map<String, String> siblingCoordByName = new HashMap<>(); // name → full coord
-        // One load for the whole workspace, not one parse per sibling.
-        // loadModules returns every member with root inheritance applied — the index below. It
-        // throws for a member with no manifest; applyWorkspace already rethrows for any module
-        // carrying workspace deps, so a caller never reaches here with a broken workspace.
-        // WorkspaceClasspathTest pins that from both sides.
-        Map<Path, JkBuild> members = WorkspaceLoader.loadModules(root, rootManifest);
-        Map<Path, JkBuild> units = new LinkedHashMap<>(members);
-        units.put(root, rootManifest); // the root is a unit too
-        for (Map.Entry<Path, JkBuild> unit0 : units.entrySet()) {
-            Path unitDir = unit0.getKey();
-            if (unitDir.toAbsolutePath().normalize().equals(self)) continue; // exclude self
-            JkBuild unit = unit0.getValue();
-            String coord = unit.project().group() + ":" + unit.project().name();
-            BuildLayout layout = BuildLayout.of(unitDir, unit);
-            siblingDirByModule.put(coord, unitDir);
-            siblingJarByModule.put(coord, layout.mainJar());
-            siblingTestClassesByModule.put(coord, layout.testClassesDir());
-            siblingTestResourcesByModule.put(coord, layout.testResourcesDir());
-            siblingFixturesByModule.put(coord, layout.testFixturesClassesDir());
-            siblingManifestByCoord.put(coord, unit);
-            siblingCoordByName.put(unit.project().name(), coord);
-        }
-
-        // Collect the full transitive workspace closure via BFS.  Direct deps
-        // seed the queue; each discovered sibling's own workspace deps are then
-        // enqueued so that e.g. io→core→model are all on the classpath even
-        // though the module's jk.toml only declares the direct dep (core).
-        // Modules requested with kind=tests also contribute their test
-        // classes (direct edges only — tests kind does not ride transitively).
-        // fixtures = true is the same shape for the fixtures directory.
-        LinkedHashSet<String> visited = new LinkedHashSet<>();
-        Set<String> testsKinds = new HashSet<>();
-        Set<String> fixturesKinds = new HashSet<>();
-        Queue<String> queue = new ArrayDeque<>();
-        for (Scope scope : scopes) {
-            for (Dependency dep : project.dependencies().of(scope)) {
-                String module = resolveWorkspaceRef(dep.module(), siblingCoordByName);
-                if (!siblingJarByModule.containsKey(module)) continue;
-                if (dep.kind() == DependencyKind.TESTS) {
-                    testsKinds.add(module);
-                }
-                if (dep.fixtures()) {
-                    fixturesKinds.add(module);
-                }
-                if (visited.add(module)) {
-                    queue.add(module);
-                }
-            }
-        }
-        while (!queue.isEmpty()) {
-            String coord = queue.poll();
-            JkBuild sibBuild = siblingManifestByCoord.get(coord);
-            if (sibBuild == null) continue;
-            // MAIN and EXPORT propagate transitively: a sibling's exported deps
-            // (api semantics) ride along to anything that depends on it, and MAIN
-            // deps stay visible down the workspace chain (io→core→model).
-            // Tests kind never propagates transitively.
-            for (Scope scope : SIBLING_MODULE_SCOPES) {
-                for (Dependency dep : sibBuild.dependencies().of(scope)) {
-                    String depModule = resolveWorkspaceRef(dep.module(), siblingCoordByName);
-                    if (siblingJarByModule.containsKey(depModule) && visited.add(depModule)) {
-                        queue.add(depModule);
-                    }
-                }
-            }
-        }
+        Siblings sib =
+                indexSiblings(root, rootManifest, projectDir.toAbsolutePath().normalize());
+        Map<String, Path> siblingDirByModule = sib.dirByModule();
+        Map<String, Path> siblingJarByModule = sib.jarByModule();
+        Map<String, Path> siblingTestClassesByModule = sib.testClassesByModule();
+        Map<String, Path> siblingTestResourcesByModule = sib.testResourcesByModule();
+        Map<String, Path> siblingFixturesByModule = sib.fixturesByModule();
+        Closure closure = workspaceClosure(project, scopes, sib);
+        LinkedHashSet<String> visited = closure.visited();
+        Set<String> testsKinds = closure.testsKinds();
+        Set<String> fixturesKinds = closure.fixturesKinds();
 
         List<Path> jars = new ArrayList<>();
         List<Path> closureJars = new ArrayList<>();
@@ -210,6 +142,116 @@ public final class WorkspaceClasspath {
             }
         }
         return new Result(jars, missing, siblingLockfiles, closureJars, List.copyOf(visited));
+    }
+
+    /** Every other build unit in the workspace, by {@code group:name} coord, with its layout paths. */
+    private record Siblings(
+            Map<String, Path> dirByModule,
+            Map<String, Path> jarByModule,
+            Map<String, Path> testClassesByModule,
+            Map<String, Path> testResourcesByModule,
+            Map<String, Path> fixturesByModule,
+            Map<String, JkBuild> manifestByCoord,
+            Map<String, String> coordByName) {}
+
+    /**
+     * Every build unit in the workspace — the members AND the buildable root — is a resolvable
+     * sibling. Inter-unit dependencies are explicit (`x = { workspace = true }`) and may point in
+     * any acyclic direction: member→member, member→root, or root→member (Cargo/uv style; no
+     * implicit "root depends on all members"). The unit doing the resolving ({@code self}) is
+     * excluded from its own sibling set.
+     */
+    private static Siblings indexSiblings(Path root, JkBuild rootManifest, Path self) throws IOException {
+        Map<String, Path> siblingDirByModule = new HashMap<>();
+        Map<String, Path> siblingJarByModule = new HashMap<>();
+        Map<String, Path> siblingTestClassesByModule = new HashMap<>();
+        Map<String, Path> siblingTestResourcesByModule = new HashMap<>();
+        Map<String, Path> siblingFixturesByModule = new HashMap<>();
+        Map<String, JkBuild> siblingManifestByCoord = new HashMap<>();
+        Map<String, String> siblingCoordByName = new HashMap<>(); // name → full coord
+        // One load for the whole workspace, not one parse per sibling.
+        // loadModules returns every member with root inheritance applied — the index below. It
+        // throws for a member with no manifest; applyWorkspace already rethrows for any module
+        // carrying workspace deps, so a caller never reaches here with a broken workspace.
+        // WorkspaceClasspathTest pins that from both sides.
+        Map<Path, JkBuild> members = WorkspaceLoader.loadModules(root, rootManifest);
+        Map<Path, JkBuild> units = new LinkedHashMap<>(members);
+        units.put(root, rootManifest); // the root is a unit too
+        for (Map.Entry<Path, JkBuild> unit0 : units.entrySet()) {
+            Path unitDir = unit0.getKey();
+            if (unitDir.toAbsolutePath().normalize().equals(self)) continue; // exclude self
+            JkBuild unit = unit0.getValue();
+            String coord = unit.project().group() + ":" + unit.project().name();
+            BuildLayout layout = BuildLayout.of(unitDir, unit);
+            siblingDirByModule.put(coord, unitDir);
+            siblingJarByModule.put(coord, layout.mainJar());
+            siblingTestClassesByModule.put(coord, layout.testClassesDir());
+            siblingTestResourcesByModule.put(coord, layout.testResourcesDir());
+            siblingFixturesByModule.put(coord, layout.testFixturesClassesDir());
+            siblingManifestByCoord.put(coord, unit);
+            siblingCoordByName.put(unit.project().name(), coord);
+        }
+        return new Siblings(
+                siblingDirByModule,
+                siblingJarByModule,
+                siblingTestClassesByModule,
+                siblingTestResourcesByModule,
+                siblingFixturesByModule,
+                siblingManifestByCoord,
+                siblingCoordByName);
+    }
+
+    /** The transitive workspace closure in discovery order, plus the direct tests/fixtures asks. */
+    private record Closure(LinkedHashSet<String> visited, Set<String> testsKinds, Set<String> fixturesKinds) {}
+
+    /**
+     * Collect the full transitive workspace closure via BFS. Direct deps seed the queue; each
+     * discovered sibling's own workspace deps are then enqueued so that e.g. io→core→model are all
+     * on the classpath even though the module's jk.toml only declares the direct dep (core).
+     * Modules requested with kind=tests also contribute their test classes (direct edges only —
+     * tests kind does not ride transitively). fixtures = true is the same shape for the fixtures
+     * directory.
+     */
+    private static Closure workspaceClosure(JkBuild project, Set<Scope> scopes, Siblings sib) {
+        Map<String, Path> siblingJarByModule = sib.jarByModule();
+        Map<String, String> siblingCoordByName = sib.coordByName();
+        LinkedHashSet<String> visited = new LinkedHashSet<>();
+        Set<String> testsKinds = new HashSet<>();
+        Set<String> fixturesKinds = new HashSet<>();
+        Queue<String> queue = new ArrayDeque<>();
+        for (Scope scope : scopes) {
+            for (Dependency dep : project.dependencies().of(scope)) {
+                String module = resolveWorkspaceRef(dep.module(), siblingCoordByName);
+                if (!siblingJarByModule.containsKey(module)) continue;
+                if (dep.kind() == DependencyKind.TESTS) {
+                    testsKinds.add(module);
+                }
+                if (dep.fixtures()) {
+                    fixturesKinds.add(module);
+                }
+                if (visited.add(module)) {
+                    queue.add(module);
+                }
+            }
+        }
+        while (!queue.isEmpty()) {
+            String coord = queue.poll();
+            JkBuild sibBuild = sib.manifestByCoord().get(coord);
+            if (sibBuild == null) continue;
+            // MAIN and EXPORT propagate transitively: a sibling's exported deps
+            // (api semantics) ride along to anything that depends on it, and MAIN
+            // deps stay visible down the workspace chain (io→core→model).
+            // Tests kind never propagates transitively.
+            for (Scope scope : SIBLING_MODULE_SCOPES) {
+                for (Dependency dep : sibBuild.dependencies().of(scope)) {
+                    String depModule = resolveWorkspaceRef(dep.module(), siblingCoordByName);
+                    if (siblingJarByModule.containsKey(depModule) && visited.add(depModule)) {
+                        queue.add(depModule);
+                    }
+                }
+            }
+        }
+        return new Closure(visited, testsKinds, fixturesKinds);
     }
 
     private static void addIfPresent(

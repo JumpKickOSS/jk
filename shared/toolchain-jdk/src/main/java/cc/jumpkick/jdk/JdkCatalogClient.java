@@ -161,22 +161,8 @@ public final class JdkCatalogClient {
      */
     private JdkCatalog parse(byte[] json, boolean firstClassOnly) throws IOException {
         List<JdkCatalog.Entry> entries = new ArrayList<>(256);
-
-        // Per-JDK fields (depth 2)
-        String vendor = null, product = null, suggestedSdkName = null, version = null;
-        int majorVersion = 0;
-        boolean defaultForMajor = false, preview = false;
-        List<String> aliases = new ArrayList<>();
-        boolean inAliases = false;
-
-        // Per-package fields (depth 3)
-        String os = null, arch = null, packageType = null, url = null;
-        String sha256 = null, installFolderName = null, javaHomeSubpath = null;
-        long archiveSize = 0;
-
+        Scan scan = new Scan();
         int depth = 0;
-        boolean inPackages = false;
-
         try (BufferedReader br = new BufferedReader(new StringReader(new String(json, StandardCharsets.UTF_8)))) {
             String line;
             while ((line = br.readLine()) != null) {
@@ -192,45 +178,7 @@ public final class JdkCatalogClient {
                         }
                     } else if (c == '{') depth++;
                     else if (c == '}') {
-                        if (depth == 3 && inPackages) {
-                            // End of a package entry — emit if complete
-                            if (url != null
-                                    && !url.isEmpty()
-                                    && installFolderName != null
-                                    && !installFolderName.isEmpty()) {
-                                try {
-                                    entries.add(new JdkCatalog.Entry(
-                                            vendor,
-                                            product,
-                                            suggestedSdkName,
-                                            majorVersion,
-                                            version,
-                                            defaultForMajor,
-                                            preview,
-                                            List.copyOf(aliases),
-                                            os,
-                                            arch,
-                                            packageType,
-                                            URI.create(url),
-                                            sha256,
-                                            archiveSize,
-                                            installFolderName,
-                                            javaHomeSubpath));
-                                } catch (IllegalArgumentException ignored) {
-                                    /* bad URL */
-                                }
-                            }
-                            os = arch = packageType = url = sha256 = installFolderName = javaHomeSubpath = null;
-                            archiveSize = 0;
-                        } else if (depth == 2) {
-                            // End of JDK entry
-                            vendor = product = suggestedSdkName = version = null;
-                            majorVersion = 0;
-                            defaultForMajor = false;
-                            preview = false;
-                            aliases = new ArrayList<>();
-                            inPackages = false;
-                        }
+                        scan.closeObject(depth, entries);
                         depth--;
                     }
                 }
@@ -238,12 +186,7 @@ public final class JdkCatalogClient {
                 // Field extraction
                 int colon = t.indexOf(':');
                 if (colon <= 0) {
-                    // Array element (alias string)
-                    if (inAliases && t.startsWith("\"")) {
-                        String v = unquote(t.replaceAll(",$", ""));
-                        if (!v.isEmpty()) aliases.add(v);
-                    }
-                    if (t.equals("]")) inAliases = false;
+                    scan.arrayElement(t);
                     continue;
                 }
                 String key = unquote(t.substring(0, colon).strip());
@@ -251,48 +194,125 @@ public final class JdkCatalogClient {
                 boolean isArray = val.startsWith("[");
                 boolean isObj = val.startsWith("{");
                 if (!isArray && !isObj) val = unquote(val);
-
-                if (depth == 2) {
-                    switch (key) {
-                        case "vendor" -> vendor = val;
-                        case "product" -> product = val;
-                        case "suggested_sdk_name" -> suggestedSdkName = val;
-                        case "jdk_version_major" -> {
-                            try {
-                                majorVersion = Integer.parseInt(val);
-                            } catch (NumberFormatException e2) {
-                                majorVersion = 0;
-                            }
-                        }
-                        case "jdk_version" -> version = val;
-                        case "default" -> defaultForMajor = "true".equals(val);
-                        case "preview" -> preview = "true".equals(val);
-                        case "packages" -> inPackages = true;
-                        case "shared_index_aliases" -> {
-                            if (isArray && !val.equals("[]")) inAliases = true;
-                        }
-                    }
-                } else if (depth == 3 && inPackages) {
-                    switch (key) {
-                        case "os" -> os = val;
-                        case "arch" -> arch = val;
-                        case "package_type" -> packageType = val;
-                        case "url" -> url = val;
-                        case "sha256" -> sha256 = val;
-                        case "archive_size" -> {
-                            try {
-                                archiveSize = Long.parseLong(val);
-                            } catch (NumberFormatException e2) {
-                                archiveSize = 0;
-                            }
-                        }
-                        case "install_folder_name" -> installFolderName = val;
-                        case "package_to_java_home_prefix" -> javaHomeSubpath = val;
-                    }
-                }
+                scan.field(depth, key, val, isArray);
             }
         }
         return new JdkCatalog(filterSupported(entries, firstClassOnly));
+    }
+
+    /** The line scanner's state: the JDK entry (depth 2) and the package (depth 3) being read. */
+    private static final class Scan {
+        // Per-JDK fields (depth 2)
+        String vendor;
+        String product;
+        String suggestedSdkName;
+        String version;
+        int majorVersion = 0;
+        boolean defaultForMajor = false;
+        boolean preview = false;
+        List<String> aliases = new ArrayList<>();
+        boolean inAliases = false;
+
+        // Per-package fields (depth 3)
+        String os;
+        String arch;
+        String packageType;
+        String url;
+        String sha256;
+        String installFolderName;
+        String javaHomeSubpath;
+        long archiveSize = 0;
+        boolean inPackages = false;
+
+        /** A closing brace at {@code depth}: a complete package becomes an entry; a JDK entry resets. */
+        void closeObject(int depth, List<JdkCatalog.Entry> entries) {
+            if (depth == 3 && inPackages) {
+                // End of a package entry — emit if complete
+                if (url != null && !url.isEmpty() && installFolderName != null && !installFolderName.isEmpty()) {
+                    try {
+                        entries.add(new JdkCatalog.Entry(
+                                vendor,
+                                product,
+                                suggestedSdkName,
+                                majorVersion,
+                                version,
+                                defaultForMajor,
+                                preview,
+                                List.copyOf(aliases),
+                                os,
+                                arch,
+                                packageType,
+                                URI.create(url),
+                                sha256,
+                                archiveSize,
+                                installFolderName,
+                                javaHomeSubpath));
+                    } catch (IllegalArgumentException ignored) {
+                        /* bad URL */
+                    }
+                }
+                os = arch = packageType = url = sha256 = installFolderName = javaHomeSubpath = null;
+                archiveSize = 0;
+            } else if (depth == 2) {
+                // End of JDK entry
+                vendor = product = suggestedSdkName = version = null;
+                majorVersion = 0;
+                defaultForMajor = false;
+                preview = false;
+                aliases = new ArrayList<>();
+                inPackages = false;
+            }
+        }
+
+        /** A line with no key: an alias string inside the open array, or the array's end. */
+        void arrayElement(String t) {
+            if (inAliases && t.startsWith("\"")) {
+                String v = unquote(t.replaceAll(",$", ""));
+                if (!v.isEmpty()) aliases.add(v);
+            }
+            if (t.equals("]")) inAliases = false;
+        }
+
+        void field(int depth, String key, String val, boolean isArray) {
+            if (depth == 2) {
+                switch (key) {
+                    case "vendor" -> vendor = val;
+                    case "product" -> product = val;
+                    case "suggested_sdk_name" -> suggestedSdkName = val;
+                    case "jdk_version_major" -> {
+                        try {
+                            majorVersion = Integer.parseInt(val);
+                        } catch (NumberFormatException e2) {
+                            majorVersion = 0;
+                        }
+                    }
+                    case "jdk_version" -> version = val;
+                    case "default" -> defaultForMajor = "true".equals(val);
+                    case "preview" -> preview = "true".equals(val);
+                    case "packages" -> inPackages = true;
+                    case "shared_index_aliases" -> {
+                        if (isArray && !val.equals("[]")) inAliases = true;
+                    }
+                }
+            } else if (depth == 3 && inPackages) {
+                switch (key) {
+                    case "os" -> os = val;
+                    case "arch" -> arch = val;
+                    case "package_type" -> packageType = val;
+                    case "url" -> url = val;
+                    case "sha256" -> sha256 = val;
+                    case "archive_size" -> {
+                        try {
+                            archiveSize = Long.parseLong(val);
+                        } catch (NumberFormatException e2) {
+                            archiveSize = 0;
+                        }
+                    }
+                    case "install_folder_name" -> installFolderName = val;
+                    case "package_to_java_home_prefix" -> javaHomeSubpath = val;
+                }
+            }
+        }
     }
 
     /** Strip surrounding double-quotes and unescape basic sequences. */

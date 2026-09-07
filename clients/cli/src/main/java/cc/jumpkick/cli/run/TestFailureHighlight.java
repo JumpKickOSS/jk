@@ -167,11 +167,10 @@ public final class TestFailureHighlight {
 
     private static final String BODY_INDENT = "    ";
 
-    private static List<String> paintBlock(List<String> block) {
-        List<String> out = new ArrayList<>(block.size() + 8);
-        Theme t = Theme.active();
+    /** The header fields of one failure block and the index of the first body line. */
+    private record Header(@Nullable String module, int count, boolean plural, int bodyStart) {}
 
-        // ---- parse header fields --------------------------------------------
+    private static Header parseHeader(List<String> block) {
         String module = null;
         int count = 1;
         boolean plural = false;
@@ -202,7 +201,16 @@ public final class TestFailureHighlight {
             if (raw.strip().startsWith("FAILED ") || raw.startsWith("@@")) break;
             i++;
         }
-        out.add(paintHeaderLine(module, count, plural));
+        return new Header(module, count, plural, i);
+    }
+
+    private static List<String> paintBlock(List<String> block) {
+        List<String> out = new ArrayList<>(block.size() + 8);
+        Theme t = Theme.active();
+
+        Header header = parseHeader(block);
+        int i = header.bodyStart();
+        out.add(paintHeaderLine(header.module(), header.count(), header.plural()));
         out.add(rail("", t)); // blank under header
 
         // ---- body (red rail around the existing content) -------------------

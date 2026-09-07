@@ -41,14 +41,43 @@ final class ForbidEvaluator implements Evaluator {
         TypeHierarchy types = ctx.hierarchy();
         TomlTable t = rule.table();
 
+        Signatures sigs = resolveSignatures(t, types);
+        if (sigs.unknownSet() != null) {
+            return Evaluation.failed("unknown bundled set " + sigs.unknownSet() + "; sets are "
+                    + String.join(", ", new TreeSet<>(BundledSets.NAMES)));
+        }
+        if (sigs.live().isEmpty()) {
+            if (sigs.unresolved().isEmpty()) {
+                return Evaluation.notEvaluated(
+                        "none of the bundled signatures resolve here (the framework is not on this module's classpath)");
+            }
+            return new Evaluation(
+                            Outcome.CLEAN,
+                            Map.of("classes", (long) facts.classes().size(), "sites", 0L),
+                            List.of(),
+                            "does not resolve on this module's classpath: " + String.join(", ", sigs.unresolved()))
+                    .withBite(false);
+        }
+
+        Scan scan = new Scan(
+                rule, ctx, sigs.live(), strings(t, "owner"), strings(t, "args"), strings(t, "except-annotated"));
+        for (ClassFacts c : facts.classList()) scan.clazz(c);
+        return scan.finish(facts);
+    }
+
+    /** The rule's signatures as this module resolves them; {@code unknownSet} names a set reference nothing bundles. */
+    private record Signatures(
+            List<Signature> live,
+            List<String> unresolved,
+            @Nullable String unknownSet) {}
+
+    private static Signatures resolveSignatures(TomlTable t, TypeHierarchy types) {
         Set<String> bundled = new LinkedHashSet<>();
         List<Signature> signatures = new ArrayList<>();
         for (String raw : strings(t, "signatures")) {
             if (BundledSets.isSetReference(raw)) {
                 var set = BundledSets.expand(raw);
-                if (set.isEmpty())
-                    return Evaluation.failed("unknown bundled set " + raw + "; sets are "
-                            + String.join(", ", new TreeSet<>(BundledSets.NAMES)));
+                if (set.isEmpty()) return new Signatures(List.of(), List.of(), raw);
                 for (String s : set.get()) {
                     signatures.add(Signature.parse(s));
                     bundled.add(s);
@@ -70,134 +99,155 @@ final class ForbidEvaluator implements Evaluator {
             }
             live.add(s);
         }
-        if (live.isEmpty()) {
-            if (unresolved.isEmpty()) {
-                return Evaluation.notEvaluated(
-                        "none of the bundled signatures resolve here (the framework is not on this module's classpath)");
-            }
-            return new Evaluation(
-                            Outcome.CLEAN,
-                            Map.of("classes", (long) facts.classes().size(), "sites", 0L),
-                            List.of(),
-                            "does not resolve on this module's classpath: " + String.join(", ", unresolved))
-                    .withBite(false);
+        return new Signatures(live, unresolved, null);
+    }
+
+    /** One evaluation's walk over the classes: the rule's resolved shape, and the counts and sites it leaves. */
+    private static final class Scan {
+        private final Rule rule;
+        private final EvalContext ctx;
+        private final TypeHierarchy types;
+        private final List<Signature> live;
+        private final List<String> owners;
+        private final List<String> args;
+        private final List<String> exceptAnnotated;
+        private final Map<Allow, Boolean> allowUsed = new LinkedHashMap<>();
+        private long examined = 0;
+        private long matched = 0;
+        private boolean ownerSeen = false;
+        private boolean ownerHasSite = false;
+        private final List<Observation> sites = new ArrayList<>();
+
+        Scan(
+                Rule rule,
+                EvalContext ctx,
+                List<Signature> live,
+                List<String> owners,
+                List<String> args,
+                List<String> exceptAnnotated) {
+            this.rule = rule;
+            this.ctx = ctx;
+            this.types = ctx.hierarchy();
+            this.live = live;
+            this.owners = owners;
+            this.args = args;
+            this.exceptAnnotated = exceptAnnotated;
+            for (Allow a : rule.allow()) allowUsed.put(a, false);
         }
 
-        List<String> owners = strings(t, "owner");
-        List<String> args = strings(t, "args");
-        List<String> exceptAnnotated = strings(t, "except-annotated");
-        Map<Allow, Boolean> allowUsed = new LinkedHashMap<>();
-        for (Allow a : rule.allow()) allowUsed.put(a, false);
-
-        long examined = 0;
-        long matched = 0;
-        boolean ownerSeen = false;
-        boolean ownerHasSite = false;
-        List<Observation> sites = new ArrayList<>();
-        for (ClassFacts c : facts.classList()) {
+        void clazz(ClassFacts c) {
             boolean inOwner = inOwner(c, owners);
             if (inOwner) ownerSeen = true;
             boolean classExempt = annotated(c.annotations(), exceptAnnotated);
             String self = Descriptors.outermost(c.name());
             for (MethodFacts m : c.methods()) {
                 boolean exempt = classExempt || annotated(m.annotations(), exceptAnnotated);
-                for (CallSite s : m.calls()) {
-                    examined++;
-                    if (matchCall(live, s, types) == null) continue;
-                    if (!args.isEmpty() && !argMatches(args, s)) continue;
-                    matched++;
-                    if (inOwner) {
-                        ownerHasSite = true;
-                        continue;
-                    }
-                    if (Descriptors.outermost(s.owner()).equals(self)) continue; // a class is never outside itself
-                    if (exempt) continue;
-                    Allow a = allowing(rule.allow(), c, ctx.module());
-                    if (a != null) {
-                        allowUsed.put(a, true);
-                        continue;
-                    }
-                    String fp = Fingerprints.normalise(c.binaryName() + "#" + m.member()) + " -> " + s.target();
-                    sites.add(Observation.site(
-                            fp,
-                            source(ctx, c),
-                            s.line(),
-                            display(s) + " called outside "
-                                    + (owners.isEmpty() ? "any owner" : String.join(", ", owners)) + " (from "
-                                    + c.binaryName() + "#" + m.name() + ")"));
-                }
-                for (FieldRef r : m.fieldRefs()) {
-                    examined++;
-                    if (matchField(live, r, types) == null) continue;
-                    matched++;
-                    if (inOwner) {
-                        ownerHasSite = true;
-                        continue;
-                    }
-                    if (Descriptors.outermost(r.owner()).equals(self)) continue;
-                    if (exempt) continue;
-                    Allow a = allowing(rule.allow(), c, ctx.module());
-                    if (a != null) {
-                        allowUsed.put(a, true);
-                        continue;
-                    }
-                    String fp = Fingerprints.normalise(c.binaryName() + "#" + m.member()) + " -> " + r.target();
-                    sites.add(Observation.site(
-                            fp,
-                            source(ctx, c),
-                            r.line(),
-                            Descriptors.binaryName(r.owner()) + "." + r.name() + " referenced outside the owner (from "
-                                    + c.binaryName() + "#" + m.name() + ")"));
-                }
+                calls(c, m, inOwner, exempt, self);
+                fieldRefs(c, m, inOwner, exempt, self);
             }
-            if (args.isEmpty()) {
-                for (String ref : c.typeRefs()) {
-                    examined++;
-                    if (matchType(live, ref, types) == null) continue;
-                    matched++;
-                    if (inOwner) {
-                        ownerHasSite = true;
-                        continue;
-                    }
-                    if (Descriptors.outermost(ref).equals(self)) continue;
-                    if (classExempt) continue;
-                    Allow a = allowing(rule.allow(), c, ctx.module());
-                    if (a != null) {
-                        allowUsed.put(a, true);
-                        continue;
-                    }
-                    sites.add(Observation.site(
-                            c.binaryName() + " -> " + Descriptors.binaryName(ref),
-                            source(ctx, c),
-                            0,
-                            Descriptors.binaryName(ref) + " referenced from " + c.binaryName()));
+            if (args.isEmpty()) typeRefs(c, inOwner, classExempt, self);
+        }
+
+        private void calls(ClassFacts c, MethodFacts m, boolean inOwner, boolean exempt, String self) {
+            for (CallSite s : m.calls()) {
+                examined++;
+                if (matchCall(live, s, types) == null) continue;
+                if (!args.isEmpty() && !argMatches(args, s)) continue;
+                matched++;
+                if (inOwner) {
+                    ownerHasSite = true;
+                    continue;
                 }
+                if (Descriptors.outermost(s.owner()).equals(self)) continue; // a class is never outside itself
+                if (exempt) continue;
+                if (allowed(c)) continue;
+                String fp = Fingerprints.normalise(c.binaryName() + "#" + m.member()) + " -> " + s.target();
+                sites.add(Observation.site(
+                        fp,
+                        source(ctx, c),
+                        s.line(),
+                        display(s) + " called outside " + (owners.isEmpty() ? "any owner" : String.join(", ", owners))
+                                + " (from " + c.binaryName() + "#" + m.name() + ")"));
             }
         }
-        Map<String, Long> population = Map.of("classes", (long) facts.classes().size(), "sites", examined);
-        if (!owners.isEmpty() && !facts.classes().isEmpty()) {
-            if (!ownerSeen) {
-                // The owner may live in another module; only a module that should hold it is judged.
-                if (ownerPackageIsHere(owners, facts))
-                    return Evaluation.ownerMissing("owner " + String.join(", ", owners) + " is not in this module");
-            } else if (!ownerHasSite) {
-                return Evaluation.ownerMissing("owner " + String.join(", ", owners) + " no longer uses " + summary(live)
-                        + " itself; the rule points callers at nothing");
+
+        private void fieldRefs(ClassFacts c, MethodFacts m, boolean inOwner, boolean exempt, String self) {
+            for (FieldRef r : m.fieldRefs()) {
+                examined++;
+                if (matchField(live, r, types) == null) continue;
+                matched++;
+                if (inOwner) {
+                    ownerHasSite = true;
+                    continue;
+                }
+                if (Descriptors.outermost(r.owner()).equals(self)) continue;
+                if (exempt) continue;
+                if (allowed(c)) continue;
+                String fp = Fingerprints.normalise(c.binaryName() + "#" + m.member()) + " -> " + r.target();
+                sites.add(Observation.site(
+                        fp,
+                        source(ctx, c),
+                        r.line(),
+                        Descriptors.binaryName(r.owner()) + "." + r.name() + " referenced outside the owner (from "
+                                + c.binaryName() + "#" + m.name() + ")"));
             }
         }
-        List<String> stale = new ArrayList<>();
-        for (var e : allowUsed.entrySet())
-            if (!e.getValue() && appliesHere(e.getKey(), facts, ctx.module()))
-                stale.add(e.getKey().in());
-        if (!stale.isEmpty() && !facts.classes().isEmpty()) {
-            return new Evaluation(
-                    Outcome.STALE_ALLOW,
-                    population,
-                    sites,
-                    "allow entries matched nothing: " + String.join(", ", stale));
+
+        private void typeRefs(ClassFacts c, boolean inOwner, boolean classExempt, String self) {
+            for (String ref : c.typeRefs()) {
+                examined++;
+                if (matchType(live, ref, types) == null) continue;
+                matched++;
+                if (inOwner) {
+                    ownerHasSite = true;
+                    continue;
+                }
+                if (Descriptors.outermost(ref).equals(self)) continue;
+                if (classExempt) continue;
+                if (allowed(c)) continue;
+                sites.add(Observation.site(
+                        c.binaryName() + " -> " + Descriptors.binaryName(ref),
+                        source(ctx, c),
+                        0,
+                        Descriptors.binaryName(ref) + " referenced from " + c.binaryName()));
+            }
         }
-        // An allowed or exempt match is still the rule seeing its shape: evidence it can bite.
-        return Evaluation.of(population, sites).withBite(ownerHasSite || matched > 0);
+
+        /** An allow entry covering {@code c} is marked used and the site is not recorded. */
+        private boolean allowed(ClassFacts c) {
+            Allow a = allowing(rule.allow(), c, ctx.module());
+            if (a == null) return false;
+            allowUsed.put(a, true);
+            return true;
+        }
+
+        Evaluation finish(FactsIndex facts) {
+            Map<String, Long> population =
+                    Map.of("classes", (long) facts.classes().size(), "sites", examined);
+            if (!owners.isEmpty() && !facts.classes().isEmpty()) {
+                if (!ownerSeen) {
+                    // The owner may live in another module; only a module that should hold it is judged.
+                    if (ownerPackageIsHere(owners, facts))
+                        return Evaluation.ownerMissing("owner " + String.join(", ", owners) + " is not in this module");
+                } else if (!ownerHasSite) {
+                    return Evaluation.ownerMissing("owner " + String.join(", ", owners) + " no longer uses "
+                            + summary(live) + " itself; the rule points callers at nothing");
+                }
+            }
+            List<String> stale = new ArrayList<>();
+            for (var e : allowUsed.entrySet())
+                if (!e.getValue() && appliesHere(e.getKey(), facts, ctx.module()))
+                    stale.add(e.getKey().in());
+            if (!stale.isEmpty() && !facts.classes().isEmpty()) {
+                return new Evaluation(
+                        Outcome.STALE_ALLOW,
+                        population,
+                        sites,
+                        "allow entries matched nothing: " + String.join(", ", stale));
+            }
+            // An allowed or exempt match is still the rule seeing its shape: evidence it can bite.
+            return Evaluation.of(population, sites).withBite(ownerHasSite || matched > 0);
+        }
     }
 
     // ---- matching -----------------------------------------------------------------------------

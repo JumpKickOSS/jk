@@ -128,86 +128,108 @@ public final class FormatCommand implements CliCommand {
             CommandWedge.printFail("Format", e.getMessage());
             return Exit.USAGE;
         }
-        boolean optimizeImports = styles.optimizeImports();
-
         Path cache = JkDirs.cache();
         boolean animate =
                 !check && !global.outputIsJson() && !global.noProgress && BuildPlanConsole.isInteractiveTerminal();
+        Run run = new Run(startMs, global, check, projectDir, cache, styles);
+        return animate ? runAnimated(run) : runPlain(run);
+    }
 
-        if (!animate) {
-            // Plain path: --check, piped output, CI, --no-progress.
-            int[] counts = {0, 0, 0}; // changed, clean, errors
-            HostedEvents.FileObserver observer = (path, status, msg, index, total) -> {
-                if ("changed".equals(status)) {
-                    counts[0]++;
-                    if (!global.outputIsJson()) {
-                        // Under --check a changed file is a finding, not an accomplishment: the
-                        // command is about to exit non-zero *because* of these lines, so they must
-                        // not wear the success glyph.
-                        String mark = check
-                                ? (Theme.active().isAnsi()
-                                        ? Theme.colorize(
-                                                Glyphs.CROSS, Theme.active().warning())
-                                        : Glyphs.CROSS_PLAIN)
-                                : (Theme.active().isAnsi()
-                                        ? Theme.colorize(
-                                                Glyphs.CHECK, Theme.active().success())
-                                        : Glyphs.CHECK_PLAIN);
-                        String rel = Theme.active().isAnsi()
-                                ? Theme.colorize(
-                                        PathDisplay.of(Path.of(path), projectDir),
-                                        Theme.active().path())
-                                : PathDisplay.of(Path.of(path), projectDir);
-                        CliOutput.out(mark + " " + (check ? "unformatted: " : "Formatted: ") + rel);
-                    }
-                } else if ("error".equals(status)) {
-                    counts[2]++;
-                    CliOutput.err("  error  " + path + ": " + msg);
-                } else {
-                    counts[1]++;
+    /** What both transports of one {@code jk format} invocation read. */
+    private record Run(
+            long startMs,
+            GlobalOptions global,
+            boolean check,
+            Path projectDir,
+            Path cache,
+            FormatStyles.Resolved styles) {}
+
+    /** Plain path: --check, piped output, CI, --no-progress. */
+    private static int runPlain(Run run) throws IOException, InterruptedException {
+        long startMs = run.startMs();
+        GlobalOptions global = run.global();
+        boolean check = run.check();
+        Path projectDir = run.projectDir();
+        FormatStyles.Resolved styles = run.styles();
+        int[] counts = {0, 0, 0}; // changed, clean, errors
+        HostedEvents.FileObserver observer = (path, status, msg, index, total) -> {
+            if ("changed".equals(status)) {
+                counts[0]++;
+                if (!global.outputIsJson()) {
+                    // Under --check a changed file is a finding, not an accomplishment: the
+                    // command is about to exit non-zero *because* of these lines, so they must
+                    // not wear the success glyph.
+                    String mark = check
+                            ? (Theme.active().isAnsi()
+                                    ? Theme.colorize(
+                                            Glyphs.CROSS, Theme.active().warning())
+                                    : Glyphs.CROSS_PLAIN)
+                            : (Theme.active().isAnsi()
+                                    ? Theme.colorize(
+                                            Glyphs.CHECK, Theme.active().success())
+                                    : Glyphs.CHECK_PLAIN);
+                    String rel = Theme.active().isAnsi()
+                            ? Theme.colorize(
+                                    PathDisplay.of(Path.of(path), projectDir),
+                                    Theme.active().path())
+                            : PathDisplay.of(Path.of(path), projectDir);
+                    CliOutput.out(mark + " " + (check ? "unformatted: " : "Formatted: ") + rel);
                 }
-            };
-            Outcome o;
-            try {
-                o = runFormatBuildPlan(
-                        projectDir,
-                        cache,
-                        check,
-                        styles,
-                        optimizeImports,
-                        styles.importOrder(),
-                        styles.removeUnusedImports(),
-                        global,
-                        observer,
-                        chatterListener(global, line -> CliOutput.err("  [formatter] " + line)));
-            } catch (IOException e) {
-                CommandWedge.printFail("Format", e.getMessage());
-                return Exit.SOFTWARE;
+            } else if ("error".equals(status)) {
+                counts[2]++;
+                CliOutput.err("  error  " + path + ": " + msg);
+            } else {
+                counts[1]++;
             }
-            if (!o.result().success()) {
-                for (BuildPlanResult.Diagnostic d : o.result().errors()) {
-                    CommandWedge.printFail("Format", d.message());
-                }
-                return PLAN_FAILED;
-            }
-            if (o.total() == 0) {
-                if (!global.outputIsJson()) CommandWedge.printOk("Format", "no Java or Kotlin sources found.");
-                return 0;
-            }
-            if (!global.outputIsJson()) {
-                String took = ConsoleSpec.took(Duration.ofMillis(System.currentTimeMillis() - startMs));
-                Summary summary = summarize(check, counts[0], counts[1], counts[2], took);
-                if (summary.failed()) {
-                    CommandWedge.printFail("Format", summary.body());
-                } else {
-                    CommandWedge.printOk("Format", summary.body());
-                }
-            }
-            return o.workerExit();
+        };
+        Outcome o;
+        try {
+            o = runFormatBuildPlan(
+                    projectDir,
+                    run.cache(),
+                    check,
+                    styles,
+                    styles.optimizeImports(),
+                    styles.importOrder(),
+                    styles.removeUnusedImports(),
+                    global,
+                    observer,
+                    chatterListener(global, line -> CliOutput.err("  [formatter] " + line)));
+        } catch (IOException e) {
+            CommandWedge.printFail("Format", e.getMessage());
+            return Exit.SOFTWARE;
         }
+        if (!o.result().success()) {
+            for (BuildPlanResult.Diagnostic d : o.result().errors()) {
+                CommandWedge.printFail("Format", d.message());
+            }
+            return PLAN_FAILED;
+        }
+        if (o.total() == 0) {
+            if (!global.outputIsJson()) CommandWedge.printOk("Format", "no Java or Kotlin sources found.");
+            return 0;
+        }
+        if (!global.outputIsJson()) {
+            String took = ConsoleSpec.took(Duration.ofMillis(System.currentTimeMillis() - startMs));
+            Summary summary = summarize(check, counts[0], counts[1], counts[2], took);
+            if (summary.failed()) {
+                CommandWedge.printFail("Format", summary.body());
+            } else {
+                CommandWedge.printOk("Format", summary.body());
+            }
+        }
+        return o.workerExit();
+    }
 
-        // Animated path — start the TUI *first*, so the spinner is already visible while the plan's
-        // collect/resolve steps (I/O) run behind it.
+    /**
+     * Animated path — start the TUI <em>first</em>, so the spinner is already visible while the
+     * plan's collect/resolve steps (I/O) run behind it.
+     */
+    private static int runAnimated(Run run) throws IOException, InterruptedException {
+        long startMs = run.startMs();
+        GlobalOptions global = run.global();
+        Path projectDir = run.projectDir();
+        FormatStyles.Resolved styles = run.styles();
         String subtitle = "Formatting files…";
         try (JkManager cm = JkManager.plan(CliOutput.stdout(), "Format", true)) {
             cm.addTaskLabeled("", "fmt", subtitle);
@@ -231,10 +253,10 @@ public final class FormatCommand implements CliCommand {
             try {
                 o = runFormatBuildPlan(
                         projectDir,
-                        cache,
+                        run.cache(),
                         false,
                         styles,
-                        optimizeImports,
+                        styles.optimizeImports(),
                         styles.importOrder(),
                         styles.removeUnusedImports(),
                         global,

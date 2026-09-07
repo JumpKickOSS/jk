@@ -58,55 +58,95 @@ final class LayersEvaluator implements Evaluator {
         if (exact && edges.equals("manifest"))
             return Evaluation.failed("exact needs class edges: edges = \"classes\" or \"both\"");
 
-        List<Path> moduleDirs = ctx.modules();
-        WorkspaceModel model = WorkspaceModel.of(ctx.root(), moduleDirs);
-        Map<Allow, Boolean> allowUsed = new LinkedHashMap<>();
-        for (Allow a : rule.allow()) allowUsed.put(a, false);
-        Map<String, Long> members = new TreeMap<>();
-        for (String l : layers.keySet()) members.put(l, 0L);
-        List<Observation> sites = new ArrayList<>();
-        long edgeCount = 0;
+        Scan scan = new Scan(rule, ctx, layers, closed, access, edges, exact, exportsTable);
+        scan.manifestEdges();
+        if (!edges.equals("manifest")) scan.classEdges();
+        return scan.finish();
+    }
 
-        // ---- manifest edges: module → sibling module
-        Map<String, Set<String>> manifestEdges = new TreeMap<>();
-        for (String module : model.modules()) {
-            // Membership is the workspace's; `scope` only picks whose edges are judged.
-            Set<String> from = moduleLayers(layers, module);
-            for (String l : from) members.merge(l, 1L, Long::sum);
-            if (!rule.applies(module)) continue;
-            Set<String> to = model.edgesFrom(module, ModuleOrder.PRODUCTION_SCOPES);
-            manifestEdges.put(module, to);
-            if (edges.equals("classes")) continue;
-            for (String target : to) {
-                edgeCount++;
-                Set<String> targetLayers = moduleLayers(layers, target);
-                for (String a : from) {
-                    if (closed && targetLayers.isEmpty()) {
-                        if (allowed(rule, allowUsed, module, target)) continue;
-                        sites.add(Observation.site(
-                                "module:" + module + " -> " + target,
-                                module + "/" + ManifestPaths.MANIFEST,
-                                0,
-                                module + " (" + a + ") depends on " + target + ", which is in no layer; " + a
-                                        + " may depend on " + describe(access.get(a)) + " (closed)"));
-                        continue;
-                    }
-                    for (String b : targetLayers) {
-                        if (a.equals(b) || access.getOrDefault(a, Set.of()).contains(b)) continue;
-                        if (allowed(rule, allowUsed, module, target)) continue;
-                        sites.add(Observation.site(
-                                "module:" + module + " -> " + target,
-                                module + "/" + ManifestPaths.MANIFEST,
-                                0,
-                                module + " (" + a + ") depends on " + target + " (" + b + "); " + a + " may depend on "
-                                        + describe(access.get(a))));
+    /** One evaluation's walk: the rule's layers and access, and the members, edges and sites it finds. */
+    private static final class Scan {
+        private final Rule rule;
+        private final EvalContext ctx;
+        private final Map<String, List<String>> layers;
+        private final boolean closed;
+        private final Map<String, Set<String>> access;
+        private final String edges;
+        private final boolean exact;
+        private final @Nullable TomlTable exportsTable;
+        private final List<Path> moduleDirs;
+        private final WorkspaceModel model;
+        private final Map<Allow, Boolean> allowUsed = new LinkedHashMap<>();
+        private final Map<String, Long> members = new TreeMap<>();
+        private final List<Observation> sites = new ArrayList<>();
+        private long edgeCount = 0;
+        private final Map<String, Set<String>> manifestEdges = new TreeMap<>();
+
+        Scan(
+                Rule rule,
+                EvalContext ctx,
+                Map<String, List<String>> layers,
+                boolean closed,
+                Map<String, Set<String>> access,
+                String edges,
+                boolean exact,
+                @Nullable TomlTable exportsTable)
+                throws IOException {
+            this.rule = rule;
+            this.ctx = ctx;
+            this.layers = layers;
+            this.closed = closed;
+            this.access = access;
+            this.edges = edges;
+            this.exact = exact;
+            this.exportsTable = exportsTable;
+            this.moduleDirs = ctx.modules();
+            this.model = WorkspaceModel.of(ctx.root(), moduleDirs);
+            for (Allow a : rule.allow()) allowUsed.put(a, false);
+            for (String l : layers.keySet()) members.put(l, 0L);
+        }
+
+        /** Manifest edges: module → sibling module. */
+        void manifestEdges() {
+            for (String module : model.modules()) {
+                // Membership is the workspace's; `scope` only picks whose edges are judged.
+                Set<String> from = moduleLayers(layers, module);
+                for (String l : from) members.merge(l, 1L, Long::sum);
+                if (!rule.applies(module)) continue;
+                Set<String> to = model.edgesFrom(module, ModuleOrder.PRODUCTION_SCOPES);
+                manifestEdges.put(module, to);
+                if (edges.equals("classes")) continue;
+                for (String target : to) {
+                    edgeCount++;
+                    Set<String> targetLayers = moduleLayers(layers, target);
+                    for (String a : from) {
+                        if (closed && targetLayers.isEmpty()) {
+                            if (allowed(rule, allowUsed, module, target)) continue;
+                            sites.add(Observation.site(
+                                    "module:" + module + " -> " + target,
+                                    module + "/" + ManifestPaths.MANIFEST,
+                                    0,
+                                    module + " (" + a + ") depends on " + target + ", which is in no layer; " + a
+                                            + " may depend on " + describe(access.get(a)) + " (closed)"));
+                            continue;
+                        }
+                        for (String b : targetLayers) {
+                            if (a.equals(b) || access.getOrDefault(a, Set.of()).contains(b)) continue;
+                            if (allowed(rule, allowUsed, module, target)) continue;
+                            sites.add(Observation.site(
+                                    "module:" + module + " -> " + target,
+                                    module + "/" + ManifestPaths.MANIFEST,
+                                    0,
+                                    module + " (" + a + ") depends on " + target + " (" + b + "); " + a
+                                            + " may depend on " + describe(access.get(a))));
+                        }
                     }
                 }
             }
         }
 
-        // ---- class edges: a type reference across layers, exports, exact
-        if (!edges.equals("manifest")) {
+        /** Class edges: a type reference across layers, exports, exact. */
+        void classEdges() throws IOException {
             FactsIndex facts = ctx.facts();
             Map<String, String> classModule = WorkspaceFacts.classModules(ctx.root(), moduleDirs);
             Set<String> used = new TreeSet<>();
@@ -122,33 +162,7 @@ final class LayersEvaluator implements Evaluator {
                     String targetModule = classModule.getOrDefault(ref, "");
                     edgeCount++;
                     if (!module.equals(targetModule)) used.add(module + " -> " + targetModule);
-                    Set<String> to = classLayers(layers, target, targetModule);
-                    for (String a : from) {
-                        for (String b : to) {
-                            if (a.equals(b) || access.getOrDefault(a, Set.of()).contains(b)) continue;
-                            if (allowedClass(rule, allowUsed, c, module)) continue;
-                            sites.add(Observation.site(
-                                    c.binaryName() + " -> " + target.binaryName(),
-                                    ForbidEvaluator.source(ctx, c),
-                                    0,
-                                    c.binaryName() + " (" + a + ") references " + target.binaryName() + " (" + b + "); "
-                                            + a + " may depend on " + describe(access.get(a))));
-                        }
-                    }
-                    if (exportsTable != null && !module.equals(targetModule) && exportsTable.contains(targetModule)) {
-                        List<String> visible = strings(exportsTable.get(targetModule));
-                        boolean exported = false;
-                        for (String pkg : visible)
-                            if (ClassPredicates.packageMatches(pkg, target.packageName())) exported = true;
-                        if (!exported && !allowedClass(rule, allowUsed, c, module)) {
-                            sites.add(Observation.site(
-                                    c.binaryName() + " -> " + target.binaryName() + " | export",
-                                    ForbidEvaluator.source(ctx, c),
-                                    0,
-                                    c.binaryName() + " references " + target.binaryName() + ", which " + targetModule
-                                            + " does not export (exports " + visible + ")"));
-                        }
-                    }
+                    classEdge(c, module, from, target, targetModule);
                 }
             }
             if (exact) {
@@ -166,31 +180,63 @@ final class LayersEvaluator implements Evaluator {
             }
         }
 
-        Map<String, Long> population = new TreeMap<>();
-        population.put("edges", edgeCount);
-        for (var e : members.entrySet()) population.put("layer:" + e.getKey(), e.getValue());
-        List<String> empty = new ArrayList<>();
-        for (var e : members.entrySet()) if (e.getValue() == 0) empty.add(e.getKey());
-        if (!empty.isEmpty() || edgeCount == 0) {
-            return new Evaluation(
-                    Outcome.BLIND,
-                    population,
-                    List.of(),
-                    empty.isEmpty()
-                            ? "no edge between any two layers"
-                            : "layer(s) with no member: " + String.join(", ", empty));
+        private void classEdge(ClassFacts c, String module, Set<String> from, ClassFacts target, String targetModule) {
+            Set<String> to = classLayers(layers, target, targetModule);
+            for (String a : from) {
+                for (String b : to) {
+                    if (a.equals(b) || access.getOrDefault(a, Set.of()).contains(b)) continue;
+                    if (allowedClass(rule, allowUsed, c, module)) continue;
+                    sites.add(Observation.site(
+                            c.binaryName() + " -> " + target.binaryName(),
+                            ForbidEvaluator.source(ctx, c),
+                            0,
+                            c.binaryName() + " (" + a + ") references " + target.binaryName() + " (" + b + "); " + a
+                                    + " may depend on " + describe(access.get(a))));
+                }
+            }
+            if (exportsTable != null && !module.equals(targetModule) && exportsTable.contains(targetModule)) {
+                List<String> visible = strings(exportsTable.get(targetModule));
+                boolean exported = false;
+                for (String pkg : visible)
+                    if (ClassPredicates.packageMatches(pkg, target.packageName())) exported = true;
+                if (!exported && !allowedClass(rule, allowUsed, c, module)) {
+                    sites.add(Observation.site(
+                            c.binaryName() + " -> " + target.binaryName() + " | export",
+                            ForbidEvaluator.source(ctx, c),
+                            0,
+                            c.binaryName() + " references " + target.binaryName() + ", which " + targetModule
+                                    + " does not export (exports " + visible + ")"));
+                }
+            }
         }
-        List<String> stale = new ArrayList<>();
-        for (var e : allowUsed.entrySet())
-            if (!e.getValue()) stale.add(e.getKey().in());
-        if (!stale.isEmpty()) {
-            return new Evaluation(
-                    Outcome.STALE_ALLOW,
-                    population,
-                    sites,
-                    "allow entries matched nothing: " + String.join(", ", stale));
+
+        Evaluation finish() {
+            Map<String, Long> population = new TreeMap<>();
+            population.put("edges", edgeCount);
+            for (var e : members.entrySet()) population.put("layer:" + e.getKey(), e.getValue());
+            List<String> empty = new ArrayList<>();
+            for (var e : members.entrySet()) if (e.getValue() == 0) empty.add(e.getKey());
+            if (!empty.isEmpty() || edgeCount == 0) {
+                return new Evaluation(
+                        Outcome.BLIND,
+                        population,
+                        List.of(),
+                        empty.isEmpty()
+                                ? "no edge between any two layers"
+                                : "layer(s) with no member: " + String.join(", ", empty));
+            }
+            List<String> stale = new ArrayList<>();
+            for (var e : allowUsed.entrySet())
+                if (!e.getValue()) stale.add(e.getKey().in());
+            if (!stale.isEmpty()) {
+                return new Evaluation(
+                        Outcome.STALE_ALLOW,
+                        population,
+                        sites,
+                        "allow entries matched nothing: " + String.join(", ", stale));
+            }
+            return Evaluation.of(population, sites);
         }
-        return Evaluation.of(population, sites);
     }
 
     /** The layers a module belongs to: values that are module globs ({@code plugins/*}, {@code shared/host}). */

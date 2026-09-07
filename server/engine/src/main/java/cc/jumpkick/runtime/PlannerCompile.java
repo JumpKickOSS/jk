@@ -31,6 +31,7 @@ import cc.jumpkick.model.Scope;
 import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.ActionCache;
@@ -241,23 +242,14 @@ public final class PlannerCompile {
     }
 
     static Task compileJavaStep(BuildPlanner.Ctx cx, PluginBuild.@Nullable Declarations pluginDecls) {
-        BuildPlanner.Inputs in = cx.in();
-        Cas cas = cx.cas();
-        ActionCache actionCache = cx.actionCache();
         Supplier<EffortWeights.Plan> plan = cx.plan();
         AtomicReference<@Nullable List<Path>> javaMainSrcRef = cx.javaMainSrcRef();
-        AtomicReference<@Nullable List<Path>> kotlinMainSrcRef = cx.kotlinMainSrcRef();
         Path javaMainSrcDir = cx.javaMainSrcDir();
-        boolean compact = cx.compact();
-        boolean mixed = cx.mixed();
-        boolean kotlinModule = cx.kotlinModule();
-        boolean mixedWithJava = cx.mixedWithJava();
-        String mainCompile = cx.mainCompile();
         return Task.builder(TaskNames.COMPILE_JAVA)
                 .stage(BuildStage.COMPILE)
                 .label("Compiling")
                 .kind(TaskKind.CPU)
-                .requires(javaCompileRequires(mixed, cx.mixedGroovy(), pluginDecls, cx.ksp()))
+                .requires(javaCompileRequires(cx.mixed(), cx.mixedGroovy(), pluginDecls, cx.ksp()))
                 // Ticks count sources (granularity); weight is the bar share. javac
                 // is opaque — one progress(sources.size) on completion — so ease the
                 // slice forward over time while it runs instead of sitting flat.
@@ -279,165 +271,179 @@ public final class PlannerCompile {
                     }
                     return srcs.size();
                 })
-                .execute(ctx -> {
-                    Path classes = ctx.require(MAIN_CLASSES);
-                    // javac always writes to the canonical classes dir (java/main/).
-                    // The Kotlin incremental compiler gets its own dir (kotlin/main/)
-                    // so it cannot prune Java's output; the assembler merges both.
-                    Path javaOut = classes;
-                    // JAVA_SOURCES already carries the java+scala union (incl. extra-src/plugin-root
-                    // .scala) that PlannerSetup published — no need to re-walk the tree for .scala here
-                    // . hasScala below reads it directly.
-                    List<Path> declared = javaSources(ctx);
-                    List<Path> sources = mainJavaSources(declared, ctx.require(LAYOUT), pluginDecls);
-                    if (sources != declared) {
-                        // Re-publish the union so write-stamp records the same input set
-                        // this compile checked (else the fast freshness path never holds).
-                        ctx.put(JAVA_SOURCES, sources);
-                    }
-                    if (sources.isEmpty()) {
-                        ctx.label("no Java sources");
-                        Files.createDirectories(javaOut);
-                        ctx.put(BUILD_OUTCOME, "no-sources");
-                        return;
-                    }
-                    List<Path> baseClasspath = ctx.require(CLASSPATH);
-                    Path groovyJar = cx.mixedGroovy() ? groovyCompileJar(ctx, cas) : null;
-                    List<Path> processorCp = ctx.get(JAVAC_PROCESSOR_CP).orElseGet(() -> ctx.require(PROCESSOR_CP));
-                    boolean rerun = in.session().config().rebuildOr(false);
-                    // Resolve the Scala toolchain before the stamp check so the stdlib jars are part
-                    // of the freshness inputs — a scala-version bump must invalidate the stat-only
-                    // fast path. Cheap on a warm closure cache. Gate on the *merged* source
-                    // set (which includes extra-src / plugin-root .scala published by PlannerSetup),
-                    // not the narrow main-roots walk — otherwise a variant-overlay .scala reaches the
-                    // Zinc worker with the Java-only dummy compiler and fails cryptically.
-                    boolean hasScala =
-                            sources.stream().anyMatch(p -> p.toString().endsWith(".scala"));
-                    ScalaCompile.Setup scalaSetup =
-                            hasScala ? ScalaCompile.prepare(ctx.require(PROJECT), ctx.require(LOCKFILE), cas) : null;
-                    // The shared stamp recipe — the forecast and write-stamp use it too.
-                    List<Path> stampInputs = mainStampInputs(
-                            baseClasspath,
-                            processorCp,
-                            mixed,
-                            cx.mixedGroovy(),
-                            ctx.require(LAYOUT),
-                            groovyJar,
-                            scalaSetup);
-                    if (!rerun
-                            && FreshnessStamp.isFresh(
-                                    javaOut, BuildStamps.JAVA, sources, stampInputs, ctx.require(RELEASE))) {
-                        ctx.reweight(EffortWeights.TOKEN); // stamp skip — token tick
-                        ctx.label("up to date");
-                        ctx.cached();
-                        ctx.put(BUILD_OUTCOME, "up-to-date");
-                        ctx.progress(sources.size());
-                        return;
-                    }
-                    List<String> javacArgs = ctx.require(JAVAC_ARGS);
-                    CompileRequest request = mainCompileRequest(new MainCompile(
-                            sources,
-                            baseClasspath,
-                            processorCp,
-                            ctx.require(LAYOUT),
-                            javaOut,
-                            ctx.require(RELEASE),
-                            javacArgs,
-                            ctx.require(JAVA_HOME),
-                            mixed,
-                            cx.mixedGroovy(),
-                            groovyJar,
-                            scalaSetup));
-                    String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_MAIN, javaOut);
-                    Path javaStateDir = ActionTree.INCREMENTAL_JAVA
-                            .under(CacheTree.ACTIONS.under(in.cache()))
-                            .resolve(taskId);
-                    // Reweight the bar slice now that the real request is known: a CAS
-                    // action-cache hit means a cheap hard-link restore (3), not a full
-                    // javac (ceil(sources × 0.1)). Uses the exact key
-                    // JavaCompile will look up, so the estimate matches what
-                    // actually happens — no plan-start reconstruction divergence.
-                    if (!rerun) {
-                        try {
-                            boolean restores = actionCache
-                                    .lookup(ActionKey.forJavac(taskId, request, BuildIdentity.cacheKeyVersion()))
-                                    .isPresent();
-                            ctx.reweight(
-                                    restores ? EffortWeights.RESTORE : EffortWeights.compileWeight(sources.size()));
-                        } catch (Exception ignored) {
-                            /* keep the up-front estimate */
-                        }
-                    }
-                    Path genDir = ctx.require(LAYOUT).generatedSourcesDir("annotations");
-                    Files.createDirectories(genDir);
-                    Path workerJar = PluginJar.JAVA_COMPILER.locate(cas);
-                    ctx.label("compiling " + sources.size() + " sources");
-                    Path abiFile = AbiIndex.path(ctx.require(LAYOUT).buildDir());
-                    Map<String, ClassAbi.Fingerprint> preAbi = AbiIndex.load(abiFile);
-                    ctx.put(PRE_COMPILE_ABI, preAbi);
-                    JavaCompile.Result r = JavaCompile.run(
-                            taskId,
-                            request,
-                            BuildIdentity.cacheKeyVersion(),
-                            !rerun,
-                            !in.ephemeralActions(), // verify-scratch: no persistent residue
-                            actionCache.cas(),
-                            actionCache,
-                            javaStateDir,
-                            workerJar,
-                            genDir);
-                    ctx.put(ACTION_KEY, r.actionKey());
-                    ctx.waited(Duration.ofMillis(r.waitMillis()));
-                    // Forward every javac diagnostic to the terminal, by severity:
-                    // errors fail the build, warnings/notes (e.g. deprecation) are
-                    // surfaced but don't. Strip the leading severity word — the
-                    // console renderer adds its own ✗/⚠ marker.
-                    boolean errored = false;
-                    for (CompileResult.Diagnostic d : r.diagnostics()) {
-                        if (d.severity() == CompileResult.Severity.ERROR) {
-                            ctx.error("javac", d.describe());
-                            errored = true;
-                        } else {
-                            ctx.warn("javac", d.describe());
-                        }
-                    }
-                    if (!r.success()) {
-                        // Never fail silently: if no ERROR diagnostic surfaced (crash,
-                        // swallowed output), say so explicitly.
-                        if (!errored) {
-                            ctx.error(
-                                    "javac",
-                                    "compile failed without compiler diagnostics (outcome: " + r.outcome() + ")");
-                        }
-                        throw new RuntimeException("javac reported errors");
-                    }
-                    if (r.cacheHit()) {
-                        ctx.label("cache hit " + r.actionKey().substring(0, 8));
-                        ctx.cached();
-                    }
-                    ctx.put(BUILD_OUTCOME, r.outcome());
-                    ctx.put(COMPILED_MAIN_SOURCES, r.compiledSources());
-                    Path mainClasses = ctx.require(MAIN_CLASSES);
-                    // The abi idx advances by exactly what this compile did: a cache hit
-                    // or no-op leaves it alone (the restored classes were indexed when first
-                    // compiled), an incremental compile re-hashes only its compiled sources'
-                    // classes, and only a missing/empty idx pays the full tree scan.
-                    Map<String, ClassAbi.Fingerprint> currentAbi;
-                    if (!preAbi.isEmpty() && r.compiledSources().isEmpty()) {
-                        currentAbi = preAbi;
-                    } else if (!preAbi.isEmpty()) {
-                        currentAbi = AbiIndex.updated(preAbi, in.dir(), r.compiledSources(), mainClasses);
-                        AbiIndex.write(abiFile, currentAbi);
-                    } else {
-                        currentAbi = AbiIndex.scanClasses(mainClasses);
-                        if (!currentAbi.isEmpty()) AbiIndex.write(abiFile, currentAbi);
-                    }
-                    // Cross-module --affected: publish this module's changed types while the
-                    // pre-compile baseline is still in memory; dependents rank against them.
-                    AffectedChangedPublish.publish(in.session(), in.dir(), preAbi, currentAbi);
-                    ctx.progress(sources.size());
-                })
+                .execute(ctx -> runCompileJava(ctx, cx, pluginDecls))
                 .build();
+    }
+
+    /** The compile-java body: the source union, the freshness stamp, javac in the worker, the ABI index. */
+    private static void runCompileJava(
+            TaskContext ctx, BuildPlanner.Ctx cx, PluginBuild.@Nullable Declarations pluginDecls) throws Exception {
+        BuildPlanner.Inputs in = cx.in();
+        Cas cas = cx.cas();
+        Path classes = ctx.require(MAIN_CLASSES);
+        // javac always writes to the canonical classes dir (java/main/).
+        // The Kotlin incremental compiler gets its own dir (kotlin/main/)
+        // so it cannot prune Java's output; the assembler merges both.
+        Path javaOut = classes;
+        // JAVA_SOURCES already carries the java+scala union (incl. extra-src/plugin-root
+        // .scala) that PlannerSetup published — no need to re-walk the tree for .scala here
+        // . hasScala below reads it directly.
+        List<Path> declared = javaSources(ctx);
+        List<Path> sources = mainJavaSources(declared, ctx.require(LAYOUT), pluginDecls);
+        if (sources != declared) {
+            // Re-publish the union so write-stamp records the same input set
+            // this compile checked (else the fast freshness path never holds).
+            ctx.put(JAVA_SOURCES, sources);
+        }
+        if (sources.isEmpty()) {
+            ctx.label("no Java sources");
+            Files.createDirectories(javaOut);
+            ctx.put(BUILD_OUTCOME, "no-sources");
+            return;
+        }
+        List<Path> baseClasspath = ctx.require(CLASSPATH);
+        Path groovyJar = cx.mixedGroovy() ? groovyCompileJar(ctx, cas) : null;
+        List<Path> processorCp = ctx.get(JAVAC_PROCESSOR_CP).orElseGet(() -> ctx.require(PROCESSOR_CP));
+        boolean rerun = in.session().config().rebuildOr(false);
+        // Resolve the Scala toolchain before the stamp check so the stdlib jars are part
+        // of the freshness inputs — a scala-version bump must invalidate the stat-only
+        // fast path. Cheap on a warm closure cache. Gate on the *merged* source
+        // set (which includes extra-src / plugin-root .scala published by PlannerSetup),
+        // not the narrow main-roots walk — otherwise a variant-overlay .scala reaches the
+        // Zinc worker with the Java-only dummy compiler and fails cryptically.
+        boolean hasScala = sources.stream().anyMatch(p -> p.toString().endsWith(".scala"));
+        ScalaCompile.Setup scalaSetup =
+                hasScala ? ScalaCompile.prepare(ctx.require(PROJECT), ctx.require(LOCKFILE), cas) : null;
+        // The shared stamp recipe — the forecast and write-stamp use it too.
+        List<Path> stampInputs = mainStampInputs(
+                baseClasspath, processorCp, cx.mixed(), cx.mixedGroovy(), ctx.require(LAYOUT), groovyJar, scalaSetup);
+        if (!rerun && FreshnessStamp.isFresh(javaOut, BuildStamps.JAVA, sources, stampInputs, ctx.require(RELEASE))) {
+            ctx.reweight(EffortWeights.TOKEN); // stamp skip — token tick
+            ctx.label("up to date");
+            ctx.cached();
+            ctx.put(BUILD_OUTCOME, "up-to-date");
+            ctx.progress(sources.size());
+            return;
+        }
+        List<String> javacArgs = ctx.require(JAVAC_ARGS);
+        CompileRequest request = mainCompileRequest(new MainCompile(
+                sources,
+                baseClasspath,
+                processorCp,
+                ctx.require(LAYOUT),
+                javaOut,
+                ctx.require(RELEASE),
+                javacArgs,
+                ctx.require(JAVA_HOME),
+                cx.mixed(),
+                cx.mixedGroovy(),
+                groovyJar,
+                scalaSetup));
+        String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_MAIN, javaOut);
+        Path javaStateDir = ActionTree.INCREMENTAL_JAVA
+                .under(CacheTree.ACTIONS.under(in.cache()))
+                .resolve(taskId);
+        if (!rerun) reweightForActionCache(ctx, cx.actionCache(), taskId, request, sources.size());
+        Path genDir = ctx.require(LAYOUT).generatedSourcesDir("annotations");
+        Files.createDirectories(genDir);
+        Path workerJar = PluginJar.JAVA_COMPILER.locate(cas);
+        ctx.label("compiling " + sources.size() + " sources");
+        Path abiFile = AbiIndex.path(ctx.require(LAYOUT).buildDir());
+        Map<String, ClassAbi.Fingerprint> preAbi = AbiIndex.load(abiFile);
+        ctx.put(PRE_COMPILE_ABI, preAbi);
+        JavaCompile.Result r = JavaCompile.run(
+                taskId,
+                request,
+                BuildIdentity.cacheKeyVersion(),
+                !rerun,
+                !in.ephemeralActions(), // verify-scratch: no persistent residue
+                cx.actionCache().cas(),
+                cx.actionCache(),
+                javaStateDir,
+                workerJar,
+                genDir);
+        ctx.put(ACTION_KEY, r.actionKey());
+        ctx.waited(Duration.ofMillis(r.waitMillis()));
+        reportJavacResult(ctx, r);
+        ctx.put(BUILD_OUTCOME, r.outcome());
+        ctx.put(COMPILED_MAIN_SOURCES, r.compiledSources());
+        advanceAbiIndex(ctx, in, r, abiFile, preAbi);
+        ctx.progress(sources.size());
+    }
+
+    /**
+     * Reweight the bar slice now that the real request is known: a CAS action-cache hit means a
+     * cheap hard-link restore (3), not a full javac (ceil(sources × 0.1)). Uses the exact key
+     * JavaCompile will look up, so the estimate matches what actually happens — no plan-start
+     * reconstruction divergence.
+     */
+    private static void reweightForActionCache(
+            TaskContext ctx, ActionCache actionCache, String taskId, CompileRequest request, int sources) {
+        try {
+            boolean restores = actionCache
+                    .lookup(ActionKey.forJavac(taskId, request, BuildIdentity.cacheKeyVersion()))
+                    .isPresent();
+            ctx.reweight(restores ? EffortWeights.RESTORE : EffortWeights.compileWeight(sources));
+        } catch (Exception ignored) {
+            /* keep the up-front estimate */
+        }
+    }
+
+    /**
+     * Forward every javac diagnostic to the terminal, by severity: errors fail the build,
+     * warnings/notes (e.g. deprecation) are surfaced but don't. Strip the leading severity word —
+     * the console renderer adds its own ✗/⚠ marker.
+     */
+    private static void reportJavacResult(TaskContext ctx, JavaCompile.Result r) {
+        boolean errored = false;
+        for (CompileResult.Diagnostic d : r.diagnostics()) {
+            if (d.severity() == CompileResult.Severity.ERROR) {
+                ctx.error("javac", d.describe());
+                errored = true;
+            } else {
+                ctx.warn("javac", d.describe());
+            }
+        }
+        if (!r.success()) {
+            // Never fail silently: if no ERROR diagnostic surfaced (crash,
+            // swallowed output), say so explicitly.
+            if (!errored) {
+                ctx.error("javac", "compile failed without compiler diagnostics (outcome: " + r.outcome() + ")");
+            }
+            throw new RuntimeException("javac reported errors");
+        }
+        if (r.cacheHit()) {
+            ctx.label("cache hit " + r.actionKey().substring(0, 8));
+            ctx.cached();
+        }
+    }
+
+    /**
+     * The abi idx advances by exactly what this compile did: a cache hit or no-op leaves it alone
+     * (the restored classes were indexed when first compiled), an incremental compile re-hashes
+     * only its compiled sources' classes, and only a missing/empty idx pays the full tree scan.
+     * Then the cross-module --affected publish: this module's changed types while the pre-compile
+     * baseline is still in memory; dependents rank against them.
+     */
+    private static void advanceAbiIndex(
+            TaskContext ctx,
+            BuildPlanner.Inputs in,
+            JavaCompile.Result r,
+            Path abiFile,
+            Map<String, ClassAbi.Fingerprint> preAbi)
+            throws Exception {
+        Path mainClasses = ctx.require(MAIN_CLASSES);
+        Map<String, ClassAbi.Fingerprint> currentAbi;
+        if (!preAbi.isEmpty() && r.compiledSources().isEmpty()) {
+            currentAbi = preAbi;
+        } else if (!preAbi.isEmpty()) {
+            currentAbi = AbiIndex.updated(preAbi, in.dir(), r.compiledSources(), mainClasses);
+            AbiIndex.write(abiFile, currentAbi);
+        } else {
+            currentAbi = AbiIndex.scanClasses(mainClasses);
+            if (!currentAbi.isEmpty()) AbiIndex.write(abiFile, currentAbi);
+        }
+        AffectedChangedPublish.publish(in.session(), in.dir(), preAbi, currentAbi);
     }
 
     static String[] kotlinCompileRequires(PluginBuild.@Nullable Declarations decls, boolean ksp) {

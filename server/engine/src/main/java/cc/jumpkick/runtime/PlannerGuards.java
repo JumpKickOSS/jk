@@ -598,21 +598,7 @@ final class PlannerGuards {
         ectx = ectx.withRules(load.rules());
         Path baselineFile = GuardsPresence.baselineFile(g.root());
         Baseline baseline = BaselineFile.read(baselineFile);
-        boolean orphans = false;
-        if (lane == Lane.MODEL) {
-            // Live ids are the TOML rules plus every guard the compiled suites declare.
-            Set<String> live = new TreeSet<>(load.rules().rules().keySet());
-            live.addAll(GuardSuites.declaredAcrossWorkspace(g.root()).keySet());
-            for (String orphan : baseline.orphans(live)) {
-                orphans = true;
-                ctx.error(
-                        orphan,
-                        "GUARD " + orphan
-                                + "  rule-removed\n  Observed: the baseline carries entries for a rule no source declares\n"
-                                + "  Instead:  restore the rule, or `jk guard freeze --retire " + orphan
-                                + " --reason \"…\"`");
-            }
-        }
+        boolean orphans = lane == Lane.MODEL && reportOrphans(ctx, g, load, baseline);
         if (rules.isEmpty() && !EngineValidations.applies(lane)) {
             ctx.label("no rules for this lane");
             if (orphans) throw new GuardsRed("baseline names retired rules");
@@ -638,20 +624,7 @@ final class PlannerGuards {
             return;
         }
         if (beforeEvaluate != null) beforeEvaluate.run();
-        LaneRun.Result result;
-        if (lane == Lane.MODULE) {
-            // Module lanes are quick but each holds a facts index and a text pass in flight; a
-            // workspace of thirty run with the build's parallelism would multiply that against the
-            // engine's heap. A few at a time keep the peak bounded and the wall unchanged.
-            LANES.acquireUninterruptibly();
-            try {
-                result = LaneRun.run(lane, rules, ectx, baseline);
-            } finally {
-                LANES.release();
-            }
-        } else {
-            result = LaneRun.run(lane, rules, ectx, baseline);
-        }
+        LaneRun.Result result = runLane(lane, rules, ectx, baseline);
         // Engine validations ride the lane: invariants of the build model, not rules, so they
         // have no table and no baseline, and a workspace without guards runs none.
         List<Fault> faults = lane == Lane.MODEL
@@ -659,19 +632,7 @@ final class PlannerGuards {
                 : lane == Lane.MODULE ? EngineValidations.module(g.root(), ectx.module(), ectx.testFacts()) : List.of();
         for (Fault f : faults) ctx.error(f.code(), EngineValidations.render(f));
         boolean ci = Baselines.ciMode();
-        String storedBaselineSha = baselineSha;
-        if (result.tightened() > 0) {
-            if (ci) {
-                ctx.error(
-                        "guards",
-                        "GUARD baseline  loose\n  Observed: " + result.tightened()
-                                + " entries would tighten\n  Instead:  " + Baselines.CI_MESSAGE);
-            } else {
-                mergeTightened(baselineFile, result);
-                storedBaselineSha = GuardKeys.baselineSha(g.root());
-                ctx.output(result.tightened() + " baseline entries tightened");
-            }
-        }
+        String storedBaselineSha = tightenBaseline(ctx, g, baselineFile, result, ci, baselineSha);
         writeJsonl(g.root(), taskId, result);
         // The machine view of the whole run, re-rendered from every lane's output: cheap, and always
         // current after the lane that just wrote.
@@ -680,18 +641,7 @@ final class PlannerGuards {
         } catch (IOException e) {
             ctx.warn("guards", "could not write " + SarifWriter.SARIF_FILE + ": " + e.getMessage());
         }
-        // Same fingerprint red on consecutive runs of this lane: the message turns to stop-and-ask.
-        Map<String, Integer> streaks = GuardThrash.record(taskId, result.reports());
-        for (RuleReport r : result.redReports()) {
-            if (r.outcome() == Outcome.VIOLATIONS) {
-                for (Observation o : r.fresh())
-                    ctx.error(
-                            r.id(),
-                            GuardMessages.site(r, o, streaks.getOrDefault(GuardThrash.key(r.id(), o.key()), 1)));
-            } else {
-                ctx.error(r.id(), GuardMessages.outcome(r));
-            }
-        }
+        reportRed(ctx, taskId, result);
         // The tree lane runs after every module lane: the one place must-bite can be judged for them.
         int noBite = 0;
         if (lane == Lane.TREE) {
@@ -714,6 +664,78 @@ final class PlannerGuards {
         if (ci && result.tightened() > 0) throw new GuardsRed(Baselines.CI_MESSAGE);
         String storeKey = GuardKeys.laneKey(taskId, tokens, storedBaselineSha);
         cache.storeVerdict(taskId, storeKey, inputsOf(tokens, storedBaselineSha));
+    }
+
+    /**
+     * Model lane only: a baseline entry for a rule no source declares is an error. Live ids are the
+     * TOML rules plus every guard the compiled suites declare. True when any orphan was reported.
+     */
+    private static boolean reportOrphans(TaskContext ctx, GuardsPlan g, LoadResult load, Baseline baseline)
+            throws IOException {
+        Set<String> live = new TreeSet<>(load.rules().rules().keySet());
+        live.addAll(GuardSuites.declaredAcrossWorkspace(g.root()).keySet());
+        boolean orphans = false;
+        for (String orphan : baseline.orphans(live)) {
+            orphans = true;
+            ctx.error(
+                    orphan,
+                    "GUARD " + orphan
+                            + "  rule-removed\n  Observed: the baseline carries entries for a rule no source declares\n"
+                            + "  Instead:  restore the rule, or `jk guard freeze --retire " + orphan
+                            + " --reason \"…\"`");
+        }
+        return orphans;
+    }
+
+    /**
+     * Module lanes are quick but each holds a facts index and a text pass in flight; a workspace of
+     * thirty run with the build's parallelism would multiply that against the engine's heap. A few
+     * at a time keep the peak bounded and the wall unchanged.
+     */
+    private static LaneRun.Result runLane(Lane lane, List<Rule> rules, EvalContext ectx, Baseline baseline)
+            throws IOException {
+        if (lane != Lane.MODULE) return LaneRun.run(lane, rules, ectx, baseline);
+        LANES.acquireUninterruptibly();
+        try {
+            return LaneRun.run(lane, rules, ectx, baseline);
+        } finally {
+            LANES.release();
+        }
+    }
+
+    /**
+     * Entries that would tighten: merged into the baseline outside CI (returning the sha of the
+     * rewritten file), an error in CI. Returns the baseline sha the verdict is stored under.
+     */
+    private static String tightenBaseline(
+            TaskContext ctx, GuardsPlan g, Path baselineFile, LaneRun.Result result, boolean ci, String baselineSha)
+            throws IOException {
+        if (result.tightened() <= 0) return baselineSha;
+        if (ci) {
+            ctx.error(
+                    "guards",
+                    "GUARD baseline  loose\n  Observed: " + result.tightened() + " entries would tighten\n  Instead:  "
+                            + Baselines.CI_MESSAGE);
+            return baselineSha;
+        }
+        mergeTightened(baselineFile, result);
+        ctx.output(result.tightened() + " baseline entries tightened");
+        return GuardKeys.baselineSha(g.root());
+    }
+
+    /** Same fingerprint red on consecutive runs of this lane: the message turns to stop-and-ask. */
+    private static void reportRed(TaskContext ctx, String taskId, LaneRun.Result result) throws IOException {
+        Map<String, Integer> streaks = GuardThrash.record(taskId, result.reports());
+        for (RuleReport r : result.redReports()) {
+            if (r.outcome() == Outcome.VIOLATIONS) {
+                for (Observation o : r.fresh())
+                    ctx.error(
+                            r.id(),
+                            GuardMessages.site(r, o, streaks.getOrDefault(GuardThrash.key(r.id(), o.key()), 1)));
+            } else {
+                ctx.error(r.id(), GuardMessages.outcome(r));
+            }
+        }
     }
 
     private static final Object BASELINE_LOCK = new Object();

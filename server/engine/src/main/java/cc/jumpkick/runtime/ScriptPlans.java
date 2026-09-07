@@ -242,9 +242,20 @@ public final class ScriptPlans {
                 })
                 .build();
 
+        return BuildPlan.builder("run-kt")
+                .stateKeys(HEADER, MAIN_CLASS, CLASSES_DIR, CLASSPATH, WORKER_CP, KT_STDLIB)
+                .addTask(parseHeader)
+                .addTask(resolveScriptDepsStep(header, repoUrl))
+                .addTask(resolveKotlincStep(header, repoUrl))
+                .addTask(
+                        compileKotlinScriptStep(script, bytes, header, classesDir, mainClass, cacheDir, forceRecompile))
+                .build();
+    }
+
+    private static Task resolveScriptDepsStep(ScriptHeader header, @Nullable URI repoUrl) {
         // resolve-deps and resolve-kotlinc are independent and slow; run
         // them in parallel.
-        Task resolveDeps = Task.builder(TaskNames.RESOLVE_DEPS)
+        return Task.builder(TaskNames.RESOLVE_DEPS)
                 .stage(BuildStage.RESOLVE)
                 .kind(TaskKind.IO)
                 .requires(TaskNames.PARSE_SCRIPT)
@@ -264,8 +275,10 @@ public final class ScriptPlans {
                     ctx.progress(1);
                 })
                 .build();
+    }
 
-        Task resolveKotlinc = Task.builder(TaskNames.RESOLVE_KOTLINC)
+    private static Task resolveKotlincStep(ScriptHeader header, @Nullable URI repoUrl) {
+        return Task.builder(TaskNames.RESOLVE_KOTLINC)
                 .stage(BuildStage.RESOLVE)
                 .kind(TaskKind.IO)
                 .requires(TaskNames.PARSE_SCRIPT)
@@ -291,8 +304,18 @@ public final class ScriptPlans {
                     ctx.progress(1);
                 })
                 .build();
+    }
 
-        Task compile = Task.builder(TaskNames.COMPILE_KOTLIN)
+    /** kotlinc over the script and its declared sources; a cache hit only re-materializes the files. */
+    private static Task compileKotlinScriptStep(
+            Path script,
+            byte[] bytes,
+            ScriptHeader header,
+            Path classesDir,
+            String mainClass,
+            Path cacheDir,
+            boolean forceRecompile) {
+        return Task.builder(TaskNames.COMPILE_KOTLIN)
                 .stage(BuildStage.COMPILE)
                 .kind(TaskKind.CPU)
                 .requires(TaskNames.RESOLVE_DEPS, TaskNames.RESOLVE_KOTLINC)
@@ -352,14 +375,6 @@ public final class ScriptPlans {
                     materializeFiles(script, header, classesDir);
                     ctx.progress(1);
                 })
-                .build();
-
-        return BuildPlan.builder("run-kt")
-                .stateKeys(HEADER, MAIN_CLASS, CLASSES_DIR, CLASSPATH, WORKER_CP, KT_STDLIB)
-                .addTask(parseHeader)
-                .addTask(resolveDeps)
-                .addTask(resolveKotlinc)
-                .addTask(compile)
                 .build();
     }
 

@@ -29,6 +29,7 @@ import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.Variants;
+import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginModule;
 import cc.jumpkick.plugin.manifest.VariantApply;
 import cc.jumpkick.repo.MavenLayout;
@@ -233,95 +234,117 @@ public final class ExecPlans {
                         "this project packages a device artifact (exec-mode=device) — it cannot run on the"
                                 + " host JVM; deploy it with the owning plugin's command instead");
             }
-            // Device artifact: client runs the plugin deploy command (dev re-dispatches after rebuild).
-            List<String> deviceWatch = new ArrayList<>();
-            if (dev) {
-                if (Files.isDirectory(dir.resolve("src")))
-                    deviceWatch.add(dir.resolve("src").toString());
-                if (Files.isDirectory(dir.resolve("res")))
-                    deviceWatch.add(dir.resolve("res").toString());
-                Path deviceManifest = dir.resolve("AndroidManifest.xml");
-                if (Files.isRegularFile(deviceManifest)) deviceWatch.add(deviceManifest.toString());
-            }
-            return new ExecPlan(
-                    null,
-                    "",
-                    dev ? "dev" : "run",
-                    List.of(),
-                    dir.toString(),
-                    "deploy → device (" + deployCommand + ")",
-                    "",
-                    false,
-                    false,
-                    deviceWatch,
-                    List.of(),
-                    List.of(),
-                    "",
-                    "",
-                    "",
-                    false,
-                    "",
-                    "",
-                    "",
-                    List.of(),
-                    List.of(),
-                    deployCommand);
+            return devicePlan(dir, dev, deployCommand);
         }
         Path javaHome = projectJavaHome(dir);
         String java = javaBin(javaHome);
 
         if (!dev) {
-            Path nativeBin = layout.nativeBinary();
-            if (Files.isRegularFile(nativeBin) && PathUtil.isRunnable(nativeBin)) {
-                return runAck(
-                        "run",
-                        List.of(nativeBin.toAbsolutePath().toString()),
-                        dir,
-                        javaHome,
-                        nativeBin.getFileName().toString(),
-                        false,
-                        false,
-                        List.of());
-            }
-            Path assemblyJar = layout.assemblyJar();
-            if (Files.isRegularFile(assemblyJar)) {
-                return runAck(
-                        "run",
-                        List.of(java, "-jar", assemblyJar.toAbsolutePath().toString()),
-                        dir,
-                        javaHome,
-                        "java -jar " + dir.relativize(assemblyJar),
-                        false,
-                        false,
-                        List.of());
-            }
-            // Self-contained packager output (Quarkus fast-jar / Boot fat-jar): run via -jar.
-            // Do not fall through to -cp + scanned main — the thin Class-Path layout or nested
-            // BOOT-INF is not a normal compile classpath, and Application main is not enough.
-            if (hostShape
-                    .map(sh -> sh.selfContained() && "jar".equals(sh.execMode()))
-                    .orElse(false)) {
-                Path mainJar = layout.mainJar();
-                if (Files.isRegularFile(mainJar)) {
-                    return runAck(
-                            "run",
-                            List.of(java, "-jar", mainJar.toAbsolutePath().toString()),
-                            dir,
-                            javaHome,
-                            "java -jar " + dir.relativize(mainJar),
-                            false,
-                            false,
-                            List.of());
-                }
-                return ExecPlan.error(
-                        "run",
-                        "self-contained jar not found at " + layout.mainJar() + " — run `jk build` first",
-                        "missing");
-            }
+            ExecPlan packaged = packagedPlan(dir, layout, hostShape, javaHome, java);
+            if (packaged != null) return packaged;
         }
+        return classpathPlan(dir, cache, project, layout, dev, javaHome, java);
+    }
 
-        // Classes-dir + RUN classpath: dev-scope deps ride; a classes-run packager's jar
-        // (e.g. Boot's BOOT-INF nesting) never lands on a -cp.
+    /** Device artifact: client runs the plugin deploy command (dev re-dispatches after rebuild). */
+    private static ExecPlan devicePlan(Path dir, boolean dev, String deployCommand) {
+        List<String> deviceWatch = new ArrayList<>();
+        if (dev) {
+            if (Files.isDirectory(dir.resolve("src")))
+                deviceWatch.add(dir.resolve("src").toString());
+            if (Files.isDirectory(dir.resolve("res")))
+                deviceWatch.add(dir.resolve("res").toString());
+            Path deviceManifest = dir.resolve("AndroidManifest.xml");
+            if (Files.isRegularFile(deviceManifest)) deviceWatch.add(deviceManifest.toString());
+        }
+        return new ExecPlan(
+                null,
+                "",
+                dev ? "dev" : "run",
+                List.of(),
+                dir.toString(),
+                "deploy → device (" + deployCommand + ")",
+                "",
+                false,
+                false,
+                deviceWatch,
+                List.of(),
+                List.of(),
+                "",
+                "",
+                "",
+                false,
+                "",
+                "",
+                "",
+                List.of(),
+                List.of(),
+                deployCommand);
+    }
+
+    /**
+     * {@code jk run} of a packaged artifact — native binary, assembly jar, or a self-contained
+     * packager jar — or null when the classes-dir classpath run is the way to launch.
+     */
+    private static @Nullable ExecPlan packagedPlan(
+            Path dir, BuildLayout layout, Optional<PluginDescriptor.Packaging> hostShape, Path javaHome, String java) {
+        Path nativeBin = layout.nativeBinary();
+        if (Files.isRegularFile(nativeBin) && PathUtil.isRunnable(nativeBin)) {
+            return runAck(
+                    "run",
+                    List.of(nativeBin.toAbsolutePath().toString()),
+                    dir,
+                    javaHome,
+                    nativeBin.getFileName().toString(),
+                    false,
+                    false,
+                    List.of());
+        }
+        Path assemblyJar = layout.assemblyJar();
+        if (Files.isRegularFile(assemblyJar)) {
+            return runAck(
+                    "run",
+                    List.of(java, "-jar", assemblyJar.toAbsolutePath().toString()),
+                    dir,
+                    javaHome,
+                    "java -jar " + dir.relativize(assemblyJar),
+                    false,
+                    false,
+                    List.of());
+        }
+        // Self-contained packager output (Quarkus fast-jar / Boot fat-jar): run via -jar.
+        // Do not fall through to -cp + scanned main — the thin Class-Path layout or nested
+        // BOOT-INF is not a normal compile classpath, and Application main is not enough.
+        if (hostShape
+                .map(sh -> sh.selfContained() && "jar".equals(sh.execMode()))
+                .orElse(false)) {
+            Path mainJar = layout.mainJar();
+            if (Files.isRegularFile(mainJar)) {
+                return runAck(
+                        "run",
+                        List.of(java, "-jar", mainJar.toAbsolutePath().toString()),
+                        dir,
+                        javaHome,
+                        "java -jar " + dir.relativize(mainJar),
+                        false,
+                        false,
+                        List.of());
+            }
+            return ExecPlan.error(
+                    "run",
+                    "self-contained jar not found at " + layout.mainJar() + " — run `jk build` first",
+                    "missing");
+        }
+        return null;
+    }
+
+    /**
+     * Classes-dir + RUN classpath: dev-scope deps ride; a classes-run packager's jar (e.g. Boot's
+     * BOOT-INF nesting) never lands on a -cp.
+     */
+    private static ExecPlan classpathPlan(
+            Path dir, Path cache, JkBuild project, BuildLayout layout, boolean dev, Path javaHome, String java)
+            throws IOException, InterruptedException {
         List<Path> classpath = new ArrayList<>();
         boolean classesEntry = dev
                 || PluginBuild.shape(project, dir).map(sh -> sh.classesRun()).orElse(false);
@@ -333,16 +356,7 @@ public final class ExecPlans {
         if (Files.exists(lockFile)) {
             Lockfile lock = LockfileReader.read(lockFile);
             classpath.addAll(new ClasspathResolver(JkStores.storeCas()).classpathFor(lock, ClasspathResolver.RUN));
-            if (dev) {
-                hotReload = lock.artifacts().stream().anyMatch(a -> {
-                    String n = a.name();
-                    return "org.springframework.boot:spring-boot-devtools".equals(n)
-                            || "org.springframework.boot:spring-boot-devtools:jar:".equals(a.packageKey())
-                            || (PackageId.isMavenPackageKey(n)
-                                    && "org.springframework.boot:spring-boot-devtools"
-                                            .equals(PackageId.parse(n).ga()));
-                });
-            }
+            if (dev) hotReload = locksDevtools(lock);
         }
         WorkspaceClasspath.Result siblings = WorkspaceClasspath.resolve(dir, project, ClasspathResolver.RUN);
         classpath.addAll(siblings.jars());
@@ -399,6 +413,18 @@ public final class ExecPlans {
         if (dev && Files.isDirectory(dir.resolve("src")))
             watchRoots.add(dir.resolve("src").toString());
         return runAck(dev ? "dev" : "run", argv, dir, javaHome, display, hotReload, devtoolsInjected, watchRoots);
+    }
+
+    /** Whether the lock already carries Spring Boot DevTools, in any of the spellings a lock uses. */
+    private static boolean locksDevtools(Lockfile lock) {
+        return lock.artifacts().stream().anyMatch(a -> {
+            String n = a.name();
+            return "org.springframework.boot:spring-boot-devtools".equals(n)
+                    || "org.springframework.boot:spring-boot-devtools:jar:".equals(a.packageKey())
+                    || (PackageId.isMavenPackageKey(n)
+                            && "org.springframework.boot:spring-boot-devtools"
+                                    .equals(PackageId.parse(n).ga()));
+        });
     }
 
     /**

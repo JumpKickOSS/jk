@@ -103,20 +103,7 @@ public final class JobEnvelope {
         if (plan) {
             claimedBuildPlanSlot = host.tryStartBuildPlan();
         }
-        if (plan ? !claimedBuildPlanSlot : host.draining()) {
-            if (detached) throw new IllegalStateException("engine is shutting down");
-            try {
-                if (writer != null)
-                    WireWriter.send(
-                            writer,
-                            ProtoLifecycle.error(
-                                    EngineProtocol.ERR_SHUTTING_DOWN,
-                                    "the engine is shutting down (draining) — retry; the successor engine takes over"));
-            } catch (IOException ignored) {
-                // Client vanished mid-refusal — nothing to do; the connection is closing anyway.
-            }
-            return -1;
-        }
+        if (plan ? !claimedBuildPlanSlot : host.draining()) return refuseDraining(detached, writer);
         Session.CancelToken cancelToken = Session.CancelToken.live();
         CountDownLatch done = new CountDownLatch(1);
         long eventRequestId = host.nextRequestId();
@@ -137,22 +124,7 @@ public final class JobEnvelope {
         String fingerprint = BuildJobFingerprint.ofRequest(eventKind, requestLine);
         AdmitResult admit = JobAdmit.admit(host, eventRequestId, eventKind, eventDir, fingerprint, trigger);
         if (admit.rejected() != null) {
-            InFlightBuilds.Hold h = admit.rejected();
-            String label = "test".equals(eventKind) ? "Test" : "Build";
-            String msg = label + " #" + h.buildNumber() + " is already running";
-            if (detached) {
-                if (claimedBuildPlanSlot) host.abandonBuildPlanSlot();
-                throw new AlreadyRunning(msg, h.requestId(), h.buildNumber());
-            }
-            try {
-                if (writer != null) {
-                    WireWriter.send(writer, ProtoLifecycle.alreadyRunning(h.buildNumber(), h.requestId(), msg));
-                }
-            } catch (IOException ignored) {
-                // client gone
-            }
-            if (claimedBuildPlanSlot) host.abandonBuildPlanSlot(); // nothing ran — give the slot back
-            return -1;
+            return refuseAlreadyRunning(admit.rejected(), eventKind, detached, claimedBuildPlanSlot, writer);
         }
         host.publishRequestStart(eventRequestId, eventKind, eventDir, admit.buildNumber());
         host.registerAccumulator(
@@ -190,126 +162,237 @@ public final class JobEnvelope {
                 eventDir,
                 eventKind,
                 workspaceStream);
-        Thread started = Thread.ofVirtual().name(threadPrefix, 0).unstarted(() -> {
-            IoLedger io = host.runIo(eventRequestId);
-            // Nothing between the lock and the try: a throw from the setup calls would
-            // leak the read lock — one leak and the cache prune's write-lock tryLock never
-            // succeeds again for the engine's life — and would strand the in-flight fingerprint
-            // and the done latch. The teardown calls are all remove-style and safe to run even
-            // when their open never happened.
-            if (plan) host.cacheGate().readLock().lock();
-            try {
-                host.bindEventRequestId(eventRequestId);
-                JobWorkers.open(eventRequestId);
-                // Every Session this request builds adopts this ledger, so fetches/cache traffic on
-                // the shared pools all land in one place (see IoLedger).
-                IoLedger.open(io);
-                // Run-scoped notices join this request's stream for the run's life; the finally
-                // removes the sink, or a later run's notice would ride the wrong request.
-                RunNotices.openSink(io, (code, message) -> publishNotice(eventRequestId, eventDir, writer, message));
-                JobOutcome outcome;
-                try {
-                    outcome = runner.run(requestLine, cancelToken, writer);
-                } catch (Throwable t) {
-                    // An escaped throw must not impersonate Declined: with clean rows already
-                    // recorded and no failure row, the derived verdict would read green. Rule
-                    // failure, name the exception on the record, and fall into the teardown.
-                    outcome = JobOutcome.failed(Exit.SOFTWARE);
-                    BuildAccumulator thrown = host.accumulatorOf(eventRequestId);
-                    if (thrown != null) thrown.addEscapedThrow(t);
-                    reportDeadJob(eventRequestId, eventDir, writer, t);
-                }
-                // The one success law: the body's verdict is stamped here, nowhere else. A
-                // declined verdict leaves the journal to the accumulated facts.
-                BuildAccumulator acc = host.accumulatorOf(eventRequestId);
-                if (acc != null) acc.stamp(outcome);
-            } catch (Throwable t) {
-                // The setup and teardown around the body are outside its own catch, and a throw
-                // there would otherwise reach nothing but the default uncaught handler: no log
-                // line, no wire terminal, and a client that reads EOF and blames a crash.
-                reportDeadJob(eventRequestId, eventDir, writer, t);
-            } finally {
-                RunNotices.closeSink(io);
-                InputTrees.finishJob();
-                IoLedger.close();
-                // Kill leftovers first, THEN drain the Zinc session: if the worker is mid-compile
-                // its io thread is blocked in readLine and never sees end()'s POISON, so end() would
-                // burn its full 15s join before this force-kill ran. Killing the process
-                // first unblocks readLine, so end()'s join returns promptly.
-                // Never clear() the registry without shutdown, or a racing cancel thread's
-                // shutdownForRequest finds an empty set and plugin/javac children keep running.
-                JobWorkers.shutdownForRequest(eventRequestId, 0L);
-                JavaCompilerHost.end(eventRequestId);
-                JobWorkers.close();
-                host.unbindEventRequestId();
-                if (plan) host.cacheGate().readLock().unlock();
-                // Unregister the live job BEFORE releasing the in-flight hold: waiters watch the
-                // hold, cancel watches liveJobs — this order means a job never looks finished
-                // while cancelJob would still succeed. The hold still frees before the connection
-                // thread's teardown so a follow-up same-project build is not rejected.
-                live.unregisterLiveJob(eventRequestId);
-                host.inFlight().release(eventRequestId);
-                done.countDown();
-                // Unblock the connection thread only if it is parked on client readLine
-                // waiting for EOF — remote cancel finishes the runner without
-                // the client writing anything. Only while actually parked: a wake that lands
-                // after the read loop poisons teardown I/O instead (a stray interrupt once killed
-                // journal completion with ClosedByInterruptException, leaving a permanent
-                // "running" job in jk jobs).
-                if (!detached) watch.wakeIfParked(channel, connectionThread);
-            }
-        });
+        Admitted admitted = new Admitted(
+                requestLine,
+                runner,
+                plan,
+                detached,
+                eventRequestId,
+                eventKind,
+                eventDir,
+                eventStartMillis,
+                workspaceStream,
+                cancelToken,
+                done,
+                runnerRef,
+                writer,
+                channel,
+                watch,
+                connectionThread);
+        Thread started = Thread.ofVirtual().name(threadPrefix, 0).unstarted(() -> runBody(admitted));
         runnerRef.set(started);
         started.start(); // register live job + runnerRef before start
-        long cancelGraceMs = limits.cancelGraceMs();
         final Thread watchdog = watchdogs.start(eventRequestId, cancelToken, runnerRef, done, writer);
-        Runnable finish = () -> {
-            try {
-                watch.watchForEof(
-                        reader,
-                        done,
-                        () -> live.beginUserCancel(eventRequestId, cancelToken, runnerRef, cancelGraceMs, false));
-                watch.awaitRunner(
-                        eventRequestId,
-                        done,
-                        limits,
-                        cancelGraceMs,
-                        eventStartMillis,
-                        cancelToken.cancelled(),
-                        () -> watchdogs.enforceDeadline(eventRequestId, cancelToken, runnerRef.get(), writer),
-                        () -> {
-                            JobWorkers.shutdownForRequest(eventRequestId, 0L);
-                            LiveJobRegistry.interruptRunner(runnerRef.get());
-                        });
-            } finally {
-                // A late runner/cancel interrupt may have landed after the joins: clear it before any
-                // teardown I/O, or journal completion dies on ClosedByInterruptException and jk jobs
-                // shows this build as running forever. This thread ends after teardown, so
-                // there is nothing to restore the flag for.
-                Thread.interrupted();
-                if (watchdog != null) watchdog.interrupt();
-                // Belts: any leftover workers die now (grace 0 — request is ending).
-                JobWorkers.shutdownForRequest(eventRequestId, 0L);
-                JobWorkers.clear(eventRequestId);
-                // Idempotent: runner finally usually released already; covers admit-without-run paths.
-                host.inFlight().release(eventRequestId);
-                settlement.settle(
-                        eventRequestId,
-                        eventKind,
-                        eventDir,
-                        plan,
-                        workspaceStream,
-                        writer,
-                        eventStartMillis,
-                        cancelToken.cancelled());
-            }
-        };
+        Runnable finish = () -> finish(admitted, reader, watchdog);
         if (detached) {
             Thread.ofVirtual().name("jk-job-join-", 0).start(finish);
             return eventRequestId;
         }
         finish.run();
         return eventRequestId;
+    }
+
+    /** The engine is draining: a detached submit throws, a socket submit tells the client and returns -1. */
+    private static long refuseDraining(boolean detached, @Nullable BufferedWriter writer) {
+        if (detached) throw new IllegalStateException("engine is shutting down");
+        try {
+            if (writer != null)
+                WireWriter.send(
+                        writer,
+                        ProtoLifecycle.error(
+                                EngineProtocol.ERR_SHUTTING_DOWN,
+                                "the engine is shutting down (draining) — retry; the successor engine takes over"));
+        } catch (IOException ignored) {
+            // Client vanished mid-refusal — nothing to do; the connection is closing anyway.
+        }
+        return -1;
+    }
+
+    /** A same-fingerprint job holds the slot: give back the plan slot nothing ran on, then refuse. */
+    private long refuseAlreadyRunning(
+            InFlightBuilds.Hold h,
+            String eventKind,
+            boolean detached,
+            boolean claimedBuildPlanSlot,
+            @Nullable BufferedWriter writer) {
+        String label = "test".equals(eventKind) ? "Test" : "Build";
+        String msg = label + " #" + h.buildNumber() + " is already running";
+        if (detached) {
+            if (claimedBuildPlanSlot) host.abandonBuildPlanSlot();
+            throw new AlreadyRunning(msg, h.requestId(), h.buildNumber());
+        }
+        try {
+            if (writer != null) {
+                WireWriter.send(writer, ProtoLifecycle.alreadyRunning(h.buildNumber(), h.requestId(), msg));
+            }
+        } catch (IOException ignored) {
+            // client gone
+        }
+        if (claimedBuildPlanSlot) host.abandonBuildPlanSlot(); // nothing ran — give the slot back
+        return -1;
+    }
+
+    /**
+     * One admitted job as its two threads see it: the request and body, the identity the journal
+     * and the wire carry, and the handles the runner thread signals and the connection thread waits on.
+     */
+    private record Admitted(
+            String requestLine,
+            JobBody runner,
+            boolean plan,
+            boolean detached,
+            long eventRequestId,
+            String eventKind,
+            String eventDir,
+            long eventStartMillis,
+            boolean workspaceStream,
+            Session.CancelToken cancelToken,
+            CountDownLatch done,
+            AtomicReference<Thread> runnerRef,
+            @Nullable BufferedWriter writer,
+            @Nullable SocketChannel channel,
+            ConnectionWatch watch,
+            Thread connectionThread) {}
+
+    /** The runner thread: open the request's scopes, run the body, stamp the verdict, tear down. */
+    private void runBody(Admitted a) {
+        String requestLine = a.requestLine();
+        JobBody runner = a.runner();
+        boolean plan = a.plan();
+        boolean detached = a.detached();
+        long eventRequestId = a.eventRequestId();
+        String eventDir = a.eventDir();
+        Session.CancelToken cancelToken = a.cancelToken();
+        CountDownLatch done = a.done();
+        BufferedWriter writer = a.writer();
+        SocketChannel channel = a.channel();
+        ConnectionWatch watch = a.watch();
+        Thread connectionThread = a.connectionThread();
+        IoLedger io = host.runIo(eventRequestId);
+        // Nothing between the lock and the try: a throw from the setup calls would
+        // leak the read lock — one leak and the cache prune's write-lock tryLock never
+        // succeeds again for the engine's life — and would strand the in-flight fingerprint
+        // and the done latch. The teardown calls are all remove-style and safe to run even
+        // when their open never happened.
+        if (plan) host.cacheGate().readLock().lock();
+        try {
+            host.bindEventRequestId(eventRequestId);
+            JobWorkers.open(eventRequestId);
+            // Every Session this request builds adopts this ledger, so fetches/cache traffic on
+            // the shared pools all land in one place (see IoLedger).
+            IoLedger.open(io);
+            // Run-scoped notices join this request's stream for the run's life; the finally
+            // removes the sink, or a later run's notice would ride the wrong request.
+            RunNotices.openSink(io, (code, message) -> publishNotice(eventRequestId, eventDir, writer, message));
+            JobOutcome outcome;
+            try {
+                outcome = runner.run(requestLine, cancelToken, writer);
+            } catch (Throwable t) {
+                // An escaped throw must not impersonate Declined: with clean rows already
+                // recorded and no failure row, the derived verdict would read green. Rule
+                // failure, name the exception on the record, and fall into the teardown.
+                outcome = JobOutcome.failed(Exit.SOFTWARE);
+                BuildAccumulator thrown = host.accumulatorOf(eventRequestId);
+                if (thrown != null) thrown.addEscapedThrow(t);
+                reportDeadJob(eventRequestId, eventDir, writer, t);
+            }
+            // The one success law: the body's verdict is stamped here, nowhere else. A
+            // declined verdict leaves the journal to the accumulated facts.
+            BuildAccumulator acc = host.accumulatorOf(eventRequestId);
+            if (acc != null) acc.stamp(outcome);
+        } catch (Throwable t) {
+            // The setup and teardown around the body are outside its own catch, and a throw
+            // there would otherwise reach nothing but the default uncaught handler: no log
+            // line, no wire terminal, and a client that reads EOF and blames a crash.
+            reportDeadJob(eventRequestId, eventDir, writer, t);
+        } finally {
+            RunNotices.closeSink(io);
+            InputTrees.finishJob();
+            IoLedger.close();
+            // Kill leftovers first, THEN drain the Zinc session: if the worker is mid-compile
+            // its io thread is blocked in readLine and never sees end()'s POISON, so end() would
+            // burn its full 15s join before this force-kill ran. Killing the process
+            // first unblocks readLine, so end()'s join returns promptly.
+            // Never clear() the registry without shutdown, or a racing cancel thread's
+            // shutdownForRequest finds an empty set and plugin/javac children keep running.
+            JobWorkers.shutdownForRequest(eventRequestId, 0L);
+            JavaCompilerHost.end(eventRequestId);
+            JobWorkers.close();
+            host.unbindEventRequestId();
+            if (plan) host.cacheGate().readLock().unlock();
+            // Unregister the live job BEFORE releasing the in-flight hold: waiters watch the
+            // hold, cancel watches liveJobs — this order means a job never looks finished
+            // while cancelJob would still succeed. The hold still frees before the connection
+            // thread's teardown so a follow-up same-project build is not rejected.
+            live.unregisterLiveJob(eventRequestId);
+            host.inFlight().release(eventRequestId);
+            done.countDown();
+            // Unblock the connection thread only if it is parked on client readLine
+            // waiting for EOF — remote cancel finishes the runner without
+            // the client writing anything. Only while actually parked: a wake that lands
+            // after the read loop poisons teardown I/O instead (a stray interrupt once killed
+            // journal completion with ClosedByInterruptException, leaving a permanent
+            // "running" job in jk jobs).
+            if (!detached) watch.wakeIfParked(channel, connectionThread);
+        }
+    }
+
+    /**
+     * The connection thread (or a detached joiner): watch the socket for EOF, wait for the runner
+     * within the limits, then settle the request whatever happened.
+     */
+    private void finish(Admitted a, @Nullable BufferedReader reader, @Nullable Thread watchdog) {
+        boolean plan = a.plan();
+        long eventRequestId = a.eventRequestId();
+        String eventKind = a.eventKind();
+        String eventDir = a.eventDir();
+        long eventStartMillis = a.eventStartMillis();
+        boolean workspaceStream = a.workspaceStream();
+        Session.CancelToken cancelToken = a.cancelToken();
+        CountDownLatch done = a.done();
+        AtomicReference<Thread> runnerRef = a.runnerRef();
+        BufferedWriter writer = a.writer();
+        ConnectionWatch watch = a.watch();
+        long cancelGraceMs = limits.cancelGraceMs();
+        try {
+            watch.watchForEof(
+                    reader,
+                    done,
+                    () -> live.beginUserCancel(eventRequestId, cancelToken, runnerRef, cancelGraceMs, false));
+            watch.awaitRunner(
+                    eventRequestId,
+                    done,
+                    limits,
+                    cancelGraceMs,
+                    eventStartMillis,
+                    cancelToken.cancelled(),
+                    () -> watchdogs.enforceDeadline(eventRequestId, cancelToken, runnerRef.get(), writer),
+                    () -> {
+                        JobWorkers.shutdownForRequest(eventRequestId, 0L);
+                        LiveJobRegistry.interruptRunner(runnerRef.get());
+                    });
+        } finally {
+            // A late runner/cancel interrupt may have landed after the joins: clear it before any
+            // teardown I/O, or journal completion dies on ClosedByInterruptException and jk jobs
+            // shows this build as running forever. This thread ends after teardown, so
+            // there is nothing to restore the flag for.
+            Thread.interrupted();
+            if (watchdog != null) watchdog.interrupt();
+            // Belts: any leftover workers die now (grace 0 — request is ending).
+            JobWorkers.shutdownForRequest(eventRequestId, 0L);
+            JobWorkers.clear(eventRequestId);
+            // Idempotent: runner finally usually released already; covers admit-without-run paths.
+            host.inFlight().release(eventRequestId);
+            settlement.settle(
+                    eventRequestId,
+                    eventKind,
+                    eventDir,
+                    plan,
+                    workspaceStream,
+                    writer,
+                    eventStartMillis,
+                    cancelToken.cancelled());
+        }
     }
 
     /**

@@ -70,167 +70,211 @@ public final class ProjectInfoPlans {
             // re-walked the root, re-parsed it, and re-loaded every member a second time.
             JkBuild build = JkBuildParser.parse(buildFile);
             build = applyLockModulePin(dir, build);
-
-            String workspaceRootDir = "";
-            List<JkBuild> envSources = new ArrayList<>(List.of(build));
-            List<String> moduleDirs = new ArrayList<>();
-            List<String> moduleNames = new ArrayList<>();
-            Path wsRoot = null;
-            JkBuild rootBuild = build;
-            if (build.isWorkspaceRoot()) {
-                wsRoot = dir;
-                workspaceRootDir = dir.toString();
-            } else {
-                var root = WorkspaceLocator.findRoot(dir);
-                if (root.isPresent()) {
-                    wsRoot = root.get();
-                    workspaceRootDir = wsRoot.toString();
-                    try {
-                        rootBuild = JkBuildParser.parse(wsRoot.resolve(ManifestPaths.MANIFEST));
-                    } catch (Exception ignored) {
-                        rootBuild = build;
-                    }
-                }
-            }
-            if (wsRoot != null && rootBuild.isWorkspaceRoot()) {
-                try {
-                    for (var e : WorkspaceLoader.loadModules(wsRoot, rootBuild).entrySet()) {
-                        moduleDirs.add(e.getKey().toAbsolutePath().normalize().toString());
-                        moduleNames.add(e.getValue().project().name());
-                        envSources.add(e.getValue()); // a member declares what the root does not
-                    }
-                } catch (Exception ignored) {
-                    for (String m : rootBuild.workspaceModules()) {
-                        Path abs = wsRoot.resolve(m).toAbsolutePath().normalize();
-                        moduleDirs.add(abs.toString());
-                        moduleNames.add(abs.getFileName().toString());
-                    }
-                }
-            } else {
-                moduleDirs.add(dir.toAbsolutePath().normalize().toString());
-                moduleNames.add(build.project().name());
-            }
-
+            Workspace ws = workspace(dir, build);
+            List<String> moduleDirs = ws.moduleDirs();
+            List<String> moduleNames = ws.moduleNames();
             if ((modulesSpec != null && !modulesSpec.isBlank())
                     || (affectedSince != null && !affectedSince.isBlank())
                     || affectedWip) {
-                Path selectRoot = wsRoot != null ? wsRoot : dir;
-                JkBuild selectBuild = wsRoot != null ? rootBuild : build;
-                var hit = ModuleSelection.resolveOptional(
-                        selectRoot, selectBuild, modulesSpec, affectedSince, affectedWip);
-                if (hit != null && !hit.ok()) {
-                    return ProjectInfo.error(hit.errorMessage());
+                Selection sel = select(dir, build, ws, modulesSpec, affectedSince, affectedWip);
+                if (sel.error() != null) {
+                    return ProjectInfo.error(sel.error());
                 }
-                List<String> filteredDirs = new ArrayList<>();
-                List<String> filteredNames = new ArrayList<>();
-                if (hit != null) {
-                    for (Path p : hit.moduleDirs()) {
-                        String abs = p.toAbsolutePath().normalize().toString();
-                        int idx = moduleDirs.indexOf(abs);
-                        filteredDirs.add(abs);
-                        filteredNames.add(
-                                idx >= 0
-                                        ? moduleNames.get(idx)
-                                        : p.getFileName().toString());
-                    }
-                }
-                moduleDirs = filteredDirs;
-                moduleNames = filteredNames;
+                moduleDirs = sel.moduleDirs();
+                moduleNames = sel.moduleNames();
             }
-
-            int sourceCount = 0, testCount = 0;
-            if (counts) {
-                List<Path> countDirs = moduleDirs.isEmpty()
-                        ? List.of(dir)
-                        : moduleDirs.stream().map(Path::of).toList();
-                for (Path mod : countDirs) {
-                    sourceCount += countSources(mod, true);
-                    testCount += countSources(mod, false);
-                }
-            }
-
+            Counts c = counts ? count(dir, moduleDirs) : new Counts(0, 0);
             Path lockFile = LockPaths.lockFile(dir);
             boolean hasLock = Files.exists(lockFile);
-            String lockJdk = "";
-            if (hasLock) {
-                try {
-                    var pin = LockfileReader.read(lockFile).jdk();
-                    if (pin != null) lockJdk = pin.fingerprint();
-                } catch (IOException ignored) {
-                    // unreadable lock — summarized as jdk-unknown, not an error
-                }
-            }
-
-            var format = build.format();
-            var boot = build.pluginConfig(JkBuild.SPRING_BOOT_ID).orElse(null);
-            var testTags = JkBuildParser.parseTestTags(buildFile);
-            return new ProjectInfo(
-                    null,
-                    sanitizeIdentity(build.project().group()),
-                    build.project().name(),
-                    sanitizeIdentity(build.project().version()),
-                    sanitizeJdk(build.project().jdk()),
-                    build.project().javaRelease(),
-                    build.project().isKotlin(),
-                    build.project().kotlin() == null
-                            ? ""
-                            : build.project().kotlin().raw(),
-                    build.project().isGroovy(),
-                    build.project().groovy() == null
-                            ? ""
-                            : build.project().groovy().raw(),
-                    SourceLayout.isSimpleLayout(build.project(), dir),
-                    build.isWorkspaceRoot(),
-                    workspaceRootDir,
-                    moduleDirs,
-                    build.isApplication(),
-                    build.mainClass() == null ? "" : build.mainClass(),
-                    build.assembly(),
-                    build.applicationOpt()
-                            .map(JkBuild.Application::config)
-                            .filter(c -> c != null && !c.isBlank())
-                            .orElse(""),
-                    build.nativeMode().name(),
-                    orEmpty(build.graal()),
-                    build.isSpringBoot(),
-                    boot == null ? "" : boot.stringOpt("version").orElse(""),
-                    orEmpty(format.style()),
-                    orEmpty(format.java()),
-                    orEmpty(format.kotlin()),
-                    format.optimizeImports(),
-                    format.importOrder(),
-                    format.removeUnusedImports(),
-                    hasLock,
-                    lockJdk,
-                    layoutOf(build, dir, BuildLayout::mainJar),
-                    layoutOf(build, dir, BuildLayout::assemblyJar),
-                    layoutOf(build, dir, BuildLayout::nativeBinary),
-                    layoutOf(build, dir, BuildLayout::nativeLibrary),
-                    pathDeps(build),
-                    layoutOf(build, dir, BuildLayout::sourcesJar),
-                    layoutOf(build, dir, BuildLayout::javadocJar),
-                    VariantApply.envRefs(envSources),
-                    moduleNames,
-                    sourceCount,
-                    testCount,
-                    build.nativeExplicitlyDisabled(),
-                    layoutOf(build, dir, BuildLayout::classesDir),
-                    layoutOf(build, dir, BuildLayout::testClassesDir),
-                    layoutOf(build, dir, BuildLayout::kotlinClassesDir),
-                    layoutOf(build, dir, BuildLayout::groovyClassesDir),
-                    layoutOf(build, dir, BuildLayout::testResultsDir),
-                    testTags.includeTags(),
-                    testTags.excludeTags(),
-                    hasLock && LockFreshness.isStale(dir, lockFile),
-                    build.project().isScala(),
-                    build.project().scala() == null
-                            ? ""
-                            : build.project().scala().raw(),
-                    CompileSupport.coordinatorOnly(build, dir),
-                    build.installOpt().map(JkBuild.Install::productLib).orElse(""));
+            String lockJdk = hasLock ? lockJdk(lockFile) : "";
+            return summary(dir, buildFile, build, ws, moduleDirs, moduleNames, c, lockFile, hasLock, lockJdk);
         } catch (RuntimeException | IOException e) {
             return ProjectInfo.error(Errors.text(e));
         }
+    }
+
+    /** The workspace around {@code dir}: its root (null when standalone), the root's build, and every member. */
+    private record Workspace(
+            @Nullable Path wsRoot,
+            String workspaceRootDir,
+            JkBuild rootBuild,
+            List<JkBuild> envSources,
+            List<String> moduleDirs,
+            List<String> moduleNames) {}
+
+    private static Workspace workspace(Path dir, JkBuild build) throws IOException {
+        String workspaceRootDir = "";
+        List<JkBuild> envSources = new ArrayList<>(List.of(build));
+        List<String> moduleDirs = new ArrayList<>();
+        List<String> moduleNames = new ArrayList<>();
+        Path wsRoot = null;
+        JkBuild rootBuild = build;
+        if (build.isWorkspaceRoot()) {
+            wsRoot = dir;
+            workspaceRootDir = dir.toString();
+        } else {
+            var root = WorkspaceLocator.findRoot(dir);
+            if (root.isPresent()) {
+                wsRoot = root.get();
+                workspaceRootDir = wsRoot.toString();
+                try {
+                    rootBuild = JkBuildParser.parse(wsRoot.resolve(ManifestPaths.MANIFEST));
+                } catch (Exception ignored) {
+                    rootBuild = build;
+                }
+            }
+        }
+        if (wsRoot != null && rootBuild.isWorkspaceRoot()) {
+            try {
+                for (var e : WorkspaceLoader.loadModules(wsRoot, rootBuild).entrySet()) {
+                    moduleDirs.add(e.getKey().toAbsolutePath().normalize().toString());
+                    moduleNames.add(e.getValue().project().name());
+                    envSources.add(e.getValue()); // a member declares what the root does not
+                }
+            } catch (Exception ignored) {
+                for (String m : rootBuild.workspaceModules()) {
+                    Path abs = wsRoot.resolve(m).toAbsolutePath().normalize();
+                    moduleDirs.add(abs.toString());
+                    moduleNames.add(abs.getFileName().toString());
+                }
+            }
+        } else {
+            moduleDirs.add(dir.toAbsolutePath().normalize().toString());
+            moduleNames.add(build.project().name());
+        }
+        return new Workspace(wsRoot, workspaceRootDir, rootBuild, envSources, moduleDirs, moduleNames);
+    }
+
+    /** The {@code -m}/{@code --affected-since}/{@code --affected} selection, or the selector's error. */
+    private record Selection(
+            List<String> moduleDirs,
+            List<String> moduleNames,
+            @Nullable String error) {}
+
+    private static Selection select(
+            Path dir,
+            JkBuild build,
+            Workspace ws,
+            @Nullable String modulesSpec,
+            @Nullable String affectedSince,
+            boolean affectedWip) {
+        Path selectRoot = ws.wsRoot() != null ? ws.wsRoot() : dir;
+        JkBuild selectBuild = ws.wsRoot() != null ? ws.rootBuild() : build;
+        var hit = ModuleSelection.resolveOptional(selectRoot, selectBuild, modulesSpec, affectedSince, affectedWip);
+        if (hit != null && !hit.ok()) {
+            return new Selection(List.of(), List.of(), hit.errorMessage());
+        }
+        List<String> filteredDirs = new ArrayList<>();
+        List<String> filteredNames = new ArrayList<>();
+        if (hit != null) {
+            for (Path p : hit.moduleDirs()) {
+                String abs = p.toAbsolutePath().normalize().toString();
+                int idx = ws.moduleDirs().indexOf(abs);
+                filteredDirs.add(abs);
+                filteredNames.add(
+                        idx >= 0 ? ws.moduleNames().get(idx) : p.getFileName().toString());
+            }
+        }
+        return new Selection(filteredDirs, filteredNames, null);
+    }
+
+    private record Counts(int sources, int tests) {}
+
+    private static Counts count(Path dir, List<String> moduleDirs) {
+        int sourceCount = 0, testCount = 0;
+        List<Path> countDirs = moduleDirs.isEmpty()
+                ? List.of(dir)
+                : moduleDirs.stream().map(Path::of).toList();
+        for (Path mod : countDirs) {
+            sourceCount += countSources(mod, true);
+            testCount += countSources(mod, false);
+        }
+        return new Counts(sourceCount, testCount);
+    }
+
+    /** The lock's JDK fingerprint, or empty when the lock is unreadable (jdk-unknown, not an error). */
+    private static String lockJdk(Path lockFile) {
+        try {
+            var pin = LockfileReader.read(lockFile).jdk();
+            return pin != null ? pin.fingerprint() : "";
+        } catch (IOException ignored) {
+            return "";
+        }
+    }
+
+    private static ProjectInfo summary(
+            Path dir,
+            Path buildFile,
+            JkBuild build,
+            Workspace ws,
+            List<String> moduleDirs,
+            List<String> moduleNames,
+            Counts counts,
+            Path lockFile,
+            boolean hasLock,
+            String lockJdk)
+            throws IOException {
+        var format = build.format();
+        var boot = build.pluginConfig(JkBuild.SPRING_BOOT_ID).orElse(null);
+        var testTags = JkBuildParser.parseTestTags(buildFile);
+        return new ProjectInfo(
+                null,
+                sanitizeIdentity(build.project().group()),
+                build.project().name(),
+                sanitizeIdentity(build.project().version()),
+                sanitizeJdk(build.project().jdk()),
+                build.project().javaRelease(),
+                build.project().isKotlin(),
+                build.project().kotlin() == null ? "" : build.project().kotlin().raw(),
+                build.project().isGroovy(),
+                build.project().groovy() == null ? "" : build.project().groovy().raw(),
+                SourceLayout.isSimpleLayout(build.project(), dir),
+                build.isWorkspaceRoot(),
+                ws.workspaceRootDir(),
+                moduleDirs,
+                build.isApplication(),
+                build.mainClass() == null ? "" : build.mainClass(),
+                build.assembly(),
+                build.applicationOpt()
+                        .map(JkBuild.Application::config)
+                        .filter(c -> c != null && !c.isBlank())
+                        .orElse(""),
+                build.nativeMode().name(),
+                orEmpty(build.graal()),
+                build.isSpringBoot(),
+                boot == null ? "" : boot.stringOpt("version").orElse(""),
+                orEmpty(format.style()),
+                orEmpty(format.java()),
+                orEmpty(format.kotlin()),
+                format.optimizeImports(),
+                format.importOrder(),
+                format.removeUnusedImports(),
+                hasLock,
+                lockJdk,
+                layoutOf(build, dir, BuildLayout::mainJar),
+                layoutOf(build, dir, BuildLayout::assemblyJar),
+                layoutOf(build, dir, BuildLayout::nativeBinary),
+                layoutOf(build, dir, BuildLayout::nativeLibrary),
+                pathDeps(build),
+                layoutOf(build, dir, BuildLayout::sourcesJar),
+                layoutOf(build, dir, BuildLayout::javadocJar),
+                VariantApply.envRefs(ws.envSources()),
+                moduleNames,
+                counts.sources(),
+                counts.tests(),
+                build.nativeExplicitlyDisabled(),
+                layoutOf(build, dir, BuildLayout::classesDir),
+                layoutOf(build, dir, BuildLayout::testClassesDir),
+                layoutOf(build, dir, BuildLayout::kotlinClassesDir),
+                layoutOf(build, dir, BuildLayout::groovyClassesDir),
+                layoutOf(build, dir, BuildLayout::testResultsDir),
+                testTags.includeTags(),
+                testTags.excludeTags(),
+                hasLock && LockFreshness.isStale(dir, lockFile),
+                build.project().isScala(),
+                build.project().scala() == null ? "" : build.project().scala().raw(),
+                CompileSupport.coordinatorOnly(build, dir),
+                build.installOpt().map(JkBuild.Install::productLib).orElse(""));
     }
 
     private static String sanitizeIdentity(String value) {

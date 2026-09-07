@@ -79,12 +79,6 @@ public final class AffectedTestRanker {
         Path root = in.workspaceRoot() == null
                 ? module
                 : in.workspaceRoot().toAbsolutePath().normalize();
-
-        boolean outside = false;
-        boolean manifest = false;
-        boolean onlyNonClass = true;
-        LinkedHashSet<String> dirtyTestClasses = new LinkedHashSet<>();
-        LinkedHashMap<String, ClassAbi.Kind> changed = new LinkedHashMap<>();
         Set<String> suites = new LinkedHashSet<>(
                 in.selection() == null
                         ? List.of(TestSuites.DEFAULT)
@@ -92,7 +86,40 @@ public final class AffectedTestRanker {
         if (suites.isEmpty()) suites.add(TestSuites.DEFAULT);
         // Layout-aware FQC derivation (compact and traditional); string heuristics as fallback.
         SourceFqcs fqcs = SourceFqcs.of(module, suites);
+        Dirty dirty = classifyDirty(in, module, root, suites, fqcs);
+        AffectedTests refused = refusal(in, dirty, cone);
+        if (refused != null) return refused;
 
+        List<Scored> scored = score(in, dirty);
+        int candidates = scored.size();
+        List<AffectedTests.Row> rows = new ArrayList<>();
+        String coord = in.moduleCoord() == null ? "" : in.moduleCoord();
+        for (int i = 0; i < scored.size() && i < AffectedTests.CAP; i++) {
+            Scored s = scored.get(i);
+            rows.add(new AffectedTests.Row(coord, s.className(), s.reason(), s.score()));
+        }
+        if (rows.isEmpty()) return AffectedTests.empty(cone, toChanged(in, dirty.changed()));
+        return AffectedTests.ranked(cone, toChanged(in, dirty.changed()), rows, candidates);
+    }
+
+    /**
+     * What the dirty set says: a manifest touched, a dirty test outside the selection, only
+     * non-class files, the selected test classes edited, and the changed production types by kind.
+     */
+    private record Dirty(
+            boolean outside,
+            boolean manifest,
+            boolean onlyNonClass,
+            LinkedHashSet<String> dirtyTestClasses,
+            LinkedHashMap<String, ClassAbi.Kind> changed) {}
+
+    private static Dirty classifyDirty(
+            Inputs in, @Nullable Path module, @Nullable Path root, Set<String> suites, SourceFqcs fqcs) {
+        boolean outside = false;
+        boolean manifest = false;
+        boolean onlyNonClass = true;
+        LinkedHashSet<String> dirtyTestClasses = new LinkedHashSet<>();
+        LinkedHashMap<String, ClassAbi.Kind> changed = new LinkedHashMap<>();
         for (String raw : in.dirtyPaths() == null ? List.<String>of() : in.dirtyPaths()) {
             if (raw == null || raw.isBlank()) continue;
             Path p = Path.of(raw);
@@ -143,13 +170,19 @@ public final class AffectedTestRanker {
                 }
             }
         }
-        if (manifest) {
+        return new Dirty(outside, manifest, onlyNonClass, dirtyTestClasses, changed);
+    }
+
+    /** The refusals the classified dirty set decides, in precedence order; null when ranking may proceed. */
+    private static @Nullable AffectedTests refusal(Inputs in, Dirty dirty, List<AffectedTests.ModuleRow> cone) {
+        Map<String, ClassAbi.Kind> changed = dirty.changed();
+        if (dirty.manifest()) {
             return AffectedTests.refused(
                     new AffectedTests.Refuse("manifest", "jk.toml or jk-lock.toml changed"),
                     cone,
                     toChanged(in, changed));
         }
-        if (outside) {
+        if (dirty.outside()) {
             return AffectedTests.refused(
                     new AffectedTests.Refuse(
                             "outside-selection", "dirty test source is outside the current test selection"),
@@ -166,22 +199,27 @@ public final class AffectedTestRanker {
         }
         boolean foreignEmpty =
                 in.foreignChanged() == null || in.foreignChanged().isEmpty();
-        boolean noCode = changed.isEmpty() && dirtyTestClasses.isEmpty() && foreignEmpty;
+        boolean noCode = changed.isEmpty() && dirty.dirtyTestClasses().isEmpty() && foreignEmpty;
         if (noCode
-                && onlyNonClass
+                && dirty.onlyNonClass()
                 && in.dirtyPaths() != null
                 && !in.dirtyPaths().isEmpty()) {
             return AffectedTests.refused(
                     new AffectedTests.Refuse("non-class", "dirty set is only resources/docs"), cone, List.of());
         }
+        return null;
+    }
 
+    /** Every selected test that scores against the changed types, best first, ties by name. */
+    private static List<Scored> score(Inputs in, Dirty dirty) {
+        LinkedHashSet<String> dirtyTestClasses = dirty.dirtyTestClasses();
         List<String> include =
                 in.selection() == null ? List.of() : in.selection().includeTags();
         List<String> exclude =
                 in.selection() == null ? List.of() : in.selection().excludeTags();
         // Local changed types score first; a dependency module's classified types (foreign) fill
         // in behind them so a dependent's importers rank too. Local wins a duplicate.
-        LinkedHashMap<String, ClassAbi.Kind> scoreable = new LinkedHashMap<>(changed);
+        LinkedHashMap<String, ClassAbi.Kind> scoreable = new LinkedHashMap<>(dirty.changed());
         if (in.foreignChanged() != null) {
             for (var e : in.foreignChanged().entrySet()) scoreable.putIfAbsent(e.getKey(), e.getValue());
         }
@@ -227,15 +265,7 @@ public final class AffectedTestRanker {
             if (already.add(fqc)) scored.add(new Scored(fqc, "test-src", 110));
         }
         scored.sort(Comparator.comparingInt(Scored::score).reversed().thenComparing(Scored::className));
-        int candidates = scored.size();
-        List<AffectedTests.Row> rows = new ArrayList<>();
-        String coord = in.moduleCoord() == null ? "" : in.moduleCoord();
-        for (int i = 0; i < scored.size() && i < AffectedTests.CAP; i++) {
-            Scored s = scored.get(i);
-            rows.add(new AffectedTests.Row(coord, s.className(), s.reason(), s.score()));
-        }
-        if (rows.isEmpty()) return AffectedTests.empty(cone, toChanged(in, changed));
-        return AffectedTests.ranked(cone, toChanged(in, changed), rows, candidates);
+        return scored;
     }
 
     private record Scored(String className, String reason, int score) {}

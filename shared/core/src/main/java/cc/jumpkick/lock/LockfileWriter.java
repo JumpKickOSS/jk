@@ -95,6 +95,16 @@ public final class LockfileWriter {
 
     public static String render(Lockfile lockfile) {
         StringBuilder out = new StringBuilder(256);
+        writeHeader(out, lockfile);
+        writeArtifacts(out, lockfile);
+        writePlugins(out, lockfile);
+        writeSdk(out, lockfile);
+        writeModules(out, lockfile);
+        return out.toString();
+    }
+
+    /** Top-level scalars, then the toolchain and native tables that must follow them. */
+    private static void writeHeader(StringBuilder out, Lockfile lockfile) {
         out.append("version = ").append(lockfile.version()).append('\n');
         out.append("generated-by = ").append(quote(lockfile.generatedBy())).append('\n');
         out.append("resolution-algorithm = ")
@@ -129,7 +139,10 @@ public final class LockfileWriter {
                 out.append("checksum = ").append(quote(pin.checksum())).append('\n');
             }
         }
+    }
 
+    /** One {@code [[artifact]]} row per artifact, sorted by name then version. */
+    private static void writeArtifacts(StringBuilder out, Lockfile lockfile) {
         List<Lockfile.Artifact> sorted = new ArrayList<>(lockfile.artifacts());
         sorted.sort(Comparator.comparing(Lockfile.Artifact::name).thenComparing(Lockfile.Artifact::version));
 
@@ -178,7 +191,9 @@ public final class LockfileWriter {
                 out.append("]\n");
             }
         }
+    }
 
+    private static void writePlugins(StringBuilder out, Lockfile lockfile) {
         List<Lockfile.PluginEntry> sortedPlugins = new ArrayList<>(lockfile.plugins());
         sortedPlugins.sort(
                 Comparator.comparing(Lockfile.PluginEntry::coordinate).thenComparing(Lockfile.PluginEntry::version));
@@ -190,7 +205,9 @@ public final class LockfileWriter {
             out.append("version    = ").append(quote(p.version())).append('\n');
             out.append("checksum   = ").append(quote(p.checksum())).append('\n');
         }
+    }
 
+    private static void writeSdk(StringBuilder out, Lockfile lockfile) {
         List<Lockfile.SdkEntry> sortedSdk = new ArrayList<>(lockfile.sdk());
         sortedSdk.sort(Comparator.comparing(Lockfile.SdkEntry::component));
         for (Lockfile.SdkEntry e : sortedSdk) {
@@ -199,7 +216,10 @@ public final class LockfileWriter {
             out.append("component = ").append(quote(e.component())).append('\n');
             out.append("revision  = ").append(quote(e.revision())).append('\n');
         }
+    }
 
+    /** One {@code [[module]]} row per workspace module, sorted by path then name; blank fields left out. */
+    private static void writeModules(StringBuilder out, Lockfile lockfile) {
         List<Lockfile.ModuleEntry> sortedModules = new ArrayList<>(lockfile.modules());
         sortedModules.sort(Comparator.comparing(Lockfile.ModuleEntry::path).thenComparing(Lockfile.ModuleEntry::name));
         for (Lockfile.ModuleEntry m : sortedModules) {
@@ -234,8 +254,6 @@ public final class LockfileWriter {
                 out.append("m2.install = false\n");
             }
         }
-
-        return out.toString();
     }
 
     /**

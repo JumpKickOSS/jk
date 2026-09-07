@@ -24,8 +24,11 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.zip.ZipFile;
+import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -42,68 +45,41 @@ import org.junit.jupiter.api.io.TempDir;
  */
 @Tag("slow")
 @ExtendWith(SysProps.class)
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class AndroidSpikeTest {
 
-    @Test
-    void hello_world_apk_via_the_android_plugin(@TempDir Path tmp) throws Exception {
-        Path project = Files.createDirectories(tmp.resolve("hello"));
-        // A persistent CAS + SDK root across runs — the platform is a one-time download.
-        Path cache = Path.of(System.getProperty("user.dir"), "build", "android-spike-cache");
-        Path sdkRoot = Path.of(System.getProperty("user.dir"), "build", "android-spike-sdk");
-        System.setProperty(AndroidSdk.ROOT_PROPERTY, sdkRoot.toString());
+    /** The built hello-world: its checkout, the CAS it built against, the managed SDK root, the APK. */
+    private record Built(Path project, Path cache, Path sdkRoot, Path apk) {}
 
-        writeProject(project);
+    // A persistent CAS + SDK root across runs — the platform is a one-time download.
+    private static final Path CACHE = Path.of(System.getProperty("user.dir"), "build", "android-spike-cache");
+    private static final Path SDK_ROOT = Path.of(System.getProperty("user.dir"), "build", "android-spike-sdk");
 
-        // Accept the SDK licenses exactly as `jk android licenses --yes` does — the installer
-        // refuses to download otherwise (the gate the AndroidSdkTest covers in isolation).
-        var sdk = AndroidSdk.resolve();
-        var installer = new AndroidSdkInstaller(sdk);
-        if (!sdk.installed("platforms;android-28")) {
-            for (var license : installer.feed().licenses().entrySet()) {
-                sdk.recordLicense(license.getKey(), AndroidRepoFeed.licenseHash(license.getValue()));
-            }
+    @TempDir
+    Path tmp;
+
+    /** Built once per class, by whichever test asks first; every test reads the same APK. */
+    private @Nullable Built built;
+
+    @BeforeEach
+    void pointAtTheManagedSdkRoot() {
+        // SysProps restores the table around each method, so every test sets the root itself.
+        System.setProperty(AndroidSdk.ROOT_PROPERTY, SDK_ROOT.toString());
+    }
+
+    private Built built() throws Exception {
+        Built b = built;
+        if (b == null) {
+            b = buildHelloWorld();
+            built = b;
         }
+        return b;
+    }
 
-        Cas cas = new Cas(cache);
-        // The platform is PROVIDED via the manifest's [[contribute.provided-classpath]] — the
-        // lock carries no platform artifact at all.
-        LockfileWriter.write(
-                new Lockfile(
-                        Lockfile.CURRENT_VERSION,
-                        "test",
-                        Lockfile.RESOLUTION_ALGORITHM,
-                        null,
-                        null,
-                        List.of(),
-                        List.of()),
-                project.resolve("jk-lock.toml"));
-
-        // The real declared plan, exactly as jk build assembles it.
-        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
-                project,
-                cache,
-                project.resolve("jk.toml"),
-                project.resolve("jk-lock.toml"),
-                project,
-                1,
-                0,
-                null,
-                null,
-                true,
-                false,
-                false,
-                false,
-                Set.of(),
-                SessionContext.current());
-        BuildPlan plan = BuildPlanner.fullPlan(in);
-
-        assertThat(plan.steps().stream().map(p -> p.name()))
-                .contains("plugin-android-manifest", "plugin-android-res", "plugin-android-dex", "package-jar");
-
-        BuildPlanResult result = plan.run();
-        assertThat(result.errors()).isEmpty();
-        assertThat(result.success()).isTrue();
-
+    @Test
+    void jk_build_produces_a_signed_apk_over_the_public_spi() throws Exception {
+        Built b = built();
+        Path project = b.project();
         // manifest-merger ran: package + <uses-sdk> injected into the merged manifest.
         Path merged = project.resolve("target/plugin/android-manifest/merged/AndroidManifest.xml");
         assertThat(merged).exists();
@@ -128,10 +104,9 @@ class AndroidSpikeTest {
         assertThat(project.resolve("target/plugin/android-dex/dex/classes.dex")).exists();
 
         // The APK replaced the main artifact under its own extension, assembled + debug-signed.
-        Path apk = project.resolve("target/lib/hello-1.0.0.apk");
-        assertThat(apk).exists();
+        assertThat(b.apk()).exists();
         Set<String> entries = new HashSet<>();
-        try (ZipFile zip = new ZipFile(apk.toFile())) {
+        try (ZipFile zip = new ZipFile(b.apk().toFile())) {
             zip.stream().forEach(e -> entries.add(e.getName()));
         }
         assertThat(entries)
@@ -139,18 +114,24 @@ class AndroidSpikeTest {
                 .anyMatch(name -> name.startsWith("META-INF/") && name.endsWith(".RSA")) // v1
                 .contains("META-INF/MANIFEST.MF");
         // v2 signing leaves no entry — verify with the same apksig the plugin signs with.
-        assertThat(verifiedByApksig(apk)).isTrue();
+        assertThat(verifiedByApksig(b.apk())).isTrue();
+    }
 
-        // ---- jk run onto a device: the declared deploy command, against a scripted fake adb ----
-        // (a live `adb devices` run is the honest remaining gap — no device in CI).
+    /**
+     * jk run onto a device: the declared deploy command, against a scripted fake adb (a live
+     * {@code adb devices} run is the honest remaining gap — no device in CI).
+     */
+    @Test
+    void deploy_installs_and_starts_the_app_through_adb() throws Exception {
+        Built b = built();
         Path adbLog = tmp.resolve("adb.log");
         Path fakeAdb = tmp.resolve("fake-adb");
         Files.writeString(fakeAdb, "#!/bin/sh\necho \"$@\" >> " + adbLog.toAbsolutePath() + "\necho Success\n");
         fakeAdb.toFile().setExecutable(true);
 
         var deploy = PluginCommands.run(
-                project,
-                cache,
+                b.project(),
+                b.cache(),
                 "deploy",
                 List.of("--adb", fakeAdb.toAbsolutePath().toString()));
         assertThat(deploy.error()).isNull();
@@ -158,11 +139,17 @@ class AndroidSpikeTest {
         assertThat(deploy.exit()).isZero();
         String adbCalls = Files.readString(adbLog);
         assertThat(adbCalls)
-                .contains("install -r " + apk.toAbsolutePath())
+                .contains("install -r " + b.apk().toAbsolutePath())
                 .contains("shell am start -n com.example.hello/com.example.hello.MainActivity");
+    }
 
-        // ---- instrumented tests: the instrument command against a scripted transcript ----
-        // (a live device run remains gated — the parser and adb argv are the testable surface).
+    /**
+     * Instrumented tests: the instrument command against a scripted transcript (a live device run
+     * remains gated — the parser and adb argv are the testable surface).
+     */
+    @Test
+    void instrument_runs_the_androidx_runner_and_reads_its_transcript() throws Exception {
+        Built b = built();
         Path instrLog = tmp.resolve("instr-adb.log");
         Path instrAdb = tmp.resolve("fake-instr-adb");
         Files.writeString(
@@ -189,8 +176,8 @@ class AndroidSpikeTest {
                         + "esac\n");
         instrAdb.toFile().setExecutable(true);
         var instrument = PluginCommands.run(
-                project,
-                cache,
+                b.project(),
+                b.cache(),
                 "instrument",
                 List.of("--adb", instrAdb.toAbsolutePath().toString()));
         assertThat(instrument.error()).isNull();
@@ -202,36 +189,103 @@ class AndroidSpikeTest {
                 .contains("✗ com.example.hello.SmokeTest.broken FAILED")
                 .contains("1 passed, 1 failed");
         assertThat(Files.readString(instrLog))
-                .contains("install -r " + apk.toAbsolutePath())
+                .contains("install -r " + b.apk().toAbsolutePath())
                 .contains("shell am instrument -r -w com.example.hello/androidx.test.runner.AndroidJUnitRunner");
+    }
 
-        // ---- managed devices: jk avd create/list against the managed SDK root ----
-        Path fakeImage = sdkRoot.resolve("system-images/android-28/default/x86_64");
+    /** Managed devices: jk avd create/list/boot against the managed SDK root. */
+    @Test
+    void avd_create_and_list_work_against_the_managed_sdk_root_and_boot_wants_the_emulator() throws Exception {
+        Built b = built();
+        Path fakeImage = b.sdkRoot().resolve("system-images/android-28/default/x86_64");
         Files.createDirectories(fakeImage);
         var avdCreate = PluginCommands.run(
-                project,
-                cache,
+                b.project(),
+                b.cache(),
                 "avd",
                 List.of("create", "spike", "--system-image", "system-images;android-28;default;x86_64"));
         assertThat(avdCreate.error()).isNull();
         assertThat(avdCreate.exit()).isZero();
-        Path avdConfig = sdkRoot.resolve("avd/spike.avd/config.ini");
+        Path avdConfig = b.sdkRoot().resolve("avd/spike.avd/config.ini");
         assertThat(avdConfig).exists();
         assertThat(Files.readString(avdConfig))
                 .contains("image.sysdir.1=system-images/android-28/default/x86_64/")
                 .contains("tag.id=default");
-        var avdList = PluginCommands.run(project, cache, "avd", List.of("list"));
+        var avdList = PluginCommands.run(b.project(), b.cache(), "avd", List.of("list"));
         assertThat(String.join("\n", avdList.output())).contains("spike");
         // boot: refuses gracefully without the emulator component (no ~300MB download in CI).
-        var avdBoot = PluginCommands.run(project, cache, "avd", List.of("boot", "spike"));
+        var avdBoot = PluginCommands.run(b.project(), b.cache(), "avd", List.of("boot", "spike"));
         assertThat(avdBoot.exit()).isEqualTo(1);
         assertThat(String.join("\n", avdBoot.output())).contains("emulator component is not installed");
+    }
 
-        // ---- the provisioning surface: component status over the same command machinery ----
-        var status = PluginCommands.run(project, cache, "android", List.of("sdk"));
+    /** The provisioning surface: component status over the same command machinery. */
+    @Test
+    void android_sdk_reports_the_installed_platform() throws Exception {
+        Built b = built();
+        var status = PluginCommands.run(b.project(), b.cache(), "android", List.of("sdk"));
         assertThat(status.error()).isNull();
         assertThat(status.exit()).isZero();
         assertThat(String.join("\n", status.output())).contains("platforms;android-28: installed");
+    }
+
+    /**
+     * The real declared plan, exactly as jk build assembles it, run to completion: the plugin
+     * steps present, no errors, a debug-signed APK under target/lib.
+     */
+    private Built buildHelloWorld() throws Exception {
+        Path project = Files.createDirectories(tmp.resolve("hello"));
+        writeProject(project);
+
+        // Accept the SDK licenses exactly as `jk android licenses --yes` does — the installer
+        // refuses to download otherwise (the gate the AndroidSdkTest covers in isolation).
+        var sdk = AndroidSdk.resolve();
+        var installer = new AndroidSdkInstaller(sdk);
+        if (!sdk.installed("platforms;android-28")) {
+            for (var license : installer.feed().licenses().entrySet()) {
+                sdk.recordLicense(license.getKey(), AndroidRepoFeed.licenseHash(license.getValue()));
+            }
+        }
+
+        Cas cas = new Cas(CACHE);
+        // The platform is PROVIDED via the manifest's [[contribute.provided-classpath]] — the
+        // lock carries no platform artifact at all.
+        LockfileWriter.write(
+                new Lockfile(
+                        Lockfile.CURRENT_VERSION,
+                        "test",
+                        Lockfile.RESOLUTION_ALGORITHM,
+                        null,
+                        null,
+                        List.of(),
+                        List.of()),
+                project.resolve("jk-lock.toml"));
+
+        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
+                project,
+                CACHE,
+                project.resolve("jk.toml"),
+                project.resolve("jk-lock.toml"),
+                project,
+                1,
+                0,
+                null,
+                null,
+                true,
+                false,
+                false,
+                false,
+                Set.of(),
+                SessionContext.current());
+        BuildPlan plan = BuildPlanner.fullPlan(in);
+
+        assertThat(plan.steps().stream().map(p -> p.name()))
+                .contains("plugin-android-manifest", "plugin-android-res", "plugin-android-dex", "package-jar");
+
+        BuildPlanResult result = plan.run();
+        assertThat(result.errors()).isEmpty();
+        assertThat(result.success()).isTrue();
+        return new Built(project, CACHE, SDK_ROOT, project.resolve("target/lib/hello-1.0.0.apk"));
     }
 
     /**

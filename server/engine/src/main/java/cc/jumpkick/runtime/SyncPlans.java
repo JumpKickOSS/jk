@@ -89,7 +89,22 @@ public final class SyncPlans {
         }
         final int preScanDenominator = preScannedTotal;
 
-        Task parseLock = Task.builder(TaskNames.PARSE_LOCK)
+        return BuildPlan.builder("sync")
+                .stateKeys(LOCKFILE, BUILD, JDK_OUTCOME, CAS_REPORT, WORKER_REPORT, WORKSPACE_MODULES, LOCKFILE_CREATED)
+                .addTask(parseLockStep(dir, cache, lockFile, repoUrl))
+                .addTask(ensureJdkStep(dir, jdksDir, allowJdkInstall))
+                .addTask(syncCasStep(dir, cache, repoUrl, preScanDenominator, label, totalFetched, totalUpToDate))
+                .addTask(syncSourcesStep(sources))
+                .addTask(syncPluginsStep(dir, cache, repoUrl))
+                .addTask(syncWorkersStep())
+                .addTask(writeManifestStep(cache, lockFile))
+                .addTask(syncModulesStep())
+                .build();
+    }
+
+    /** Read the lock, resolving it first when absent and re-locking when jk.toml changed. */
+    private static Task parseLockStep(Path dir, Path cache, Path lockFile, @Nullable URI repoUrl) {
+        return Task.builder(TaskNames.PARSE_LOCK)
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("parse jk-lock.toml");
@@ -134,8 +149,11 @@ public final class SyncPlans {
                     ctx.progress(1);
                 })
                 .build();
+    }
 
-        Task ensureJdk = Task.builder(TaskNames.ENSURE_JDK)
+    /** Align the local JDK with the lock; installs only on in-process paths. */
+    private static Task ensureJdkStep(Path dir, @Nullable Path jdksDir, boolean allowJdkInstall) {
+        return Task.builder(TaskNames.ENSURE_JDK)
                 .kind(TaskKind.IO)
                 .requires(TaskNames.PARSE_LOCK)
                 .ticks(1)
@@ -154,8 +172,18 @@ public final class SyncPlans {
                     ctx.progress(1);
                 })
                 .build();
+    }
 
-        Task syncCas = Task.builder(TaskNames.SYNC_CAS)
+    /** Fetch every locked artifact into the CAS, then the native metadata beside it. */
+    private static Task syncCasStep(
+            Path dir,
+            Path cache,
+            @Nullable URI repoUrl,
+            int preScanDenominator,
+            @Nullable BiFunction<String, String, String> label,
+            AtomicInteger totalFetched,
+            AtomicInteger totalUpToDate) {
+        return Task.builder(TaskNames.SYNC_CAS)
                 .kind(TaskKind.IO)
                 .requires(TaskNames.PARSE_LOCK)
                 .ticks(preScanDenominator) // pre-scanned; 0 → updateTicks() fallback
@@ -203,11 +231,13 @@ public final class SyncPlans {
                     materializeNativeMetadata(ctx, lock, build, cache, repoUrl, dir, cas);
                 })
                 .build();
+    }
 
+    private static Task syncWorkersStep() {
         // jk's own plugin jars (test-runner, kotlin-compiler) — pulled from the
         // local Maven repo into the CAS so `jk test` / Kotlin builds find them by
         // SHA. Best-effort: absent plugins warn but don't fail the sync.
-        Task syncWorkers = Task.builder(TaskNames.SYNC_WORKERS)
+        return Task.builder(TaskNames.SYNC_WORKERS)
                 .kind(TaskKind.IO)
                 .requires(TaskNames.PARSE_LOCK)
                 .ticks(1)
@@ -235,8 +265,11 @@ public final class SyncPlans {
                     ctx.progress(1);
                 })
                 .build();
+    }
 
-        Task writeManifest = Task.builder(TaskNames.WRITE_SYNC_MANIFEST)
+    /** Stamp the reachability manifest for the synced lock. */
+    private static Task writeManifestStep(Path cache, Path lockFile) {
+        return Task.builder(TaskNames.WRITE_SYNC_MANIFEST)
                 .requires(TaskNames.SYNC_CAS)
                 .ticks(1)
                 .execute(ctx -> {
@@ -250,9 +283,11 @@ public final class SyncPlans {
                     ctx.progress(1);
                 })
                 .build();
+    }
 
+    private static Task syncPluginsStep(Path dir, Path cache, @Nullable URI repoUrl) {
         // Sync declared third-party plugin jars from Maven to CAS.
-        Task syncPlugins = Task.builder(TaskNames.SYNC_PLUGINS)
+        return Task.builder(TaskNames.SYNC_PLUGINS)
                 .kind(TaskKind.IO)
                 .requires(TaskNames.PARSE_LOCK)
                 .ticks(0)
@@ -268,64 +303,72 @@ public final class SyncPlans {
                             ? RepoGroupBuilder.buildFor(build, repoUrl, cas)
                             : RepoGroupBuilder.buildFor(
                                     JkBuildParser.parse(dir.resolve(ManifestPaths.MANIFEST)), repoUrl, cas);
-                    for (var pe : pluginEntries) {
-                        ctx.label("sync " + pe.coordinate());
-                        String hex = pe.sha256Hex();
-                        if (pe.coordinate().indexOf(':') < 0) {
-                            ctx.error("plugin", "malformed coordinate: " + pe.coordinate());
-                            ctx.progress(1);
-                            continue;
-                        }
-                        var coord = Coordinate.ofModule(pe.coordinate(), pe.version());
-                        if (cas.contains(hex)) {
-                            // The jar blob alone isn't enough: worker launch needs the sibling
-                            // POM (PomRuntimeClasspath), and a store warmed via the CAS-blob
-                            // fallback has jar-without-POM forever unless sync repairs it. Warm
-                            // mirrors make this a cheap local probe.
-                            ensureSiblingPom(ctx, repos, coord);
-                            ctx.progress(1);
-                            continue;
-                        }
-                        try {
-                            var r = repos.tryFetchArtifact(coord, hex);
-                            if (r.isPresent()) {
-                                // Pin is law: these bytes become worker code under the pinned hash,
-                                // and the memo fast-path trusts the hash without re-hashing — so a
-                                // mismatch must never reach the CAS. The pinned fetch already
-                                // skipped stale local copies, so a mismatch here means the remote
-                                // itself serves different bytes than the lock pins.
-                                String got = r.get().fetched().sha256();
-                                if (got == null || !got.equalsIgnoreCase(hex)) {
-                                    ctx.error(
-                                            "plugin",
-                                            pe.coordinate() + ":" + pe.version()
-                                                    + " — repository serves different bytes than the lock pins"
-                                                    + " (sha256 " + shortSha(got) + " vs locked " + shortSha(hex)
-                                                    + "); if the upstream republished, re-lock with"
-                                                    + " `jk lock --force`");
-                                    ctx.progress(1);
-                                    continue;
-                                }
-                                cas.putFile(r.get().fetched().cachePath(), hex);
-                                // Worker classpath needs the sibling POM next to the jar.
-                                ensureSiblingPom(ctx, repos, coord);
-                                ctx.label("fetched " + pe.coordinate() + ":" + pe.version());
-                            } else {
-                                ctx.error("plugin", pe.coordinate() + " not found in any repo");
-                            }
-                        } catch (Exception e) {
-                            ctx.error("plugin", pe.coordinate() + " — " + e.getMessage());
-                        }
-                        ctx.progress(1);
-                    }
+                    syncPluginEntries(ctx, pluginEntries, repos, cas);
                     // Extract the fetched jars' manifests so the very next parse validates
                     // the plugins' tables (and applies their contributions).
                     PluginDescriptorOps.ensureMaterialized(dir, cache);
                 })
                 .build();
+    }
 
+    /** Fetch each pinned plugin jar into the CAS (pin is law) and warm its sibling POM. */
+    private static void syncPluginEntries(
+            TaskContext ctx, List<Lockfile.PluginEntry> pluginEntries, RepoGroup repos, Cas cas) {
+        for (var pe : pluginEntries) {
+            ctx.label("sync " + pe.coordinate());
+            String hex = pe.sha256Hex();
+            if (pe.coordinate().indexOf(':') < 0) {
+                ctx.error("plugin", "malformed coordinate: " + pe.coordinate());
+                ctx.progress(1);
+                continue;
+            }
+            var coord = Coordinate.ofModule(pe.coordinate(), pe.version());
+            if (cas.contains(hex)) {
+                // The jar blob alone isn't enough: worker launch needs the sibling
+                // POM (PomRuntimeClasspath), and a store warmed via the CAS-blob
+                // fallback has jar-without-POM forever unless sync repairs it. Warm
+                // mirrors make this a cheap local probe.
+                ensureSiblingPom(ctx, repos, coord);
+                ctx.progress(1);
+                continue;
+            }
+            try {
+                var r = repos.tryFetchArtifact(coord, hex);
+                if (r.isPresent()) {
+                    // Pin is law: these bytes become worker code under the pinned hash,
+                    // and the memo fast-path trusts the hash without re-hashing — so a
+                    // mismatch must never reach the CAS. The pinned fetch already
+                    // skipped stale local copies, so a mismatch here means the remote
+                    // itself serves different bytes than the lock pins.
+                    String got = r.get().fetched().sha256();
+                    if (got == null || !got.equalsIgnoreCase(hex)) {
+                        ctx.error(
+                                "plugin",
+                                pe.coordinate() + ":" + pe.version()
+                                        + " — repository serves different bytes than the lock pins"
+                                        + " (sha256 " + shortSha(got) + " vs locked " + shortSha(hex)
+                                        + "); if the upstream republished, re-lock with"
+                                        + " `jk lock --force`");
+                        ctx.progress(1);
+                        continue;
+                    }
+                    cas.putFile(r.get().fetched().cachePath(), hex);
+                    // Worker classpath needs the sibling POM next to the jar.
+                    ensureSiblingPom(ctx, repos, coord);
+                    ctx.label("fetched " + pe.coordinate() + ":" + pe.version());
+                } else {
+                    ctx.error("plugin", pe.coordinate() + " not found in any repo");
+                }
+            } catch (Exception e) {
+                ctx.error("plugin", pe.coordinate() + " — " + e.getMessage());
+            }
+            ctx.progress(1);
+        }
+    }
+
+    private static Task syncSourcesStep(boolean sources) {
         // Sync sources JARs for packages that have sourcesChecksum pinned in lock.
-        Task syncSources = Task.builder(TaskNames.SYNC_SOURCES)
+        return Task.builder(TaskNames.SYNC_SOURCES)
                 .kind(TaskKind.IO)
                 .requires(TaskNames.PARSE_LOCK)
                 .ticks(0)
@@ -364,28 +407,18 @@ public final class SyncPlans {
                     }
                 })
                 .build();
+    }
 
+    private static Task syncModulesStep() {
         // Workspace modules no longer own lockfiles — the root jk-lock.toml is the only pin set
         // (synced above via SYNC_CAS). SYNC_MODULES remains a no-op step for wire/plan stability.
-        Task syncModules = Task.builder(TaskNames.SYNC_MODULES)
+        return Task.builder(TaskNames.SYNC_MODULES)
                 .kind(TaskKind.IO)
                 .requires(TaskNames.WRITE_SYNC_MANIFEST)
                 .ticks(0)
                 .execute(ctx -> {
                     /* intentionally empty — single workspace lock covers all modules */
                 })
-                .build();
-
-        return BuildPlan.builder("sync")
-                .stateKeys(LOCKFILE, BUILD, JDK_OUTCOME, CAS_REPORT, WORKER_REPORT, WORKSPACE_MODULES, LOCKFILE_CREATED)
-                .addTask(parseLock)
-                .addTask(ensureJdk)
-                .addTask(syncCas)
-                .addTask(syncSources)
-                .addTask(syncPlugins)
-                .addTask(syncWorkers)
-                .addTask(writeManifest)
-                .addTask(syncModules)
                 .build();
     }
 

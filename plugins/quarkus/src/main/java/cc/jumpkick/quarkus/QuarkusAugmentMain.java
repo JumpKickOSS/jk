@@ -79,21 +79,65 @@ public final class QuarkusAugmentMain {
         Path appJar = scratch.resolve("app.jar");
         AppJar.write(classesDir, appJar);
 
-        // Reuse already-fetched jars: jk's repo mirrors are derived from the locked jar paths
-        // the engine handed us — they ARE store paths, and rebuilding product dirs from
-        // user.home guesses wrong the moment JK_STORE_DIR (or the platform default) differs.
-        // ~/.m2 honors maven.repo.local for the same reason.
-        List<String> tails = new ArrayList<>();
-        for (Path reposRoot : locked.mirrorRepoRoots()) {
-            tails.add(reposRoot.toString());
-        }
-        tails.add(System.getProperty(
-                "maven.repo.local",
-                Path.of(System.getProperty("user.home"), ".m2", "repository").toString()));
+        ApplicationModel model =
+                resolveModel(locked, localRepo, offline, group, artifact, version, appJar, classesDir, quarkusVersion);
 
+        // Platform properties + descriptor (required for config expansion + alignment checks).
+        injectPlatform(model, quarkusVersion, platformProps, offline);
+
+        String packageType = normalizePackageType(System.getProperty("jk.quarkus.package.type", "fast-jar"));
+        // Native: ask Quarkus to augment for the closed world and write the source jar plus the
+        // native-image argument list it computed, without invoking native-image. jk owns that
+        // invocation — its own GraalVM toolchain, progress and action cache — and Quarkus owns
+        // knowing what the arguments are.
+        boolean nativeSources = Boolean.getBoolean("jk.quarkus.native.sources");
+        String nativeSourcesOut = System.getProperty("jk.quarkus.native.sources.out", "");
+        Path augmentOut = Files.createDirectories(scratch.resolve("out"));
+        Path producedJar = augment(model, classesDir, appProjectRoot, augmentOut, baseName, packageType, nativeSources);
+
+        if (nativeSources && !nativeSourcesOut.isBlank()) {
+            publishNativeSources(augmentOut, Path.of(nativeSourcesOut));
+        }
+
+        if ("uber-jar".equals(packageType)) {
+            Path uber = findProducedUberJar(augmentOut, producedJar);
+            if (uber == null || !Files.isRegularFile(uber)) {
+                throw new IllegalStateException("uber-jar not produced under " + augmentOut);
+            }
+            Path dest = targetDir.resolve("quarkus-uber.jar");
+            Files.copy(uber, dest, StandardCopyOption.REPLACE_EXISTING);
+            System.out.println("jk-quarkus-augment: " + dest);
+            return;
+        }
+        promoteFastJar(augmentOut, targetDir);
+    }
+
+    /**
+     * jk already solved the graph, so the augment declares the WHOLE locked closure as direct
+     * dependencies instead of the handful of jars that looked like extensions. At depth 1 every
+     * locked coordinate is the nearest one, so neither the platform BOM's managed versions nor a
+     * deeper transitive can displace it. Workspace / path jars have no Maven layout GAV — install
+     * them into the bootstrap local repo so the same declaration resolves.
+     *
+     * <p>The resolver is built and dropped here: no method of this class takes or returns a
+     * resolver type, so a miss can never fall back to resolving through the user's Maven settings
+     * (QuarkusPlatformPropertiesTest reflects on the signatures to hold that).
+     */
+    private static ApplicationModel resolveModel(
+            LockedClosure locked,
+            Path localRepo,
+            boolean offline,
+            String group,
+            String artifact,
+            String version,
+            Path appJar,
+            Path classesDir,
+            String quarkusVersion)
+            throws Exception {
+        // The bootstrap Maven context over jk's own store: local repo + the store mirrors as tails.
         var cfg = BootstrapMavenContext.config()
                 .setLocalRepository(localRepo.toString())
-                .setLocalRepositoryTail(tails.toArray(String[]::new))
+                .setLocalRepositoryTail(localRepositoryTails(locked).toArray(String[]::new))
                 .setWorkspaceDiscovery(false);
         if (offline) {
             // Only ever forced ON — left unset, the user's Maven settings stay in charge. Offline
@@ -101,19 +145,13 @@ public final class QuarkusAugmentMain {
             // reaches Central behind an offline build's back.
             cfg.setOffline(true);
         }
-        MavenArtifactResolver maven = new MavenArtifactResolver(new BootstrapMavenContext(cfg));
-        BootstrapAppModelResolver modelResolver = new BootstrapAppModelResolver(maven);
-
+        BootstrapAppModelResolver modelResolver =
+                new BootstrapAppModelResolver(new MavenArtifactResolver(new BootstrapMavenContext(cfg)));
         ArtifactCoords appCoords = ArtifactCoords.jar(group, artifact, version);
         modelResolver.install(appCoords, appJar);
         // Point the app artifact at compiled classes for augmentation root content.
         modelResolver.relink(appCoords, classesDir);
 
-        // jk already solved the graph, so the augment declares the WHOLE locked closure as direct
-        // dependencies instead of the handful of jars that looked like extensions. At depth 1 every
-        // locked coordinate is the nearest one, so neither the platform BOM's managed versions nor
-        // a deeper transitive can displace it. Workspace / path jars have no Maven layout GAV —
-        // install them into the bootstrap local repo so the same declaration resolves.
         List<Dependency> direct = new ArrayList<>();
         int workspaceDeps = 0;
         for (LockedClosure.Artifact a : locked.artifacts()) {
@@ -135,26 +173,43 @@ public final class QuarkusAugmentMain {
         System.err.println("jk-quarkus-augment: runtime deps="
                 + model.getRuntimeDependencies().size() + " deployment deps="
                 + model.getDependencies().size());
+        return model;
+    }
 
-        // Platform properties + descriptor (required for config expansion + alignment checks).
-        injectPlatform(model, quarkusVersion, platformProps, offline);
+    /**
+     * Reuse already-fetched jars: jk's repo mirrors are derived from the locked jar paths the engine
+     * handed us — they ARE store paths, and rebuilding product dirs from user.home guesses wrong the
+     * moment JK_STORE_DIR (or the platform default) differs. ~/.m2 honors maven.repo.local for the
+     * same reason. Plain strings, so no resolver type appears in a signature of this class.
+     */
+    private static List<String> localRepositoryTails(LockedClosure locked) {
+        List<String> tails = new ArrayList<>();
+        for (Path reposRoot : locked.mirrorRepoRoots()) {
+            tails.add(reposRoot.toString());
+        }
+        tails.add(System.getProperty(
+                "maven.repo.local",
+                Path.of(System.getProperty("user.home"), ".m2", "repository").toString()));
+        return tails;
+    }
 
-        String packageType = normalizePackageType(System.getProperty("jk.quarkus.package.type", "fast-jar"));
+    /** Bootstrap + createProductionApplication; the produced jar's path, or null when none was reported. */
+    private static Path augment(
+            ApplicationModel model,
+            Path classesDir,
+            Path appProjectRoot,
+            Path augmentOut,
+            String baseName,
+            String packageType,
+            boolean nativeSources)
+            throws Exception {
         Properties bsp = new Properties();
         bsp.setProperty("quarkus.package.jar.type", packageType);
         bsp.setProperty("quarkus.analytics.disabled", "true");
-        // Native: ask Quarkus to augment for the closed world and write the source jar plus the
-        // native-image argument list it computed, without invoking native-image. jk owns that
-        // invocation — its own GraalVM toolchain, progress and action cache — and Quarkus owns
-        // knowing what the arguments are.
-        boolean nativeSources = Boolean.getBoolean("jk.quarkus.native.sources");
-        String nativeSourcesOut = System.getProperty("jk.quarkus.native.sources.out", "");
         if (nativeSources) {
             bsp.setProperty("quarkus.native.enabled", "true");
             bsp.setProperty("quarkus.native.sources-only", "true");
         }
-
-        Path augmentOut = Files.createDirectories(scratch.resolve("out"));
         QuarkusBootstrap bs = QuarkusBootstrap.builder()
                 .setApplicationRoot(classesDir)
                 .setProjectRoot(appProjectRoot)
@@ -179,31 +234,21 @@ public final class QuarkusAugmentMain {
             }
             System.err.println("jk-quarkus-augment: result jar=" + producedJar);
         }
+        return producedJar;
+    }
 
-        if (nativeSources && !nativeSourcesOut.isBlank()) {
-            publishNativeSources(augmentOut, Path.of(nativeSourcesOut));
-        }
-
-        if ("uber-jar".equals(packageType)) {
-            Path uber = findProducedUberJar(augmentOut, producedJar);
-            if (uber == null || !Files.isRegularFile(uber)) {
-                throw new IllegalStateException("uber-jar not produced under " + augmentOut);
-            }
-            Path dest = targetDir.resolve("quarkus-uber.jar");
-            Files.copy(uber, dest, StandardCopyOption.REPLACE_EXISTING);
-            System.out.println("jk-quarkus-augment: " + dest);
-            return;
-        }
-
+    /** The fast-jar layout: find quarkus-run.jar under the augment output and promote it next to the runner. */
+    private static void promoteFastJar(Path augmentOut, Path targetDir) throws IOException {
         Path quarkusApp = augmentOut.resolve("quarkus-app");
         Path runJar = quarkusApp.resolve("quarkus-run.jar");
         if (!Files.isRegularFile(runJar)) {
-            try (var walk = Files.walk(augmentOut, 4)) {
-                runJar = walk.filter(p -> p.getFileName().toString().equals("quarkus-run.jar"))
-                        .filter(Files::isRegularFile)
-                        .findFirst()
-                        .orElse(null);
-            }
+            // The runner may sit one layout level down; look at most four levels deep, as before.
+            List<Path> found = new ArrayList<>();
+            PathUtil.forEachRegularFile(
+                    augmentOut, dir -> augmentOut.relativize(dir).getNameCount() >= 4, (file, attrs) -> {
+                        if (found.isEmpty() && file.getFileName().toString().equals("quarkus-run.jar")) found.add(file);
+                    });
+            runJar = found.isEmpty() ? null : found.get(0);
         }
         if (runJar == null || !Files.isRegularFile(runJar)) {
             throw new IllegalStateException("quarkus-run.jar not produced under " + augmentOut);

@@ -185,64 +185,8 @@ public final class ToolInstallCommand implements CliCommand {
         // path). Project dirs and git URLs delegate to InstallCommand. Local paths resolve
         // against -C/--dir, not the process cwd.
         ToolTarget classified = ToolTarget.classify(coord);
-        boolean m2Intent = groupFlag != null || nameFlag != null || verFlag != null;
-        if (m2Intent && classified instanceof ToolTarget.RunnableFile file) {
-            // Coordinate flags = "store this artifact in the local cache" (the mvn install
-            // equivalent), not "give me a launcher".
-            return appInstallDelegate()
-                    .installFromFile(base.resolve(file.path()).toAbsolutePath().normalize());
-        }
-        if (m2Intent && classified instanceof ToolTarget.UnsupportedFile file) {
-            return appInstallDelegate()
-                    .installFromFile(base.resolve(file.path()).toAbsolutePath().normalize());
-        }
-        if (classified instanceof ToolTarget.RunnableFile file) {
-            Path resolved = base.resolve(file.path()).normalize();
-            List<String> fileWith;
-            try {
-                fileWith = ToolTargets.resolveWith(in.values("with"));
-            } catch (ToolTargets.TargetException e) {
-                CliOutput.err(e.getMessage());
-                return Exit.USAGE;
-            }
-            return installFile(
-                    resolved,
-                    new ToolProvenance("file", coord, resolved.toAbsolutePath().toString()),
-                    fileWith,
-                    List.of());
-        }
-        if (classified instanceof ToolTarget.Directory dir) {
-            Path projectDir = base.resolve(dir.path()).toAbsolutePath().normalize();
-            if (!Files.isRegularFile(projectDir.resolve(ManifestPaths.MANIFEST))) {
-                CommandWedge.printFail(
-                        "Tool", "no jk.toml in " + projectDir + " — a directory target must be a jk project.");
-                return Exit.CONFIG;
-            }
-            return appInstallDelegate().runProjectInstallBuildPlan(projectDir, "install");
-        }
-        if (classified instanceof ToolTarget.Git git) {
-            String raw = git.raw().startsWith("git+") ? git.raw().substring("git+".length()) : git.raw();
-            String canonical =
-                    GitUrl.canonicalize(InstallCommand.splitUrlRef(raw).url());
-            Path stateDirForGit = stateDirOverride != null ? stateDirOverride : JkDirs.state();
-            Integer gitGate = UrlToolSource.gate(UrlToolSource.gitTrustUrl(canonical), stateDirForGit, "jk install");
-            if (gitGate != null) return gitGate;
-            return appInstallDelegate().installFromGit(raw);
-        }
-        if (classified instanceof ToolTarget.Url u) {
-            Path stateDirForTrust = stateDirOverride != null ? stateDirOverride : JkDirs.state();
-            Integer gated = UrlToolSource.gate(u.raw(), stateDirForTrust, "jk tool install");
-            if (gated != null) return gated;
-            Path fetched;
-            try {
-                fetched = UrlToolSource.fetch(
-                        u.raw(), cacheDirOverride != null ? cacheDirOverride : JkDirs.cache(), false);
-            } catch (IOException e) {
-                CommandWedge.printFail("Tool", e.getMessage());
-                return Exit.SOFTWARE;
-            }
-            return installFile(fetched, new ToolProvenance("url", coord, UrlRewriter.rewrite(u.raw())));
-        }
+        Integer direct = installDirectTarget(classified, base, in);
+        if (direct != null) return direct;
 
         if (classified instanceof ToolTarget.JBangAlias) {
             Integer aliasExit = resolveJBangAliasForInstall();
@@ -304,6 +248,74 @@ public final class ToolInstallCommand implements CliCommand {
             CliOutput.out("  export PATH=\"" + binDir + ":$PATH\"");
         }
         return 0;
+    }
+
+    /**
+     * A file, directory, git or URL target installs without the resolver: the exit code, or null
+     * when {@code classified} is an alias, a catalog name or a coordinate and resolution follows.
+     */
+    private @Nullable Integer installDirectTarget(ToolTarget classified, Path base, Invocation in)
+            throws IOException, InterruptedException {
+        String coord = Objects.requireNonNull(this.coord, "coord");
+        boolean m2Intent = groupFlag != null || nameFlag != null || verFlag != null;
+        if (m2Intent && classified instanceof ToolTarget.RunnableFile file) {
+            // Coordinate flags = "store this artifact in the local cache" (the mvn install
+            // equivalent), not "give me a launcher".
+            return appInstallDelegate()
+                    .installFromFile(base.resolve(file.path()).toAbsolutePath().normalize());
+        }
+        if (m2Intent && classified instanceof ToolTarget.UnsupportedFile file) {
+            return appInstallDelegate()
+                    .installFromFile(base.resolve(file.path()).toAbsolutePath().normalize());
+        }
+        if (classified instanceof ToolTarget.RunnableFile file) {
+            Path resolved = base.resolve(file.path()).normalize();
+            List<String> fileWith;
+            try {
+                fileWith = ToolTargets.resolveWith(in.values("with"));
+            } catch (ToolTargets.TargetException e) {
+                CliOutput.err(e.getMessage());
+                return Exit.USAGE;
+            }
+            return installFile(
+                    resolved,
+                    new ToolProvenance("file", coord, resolved.toAbsolutePath().toString()),
+                    fileWith,
+                    List.of());
+        }
+        if (classified instanceof ToolTarget.Directory dir) {
+            Path projectDir = base.resolve(dir.path()).toAbsolutePath().normalize();
+            if (!Files.isRegularFile(projectDir.resolve(ManifestPaths.MANIFEST))) {
+                CommandWedge.printFail(
+                        "Tool", "no jk.toml in " + projectDir + " — a directory target must be a jk project.");
+                return Exit.CONFIG;
+            }
+            return appInstallDelegate().runProjectInstallBuildPlan(projectDir, "install");
+        }
+        if (classified instanceof ToolTarget.Git git) {
+            String raw = git.raw().startsWith("git+") ? git.raw().substring("git+".length()) : git.raw();
+            String canonical =
+                    GitUrl.canonicalize(InstallCommand.splitUrlRef(raw).url());
+            Path stateDirForGit = stateDirOverride != null ? stateDirOverride : JkDirs.state();
+            Integer gitGate = UrlToolSource.gate(UrlToolSource.gitTrustUrl(canonical), stateDirForGit, "jk install");
+            if (gitGate != null) return gitGate;
+            return appInstallDelegate().installFromGit(raw);
+        }
+        if (classified instanceof ToolTarget.Url u) {
+            Path stateDirForTrust = stateDirOverride != null ? stateDirOverride : JkDirs.state();
+            Integer gated = UrlToolSource.gate(u.raw(), stateDirForTrust, "jk tool install");
+            if (gated != null) return gated;
+            Path fetched;
+            try {
+                fetched = UrlToolSource.fetch(
+                        u.raw(), cacheDirOverride != null ? cacheDirOverride : JkDirs.cache(), false);
+            } catch (IOException e) {
+                CommandWedge.printFail("Tool", e.getMessage());
+                return Exit.SOFTWARE;
+            }
+            return installFile(fetched, new ToolProvenance("url", coord, UrlRewriter.rewrite(u.raw())));
+        }
+        return null;
     }
 
     /**

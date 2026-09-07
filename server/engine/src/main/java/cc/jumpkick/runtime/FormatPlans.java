@@ -18,6 +18,7 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.tool.ToolResolver;
@@ -76,34 +77,106 @@ public final class FormatPlans {
             boolean importOrder,
             boolean removeUnusedImports,
             FormatWorker.FileObserver observer) {
-        BuildPlanKey<List<Path>> javaFilesKey = BuildPlanKey.list("format-java-files", Path.class);
-        BuildPlanKey<List<Path>> kotlinFilesKey = BuildPlanKey.list("format-kotlin-files", Path.class);
-        BuildPlanKey<List<Path>> groovyFilesKey = BuildPlanKey.list("format-groovy-files", Path.class);
-        BuildPlanKey<List<Path>> scalaFilesKey = BuildPlanKey.list("format-scala-files", Path.class);
-        BuildPlanKey<List<Path>> javaJarsKey = BuildPlanKey.list("format-java-jars", Path.class);
-        BuildPlanKey<List<Path>> removeUnusedJarsKey = BuildPlanKey.list("format-remove-unused-jars", Path.class);
-        BuildPlanKey<List<Path>> kotlinJarsKey = BuildPlanKey.list("format-kotlin-jars", Path.class);
-        BuildPlanKey<List<Path>> scalaJarsKey = BuildPlanKey.list("format-scala-jars", Path.class);
+        Options o = new Options(
+                projectDir,
+                cache,
+                check,
+                javaStyle,
+                kotlinStyle,
+                optimizeImports,
+                importOrder,
+                removeUnusedImports,
+                observer);
+        Keys k = Keys.create();
+        return BuildPlan.builder("format")
+                .stateKeys(
+                        k.javaFilesKey(),
+                        k.kotlinFilesKey(),
+                        k.groovyFilesKey(),
+                        k.scalaFilesKey(),
+                        k.javaJarsKey(),
+                        k.removeUnusedJarsKey(),
+                        k.kotlinJarsKey(),
+                        k.scalaJarsKey(),
+                        k.allJavaFilesKey(),
+                        k.allKotlinFilesKey(),
+                        k.allGroovyFilesKey(),
+                        k.allScalaFilesKey(),
+                        k.indexKey(),
+                        k.configKeyKey(),
+                        FormatWorker.PRE_CLEAN,
+                        FormatWorker.TOTAL,
+                        FormatWorker.CHANGED,
+                        FormatWorker.CLEAN,
+                        FormatWorker.ERRORS,
+                        FormatWorker.WORKER_EXIT)
+                .addTask(collectStep(o, k))
+                .addTask(resolveStep(o, k))
+                .addTask(formatStep(o, k))
+                .build();
+    }
 
-        BuildPlanKey<List<Path>> allJavaFilesKey = BuildPlanKey.list("format-all-java-files", Path.class);
-        BuildPlanKey<List<Path>> allKotlinFilesKey = BuildPlanKey.list("format-all-kotlin-files", Path.class);
-        BuildPlanKey<List<Path>> allGroovyFilesKey = BuildPlanKey.list("format-all-groovy-files", Path.class);
-        BuildPlanKey<List<Path>> allScalaFilesKey = BuildPlanKey.list("format-all-scala-files", Path.class);
+    /** The request as the three steps read it. */
+    private record Options(
+            Path projectDir,
+            Path cache,
+            boolean check,
+            @Nullable String javaStyle,
+            @Nullable String kotlinStyle,
+            boolean optimizeImports,
+            boolean importOrder,
+            boolean removeUnusedImports,
+            FormatWorker.FileObserver observer) {}
 
-        BuildPlanKey<FormatFreshnessIndex> indexKey = BuildPlanKey.scalar("format-index", FormatFreshnessIndex.class);
-        // FormatKey.digest() — computed once in collect, and the name of BOTH format stores: this
-        // index here, and the worker's per-file stamps (it rides the spec as `configKey`).
-        BuildPlanKey<String> configKeyKey = BuildPlanKey.scalar("format-config-key", String.class);
+    /** The plan keys the steps hand each other: dirty files, every file, jars, index and config key. */
+    private record Keys(
+            BuildPlanKey<List<Path>> javaFilesKey,
+            BuildPlanKey<List<Path>> kotlinFilesKey,
+            BuildPlanKey<List<Path>> groovyFilesKey,
+            BuildPlanKey<List<Path>> scalaFilesKey,
+            BuildPlanKey<List<Path>> javaJarsKey,
+            BuildPlanKey<List<Path>> removeUnusedJarsKey,
+            BuildPlanKey<List<Path>> kotlinJarsKey,
+            BuildPlanKey<List<Path>> scalaJarsKey,
+            BuildPlanKey<List<Path>> allJavaFilesKey,
+            BuildPlanKey<List<Path>> allKotlinFilesKey,
+            BuildPlanKey<List<Path>> allGroovyFilesKey,
+            BuildPlanKey<List<Path>> allScalaFilesKey,
+            BuildPlanKey<FormatFreshnessIndex> indexKey,
+            BuildPlanKey<String> configKeyKey) {
+        static Keys create() {
+            return new Keys(
+                    BuildPlanKey.list("format-java-files", Path.class),
+                    BuildPlanKey.list("format-kotlin-files", Path.class),
+                    BuildPlanKey.list("format-groovy-files", Path.class),
+                    BuildPlanKey.list("format-scala-files", Path.class),
+                    BuildPlanKey.list("format-java-jars", Path.class),
+                    BuildPlanKey.list("format-remove-unused-jars", Path.class),
+                    BuildPlanKey.list("format-kotlin-jars", Path.class),
+                    BuildPlanKey.list("format-scala-jars", Path.class),
+                    BuildPlanKey.list("format-all-java-files", Path.class),
+                    BuildPlanKey.list("format-all-kotlin-files", Path.class),
+                    BuildPlanKey.list("format-all-groovy-files", Path.class),
+                    BuildPlanKey.list("format-all-scala-files", Path.class),
+                    BuildPlanKey.scalar("format-index", FormatFreshnessIndex.class),
+                    // FormatKey.digest() — computed once in collect, and the name of BOTH format
+                    // stores: this index here, and the worker's per-file stamps (it rides the spec
+                    // as `configKey`).
+                    BuildPlanKey.scalar("format-config-key", String.class));
+        }
+    }
 
-        Task collect = Task.builder(TaskNames.COLLECT_SOURCES)
+    /** Walk the tree, compute the config key, and partition the sources by freshness. */
+    private static Task collectStep(Options o, Keys k) {
+        return Task.builder(TaskNames.COLLECT_SOURCES)
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("collect sources");
-                    FormatSources.CollectedSources all = FormatSources.collectSources(projectDir);
-                    ctx.put(allJavaFilesKey, all.javaFiles());
-                    ctx.put(allKotlinFilesKey, all.kotlinFiles());
-                    ctx.put(allGroovyFilesKey, all.groovyFiles());
-                    ctx.put(allScalaFilesKey, all.scalaFiles());
+                    FormatSources.CollectedSources all = FormatSources.collectSources(o.projectDir());
+                    ctx.put(k.allJavaFilesKey(), all.javaFiles());
+                    ctx.put(k.allKotlinFilesKey(), all.kotlinFiles());
+                    ctx.put(k.allGroovyFilesKey(), all.groovyFiles());
+                    ctx.put(k.allScalaFilesKey(), all.scalaFiles());
                     // The index's file set is a key input, so it is assembled here — before the
                     // freshness partition, from every source, not just the dirty ones.
                     List<Path> allSources = new ArrayList<>(all.javaFiles());
@@ -111,45 +184,48 @@ public final class FormatPlans {
                     allSources.addAll(all.groovyFiles());
                     allSources.addAll(all.scalaFiles());
                     String configKey = configKey(
-                            cache,
-                            javaStyle,
-                            kotlinStyle,
-                            optimizeImports,
-                            importOrder,
-                            removeUnusedImports,
+                            o.cache(),
+                            o.javaStyle(),
+                            o.kotlinStyle(),
+                            o.optimizeImports(),
+                            o.importOrder(),
+                            o.removeUnusedImports(),
                             allSources);
-                    ctx.put(configKeyKey, configKey == null ? "" : configKey);
+                    ctx.put(k.configKeyKey(), configKey == null ? "" : configKey);
                     FormatFreshnessIndex index = configKey == null
-                            ? FormatFreshnessIndex.disabled(projectDir)
-                            : FormatFreshnessIndex.open(cache, projectDir, configKey);
+                            ? FormatFreshnessIndex.disabled(o.projectDir())
+                            : FormatFreshnessIndex.open(o.cache(), o.projectDir(), configKey);
                     FormatFreshnessIndex.Split split =
                             index.partition(all.javaFiles(), all.kotlinFiles(), all.groovyFiles(), all.scalaFiles());
-                    ctx.put(javaFilesKey, split.dirtyJava());
-                    ctx.put(kotlinFilesKey, split.dirtyKotlin());
-                    ctx.put(groovyFilesKey, split.dirtyGroovy());
-                    ctx.put(scalaFilesKey, split.dirtyScala());
+                    ctx.put(k.javaFilesKey(), split.dirtyJava());
+                    ctx.put(k.kotlinFilesKey(), split.dirtyKotlin());
+                    ctx.put(k.groovyFilesKey(), split.dirtyGroovy());
+                    ctx.put(k.scalaFilesKey(), split.dirtyScala());
                     ctx.put(FormatWorker.PRE_CLEAN, split.clean());
-                    ctx.put(indexKey, index);
+                    ctx.put(k.indexKey(), index);
                     ctx.put(FormatWorker.TOTAL, all.total());
                     ctx.progress(1);
                 })
                 .build();
+    }
 
-        Task resolve = Task.builder(TaskNames.RESOLVE_FORMATTERS)
+    /** Pull the formatter impl jars for the languages that have dirty files. */
+    private static Task resolveStep(Options o, Keys k) {
+        return Task.builder(TaskNames.RESOLVE_FORMATTERS)
                 .stage(BuildStage.RESOLVE)
                 .kind(TaskKind.IO)
                 .requires(TaskNames.COLLECT_SOURCES)
                 .ticks(1)
                 .execute(ctx -> {
-                    List<Path> javaFiles = ctx.require(javaFilesKey);
-                    List<Path> kotlinFiles = ctx.require(kotlinFilesKey);
-                    List<Path> groovyFiles = ctx.require(groovyFilesKey);
-                    List<Path> scalaFiles = ctx.require(scalaFilesKey);
+                    List<Path> javaFiles = ctx.require(k.javaFilesKey());
+                    List<Path> kotlinFiles = ctx.require(k.kotlinFilesKey());
+                    List<Path> groovyFiles = ctx.require(k.groovyFilesKey());
+                    List<Path> scalaFiles = ctx.require(k.scalaFilesKey());
                     if (javaFiles.isEmpty() && kotlinFiles.isEmpty() && groovyFiles.isEmpty() && scalaFiles.isEmpty()) {
-                        ctx.put(javaJarsKey, List.of());
-                        ctx.put(removeUnusedJarsKey, List.of());
-                        ctx.put(kotlinJarsKey, List.of());
-                        ctx.put(scalaJarsKey, List.of());
+                        ctx.put(k.javaJarsKey(), List.of());
+                        ctx.put(k.removeUnusedJarsKey(), List.of());
+                        ctx.put(k.kotlinJarsKey(), List.of());
+                        ctx.put(k.scalaJarsKey(), List.of());
                         ctx.progress(1);
                         return;
                     }
@@ -157,20 +233,20 @@ public final class FormatPlans {
                     var resolver = ToolResolver.mavenCentral(new Http(), JkStores.storeCas());
                     try {
                         if (javaFiles.isEmpty()) {
-                            ctx.put(javaJarsKey, List.of());
-                            ctx.put(removeUnusedJarsKey, List.of());
+                            ctx.put(k.javaJarsKey(), List.of());
+                            ctx.put(k.removeUnusedJarsKey(), List.of());
                         } else {
-                            List<Path> styleJars = resolver.resolve(javaCoord(javaStyle), "java-format", "ignored")
+                            List<Path> styleJars = resolver.resolve(javaCoord(o.javaStyle()), "java-format", "ignored")
                                     .classpath();
-                            ctx.put(javaJarsKey, styleJars);
-                            // removeUnusedImports uses google-java-format under the hood; skip the
+                            ctx.put(k.javaJarsKey(), styleJars);
+                            // o.removeUnusedImports() uses google-java-format under the hood; skip the
                             // extra resolve when the step is off. When style is already GJF
                             // (google/aosp) reuse those jars; Palantir needs a separate GJF resolve.
-                            if (!removeUnusedImports) {
-                                ctx.put(removeUnusedJarsKey, List.of());
-                            } else if ("palantir".equals(javaStyle)) {
+                            if (!o.removeUnusedImports()) {
+                                ctx.put(k.removeUnusedJarsKey(), List.of());
+                            } else if ("palantir".equals(o.javaStyle())) {
                                 ctx.put(
-                                        removeUnusedJarsKey,
+                                        k.removeUnusedJarsKey(),
                                         resolver.resolve(
                                                         Coordinate.of(
                                                                 "com.google.googlejavaformat",
@@ -180,11 +256,11 @@ public final class FormatPlans {
                                                         "ignored")
                                                 .classpath());
                             } else {
-                                ctx.put(removeUnusedJarsKey, styleJars);
+                                ctx.put(k.removeUnusedJarsKey(), styleJars);
                             }
                         }
                         ctx.put(
-                                kotlinJarsKey,
+                                k.kotlinJarsKey(),
                                 kotlinFiles.isEmpty()
                                         ? List.of()
                                         : resolver.resolve(
@@ -193,7 +269,7 @@ public final class FormatPlans {
                                                         "ignored")
                                                 .classpath());
                         ctx.put(
-                                scalaJarsKey,
+                                k.scalaJarsKey(),
                                 scalaFiles.isEmpty()
                                         ? List.of()
                                         : resolver.resolve(
@@ -211,18 +287,21 @@ public final class FormatPlans {
                     ctx.progress(1);
                 })
                 .build();
+    }
 
-        Task format = Task.builder("format")
+    /** Fork the plugin over the dirty files; a clean tree finishes without a fork. */
+    private static Task formatStep(Options o, Keys k) {
+        return Task.builder("format")
                 .kind(TaskKind.IO)
                 .requires(TaskNames.RESOLVE_FORMATTERS)
                 .ticks(0) // grown to the real file count once collected
                 .execute(ctx -> {
-                    List<Path> javaFiles = ctx.require(javaFilesKey);
-                    List<Path> kotlinFiles = ctx.require(kotlinFilesKey);
-                    List<Path> groovyFiles = ctx.require(groovyFilesKey);
-                    List<Path> scalaFiles = ctx.require(scalaFilesKey);
+                    List<Path> javaFiles = ctx.require(k.javaFilesKey());
+                    List<Path> kotlinFiles = ctx.require(k.kotlinFilesKey());
+                    List<Path> groovyFiles = ctx.require(k.groovyFilesKey());
+                    List<Path> scalaFiles = ctx.require(k.scalaFilesKey());
                     int preClean = ctx.get(FormatWorker.PRE_CLEAN).orElse(0);
-                    FormatFreshnessIndex freshness = ctx.get(indexKey).orElse(null);
+                    FormatFreshnessIndex freshness = ctx.get(k.indexKey()).orElse(null);
                     int dirty = javaFiles.size() + kotlinFiles.size() + groovyFiles.size() + scalaFiles.size();
                     int total = preClean + dirty;
                     ctx.put(FormatWorker.TOTAL, total);
@@ -239,109 +318,93 @@ public final class FormatPlans {
                     }
                     ctx.updateTicks(total);
                     if (preClean > 0) ctx.progress(preClean);
-                    ctx.label(check ? "check formatting" : "format sources");
-                    List<Path> javaJars = ctx.require(javaJarsKey);
-                    List<Path> removeUnusedJars = ctx.require(removeUnusedJarsKey);
-                    List<Path> kotlinJars = ctx.require(kotlinJarsKey);
-                    List<Path> scalaJars = ctx.require(scalaJarsKey);
-
-                    Path workerJar = PluginJar.FORMATTER.locate(JkStores.storeCas());
-                    String configKey = ctx.get(configKeyKey).orElse("");
-                    List<Path> allJava = ctx.get(allJavaFilesKey).orElse(javaFiles);
-                    List<Path> allKotlin = ctx.get(allKotlinFilesKey).orElse(kotlinFiles);
-                    List<Path> allGroovy = ctx.get(allGroovyFilesKey).orElse(groovyFiles);
-                    List<Path> allScala = ctx.get(allScalaFilesKey).orElse(scalaFiles);
-                    List<Path> indexFiles = new ArrayList<>(allJava);
-                    indexFiles.addAll(allKotlin);
-                    indexFiles.addAll(allGroovy);
-                    indexFiles.addAll(allScala);
-                    Path spec = writeSpec(
-                            check,
-                            javaStyle,
-                            kotlinStyle,
-                            javaFiles,
-                            javaJars,
-                            removeUnusedJars,
-                            kotlinFiles,
-                            kotlinJars,
-                            groovyFiles,
-                            scalaFiles,
-                            scalaJars,
-                            optimizeImports,
-                            importOrder,
-                            removeUnusedImports,
-                            indexFiles,
-                            cache,
-                            configKey.isEmpty() ? null : configKey,
-                            null);
-                    try {
-                        Path hostJava = JavaHomes.runningJavaHome();
-                        String workerCp = WorkerLaunchClasspath.resolve(workerJar);
-                        List<String> extra = new ArrayList<>(PluginAot.formatterFlags(
-                                hostJava,
-                                workerCp,
-                                (aotOut, scratch) -> trainerCommand(
-                                        hostJava,
-                                        workerCp,
-                                        aotOut,
-                                        scratch,
-                                        javaStyle,
-                                        kotlinStyle,
-                                        javaJars,
-                                        removeUnusedJars,
-                                        kotlinJars,
-                                        scalaJars,
-                                        !groovyFiles.isEmpty(),
-                                        optimizeImports,
-                                        importOrder,
-                                        removeUnusedImports)));
-                        if (!javaFiles.isEmpty()) extra.addAll(JAVAC_EXPORTS);
-                        // The run's only fork, so it gets the machine rather than the build-shaped
-                        // 1/jobs share the process-wide plan hands every worker.
-                        extra.addAll(JvmOptions.soleWorkerFlags());
-                        FormatWorker.runWorker(
-                                ctx,
-                                PluginLaunch.javaCommand(workerJar, extra, spec),
-                                preClean,
-                                total,
-                                check,
-                                freshness,
-                                observer);
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        throw new RuntimeException("format worker interrupted", e);
-                    } finally {
-                        Files.deleteIfExists(spec);
-                    }
+                    ctx.label(o.check() ? "check formatting" : "format sources");
+                    runFormatter(ctx, o, k, preClean, total, freshness);
                 })
                 .build();
+    }
 
-        return BuildPlan.builder("format")
-                .stateKeys(
-                        javaFilesKey,
-                        kotlinFilesKey,
-                        groovyFilesKey,
-                        scalaFilesKey,
-                        javaJarsKey,
-                        removeUnusedJarsKey,
-                        kotlinJarsKey,
-                        scalaJarsKey,
-                        allJavaFilesKey,
-                        allKotlinFilesKey,
-                        allGroovyFilesKey,
-                        allScalaFilesKey,
-                        indexKey,
-                        configKeyKey,
-                        FormatWorker.PRE_CLEAN,
-                        FormatWorker.TOTAL,
-                        FormatWorker.CHANGED,
-                        FormatWorker.CLEAN,
-                        FormatWorker.ERRORS,
-                        FormatWorker.WORKER_EXIT)
-                .addTask(collect)
-                .addTask(resolve)
-                .addTask(format)
-                .build();
+    /** Write the spec and fork {@code jk-formatter}, streaming per-file results to the observer. */
+    private static void runFormatter(
+            TaskContext ctx, Options o, Keys k, int preClean, int total, @Nullable FormatFreshnessIndex freshness)
+            throws IOException {
+        List<Path> javaFiles = ctx.require(k.javaFilesKey());
+        List<Path> kotlinFiles = ctx.require(k.kotlinFilesKey());
+        List<Path> groovyFiles = ctx.require(k.groovyFilesKey());
+        List<Path> scalaFiles = ctx.require(k.scalaFilesKey());
+        List<Path> javaJars = ctx.require(k.javaJarsKey());
+        List<Path> removeUnusedJars = ctx.require(k.removeUnusedJarsKey());
+        List<Path> kotlinJars = ctx.require(k.kotlinJarsKey());
+        List<Path> scalaJars = ctx.require(k.scalaJarsKey());
+
+        Path workerJar = PluginJar.FORMATTER.locate(JkStores.storeCas());
+        String configKey = ctx.get(k.configKeyKey()).orElse("");
+        List<Path> allJava = ctx.get(k.allJavaFilesKey()).orElse(javaFiles);
+        List<Path> allKotlin = ctx.get(k.allKotlinFilesKey()).orElse(kotlinFiles);
+        List<Path> allGroovy = ctx.get(k.allGroovyFilesKey()).orElse(groovyFiles);
+        List<Path> allScala = ctx.get(k.allScalaFilesKey()).orElse(scalaFiles);
+        List<Path> indexFiles = new ArrayList<>(allJava);
+        indexFiles.addAll(allKotlin);
+        indexFiles.addAll(allGroovy);
+        indexFiles.addAll(allScala);
+        Path spec = writeSpec(
+                o.check(),
+                o.javaStyle(),
+                o.kotlinStyle(),
+                javaFiles,
+                javaJars,
+                removeUnusedJars,
+                kotlinFiles,
+                kotlinJars,
+                groovyFiles,
+                scalaFiles,
+                scalaJars,
+                o.optimizeImports(),
+                o.importOrder(),
+                o.removeUnusedImports(),
+                indexFiles,
+                o.cache(),
+                configKey.isEmpty() ? null : configKey,
+                null);
+        try {
+            Path hostJava = JavaHomes.runningJavaHome();
+            String workerCp = WorkerLaunchClasspath.resolve(workerJar);
+            List<String> extra = new ArrayList<>(PluginAot.formatterFlags(
+                    hostJava,
+                    workerCp,
+                    (aotOut, scratch) -> trainerCommand(
+                            hostJava,
+                            workerCp,
+                            aotOut,
+                            scratch,
+                            o.javaStyle(),
+                            o.kotlinStyle(),
+                            javaJars,
+                            removeUnusedJars,
+                            kotlinJars,
+                            scalaJars,
+                            !groovyFiles.isEmpty(),
+                            o.optimizeImports(),
+                            o.importOrder(),
+                            o.removeUnusedImports())));
+            if (!javaFiles.isEmpty()) extra.addAll(JAVAC_EXPORTS);
+            // The run's only fork, so it gets the machine rather than the build-shaped
+            // 1/jobs share the process-wide plan hands every worker.
+            extra.addAll(JvmOptions.soleWorkerFlags());
+            FormatWorker.runWorker(
+                    ctx,
+                    PluginLaunch.javaCommand(workerJar, extra, spec),
+                    preClean,
+                    total,
+                    o.check(),
+                    freshness,
+                    o.observer());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("format worker interrupted", e);
+        } finally {
+            Files.deleteIfExists(spec);
+        }
     }
 
     private static Coordinate javaCoord(@Nullable String style) {

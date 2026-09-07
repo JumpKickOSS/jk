@@ -706,7 +706,6 @@ public final class EffortWeights {
                 in.projectModules().stream().map(Path::toString).toList();
         int compileJava = SKIP, compileKotlin = SKIP, compileGroovy = SKIP, compileTest = SKIP, runTests = SKIP;
         int pkg = SKIP;
-        List<Path> testSrc = new ArrayList<>();
         boolean hadTestSources = false;
         try {
             JkBuild project = JkBuildParser.parse(in.buildFile());
@@ -719,30 +718,16 @@ public final class EffortWeights {
                         () -> CompileSupport.collectJavaSources(
                                 compact ? in.dir().resolve("src") : in.dir().resolve("src/main/java")));
                 javaRun = rerun || !FreshnessStamp.looksFresh(layout.classesDir(), BuildStamps.JAVA, src);
-                compileJava = javaRun
-                        ? learned(
-                                timings,
-                                mod,
-                                TaskNames.COMPILE_JAVA,
-                                src.size(),
-                                coldWorkWeight(TaskNames.COMPILE_JAVA, src.size()),
-                                projectDirs)
-                        : SKIP;
+                compileJava =
+                        javaRun ? learnedCompile(timings, mod, TaskNames.COMPILE_JAVA, src.size(), projectDirs) : SKIP;
             }
             boolean ktRun = false;
             if (useKotlin) {
                 List<Path> src = SourceRefs.get(
                         shared.kotlin(), () -> PlannerCompile.mainKotlinSources(project, in.dir(), compact));
                 ktRun = rerun || !FreshnessStamp.looksFresh(layout.kotlinClassesDir(), BuildStamps.KOTLIN, src);
-                compileKotlin = ktRun
-                        ? learned(
-                                timings,
-                                mod,
-                                TaskNames.COMPILE_KOTLIN,
-                                src.size(),
-                                coldWorkWeight(TaskNames.COMPILE_KOTLIN, src.size()),
-                                projectDirs)
-                        : SKIP;
+                compileKotlin =
+                        ktRun ? learnedCompile(timings, mod, TaskNames.COMPILE_KOTLIN, src.size(), projectDirs) : SKIP;
             }
             boolean gvRun = false;
             if (useGroovy) {
@@ -751,15 +736,8 @@ public final class EffortWeights {
                 List<Path> src = SourceRefs.get(
                         shared.groovy(), () -> PlannerCompile.mainGroovySources(project, in.dir(), compact));
                 gvRun = rerun || !FreshnessStamp.looksFresh(layout.classesDir(), BuildStamps.GROOVY, src);
-                compileGroovy = gvRun
-                        ? learned(
-                                timings,
-                                mod,
-                                TaskNames.COMPILE_GROOVY,
-                                src.size(),
-                                coldWorkWeight(TaskNames.COMPILE_GROOVY, src.size()),
-                                projectDirs)
-                        : SKIP;
+                compileGroovy =
+                        gvRun ? learnedCompile(timings, mod, TaskNames.COMPILE_GROOVY, src.size(), projectDirs) : SKIP;
             }
             boolean compileRun = javaRun || ktRun || gvRun;
 
@@ -767,16 +745,7 @@ public final class EffortWeights {
             // --force), they run. The precise test skip is decided at run-tests via
             // the CAS marker (which survives `jk clean`); that step reweights down
             // to TOKEN there.
-            try {
-                testSrc.addAll(TestSupport.collectAllSuiteTestSources(in.dir(), compact));
-            } catch (IOException e) {
-                // fall back to default suite only
-                testSrc.addAll(CompileSupport.collectJavaSources(
-                        compact
-                                ? in.dir().resolve("test").resolve("src")
-                                : in.dir().resolve("src/test/java")));
-                testSrc.addAll(CompileSupport.collectKotlinTestSources(in.dir(), compact));
-            }
+            List<Path> testSrc = allSuiteTestSources(in, compact);
             hadTestSources = !testSrc.isEmpty();
             boolean testWillRun = hadTestSources && (rerun || compileRun);
             // compile-test is an opaque, batch javac/kotlinc call: the step declares
@@ -796,26 +765,7 @@ public final class EffortWeights {
                             coldWorkWeight(TaskNames.COMPILE_TEST, Math.max(1, testSrc.size())),
                             projectDirs)
                     : SKIP;
-
-            int methods = in.estimatedTestCount();
-            int classes = TestSupport.estimateAllSuiteTestClassCount(in.dir(), compact);
-            // Cold bar weight uses the same host priors as ETA.
-            int testWorkers = resolveTestWorkersForPredict(in, classes);
-            int staticTests =
-                    coldWorkWeight(TaskNames.RUN_TESTS, methods > 0 ? methods : Math.max(1, classes * 3), testWorkers);
-            // prefer method-count × run-tests rate; fall back to class-count ×
-            // run-tests-class rate when method annotations are not found.
-            if (testWillRun) {
-                if (methods > 0) {
-                    runTests = learned(timings, mod, TaskNames.RUN_TESTS, methods, staticTests, projectDirs);
-                } else if (classes > 0) {
-                    runTests = learned(timings, mod, "run-tests-class", classes, staticTests, projectDirs);
-                } else {
-                    runTests = learned(timings, mod, TaskNames.RUN_TESTS, 1, staticTests, projectDirs);
-                }
-            } else {
-                runTests = SKIP;
-            }
+            runTests = predictRunTests(in, compact, timings, mod, projectDirs, testWillRun);
 
             boolean jarFresh = !rerun && !compileRun && Files.isRegularFile(layout.mainJar());
             int staticPkg = coldWorkWeight(TaskNames.PACKAGE_JAR, 1);
@@ -844,6 +794,52 @@ public final class EffortWeights {
                 && isTokenOrSkip(runTests)
                 && isTokenOrSkip(pkg);
         return new Plan(sync, compileJava, compileKotlin, compileGroovy, compileTest, runTests, pkg, fullyCached);
+    }
+
+    /** A compile step's learned per-source weight, with the cold static weight for the same count as fallback. */
+    private static int learnedCompile(
+            StepTimings timings, String mod, String task, int sources, List<String> projectDirs) {
+        return learned(timings, mod, task, sources, coldWorkWeight(task, sources), projectDirs);
+    }
+
+    /** Every suite's test sources; on a suite-walk failure, the default suite only. */
+    private static List<Path> allSuiteTestSources(BuildPlanner.Inputs in, boolean compact) throws Exception {
+        List<Path> testSrc = new ArrayList<>();
+        try {
+            testSrc.addAll(TestSupport.collectAllSuiteTestSources(in.dir(), compact));
+        } catch (IOException e) {
+            // fall back to default suite only
+            testSrc.addAll(CompileSupport.collectJavaSources(
+                    compact ? in.dir().resolve("test").resolve("src") : in.dir().resolve("src/test/java")));
+            testSrc.addAll(CompileSupport.collectKotlinTestSources(in.dir(), compact));
+        }
+        return testSrc;
+    }
+
+    /**
+     * run-tests: prefer method-count × run-tests rate; fall back to class-count × run-tests-class
+     * rate when method annotations are not found. Cold bar weight uses the same host priors as ETA.
+     */
+    private static int predictRunTests(
+            BuildPlanner.Inputs in,
+            boolean compact,
+            StepTimings timings,
+            String mod,
+            List<String> projectDirs,
+            boolean testWillRun)
+            throws Exception {
+        int methods = in.estimatedTestCount();
+        int classes = TestSupport.estimateAllSuiteTestClassCount(in.dir(), compact);
+        int testWorkers = resolveTestWorkersForPredict(in, classes);
+        int staticTests =
+                coldWorkWeight(TaskNames.RUN_TESTS, methods > 0 ? methods : Math.max(1, classes * 3), testWorkers);
+        if (!testWillRun) return SKIP;
+        if (methods > 0) {
+            return learned(timings, mod, TaskNames.RUN_TESTS, methods, staticTests, projectDirs);
+        } else if (classes > 0) {
+            return learned(timings, mod, "run-tests-class", classes, staticTests, projectDirs);
+        }
+        return learned(timings, mod, TaskNames.RUN_TESTS, 1, staticTests, projectDirs);
     }
 
     /** True when weight is absent or only a token (no real compile/test/package work). */

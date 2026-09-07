@@ -197,28 +197,8 @@ public final class ExplainCommand implements CliCommand {
 
         // Client-side module filter listing (before engine forecast) when selectors are set.
         if (ModuleSelectors.anySelector(modulesSpec, affectedSince, affectedWip)) {
-            try {
-                var selected = ProjectInfos.orError(graphDir, modulesSpec, affectedSince, affectedWip);
-                if (selected.error() != null && !selected.error().isBlank()) {
-                    CommandWedge.printFail("Explain", selected.error());
-                    return Exit.CONFIG;
-                }
-                if (selected.moduleDirs().isEmpty()) return 0;
-                CliOutput.out("Selected modules (" + selected.moduleDirs().size() + "):");
-                for (String raw : selected.moduleDirs()) {
-                    Path m = Path.of(raw);
-                    Path rel;
-                    try {
-                        rel = graphDir.toAbsolutePath().normalize().relativize(m);
-                    } catch (IllegalArgumentException e) {
-                        rel = m;
-                    }
-                    CliOutput.out("  " + (rel.toString().isEmpty() ? "." : rel));
-                }
-            } catch (Exception e) {
-                CommandWedge.printFail("Explain", "module selection failed: " + e.getMessage());
-                return Exit.CONFIG;
-            }
+            Integer listed = printSelectedModules(graphDir, modulesSpec, affectedSince, affectedWip);
+            if (listed != null) return listed;
         }
 
         // Live prep wedge: Locking versions… → Calculating build plan… (or Calibrating host…),
@@ -270,24 +250,58 @@ public final class ExplainCommand implements CliCommand {
             return Exit.CONFIG;
         }
 
+        renderPlan(plan, in.isSet("verbose"), BuildCommand.buildTarget(buildFile, startDir), etaMillis, fullEtaMillis);
+        return 0;
+    }
+
+    /**
+     * The client-side module filter listing that precedes the engine forecast: the exit code when
+     * selection failed or selected nothing, null to continue into the forecast.
+     */
+    private static @Nullable Integer printSelectedModules(
+            Path graphDir, @Nullable String modulesSpec, @Nullable String affectedSince, boolean affectedWip) {
+        try {
+            var selected = ProjectInfos.orError(graphDir, modulesSpec, affectedSince, affectedWip);
+            if (selected.error() != null && !selected.error().isBlank()) {
+                CommandWedge.printFail("Explain", selected.error());
+                return Exit.CONFIG;
+            }
+            if (selected.moduleDirs().isEmpty()) return 0;
+            CliOutput.out("Selected modules (" + selected.moduleDirs().size() + "):");
+            for (String raw : selected.moduleDirs()) {
+                Path m = Path.of(raw);
+                Path rel;
+                try {
+                    rel = graphDir.toAbsolutePath().normalize().relativize(m);
+                } catch (IllegalArgumentException e) {
+                    rel = m;
+                }
+                CliOutput.out("  " + (rel.toString().isEmpty() ? "." : rel));
+            }
+        } catch (Exception e) {
+            CommandWedge.printFail("Explain", "module selection failed: " + e.getMessage());
+            return Exit.CONFIG;
+        }
+        return null;
+    }
+
+    /** The settled Build Plan tree, then the summary table: totals vs rebuild effort + countdown seed. */
+    private static void renderPlan(
+            ExplainPlan plan, boolean verbose, String coord, long etaMillis, long fullEtaMillis) {
         Theme t = Theme.active();
         boolean ansi = t.isAnsi();
 
         // Forecast every module's full step plan (compile → test → package),
         // truthfully — see TaskForecaster.
         List<TaskForecast.Module> modules = plan.modules();
-        boolean verbose = in.isSet("verbose");
         boolean fullyCached = !modules.isEmpty() && modules.stream().noneMatch(TaskForecast.Module::dirty);
-        String coord = BuildCommand.buildTarget(buildFile, startDir);
 
         buildGraph(coord, modules, verbose, t, ansi).print();
 
-        // Summary table: totals vs rebuild effort (ETA/full-ETA) + countdown seed.
         CliOutput.out("");
         for (String line : renderSummaryTable(modules, etaMillis, fullEtaMillis, fullyCached, t, ansi)) {
             CliOutput.out(line);
         }
-        return 0;
     }
 
     /**

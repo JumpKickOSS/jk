@@ -268,7 +268,32 @@ public final class EngineServer implements AutoCloseable {
         this.engineEpoch = version + bid + "@" + this.startedAtMillis;
         this.aot = new AotTrainer(this.log);
         this.election = new EngineElection(paths, this.version, this.buildId, this.pid, this.startedAtMillis, this.log);
-        this.drain = new DrainReporter(
+        this.drain = newDrainReporter();
+        this.watchdog = newDisplacementWatchdog();
+        this.idle = newIdleHousekeeping();
+        this.journalWriter = new JournalWriter(
+                sessions, journal, historyConfig, () -> metricsFile, clockMillis, this.version, this.log);
+        this.sse = new SsePublisher(
+                sessions,
+                inFlightBuilds,
+                httpEvents,
+                this::httpServer,
+                clockMillis,
+                activeBuildPlans,
+                sseConnect,
+                journalWriter::accStepStart);
+        this.liveRuns = new LiveRuns(inFlightBuilds, sessions, httpEvents, sseConnect, clockMillis);
+        this.listeners = new EngineListeners(sessions, sse, journalWriter, inFlightBuilds, this::eventRequestId);
+        this.jobs = newJobEnvelope();
+        this.verbs = newVerbRegistry();
+        this.http = newHttpFront();
+        this.vitals = newVitals();
+    }
+
+    // ---- constructor wiring, in the order the constructor assigns them ---------------------
+
+    private DrainReporter newDrainReporter() {
+        return new DrainReporter(
                 this.pid,
                 this.version,
                 () -> EnginePaths.activeSocket(paths),
@@ -282,7 +307,10 @@ public final class EngineServer implements AutoCloseable {
                 DrainReporter.sockets(),
                 this.log,
                 DrainReporter.TICK_MS);
-        this.watchdog = new DisplacementWatchdog(
+    }
+
+    private DisplacementWatchdog newDisplacementWatchdog() {
+        return new DisplacementWatchdog(
                 election,
                 activeBuildPlans::get,
                 this::liveEventStreams,
@@ -293,7 +321,10 @@ public final class EngineServer implements AutoCloseable {
                     close();
                 },
                 this.log);
-        this.idle = new IdleHousekeeping(
+    }
+
+    private IdleHousekeeping newIdleHousekeeping() {
+        return new IdleHousekeeping(
                 activeBuildPlans,
                 cacheGate,
                 historyConfig,
@@ -310,20 +341,10 @@ public final class EngineServer implements AutoCloseable {
                         lifecycleLock.notifyAll();
                     }
                 });
-        this.journalWriter = new JournalWriter(
-                sessions, journal, historyConfig, () -> metricsFile, clockMillis, this.version, this.log);
-        this.sse = new SsePublisher(
-                sessions,
-                inFlightBuilds,
-                httpEvents,
-                this::httpServer,
-                clockMillis,
-                activeBuildPlans,
-                sseConnect,
-                journalWriter::accStepStart);
-        this.liveRuns = new LiveRuns(inFlightBuilds, sessions, httpEvents, sseConnect, clockMillis);
-        this.listeners = new EngineListeners(sessions, sse, journalWriter, inFlightBuilds, this::eventRequestId);
-        this.jobs = new JobEnvelope(
+    }
+
+    private JobEnvelope newJobEnvelope() {
+        return new JobEnvelope(
                 new EngineEnvelopeHost(
                         this::tryStartBuildPlan,
                         this::abandonBuildPlanSlot,
@@ -344,7 +365,10 @@ public final class EngineServer implements AutoCloseable {
                         historyConfig,
                         journal),
                 config.jobLimits());
-        this.verbs = VerbRegistry.standard(new EngineVerbBridge(
+    }
+
+    private VerbRegistry newVerbRegistry() {
+        return VerbRegistry.standard(new EngineVerbBridge(
                 this::eventRequestId,
                 sessions,
                 listeners,
@@ -359,7 +383,10 @@ public final class EngineServer implements AutoCloseable {
                 historyConfig,
                 () -> metricsFile,
                 inFlightBuilds));
-        this.http = new EngineHttpFront(
+    }
+
+    private EngineHttpFront newHttpFront() {
+        return new EngineHttpFront(
                 httpConfig,
                 paths,
                 this.version,
@@ -376,7 +403,10 @@ public final class EngineServer implements AutoCloseable {
                 jobs::cancelJob,
                 jobs::cancelJobsForDir,
                 cacheGate);
-        this.vitals = new EngineVitals(
+    }
+
+    private EngineVitals newVitals() {
+        return new EngineVitals(
                 this.version,
                 this.pid,
                 this.startedAtMillis,
