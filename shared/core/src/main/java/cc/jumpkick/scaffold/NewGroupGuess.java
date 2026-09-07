@@ -122,7 +122,17 @@ public final class NewGroupGuess {
      * If nothing matched, try {@code ~/.gitconfig}. Return the first {@code user.email} found.
      */
     static Optional<String> readEmail(Path cwd, @Nullable Path home) {
+        // The user's global config is the fallback below, consulted after every repo-level and
+        // in-tree config; as an ancestor it would answer first for any cwd under the home directory
+        // — the same file, the wrong precedence — and a test tree under the home could never be
+        // config-free. So the walk skips the real home directory itself.
+        Path userHome = Optional.ofNullable(System.getProperty("user.home"))
+                .map(Path::of)
+                .map(Path::toAbsolutePath)
+                .map(Path::normalize)
+                .orElse(null);
         for (Path p = cwd; p != null; p = p.getParent()) {
+            if (userHome != null && p.toAbsolutePath().normalize().equals(userHome)) continue;
             var repo = parseEmail(p.resolve(".git").resolve("config"));
             if (repo.isPresent()) return repo;
             var found = parseEmail(p.resolve(".gitconfig"));
