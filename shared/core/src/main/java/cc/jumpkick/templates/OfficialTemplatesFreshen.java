@@ -136,9 +136,14 @@ public final class OfficialTemplatesFreshen {
         Parsed p = parse(ref);
         Path dest = cacheRoot.resolve(p.cacheKey());
         // Incomplete clones (e.g. only a .git dir left from a failed private-repo attempt) must be
-        // wiped and re-cloned — fetch/reset cannot recover them.
+        // wiped and re-cloned — fetch/reset cannot recover them. So must a catalog-shaped directory
+        // that is not a repository of its own: `git -C dest` on such a directory acts on whatever
+        // repository encloses it, and "fetch --depth 1; reset --hard FETCH_HEAD" against a user's
+        // checkout is a wiped working copy. This has happened, to jk's own checkout, from a test
+        // sandbox seeded under the source tree.
         if (!Files.isDirectory(dest)
                 || isEmptyDir(dest)
+                || !isRepositoryRoot(dest)
                 || isLegacyLangKindLayout(dest)
                 || !looksLikeTemplateMonorepo(dest)) {
             PathUtil.deleteRecursivelyOrThrow(dest);
@@ -223,6 +228,11 @@ public final class OfficialTemplatesFreshen {
         } catch (IOException e) {
             return false;
         }
+    }
+
+    /** Whether {@code dir} is a repository of its own — a {@code .git} directory or worktree file of its own. */
+    static boolean isRepositoryRoot(Path dir) {
+        return Files.exists(dir.resolve(".git"));
     }
 
     private static boolean isEmptyDir(Path dir) throws IOException {

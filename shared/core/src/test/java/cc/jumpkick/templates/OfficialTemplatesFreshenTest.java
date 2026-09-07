@@ -7,9 +7,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import cc.jumpkick.config.JkTemplatesConfig;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -100,5 +102,59 @@ class OfficialTemplatesFreshenTest {
                         PosixFilePermission.OWNER_WRITE,
                         PosixFilePermission.OWNER_EXECUTE));
         return script;
+    }
+
+    /**
+     * A catalog-shaped cache directory that is not a repository of its own is re-cloned, never
+     * fetched into: {@code git -C} on such a directory acts on the repository enclosing it, and a
+     * shallow fetch plus a hard reset there once wiped jk's own checkout from a test sandbox seeded
+     * under the source tree. The enclosing repository keeps its head and stays unshallow.
+     */
+    @Test
+    void a_catalog_directory_without_its_own_repository_is_recloned_not_fetched_into() throws Exception {
+        Path official = tmp.resolve("official");
+        Files.createDirectories(official.resolve("java/spring/hello.g8"));
+        Files.writeString(official.resolve("java/spring/hello.g8/default.properties"), "name=hello\n");
+        git(official, "init", "-q");
+        git(official, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "seed");
+        git(official, "add", ".");
+        git(official, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "catalog");
+
+        Path enclosing = tmp.resolve("checkout");
+        Files.createDirectories(enclosing);
+        Files.writeString(enclosing.resolve("work.txt"), "the user's work\n");
+        git(enclosing, "init", "-q");
+        git(enclosing, "add", ".");
+        git(enclosing, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "user work");
+        String headBefore = gitOut(enclosing, "rev-parse", "HEAD");
+
+        String ref = official.toUri().toString();
+        Path cacheRoot = enclosing.resolve("target/test-jk-home/store/templates");
+        Path dest = cacheRoot.resolve(OfficialTemplatesFreshen.parse(ref).cacheKey());
+        Files.createDirectories(dest.resolve("java/spring/stale.g8"));
+        assertTrue(OfficialTemplatesFreshen.looksLikeTemplateMonorepo(dest), "the fixture is catalog-shaped");
+        assertTrue(!OfficialTemplatesFreshen.isRepositoryRoot(dest), "but not a repository of its own");
+
+        OfficialTemplatesFreshen.refreshRef(ref, cacheRoot, s -> {});
+
+        assertEquals(headBefore, gitOut(enclosing, "rev-parse", "HEAD"), "the enclosing checkout is untouched");
+        assertTrue(Files.isRegularFile(enclosing.resolve("work.txt")), "the working copy is untouched");
+        assertTrue(
+                !Files.exists(enclosing.resolve(".git/shallow")), "the enclosing repository was not shallow-fetched");
+        assertTrue(OfficialTemplatesFreshen.isRepositoryRoot(dest), "the cache is now a clone of its own");
+        assertTrue(Files.isDirectory(dest.resolve("java/spring/hello.g8")), "with the official catalog in it");
+    }
+
+    private static void git(Path dir, String... args) throws Exception {
+        gitOut(dir, args);
+    }
+
+    private static String gitOut(Path dir, String... args) throws Exception {
+        List<String> cmd = new ArrayList<>(List.of("git", "-C", dir.toString()));
+        cmd.addAll(List.of(args));
+        Process proc = new ProcessBuilder(cmd).redirectErrorStream(true).start();
+        String out = new String(proc.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        if (proc.waitFor() != 0) throw new IOException("git " + String.join(" ", args) + " failed: " + out);
+        return out.strip();
     }
 }
