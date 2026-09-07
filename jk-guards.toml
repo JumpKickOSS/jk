@@ -158,3 +158,164 @@ owner      = "cc.jumpkick.command.JdkUpdateCommand"
 instead    = "provisioning installs; only `jk jdk update` queues a superseded install and drains it, after asking"
 why        = "an ordinary build once deleted the JDK it was running on, twice in one afternoon"
 
+# G12. A step name typed as a literal is a producer/consumer contract with no compiler behind it:
+# a typo becomes a missing dependency edge, not a build error. Hyphenated names only — the
+# single-word values (train, install, select) are ordinary English in paths and help text.
+[guards.task-names]
+kind    = "vocabulary"
+owner   = "cc.jumpkick.run.TaskNames"
+shape   = "hyphenated"
+instead = "TaskNames.<CONSTANT>"
+why     = "a step name typed by hand is an edge that quietly does not exist"
+
+[[guards.task-names.allow]]
+in     = "shared/host/src/main/java/cc/jumpkick/host/GraalLauncher.java"
+reason = "GraalVM's native-image launcher file name is not a step name; it has its own owner and must not borrow the constant"
+
+# G13. A file jk owns is named once. A third-party tool's own config.toml must not borrow the
+# constant either: give that vocabulary its own owner.
+[guards.manifest-names]
+kind    = "vocabulary"
+owner   = "cc.jumpkick.lock.ManifestPaths"
+instead = "ManifestPaths.<CONSTANT>"
+why     = "a file jk owns is named once, in ManifestPaths"
+
+# G15. A cache tier is named once, in the CacheTree enum. A directory that is not a cache tier —
+# a module's own build/generated, say — must not borrow the constant.
+[guards.cache-tiers]
+kind     = "vocabulary"
+owner    = "cc.jumpkick.host.CacheTree"
+homonyms = ["sha256", "generated", "projects"]
+instead  = "CacheTree.<TIER>.under(cacheRoot)"
+why      = "a cache tier is named once; the homonyms each have their own owner"
+
+# G17. A wire message type typed as a literal is a producer/consumer contract with no compiler
+# behind it: a typo becomes an event nobody handles. A dashboard-only SSE frame or a CLI transcript
+# envelope keeps its own literal.
+[guards.wire-types]
+kind    = "vocabulary"
+owner   = "cc.jumpkick.wire.protocol.EngineProtocol"
+shape   = "hyphenated"
+instead = "EngineProtocol.<CONSTANT>"
+why     = "a wire type typed by hand is an event nobody handles"
+
+# G18. jk's build output directory is named once, in BuildLayout.TARGET. A `target` that is not
+# this directory — a CLI parameter, javac's -target, a BSP field — is an allow entry with its reason.
+[guards.target-dir]
+kind    = "vocabulary"
+owner   = "cc.jumpkick.layout.BuildLayout"
+shape   = "regex:target"
+instead = "BuildLayout.TARGET, or BuildLayout.moduleTargetDir(ws, mod)"
+why     = "the output directory is named once; renaming it must not miss a spelling"
+
+[[guards.target-dir.allow]]
+in     = "clients/cli/src/main/java/cc/jumpkick/command/ToolInstallCommand.java"
+reason = "a CLI parameter named target (a coordinate, a file, a directory or a git URL)"
+
+[[guards.target-dir.allow]]
+in     = "clients/cli/src/main/java/cc/jumpkick/command/ToolRunCommand.java"
+reason = "a CLI parameter named target (a coordinate, a file, a directory or a git URL)"
+
+[[guards.target-dir.allow]]
+in     = "clients/cli/src/main/java/cc/jumpkick/cli/bsp/BspServer.java"
+reason = "the target field of a BSP request, in someone else's protocol"
+
+[[guards.target-dir.allow]]
+in     = "plugins/groovy-compiler/src/main/java/cc/jumpkick/groovy/compiler/GroovyCompiler.java"
+reason = "groovyc's target option (a bytecode level)"
+
+[[guards.target-dir.allow]]
+in     = "server/toolchain/src/main/java/cc/jumpkick/mvn/PomImporter.java"
+reason = "Maven's <target> compiler configuration key, in someone else's file"
+
+[[guards.target-dir.allow]]
+in     = "shared/core/src/main/java/cc/jumpkick/config/TestEnvValues.java"
+reason = "the ${target} interpolation variable name: it expands to the output directory, but the token is a variable name in jk.toml and renaming the directory must not rename it"
+
+# G16. A repository name is spelled once, in RepositorySpec: `central` is the store directory, the
+# lockfile source prefix and the repo-group entry at once, so a store written under one spelling and
+# read under another is a cache that silently never hits.
+[guards.repository-names]
+kind    = "vocabulary"
+owner   = "cc.jumpkick.model.RepositorySpec"
+instead = "RepositorySpec.<CONSTANT>"
+why     = "a repository name spelled twice is a store that silently never hits"
+
+[[guards.repository-names.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/runtime/PlannerResources.java"
+reason = "`jumpkick` here is a package path segment (Path.of(\"cc\", \"jumpkick\", …)), not a repository name"
+
+[[guards.repository-names.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/runtime/TaskForecaster.java"
+reason = "`jumpkick` here is a package path segment (Path.of(\"cc\", \"jumpkick\", …)), not a repository name"
+
+[[guards.repository-names.allow]]
+in     = "server/toolchain/src/main/java/cc/jumpkick/mvn/PomImporter.java"
+reason = "recognises a foreign build file's declared repository: every spelling a user may have typed"
+
+[[guards.repository-names.allow]]
+in     = "shared/core/src/main/java/cc/jumpkick/config/FormatStyles.java"
+reason = "`google` here is a formatter style name (ktfmt / google-java-format), not a repository"
+
+[[guards.repository-names.allow]]
+in     = "plugins/formatter/src/main/java/cc/jumpkick/format/CodeFormatter.java"
+reason = "`google` here is a formatter style name (ktfmt / google-java-format), not a repository"
+
+# G70. Maven Central is addressed one way. repo1.maven.org is a CNAME for the canonical host, so it
+# fetches the same bytes — and matches neither the mirror nor the per-host cooldown.
+[guards.central-address]
+kind     = "text"
+files    = ["**/src/main/**/*.java"]
+patterns = ["repo1\\.maven\\.org", "https://repo\\.maven\\.apache\\.org/maven2/?"]
+owner    = "shared/jk-api/src/main/java/cc/jumpkick/model/RepositorySpec.java"
+hit      = "URI.create(\"https://repo.maven.apache.org/maven2/\")"
+miss     = "URI.create(\"https://repo.example.org/maven2/\")"
+instead  = "RepositorySpec.MAVEN_CENTRAL.url(), through cc.jumpkick.http.Http"
+why      = "the mirror and the cooldown key on the canonical host; an alias matches neither"
+
+[[guards.central-address.allow]]
+in     = "server/toolchain/src/main/java/cc/jumpkick/gradle/GradleImporter.java"
+reason = "recognises a foreign build file's declared repository: every spelling a user may have typed"
+
+[[guards.central-address.allow]]
+in     = "server/toolchain/src/main/java/cc/jumpkick/mvn/PomImporter.java"
+reason = "recognises a foreign build file's declared repository: every spelling a user may have typed"
+
+[[guards.central-address.allow]]
+in     = "shared/toolchain-jdk/src/main/java/cc/jumpkick/gradle/GradleExporter.java"
+reason = "writes a foreign build file's repository block in that file's own vocabulary"
+
+# G24. The AOT refusal marker is named once, in AotCacheFiles; tests included, because a fixture
+# that spells the bare suffix follows a rename of the value and still passes.
+[guards.aot-marker]
+kind       = "vocabulary"
+owner      = "cc.jumpkick.host.AotCacheFiles"
+shape      = "regex:\\.noaot"
+source-set = "all"
+instead    = "AotCacheFiles.marker(cache) / isMarker(name) / cacheOf(name), or AotCacheFiles.MARKER"
+why        = "the AOT refusal marker is one suffix, spelled once"
+
+# G28. Retired wire-key spellings have no owner by definition — there is deliberately no constant
+# left to read them from — so the ban list is written here and the live owners are named in `instead`.
+[guards.retired-wire-keys]
+kind     = "text"
+files    = ["**/src/main/**/*.java", "clients/web/src/main/resources/web/**"]
+blank    = "none"
+patterns = ["(?<=[\"'.])tests?(?:Total|Succeeded|Failed|Skipped)(?![A-Za-z0-9_$])"]
+hit      = "d.testsTotal"
+miss     = "d.testsTotalLine"
+instead  = "TestSummary.WIRE_KEY with countsJson/countsMap/readCounts — the nested tests:{total,succeeded,failed,skipped} object"
+why      = "a retired spelling back in production source is a reader of a shape nobody writes"
+
+# G71. `class` is banned as a field key in the SPA only: .class literals and the test-worker
+# discovery protocol keep the token live in Java on purpose. The dashboard reads d.testClass.
+[guards.spa-no-class-key]
+kind     = "text"
+files    = ["clients/web/src/main/resources/web/**"]
+blank    = "none"
+patterns = ["(?<=[\"'.])class(?![A-Za-z0-9_$])"]
+hit      = "d.class"
+miss     = "el.className"
+instead  = "EngineProtocol.TEST_CLASS_FIELD (\"testClass\"): the SPA reads d.testClass"
+why      = "the dashboard hand-types every key it reads, so a retired key there is silent"
+

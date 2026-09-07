@@ -123,6 +123,7 @@ object Guards {
                 "ban, no allowlist",
                 GuardHome.MODULE,
                 description = "Fail the build on a step name typed as a literal (use TaskNames)",
+                ruleId = "task-names",
             ),
             spec(
                 13,
@@ -131,6 +132,7 @@ object Guards {
                 "ban",
                 GuardHome.MODULE,
                 description = "Fail the build on a jk file name typed as a literal (use ManifestPaths)",
+                ruleId = "manifest-names",
             ),
             spec(
                 14,
@@ -160,6 +162,7 @@ object Guards {
                 "ban",
                 GuardHome.MODULE,
                 description = "Fail the build on a cache-tier directory typed as a literal (use CacheTree)",
+                ruleId = "cache-tiers",
             ),
             spec(
                 16,
@@ -168,6 +171,7 @@ object Guards {
                 "ban",
                 GuardHome.MODULE,
                 description = "Fail the build on a Central URL or repo name typed as a literal",
+                ruleId = "repository-names",
             ),
             spec(
                 17,
@@ -176,6 +180,7 @@ object Guards {
                 "ban",
                 GuardHome.MODULE,
                 description = "Fail the build on a hyphenated wire message type typed as a literal",
+                ruleId = "wire-types",
             ),
             spec(
                 18,
@@ -184,6 +189,7 @@ object Guards {
                 "ban",
                 GuardHome.MODULE,
                 description = "Fail the build on jk's build output directory typed as a literal",
+                ruleId = "target-dir",
             ),
             spec(
                 19,
@@ -252,6 +258,7 @@ object Guards {
                 GuardHome.MODULE_OWNED,
                 ownerPath = ":host",
                 description = "Fail the build when the .noaot refusal-marker suffix is typed outside AotCacheFiles",
+                ruleId = "aot-marker",
             ),
             spec(
                 25,
@@ -300,6 +307,7 @@ object Guards {
                 GuardHome.MODULE_OWNED,
                 ownerPath = ":wire",
                 description = "Fail the build on a retired wire-key spelling in production source",
+                ruleId = "retired-wire-keys",
             ),
             spec(
                 29,
@@ -692,6 +700,24 @@ object Guards {
                 GuardHome.JK_ONLY,
                 description = "Fail the build when jk's own algorithm name is passed to a Hashing algorithm door",
                 ruleId = "own-algorithm-by-name",
+            ),
+            spec(
+                70,
+                "checkCentralAddress",
+                "Maven Central addressed by its alias host or by a hand-typed URL outside `RepositorySpec.MAVEN_CENTRAL`",
+                "ban, foreign-build readers allowed",
+                GuardHome.JK_ONLY,
+                description = "Fail the build when Maven Central is addressed outside RepositorySpec",
+                ruleId = "central-address",
+            ),
+            spec(
+                71,
+                "checkSpaNoClassKey",
+                "`class` read as a field key in the dashboard SPA (the wire says `testClass`)",
+                "ban, SPA assets only",
+                GuardHome.JK_ONLY,
+                description = "Fail the build when the SPA reads a `class` field key",
+                ruleId = "spa-no-class-key",
             ),
             spec(
                 61,

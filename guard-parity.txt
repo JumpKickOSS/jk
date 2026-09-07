@@ -54,3 +54,7 @@ G68 xml-parser-hardening is G3's third arm (DomXml's six XXE flags by name); Gra
 G68 checkSingleXmlParserOwner still checks them inside G3. 2026-09-06.
 G69 own-algorithm-by-name is G6's second arm ("SHA-256" passed to a Hashing algorithm door);
 G69 Gradle's checkOneDigestSurface still checks it inside G6. 2026-09-06.
+G70 central-address is G16's URL and alias-host arm (text, not a vocabulary the owner declares);
+G70 Gradle's checkSingleCentralAddress still checks it inside G16. 2026-09-06.
+G71 spa-no-class-key is G28's SPA-only arm (a different file set than the retired keys);
+G71 Gradle's checkNoRetiredWireSpelling still checks it inside G28. 2026-09-06.

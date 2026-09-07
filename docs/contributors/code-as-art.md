@@ -887,23 +887,23 @@ Letters are allocated when a guard lands and are never reused.
 | G9 | `checkNoHandRolledHex` | a per-byte hex loop, or `java.util.HexFormat` outside `cc.jumpkick.host.Hashing` (use `Hashing.hex`) | ban, no allowlist | `one-hex-spelling` |
 | G10 | `checkFileSizeCaps` | growth past `size-baseline.txt` or over a language's hard cap | ratchet | — |
 | G11 | `checkNoFqcn` | a file gaining a fully-qualified class name (`fqcn-baseline.txt`) | ratchet | — |
-| G12 | `checkNoBareTaskName` | a step name typed as a literal (use `TaskNames`) | ban, no allowlist | — |
-| G13 | `checkNoBareManifestName` | a jk file name typed as a literal (use `ManifestPaths`) | ban | — |
+| G12 | `checkNoBareTaskName` | a step name typed as a literal (use `TaskNames`) | ban, no allowlist | `task-names` |
+| G13 | `checkNoBareManifestName` | a jk file name typed as a literal (use `ManifestPaths`) | ban | `manifest-names` |
 | G14 | `ForecastKeyParityTest` (`:engine`) | a forecast key hashing a different fact set than the build key | ban | — |
-| G15 | `checkNoBareTierName` | a cache-tier directory typed as a literal (use `CacheTree`) | ban | — |
-| G16 | `checkSingleCentralAddress` | a Central URL, its `repo1.maven.org` alias, or the repo name `central` typed as a literal (use `RepositorySpec`) | ban | — |
-| G17 | `checkNoBareWireType` | a hyphenated wire message type typed as a literal (use `EngineProtocol`) | ban | — |
-| G18 | `checkNoBareTargetDir` | jk's build output directory typed as a literal (use `BuildLayout.TARGET`) | ban | — |
+| G15 | `checkNoBareTierName` | a cache-tier directory typed as a literal (use `CacheTree`) | ban | `cache-tiers` |
+| G16 | `checkSingleCentralAddress` | a Central URL, its `repo1.maven.org` alias, or the repo name `central` typed as a literal (use `RepositorySpec`) | ban | `repository-names` |
+| G17 | `checkNoBareWireType` | a hyphenated wire message type typed as a literal (use `EngineProtocol`) | ban | `wire-types` |
+| G18 | `checkNoBareTargetDir` | jk's build output directory typed as a literal (use `BuildLayout.TARGET`) | ban | `target-dir` |
 | G19 | `checkPublishedPomCoordinates` | a generated POM naming a coordinate this build does not publish (`unspecified`, the `jk` fallback group, or an unpublished artifact in a group we do publish) | ban, no allowlist | — |
 | G20 | `checkSingleHostSurface` | an `os.name` read outside `cc.jumpkick.host.Os`, or a path separator outside `Classpaths` (`-cp`) and `SearchPath` (`PATH`) | ban | `one-host-surface` |
 | G21 | `checkOneJsonCodec` | a JSON escaper or an escape-decoding parser outside `cc.jumpkick.jsonl` — exempt by spec, so `MinimalToml.quote` beside `Jsonl.quote` passes | ban, no allowlist | — |
 | G22 | `IdeClientWiringTest` (`:cli`) | an IDE client naming a command, verb, class or wire field that does not exist, or pinning `untilBuild` — five arms, each self-failing on an empty scan | ban, no allowlist | — |
 | G23 | `checkNoOrphanTestTags` | a `@Tag` no test task runs, a tag no tier owns, or a `TestTiers` table that does not partition its own vocabulary — three arms, exhaustive over the 2⁴ tag subsets, plus an import-vs-literal blindness balance | ban, two named fixture exceptions | — |
-| G24 | `checkSingleAotMarkerSpelling` | the `.noaot` refusal-marker suffix typed outside `cc.jumpkick.host.AotCacheFiles` — banned outright in `src/main/java`, and in `src/test/java` as a bare suffix (a whole fixture file name is allowed) | ban, no allowlist | — |
+| G24 | `checkSingleAotMarkerSpelling` | the `.noaot` refusal-marker suffix typed outside `cc.jumpkick.host.AotCacheFiles` — banned outright in `src/main/java`, and in `src/test/java` as a bare suffix (a whole fixture file name is allowed) | ban, no allowlist | `aot-marker` |
 | G25 | `checkPluginFamily` | a plugin module whose family (SPI plugin vs forked worker, decided by the presence of `jk-plugin.toml`) disagrees with its wire-prefix wiring, or an SPI plugin reading a config key its `[schema]` does not declare — four arms, per module, each self-failing on an empty scan | ban, no allowlist | — |
 | G26 | `checkPluginForkOwner` | a plugin forking a process outside `TaskExec.ToolRun.start()` | ban, one commented file exemption (a container runtime named on `PATH`, which `ToolRun` cannot express yet) | `plugin-fork-owner` |
 | G27 | `CliSourceRulesTest` (`:cli`) | a `clients/cli` command inheriting stdio outside `CliOutput.handOffTerminal` — comment-blind, plus a self-fail arm on the owner still calling `inheritIO()` | ban, no allowlist | — |
-| G28 | `checkNoRetiredWireSpelling` | a retired wire-key spelling typed as a field key in production source | ban, declared inputs + self-fail floors | — |
+| G28 | `checkNoRetiredWireSpelling` | a retired wire-key spelling typed as a field key in production source | ban, declared inputs + self-fail floors | `retired-wire-keys` |
 | G29 | `checkWorkerOfflineFromSpec` | a `JK_OFFLINE` / offline-property read in worker sources (use `TaskExec.offline()`) | ban, no allowlist | — |
 | G30 | `checkPropertiesStoreOwner` | a `Properties.store()` call in main sources (use `DeterministicProperties.render`) | ban, no allowlist | `properties-store-owner` |
 | G31 | `CliSourceRulesTest` (`:cli`) | a `:cli` test reading the ambient state root without `@IsolatedState` | ratchet | — |
@@ -945,6 +945,9 @@ Letters are allocated when a guard lands and are never reused.
 | G67 | `checkPackageCycleBand` | a module's production packages sitting in a package-import cycle growing past its `cycle-baseline.txt` band — and a module that improves without tightening its line, because a number nobody banks stops meaning anything. Reports component membership, never cycle paths: a 15-package component has thousands of elementary cycles and none of them says which edge to cut | ratchet, both directions (`cycle-baseline.txt`) | — |
 | G68 | `checkXmlParserHardening` | the six XXE flags inside `DomXml.hardened`, each by name — the only XXE posture jk has | count, exactly six | `xml-parser-hardening` |
 | G69 | `checkOwnAlgorithmByName` | jk's own digest algorithm spelled at a `Hashing` door (`newDigest` / `fileHex` / `hashHex`) instead of `newSha256` / `sha256Hex` | ban, owner exempt | `own-algorithm-by-name` |
+| G70 | `checkCentralAddress` | Maven Central addressed by its alias host or by a hand-typed URL outside `RepositorySpec.MAVEN_CENTRAL` | ban, foreign-build readers allowed | `central-address` |
+| G71 | `checkSpaNoClassKey` | `class` read as a field key in the dashboard SPA (the wire says `testClass`) | ban, SPA assets only | `spa-no-class-key` |
+<!-- guards:end -->
 <!-- guards:end -->
 <!-- guards:end -->
 
