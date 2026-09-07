@@ -26,6 +26,7 @@ public final class Evaluators {
         BY_KIND.put(Kind.DEPEND, new DependEvaluator());
         BY_KIND.put(Kind.METRIC, new MetricEvaluator());
         BY_KIND.put(Kind.ANNOTATE, new AnnotateEvaluator());
+        BY_KIND.put(Kind.CLASSES, new ClassesEvaluator());
     }
 
     /** Test seam: drop every registration and reinstall the shipped evaluators. */
@@ -62,6 +63,11 @@ public final class Evaluators {
             case CYCLES -> {
                 if (rule.table().contains("over")) yield Lane.MODEL;
                 yield Boolean.TRUE.equals(rule.table().getBoolean("across-modules")) ? Lane.WORKSPACE : Lane.MODULE;
+            }
+            case CLASSES -> {
+                // Who accesses a class is a question about every module; the rest reads one index.
+                var should = rule.table().getTable("should");
+                yield should != null && should.contains("only-be-accessed-by") ? Lane.WORKSPACE : Lane.MODULE;
             }
             case METRIC -> {
                 String measure = String.valueOf(rule.table().getString("measure"));

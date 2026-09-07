@@ -25,13 +25,24 @@ import org.tomlj.TomlTable;
  *       hierarchy predicates walk the classpath and the JDK
  *   <li>{@code are} / {@code be}: {@code interface abstract enum record annotation public final
  *       nested top-level}
- *   <li>{@code named}: a glob over the simple name ({@code *Test}, {@code *Impl})
+ *   <li>{@code named}: a glob over the simple name ({@code *Test}, {@code *Impl});
+ *       {@code name-matching}: a regex over the binary name; {@code simple-name-ending-with}
+ *   <li>{@code assignable-to}: either of the two hierarchy predicates
  * </ul>
  */
 final class ClassPredicates {
 
-    static final List<String> KEYS =
-            List.of("reside-in", "annotated-with", "implement", "extend", "are", "be", "named");
+    static final List<String> KEYS = List.of(
+            "reside-in",
+            "annotated-with",
+            "implement",
+            "extend",
+            "assignable-to",
+            "are",
+            "be",
+            "named",
+            "name-matching",
+            "simple-name-ending-with");
 
     private ClassPredicates() {}
 
@@ -81,18 +92,23 @@ final class ClassPredicates {
         return switch (key) {
             case "reside-in" -> c -> packageMatches(v, c.packageName());
             case "annotated-with" -> c -> c.hasAnnotation(v);
-            case "implement", "extend" -> {
+            case "implement", "extend", "assignable-to" -> {
                 String target = Descriptors.internalName(v);
                 yield c -> !c.name().equals(target) && types.isAssignableTo(c.name(), target);
             }
-            case "named" ->
-                c -> {
-                    String name = c.binaryName();
-                    String simple = name.substring(Math.max(name.lastIndexOf('.'), name.lastIndexOf('$')) + 1);
-                    return Rule.globMatches(v, simple);
-                };
+            case "name-matching" -> {
+                Pattern re = Pattern.compile(v);
+                yield c -> re.matcher(c.binaryName()).matches();
+            }
+            case "simple-name-ending-with" -> c -> simpleName(c).endsWith(v);
+            case "named" -> c -> Rule.globMatches(v, simpleName(c));
             default -> shape(v);
         };
+    }
+
+    static String simpleName(ClassFacts c) {
+        String name = c.binaryName();
+        return name.substring(Math.max(name.lastIndexOf('.'), name.lastIndexOf('$')) + 1);
     }
 
     private static @Nullable Predicate<ClassFacts> shape(String v) {
@@ -106,6 +122,8 @@ final class ClassPredicates {
             case "final" -> c -> c.hasFlag(Opcodes.ACC_FINAL);
             case "nested" -> ClassFacts::isNested;
             case "top-level" -> c -> !c.isNested();
+            case "static" -> c -> c.hasFlag(Opcodes.ACC_STATIC);
+            case "tests" -> AnnotateEvaluator::isTestClass;
             default -> null;
         };
     }

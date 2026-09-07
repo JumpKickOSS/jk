@@ -220,6 +220,13 @@ public final class GuardRules {
 
     /** The sanctioned alternative a kind can spell out itself when the author left it implicit. */
     static @Nullable String derivedInstead(Kind kind, TomlTable t) {
+        if (kind == Kind.CLASSES) {
+            TomlTable should = t.getTable("should");
+            if (should == null) return null;
+            List<String> parts = new ArrayList<>();
+            for (String k : should.keySet()) parts.add(k + " = " + should.get(k));
+            return "make the class satisfy: " + String.join(", ", parts);
+        }
         if (kind == Kind.ANNOTATE) {
             String required = t.isString("require") ? t.getString("require") : null;
             if (required == null) return null;
