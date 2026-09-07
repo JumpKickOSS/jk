@@ -181,9 +181,14 @@ final class TextEvaluator implements BatchEvaluator {
         return false;
     }
 
-    /** The view a rule scans: for lexable code, a squashed projection; for prose and config, the text. */
+    /**
+     * The view a rule scans. Code views ({@code comments}, {@code comments+strings}) are squashed so a
+     * wrapped call cannot evade a one-line pattern; {@code none} is the text as written, because a
+     * rule that asked for everything is matching prose, markup and keys where adjacency means what
+     * it says ({@code class="x"} is not {@code "class"}); {@code code} is the comments alone.
+     */
     private static Object project(String text, CodeText.Blank mode, TextFiles.Language lang) {
-        if (!lang.lexable) return text;
+        if (!lang.lexable || mode == CodeText.Blank.NONE) return text;
         String blanked = CodeText.blank(text, mode, lang == TextFiles.Language.JS);
         return mode == CodeText.Blank.CODE ? blanked : Squashed.of(blanked);
     }

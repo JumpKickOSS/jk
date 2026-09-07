@@ -130,12 +130,7 @@ final class MetricEvaluator implements Evaluator {
                 units += commentBlocks(rule, f, text, limit, bound, allow, out);
                 continue;
             }
-            double value = measure.equals("lines")
-                    ? CodeText.codeLines(text, ext)
-                    : countMatches(
-                            CodeText.FQCN,
-                            CodeText.blank(
-                                    text, CodeText.Blank.COMMENTS_AND_STRINGS, ext.equals("js") || ext.equals("mjs")));
+            double value = measure.equals("lines") ? CodeText.codeLines(text, ext) : fqcns(text, ext);
             if (per.equals("module")) {
                 String module = moduleOf(f.rel());
                 perModule.merge(module, value, Double::sum);
@@ -165,6 +160,22 @@ final class MetricEvaluator implements Evaluator {
             }
         }
         return finish(rule, units, out, allowUsed);
+    }
+
+    /**
+     * Package-qualified references in code: comments and strings blanked, the file's own {@code
+     * import} and {@code package} lines left out — those declare, they do not reference.
+     */
+    static int fqcns(String text, String ext) {
+        String blanked =
+                CodeText.blank(text, CodeText.Blank.COMMENTS_AND_STRINGS, ext.equals("js") || ext.equals("mjs"));
+        int n = 0;
+        for (String line : blanked.split("\n", -1)) {
+            String s = line.stripLeading();
+            if (s.startsWith("import ") || s.startsWith("package ")) continue;
+            n += countMatches(CodeText.FQCN, line);
+        }
+        return n;
     }
 
     /** {@code comment-lines} per contiguous comment block: {@code //} runs and each block comment. */

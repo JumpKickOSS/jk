@@ -52,6 +52,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Semaphore;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
@@ -303,7 +304,20 @@ final class PlannerGuards {
             cache.storeVerdict(taskId, key, inputsOf(tokens, baselineSha));
             return;
         }
-        LaneRun.Result result = LaneRun.run(lane, rules, ectx, baseline);
+        LaneRun.Result result;
+        if (lane == Lane.MODULE) {
+            // Module lanes are quick but each holds a facts index and a text pass in flight; a
+            // workspace of thirty run with the build's parallelism would multiply that against the
+            // engine's heap. A few at a time keep the peak bounded and the wall unchanged.
+            LANES.acquireUninterruptibly();
+            try {
+                result = LaneRun.run(lane, rules, ectx, baseline);
+            } finally {
+                LANES.release();
+            }
+        } else {
+            result = LaneRun.run(lane, rules, ectx, baseline);
+        }
         boolean ci = Baselines.ciMode();
         String storedBaselineSha = baselineSha;
         if (result.tightened() > 0) {
@@ -350,6 +364,9 @@ final class PlannerGuards {
     }
 
     private static final Object BASELINE_LOCK = new Object();
+
+    /** Module lanes in flight at once. */
+    private static final Semaphore LANES = new Semaphore(4);
 
     /**
      * Module lanes run concurrently and each tightens only its own slice of a rule's baseline, so

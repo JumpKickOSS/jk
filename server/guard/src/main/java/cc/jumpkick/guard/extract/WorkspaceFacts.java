@@ -51,7 +51,10 @@ public final class WorkspaceFacts {
                     FileTime mtime = Files.getLastModifiedTime(idx);
                     Names names = NAMES.get(idx);
                     if (names == null || !names.mtime().equals(mtime)) {
-                        names = new Names(mtime, FactsFormat.read(idx).classes().keySet());
+                        // A copy: a keySet view would keep the whole index reachable behind it.
+                        names = new Names(
+                                mtime,
+                                Set.copyOf(FactsFormat.read(idx).classes().keySet()));
                         NAMES.put(idx, names);
                     }
                     if (!names.classNames().contains(internalName)) continue;

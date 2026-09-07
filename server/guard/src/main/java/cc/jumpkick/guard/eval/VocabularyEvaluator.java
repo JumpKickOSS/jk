@@ -36,15 +36,94 @@ import org.tomlj.TomlTable;
  * cannot tell {@code TaskNames.COMPILE_MAIN} from the literal {@code "compile-main"}. The derive
  * half is bytecode (the owner's {@code ConstantValue}s, plus the literals its own {@code <clinit>}
  * hands to its constructor — an enum's names); the scan half is text over this module's own
- * sources. {@code inverse = true} adds the arm the owner-derived ban cannot have: literals of the
- * vocabulary's <em>shape</em> that no owner declares ("eight step names had no owner at all").
+ * sources, read once for every vocabulary rule of the lane. {@code inverse = true} adds the arm
+ * the owner-derived ban cannot have: literals of the vocabulary's <em>shape</em> that no owner
+ * declares ("eight step names had no owner at all").
  */
-final class VocabularyEvaluator implements Evaluator {
+final class VocabularyEvaluator implements BatchEvaluator {
 
     private static final Pattern HYPHENATED = Pattern.compile("[a-z][a-z0-9]*(?:-[a-z0-9]+)+");
 
+    /** One rule, resolved against its owner and ready to scan. */
+    private static final class Prepared {
+        final Rule rule;
+        final String owner;
+        final boolean inverse;
+        final long minLength;
+        final Set<String> homonyms;
+        final @Nullable Pattern shape;
+        final Map<String, String> vocabulary;
+        final @Nullable String ownerSource;
+        final boolean all;
+        final Map<Allow, Boolean> allowUsed = new LinkedHashMap<>();
+        final Set<Allow> applicable = new HashSet<>();
+        final List<Observation> sites = new ArrayList<>();
+        final Map<String, Integer> ordinals = new LinkedHashMap<>();
+        final Map<String, Observation> unowned = new TreeMap<>();
+        long files;
+        long literals;
+
+        Prepared(
+                Rule rule,
+                String owner,
+                boolean inverse,
+                long minLength,
+                Set<String> homonyms,
+                @Nullable Pattern shape,
+                Map<String, String> vocabulary,
+                @Nullable String ownerSource) {
+            this.rule = rule;
+            this.owner = owner;
+            this.inverse = inverse;
+            this.minLength = minLength;
+            this.homonyms = homonyms;
+            this.shape = shape;
+            this.vocabulary = vocabulary;
+            this.ownerSource = ownerSource;
+            this.all = rule.sourceSet().equals("all");
+            for (Allow a : rule.allow()) allowUsed.put(a, false);
+        }
+    }
+
     @Override
-    public Evaluation evaluate(Rule rule, EvalContext ctx) throws IOException {
+    public Map<String, Evaluation> evaluateAll(List<Rule> rules, EvalContext ctx) throws IOException {
+        Map<String, Evaluation> out = new LinkedHashMap<>();
+        Path moduleDir = ctx.moduleDir();
+        if (moduleDir == null) {
+            for (Rule r : rules) out.put(r.id(), Evaluation.notEvaluated("vocabulary runs per module"));
+            return out;
+        }
+        List<Prepared> live = new ArrayList<>();
+        for (Rule rule : rules) {
+            Prepared p = prepare(rule, ctx);
+            if (p == null) continue;
+            live.add(p);
+        }
+        for (Rule rule : rules) {
+            if (live.stream().noneMatch(p -> p.rule == rule)) out.put(rule.id(), ownerProblem(rule, ctx));
+        }
+        if (live.isEmpty()) return out;
+
+        // One pass over the module's sources for every rule of the lane.
+        for (TextFiles.Entry f : TextFiles.corpus(moduleDir)) {
+            if (!f.language().code || !f.language().lexable) continue;
+            String text = null;
+            List<CodeText.Literal> literals = List.of();
+            for (Prepared p : live) {
+                if (!inSourceSet(f.rel(), p.all) || f.rel().equals(p.ownerSource)) continue;
+                if (text == null) {
+                    text = TextFiles.read(f.file());
+                    if (text == null) break;
+                    literals = CodeText.literals(text);
+                }
+                scan(p, f, text, literals, ctx.module());
+            }
+        }
+        for (Prepared p : live) out.put(p.rule.id(), finish(p, ctx));
+        return out;
+    }
+
+    private static @Nullable Prepared prepare(Rule rule, EvalContext ctx) {
         TomlTable t = rule.table();
         String owner = String.valueOf(t.getString("owner"));
         String shape = t.isString("shape") ? String.valueOf(t.getString("shape")) : "exact";
@@ -52,11 +131,8 @@ final class VocabularyEvaluator implements Evaluator {
         long minLength = t.isLong("min-length") ? Long.parseLong(String.valueOf(t.getLong("min-length"))) : 1;
         Set<String> homonyms = new TreeSet<>(ForbidEvaluator.strings(t, "homonyms"));
         Pattern shapePattern = shapePattern(shape);
-
         ClassFacts ownerFacts = ownerFacts(owner, ctx);
-        if (ownerFacts == null)
-            return Evaluation.ownerMissing(
-                    "owner " + owner + " resolves on neither this module, its classpath nor the JDK");
+        if (ownerFacts == null) return null;
         Map<String, String> vocabulary = new TreeMap<>();
         for (var e : constants(ownerFacts).entrySet()) {
             String value = e.getKey();
@@ -64,87 +140,87 @@ final class VocabularyEvaluator implements Evaluator {
             if (shapePattern != null && !shapePattern.matcher(value).matches()) continue;
             vocabulary.put(value, e.getValue());
         }
-        if (vocabulary.isEmpty())
-            return Evaluation.ownerMissing("owner " + owner + " yields no constant of shape `" + shape
-                    + "`; the rule has lost the owner it reads");
+        if (vocabulary.isEmpty()) return null;
+        return new Prepared(
+                rule, owner, inverse, minLength, homonyms, shapePattern, vocabulary, ownerSourceRel(ownerFacts, ctx));
+    }
 
-        Path moduleDir = ctx.moduleDir();
-        if (moduleDir == null) return Evaluation.notEvaluated("vocabulary runs per module");
-        String ownerSource = ownerSourceRel(ownerFacts, ctx);
-        Map<Allow, Boolean> allowUsed = new LinkedHashMap<>();
-        for (Allow a : rule.allow()) allowUsed.put(a, false);
-        Set<Allow> applicable = new HashSet<>();
+    /** Why a rule could not be prepared: the owner is unknown, or yields no constant of the shape. */
+    private static Evaluation ownerProblem(Rule rule, EvalContext ctx) {
+        TomlTable t = rule.table();
+        String owner = String.valueOf(t.getString("owner"));
+        String shape = t.isString("shape") ? String.valueOf(t.getString("shape")) : "exact";
+        if (ownerFacts(owner, ctx) == null) {
+            return Evaluation.ownerMissing(
+                    "owner " + owner + " resolves on neither this module, its classpath, the JDK nor any module index");
+        }
+        return Evaluation.ownerMissing("owner " + owner + " yields no constant of shape `" + shape
+                + "`; the rule has lost the owner it reads");
+    }
 
-        boolean all = rule.sourceSet().equals("all");
-        long files = 0;
-        long literals = 0;
-        List<Observation> sites = new ArrayList<>();
-        Map<String, Integer> ordinals = new LinkedHashMap<>();
-        Map<String, Observation> unowned = new TreeMap<>();
-        for (TextFiles.Entry f : TextFiles.corpus(moduleDir)) {
-            if (!f.language().code || !f.language().lexable) continue;
-            if (!inSourceSet(f.rel(), all)) continue;
-            if (f.rel().equals(ownerSource)) continue;
-            String text = TextFiles.read(f.file());
-            if (text == null) continue;
-            files++;
-            Allow allow = allowing(rule.allow(), f.rel(), ctx.module());
-            if (allow != null) applicable.add(allow);
-            for (CodeText.Literal l : CodeText.literals(text)) {
-                literals++;
-                String value = l.body();
-                String constant = vocabulary.get(value);
-                if (constant != null) {
-                    if (allow != null) {
-                        allowUsed.put(allow, true);
-                        continue;
-                    }
-                    String base = f.rel() + " | " + Hashing.sha256Hex(value).substring(0, 16);
-                    int ordinal = ordinals.merge(base, 1, Integer::sum);
-                    sites.add(Observation.site(
-                            base + " | " + ordinal,
-                            f.rel(),
-                            CodeText.lineAt(text, l.start()),
-                            "\"" + value + "\" typed as a literal; the owner spells it " + simpleName(owner) + "."
-                                    + constant));
-                } else if (inverse
-                        && shapePattern != null
-                        && shapePattern.matcher(value).matches()
-                        && !homonyms.contains(value)
-                        && value.length() >= minLength) {
-                    if (allow != null) {
-                        allowUsed.put(allow, true);
-                        continue;
-                    }
-                    unowned.putIfAbsent(
-                            value,
-                            Observation.site(
-                                    "unowned | " + value,
-                                    f.rel(),
-                                    CodeText.lineAt(text, l.start()),
-                                    "\"" + value
-                                            + "\" has the shape of the vocabulary but no owner declares it — declare it in "
-                                            + simpleName(owner) + " or name it a homonym"));
+    private static void scan(
+            Prepared p, TextFiles.Entry f, String text, List<CodeText.Literal> literals, String module) {
+        p.files++;
+        Allow allow = allowing(p.rule.allow(), f.rel(), module);
+        if (allow != null) p.applicable.add(allow);
+        for (CodeText.Literal l : literals) {
+            p.literals++;
+            String value = l.body();
+            String constant = p.vocabulary.get(value);
+            if (constant != null) {
+                if (allow != null) {
+                    p.allowUsed.put(allow, true);
+                    continue;
                 }
+                String base = f.rel() + " | " + Hashing.sha256Hex(value).substring(0, 16);
+                int ordinal = p.ordinals.merge(base, 1, Integer::sum);
+                p.sites.add(Observation.site(
+                        base + " | " + ordinal,
+                        f.rel(),
+                        CodeText.lineAt(text, l.start()),
+                        "\"" + value + "\" typed as a literal; the owner spells it " + simpleName(p.owner) + "."
+                                + constant));
+            } else if (p.inverse
+                    && p.shape != null
+                    && p.shape.matcher(value).matches()
+                    && !p.homonyms.contains(value)
+                    && value.length() >= p.minLength) {
+                if (allow != null) {
+                    p.allowUsed.put(allow, true);
+                    continue;
+                }
+                p.unowned.putIfAbsent(
+                        value,
+                        Observation.site(
+                                "unowned | " + value,
+                                f.rel(),
+                                CodeText.lineAt(text, l.start()),
+                                "\"" + value
+                                        + "\" has the shape of the vocabulary but no owner declares it — declare it in "
+                                        + simpleName(p.owner) + " or name it a homonym"));
             }
         }
-        sites.addAll(unowned.values());
+    }
+
+    private static Evaluation finish(Prepared p, EvalContext ctx) {
+        List<Observation> sites = new ArrayList<>(p.sites);
+        sites.addAll(p.unowned.values());
         Map<String, Long> population =
-                Map.of("files", files, "literals", literals, "constants", (long) vocabulary.size());
+                Map.of("files", p.files, "literals", p.literals, "constants", (long) p.vocabulary.size());
         List<String> stale = new ArrayList<>();
-        for (var e : allowUsed.entrySet()) {
+        for (var e : p.allowUsed.entrySet()) {
             // An allow naming a file of another module is judged there, not stale here.
-            if (!e.getValue() && applicable.contains(e.getKey()))
+            if (!e.getValue() && p.applicable.contains(e.getKey()))
                 stale.add(e.getKey().in());
         }
-        if (!stale.isEmpty() && files > 0) {
+        if (!stale.isEmpty() && p.files > 0) {
             return new Evaluation(
                     Outcome.STALE_ALLOW,
                     population,
                     sites,
                     "allow entries matched nothing: " + String.join(", ", stale));
         }
-        if (files == 0)
+        if (p.files == 0)
             return new Evaluation(Outcome.BLIND, population, List.of(), "no sources scanned in " + ctx.module());
         return Evaluation.of(population, sites);
     }
