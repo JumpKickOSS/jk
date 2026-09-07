@@ -15,6 +15,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -287,12 +289,13 @@ public final class JkResultsMarkdown {
         for (var e : byRule.entrySet()) {
             List<BuildRecord.Diag> sites = e.getValue();
             String why = guardField(sites.get(0).message(), "Why:");
+            int seen = 0;
+            for (BuildRecord.Diag d : sites) seen = Math.max(seen, thrashRuns(d.message()));
             sb.append("### ").append(e.getKey());
             if (!why.isEmpty()) sb.append(" — ").append(why);
-            sb.append("  (")
-                    .append(sites.size())
-                    .append(sites.size() == 1 ? " site" : " sites")
-                    .append(")\n");
+            sb.append("  (").append(sites.size()).append(sites.size() == 1 ? " site" : " sites");
+            if (seen > 0) sb.append(", seen ").append(seen).append(" builds running");
+            sb.append(")\n");
             for (BuildRecord.Diag d : sites) {
                 if (shown >= MAX_GUARD_SITES) {
                     sb.append("\n_+").append(red.size() - shown).append(" more — target/jk-guards/_\n");
@@ -310,6 +313,13 @@ public final class JkResultsMarkdown {
                 sb.append(first).append('\n');
                 String instead = guardField(d.message(), "Instead:");
                 if (!instead.isEmpty()) sb.append("  → ").append(instead).append('\n');
+                int runs = thrashRuns(d.message());
+                if (runs > 0) {
+                    sb.append("  This site has failed on ")
+                            .append(runs)
+                            .append(
+                                    " consecutive builds. Stop and ask the user whether an `allow` with a reason is right here.\n");
+                }
                 shown++;
             }
             sb.append('\n');
@@ -317,6 +327,14 @@ public final class JkResultsMarkdown {
         sb.append("To exempt a site, stop and ask the user to add an `allow` entry with a reason to jk-guards.toml. ");
         sb.append(
                 "Never edit jk-guards-baseline.toml by hand; never add a suppression comment. Explain: `jk guard explain <rule>`.\n\n");
+    }
+
+    /** The consecutive-build count a {@code Thrash:} line carries, or 0 when the site is not thrashing. */
+    static int thrashRuns(String message) {
+        String thrash = guardField(message, "Thrash:");
+        if (thrash.isEmpty()) return 0;
+        Matcher n = Pattern.compile("(\\d+) consecutive").matcher(thrash);
+        return n.find() ? Integer.parseInt(n.group(1)) : 0;
     }
 
     /** The value of an indented {@code Label:  value} line in a guard diagnostic, or {@code ""}. */

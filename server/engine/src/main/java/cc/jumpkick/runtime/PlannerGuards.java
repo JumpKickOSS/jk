@@ -23,6 +23,7 @@ import cc.jumpkick.guard.eval.EvalContext;
 import cc.jumpkick.guard.eval.Evaluators;
 import cc.jumpkick.guard.eval.GuardMessages;
 import cc.jumpkick.guard.eval.GuardSuites;
+import cc.jumpkick.guard.eval.GuardThrash;
 import cc.jumpkick.guard.eval.LaneRun;
 import cc.jumpkick.guard.eval.Outcome;
 import cc.jumpkick.guard.eval.RuleReport;
@@ -678,9 +679,14 @@ final class PlannerGuards {
         } catch (IOException e) {
             ctx.warn("guards", "could not write " + SarifWriter.SARIF_FILE + ": " + e.getMessage());
         }
+        // Same fingerprint red on consecutive runs of this lane: the message turns to stop-and-ask.
+        Map<String, Integer> streaks = GuardThrash.record(taskId, result.reports());
         for (RuleReport r : result.redReports()) {
             if (r.outcome() == Outcome.VIOLATIONS) {
-                for (Observation o : r.fresh()) ctx.error(r.id(), GuardMessages.site(r, o));
+                for (Observation o : r.fresh())
+                    ctx.error(
+                            r.id(),
+                            GuardMessages.site(r, o, streaks.getOrDefault(GuardThrash.key(r.id(), o.key()), 1)));
             } else {
                 ctx.error(r.id(), GuardMessages.outcome(r));
             }

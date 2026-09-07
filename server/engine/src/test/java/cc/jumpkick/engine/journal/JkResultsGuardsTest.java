@@ -73,6 +73,30 @@ class JkResultsGuardsTest {
                 0);
     }
 
+    private static final String THRASHING = SITE.replace(
+            "  Exempt:   ask the user to add [guards.one-digest-surface].allow with a reason",
+            "  Thrash:   this site has failed on 2 consecutive builds — stop and ask the user whether an `allow` with a"
+                    + " reason is right here, or whether the rule needs changing");
+
+    @Test
+    void a_thrashing_site_says_so_in_the_group_header_and_under_the_site() {
+        BuildRecord.Diag d =
+                site("one-digest-surface", "server/engine/src/main/java/cc/jumpkick/engine/Cas.java", 88, THRASHING);
+        String md = JkResultsMarkdown.render(
+                record(false, List.of(d), List.of(new BuildRecord.Task(TaskNames.GUARD, "compile", "FAIL", 1, 0))));
+        assertThat(md)
+                .contains(
+                        "### one-digest-surface — one algorithm table, one place to swap the provider  (1 site, seen 2 builds running)")
+                .contains(
+                        "  → Hashing.sha256Hex\n  This site has failed on 2 consecutive builds. Stop and ask the user whether an `allow` with a reason is right here.\n");
+        String fresh = JkResultsMarkdown.render(record(
+                false,
+                List.of(site(
+                        "one-digest-surface", "server/engine/src/main/java/cc/jumpkick/engine/Cas.java", 88, SITE)),
+                List.of(new BuildRecord.Task(TaskNames.GUARD, "compile", "FAIL", 1, 0))));
+        assertThat(fresh).doesNotContain("builds running").doesNotContain("consecutive builds");
+    }
+
     @Test
     void clean_lanes_are_one_line_and_no_section_without_lanes() {
         List<BuildRecord.Task> lanes = List.of(

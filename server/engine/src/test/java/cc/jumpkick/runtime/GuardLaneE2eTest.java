@@ -12,6 +12,7 @@ import cc.jumpkick.guard.baseline.Observation;
 import cc.jumpkick.guard.baseline.RuleBaseline;
 import cc.jumpkick.guard.eval.Evaluation;
 import cc.jumpkick.guard.eval.Evaluators;
+import cc.jumpkick.guard.eval.GuardThrash;
 import cc.jumpkick.guard.facts.ClassFacts;
 import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.guard.schema.Kind;
@@ -56,6 +57,7 @@ class GuardLaneE2eTest {
             return Evaluation.of(Map.of("classes", (long) ctx.facts().classes().size()), sites);
         });
 
+        GuardThrash.reset();
         BuildPlanResult first = build(project, cache);
         assertThat(first.success()).as("errors: " + first.errors()).isFalse();
         assertThat(first.errors()).anySatisfy(d -> {
@@ -63,8 +65,22 @@ class GuardLaneE2eTest {
             assertThat(d.message())
                     .startsWith("App.java:1: demo.App calls the banned thing")
                     .contains("Instead:  nothing")
-                    .contains("Baseline: new");
+                    .contains("Baseline: new")
+                    .contains("Exempt:   ask the user")
+                    .doesNotContain("Thrash:");
         });
+
+        // The same site red again in the same engine session: the message turns to stop-and-ask.
+        BuildPlanResult again = build(project, cache);
+        assertThat(again.success()).isFalse();
+        assertThat(again.errors()).anySatisfy(d -> assertThat(d.message())
+                .contains("Thrash:   this site has failed on 2 consecutive builds — stop and ask the user")
+                .doesNotContain("Exempt:"));
+        // A restart forgets the streak.
+        GuardThrash.reset();
+        BuildPlanResult afterRestart = build(project, cache);
+        assertThat(afterRestart.errors())
+                .anySatisfy(d -> assertThat(d.message()).contains("Exempt:").doesNotContain("Thrash:"));
         assertThat(project.resolve("target/incremental/main-guard.idx"))
                 .as("facts index written by the lane")
                 .exists();

@@ -72,6 +72,15 @@ public final class GuardMessages {
      * fields an agent acts on. The rule id is the diagnostic's code.
      */
     public static String site(RuleReport r, Observation o) {
+        return site(r, o, 1);
+    }
+
+    /**
+     * As {@link #site(RuleReport, Observation)}; from {@code consecutive} runs of
+     * {@value GuardThrash#THRESHOLD} the {@code Exempt:} line becomes {@code Thrash:} — the site has
+     * been red on consecutive builds, so the sanctioned move is to stop and ask, not to try again.
+     */
+    public static String site(RuleReport r, Observation o, int consecutive) {
         Rule rule = r.rule();
         StringBuilder sb = new StringBuilder();
         if (o.file() != null) {
@@ -84,7 +93,17 @@ public final class GuardMessages {
         sb.append("  At:       ").append(o.key()).append('\n');
         sb.append("  Baseline: new\n");
         sb.append("  Source:   ").append(rule.source().render()).append('\n');
-        sb.append("  Exempt:   ask the user to add [guards.").append(rule.id()).append("].allow with a reason\n");
+        if (consecutive >= GuardThrash.THRESHOLD) {
+            sb.append("  Thrash:   this site has failed on ")
+                    .append(consecutive)
+                    .append(
+                            " consecutive builds — stop and ask the user whether an `allow` with a reason is right here,")
+                    .append(" or whether the rule needs changing\n");
+        } else {
+            sb.append("  Exempt:   ask the user to add [guards.")
+                    .append(rule.id())
+                    .append("].allow with a reason\n");
+        }
         sb.append("  Explain:  jk guard explain ").append(rule.id());
         return sb.toString();
     }
