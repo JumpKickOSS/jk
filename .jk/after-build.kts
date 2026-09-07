@@ -377,43 +377,6 @@ fun codeLines(p: Path, extension: String): Int {
     }
     return lines
 }
-
-/** A Java char literal, escaped or not. */
-val charLiteral = """'(?:\\.|[^\\'])'"""
-
-/** Every char appearing as a `case` label in already-squashed [code], multi-label arms included. */
-fun caseLabelChars(code: String): Set<String> =
-    Regex("""(?<![\w$])case\s*((?:$charLiteral\s*,\s*)*$charLiteral)\s*(?:->|:)""")
-        .findAll(code)
-        .flatMap { arm -> Regex(charLiteral).findAll(arm.groupValues[1]) }
-        .map { it.value.removeSurrounding("'") }
-        .toSet()
-
-/**
- * Judge per-file hit counts against an allowlist: `(grew, unlisted, loose)`. Growth and an
- * unlisted file are failures. A file that shrank — or went clean — is loose, which passes and
- * prints the tightened entry to paste back, so the sweep that clears a guard is never blocked
- * by the guard itself.
- */
-fun ratchetVerdict(
-    hits: Map<String, Int>,
-    allowed: Map<String, Int>,
-): Triple<List<String>, List<String>, List<String>> {
-    val grew = mutableListOf<String>()
-    val unlisted = mutableListOf<String>()
-    val loose = mutableListOf<String>()
-    hits.toSortedMap().forEach { (r, n) ->
-        val a = allowed[r]
-        when {
-            a == null -> unlisted.add("%5d  %s".format(n, r))
-            n > a -> grew.add("$r: $n sites, allowed $a (+${n - a})")
-            n < a -> loose.add("%5d  %s   (was %d)".format(n, r, a))
-        }
-    }
-    allowed.toSortedMap().forEach { (r, a) -> if (r !in hits) loose.add("(clean) $r   (was $a)") }
-    return Triple(grew, unlisted, loose)
-}
-
 /** Read an owner file, failing loudly when the guard has lost the thing it reads. */
 fun owner(r: String): String {
     val p = at(r)
@@ -513,52 +476,6 @@ guard("G72", "checkCharterTableParity") {
             + " states and the build does not enforce is worse than no cap:\n" + bullets(drift))
     }
 }
-
-// ---------------------------------------------------------------------------
-// G1 — one owner for a JDK's launcher path.
-//
-// Hand-building `<javaHome>/bin/java` silently drops the Windows `.exe` and the fork is dead
-// there. The ban list is derived from the owner's own `public static Path <name>(Path javaHome)`
-// shorthands and its Windows suffix, so teaching the owner a third launcher bans hand-building
-// that one the same minute.
-// ---------------------------------------------------------------------------
-val jdkFingerprint = "shared/host/src/main/java/cc/jumpkick/jdk/JdkFingerprint.java"
-
-guard("G1", "checkNoHandBuiltJavaBinary") {
-    val ownerText = owner(jdkFingerprint)
-    val names = Regex("""public static Path (\w+)\(Path javaHome\)""")
-        .findAll(ownerText).map { it.groupValues[1] }.toList()
-    if (names.isEmpty()) {
-        error("JdkFingerprint declares no `public static Path <name>(Path javaHome)` shorthand, so"
-            + " this guard has lost the ban list it reads.")
-    }
-    val suffix = Regex("""tool \+ "([^"]+)"""").find(ownerText)?.groupValues?.get(1)
-        ?: error("JdkFingerprint.toolName no longer appends a literal suffix, so this guard cannot"
-            + " see the rule it enforces.")
-    val banned = names.flatMap { n ->
-        listOf(
-            """resolve("bin/$n")""",
-            """resolve("bin").resolve("$n")""",
-            """resolve("bin").resolve("$n$suffix")""",
-            ""","bin","$n"""",
-            ""","bin","$n$suffix"""",
-            """"$n$suffix":"$n"""",
-            """"$n":"$n$suffix"""")
-    }
-    val hits = mainJava.filter { rel(it) != jdkFingerprint }.flatMap { f ->
-        val code = guardTextOf(f)
-        banned.filter { code.contains(it) }.map { "${rel(f)}: $it" }
-    }
-    if (hits.isNotEmpty()) {
-        error("A hand-built <javaHome>/bin/java drops the Windows `.exe` and the fork is dead there."
-            + " ${hits.size} site(s):\n" + bullets(hits)
-            + "\n  Call JdkFingerprint.java(javaHome), .javac(javaHome), or .tool(javaHome, name)."
-            + " It is on the :host leaf, so every module reaches it — including a plugin worker."
-            + " A launcher that is NOT a JDK tool under <home>/bin (mvn, gradle, kotlinc,"
-            + " native-image) is a different vocabulary and is not in scope.")
-    }
-}
-
 // ---------------------------------------------------------------------------
 // G2 — a hard process exit names its code, in `Exit`.
 //
@@ -590,58 +507,6 @@ guard("G2", "checkNoBareExitCode") {
             + " not reuse a code that already means something.")
     }
 }
-
-// ---------------------------------------------------------------------------
-// G7 — one truth set, and it lives in `EnvValues.parseBool`.
-//
-// `JK_FOO=yes` working in one reader and not the next. The pattern is the WHOLE truth set on
-// either side of equals/equalsIgnoreCase: a one-sided pattern measures at most half the defect,
-// and the false side is where the bypasses were hiding. Every entry below is permanent — a
-// reader of someone else's format, or a comparison that is not a boolean at all.
-// ---------------------------------------------------------------------------
-val truthSetRatchet = mapOf(
-    // Maven POM XML: `<optional>` and `<activeByDefault>` are xs:boolean, `true` only.
-    "server/io/src/main/java/cc/jumpkick/repo/PomParser.java" to 1,
-    "server/toolchain/src/main/java/cc/jumpkick/mvn/PomImporter.java" to 1,
-    // The disco JDK catalog is JSON: `true`/`false`, never `yes`.
-    "shared/toolchain-jdk/src/main/java/cc/jumpkick/jdk/JdkCatalogClient.java" to 2,
-    // giter8 template booleans are `y`/`yes`/`true` — a different set on purpose.
-    "server/engine/src/main/java/cc/jumpkick/giter8/Giter8Value.java" to 2,
-    // jk's own on-disk memo row stores the bit as literal `1`, so parts[2] is not user input.
-    "server/engine/src/main/java/cc/jumpkick/runtime/PreflightMemo.java" to 1,
-    // A version string that is literally "0", and a version segment that is literally "0".
-    "plugins/quarkus/src/main/java/cc/jumpkick/quarkus/LockedClosure.java" to 1,
-    "server/resolver/src/main/java/cc/jumpkick/resolver/VersionSelectors.java" to 1,
-    // Wizard menu ids. The prompt offers exactly two and a lenient parse would silently accept
-    // an answer the menu never showed.
-    "clients/cli/src/main/java/cc/jumpkick/command/ActivateCommand.java" to 1,
-    "clients/cli/src/main/java/cc/jumpkick/command/JdkInstallWizard.java" to 1)
-
-guard("G7", "checkSingleTruthSet") {
-    val truthy = "true|1|yes|on|false|0|no|off"
-    val handRolled = Regex(
-        """"(?:$truthy)"\.equals(?:IgnoreCase)?\(|\.equals(?:IgnoreCase)?\("(?:$truthy)"\)""")
-    val hits = LinkedHashMap<String, Int>()
-    mainJava.forEach { f ->
-        val n = countIn(guardTextOf(f), handRolled)
-        if (n > 0) hits[rel(f)] = n
-    }
-    val (grew, unlisted, loose) = ratchetVerdict(hits, truthSetRatchet)
-    val faults = mutableListOf<String>()
-    if (unlisted.isNotEmpty()) {
-        faults.add("jk has one boolean truth set and it is EnvValues.parseBool — 1/true/yes/on against"
-            + " 0/false/no/off, trimmed, case-insensitive. These compare by hand and are not on the"
-            + " ratchet:\n" + bullets(unlisted)
-            + "\n  Call cc.jumpkick.config.EnvValues.parseBool(raw) (or .bool(env, name) for a JK_*"
-            + " variable); it is in :host, so every module can reach it. A reader of someone else's"
-            + " format — Maven's xs:boolean, giter8's y/yes — or a comparison that is not a boolean"
-            + " at all is an exemption, and says so here.")
-    }
-    if (grew.isNotEmpty()) faults.add("A file on the truth-set ratchet may only shrink. These grew:\n" + bullets(grew))
-    if (faults.isNotEmpty()) error(faults.joinToString("\n\n"))
-    if (loose.isNotEmpty()) notes.add("truthSetRatchet is loose (these shrank — tighten it in this commit):\n" + bullets(loose))
-}
-
 val deterministicZip = "shared/host/src/main/java/cc/jumpkick/host/DeterministicZip.java"
 
 guard("G43", "checkArchiveStreamOwner") {
@@ -674,68 +539,6 @@ guard("G43", "checkArchiveStreamOwner") {
             + " DeterministicZip.newArchive(path) when a ZipOutputStream will do.")
     }
 }
-
-// ---------------------------------------------------------------------------
-// G21 — JSON is escaped in one place and parsed in one place.
-//
-// Exemption is BY SPEC, not by filename, because two escapers can both be correct:
-// `MinimalToml.quote` is character-for-character the same method as `Jsonl.quote`, and merging
-// them would be a regression. So each arm carries the discriminator its direction actually has —
-// the write arm needs a JSON OBJECT literal beside the escaper, and the read arm keys on `\/`,
-// which is legal in JSON and illegal in a TOML basic string.
-// ---------------------------------------------------------------------------
-val jsonCodecOwners = listOf(
-    "shared/host/src/main/java/cc/jumpkick/jsonl/Jsonl.java",
-    "shared/host/src/main/java/cc/jumpkick/jsonl/MiniJson.java")
-
-/** A JSON object literal written into Java source: `"…\"key\":…"`. Nothing else spells that. */
-val jsonObjectLiteral = Regex("""\\"[A-Za-z_][A-Za-z0-9_.\-]*\\"\s*:""")
-
-guard("G21", "checkOneJsonCodec") {
-    val ownerCode = guardText(owner(jsonCodecOwners.first()))
-    val unicodeEscape = Regex("""String\.format\(("[^"]*u%04[xX]")""").find(ownerCode)?.groupValues?.get(1)
-    val ownerEscapes = caseLabelChars(ownerCode)
-    if (unicodeEscape == null || !ownerEscapes.containsAll(listOf("/", "u", "n"))) {
-        error("Jsonl no longer yields the escape alphabet this guard reads from it: unicode fallback"
-            + " ${unicodeEscape ?: "MISSING"}, decoded escapes $ownerEscapes. Restore the codec's"
-            + " shape or retire this guard deliberately — do not re-type the alphabet here, which is"
-            + " the defect the guard exists to prevent.")
-    }
-    // Case-insensitive on the hex conversion only: `%04X` is the same escaper, shouting.
-    val unicodePattern = Regex(Regex.escape(unicodeEscape), RegexOption.IGNORE_CASE)
-    val decodesJson = ownerEscapes.filter { it != "/" }
-
-    val writers = mutableListOf<String>()
-    val readers = mutableListOf<String>()
-    mainJava.forEach { f ->
-        val r = rel(f)
-        if (r in jsonCodecOwners) return@forEach
-        val code = guardTextOf(f)
-        val labels = caseLabelChars(code)
-        if (unicodePattern.containsMatchIn(code) && "\"" in labels && jsonObjectLiteral.containsMatchIn(code)) {
-            writers.add(r)
-        }
-        if ("/" in labels && labels.count { it in decodesJson } >= 4) readers.add(r)
-    }
-    val faults = mutableListOf<String>()
-    if (writers.isNotEmpty()) {
-        faults.add("jk escapes a JSON string in one place, `Jsonl.quote`. These assemble a JSON object"
-            + " with an escaper of their own:\n" + bullets(writers)
-            + "\n  Call Jsonl.quote for one string, or hand the whole document to MiniJson.write /"
-            + " writePretty. An escaper for a DIFFERENT format is not in scope and must not borrow"
-            + " Jsonl either: TOML basic strings go through MinimalToml.quote, XML through"
-            + " MinimalXml, and a new format gets its own owner beside them.")
-    }
-    if (readers.isNotEmpty()) {
-        faults.add("jk parses JSON in one place, `MiniJson`. These decode JSON's escape alphabet"
-            + " themselves:\n" + bullets(readers)
-            + "\n  MiniJson.parse gives you Map/List/String/Double/Boolean, with a nesting cap a"
-            + " hand-rolled recursive descent does not have — and a StackOverflowError is an Error,"
-            + " so the catch that was meant to make a bad document a no-op will not catch it.")
-    }
-    if (faults.isNotEmpty()) error(faults.joinToString("\n\n"))
-}
-
 /** `key = ["a", "b"]` from a flat TOML section, or null when the key is absent. */
 fun tomlStringList(section: String, key: String): List<String>? {
     val m = Regex("""(?m)^\s*${Regex.escape(key)}\s*=\s*\[([^\]]*)]""").find(section) ?: return null
@@ -749,138 +552,6 @@ fun tomlSection(toml: String, name: String): String? {
     val next = Regex("""(?m)^\s*\[""").find(rest)
     return if (next == null) rest else rest.substring(0, next.range.first)
 }
-
-/** [src] with comments blanked to spaces (newlines and offsets kept), string literals verbatim. */
-fun familyGuardCode(src: String): String = blankNonCode(src, blankStrings = false)
-
-/**
- * Plugin sources that legitimately construct their own `ProcessBuilder`, by module-relative path.
- * Every entry is a fork `ToolRun` cannot express, and says which.
- */
-val engineMainJava: List<Path> = children(at("server")).flatMap { filesUnder(it.resolve("src/main/java"), ".java") }
-
-guard("G25", "checkPluginFamily") {
-    if (engineMainJava.size < 350) {
-        error("scanned ${engineMainJava.size} engine Java files; measured against 425. The walk has"
-            + " stopped seeing server/*/src/main/java.")
-    }
-    val quotedPrefix = Regex(""""(##JK[A-Z]+:)"""")
-    val variantsOwner = owner("shared/jk-api/src/main/java/cc/jumpkick/model/Variants.java")
-    val variantApplyOwner = owner("shared/core/src/main/java/cc/jumpkick/plugin/manifest/VariantApply.java")
-    val buildType = Regex("""String\s+BUILD_TYPE\s*=\s*"([^"]+)"""").find(variantsOwner)?.groupValues?.get(1)
-        ?: error("Variants no longer declares String BUILD_TYPE, so this guard has lost the owner of"
-            + " the injected config keys.")
-    val variantPrefix = Regex(""""(variant\.)"\s*\+""").find(familyGuardCode(variantApplyOwner))?.groupValues?.get(1)
-        ?: error("VariantApply no longer builds a \"variant.\" + dimension config key, so this guard"
-            + " has lost the second injected shape.")
-
-    val faults = mutableListOf<String>()
-    pluginModules.forEach { module ->
-        val moduleName = module.fileName.toString()
-        val moduleFiles = filesUnder(module.resolve("src/main/java"), ".java")
-        if (moduleFiles.isEmpty()) {
-            faults.add("$moduleName: no Java source under src/main/java, so the family guard verified"
-                + " nothing for it. Fix the walk before trusting a green run.")
-            return@forEach
-        }
-
-        // --- arm 1: one prefix, declared in this module ---
-        val declared = LinkedHashMap<String, MutableList<String>>()
-        moduleFiles.forEach { f ->
-            quotedPrefix.findAll(familyGuardCode(text(f))).forEach { m ->
-                declared.getOrPut(m.groupValues[1]) { mutableListOf() }.add(rel(f))
-            }
-        }
-        if (declared.size != 1) {
-            faults.add("$moduleName must declare exactly one `##JK*:` wire prefix in its own"
-                + " src/main/java — it is one worker speaking one protocol. Found ${declared.size}:"
-                + declared.entries.joinToString("") { (p, a) -> "\n    $p at ${a.distinct()}" }
-                + "\n    Zero means the worker has no protocol and nothing can talk to it; two means"
-                + " two workers sharing a module, and a reader cannot tell whose line is whose.")
-            return@forEach
-        }
-        val prefix = declared.keys.first()
-        val engineSites = engineMainJava.filter { f ->
-            val raw = text(f)
-            raw.contains("##JK") && quotedPrefix.findAll(familyGuardCode(raw)).any { it.groupValues[1] == prefix }
-        }.map { rel(it) }
-
-        val descriptor = module.resolve("jk-plugin.toml")
-        if (Files.isRegularFile(descriptor)) {
-            // --- arm 2: SPI plugin ---
-            val code = text(descriptor).lineSequence().filterNot { it.trimStart().startsWith("#") }.joinToString("\n")
-            val stated = Regex("""protocol-prefix\s*=\s*"([^"]+)"""").find(code)?.groupValues?.get(1)
-            if (stated != prefix) {
-                faults.add("$moduleName ships a jk-plugin.toml, so the engine loads it by descriptor and"
-                    + " takes its wire prefix from [code].protocol-prefix. The descriptor says"
-                    + " ${stated ?: "nothing"} and the code says $prefix, so the engine would tag one"
-                    + " end of the conversation and the plugin the other.")
-                return@forEach
-            }
-            if (engineSites.isNotEmpty()) {
-                faults.add("$moduleName is an SPI plugin (it ships a jk-plugin.toml), so its prefix"
-                    + " belongs to the descriptor and the plugin — the engine discovers it and never"
-                    + " spells it. These engine sources name $prefix:\n" + bullets(engineSites)
-                    + "\n    That is a second, hardcoded discovery path for a module that already"
-                    + " declares itself.")
-                return@forEach
-            }
-
-            // --- arm 4: the descriptor's schema is total ---
-            val schemaKeys = mutableSetOf<String>()
-            var inSchema = false
-            code.lineSequence().forEach { line ->
-                val t = line.trim()
-                if (t.startsWith("[")) {
-                    inSchema = t == "[schema]"
-                    Regex("""^\[sub-schema\.([^\]]+)]$""").find(t)?.let { schemaKeys.add(it.groupValues[1]) }
-                } else if (inSchema) {
-                    Regex("""^([A-Za-z0-9._-]+)\s*=""").find(t)?.let { schemaKeys.add(it.groupValues[1]) }
-                }
-            }
-            if (schemaKeys.isEmpty()) {
-                faults.add("$moduleName's jk-plugin.toml declares no [schema] keys, so the totality arm"
-                    + " verified nothing. A plugin with config has a schema.")
-                return@forEach
-            }
-            val reads = LinkedHashMap<String, MutableList<String>>()
-            val accessor = Regex("""\.(?:string|stringOpt|bool|stringList|group|intValue)\(\s*"([^"]+)"""")
-            moduleFiles.forEach { f ->
-                accessor.findAll(familyGuardCode(text(f))).forEach { m ->
-                    reads.getOrPut(m.groupValues[1]) { mutableListOf() }.add(rel(f))
-                }
-            }
-            // The descriptor reads its own keys too: `when = { config = "k" }` conditions and
-            // `${config.k}` interpolations in contributed coordinates.
-            val descRel = rel(descriptor)
-            Regex("""config\s*=\s*"([^"]+)"""").findAll(code)
-                .forEach { reads.getOrPut(it.groupValues[1]) { mutableListOf() }.add(descRel) }
-            Regex("""\$\{config\.([^}]+)}""").findAll(code)
-                .forEach { reads.getOrPut(it.groupValues[1]) { mutableListOf() }.add(descRel) }
-            val undeclared = reads.filterKeys { key ->
-                val top = key.substringBefore('.')
-                top != buildType && !key.startsWith(variantPrefix) && top !in schemaKeys
-            }
-            if (undeclared.isNotEmpty()) {
-                faults.add("$moduleName reads config keys its jk-plugin.toml [schema] does not declare."
-                    + " An undeclared key has no type, no default and no hint, so a user typo is"
-                    + " silently the default and two spellings of one knob can both be live:\n"
-                    + bullets(undeclared.entries.map { (k, a) -> "$k read at ${a.distinct()}" })
-                    + "\n    Declared: ${schemaKeys.sorted()}"
-                    + "\n    Injected by core: $buildType, $variantPrefix<dimension>")
-            }
-        } else if (engineSites.isEmpty()) {
-            // --- arm 3: forked worker ---
-            faults.add("$moduleName ships no jk-plugin.toml, so it is a forked worker: the engine"
-                + " hardcodes its argv and therefore has to spell $prefix to read its lines. No source"
-                + " under server/*/src/main/java does, which means either the worker is unreachable,"
-                + " or it has grown a descriptor and is now an SPI plugin — in which case the engine's"
-                + " hardcoded fork is the thing to delete.")
-        }
-    }
-    if (faults.isNotEmpty()) error(faults.joinToString("\n\n"))
-}
-
 // ---------------------------------------------------------------------------
 // G29 — a worker's offline decision comes from the spec, not the daemon's environment.
 //
@@ -1295,32 +966,6 @@ guard("G38", "checkToolchainEnvFromRequest") {
             + " shell that started the daemon. Use BuildEnv.forModule(dir) where a module directory"
             + " is in hand, or BuildEnv.ambient() where none is."
             + "\n  Ban list read from BuildEnv.TOOLCHAIN: ${names.joinToString(", ")}")
-    }
-}
-
-guard("G39", "checkCheapestRejectionFirst") {
-    val nameOnly = Regex("""getFileName|endsWith\(|startsWith\(|\.equals\(""")
-    val offenders = mutableListOf<String>()
-    mainJava.forEach { f ->
-        val lines = text(f).lines()
-        lines.forEachIndexed { i, raw ->
-            if (!raw.trimEnd().endsWith(".filter(Files::isRegularFile)")) return@forEachIndexed
-            var j = i + 1
-            while (j < lines.size && (lines[j].isBlank() || lines[j].trim().startsWith("//"))) j++
-            if (j >= lines.size) return@forEachIndexed
-            val next = lines[j].trim()
-            if (!next.startsWith(".filter(")) return@forEachIndexed
-            // A predicate that touches the filesystem is legitimately ordered after the stat.
-            if (next.contains("Files.")) return@forEachIndexed
-            if (!nameOnly.containsMatchIn(next)) return@forEachIndexed
-            offenders.add("${rel(f)}:${i + 1}  $next")
-        }
-    }
-    if (offenders.isNotEmpty()) {
-        error("A stat runs before a free name test:\n" + bullets(offenders)
-            + "\n  Put the string predicate first. The walk already paid for the entry;"
-            + " Files::isRegularFile re-resolves the path for a fresh stat, so ordering it first"
-            + " spends a syscall on every entry the name test was going to reject.")
     }
 }
 
@@ -1922,7 +1567,10 @@ guard("G51", "checkGuardParity") {
     // it in the guard lanes of every `jk build`, so there is no table and no script block to find.
     val engineBlock = Regex("""spec\(\s*(\d+),(?:(?!spec\().)*?engineCode = "([a-z0-9-]+)"""", RegexOption.DOT_MATCHES_ALL)
     val engine = engineBlock.findAll(text(at("buildSrc/src/main/kotlin/Guards.kt"))).map { it.groupValues[1].toInt() }.toSet()
-    val jk = (lettersIn(text(at(".jk/after-build.kts"))) + mapped.filterValues { it in tables }.keys + engine).toSortedSet()
+    // ... and when it names the @Guard (a guard test under some module's src/guard) that enforces it.
+    val guardTestBlock = Regex("""spec\(\s*(\d+),(?:(?!spec\().)*?guardTestId = "([a-z0-9-]+)"""", RegexOption.DOT_MATCHES_ALL)
+    val guardTests = guardTestBlock.findAll(text(at("buildSrc/src/main/kotlin/Guards.kt"))).map { it.groupValues[1].toInt() }.toSet()
+    val jk = (lettersIn(text(at(".jk/after-build.kts"))) + mapped.filterValues { it in tables }.keys + engine + guardTests).toSortedSet()
     if (gradle.isEmpty() || jk.isEmpty()) {
         error("Read no guard letters from one of the two sides (gradle=${gradle.size},"
             + " jk=${jk.size}) — the scan broke and this guard is passing vacuously.")

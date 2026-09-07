@@ -66,6 +66,16 @@ public final class LaneRun {
         return out;
     }
 
+    /**
+     * The baseline slice a lane's verdict on {@code rule} owns: the module for a module lane, the
+     * root otherwise — except a workspace-scoped guard test, which runs in its suite's module lane
+     * but judges the whole tree, so its entries live in the root slice where freeze puts them.
+     */
+    public static String sliceOf(Lane lane, Rule rule, String module) {
+        if (rule.kind() == Kind.TEST && Evaluators.laneOf(rule) == Lane.WORKSPACE) return "";
+        return lane == Lane.MODULE ? module : "";
+    }
+
     public static Result run(Lane lane, List<Rule> rules, EvalContext ctx, Baseline baseline) {
         List<RuleReport> reports = new ArrayList<>();
         Baseline current = baseline;
@@ -78,7 +88,7 @@ public final class LaneRun {
             if (rule.fixture() != null && !ev.bites()) ev = ev.withBite(true);
             RuleBaseline before = Evaluators.acceptsBaseline(rule) ? current.of(rule.id()) : RuleBaseline.EMPTY;
             if (ev.outcome() == Outcome.CLEAN || ev.outcome() == Outcome.VIOLATIONS) {
-                String slice = lane == Lane.MODULE ? ctx.module() : "";
+                String slice = sliceOf(lane, rule, ctx.module());
                 Reconciliation rec = Reconciliation.of(rule.id(), before, ev.observations(), ev.population(), slice);
                 if (rec.scopeShrunk() != null) {
                     reports.add(

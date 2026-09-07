@@ -155,15 +155,19 @@ public final class GuardFixtures {
             if (out.stream().anyMatch(v -> v.id().equals(c.id()))) continue;
             Set<String> bad = new TreeSet<>();
             Set<String> ok = new TreeSet<>();
+            List<Path> badText = new ArrayList<>();
+            List<Path> okText = new ArrayList<>();
             int badFiles = 0;
             int okFiles = 0;
             for (FixtureCheck.Source s : sources.getOrDefault(c, List.of())) {
                 if (s.bad()) {
                     badFiles++;
                     bad.addAll(s.classes());
+                    badText.add(s.file());
                 } else {
                     okFiles++;
                     ok.addAll(s.classes());
+                    okText.add(s.file());
                 }
             }
             FactsIndex badSlice = FixtureCheck.slice(all, bad);
@@ -175,8 +179,10 @@ public final class GuardFixtures {
                         .resolve("jk-guards")
                         .resolve("fixtures")
                         .resolve(c.id());
-                badSites = guardSites(root, module, moduleDir, c, badSlice, work.resolve("bad"), cas);
-                okSites = okFiles == 0 ? 0 : guardSites(root, module, moduleDir, c, okSlice, work.resolve("ok"), cas);
+                badSites = guardSites(root, module, moduleDir, c, badSlice, badText, work.resolve("bad"), cas);
+                okSites = okFiles == 0
+                        ? 0
+                        : guardSites(root, module, moduleDir, c, okSlice, okText, work.resolve("ok"), cas);
                 if (badSites < 0 || okSites < 0) {
                     out.add(new FixtureCheck.Verdict(
                             c.id(),
@@ -199,11 +205,25 @@ public final class GuardFixtures {
         return out;
     }
 
-    /** Run the guard test's suite over one fixture slice; the number of sites it reported, or -1. */
+    /**
+     * Run the guard test's suite over one fixture slice; the number of sites it reported, or -1. The
+     * slice's files are copied under {@code work/text} so the guard's text view sees Bad without Ok
+     * and Ok without Bad.
+     */
     private static int guardSites(
-            Path root, String module, Path moduleDir, FixtureCheck.Case c, FactsIndex slice, Path work, Cas cas)
+            Path root,
+            String module,
+            Path moduleDir,
+            FixtureCheck.Case c,
+            FactsIndex slice,
+            List<Path> textFiles,
+            Path work,
+            Cas cas)
             throws IOException {
-        Files.createDirectories(work);
+        Path text = work.resolve("text");
+        PathUtil.deleteRecursivelyOrThrow(text);
+        Files.createDirectories(text);
+        for (Path f : textFiles) Files.copy(f, text.resolve(f.getFileName().toString()));
         Path idx = work.resolve("main-guard.idx");
         FactsFormat.write(idx, slice);
         JkBuild build = JkBuildParser.parse(moduleDir.resolve(ManifestPaths.MANIFEST));
@@ -227,7 +247,8 @@ public final class GuardFixtures {
                 List.of(idx),
                 List.of(),
                 List.of(),
-                false);
+                false,
+                List.of(text));
         try {
             List<String> problems = GuardSuiteRunner.run(in, List.of(moduleDir), report);
             if (!problems.isEmpty()) return -1;

@@ -876,45 +876,45 @@ Letters are allocated when a guard lands and are never reused.
 | id | task | rule | form | jk rule |
 |---|---|---|---|---|
 | G0 | `checkCorpus` (`.jk/after-build.kts`) | the gate's own corpus shrinking below the population every scan below it was measured against — module dirs, `src/main/java`, `src/test/java`, `plugins/*`. Not a rule about the code: a floor under the *other* guards, so a broken file tree reports green instead of scanning nothing | ban, self-hosted build only | — |
-| G1 | `checkNoHandBuiltJavaBinary` | a hand-built `<javaHome>/bin/java` (use `JdkFingerprint`) | ban | — |
+| G1 | `checkNoHandBuiltJavaBinary` | a hand-built `<javaHome>/bin/java` (use `JdkFingerprint`) | ban | guard test `hand-built-java-binary` |
 | G2 | `checkNoBareExitCode` | `System.exit` / `halt` with an integer literal (use `Exit`) | ban, no allowlist | — |
 | G3 | `checkSingleXmlParserOwner` | an XML parser outside `cc.jumpkick.host.DomXml`, plus the six flags required inside it by name | ban | `xml-parser-owner` |
-| G4 | *(folded into `checkCliNoParseTypes`)* | the planned `org.tomlj` / `TomlValues` ban in `clients/cli/src/main/java` landed as two entries on the existing CLI guard rather than a new letter — one rule, one owner, no new task | ban | — |
+| G4 | *(folded into `checkCliNoParseTypes`)* | the planned `org.tomlj` / `TomlValues` ban in `clients/cli/src/main/java` landed as two entries on the existing CLI guard rather than a new letter — one rule, one owner, no new task | ban | guard test `cli-no-parse-types` |
 | G5 | `checkWireProtocolPrefixPairs` | a `##JK*:` protocol prefix not named exactly twice | ban | `wire-prefix-pairs` |
 | G6 | `checkOneDigestSurface` | a `MessageDigest` lookup outside `cc.jumpkick.host.Hashing` | ban | `one-digest-surface` |
-| G7 | `checkSingleTruthSet` | a hand-rolled boolean truth set, true **or** false side (use `EnvValues.parseBool`) | ban | — |
+| G7 | `checkSingleTruthSet` | a hand-rolled boolean truth set, true **or** false side (use `EnvValues.parseBool`) | ban | guard test `single-truth-set` |
 | G8 | `checkSingleArchiveInstant` | an archive entry stamped outside `DeterministicZip` | ban | `archive-instant-owner` |
 | G9 | `checkNoHandRolledHex` | a per-byte hex loop, or `java.util.HexFormat` outside `cc.jumpkick.host.Hashing` (use `Hashing.hex`) | ban, no allowlist | `one-hex-spelling` |
 | G10 | `checkFileSizeCaps` | growth past `size-baseline.txt` or over a language's hard cap | ratchet | `file-size` |
 | G11 | `checkNoFqcn` | a file gaining a fully-qualified class name (`fqcn-baseline.txt`) | ratchet | `no-fqcn` |
 | G12 | `checkNoBareTaskName` | a step name typed as a literal (use `TaskNames`) | ban, no allowlist | `task-names` |
 | G13 | `checkNoBareManifestName` | a jk file name typed as a literal (use `ManifestPaths`) | ban | `manifest-names` |
-| G14 | `ForecastKeyParityTest` (`:engine`) | a forecast key hashing a different fact set than the build key | ban | — |
+| G14 | *(guard test, `server/engine/src/guard`)* | a forecast key hashing a different fact set than the build key | ban | guard test `forecast-key-parity` |
 | G15 | `checkNoBareTierName` | a cache-tier directory typed as a literal (use `CacheTree`) | ban | `cache-tiers` |
 | G16 | `checkSingleCentralAddress` | a Central URL, its `repo1.maven.org` alias, or the repo name `central` typed as a literal (use `RepositorySpec`) | ban | `repository-names` |
 | G17 | `checkNoBareWireType` | a hyphenated wire message type typed as a literal (use `EngineProtocol`) | ban | `wire-types` |
 | G18 | `checkNoBareTargetDir` | jk's build output directory typed as a literal (use `BuildLayout.TARGET`) | ban | `target-dir` |
 | G19 | `checkPublishedPomCoordinates` | a generated POM naming a coordinate this build does not publish (`unspecified`, the `jk` fallback group, or an unpublished artifact in a group we do publish) | ban, no allowlist | — |
 | G20 | `checkSingleHostSurface` | an `os.name` read outside `cc.jumpkick.host.Os`, or a path separator outside `Classpaths` (`-cp`) and `SearchPath` (`PATH`) | ban | `one-host-surface` |
-| G21 | `checkOneJsonCodec` | a JSON escaper or an escape-decoding parser outside `cc.jumpkick.jsonl` — exempt by spec, so `MinimalToml.quote` beside `Jsonl.quote` passes | ban, no allowlist | — |
-| G22 | `IdeClientWiringTest` (`:cli`) | an IDE client naming a command, verb, class or wire field that does not exist, or pinning `untilBuild` — five arms, each self-failing on an empty scan | ban, no allowlist | — |
+| G21 | `checkOneJsonCodec` | a JSON escaper or an escape-decoding parser outside `cc.jumpkick.jsonl` — exempt by spec, so `MinimalToml.quote` beside `Jsonl.quote` passes | ban, no allowlist | guard test `one-json-codec` |
+| G22 | *(guard test, `clients/cli/src/guard`)* | an IDE client naming a command, verb, class or wire field that does not exist, or pinning `untilBuild` — five arms, each self-failing on an empty scan | ban, no allowlist | guard test `ide-client-wiring` |
 | G23 | `checkNoOrphanTestTags` | a `@Tag` no test task runs, a tag no tier owns, or a `TestTiers` table that does not partition its own vocabulary — three arms, exhaustive over the 2⁴ tag subsets, plus an import-vs-literal blindness balance | ban, two named fixture exceptions | engine validation `tiers` |
 | G24 | `checkSingleAotMarkerSpelling` | the `.noaot` refusal-marker suffix typed outside `cc.jumpkick.host.AotCacheFiles` — banned outright in `src/main/java`, and in `src/test/java` as a bare suffix (a whole fixture file name is allowed) | ban, no allowlist | `aot-marker` |
-| G25 | `checkPluginFamily` | a plugin module whose family (SPI plugin vs forked worker, decided by the presence of `jk-plugin.toml`) disagrees with its wire-prefix wiring, or an SPI plugin reading a config key its `[schema]` does not declare — four arms, per module, each self-failing on an empty scan | ban, no allowlist | — |
+| G25 | `checkPluginFamily` | a plugin module whose family (SPI plugin vs forked worker, decided by the presence of `jk-plugin.toml`) disagrees with its wire-prefix wiring, or an SPI plugin reading a config key its `[schema]` does not declare — four arms, per module, each self-failing on an empty scan | ban, no allowlist | guard test `plugin-family` |
 | G26 | `checkPluginForkOwner` | a plugin forking a process outside `TaskExec.ToolRun.start()` | ban, one commented file exemption (a container runtime named on `PATH`, which `ToolRun` cannot express yet) | `plugin-fork-owner` |
-| G27 | `CliSourceRulesTest` (`:cli`) | a `clients/cli` command inheriting stdio outside `CliOutput.handOffTerminal` — comment-blind, plus a self-fail arm on the owner still calling `inheritIO()` | ban, no allowlist | — |
+| G27 | *(guard test, `clients/cli/src/guard`)* | a `clients/cli` command inheriting stdio outside `CliOutput.handOffTerminal` — comment-blind, plus a self-fail arm on the owner still calling `inheritIO()` | ban, no allowlist | guard test `cli-stdio-handoff-owner` |
 | G28 | `checkNoRetiredWireSpelling` | a retired wire-key spelling typed as a field key in production source | ban, declared inputs + self-fail floors | `retired-wire-keys` |
 | G29 | `checkWorkerOfflineFromSpec` | a `JK_OFFLINE` / offline-property read in worker sources (use `TaskExec.offline()`) | ban, no allowlist | — |
 | G30 | `checkPropertiesStoreOwner` | a `Properties.store()` call in main sources (use `DeterministicProperties.render`) | ban, no allowlist | — |
-| G31 | `CliSourceRulesTest` (`:cli`) | a `:cli` test reading the ambient state root without `@IsolatedState` | ratchet | — |
-| G32 | `SpikeCacheTempDirTest` (`:engine`) | a spike-cache test that does not root its project in a `@TempDir` | ban, one env-gated exception | — |
+| G31 | *(guard test, `clients/cli/src/guard`)* | a `:cli` test reading the ambient state root without `@IsolatedState` | ratchet | guard test `cli-test-isolated-state` |
+| G32 | *(guard test, `server/engine/src/guard`)* | a spike-cache test that does not root its project in a `@TempDir` | ban, one env-gated exception | guard test `spike-cache-temp-dir` |
 | G33 | `checkCatalogLockParity` | `gradle/libs.versions.toml` and `jk-lock.toml` disagreeing on a shared module version | ban | engine validation `catalog-lock` |
 | G34 | `checkTestFixturesStayOutOfProduction` | a `testFixtures(...)` dependency on a non-test configuration, or a test-fixtures/JUnit/AssertJ jar on the CLI's runtime classpath — scans every build script, plus a self-fail arm | ban, no allowlist | `test-fixtures-stay-out-of-production` |
 | G35 | `checkTestPathsFromCheckoutRoot` | a test locating a checkout file from the working directory — `getProtectionDomain` outside `cc.jumpkick.testing.RepoRoot`, or a `user.dir` line escaping with `..`; comment-blind, plus a self-fail arm on the fixture's signatures | ban, no allowlist | — |
 | G36 | `checkManifestDepParity` | a module whose `build.gradle.kts` and `jk.toml` declare different workspace dependencies, in either direction, including a Gradle `testFixtures(...)` edge with no `fixtures = true` twin — plus a self-fail arm on the project-path-to-artifact-name map | ban, no allowlist | — |
 | G37 | `checkOneRecursiveDelete` | a hand-rolled children-first delete outside `cc.jumpkick.host.PathUtil`, or `FOLLOW_LINKS` in any file that deletes — comment-blind, plus a self-fail arm on the owner still using `walkFileTree` and `NOFOLLOW_LINKS` | ban; four commented exemptions, each a *selective* delete rather than a tree delete | — |
 | G38 | `checkToolchainEnvFromRequest` | a toolchain env var read straight from the daemon's own environment instead of the request (use `BuildEnv.forModule` / `ambient`) — `JK_JDK=temurin-21 jk build` was silently ignored, so which JDK you compiled against depended on how the resident engine happened to be started | ban; `server/` + `shared/` main sources only (`clients/` is exempt by shape — there `System.getenv` **is** the request), one narrow in-scope exemption | — |
-| G39 | `checkCheapestRejectionFirst` | an `isRegularFile` filter placed before a free name-only predicate — the walk already read the attributes, and re-resolving the path costs 10.3 µs on NTFS against 1.0 on ext4 | ban | — |
+| G39 | `checkCheapestRejectionFirst` | an `isRegularFile` filter placed before a free name-only predicate — the walk already read the attributes, and re-resolving the path costs 10.3 µs on NTFS against 1.0 on ext4 | ban | guard test `cheapest-rejection-first` |
 | G40 | `checkRunnableOwner` | a `Files.isExecutable` outside `PathUtil.isRunnable` — 33.4 µs on Windows against 0.52 on Linux, for a question Windows does not answer that way (there the extension decides) | ban, one exemption (`ActionCache.executableBit`, which wants the bit itself) | `runnable-owner` |
 | G41 | — | never allocated. Letters are issued when a guard lands; this one never was, and is not reusable. G44 briefly carried the same claim and was wrong: it is live in the self-hosted build. | — | — |
 | G42 | `checkTreeCopyOwner` | a hand-rolled recursive copy outside `PathUtil.copyTree` — the mirror of G37 for the write direction; all twelve callers shared the same three defects (`createDirectories` per *file*, no byte-identity check, walk attributes discarded) | ban, commented exemptions, each a copy deliberately not the owner's shape | — |
@@ -950,10 +950,6 @@ Letters are allocated when a guard lands and are never reused.
 | G72 | `checkCharterTableParity` | the size caps code-as-art.md states and the caps `[guards.file-size]` enforces disagreeing, or the charter's Contents list drifting from its headings | parity, self-hosted build only | — |
 | G73 | `checkCliRuntimeClasspath` | maven-artifact, plexus-utils, jline, test-fixtures or a test/analysis framework on the CLI runtime classpath | ban | `cli-runtime-classpath` |
 | G74 | *(folded into `checkCliRuntimeClasspath`)* | a CLI workspace edge to an engine-side module (plugin-sdk, guard, resolver) — the same `checkCliRuntimeClasspath` task on the Gradle side, a `layers` rule here | ban | `cli-runtime-modules` |
-<!-- guards:end -->
-<!-- guards:end -->
-<!-- guards:end -->
-<!-- guards:end -->
 <!-- guards:end -->
 
 `checkCliRuntimeClasspath` and `checkCliNoParseTypes` predate the letters.

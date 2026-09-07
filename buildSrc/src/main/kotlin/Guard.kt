@@ -61,6 +61,12 @@ data class GuardSpec(
      * Parity (G51) counts the letter as jk-enforced.
      */
     val engineCode: String? = null,
+    /**
+     * The `@Guard` id that enforces this letter on the self-hosted side: a guard test under some module's `src/guard`,
+     * run by the module's guard lane. Parity (G51) counts the letter as jk-enforced. The Gradle build does not run the
+     * guard suite, so a letter that is *only* a guard test needs a guard-parity.txt entry saying so.
+     */
+    val guardTestId: String? = null,
 ) {
     val id: String
         get() = letter?.let { "G$it" } ?: task

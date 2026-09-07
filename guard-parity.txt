@@ -12,11 +12,7 @@
 # Implemented as a test in one module, which both builds run as part of that module's suite. The
 # charter's rule is that a guard scoped to ONE module belongs beside the suite it governs: as a
 # test it gets assertions, a debugger and a failure report instead of script.
-G14 ForecastKeyParityTest (:engine) — one module, run by both builds
-G22 IdeClientWiringTest (:cli) — one module, run by both builds
-G27 CliSourceRulesTest (:cli) — one module, run by both builds
-G31 CliSourceRulesTest (:cli) — one module, run by both builds
-G32 SpikeCacheTempDirTest (:engine) — one module, run by both builds
+G32 guard test `spike-cache-temp-dir` (server/engine/src/guard) — the Gradle build does not run the guard suite
 
 # Reads Gradle's own publication model.
 G19 checkPublishedPomCoordinates reads build/publications/*/pom-default.xml, which Maven-publish
@@ -26,7 +22,7 @@ G19 the manifest, where a publishable project must declare all three concretely 
 G19 so the defect this letter bans has no way to occur on the jk side. Permanent, not deferred.
 
 # Folded / never allocated — no code behind the letter on either side.
-G4 folded into checkCliNoParseTypes; no task of its own
+G4 guard test `cli-no-parse-types` (clients/cli/src/guard) here; folded into :cli's checkCliNoParseTypes on the Gradle side, which has no letter of its own
 G41 never allocated and not reusable
 
 # Self-hosted-build only: these are about the relationship BETWEEN the two builds, or about the

@@ -11,6 +11,7 @@ import cc.jumpkick.test.TestProgressListener;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -40,7 +41,37 @@ final class GuardSuiteRunner {
             List<Path> factsIndexes,
             List<Path> testFactsIndexes,
             List<Path> classDirs,
-            boolean workspace) {}
+            boolean workspace,
+            /** Source roots Text reads, or empty for the module's/workspace's own; set for a fixture run. */
+            List<Path> textRoots) {
+
+        Inputs(
+                Path root,
+                String module,
+                Path moduleDir,
+                BuildLayout layout,
+                Path javaHome,
+                List<Path> runtimeClasspath,
+                Path cacheRoot,
+                List<Path> factsIndexes,
+                List<Path> testFactsIndexes,
+                List<Path> classDirs,
+                boolean workspace) {
+            this(
+                    root,
+                    module,
+                    moduleDir,
+                    layout,
+                    javaHome,
+                    runtimeClasspath,
+                    cacheRoot,
+                    factsIndexes,
+                    testFactsIndexes,
+                    classDirs,
+                    workspace,
+                    List.of());
+        }
+    }
 
     /** Forks the suite; returns the problems that stop the run from meaning anything (empty = ran). */
     static List<String> run(Inputs in, List<Path> workspaceModules) throws IOException, InterruptedException {
@@ -52,20 +83,25 @@ final class GuardSuiteRunner {
             throws IOException, InterruptedException {
         Path guardDir = Objects.requireNonNull(report.toAbsolutePath().getParent(), "report has a parent");
         Files.createDirectories(guardDir);
-        Files.deleteIfExists(report);
+        // The fork appends to a side file; the report itself appears whole or not at all, so a run
+        // cut short (a sibling lane failed first) never leaves a partial report for freeze or explain.
+        Path part = report.resolveSibling(report.getFileName() + ".part");
+        Files.deleteIfExists(part);
         Path model = guardDir.resolve("model.json");
         GuardModelSnapshot.write(in.root(), workspaceModules, model);
         // Source roots, never module directories: the text view walks what it is given, and a module
         // directory would take the build output along.
-        List<Path> sources = new ArrayList<>();
-        if (in.workspace()) {
-            sources.add(sourceRoot(in.root()));
-            for (Path m : workspaceModules) sources.add(sourceRoot(m));
-        } else {
-            sources.add(sourceRoot(in.moduleDir()));
+        List<Path> sources = new ArrayList<>(in.textRoots());
+        if (sources.isEmpty()) {
+            if (in.workspace()) {
+                sources.add(sourceRoot(in.root()));
+                for (Path m : workspaceModules) sources.add(sourceRoot(m));
+            } else {
+                sources.add(sourceRoot(in.moduleDir()));
+            }
         }
         GuardConfig config = new GuardConfig(
-                report,
+                part,
                 in.root(),
                 in.module(),
                 in.factsIndexes(),
@@ -75,7 +111,8 @@ final class GuardSuiteRunner {
                 in.classDirs(),
                 List.of(),
                 List.of(),
-                null);
+                null,
+                !in.textRoots().isEmpty());
         Path props = guardDir.resolve("run.properties");
         Files.writeString(props, config.toProperties());
         if (!hasJUnitEngine(in.runtimeClasspath())) {
@@ -86,6 +123,33 @@ final class GuardSuiteRunner {
         List<Path> cp = new ArrayList<>();
         cp.add(in.layout().guardClassesDir());
         for (Path p : in.runtimeClasspath()) if (!cp.contains(p)) cp.add(p);
+        // The forked JVM's own words, kept for the one case they explain something: a suite that
+        // ran more guards than it reported.
+        List<String> said = new ArrayList<>();
+        TestProgressListener listener = new TestProgressListener() {
+            @Override
+            public void onUserOutput(int workerId, String line) {
+                if (said.size() < 400) said.add(line);
+            }
+
+            @Override
+            public void onFailure(
+                    String id,
+                    String label,
+                    String exClass,
+                    String message,
+                    String stack,
+                    String engine,
+                    String className,
+                    String method,
+                    int workerId) {
+                said.add("FAILED " + label + ": " + exClass + ": " + message);
+                for (String l : stack.split("\n")) {
+                    if (said.size() >= 400) break;
+                    said.add("  " + l);
+                }
+            }
+        };
         TestSummary summary = new JUnitLauncher()
                 .withModuleLabel("guard " + (in.module().isEmpty() ? "root" : in.module()))
                 .run(
@@ -99,8 +163,16 @@ final class GuardSuiteRunner {
                                 props.toAbsolutePath().toString(),
                                 "junit.jupiter.extensions.autodetection.enabled",
                                 "true"),
-                        new TestProgressListener() {},
+                        listener,
                         null);
+        // What the fork said, next to the report it left: the place to look when a guard is missing from it.
+        StringBuilder log = new StringBuilder("total=" + summary.total() + " succeeded=" + summary.succeeded()
+                + " failed=" + summary.failed() + " skipped=" + summary.skipped() + "\n");
+        for (String l : said) log.append(l).append('\n');
+        Files.writeString(report.resolveSibling("junit.log"), log.toString());
+        if (Files.isRegularFile(part))
+            Files.move(part, report, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        else Files.deleteIfExists(report);
         List<String> problems = new ArrayList<>();
         if (summary.failed() > 0) {
             problems.add("the guard suite's JUnit run failed " + summary.failed() + " test(s) outside any @Guard: "
@@ -108,6 +180,14 @@ final class GuardSuiteRunner {
         }
         if (summary.total() == 0)
             problems.add("the guard suite ran no @Guard method: is the class annotated @GuardSuite?");
+        long reported = Files.isRegularFile(report) ? Files.readAllLines(report).size() : 0;
+        if (reported < summary.total()) {
+            StringBuilder sb = new StringBuilder("the suite ran " + summary.total() + " guard(s) but reported "
+                    + reported + "; the forked JVM said:");
+            int from = Math.max(0, said.size() - 40);
+            for (String l : said.subList(from, said.size())) sb.append("\n    ").append(l);
+            problems.add(sb.toString());
+        }
         return problems;
     }
 

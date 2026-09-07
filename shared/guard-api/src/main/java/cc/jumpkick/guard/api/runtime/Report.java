@@ -2,8 +2,11 @@
 package cc.jumpkick.guard.api.runtime;
 
 import cc.jumpkick.guard.api.MetricSite;
+import cc.jumpkick.guard.api.ModelSite;
 import cc.jumpkick.guard.api.Scope;
 import cc.jumpkick.guard.api.Site;
+import cc.jumpkick.guard.api.TextSite;
+import cc.jumpkick.guard.api.ToolSite;
 import cc.jumpkick.guard.api.Violations;
 import cc.jumpkick.jsonl.Jsonl;
 import java.io.IOException;
@@ -40,12 +43,26 @@ public final class Report {
 
         @Override
         public void add(Site site, String detail) {
-            sites.add(new String[] {site.fingerprint(), site.file(), Integer.toString(site.line()), detail, null});
+            sites.add(new String[] {
+                site.fingerprint(), site.file(), Integer.toString(site.line()), detail, null, rootOf(site)
+            });
         }
 
         @Override
         public void metric(MetricSite site, String detail) {
-            sites.add(new String[] {site.fingerprint(), site.file(), "0", detail, Double.toString(site.value())});
+            sites.add(new String[] {
+                site.fingerprint(), site.file(), "0", detail, Double.toString(site.value()), "workspace"
+            });
+        }
+
+        /** Bytecode sites name a file under a source root; text, tool and metric sites name it from the workspace root. */
+        private static String rootOf(Site site) {
+            return site instanceof TextSite
+                            || site instanceof ToolSite
+                            || site instanceof MetricSite
+                            || site instanceof ModelSite
+                    ? "workspace"
+                    : "source";
         }
 
         @Override
@@ -113,6 +130,7 @@ public final class Report {
                 sb.append(",\"line\":").append(s[2]);
                 sb.append(",\"detail\":").append(Jsonl.quote(s[3]));
                 if (s[4] != null) sb.append(",\"value\":").append(s[4]);
+                sb.append(",\"root\":").append(Jsonl.quote(s[5]));
                 sb.append('}');
             }
             sb.append("]}");

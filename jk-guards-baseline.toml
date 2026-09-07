@@ -1110,3 +1110,42 @@ in     = "shared/toolchain-jdk"
 unit   = "shared/toolchain-jdk:discovery"
 value  = 2
 reason = "banked from cycle-baseline.txt on 2026-09-06 — the facts edges found the same 9 components the import regex did; per-module follow-up work shrinks them"
+
+[single-truth-set]
+population = { examined = 1707 }
+[[single-truth-set.entries]]
+unit   = "clients/cli/src/main/java/cc/jumpkick/command/ActivateCommand.java"
+value  = 1
+reason = "readers of foreign formats (POM, giter8, JDK catalog, plugin manifests) compare against the format's own truth words; ratchet down, never exempt"
+[[single-truth-set.entries]]
+unit   = "clients/cli/src/main/java/cc/jumpkick/command/JdkInstallWizard.java"
+value  = 1
+reason = "readers of foreign formats (POM, giter8, JDK catalog, plugin manifests) compare against the format's own truth words; ratchet down, never exempt"
+[[single-truth-set.entries]]
+unit   = "plugins/quarkus/src/main/java/cc/jumpkick/quarkus/LockedClosure.java"
+value  = 1
+reason = "readers of foreign formats (POM, giter8, JDK catalog, plugin manifests) compare against the format's own truth words; ratchet down, never exempt"
+[[single-truth-set.entries]]
+unit   = "server/engine/src/main/java/cc/jumpkick/giter8/Giter8Value.java"
+value  = 2
+reason = "readers of foreign formats (POM, giter8, JDK catalog, plugin manifests) compare against the format's own truth words; ratchet down, never exempt"
+[[single-truth-set.entries]]
+unit   = "server/engine/src/main/java/cc/jumpkick/runtime/PreflightMemo.java"
+value  = 1
+reason = "readers of foreign formats (POM, giter8, JDK catalog, plugin manifests) compare against the format's own truth words; ratchet down, never exempt"
+[[single-truth-set.entries]]
+unit   = "server/io/src/main/java/cc/jumpkick/repo/PomParser.java"
+value  = 1
+reason = "readers of foreign formats (POM, giter8, JDK catalog, plugin manifests) compare against the format's own truth words; ratchet down, never exempt"
+[[single-truth-set.entries]]
+unit   = "server/resolver/src/main/java/cc/jumpkick/resolver/VersionSelectors.java"
+value  = 1
+reason = "readers of foreign formats (POM, giter8, JDK catalog, plugin manifests) compare against the format's own truth words; ratchet down, never exempt"
+[[single-truth-set.entries]]
+unit   = "server/toolchain/src/main/java/cc/jumpkick/mvn/PomImporter.java"
+value  = 1
+reason = "readers of foreign formats (POM, giter8, JDK catalog, plugin manifests) compare against the format's own truth words; ratchet down, never exempt"
+[[single-truth-set.entries]]
+unit   = "shared/toolchain-jdk/src/main/java/cc/jumpkick/jdk/JdkCatalogClient.java"
+value  = 2
+reason = "readers of foreign formats (POM, giter8, JDK catalog, plugin manifests) compare against the format's own truth words; ratchet down, never exempt"

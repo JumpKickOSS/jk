@@ -142,18 +142,18 @@ class GuardSuitesTest {
                         "twice|w||" + FACTS_V),
                 suite("b/B", "MODULE", "twice|w||" + FACTS_V, "no-why|||" + FACTS_V));
         List<String> errors = GuardSuites.loadErrors(GuardSuites.declared(idx), toml);
-        assertThat(errors).hasSize(5);
+        assertThat(errors).hasSize(4);
         assertThat(errors.get(0)).contains("`taken` is already [guards.taken]");
-        assertThat(errors.get(1))
-                .contains("reads-text")
-                .contains("cannot inject Text")
-                .contains("Scope.WORKSPACE");
-        assertThat(errors.get(2)).contains("`Bad_Id`").contains("lower-case");
-        assertThat(errors.get(3)).contains("`twice` is also declared by a.A#twice");
-        assertThat(errors.get(4)).contains("no-why").contains("needs why");
-        assertThat(GuardSuites.loadErrors(
-                        GuardSuites.declared(index(suite("c/C", "WORKSPACE", "fine|w||" + TEXT_V))), toml))
-                .isEmpty();
+        assertThat(errors.get(1)).contains("`Bad_Id`").contains("lower-case");
+        assertThat(errors.get(2)).contains("`twice` is also declared by a.A#twice");
+        assertThat(errors.get(3)).contains("no-why").contains("needs why");
+        // Text in a MODULE suite is allowed: the lane keys on the tree's inputs when a guard reads it
+        List<GuardSuites.Declared> textReaders =
+                GuardSuites.declared(index(suite("c/C", "MODULE", "fine|w||" + TEXT_V)));
+        assertThat(GuardSuites.loadErrors(textReaders, toml)).isEmpty();
+        assertThat(GuardSuites.anyReadsText(textReaders)).isTrue();
+        assertThat(GuardSuites.anyReadsText(GuardSuites.declared(index(suite("d/D", "MODULE", "fine|w||" + FACTS_V)))))
+                .isFalse();
     }
 
     @Test

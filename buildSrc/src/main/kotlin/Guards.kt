@@ -28,6 +28,7 @@ object Guards {
                 "ban",
                 GuardHome.MODULE,
                 description = "Fail the build on a hand-built <javaHome>/bin/java (use JdkFingerprint.java)",
+                guardTestId = "hand-built-java-binary",
             ),
             spec(
                 2,
@@ -56,6 +57,7 @@ object Guards {
                 inFastGate = false,
                 gradleLetter = false,
                 attach = emptySet(),
+                guardTestId = "cli-no-parse-types",
             ),
             spec(
                 5,
@@ -82,6 +84,7 @@ object Guards {
                 "ban",
                 GuardHome.MODULE,
                 description = "Fail the build on a hand-rolled boolean truth set (use EnvValues.parseBool)",
+                guardTestId = "single-truth-set",
             ),
             spec(
                 8,
@@ -144,9 +147,11 @@ object Guards {
                 "ban",
                 GuardHome.TEST,
                 ownerPath = ":engine",
-                tableTask = "`ForecastKeyParityTest` (`:engine`)",
+                tableTask = "*(guard test, `server/engine/src/guard`)*",
                 inFastGate = false,
+                gradleLetter = false,
                 attach = emptySet(),
+                guardTestId = "forecast-key-parity",
             ),
             spec(
                 14,
@@ -220,6 +225,7 @@ object Guards {
                 "ban, no allowlist",
                 GuardHome.MODULE,
                 description = "Fail the build on a JSON escaper or parser outside cc.jumpkick.jsonl",
+                guardTestId = "one-json-codec",
             ),
             spec(
                 22,
@@ -228,9 +234,11 @@ object Guards {
                 "ban, no allowlist",
                 GuardHome.TEST,
                 ownerPath = ":cli",
-                tableTask = "`IdeClientWiringTest` (`:cli`)",
+                tableTask = "*(guard test, `clients/cli/src/guard`)*",
                 inFastGate = false,
+                gradleLetter = false,
                 attach = emptySet(),
+                guardTestId = "ide-client-wiring",
             ),
             spec(
                 22,
@@ -272,6 +280,7 @@ object Guards {
                 GuardHome.PLUGIN_MODULE,
                 description =
                     "Fail the build when this module's family (SPI plugin vs forked worker) disagrees with its wiring",
+                guardTestId = "plugin-family",
             ),
             spec(
                 26,
@@ -289,9 +298,11 @@ object Guards {
                 "ban, no allowlist",
                 GuardHome.TEST,
                 ownerPath = ":cli",
-                tableTask = "`CliSourceRulesTest` (`:cli`)",
+                tableTask = "*(guard test, `clients/cli/src/guard`)*",
                 inFastGate = false,
+                gradleLetter = false,
                 attach = emptySet(),
+                guardTestId = "cli-stdio-handoff-owner",
             ),
             spec(
                 27,
@@ -339,9 +350,11 @@ object Guards {
                 "ratchet",
                 GuardHome.TEST,
                 ownerPath = ":cli",
-                tableTask = "`CliSourceRulesTest` (`:cli`)",
+                tableTask = "*(guard test, `clients/cli/src/guard`)*",
                 inFastGate = false,
+                gradleLetter = false,
                 attach = emptySet(),
+                guardTestId = "cli-test-isolated-state",
             ),
             spec(
                 31,
@@ -361,9 +374,11 @@ object Guards {
                 "ban, one env-gated exception",
                 GuardHome.TEST,
                 ownerPath = ":engine",
-                tableTask = "`SpikeCacheTempDirTest` (`:engine`)",
+                tableTask = "*(guard test, `server/engine/src/guard`)*",
                 inFastGate = false,
+                gradleLetter = false,
                 attach = emptySet(),
+                guardTestId = "spike-cache-temp-dir",
             ),
             spec(
                 33,
@@ -430,6 +445,7 @@ object Guards {
                 "ban",
                 GuardHome.MODULE,
                 description = "Fail the build when an isRegularFile filter is placed before a free name-only predicate",
+                guardTestId = "cheapest-rejection-first",
             ),
             spec(
                 40,
@@ -841,6 +857,10 @@ object Guards {
     val engineLetters: Map<Int, String>
         get() = all.filter { it.letter != null && it.engineCode != null }.associate { it.letter!! to it.engineCode!! }
 
+    /** Letter → the `@Guard` id that enforces it on the self-hosted side. */
+    val guardTestLetters: Map<Int, String>
+        get() = all.filter { it.letter != null && it.guardTestId != null }.associate { it.letter!! to it.guardTestId!! }
+
     fun named(task: String): GuardSpec =
         all.singleOrNull { it.task == task && it.registers } ?: error("No Gradle guard task named '$task' in Guards")
 
@@ -852,7 +872,11 @@ object Guards {
         appendLine("| id | task | rule | form | jk rule |")
         appendLine("|---|---|---|---|---|")
         tableRows.forEach { spec ->
-            val jkRule = spec.ruleId?.let { "`$it`" } ?: spec.engineCode?.let { "engine validation `$it`" } ?: "—"
+            val jkRule =
+                spec.ruleId?.let { "`$it`" }
+                    ?: spec.engineCode?.let { "engine validation `$it`" }
+                    ?: spec.guardTestId?.let { "guard test `$it`" }
+                    ?: "—"
             appendLine("| G${spec.letter} | ${spec.tableTaskCell} | ${spec.rule} | ${spec.form} | $jkRule |")
         }
         append("<!-- guards:end -->")
@@ -874,6 +898,7 @@ object Guards {
         description: String = "",
         ruleId: String? = null,
         engineCode: String? = null,
+        guardTestId: String? = null,
     ): GuardSpec =
         GuardSpec(
             letter = letter,
@@ -891,6 +916,7 @@ object Guards {
             description = description,
             ruleId = ruleId,
             engineCode = engineCode,
+            guardTestId = guardTestId,
         )
 
     private fun defaultAttach(home: GuardHome): Set<GuardAttach> =

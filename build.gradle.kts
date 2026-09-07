@@ -1254,7 +1254,8 @@ tasks.register("checkGuardParity") {
         // guard lanes of every `jk build`, so the registry's engineCode marks the letter jk-enforced.
         val jk = (marker.findAll(jkGate.asFile.readText()).map { it.groupValues[1].toInt() }
                 + mapped.filterValues { it in tables }.keys
-                + Guards.engineLetters.keys).toSortedSet()
+                + Guards.engineLetters.keys
+                + Guards.guardTestLetters.keys).toSortedSet()
         val registryProblems = mutableListOf<String>()
         mapped.filterValues { it !in tables }.forEach { (n, id) ->
             registryProblems.add("Guards says G$n is enforced by [guards.$id] but jk-guards.toml has no such table")

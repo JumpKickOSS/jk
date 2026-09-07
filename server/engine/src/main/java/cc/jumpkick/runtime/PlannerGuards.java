@@ -279,9 +279,12 @@ final class PlannerGuards {
                         List<GuardSuites.Declared> declared = GuardSuites.declared(FactsIndexing.load(suite));
                         tokens.add("guard-suite:" + suite.bodyDigest());
                         List<Path> workspaceModules =
-                                moduleDirs(g.root(), ctx.get(PROJECT).orElse(null));
+                                workspaceModuleDirs(g.root(), ctx.get(PROJECT).orElse(null));
                         boolean workspace = GuardSuites.anyWorkspace(declared);
                         if (workspace) tokens.addAll(GuardKeys.workspaceTokens(g.root(), workspaceModules));
+                        // A guard that reads Text is a guard whose verdict moves with the tree's text: key on it.
+                        if (GuardSuites.anyReadsText(declared))
+                            tokens.addAll(BuildLogicSupport.workspaceInputTokens(g.root()));
                         List<String> loadErrors = GuardSuites.loadErrors(declared, rules(g).rules());
                         if (!loadErrors.isEmpty()) {
                             for (String e : loadErrors)
@@ -699,6 +702,22 @@ final class PlannerGuards {
         Path r = root.toAbsolutePath().normalize();
         Path m = moduleDir.toAbsolutePath().normalize();
         return m.startsWith(r) ? r.relativize(m).toString().replace('\\', '/') : m.toString();
+    }
+
+    /**
+     * The workspace's module directories from inside a member's step, where {@code PROJECT} is the
+     * member's own manifest and knows nothing of its siblings: a WORKSPACE suite declared in a member
+     * still sees the whole workspace.
+     */
+    private static List<Path> workspaceModuleDirs(Path root, @Nullable JkBuild project) {
+        if (project != null && project.workspace() != null) return moduleDirs(root, project);
+        Path manifest = root.resolve(ManifestPaths.MANIFEST);
+        if (!Files.isRegularFile(manifest)) return List.of();
+        try {
+            return moduleDirs(root, JkBuildParser.parse(manifest));
+        } catch (IOException | RuntimeException unparseable) {
+            return List.of();
+        }
     }
 
     private static List<Path> moduleDirs(Path root, @Nullable JkBuild rootBuild) {

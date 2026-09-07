@@ -106,7 +106,7 @@ public final class GuardSuites {
 
     /**
      * Load errors for a suite against the TOML rules: an id already taken, an id that is not a rule
-     * id, a {@code MODULE} suite asking for {@code Text}. Empty means the suite may run.
+     * id, a guard without {@code why}. Empty means the suite may run.
      */
     public static List<String> loadErrors(List<Declared> declared, RuleSet toml) {
         List<String> errors = new ArrayList<>();
@@ -122,11 +122,6 @@ public final class GuardSuites {
             }
             String other = seen.put(d.id(), d.source());
             if (other != null) errors.add(d.source() + ": @Guard id `" + d.id() + "` is also declared by " + other);
-            if (d.readsText() && !d.workspace()) {
-                errors.add(d.source() + ": @Guard `" + d.id()
-                        + "` in a Scope.MODULE suite cannot inject Text; the module lane is keyed on its facts, not its"
-                        + " sources — declare @GuardSuite(scope = Scope.WORKSPACE)");
-            }
             if (d.why().isBlank())
                 errors.add(d.source() + ": @Guard `" + d.id()
                         + "` needs why (one sentence: the defect this rule prevents)");
@@ -215,7 +210,14 @@ public final class GuardSuites {
         for (Object v : violations instanceof List<?> l ? l : List.<Object>of()) {
             found++;
             String fingerprint = MiniJson.str(v, "fingerprint");
-            String file = MiniJson.get(v, "file") == null ? null : sourcePath(module, MiniJson.str(v, "file"));
+            String file = null;
+            if (MiniJson.get(v, "file") != null) {
+                // a bytecode site names its file under the module's source root; every other kind from the workspace
+                // root
+                boolean fromRoot = MiniJson.get(v, "root") != null
+                        && MiniJson.str(v, "root").equals("workspace");
+                file = fromRoot ? MiniJson.str(v, "file") : sourcePath(module, MiniJson.str(v, "file"));
+            }
             int at = MiniJson.get(v, "line") instanceof Number n ? n.intValue() : 0;
             String detail = MiniJson.str(v, "detail");
             Allow allow = allowing(rule.allow(), fingerprint, file, module);
@@ -268,6 +270,12 @@ public final class GuardSuites {
     private static String first(AnnotationFacts a, String key) {
         List<String> v = a.values().get(key);
         return v == null || v.isEmpty() ? "" : v.get(0);
+    }
+
+    /** Whether any declared guard reads {@code Text}: the lane then keys on the tree's inputs too. */
+    public static boolean anyReadsText(List<Declared> declared) {
+        for (Declared d : declared) if (d.readsText()) return true;
+        return false;
     }
 
     /** Whether any declared guard needs every module's facts. */

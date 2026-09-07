@@ -96,7 +96,7 @@ public final class Freezer {
                         0,
                         baseline.entryCount());
             }
-            String slice = lane == Lane.MODULE ? ctx.module() : "";
+            String slice = LaneRun.sliceOf(lane, rule, ctx.module());
             Reconciliation rec = Reconciliation.of(ruleId, current, e.observations(), e.population(), slice);
             if (rec.fresh().isEmpty()) continue;
             accepted += rec.fresh().size();
@@ -112,12 +112,18 @@ public final class Freezer {
     private static List<EvalContext> contexts(Path root, Lane lane, Rule rule) throws IOException {
         List<Path> modules = WorkspaceModules.of(root);
         List<EvalContext> out = new ArrayList<>();
+        if (rule.kind() == Kind.TEST) {
+            // a guard test lives in one module's suite; its report is there and nowhere else, whatever
+            // it scopes over
+            String home = GuardSuites.moduleOf(rule);
+            Path m = home.isEmpty() ? root : root.resolve(home);
+            out.add(new EvalContext(lane, root, home, m, modules, () -> FactsIndex.EMPTY, () -> null, List::of));
+            return out;
+        }
         if (lane == Lane.MODULE) {
             for (Path m : modules) {
                 String rel = root.equals(m) ? "" : root.relativize(m).toString().replace('\\', '/');
                 if (!rule.applies(rel)) continue;
-                // a guard test lives in one module's suite; its report is there and nowhere else
-                if (rule.kind() == Kind.TEST && !GuardSuites.moduleOf(rule).equals(rel)) continue;
                 JkBuild build = JkBuildParser.parse(m.resolve(ManifestPaths.MANIFEST));
                 BuildLayout layout = BuildLayout.of(m, build);
                 FactsIndexing.Ensured main =

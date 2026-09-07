@@ -19,15 +19,22 @@ public final class TextView implements Text {
 
     private final Path root;
     private final List<Path> sources;
+    private final boolean fixture;
 
     public TextView(Path root, List<Path> sources) {
+        this(root, sources, false);
+    }
+
+    /** {@code fixture}: a {@code jk guard test} run, where a glob is matched against file names only — a fixture has no source tree shape. */
+    public TextView(Path root, List<Path> sources, boolean fixture) {
         this.root = root.toAbsolutePath().normalize();
         this.sources = List.copyOf(sources);
+        this.fixture = fixture;
     }
 
     @Override
     public List<String> files(String glob) {
-        Pattern p = globPattern(glob);
+        Pattern p = globPattern(fixture ? glob.substring(glob.lastIndexOf('/') + 1) : glob);
         TreeSet<String> out = new TreeSet<>();
         for (Path src : sources) {
             Path dir = src.isAbsolute() ? src : root.resolve(src);
@@ -35,7 +42,8 @@ public final class TextView implements Text {
             try {
                 PathUtil.forEachRegularFile(dir, d -> skipped(rel(d)), (f, attrs) -> {
                     String rel = rel(f);
-                    if (p.matcher(rel).matches()) out.add(rel);
+                    if (p.matcher(fixture ? rel.substring(rel.lastIndexOf('/') + 1) : rel)
+                            .matches()) out.add(rel);
                 });
             } catch (IOException e) {
                 throw new UncheckedIOException(e);

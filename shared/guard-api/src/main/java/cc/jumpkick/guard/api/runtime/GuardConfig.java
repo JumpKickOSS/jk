@@ -26,6 +26,7 @@ import org.jspecify.annotations.Nullable;
  * @param poms POM files the build produced for the scope
  * @param jars jars the build produced
  * @param coverage the coverage report, or {@code null}
+ * @param fixture whether this run judges a fixture rather than the tree
  */
 public record GuardConfig(
         Path report,
@@ -38,7 +39,9 @@ public record GuardConfig(
         List<Path> classDirs,
         List<Path> poms,
         List<Path> jars,
-        @Nullable Path coverage) {
+        @Nullable Path coverage,
+        /** A {@code jk guard test} run over a fixture: {@code Text.files} matches the fixture's files by name. */
+        boolean fixture) {
 
     public static final String PROPERTY = "jk.guard.config";
 
@@ -58,7 +61,8 @@ public record GuardConfig(
                 paths(p.getProperty("class-dirs", "")),
                 paths(p.getProperty("poms", "")),
                 paths(p.getProperty("jars", "")),
-                optional(p.getProperty("coverage")));
+                optional(p.getProperty("coverage")),
+                Boolean.parseBoolean(p.getProperty("fixture", "false")));
     }
 
     /** The properties text for these values; the engine writes it, {@link #read} reads it back. */
@@ -75,6 +79,7 @@ public record GuardConfig(
         sb.append("poms=").append(join(poms)).append('\n');
         sb.append("jars=").append(join(jars)).append('\n');
         if (coverage != null) sb.append("coverage=").append(escape(coverage)).append('\n');
+        sb.append("fixture=").append(fixture).append('\n');
         return sb.toString();
     }
 
