@@ -4,6 +4,10 @@
 # Informational, never a gate. A hosted runner's wall time moves with the runner it lands on, so
 # a single row proves nothing about a change; the point is a machine-readable series long enough
 # that drift becomes visible. When a stable baseline exists, this is where a threshold would go.
+#
+# The jk side is a raw build (`[guards] on-build = false`, the Gradle-comparable number) and, on
+# the same rows, the dogfooded build with jk's house-rule guards on, labelled opt-in — so the
+# guards' cost is a series of its own instead of a drift in the comparison.
 name: Dogfood wall measurement
 
 on:

@@ -29,7 +29,9 @@
 #            fat jar and native-image the CLI. Dropping `dist` would let Gradle skip
 #            native-image; passing --skip-tests would let jk skip the suite. Neither is fair.
 #   noop     `./gradlew build dist`  vs  `jk build`  — the warm repeated cycle, which is
-#            the workload jk's product bet actually rests on.
+#            the workload jk's product bet actually rests on. When the tree carries
+#            jk-guards.toml the jk side is measured raw (`[guards] on-build = false`, the
+#            published comparison) and then with its house-rule guards on, labelled opt-in.
 #   touched  one source file really edited, then the same commands — the everyday inner loop.
 #            The file must be in both builds' default cone; see TOUCH above.
 #            A `touch` is not enough: jk keys its action cache on CONTENT, so bumping mtime
@@ -155,6 +157,21 @@ timed() {
   awk -v a="$t0" -v b="$t1" 'BEGIN{printf "%.2f", b-a}'
 }
 
+# ---------------------------------------------------------------------------
+# Guards. This tree dogfoods jk's house-rule guards (jk-guards.toml), and a lane runs inside
+# `jk build`. The published Gradle-vs-jk trend is a comparison of RAW builds, so the jk side is
+# measured with `[guards] on-build = false` first — every lane but the model lane waits for the
+# gate — and then again as contributors run it, labelled opt-in, so the guards' own cost is a
+# number beside the wall rather than folded into it. The manifest is restored however the row exits.
+# ---------------------------------------------------------------------------
+MANIFEST_BACKUP="$OUT_DIR/jk.toml.orig"
+guards_off() {
+  cp jk.toml "$MANIFEST_BACKUP"
+  printf '\n[guards]\non-build = false\n' >> jk.toml
+}
+guards_restore() { [[ -f "$MANIFEST_BACKUP" ]] && cp "$MANIFEST_BACKUP" jk.toml; }
+has_guards() { [[ -f jk-guards.toml ]]; }
+
 run_side() {  # run_side <label> <logbase> -- cmd...
   local label="$1" logbase="$2"; shift 3
   local walls=() i w
@@ -247,9 +264,22 @@ for row in "${ROWS[@]}"; do
         emit_json measurement "row=noop" "side=gradle" "command=./gradlew build dist" "walls_s=$w"
       fi
       if want_jk; then
-        w="$(run_side "jk no-op" jk-noop -- "$JK" build)"
-        echo "| jk | \`jk build\` | $w |" >> "$ROW_FILE"
-        emit_json measurement "row=noop" "side=jk" "command=jk build" "walls_s=$w"
+        if has_guards; then
+          guards_off; trap guards_restore EXIT
+          "$JK" build >> "$OUT_DIR/jk-noop-guards-off-warm.log" 2>&1 || true   # re-plan under the new manifest
+          w="$(run_side "jk no-op (guards off)" jk-noop-guards-off -- "$JK" build)"
+          guards_restore; trap - EXIT
+          echo "| jk | \`jk build\`, raw (\`[guards] on-build = false\`) | $w |" >> "$ROW_FILE"
+          emit_json measurement "row=noop" "side=jk" "command=jk build" "guards=off" "walls_s=$w"
+          "$JK" build >> "$OUT_DIR/jk-noop-guards-warm.log" 2>&1 || true
+          w="$(run_side "jk no-op (guards on, opt-in)" jk-noop -- "$JK" build)"
+          echo "| jk | \`jk build\`, with house-rule guards (opt-in) | $w |" >> "$ROW_FILE"
+          emit_json measurement "row=noop" "side=jk-guards" "command=jk build" "guards=on" "walls_s=$w"
+        else
+          w="$(run_side "jk no-op" jk-noop -- "$JK" build)"
+          echo "| jk | \`jk build\` | $w |" >> "$ROW_FILE"
+          emit_json measurement "row=noop" "side=jk" "command=jk build" "walls_s=$w"
+        fi
       fi
       echo >> "$ROW_FILE"
       ;;
@@ -274,17 +304,43 @@ for row in "${ROWS[@]}"; do
           "walls_s=$(IFS='/'; echo "${walls[*]}")" "touched=$TOUCH"
       fi
       if want_jk; then
-        walls=()
-        for ((i=1; i<=RUNS; i++)); do
-          real_edit "$TOUCH" "1$i"
-          walls+=("$(timed "$OUT_DIR/jk-touched-$i.log" "$JK" build)")
-          printf '  %-46s run %d: %s s\n' "jk touched" "$i" "${walls[-1]}" >&2
-        done
-        echo "| jk | \`jk build\` after an edit | $(IFS='/'; echo "${walls[*]}") |" >> "$ROW_FILE"
-        emit_json measurement "row=touched" "side=jk" "command=jk build" \
-          "walls_s=$(IFS='/'; echo "${walls[*]}")" "touched=$TOUCH"
+        if has_guards; then
+          guards_off
+          restore_all() { restore_touched; guards_restore; }
+          trap restore_all EXIT
+          walls=()
+          for ((i=1; i<=RUNS; i++)); do
+            real_edit "$TOUCH" "1$i"
+            walls+=("$(timed "$OUT_DIR/jk-touched-guards-off-$i.log" "$JK" build)")
+            printf '  %-46s run %d: %s s\n' "jk touched (guards off)" "$i" "${walls[-1]}" >&2
+          done
+          guards_restore
+          echo "| jk | \`jk build\` after an edit, raw (\`[guards] on-build = false\`) | $(IFS='/'; echo "${walls[*]}") |" >> "$ROW_FILE"
+          emit_json measurement "row=touched" "side=jk" "command=jk build" "guards=off" \
+            "walls_s=$(IFS='/'; echo "${walls[*]}")" "touched=$TOUCH"
+          walls=()
+          for ((i=1; i<=RUNS; i++)); do
+            real_edit "$TOUCH" "2$i"
+            walls+=("$(timed "$OUT_DIR/jk-touched-$i.log" "$JK" build)")
+            printf '  %-46s run %d: %s s\n' "jk touched (guards on, opt-in)" "$i" "${walls[-1]}" >&2
+          done
+          echo "| jk | \`jk build\` after an edit, with house-rule guards (opt-in) | $(IFS='/'; echo "${walls[*]}") |" >> "$ROW_FILE"
+          emit_json measurement "row=touched" "side=jk-guards" "command=jk build" "guards=on" \
+            "walls_s=$(IFS='/'; echo "${walls[*]}")" "touched=$TOUCH"
+        else
+          walls=()
+          for ((i=1; i<=RUNS; i++)); do
+            real_edit "$TOUCH" "1$i"
+            walls+=("$(timed "$OUT_DIR/jk-touched-$i.log" "$JK" build)")
+            printf '  %-46s run %d: %s s\n' "jk touched" "$i" "${walls[-1]}" >&2
+          done
+          echo "| jk | \`jk build\` after an edit | $(IFS='/'; echo "${walls[*]}") |" >> "$ROW_FILE"
+          emit_json measurement "row=touched" "side=jk" "command=jk build" \
+            "walls_s=$(IFS='/'; echo "${walls[*]}")" "touched=$TOUCH"
+        fi
       fi
       restore_touched
+      guards_restore
       trap - EXIT
       echo >> "$ROW_FILE"
       ;;
