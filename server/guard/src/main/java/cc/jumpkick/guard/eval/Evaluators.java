@@ -28,6 +28,8 @@ public final class Evaluators {
         BY_KIND.put(Kind.ANNOTATE, new AnnotateEvaluator());
         BY_KIND.put(Kind.CLASSES, new ClassesEvaluator());
         BY_KIND.put(Kind.LAYERS, new LayersEvaluator());
+        BY_KIND.put(Kind.CYCLES, new CyclesEvaluator());
+        BY_KIND.put(Kind.SPLIT_PACKAGE, new SplitPackageEvaluator());
     }
 
     /** Test seam: drop every registration and reinstall the shipped evaluators. */
