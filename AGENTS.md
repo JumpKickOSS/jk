@@ -173,7 +173,7 @@ Prefer a small WIP limit (a few claimed tickets). If blocked: `ka set-status JK-
 
 | Command | What runs | When |
 |---------|-----------|------|
-| `./gradlew checkFast` | **Unit/fast + structural guards** — network-free | Every ticket and PR |
+| `./gradlew checkFast` | **Unit/fast tier + the Gradle-only guard** — network-free; house rules run under `jk build` | Every ticket and PR |
 | `./gradlew integrationTest` | Engine/CLI e2e, Android, workers, network | When the ticket touches wire/engine/plans/CLI spawn paths |
 | `./gradlew checkAll` | Both tiers for the whole repo | Nightly / pre-merge confidence |
 
@@ -184,7 +184,7 @@ Tag new heavy tests with `@Tag("integration")` (or `slow` / `bench`). Do **not**
 **Any ticket that changes Java (or other runtime) code** must **not** move to `done` in kanartist until all of the following pass:
 
 1. **Tests (required, non-negotiable)** — prove the change did not break the build:
-   - **Always:** green `./gradlew checkFast` (unit/fast tier plus every structural guard).
+   - **Always:** green `./gradlew checkFast` (unit/fast tier) and a clean `jk build` (the house-rule lanes).
    - **Also** green `./gradlew :cli:integrationTest` and/or `:engine:integrationTest` (or full `./gradlew integrationTest`) when the ticket touches CLI↔engine wire, engine plans/workers, plugin forks, lock/resolve/fetch, or install/materialize.
    - Nightly / main confidence: `./gradlew checkAll` (unit + integration). Do not treat a 20+ minute full e2e as the only mid-ticket loop.
    - Do not land on `main` with a red or un-run test suite for areas you changed. A broken main is a stop-the-line defect: fix tests first, then resume tickets.

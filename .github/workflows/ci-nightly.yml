@@ -150,9 +150,9 @@ jobs:
           if command -v cygpath >/dev/null 2>&1; then BIN_DIR="$(cygpath -w "$BIN_DIR")"; fi
           echo "$BIN_DIR" >> "$GITHUB_PATH"
 
-      - name: Prove every guard fixture bites
+      - name: Run the house-rule lanes; every guard fixture must bite
         run: |
-          "$JK_BIN" guard test --no-ansi
+          "$JK_BIN" guard --no-ansi
 
       - name: Build synthetic monorepo and gate committed-after-idle
         run: |

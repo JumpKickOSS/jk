@@ -148,10 +148,14 @@ With no `[repositories]` table, remotes are **Maven Central then Google Maven** 
 
 ## House-rule gate
 
-The guards in [code-as-art.md](code-as-art.md#the-guard-registry) run under
-**both** builds. Gradle runs them as `tasks.registering` blocks wired to `check`
-and `jar`; jk runs them as the rules of `jk-guards.toml` and the guard tests under
-each module's `src/guard`, in the guard lanes of every build.
+The house rules in [code-as-art.md](code-as-art.md#the-guard-registry) are jk's:
+the rules of `jk-guards.toml` and the guard tests under each module's `src/guard`,
+run in the guard lanes of every `jk build`. Gradle keeps the one letter only its
+task graph can see (G64, a disabled `JavaCompile`) and two registry tasks:
+`checkGuardRegistry` renders the table, and `checkGuardParity` fails when a letter
+has a Gradle task and no jk side, or when `jk-guards.toml` differs from the file
+the last `jk build` recorded a digest of under `target/`. Gradle running the rule
+file itself is the follow-up `guard-parity.txt` names.
 
 ```bash
 jk build                 # the lanes run with the build: model, module, workspace, tree, output
@@ -173,10 +177,10 @@ recorded, so a red lane goes red again instead of replaying itself. Every broken
 rule is reported, each with its baseline state and the exemption path, and the
 machine view lands in `target/jk-guards.sarif` and `target/jk-guards.jsonl`.
 
-Two arms stay Gradle-only because they read files `maven-publish` generates and
-jk does not produce until `jk publish`: `checkPublishedPomCoordinates` and the
-publication arm of `checkTestFixturesStayOutOfProduction`. Everything else is
-enforced by whichever build you run.
+One letter stays Gradle-only because only Gradle's task graph can answer it:
+whether a `JavaCompile` task is enabled (G64). Everything else is enforced by
+`jk build`; `./gradlew checkFast` is the unit tier plus that task and the two
+registry tasks.
 
 ## Test tiers
 
@@ -205,7 +209,7 @@ build rather than silently never running.
 | Full `./gradlew test` | Parity oracle + bootstrap CI source of truth |
 | `./gradlew dist` / `nativeCompile` | Bootstrap binary when no prior `jk` install exists |
 | `./gradlew installLocal` | Workers + engine materialize/bounce; or `jk install` after pure-jk build |
-| Two publication-reading guard arms | See [House-rule gate](#house-rule-gate) |
+| `checkNoDisabledCompile` (G64), `checkGuardParity`, `checkGuardRegistry` | The one letter only Gradle's task graph can see, and the registry's two tasks — see [House-rule gate](#house-rule-gate) |
 
 ### Future cut-over (backlog)
 

@@ -21,25 +21,34 @@ class GuardsTest {
         assertThat(names).noneMatch { it.isEmpty() }
     }
 
+    /**
+     * The Gradle side keeps the one task-graph letter and the two registry tasks; every other letter is self-hosted.
+     */
     @Test
-    fun module_guards_that_scan_tests_do_not_attach_to_jar() {
-        val checkOnly =
-            Guards.all.filter { it.home == GuardHome.MODULE && it.attach == setOf(GuardAttach.CHECK) }.map { it.task }
-        assertThat(checkOnly)
+    fun gradle_registers_only_the_task_graph_letter_and_the_registry_tasks() {
+        val registered = Guards.all.filter { it.registers }.map { it.task }
+        assertThat(registered)
             .containsExactlyInAnyOrder(
-                "checkNoOrphanTestTags",
-                "checkTestPathsFromCheckoutRoot",
-                "checkManifestDepParity",
                 "checkNoDisabledCompile",
+                "checkGuardParity",
+                "checkGuardRegistry",
+                "checkGateCoverage",
             )
+        val g64 = Guards.named("checkNoDisabledCompile")
+        assertThat(g64.letter).isEqualTo(64)
+        assertThat(g64.home).isEqualTo(GuardHome.MODULE)
+        assertThat(g64.attach).isEqualTo(setOf(GuardAttach.CHECK))
     }
 
+    /** A letter with no Gradle task names its jk side, or says why it has none. */
     @Test
-    fun maven_publish_guard_is_conditional() {
-        val g19 = Guards.named("checkPublishedPomCoordinates")
-        assertThat(g19.letter).isEqualTo(19)
-        assertThat(g19.mavenPublishOnly).isTrue()
-        assertThat(g19.attach).contains(GuardAttach.CHECK, GuardAttach.JAR)
+    fun every_self_hosted_letter_has_a_jk_side_or_a_reason() {
+        val silent =
+            Guards.tableRows
+                .filter { it.home == GuardHome.SELF_HOSTED }
+                .filter { it.ruleId == null && it.engineCode == null && it.guardTestId == null && it.jkSide == null }
+                .map { it.id }
+        assertThat(silent).isEmpty()
     }
 
     @Test
@@ -54,25 +63,7 @@ class GuardsTest {
     }
 
     @Test
-    fun jk_only_letters_are_not_gradle_letters() {
-        assertThat(Guards.gradleLetters).doesNotContain(0, 4, 41, 44)
-        assertThat(Guards.gradleLetters).contains(1, 19, 23, 49, 54)
-    }
-
-    @Test
-    fun owned_module_paths_are_declared() {
-        val owned =
-            Guards.all.filter { it.home == GuardHome.MODULE_OWNED && it.inFastGate }.map { it.task to it.ownerPath }
-        assertThat(owned)
-            .contains(
-                "checkForecastKeyParity" to ":engine",
-                "checkIdeClientWiring" to ":cli",
-                "checkSingleAotMarkerSpelling" to ":host",
-                "checkNoRetiredWireSpelling" to ":wire",
-                "checkWorkerOfflineFromSpec" to ":plugin-sdk",
-                "checkCatalogLockParity" to ":android",
-                "checkCliRuntimeClasspath" to ":cli",
-                "checkCliNoParseTypes" to ":cli",
-            )
+    fun only_the_task_graph_letter_and_the_registry_tasks_are_gradle_letters() {
+        assertThat(Guards.gradleLetters).containsExactlyInAnyOrder(51, 64, 79)
     }
 }

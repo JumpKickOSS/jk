@@ -20,6 +20,9 @@ public final class GuardsPresence {
     /** The root rule file. Not under {@code .jk/}: rules are reviewed data, not build logic. */
     public static final String RULES_FILE = "jk-guards.toml";
 
+    /** Under the build output: the digest of the root rules file the last build loaded, for the other build's parity check. */
+    public static final String RULES_HASH_FILE = "jk-guards.sha256";
+
     /** The engine-owned baseline beside it. */
     public static final String BASELINE_FILE = "jk-guards-baseline.toml";
 

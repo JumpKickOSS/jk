@@ -359,10 +359,6 @@ instead  = "resolve paths through cc.jumpkick.util.JkDirs (JK_HOME, plus JK_STOR
 why      = "jk has one home; a layout it does not have, named anywhere, misleads the reader"
 
 [[guards.single-home-root.allow]]
-in     = "build.gradle.kts"
-reason = "the Gradle twin of this rule spells the banned shapes"
-
-[[guards.single-home-root.allow]]
 in     = "shared/core/src/main/java/cc/jumpkick/config/TerminalFonts.java"
 reason = "reads another program's XDG_CONFIG_HOME to find the terminal's font"
 

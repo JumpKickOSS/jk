@@ -77,7 +77,7 @@ data class GuardSpec(
 
     /** Markdown for the published table's task cell. */
     val tableTaskCell: String
-        get() = tableTask ?: if (task.isEmpty()) "—" else "`$task`"
+        get() = tableTask ?: if (task.isEmpty() || home == GuardHome.SELF_HOSTED) "—" else "`$task`"
 
     val taskDescription: String
         get() = description.ifEmpty { rule }

@@ -43,6 +43,7 @@ import cc.jumpkick.guard.schema.Lane;
 import cc.jumpkick.guard.validate.EngineValidations;
 import cc.jumpkick.guard.validate.Fault;
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.TestSuites;
@@ -795,7 +796,20 @@ final class PlannerGuards {
         if (m != null && m.stamp.equals(stamp)) return m.load;
         LoadResult load = GuardRules.load(g.root(), g.config(), JkDirs.store());
         RULES.put(file, new Memo(GuardRules.stamp(g.root()), load));
+        recordRulesHash(g.root(), file);
         return load;
+    }
+
+    /**
+     * The digest of the root rules file this build loaded, under the build output. The Gradle build
+     * compares it with the file it sees, so an edit one build enforced and the other did not is red
+     * there; a project with no rules file records nothing.
+     */
+    private static void recordRulesHash(Path root, Path rulesFile) throws IOException {
+        if (!Files.isRegularFile(rulesFile)) return;
+        Path out = root.resolve(BuildLayout.TARGET).resolve(GuardsPresence.RULES_HASH_FILE);
+        Files.createDirectories(out.getParent());
+        Files.writeString(out, Hashing.sha256Hex(rulesFile) + "\n");
     }
 
     // ---- helpers -------------------------------------------------------------------------------

@@ -41,7 +41,3 @@ tasks.withType<JavaCompile>().configureEach {
         }
     }
 }
-
-tasks.named("check") {
-    dependsOn(rootProject.tasks.named("checkNullMarkedApiPackages"))
-}

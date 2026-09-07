@@ -51,7 +51,7 @@ public final class TestSupport {
      * than throwing, because a forecast reports on a build instead of being one.
      *
      * <p>It lives here, beside the collector the build uses, on purpose. {@code TaskForecaster}'s
-     * size-baseline invariant is that a forecast key derived <em>there</em> rather than shared with
+     * standing invariant is that a forecast key derived <em>there</em> rather than shared with
      * the build is the defect class that file keeps reintroducing — and this is another instance of
      * it: these roots are in {@code compile-test}'s hashed request, so a forecast that cannot see
      * them keys off a smaller source set than the build and reports a phantom rebuild.

@@ -9,9 +9,9 @@ filters are generated from it and guard **G23** (`checkNoOrphanTestTags`) re-der
 from the same object, so the two cannot drift. On the jk side the engine's `tiers` validation
 re-derives it from the root manifest's `[test]` and `[profiles.*]` tables ([self-host](self-host.md#test-tiers)).
 
-`./gradlew checkFast` is the canonical branch gate: every subproject `check` task (unit tests plus
-module guards) and every root structural guard. It is network-free. `checkAll` adds the integration
-tier.
+`./gradlew checkFast` is the Gradle branch gate: every subproject `check` task (unit tests plus the
+one Gradle-only guard, G64), buildSrc's tests and the two registry tasks. It is network-free.
+`checkAll` adds the integration tier. The house rules run under `jk build` ([self-host](self-host.md#house-rule-gate)).
 
 <!-- test-tiers:start -->
 | Command | Includes | Excludes | In `checkAll`? |
@@ -141,7 +141,7 @@ Measured profiling of a full `integrationTest` is expensive; use this as a **man
 
 ## CI
 
-- **PR / push (`ci.yml`):** `./gradlew checkFast` (unit tier + every structural guard), the curated
+- **PR / push (`ci.yml`):** `./gradlew checkFast` (unit tier, buildSrc tests, the Gradle-only guard), the self-host job (`jk build`: the house-rule lanes), the curated
   integration lane in its own job, and the commit-authorship scan. No coverage, no benches.
 - **Nightly (`ci-nightly.yml`):** Linux `integrationTest`, `slowTest`, `networkTest`, `benchTest`,
   and `coverageReport -Pjk.coverage`. macOS and Windows run `scripts/ci-product-smoke.sh`.

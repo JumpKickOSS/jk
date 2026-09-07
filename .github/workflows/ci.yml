@@ -45,7 +45,7 @@ jobs:
         with:
           node-version-file: '.nvmrc'
 
-      - name: Unit tests and structural guards
+      - name: Unit tests, buildSrc tests and the Gradle-only guard
         run: ./gradlew checkFast --no-daemon
 
       - name: Shell installer verification fixtures
@@ -54,7 +54,7 @@ jobs:
   # The boundary lane. `checkFast` is network-free and fast but runs no integration class, so a
   # wire, spawn, worker, workspace, install or lock regression can merge with a deterministic
   # integration test sitting in the nightly tier that would have caught it. Membership is
-  # curated-integration.txt; guard G63 (checkCuratedIntegration) owns the registry's integrity and
+  # curated-integration.txt; guard G63 (the `curated-integration` guard test) owns the registry's integrity and
   # the existence of this job. The full tier stays nightly and complete.
   #
   # Its own job, alongside `test` rather than after it: a curated failure and a unit failure are
