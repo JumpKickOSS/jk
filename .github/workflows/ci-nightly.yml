@@ -150,6 +150,10 @@ jobs:
           if command -v cygpath >/dev/null 2>&1; then BIN_DIR="$(cygpath -w "$BIN_DIR")"; fi
           echo "$BIN_DIR" >> "$GITHUB_PATH"
 
+      - name: Prove every guard fixture bites
+        run: |
+          "$JK_BIN" guard test --no-ansi
+
       - name: Build synthetic monorepo and gate committed-after-idle
         run: |
           JK_BIN=jk MODULES=60 GATE_COMMITTED_MIB=64 GATE_USED_MIB=24 \

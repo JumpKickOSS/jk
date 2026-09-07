@@ -199,7 +199,7 @@ public final class GuardSuites {
 
     /** One report line as an evaluation, with the guard's allows applied. */
     @SuppressWarnings("unchecked")
-    static Evaluation evaluate(Rule rule, @Nullable Object line, String module) {
+    public static Evaluation evaluate(Rule rule, @Nullable Object line, String module) {
         if (line == null)
             return Evaluation.failed(
                     "the guard suite left no report for `" + rule.id() + "`: the run did not reach it");

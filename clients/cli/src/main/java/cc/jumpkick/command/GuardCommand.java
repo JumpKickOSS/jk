@@ -16,6 +16,7 @@ import cc.jumpkick.model.command.Param;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.GuardExplainAck;
 import cc.jumpkick.wire.protocol.GuardFreezeAck;
+import cc.jumpkick.wire.protocol.GuardTestAck;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -50,7 +51,8 @@ public final class GuardCommand implements CliCommand {
                 "subcommand",
                 Arity.ZERO_OR_MORE,
                 "explain [<rule-id>] prints a rule's card or the catalog;\n"
-                        + "freeze <rule-id> --reason \"…\" accepts its new violations."));
+                        + "freeze <rule-id> --reason \"…\" accepts its new violations;\n"
+                        + "test proves every fixture-bearing rule bites."));
     }
 
     @Override
@@ -74,6 +76,9 @@ public final class GuardCommand implements CliCommand {
         if (!positionals.isEmpty() && "freeze".equals(positionals.get(0))) {
             return freeze(in, dir, positionals);
         }
+        if (!positionals.isEmpty() && "test".equals(positionals.get(0))) {
+            return test(dir);
+        }
         if (in.isSet("schema") || (!positionals.isEmpty() && "explain".equals(positionals.get(0)))) {
             return explain(in, global, dir, positionals);
         }
@@ -81,7 +86,7 @@ public final class GuardCommand implements CliCommand {
             CommandWedge.printFail(
                     "Guard",
                     "unknown subcommand `" + positionals.get(0)
-                            + "`; jk guard [explain [<id>] [--schema <kind>] | freeze <id> --reason \"…\" [--retire]]");
+                            + "`; jk guard [explain [<id>] [--schema <kind>] | freeze <id> --reason \"…\" [--retire] | test]");
             return Exit.USAGE;
         }
         // Every lane, cache-aware: the build with tests skipped and the gate on.
@@ -127,6 +132,27 @@ public final class GuardCommand implements CliCommand {
         }
         CliOutput.out(global.outputIsJson() ? ack.json() : ack.text().stripTrailing());
         return 0;
+    }
+
+    /**
+     * {@code jk guard test}: compile every fixture directory once per owning module and prove each
+     * fixture-bearing rule and guard test bites — {@code Bad} fires, {@code Ok} stays quiet. Non-zero
+     * when any rule is not proven or the rules do not load.
+     */
+    private int test(Path dir) {
+        GuardTestAck ack;
+        try {
+            ack = EngineClient.guardTest(EnginePaths.current(), dir);
+        } catch (IOException e) {
+            CommandWedge.printFail("Guard", e.getMessage());
+            return Exit.SOFTWARE;
+        }
+        if (ack.error() != null) {
+            CommandWedge.printFail("Guard", ack.error());
+            return 1;
+        }
+        CliOutput.out(ack.text().stripTrailing());
+        return ack.failures() == 0 ? 0 : 1;
     }
 
     private int freeze(Invocation in, Path dir, List<String> positionals) throws IOException {

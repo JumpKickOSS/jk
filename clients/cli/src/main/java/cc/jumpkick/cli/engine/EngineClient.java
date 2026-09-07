@@ -15,6 +15,7 @@ import cc.jumpkick.wire.protocol.ExecPlan;
 import cc.jumpkick.wire.protocol.GeneratedFiles;
 import cc.jumpkick.wire.protocol.GuardExplainAck;
 import cc.jumpkick.wire.protocol.GuardFreezeAck;
+import cc.jumpkick.wire.protocol.GuardTestAck;
 import cc.jumpkick.wire.protocol.IdeWireModel;
 import cc.jumpkick.wire.protocol.ModuleGraphAck;
 import cc.jumpkick.wire.protocol.NewProjectAck;
@@ -235,6 +236,11 @@ public final class EngineClient {
     /** Thin-client why lookup: lock matching + provenance paths, engine-side. */
     public static WhyReport why(EnginePaths.Paths paths, Path dir, String query) throws IOException {
         return EngineReads.why(paths, dir, query);
+    }
+
+    /** {@code jk guard test}: every fixture-bearing rule and guard test proven to bite; one sync round trip. */
+    public static GuardTestAck guardTest(EnginePaths.Paths paths, Path dir) throws IOException {
+        return EngineReads.guardTest(paths, dir);
     }
 
     /** {@code jk guard freeze}: the engine grows (or retires) one rule's baseline; one sync round trip. */

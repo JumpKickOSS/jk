@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.WorkspaceScan;
+import cc.jumpkick.guard.eval.GuardSuites;
 import cc.jumpkick.guard.eval.WorkspaceModules;
 import cc.jumpkick.guard.extract.FactsIndexing;
 import cc.jumpkick.guard.rules.GuardsPresence;
@@ -133,6 +134,40 @@ final class GuardKeys {
         }
     }
 
+    /** The root lanes' forecast, in plan order: model, workspace, tree (gate), fixtures (gate). */
+    static List<TaskForecast.Task> forecastRootLanes(Path root, JkBuild project, ActionCache actionCache) {
+        List<TaskForecast.Task> out = new ArrayList<>();
+        forecastModelLane(root, project, actionCache).ifPresent(out::add);
+        forecastWorkspaceLane(root, actionCache).ifPresent(out::add);
+        forecastTreeLane(root, actionCache).ifPresent(out::add);
+        forecastFixtures(root).ifPresent(out::add);
+        return out;
+    }
+
+    /** {@code guard-tree}, gate only: the text scan's verdict, keyed on the tree's inputs, rules and baseline. */
+    static Optional<TaskForecast.Task> forecastTreeLane(Path root, ActionCache actionCache) {
+        PlannerGuards.GuardsPlan g = PlannerGuards.detectAt(root);
+        if (!g.enabled() || !PlannerGuards.gateRequested()) return Optional.empty();
+        try {
+            LoadResult load = PlannerGuards.rules(g);
+            if (load.hasErrors()) return Optional.of(tree("guards · jk-guards.toml does not load"));
+            List<String> tokens = new ArrayList<>(BuildLogicSupport.workspaceInputTokens(root));
+            addRuleTokens(tokens, load);
+            String key = laneKey(ActionKey.qualifiedTaskId(TaskNames.GUARD_TREE, root), tokens, baselineSha(root));
+            if (actionCache.lookup(key).isPresent()) {
+                return Optional.of(new TaskForecast.Task(
+                        TaskNames.GUARD_TREE, TaskForecast.Status.CACHED, "", key.substring(0, 8)));
+            }
+            return Optional.of(tree("guards · tree rules to evaluate"));
+        } catch (IOException e) {
+            return Optional.of(tree("guards · " + e.getMessage()));
+        }
+    }
+
+    private static TaskForecast.Task tree(String why) {
+        return new TaskForecast.Task(TaskNames.GUARD_TREE, TaskForecast.Status.RUN, why, "");
+    }
+
     private static TaskForecast.Task workspace(String why) {
         return new TaskForecast.Task(TaskNames.GUARD_WORKSPACE, TaskForecast.Status.RUN, why, "");
     }
@@ -169,6 +204,35 @@ final class GuardKeys {
         tokens.add(fileToken("lock", root.resolve(ManifestPaths.LOCK)));
         tokens.add(fileToken("catalog", root.resolve(CatalogLockParity.CATALOG)));
         return tokens;
+    }
+
+    /**
+     * The gate's fixture proof: planned whenever the gate is asked for and any rule or guard test
+     * names a fixture. It keys its own compile on the fixture sources, so it is cheap to forecast as
+     * RUN; what matters is that a gate with fixtures is never "up to date" without running it.
+     */
+    static Optional<TaskForecast.Task> forecastFixtures(Path dir) {
+        Path root = WorkspaceScan.findRoot(dir).orElse(dir).toAbsolutePath().normalize();
+        PlannerGuards.GuardsPlan g = PlannerGuards.detectAt(root);
+        if (!g.enabled() || !PlannerGuards.gateRequested()) return Optional.empty();
+        try {
+            LoadResult load = PlannerGuards.rules(g);
+            boolean any = load.rules().rules().values().stream().anyMatch(r -> r.fixture() != null);
+            if (!any) {
+                for (GuardSuites.Located l :
+                        GuardSuites.declaredAcrossWorkspace(root).values()) {
+                    if (l.declared().fixture() != null) any = true;
+                }
+            }
+            if (!any) return Optional.empty();
+            return Optional.of(new TaskForecast.Task(
+                    TaskNames.GUARD_FIXTURES,
+                    TaskForecast.Status.RUN,
+                    "guards · fixtures prove every rule bites",
+                    null));
+        } catch (IOException e) {
+            return Optional.empty();
+        }
     }
 
     static String fileToken(String name, Path file) throws IOException {

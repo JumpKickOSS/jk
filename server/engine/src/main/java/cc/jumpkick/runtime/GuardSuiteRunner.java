@@ -14,6 +14,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -43,9 +44,14 @@ final class GuardSuiteRunner {
 
     /** Forks the suite; returns the problems that stop the run from meaning anything (empty = ran). */
     static List<String> run(Inputs in, List<Path> workspaceModules) throws IOException, InterruptedException {
-        Path guardDir = BuildLayout.moduleTargetDir(in.root(), in.moduleDir()).resolve("guard");
+        return run(in, workspaceModules, GuardSuites.report(BuildLayout.moduleTargetDir(in.root(), in.moduleDir())));
+    }
+
+    /** As above, with the report (and its run files) beside {@code report} — fixtures run the suite off to the side. */
+    static List<String> run(Inputs in, List<Path> workspaceModules, Path report)
+            throws IOException, InterruptedException {
+        Path guardDir = Objects.requireNonNull(report.toAbsolutePath().getParent(), "report has a parent");
         Files.createDirectories(guardDir);
-        Path report = GuardSuites.report(BuildLayout.moduleTargetDir(in.root(), in.moduleDir()));
         Files.deleteIfExists(report);
         Path model = guardDir.resolve("model.json");
         GuardModelSnapshot.write(in.root(), workspaceModules, model);

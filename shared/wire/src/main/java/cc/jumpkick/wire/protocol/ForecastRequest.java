@@ -14,7 +14,9 @@ public record ForecastRequest(
         boolean skipTests,
         boolean offline,
         boolean force,
-        boolean rebuild) {
+        boolean rebuild,
+        /** {@code --gate}: the gate lanes (tree, fixtures) are part of what may be dirty. */
+        boolean gate) {
 
     public String encode() {
         return RequestJson.request(EngineProtocol.FORECAST_REQUEST)
@@ -24,6 +26,7 @@ public record ForecastRequest(
                 .bool("offline", offline)
                 .bool("force", force)
                 .bool("rebuild", rebuild)
+                .bool("gate", gate)
                 .finish();
     }
 
@@ -34,6 +37,7 @@ public record ForecastRequest(
                 Jsonl.bool(json, "skipTests", false),
                 Jsonl.bool(json, "offline", false),
                 Jsonl.bool(json, "force", false),
-                Jsonl.bool(json, "rebuild", false));
+                Jsonl.bool(json, "rebuild", false),
+                Jsonl.bool(json, "gate", false));
     }
 }

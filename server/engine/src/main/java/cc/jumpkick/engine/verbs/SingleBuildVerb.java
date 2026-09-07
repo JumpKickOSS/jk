@@ -83,8 +83,11 @@ public final class SingleBuildVerb implements HostedVerb {
                     : TestSupport.estimateSelectedSuiteTestCount(
                             entryDir, ModuleLayout.isCompact(entryDir), body.selection());
 
-            Session session =
-                    host.resolveSession(requestLine, cancelToken, false).withJdksDir(jdksDir);
+            Session session = host.resolveSession(requestLine, cancelToken, false)
+                    .withJdksDir(jdksDir)
+                    // The suite/tag/gate selection rides the session as it does for a workspace
+                    // build; without it a single project never planned its gate lanes.
+                    .withTestSelection(body.selection());
 
             BuildPlanner.Inputs inputs = new BuildPlanner.Inputs(
                             entryDir,

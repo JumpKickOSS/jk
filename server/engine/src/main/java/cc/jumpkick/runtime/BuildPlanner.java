@@ -663,7 +663,11 @@ public final class BuildPlanner {
         if (workspaceNoSources) {
             String guardTerminal = PlannerGuards.appendRootLanes(b, cx, TaskNames.RESOLVE_DEPS);
             if (guardTerminal != null) {
-                b.alsoKeep(TaskNames.GUARD_MODEL, TaskNames.GUARD_WORKSPACE, TaskNames.GUARD_TREE);
+                b.alsoKeep(
+                        TaskNames.GUARD_MODEL,
+                        TaskNames.GUARD_WORKSPACE,
+                        TaskNames.GUARD_TREE,
+                        TaskNames.GUARD_FIXTURES);
             }
             if (BuildLogicToml.resolve(in.dir()).isPresent()) {
                 b.addTask(PlannerResources.buildLogicAfterBuildStep(cx));
@@ -696,11 +700,17 @@ public final class BuildPlanner {
             b.addTask(PlannerGuards.moduleStep(cx, after.toArray(String[]::new)));
             PlannerGuards.appendRootLanes(b, cx, TaskNames.GUARD);
             // Nothing downstream consumes a lane; keep them through the terminal prune.
-            b.alsoKeep(TaskNames.GUARD, TaskNames.GUARD_MODEL, TaskNames.GUARD_WORKSPACE, TaskNames.GUARD_TREE);
+            b.alsoKeep(
+                    TaskNames.GUARD,
+                    TaskNames.GUARD_MODEL,
+                    TaskNames.GUARD_WORKSPACE,
+                    TaskNames.GUARD_TREE,
+                    TaskNames.GUARD_FIXTURES);
         } else if (cx.guards().enabled()) {
             // on-build = false: the module lanes wait for the gate; the model lane still runs.
             PlannerGuards.appendRootLanes(b, cx, TaskNames.RESOLVE_DEPS);
-            b.alsoKeep(TaskNames.GUARD_MODEL, TaskNames.GUARD_WORKSPACE, TaskNames.GUARD_TREE);
+            b.alsoKeep(
+                    TaskNames.GUARD_MODEL, TaskNames.GUARD_WORKSPACE, TaskNames.GUARD_TREE, TaskNames.GUARD_FIXTURES);
         }
         if (mixed || mixedGroovy) {
             b.addTask(assembleClasses);

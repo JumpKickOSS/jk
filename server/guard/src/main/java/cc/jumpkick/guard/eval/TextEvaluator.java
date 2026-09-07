@@ -170,6 +170,30 @@ final class TextEvaluator implements BatchEvaluator {
         return null;
     }
 
+    /**
+     * How many times the rule's patterns match one snippet through the rule's own view — what a
+     * fixture asks: {@code Bad} must yield at least one, {@code Ok} none. {@code -1} when the rule
+     * does not compile.
+     */
+    static int snippetHits(Rule rule, String text, String fileName) {
+        Prepared p = new Prepared(rule);
+        if (compileAndBite(p) != null) return -1;
+        Object view = project(text, p.blank, TextFiles.languageOf(fileName));
+        CharSequence chars = viewText(view);
+        int n = 0;
+        for (Pattern pattern : p.patterns) {
+            Matcher m = pattern.matcher(chars);
+            while (m.find()) {
+                if (m.end() == m.start()) {
+                    if (m.end() >= chars.length()) break;
+                    continue;
+                }
+                n++;
+            }
+        }
+        return n;
+    }
+
     private static boolean applies(Prepared p, TextFiles.Entry f) {
         if (!p.languages.isEmpty() && !p.languages.contains(f.language().id())) return false;
         if (p.files.isEmpty()) return f.rel().contains("/src/") || f.rel().startsWith("src/");

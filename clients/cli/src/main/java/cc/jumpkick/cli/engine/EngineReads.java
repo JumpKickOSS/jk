@@ -24,6 +24,8 @@ import cc.jumpkick.wire.protocol.GuardExplainAck;
 import cc.jumpkick.wire.protocol.GuardExplainRequest;
 import cc.jumpkick.wire.protocol.GuardFreezeAck;
 import cc.jumpkick.wire.protocol.GuardFreezeRequest;
+import cc.jumpkick.wire.protocol.GuardTestAck;
+import cc.jumpkick.wire.protocol.GuardTestRequest;
 import cc.jumpkick.wire.protocol.IdeModelRequest;
 import cc.jumpkick.wire.protocol.IdeWireModel;
 import cc.jumpkick.wire.protocol.ModuleGraphAck;
@@ -354,6 +356,16 @@ final class EngineReads {
                 GuardFreezeAck::decode);
     }
 
+    /** {@code jk guard test}: the fixture proof, one sync round trip; the engine compiles fixtures itself. */
+    static GuardTestAck guardTest(EnginePaths.Paths paths, Path dir) throws IOException {
+        return request(
+                paths,
+                new GuardTestRequest(dir.toString()).encode(),
+                EngineProtocol.GUARD_TEST_ACK,
+                "guard test",
+                GuardTestAck::decode);
+    }
+
     /** {@code jk guard explain}: one card, the catalog, or a kind's schema — an inline read. */
     static GuardExplainAck guardExplain(
             EnginePaths.Paths paths, Path dir, @Nullable String ruleId, @Nullable String schema) throws IOException {
@@ -471,7 +483,8 @@ final class EngineReads {
                                 skipTests,
                                 session.offline(),
                                 session.force(),
-                                session.config().rebuildOr(false))
+                                session.config().rebuildOr(false),
+                                session.testSelection().runGateScripts())
                         .encode(),
                 EngineProtocol.FORECAST_ACK,
                 "forecast request",

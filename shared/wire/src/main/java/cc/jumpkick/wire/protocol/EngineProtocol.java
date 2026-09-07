@@ -396,6 +396,15 @@ public final class EngineProtocol {
     public static final String GUARD_FREEZE_ACK = "guard-freeze-ack";
 
     /**
+     * Client → server: {@code jk guard test} — compile every fixture once per owning module and prove
+     * each fixture-bearing rule and guard test bites; one {@link #GUARD_TEST_ACK}.
+     */
+    public static final String GUARD_TEST_REQUEST = "guard-test-request";
+
+    /** Server → client, terminal for {@link #GUARD_TEST_REQUEST}. */
+    public static final String GUARD_TEST_ACK = "guard-test-ack";
+
+    /**
      * Client → server: {@code jk guard explain} — one rule's card, the catalog, or a kind's schema;
      * an inline read that never plans a build. One {@link #GUARD_EXPLAIN_ACK}.
      */

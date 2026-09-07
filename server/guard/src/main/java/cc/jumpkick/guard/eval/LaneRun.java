@@ -73,6 +73,9 @@ public final class LaneRun {
         Map<String, Evaluation> evaluations = evaluate(rules, ctx);
         for (Rule rule : rules) {
             Evaluation ev = evaluations.getOrDefault(rule.id(), Evaluation.failed("the evaluator returned no result"));
+            // A fixture is bite evidence the gate proves (`jk guard test`, the guard-fixtures step): a
+            // rule that names one is not looking at nothing even when the tree has no site today.
+            if (rule.fixture() != null && !ev.bites()) ev = ev.withBite(true);
             RuleBaseline before = Evaluators.acceptsBaseline(rule) ? current.of(rule.id()) : RuleBaseline.EMPTY;
             if (ev.outcome() == Outcome.CLEAN || ev.outcome() == Outcome.VIOLATIONS) {
                 String slice = lane == Lane.MODULE ? ctx.module() : "";
@@ -113,7 +116,7 @@ public final class LaneRun {
                     case TEXT -> "add `hit` (a snippet the pattern must match through its view)";
                     default -> "give the rule something to examine";
                 };
-        String fixture = rule.fixture() == null ? "" : "; `fixture` is accepted but not evaluated yet";
+        String fixture = rule.fixture() == null ? "" : ", or `fixture` (a Bad/Ok directory `jk guard test` proves)";
         return "the rule fired nowhere and carries no evidence it can — " + path + fixture;
     }
 

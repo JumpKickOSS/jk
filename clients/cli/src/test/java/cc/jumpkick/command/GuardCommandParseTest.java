@@ -40,4 +40,9 @@ class GuardCommandParseTest {
         assertThat(parse("--profile", "ci").value("profile")).contains("ci");
         assertThatThrownBy(() -> parse("--bogus")).hasMessageContaining("bogus");
     }
+
+    @Test
+    void test_is_a_bare_positional() throws Exception {
+        assertThat(parse("test").positionals()).containsExactly("test");
+    }
 }

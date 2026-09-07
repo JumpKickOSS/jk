@@ -65,6 +65,7 @@ public final class VerbRegistry {
                 new IdeModelVerb(host),
                 new DenyCheckVerb(host),
                 new GuardFreezeVerb(host),
+                new GuardTestVerb(host),
                 new GuardExplainVerb(host),
                 new EditVerb(host),
                 new FreshenCatalogVerb(host),

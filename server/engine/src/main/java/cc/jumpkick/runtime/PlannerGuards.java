@@ -178,7 +178,8 @@ final class PlannerGuards {
         }
         if (gate) {
             b.addTask(treeStep(cx, last, after));
-            last = TaskNames.GUARD_TREE;
+            b.addTask(fixturesStep(cx, TaskNames.GUARD_TREE));
+            last = TaskNames.GUARD_FIXTURES;
         }
         return last;
     }
@@ -384,6 +385,31 @@ final class PlannerGuards {
                             () -> tokens,
                             ActionKey.qualifiedTaskId(TaskNames.GUARD_MODEL, g.root()),
                             false);
+                    ctx.progress(1);
+                })
+                .build();
+    }
+
+    /** {@code guard-fixtures}: {@code jk guard test} as a gate step — every fixture-bearing rule proven to bite. */
+    static Task fixturesStep(BuildPlanner.Ctx cx, String... requires) {
+        GuardsPlan g = cx.guards();
+        return Task.builder(TaskNames.GUARD_FIXTURES)
+                .stage(BuildStage.TEST)
+                .label("Guards (fixtures)")
+                .kind(TaskKind.CPU)
+                .requires(requires)
+                .weight(1)
+                .ticks(1)
+                .execute(ctx -> {
+                    GuardFixtures.Result r = GuardFixtures.run(g.root(), cx.cas());
+                    if (r.verdicts().isEmpty() && r.loadErrors().isEmpty()) {
+                        ctx.label("no fixtures");
+                    } else {
+                        for (String line : r.text().stripTrailing().split("\n")) ctx.output(line);
+                        ctx.label(r.verdicts().size() + " fixture(s)"
+                                + (r.ok() ? " · every rule bites" : " · " + r.failures() + " not proven"));
+                    }
+                    if (!r.ok()) throw new GuardsRed(r.failures() + " fixture(s) not proven");
                     ctx.progress(1);
                 })
                 .build();

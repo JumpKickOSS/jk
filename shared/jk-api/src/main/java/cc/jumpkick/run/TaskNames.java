@@ -70,6 +70,9 @@ public final class TaskNames {
     /** Guard lane: build-output rules at the root, after package / native / coverage. */
     public static final String GUARD_OUTPUT = "guard-output";
 
+    /** The fixture proof at the root: every fixture-bearing rule bites; {@code --gate} and {@code jk guard} only. */
+    public static final String GUARD_FIXTURES = "guard-fixtures";
+
     public static final String ENSURE_JDK = "ensure-jdk";
     public static final String FETCH_CATALOG = "fetch-catalog";
     public static final String FETCH_GIT = "fetch-git";
