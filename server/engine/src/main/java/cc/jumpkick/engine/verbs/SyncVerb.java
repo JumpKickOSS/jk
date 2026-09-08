@@ -10,7 +10,7 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.Task;
-import cc.jumpkick.runtime.SyncPlans;
+import cc.jumpkick.runtime.workspace.SyncPlans;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoEvents;
 import cc.jumpkick.wire.protocol.SyncRequest;

@@ -14,6 +14,7 @@ import cc.jumpkick.plugin.build.ProjectFacts;
 import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.plugin.manifest.PluginModule;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.surface.TrainLayout;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;

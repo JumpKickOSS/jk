@@ -13,6 +13,7 @@ import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.manifest.PluginModule;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;

@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.runtime.workspace.GraalHomes;
 import java.nio.file.Path;
 import java.util.Map;
 import org.junit.jupiter.api.Test;

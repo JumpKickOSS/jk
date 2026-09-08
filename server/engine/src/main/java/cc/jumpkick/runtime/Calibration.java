@@ -11,6 +11,7 @@ import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.jdk.JdkResolution;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.runtime.base.HostLearnedRates;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.lang.management.ManagementFactory;
@@ -97,7 +98,7 @@ public final class Calibration {
      */
     static final long STATIC_METHOD_MS = BASELINE_METHOD_MS;
 
-    static final long STATIC_SUITE_STARTUP_MS = BASELINE_SUITE_STARTUP_MS;
+    public static final long STATIC_SUITE_STARTUP_MS = BASELINE_SUITE_STARTUP_MS;
     static final long STATIC_COMPILE_PER_SOURCE_MS = BASELINE_COMPILE_PER_SOURCE_MS;
     static final long STATIC_PACKAGE_JAR_MS = BASELINE_PACKAGE_JAR_MS;
 

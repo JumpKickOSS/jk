@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.builds.ProjectBuilds;
+import cc.jumpkick.runtime.base.BuildNumberAllocator;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;

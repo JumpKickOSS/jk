@@ -10,6 +10,7 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockManifestDigest;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileWriter;
+import cc.jumpkick.runtime.workspace.BuildService;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;

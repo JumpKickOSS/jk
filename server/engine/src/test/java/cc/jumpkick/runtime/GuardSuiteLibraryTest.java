@@ -9,6 +9,7 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoArtifactStore;
+import cc.jumpkick.runtime.base.GuardSuiteLibrary;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;

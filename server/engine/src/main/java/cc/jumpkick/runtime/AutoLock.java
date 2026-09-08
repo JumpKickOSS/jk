@@ -6,6 +6,8 @@ import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.resolver.pubgrub.UnsatisfiableException;
+import cc.jumpkick.runtime.base.LockGate;
+import cc.jumpkick.runtime.base.LockMode;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.Collection;

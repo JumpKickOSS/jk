@@ -27,6 +27,7 @@ import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
+import cc.jumpkick.runtime.base.LockMode;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Path;

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
 
 import cc.jumpkick.model.JkVersion;
+import cc.jumpkick.runtime.base.HostLearnedRates;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 

@@ -7,6 +7,8 @@ import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.runtime.base.BuildMetrics;
+import cc.jumpkick.runtime.base.HostLearnedRates;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;

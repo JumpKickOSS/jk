@@ -10,6 +10,7 @@ import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.resolve.ResolveProcessCacheControl;
 import cc.jumpkick.resolver.ResolveObserver;
+import cc.jumpkick.runtime.base.LockMode;
 import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.MavenStub;
 import java.io.ByteArrayOutputStream;

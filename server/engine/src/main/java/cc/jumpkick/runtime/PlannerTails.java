@@ -28,6 +28,7 @@ import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
 import java.io.IOException;

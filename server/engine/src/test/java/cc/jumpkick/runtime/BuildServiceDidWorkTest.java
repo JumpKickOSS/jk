@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
+import cc.jumpkick.runtime.workspace.BuildService;
 import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.Test;

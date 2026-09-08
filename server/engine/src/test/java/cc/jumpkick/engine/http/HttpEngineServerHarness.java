@@ -7,7 +7,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.journal.BuildJournal;
-import cc.jumpkick.runtime.BuildMetrics;
+import cc.jumpkick.runtime.base.BuildMetrics;
 import java.io.IOException;
 import java.net.Socket;
 import java.net.URI;

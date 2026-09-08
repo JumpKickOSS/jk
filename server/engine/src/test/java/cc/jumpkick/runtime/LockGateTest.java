@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.runtime.base.LockGate;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;

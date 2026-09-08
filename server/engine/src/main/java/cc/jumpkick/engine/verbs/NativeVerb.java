@@ -14,7 +14,7 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.runtime.BuildGraph;
-import cc.jumpkick.runtime.BuildService;
+import cc.jumpkick.runtime.workspace.BuildService;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.NativeRequest;

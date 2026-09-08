@@ -5,6 +5,8 @@ import cc.jumpkick.config.BuildLogicToml;
 import cc.jumpkick.config.ModuleOrder;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.runtime.base.CompileSupport;
+import cc.jumpkick.runtime.base.Perf;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -43,7 +45,7 @@ public final class BuildGraph {
     }
 
     /** One project to build; {@code dir} is the canonical identity key (package-private). */
-    record BuildUnit(Path dir, JkBuild manifest, String coord, Origin origin) {}
+    public record BuildUnit(Path dir, JkBuild manifest, String coord, Origin origin) {}
 
     /**
      * @param topoOrder dependency-first build order ({@code errors} empty ⇒ valid)

@@ -8,7 +8,7 @@ import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
-import cc.jumpkick.runtime.CompatPlans;
+import cc.jumpkick.runtime.base.CompatPlans;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ImportRequest;

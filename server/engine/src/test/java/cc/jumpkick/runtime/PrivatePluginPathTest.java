@@ -13,6 +13,7 @@ import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.resolver.ResolveObserver;
+import cc.jumpkick.runtime.base.PluginDescriptorOps;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;

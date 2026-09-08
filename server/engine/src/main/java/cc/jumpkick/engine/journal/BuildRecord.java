@@ -272,7 +272,7 @@ public record BuildRecord(
      * critical-path estimate of a cold-cache run of the same work; {@code savedMillis} is
      * {@code max(0, estimatedUncached - millis)}. {@code coveredSkips}/{@code totalSkips} report how
      * many cache-hit steps had a real historical baseline, so a reader can gauge confidence. See
-     * {@link cc.jumpkick.runtime.CacheBenefit}.
+     * {@link cc.jumpkick.runtime.base.CacheBenefit}.
      */
     public record CacheBenefit(long estimatedUncachedMillis, long savedMillis, long coveredSkips, long totalSkips) {}
 

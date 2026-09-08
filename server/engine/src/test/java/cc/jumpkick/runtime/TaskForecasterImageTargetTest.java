@@ -11,6 +11,7 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockManifestDigest;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileWriter;
+import cc.jumpkick.runtime.workspace.WorkspacePreflightPhase;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceSpec;

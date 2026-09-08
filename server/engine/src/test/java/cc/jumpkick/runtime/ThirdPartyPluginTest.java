@@ -15,6 +15,7 @@ import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.runtime.base.PluginDescriptorOps;
 import cc.jumpkick.tool.TrustedPlugins;
 import java.io.IOException;
 import java.nio.file.Files;

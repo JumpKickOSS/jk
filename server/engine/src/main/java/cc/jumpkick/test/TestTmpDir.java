@@ -11,7 +11,7 @@ import org.jspecify.annotations.Nullable;
  * Where a forked test JVM writes its temporary files: under the module's build output, not the
  * host's temp dir.
  *
- * <p>{@link cc.jumpkick.runtime.TestEnv} decides the directory and puts it in {@code TMPDIR};
+ * <p>{@link cc.jumpkick.runtime.base.TestEnv} decides the directory and puts it in {@code TMPDIR};
  * this makes it exist, splits it per worker, and hands {@link JUnitLauncher} the path to mirror
  * into {@code java.io.tmpdir}. Its own owner because those are three steps on one fact, spread
  * across a launcher that is already at its size baseline, and because the second of them —

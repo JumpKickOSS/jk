@@ -54,6 +54,11 @@ import cc.jumpkick.resolver.VersionSelectors;
 import cc.jumpkick.resolver.Versions;
 import cc.jumpkick.resolver.pubgrub.VersionSet;
 import cc.jumpkick.run.TaskContext;
+import cc.jumpkick.runtime.base.GuardSuiteLibrary;
+import cc.jumpkick.runtime.base.LockMode;
+import cc.jumpkick.runtime.base.PluginDescriptorOps;
+import cc.jumpkick.runtime.base.ReachabilityMetadata;
+import cc.jumpkick.runtime.base.SdkComponents;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
@@ -772,7 +777,7 @@ public final class LockPipeline {
      * Resolve the project's {@code scala} version selector to a concrete Scala 3 compiler release.
      * Returns null for a non-Scala project or when resolution can't complete.
      */
-    static @Nullable String resolveScalaVersion(JkBuild effective, RepoGroup repos) {
+    public static @Nullable String resolveScalaVersion(JkBuild effective, RepoGroup repos) {
         VersionSelector scala = effective.project().scala();
         if (scala == null) return null;
         return highestMatch(scala, repos, Coordinate.of("org.scala-lang", "scala3-compiler_3", "any"));
@@ -795,7 +800,7 @@ public final class LockPipeline {
     }
 
     /** Highest stable match in {@code available}; falls back to any matching version. */
-    static @Nullable String pickVersion(VersionSet set, List<String> available) {
+    public static @Nullable String pickVersion(VersionSet set, List<String> available) {
         return available.stream()
                 .filter(set::contains)
                 .filter(Versions::isStable)

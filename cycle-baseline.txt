@@ -33,6 +33,13 @@
 # imports to 28 (EnsureFreshLock, BuildOptions, Jk.execute/VERB_ALIASES, GraalResolver,
 # OpenBrowser, ParallelTestsOpts); moving those too would leave only the dispatcher's edge.
 #
+# 2026-09-08, server/engine: the build runtime is three packages in one direction — `runtime.base`
+# (what the planner reads and nothing reads back; CompileSupport, the metrics, the lock primitives),
+# `runtime` (the planner core) and `runtime.workspace` (the phases, the build service, the ETA).
+# compile→runtime was GroovycInputs reading CompileSupport and task→runtime was the same shape;
+# both now point at `runtime.base`, which imports none of them, so the planner core is the pair
+# runtime+test (AffectedTestRun still reads BuildPlanner) and the engine line is 7.
+#
 # Measured at landing: 1,432 main sources, 95 packages, 29 module source roots, 195 resolved
 # package edges. Method: per module, resolve each `import cc.jumpkick.*` to the longest declared
 # package prefix WITHIN that module, then Tarjan over the resulting package graph. Imports that
@@ -42,7 +49,7 @@
 # Shrinking any of these is per-module follow-up work. This file makes the number one the build
 # defends.
 
-server/engine 9
+server/engine 7
 clients/cli 9
 shared/core 8
 clients/cli-terminal 3

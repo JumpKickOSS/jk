@@ -1,0 +1,107 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.runtime.base;
+
+import cc.jumpkick.cache.Cas;
+import cc.jumpkick.engine.plugin.PluginJar;
+import cc.jumpkick.host.Hashing;
+import cc.jumpkick.model.JkVersion;
+import cc.jumpkick.model.RepositorySpec;
+import cc.jumpkick.repo.M2Dirs;
+import cc.jumpkick.repo.RepoArtifactResolver;
+import cc.jumpkick.repo.RepoArtifactStore;
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import org.jspecify.annotations.Nullable;
+
+/**
+ * Ensures jk's own child-JVM plugin jars ({@code jk-test-runner}, {@code jk-kotlin-compiler}, …)
+ * are present in {@code repos/jk-local/} so {@link PluginJar#locate()} can find them by Maven
+ * coordinate.
+ *
+ * <p>These aren't project dependencies — they're jk's tooling, pinned to jk's own version. Until
+ * they're published to Maven Central, {@code jk sync} copies them from the local Maven repository
+ * ({@code ~/.m2/repository}, populated by {@code ./gradlew publishToMavenLocal} in jk's tree) into
+ * {@code <cache>/repos/jk-local/} in the m2 layout that {@link RepoArtifactStore} understands.
+ *
+ * <p>Best-effort: a plugin already in {@code repos/jk-local/} or {@code repos/central/} is skipped,
+ * and a plugin absent from {@code ~/.m2} is reported but doesn't fail the sync.
+ */
+public final class JkPluginSync {
+
+    /** Group the plugin artifacts publish under (see the plugin modules' build.gradle.kts). */
+    static final String GROUP = "cc.jumpkick";
+
+    /** Per-plugin progress callbacks. */
+    public interface Observer {
+        default void present(String artifact) {}
+
+        default void fetched(String artifact) {}
+
+        default void missing(String artifact, @Nullable String detail) {}
+    }
+
+    public record Result(int present, int fetched, int missing) {}
+
+    private JkPluginSync() {}
+
+    public static Result ensureInCas(Cas cas, Observer obs) throws IOException, InterruptedException {
+        Path m2 = M2Dirs.localRepository();
+        Path cacheRoot = cas.root();
+        RepoArtifactStore localStore = new RepoArtifactStore(cacheRoot, RepoArtifactResolver.JK_LOCAL);
+        RepoArtifactStore centralStore = new RepoArtifactStore(cacheRoot, RepositorySpec.CENTRAL);
+        int present = 0;
+        int fetched = 0;
+        int missing = 0;
+
+        for (PluginJar w : PluginJar.values()) {
+            String relPath = relativeM2Path(w.artifactId());
+
+            // Already in local or central repos?
+            if (localStore.locate(relPath).isPresent()
+                    || centralStore.locate(relPath).isPresent()) {
+                present++;
+                obs.present(w.artifactId());
+                continue;
+            }
+
+            // Try to copy from ~/.m2/repository into repos/jk-local/
+            Path m2Jar = m2.resolve(relPath.replace('/', File.separatorChar));
+            if (!Files.isRegularFile(m2Jar)) {
+                missing++;
+                obs.missing(w.artifactId(), "not found in ~/.m2 or cache");
+                continue;
+            }
+
+            try {
+                String hex = Hashing.sha256Hex(m2Jar);
+                localStore.materialize(relPath, m2Jar, hex);
+                fetched++;
+                obs.fetched(w.artifactId());
+            } catch (Exception e) {
+                missing++;
+                obs.missing(w.artifactId(), e.getMessage());
+            }
+        }
+        // The guard-test library rides the same path: a `src/guard` suite compiles against it offline.
+        String lib = GuardSuiteLibrary.relativePath();
+        if (localStore.locate(lib).isPresent() || centralStore.locate(lib).isPresent()) {
+            present++;
+            obs.present(GuardSuiteLibrary.ARTIFACT);
+        } else if (GuardSuiteLibrary.stageFromM2(cas) != null) {
+            fetched++;
+            obs.fetched(GuardSuiteLibrary.ARTIFACT);
+        } else {
+            missing++;
+            obs.missing(GuardSuiteLibrary.ARTIFACT, "not found in ~/.m2 or cache");
+        }
+        return new Result(present, fetched, missing);
+    }
+
+    /** The m2-layout relative path for a plugin artifact at the current jk version. */
+    private static String relativeM2Path(String artifactId) {
+        String version = JkVersion.VERSION;
+        return "cc/jumpkick/" + artifactId + "/" + version + "/" + artifactId + "-" + version + ".jar";
+    }
+}

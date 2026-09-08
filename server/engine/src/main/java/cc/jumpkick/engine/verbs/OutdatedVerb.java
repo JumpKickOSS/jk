@@ -7,7 +7,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.host.Errors;
-import cc.jumpkick.runtime.OutdatedPlans;
+import cc.jumpkick.runtime.workspace.OutdatedPlans;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.OutdatedReport;
 import cc.jumpkick.wire.protocol.OutdatedRequest;

@@ -12,6 +12,7 @@ import cc.jumpkick.giter8.TemplateSpec;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.run.BuildPlanListener;
+import cc.jumpkick.runtime.workspace.BuildService;
 import cc.jumpkick.wire.runtime.ModulePlan;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;

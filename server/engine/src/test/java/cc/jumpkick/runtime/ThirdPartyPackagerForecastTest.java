@@ -18,6 +18,7 @@ import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.runtime.base.PluginDescriptorOps;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.tool.TrustedPlugins;

@@ -5,7 +5,7 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
-import cc.jumpkick.runtime.BuildMetrics;
+import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.MetricsRequest;
 import java.io.BufferedWriter;

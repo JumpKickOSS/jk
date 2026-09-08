@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.BuildLogicStems;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.runtime.base.BuildLogicAnchor;
 import cc.jumpkick.task.RunNotices;
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
@@ -38,7 +39,7 @@ import java.util.Optional;
  * ({@code before_compile.kts}). A {@code .kts} and {@code .groovy} with the same stem name: the
  * {@code .kts} runs and the {@code .groovy} is ignored.
  */
-final class BuildLogicScripts {
+public final class BuildLogicScripts {
 
     /**
      * Built from {@link BuildLogicStems#ALL} — the table {@code jk tasks} reads too — so the two
@@ -67,7 +68,7 @@ final class BuildLogicScripts {
         STEMS = Map.copyOf(m);
     }
 
-    enum ScriptKind {
+    public enum ScriptKind {
         GROOVY,
         KTS
     }
@@ -77,7 +78,7 @@ final class BuildLogicScripts {
      *     runs and records neither an artifact nor a verdict — for work that judges state outside
      *     the tree (a sweep of build output), where "same inputs" says nothing about the answer
      */
-    record ScriptTask(String name, BuildLogicAnchor anchor, Path file, ScriptKind kind, boolean always) {}
+    public record ScriptTask(String name, BuildLogicAnchor anchor, Path file, ScriptKind kind, boolean always) {}
 
     /** Lines of a script inspected for the {@code jk: always} pragma; a header, not the body. */
     private static final int PRAGMA_WINDOW = 40;
@@ -107,7 +108,7 @@ final class BuildLogicScripts {
      * valid stems (with the closest as a suggestion); a recognized stem sitting in a subdirectory
      * warns that only top-level scripts run.
      */
-    static List<ScriptTask> discover(Path logicDir) throws IOException {
+    public static List<ScriptTask> discover(Path logicDir) throws IOException {
         if (!Files.isDirectory(logicDir)) return List.of();
         Map<String, ScriptTask> byName = new LinkedHashMap<>();
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(logicDir)) {

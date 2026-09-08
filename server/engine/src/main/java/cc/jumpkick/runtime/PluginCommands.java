@@ -15,6 +15,8 @@ import cc.jumpkick.model.Variants;
 import cc.jumpkick.plugin.manifest.VariantApply;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
+import cc.jumpkick.runtime.base.PluginDescriptorOps;
+import cc.jumpkick.runtime.base.PluginLaunch;
 import cc.jumpkick.wire.protocol.PluginCommandReport;
 import java.io.IOException;
 import java.nio.file.Files;

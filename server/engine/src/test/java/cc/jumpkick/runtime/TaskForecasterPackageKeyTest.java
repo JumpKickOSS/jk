@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.runtime.workspace.BuildService;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.wire.runtime.ExplainPlan;

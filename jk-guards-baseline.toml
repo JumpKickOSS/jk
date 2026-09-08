@@ -2,17 +2,17 @@
 # Never edit by hand: an entry without a reason is a suppression, and there is no suppression syntax.
 
 [aot-marker]
-population = { constants = 1, files = 2890, literals = 89626 }
+population = { constants = 1, files = 3028, literals = 91653 }
 
 [archive-instant-owner]
 [archive-instant-owner.populations]
 "clients/cli" = { classes = 610, sites = 38538 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
-"server/engine" = { classes = 874, sites = 57043 }
+"server/engine" = { classes = 876, sites = 57043 }
 "shared/client-io" = { classes = 73, sites = 4059 }
 
 [archive-stream-owner]
-population = { files = 1640 }
+population = { files = 1745 }
 
 [blind-tree-walks]
 [blind-tree-walks.populations]
@@ -27,7 +27,7 @@ population = { files = 1640 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "plugins/spring-boot" = { classes = 5, sites = 462 }
 "plugins/test-runner" = { classes = 9, sites = 556 }
-"server/engine" = { classes = 874, sites = 57043 }
+"server/engine" = { classes = 876, sites = 57043 }
 "server/toolchain" = { classes = 20, sites = 1776 }
 "shared/client-io" = { classes = 73, sites = 4059 }
 "shared/core" = { classes = 326, sites = 17593 }
@@ -353,10 +353,6 @@ at     = "cc.jumpkick.runtime.CachePlans#tempFiles(Ljava/nio/file/Path;)Ljava/ut
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
 in     = "server/engine"
-at     = "cc.jumpkick.runtime.FormatSources#collectSources(Ljava/nio/file/Path;)Lcc/jumpkick/runtime/FormatSources$CollectedSources; -> java.nio.file.Files#walkFileTree(Ljava/nio/file/Path;Ljava/nio/file/FileVisitor;)Ljava/nio/file/Path;"
-reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
-[[blind-tree-walks.entries]]
-in     = "server/engine"
 at     = "cc.jumpkick.runtime.HardwareProbe#artifactRoots(Ljava/nio/file/Path;)Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
@@ -405,19 +401,7 @@ at     = "cc.jumpkick.runtime.PluginBuild#toolClosureDir(Lcc/jumpkick/plugin/man
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
 in     = "server/engine"
-at     = "cc.jumpkick.runtime.PluginDescriptorOps#listedRepoNames(Ljava/nio/file/Path;)Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
-reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
-[[blind-tree-walks.entries]]
-in     = "server/engine"
 at     = "cc.jumpkick.runtime.PreflightMemo#fingerprintModule(Ljava/nio/file/Path;ZLjava/lang/String;)Ljava/lang/String; -> java.nio.file.Files#walkFileTree(Ljava/nio/file/Path;Ljava/nio/file/FileVisitor;)Ljava/nio/file/Path;"
-reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
-[[blind-tree-walks.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.runtime.ScalaToolResolver#listLibJars(Ljava/nio/file/Path;)Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
-reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
-[[blind-tree-walks.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.runtime.ScalaToolResolver#pruneOrphanJars(Ljava/nio/file/Path;Ljava/util/List;)V -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
 in     = "server/engine"
@@ -429,8 +413,24 @@ at     = "cc.jumpkick.runtime.TaskForecaster#flattenedPluginCatalogPresent(Ljava
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
 in     = "server/engine"
-at     = "cc.jumpkick.runtime.TestFailureSource#scanByFileName(Lcc/jumpkick/runtime/TestFailureSource$Cache;Ljava/nio/file/Path;Ljava/lang/String;Ljava/lang/String;Lcc/jumpkick/runtime/TestFailureSource$Layout;)Ljava/util/Optional; -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
-reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+at     = "cc.jumpkick.runtime.base.FormatSources#collectSources(Ljava/nio/file/Path;)Lcc/jumpkick/runtime/base/FormatSources$CollectedSources; -> java.nio.file.Files#walkFileTree(Ljava/nio/file/Path;Ljava/nio/file/FileVisitor;)Ljava/nio/file/Path;"
+reason = "pure move: the runtime split re-keyed the walks into runtime.workspace and runtime.base; same walks, same count"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.base.PluginDescriptorOps#listedRepoNames(Ljava/nio/file/Path;)Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "pure move: the runtime split re-keyed the walks into runtime.workspace and runtime.base; same walks, same count"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.base.ScalaToolResolver#listLibJars(Ljava/nio/file/Path;)Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "pure move: the runtime split re-keyed the walks into runtime.workspace and runtime.base; same walks, same count"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.base.ScalaToolResolver#pruneOrphanJars(Ljava/nio/file/Path;Ljava/util/List;)V -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "pure move: the runtime split re-keyed the walks into runtime.workspace and runtime.base; same walks, same count"
+[[blind-tree-walks.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.base.TestFailureSource#scanByFileName(Lcc/jumpkick/runtime/base/TestFailureSource$Cache;Ljava/nio/file/Path;Ljava/lang/String;Ljava/lang/String;Lcc/jumpkick/runtime/base/TestFailureSource$Layout;)Ljava/util/Optional; -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "pure move: the runtime split re-keyed the walks into runtime.workspace and runtime.base; same walks, same count"
 [[blind-tree-walks.entries]]
 in     = "server/engine"
 at     = "cc.jumpkick.task.AbiMemo$Store#sweepResidue(Ljava/nio/file/Path;Ljava/nio/file/Path;)V -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
@@ -764,20 +764,20 @@ reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk
 population = { left = 37, right = 37 }
 
 [cache-tiers]
-population = { constants = 29, files = 1690, literals = 33392 }
+population = { constants = 29, files = 1794, literals = 33437 }
 
 [case-conversion-locale]
 [case-conversion-locale.populations]
 "clients/cli" = { classes = 610, sites = 38538 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
-"server/engine" = { classes = 874, sites = 57043 }
+"server/engine" = { classes = 876, sites = 57043 }
 "shared/client-io" = { classes = 73, sites = 4059 }
 
 [catalog-is-the-version-source]
 population = { files = 50 }
 
 [central-address]
-population = { files = 1716 }
+population = { files = 1821 }
 
 [cli-engine-package-cycle]
 [cli-engine-package-cycle.populations]
@@ -803,7 +803,7 @@ population = { files = 1716 }
 "plugins/java-compiler" = { classes = 25, sites = 1420 }
 "plugins/publisher" = { classes = 15, sites = 710 }
 "plugins/test-runner" = { classes = 9, sites = 556 }
-"server/engine" = { classes = 874, sites = 57043 }
+"server/engine" = { classes = 876, sites = 57043 }
 "server/guard" = { classes = 170, sites = 10374 }
 "server/io" = { classes = 31, sites = 1934 }
 "server/resolver" = { classes = 80, sites = 3938 }
@@ -1337,19 +1337,7 @@ at     = "cc.jumpkick.giter8.Giter8TemplateIndex#picker(Ljava/util/List;)Ljava/u
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "server/engine"
-at     = "cc.jumpkick.runtime.BuildMetrics#aggregatesForSession()Lcc/jumpkick/builds/AggregatedMetrics; -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.runtime.BuildMetrics#fromAggregates()Lcc/jumpkick/runtime/BuildMetrics; -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
 at     = "cc.jumpkick.runtime.CachePlans#lambda$pruneBuildPlan$(Ljava/nio/file/Path;ZZLcc/jumpkick/run/TaskContext;)V -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.runtime.ChromeTimeline#complete(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;J)V -> java.lang.System#nanoTime()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "server/engine"
@@ -1373,14 +1361,6 @@ at     = "cc.jumpkick.runtime.LockPipeline#resolve(Lcc/jumpkick/lock/Lockfile;Lc
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "server/engine"
-at     = "cc.jumpkick.runtime.Perf#end(Ljava/lang/String;J)V -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.runtime.Perf#start()J -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
 at     = "cc.jumpkick.runtime.PlannerSupport#nestedEngineTestEnv(Ljava/nio/file/Path;)Ljava/util/Map; -> java.lang.System#currentTimeMillis()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
@@ -1397,18 +1377,6 @@ at     = "cc.jumpkick.runtime.PreflightMemo#structureFingerprint(Ljava/nio/file/
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "server/engine"
-at     = "cc.jumpkick.runtime.ProjectIds#idOf(Ljava/lang/String;)Ljava/lang/String; -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.runtime.ProjectIds#refresh(Ljava/lang/String;)Ljava/lang/String; -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.runtime.StepTimings#fromAggregates()Lcc/jumpkick/runtime/StepTimings; -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
 at     = "cc.jumpkick.runtime.TrainRunner#lambda$runUntilSettled$(Ljava/lang/StringBuilder;Ljava/util/concurrent/atomic/AtomicLong;Ljava/lang/String;)V -> java.lang.System#nanoTime()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
@@ -1417,28 +1385,60 @@ at     = "cc.jumpkick.runtime.TrainRunner#runUntilSettled(Ljava/lang/ProcessBuil
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "server/engine"
-at     = "cc.jumpkick.runtime.WorkspaceFinalPhase#learn(Lcc/jumpkick/runtime/WorkspaceRunPhase$Run;)V -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+at     = "cc.jumpkick.runtime.base.BuildMetrics#aggregatesForSession()Lcc/jumpkick/builds/AggregatedMetrics; -> java.lang.System#currentTimeMillis()J"
+reason = "pure move: the runtime split re-keyed the sites into runtime.workspace and runtime.base; same reads, same count"
 [[clock-owner.entries]]
 in     = "server/engine"
-at     = "cc.jumpkick.runtime.WorkspaceLock#ensureWorkspaceLockFresh(Ljava/nio/file/Path;Ljava/nio/file/Path;Z)Lcc/jumpkick/runtime/BuildService$LockGuard; -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+at     = "cc.jumpkick.runtime.base.BuildMetrics#fromAggregates()Lcc/jumpkick/runtime/base/BuildMetrics; -> java.lang.System#currentTimeMillis()J"
+reason = "pure move: the runtime split re-keyed the sites into runtime.workspace and runtime.base; same reads, same count"
 [[clock-owner.entries]]
 in     = "server/engine"
-at     = "cc.jumpkick.runtime.WorkspaceLock#recordLockSuccess(Ljava/nio/file/Path;J)V -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+at     = "cc.jumpkick.runtime.base.ChromeTimeline#complete(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;J)V -> java.lang.System#nanoTime()J"
+reason = "pure move: the runtime split re-keyed the sites into runtime.workspace and runtime.base; same reads, same count"
 [[clock-owner.entries]]
 in     = "server/engine"
-at     = "cc.jumpkick.runtime.WorkspaceRunPhase#run(Lcc/jumpkick/runtime/WorkspacePreparePhase$Prepared;Lcc/jumpkick/wire/runtime/WorkspaceBuildListener;)Lcc/jumpkick/runtime/WorkspaceRunPhase$Run; -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+at     = "cc.jumpkick.runtime.base.Perf#end(Ljava/lang/String;J)V -> java.lang.System#nanoTime()J"
+reason = "pure move: the runtime split re-keyed the sites into runtime.workspace and runtime.base; same reads, same count"
 [[clock-owner.entries]]
 in     = "server/engine"
-at     = "cc.jumpkick.runtime.WorkspaceRunPhase#runModule(Lcc/jumpkick/wire/runtime/ModulePlan;Lcc/jumpkick/wire/runtime/WorkspaceBuildListener;Ljava/lang/Runnable;)Lcc/jumpkick/wire/runtime/ModuleOutcome; -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+at     = "cc.jumpkick.runtime.base.Perf#start()J -> java.lang.System#nanoTime()J"
+reason = "pure move: the runtime split re-keyed the sites into runtime.workspace and runtime.base; same reads, same count"
 [[clock-owner.entries]]
 in     = "server/engine"
-at     = "cc.jumpkick.runtime.WorkspaceScheduler#drainCancelled(Ljava/lang/Iterable;)V -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+at     = "cc.jumpkick.runtime.base.ProjectIds#idOf(Ljava/lang/String;)Ljava/lang/String; -> java.lang.System#nanoTime()J"
+reason = "pure move: the runtime split re-keyed the sites into runtime.workspace and runtime.base; same reads, same count"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.base.ProjectIds#refresh(Ljava/lang/String;)Ljava/lang/String; -> java.lang.System#nanoTime()J"
+reason = "pure move: the runtime split re-keyed the sites into runtime.workspace and runtime.base; same reads, same count"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.base.StepTimings#fromAggregates()Lcc/jumpkick/runtime/base/StepTimings; -> java.lang.System#currentTimeMillis()J"
+reason = "pure move: the runtime split re-keyed the sites into runtime.workspace and runtime.base; same reads, same count"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.base.WorkspaceScheduler#drainCancelled(Ljava/lang/Iterable;)V -> java.lang.System#nanoTime()J"
+reason = "pure move: the runtime split re-keyed the sites into runtime.workspace and runtime.base; same reads, same count"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.workspace.WorkspaceFinalPhase#learn(Lcc/jumpkick/runtime/workspace/WorkspaceRunPhase$Run;)V -> java.lang.System#currentTimeMillis()J"
+reason = "pure move: the runtime split re-keyed the sites into runtime.workspace and runtime.base; same reads, same count"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.workspace.WorkspaceLock#ensureWorkspaceLockFresh(Ljava/nio/file/Path;Ljava/nio/file/Path;Z)Lcc/jumpkick/runtime/workspace/BuildService$LockGuard; -> java.lang.System#nanoTime()J"
+reason = "pure move: the runtime split re-keyed the sites into runtime.workspace and runtime.base; same reads, same count"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.workspace.WorkspaceLock#recordLockSuccess(Ljava/nio/file/Path;J)V -> java.lang.System#currentTimeMillis()J"
+reason = "pure move: the runtime split re-keyed the sites into runtime.workspace and runtime.base; same reads, same count"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.workspace.WorkspaceRunPhase#run(Lcc/jumpkick/runtime/workspace/WorkspacePreparePhase$Prepared;Lcc/jumpkick/wire/runtime/WorkspaceBuildListener;)Lcc/jumpkick/runtime/workspace/WorkspaceRunPhase$Run; -> java.lang.System#currentTimeMillis()J"
+reason = "pure move: the runtime split re-keyed the sites into runtime.workspace and runtime.base; same reads, same count"
+[[clock-owner.entries]]
+in     = "server/engine"
+at     = "cc.jumpkick.runtime.workspace.WorkspaceRunPhase#runModule(Lcc/jumpkick/wire/runtime/ModulePlan;Lcc/jumpkick/wire/runtime/WorkspaceBuildListener;Ljava/lang/Runnable;)Lcc/jumpkick/wire/runtime/ModuleOutcome; -> java.lang.System#nanoTime()J"
+reason = "pure move: the runtime split re-keyed the sites into runtime.workspace and runtime.base; same reads, same count"
 [[clock-owner.entries]]
 in     = "server/engine"
 at     = "cc.jumpkick.task.ActionCache#stampUsed(Ljava/nio/file/Path;)V -> java.lang.System#currentTimeMillis()J"
@@ -1701,20 +1701,20 @@ at     = "cc.jumpkick.jdk.JdkRegistry#listHits()Ljava/util/List; -> java.lang.Sy
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 
 [file-size]
-population = { units = 2891 }
+population = { units = 3034 }
 
 [forecast-key-parity]
 [forecast-key-parity.populations]
-"server/engine" = { examined = 447 }
+"server/engine" = { examined = 449 }
 
 [guard-kinds-doc]
 population = { rows = 18 }
 
 [guard-registry-doc]
-population = { rows = 64 }
+population = { rows = 67 }
 
 [guard-rules-registered]
-population = { left = 64, right = 64 }
+population = { left = 67, right = 67 }
 
 [guard-schemas-doc]
 population = { rows = 83 }
@@ -1724,17 +1724,20 @@ population = { rows = 83 }
 "clients/cli" = { examined = 134 }
 
 [install-tests-redirect-m2]
-population = { files = 1207 }
+population = { files = 1243 }
 
 [jdk-removal-confined]
 [jdk-removal-confined.populations]
 "clients/cli" = { classes = 610, sites = 38538 }
 "plugins/quarkus" = { classes = 11, sites = 0 }
-"server/engine" = { classes = 874, sites = 57043 }
+"server/engine" = { classes = 876, sites = 57043 }
 "shared/client-io" = { classes = 73, sites = 0 }
 
+[json-concat]
+population = { files = 1764 }
+
 [json-concat-ratchet]
-population = { units = 1762 }
+population = { units = 1764 }
 [[json-concat-ratchet.entries]]
 unit   = "clients/intellij/src/main/java/cc/jumpkick/idea/JkWireModel.java"
 value  = 1
@@ -1780,16 +1783,16 @@ reason = "hand-built JSON fragments on 2026-09-07 after the wire and CLI moved t
 population = { files = 6 }
 
 [manifest-names]
-population = { constants = 6, files = 1690, literals = 33404 }
+population = { constants = 6, files = 1794, literals = 33449 }
 
 [method-size]
-population = { units = 24219 }
+population = { units = 24714 }
 
 [named-exit-codes]
-population = { files = 1640 }
+population = { files = 1745 }
 
 [no-fqcn]
-population = { units = 2840 }
+population = { units = 2981 }
 [[no-fqcn.entries]]
 unit   = "clients/cli-terminal/src/main/java/cc/jumpkick/terminal/package-info.java"
 value  = 1
@@ -1915,20 +1918,8 @@ unit   = "server/engine/src/test/java/cc/jumpkick/giter8/Giter8TemplateIndexTest
 value  = 1
 reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
 [[no-fqcn.entries]]
-unit   = "server/engine/src/test/java/cc/jumpkick/runtime/BuildServiceEtaParityTest.java"
-value  = 1
-reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
-[[no-fqcn.entries]]
-unit   = "server/engine/src/test/java/cc/jumpkick/runtime/BuildServiceEtaTest.java"
-value  = 1
-reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
-[[no-fqcn.entries]]
 unit   = "server/engine/src/test/java/cc/jumpkick/runtime/CachePlansPurgeTest.java"
 value  = 1
-reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
-[[no-fqcn.entries]]
-unit   = "server/engine/src/test/java/cc/jumpkick/runtime/ExplainBuildEtaParityTest.java"
-value  = 2
 reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
 [[no-fqcn.entries]]
 unit   = "server/engine/src/test/java/cc/jumpkick/runtime/NativePlansTest.java"
@@ -1951,9 +1942,21 @@ unit   = "server/engine/src/test/java/cc/jumpkick/runtime/TestEnvTest.java"
 value  = 1
 reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
 [[no-fqcn.entries]]
-unit   = "server/engine/src/test/java/cc/jumpkick/runtime/WorkspaceExecuteSelectionTest.java"
+unit   = "server/engine/src/test/java/cc/jumpkick/runtime/workspace/BuildServiceEtaParityTest.java"
 value  = 1
-reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+reason = "pure move: four workspace tests moved with their classes into runtime.workspace; same references, same count"
+[[no-fqcn.entries]]
+unit   = "server/engine/src/test/java/cc/jumpkick/runtime/workspace/BuildServiceEtaTest.java"
+value  = 1
+reason = "pure move: four workspace tests moved with their classes into runtime.workspace; same references, same count"
+[[no-fqcn.entries]]
+unit   = "server/engine/src/test/java/cc/jumpkick/runtime/workspace/ExplainBuildEtaParityTest.java"
+value  = 2
+reason = "pure move: four workspace tests moved with their classes into runtime.workspace; same references, same count"
+[[no-fqcn.entries]]
+unit   = "server/engine/src/test/java/cc/jumpkick/runtime/workspace/WorkspaceExecuteSelectionTest.java"
+value  = 1
+reason = "pure move: four workspace tests moved with their classes into runtime.workspace; same references, same count"
 [[no-fqcn.entries]]
 unit   = "server/resolver/src/test/java/cc/jumpkick/resolver/LockOrchestratorBomTest.java"
 value  = 1
@@ -2088,19 +2091,19 @@ value  = 1
 reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
 
 [no-glued-inline-tag]
-population = { files = 2956 }
+population = { files = 3099 }
 
 [no-historical-narration]
-population = { files = 3201 }
+population = { files = 3346 }
 
 [no-link-following-delete]
-population = { files = 70 }
+population = { files = 72 }
 
 [no-retired-code-markers]
-population = { files = 1716 }
+population = { files = 1821 }
 
 [no-ticket-ids]
-population = { files = 3554 }
+population = { files = 3708 }
 
 [null-marked-packages]
 [null-marked-packages.populations]
@@ -2110,34 +2113,34 @@ population = { files = 3554 }
 [one-digest-surface.populations]
 "clients/cli" = { classes = 610, sites = 38538 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
-"server/engine" = { classes = 874, sites = 57043 }
+"server/engine" = { classes = 876, sites = 57043 }
 "shared/client-io" = { classes = 73, sites = 4059 }
 
 [one-hex-spelling]
 [one-hex-spelling.populations]
 "clients/cli" = { classes = 610, sites = 38538 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
-"server/engine" = { classes = 874, sites = 57043 }
+"server/engine" = { classes = 876, sites = 57043 }
 "shared/client-io" = { classes = 73, sites = 4059 }
 
 [one-host-surface]
 [one-host-surface.populations]
 "clients/cli" = { classes = 610, sites = 29000 }
 "plugins/quarkus" = { classes = 11, sites = 640 }
-"server/engine" = { classes = 874, sites = 42316 }
+"server/engine" = { classes = 876, sites = 42312 }
 "shared/client-io" = { classes = 73, sites = 3010 }
 
 [one-json-splicer]
-population = { files = 1659 }
+population = { files = 1764 }
 
 [one-recursive-delete]
-population = { files = 1640 }
+population = { files = 1745 }
 
 [own-algorithm-by-name]
 [own-algorithm-by-name.populations]
 "clients/cli" = { classes = 610, sites = 29000 }
 "plugins/quarkus" = { classes = 11, sites = 640 }
-"server/engine" = { classes = 874, sites = 42316 }
+"server/engine" = { classes = 876, sites = 42312 }
 "shared/client-io" = { classes = 73, sites = 3010 }
 
 [package-cycles]
@@ -2145,7 +2148,7 @@ population = { files = 1640 }
 "clients/cli" = { edges = 43, slices = 12 }
 "clients/cli-terminal" = { edges = 4, slices = 3 }
 "plugins/quarkus" = { edges = 0, slices = 1 }
-"server/engine" = { edges = 72, slices = 17 }
+"server/engine" = { edges = 89, slices = 19 }
 "server/resolver" = { edges = 5, slices = 3 }
 "server/toolchain" = { edges = 4, slices = 4 }
 "shared/client-io" = { edges = 8, slices = 6 }
@@ -2170,7 +2173,7 @@ reason = "banked from cycle-baseline.txt on 2026-09-06 — the facts edges found
 [[package-cycles.entries]]
 in     = "server/engine"
 unit   = "server/engine:compile"
-value  = 4
+value  = 3
 reason = "banked from cycle-baseline.txt on 2026-09-06 — the facts edges found the same 9 components the import regex did; per-module follow-up work shrinks them"
 [[package-cycles.entries]]
 in     = "server/engine"
@@ -2182,6 +2185,11 @@ in     = "server/engine"
 unit   = "server/engine:engine.jobs"
 value  = 2
 reason = "banked 2026-09-07 after the engine root stopped being a hub: the 15-slice engine component is now three (runtime/task/compile/test; http/http.mcp/http.mcp.tools; jobs/journal) — the count only goes down from here"
+[[package-cycles.entries]]
+in     = "server/engine"
+unit   = "server/engine:runtime"
+value  = 2
+reason = "banked 2026-09-08 after the runtime split: the planner cycle is runtime+test now that compile and task read runtime.base instead of the core — the count only goes down from here"
 [[package-cycles.entries]]
 in     = "server/resolver"
 unit   = "server/resolver:resolve"
@@ -2221,7 +2229,7 @@ reason = "banked from cycle-baseline.txt on 2026-09-06 — the facts edges found
 [properties-render-owner.populations]
 "clients/cli" = { classes = 610, sites = 38538 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
-"server/engine" = { classes = 874, sites = 57043 }
+"server/engine" = { classes = 876, sites = 57043 }
 "shared/client-io" = { classes = 73, sites = 4059 }
 
 [published-installer-ps1]
@@ -2231,20 +2239,20 @@ population = { left = 735, right = 735 }
 population = { left = 448, right = 448 }
 
 [repository-names]
-population = { constants = 5, files = 1690, literals = 33377 }
+population = { constants = 5, files = 1794, literals = 33422 }
 
 [retired-wire-keys]
-population = { files = 1742 }
+population = { files = 1847 }
 
 [runnable-owner]
 [runnable-owner.populations]
 "clients/cli" = { classes = 610, sites = 38538 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
-"server/engine" = { classes = 874, sites = 57043 }
+"server/engine" = { classes = 876, sites = 57043 }
 "shared/client-io" = { classes = 73, sites = 4059 }
 
 [schema-freeze]
-population = { files = 5 }
+population = { files = 12 }
 
 [ship-layout-installer-gradle]
 population = { left = 1, right = 1 }
@@ -2253,7 +2261,7 @@ population = { left = 1, right = 1 }
 population = { left = 1, right = 1 }
 
 [single-home-root]
-population = { files = 3270 }
+population = { files = 3415 }
 
 [single-truth-set]
 population = { examined = 1707 }
@@ -2302,31 +2310,31 @@ population = { files = 26 }
 "server/engine" = { examined = 18 }
 
 [target-dir]
-population = { constants = 1, files = 1690, literals = 33346 }
+population = { constants = 1, files = 1794, literals = 33391 }
 
 [task-names]
-population = { constants = 64, files = 1690, literals = 33337 }
+population = { constants = 64, files = 1794, literals = 33382 }
 
 [test-fixtures-stay-out-of-production]
 population = { files = 47 }
 
 [test-paths-from-checkout-root]
-population = { files = 1225 }
+population = { files = 1263 }
 
 [toolchain-env-from-request]
 [toolchain-env-from-request.populations]
 "plugins/quarkus" = { classes = 11, sites = 640 }
-"server/engine" = { classes = 874, sites = 42316 }
+"server/engine" = { classes = 876, sites = 42312 }
 "shared/client-io" = { classes = 73, sites = 3010 }
 
 [tree-copy-owner]
-population = { files = 1640 }
+population = { files = 1745 }
 
 [wire-prefix-pairs]
-population = { files = 1666 }
+population = { files = 1771 }
 
 [wire-types]
-population = { constants = 119, files = 1690, literals = 33268 }
+population = { constants = 119, files = 1794, literals = 33313 }
 
 [worker-offline-from-spec]
 population = { files = 130 }
@@ -2341,5 +2349,5 @@ population = { files = 1 }
 [xml-parser-owner.populations]
 "clients/cli" = { classes = 610, sites = 38538 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
-"server/engine" = { classes = 874, sites = 57043 }
+"server/engine" = { classes = 876, sites = 57043 }
 "shared/client-io" = { classes = 73, sites = 4059 }

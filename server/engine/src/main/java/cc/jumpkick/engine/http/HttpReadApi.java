@@ -12,7 +12,7 @@ import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.lock.ManifestPaths;
-import cc.jumpkick.runtime.BuildMetrics;
+import cc.jumpkick.runtime.base.BuildMetrics;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.nio.ByteBuffer;

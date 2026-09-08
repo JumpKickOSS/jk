@@ -16,7 +16,7 @@ import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
-import cc.jumpkick.runtime.ProjectIds;
+import cc.jumpkick.runtime.base.ProjectIds;
 import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoEvents;

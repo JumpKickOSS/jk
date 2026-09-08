@@ -95,7 +95,7 @@
 # OpenRewrite's printer improves, instead of ossifying into an exemption nobody revisits.
 
    33  server/engine/src/main/java/cc/jumpkick/runtime/PlannerNative.java
-    1  server/engine/src/test/java/cc/jumpkick/runtime/BuildServiceEtaParityTest.java
+    1  server/engine/src/test/java/cc/jumpkick/runtime/workspace/BuildServiceEtaParityTest.java
     1  server/resolver/src/test/java/cc/jumpkick/resolver/LockOrchestratorBomTest.java
     5  shared/core/src/main/java/cc/jumpkick/config/ManifestProject.java
     3  shared/plugin-sdk/src/main/java/cc/jumpkick/plugin/build/BuildPluginHarness.java
@@ -147,15 +147,15 @@
     2  server/engine/src/test/java/cc/jumpkick/engine/runtime/CacheInventoryOpsTest.java
     1  server/engine/src/test/java/cc/jumpkick/engine/runtime/NewProjectOpsTest.java
     1  server/engine/src/test/java/cc/jumpkick/giter8/Giter8TemplateIndexTest.java
-    1  server/engine/src/test/java/cc/jumpkick/runtime/BuildServiceEtaTest.java
+    1  server/engine/src/test/java/cc/jumpkick/runtime/workspace/BuildServiceEtaTest.java
     1  server/engine/src/test/java/cc/jumpkick/runtime/CachePlansPurgeTest.java
-    2  server/engine/src/test/java/cc/jumpkick/runtime/ExplainBuildEtaParityTest.java
+    2  server/engine/src/test/java/cc/jumpkick/runtime/workspace/ExplainBuildEtaParityTest.java
     3  server/engine/src/test/java/cc/jumpkick/runtime/NativePlansTest.java
     1  server/engine/src/test/java/cc/jumpkick/runtime/PinnedWorkerJarTest.java
     1  server/engine/src/test/java/cc/jumpkick/runtime/RobolectricUnitTest.java
     1  server/engine/src/test/java/cc/jumpkick/runtime/TestEffortTest.java
     1  server/engine/src/test/java/cc/jumpkick/runtime/TestEnvTest.java
-    1  server/engine/src/test/java/cc/jumpkick/runtime/WorkspaceExecuteSelectionTest.java
+    1  server/engine/src/test/java/cc/jumpkick/runtime/workspace/WorkspaceExecuteSelectionTest.java
     1  server/resolver/src/test/java/cc/jumpkick/resolver/MavenPackageSourceExclusionTest.java
     1  server/resolver/src/test/java/cc/jumpkick/resolver/PlatformBomVersionsTest.java
     1  shared/client-io/src/test/java/cc/jumpkick/http/HostCooldownTest.java

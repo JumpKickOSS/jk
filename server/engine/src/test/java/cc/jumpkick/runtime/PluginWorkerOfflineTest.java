@@ -11,6 +11,7 @@ import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
+import cc.jumpkick.runtime.base.PluginLaunch;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;

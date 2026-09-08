@@ -10,6 +10,7 @@ import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.layout.Languages;
 import cc.jumpkick.model.Project;
+import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.task.IoLedger;
 import java.io.IOException;
 import java.nio.file.Files;

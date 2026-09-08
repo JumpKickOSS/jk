@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.Task;
+import cc.jumpkick.runtime.base.BuildMetrics;
+import cc.jumpkick.runtime.base.StepTimings;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;

@@ -13,7 +13,7 @@ import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.resolver.DependencyGraphModel;
-import cc.jumpkick.runtime.ProjectCard;
+import cc.jumpkick.runtime.base.ProjectCard;
 import cc.jumpkick.scaffold.NewGroupGuess;
 import cc.jumpkick.scaffold.NewParentDirGuess;
 import com.sun.net.httpserver.HttpExchange;

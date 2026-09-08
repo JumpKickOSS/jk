@@ -9,6 +9,7 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.repo.RepoArtifactStore;
+import cc.jumpkick.runtime.base.PluginDescriptorOps;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Files;

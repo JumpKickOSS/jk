@@ -11,10 +11,10 @@ import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.resolver.DependencyGraphModel;
-import cc.jumpkick.runtime.ExplainReport;
-import cc.jumpkick.runtime.GenerateOps;
-import cc.jumpkick.runtime.GraphOps;
-import cc.jumpkick.runtime.OutdatedPlans;
+import cc.jumpkick.runtime.base.GenerateOps;
+import cc.jumpkick.runtime.base.GraphOps;
+import cc.jumpkick.runtime.workspace.ExplainReport;
+import cc.jumpkick.runtime.workspace.OutdatedPlans;
 import cc.jumpkick.test.AffectedTests;
 import cc.jumpkick.test.AffectedTestsCompute;
 import cc.jumpkick.test.JkTestsAffectedMarkdown;
@@ -159,7 +159,7 @@ public final class McpReads {
     static final int MCP_GRAPH_MAX_EDGES = 600;
 
     /**
-     * Full-model export via the same {@link cc.jumpkick.runtime.GenerateOps} generators the wire
+     * Full-model export via the same {@link cc.jumpkick.runtime.base.GenerateOps} generators the wire
      * serves ({@code jk export maven|gradle|bom}). Returns written paths + notes; agents read the
      * files themselves — inlining pom/settings bodies would blow the budget.
      */

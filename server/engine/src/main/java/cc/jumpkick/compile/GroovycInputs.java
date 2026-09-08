@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compile;
 
-import cc.jumpkick.runtime.CompileSupport;
+import cc.jumpkick.runtime.base.CompileSupport;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;

@@ -17,6 +17,7 @@ import cc.jumpkick.config.BuildLogicToml;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.run.BuildStage;
+import cc.jumpkick.runtime.base.BuildLogicAnchor;
 import cc.jumpkick.task.ActionCache;
 import java.nio.file.Files;
 import java.nio.file.Path;

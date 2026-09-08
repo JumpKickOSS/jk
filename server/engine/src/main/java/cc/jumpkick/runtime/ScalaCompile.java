@@ -5,6 +5,8 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.runtime.base.CompileToolchain;
+import cc.jumpkick.runtime.base.ScalaToolResolver;
 import cc.jumpkick.scala.ScalaResolver;
 import java.io.IOException;
 import java.nio.file.Path;

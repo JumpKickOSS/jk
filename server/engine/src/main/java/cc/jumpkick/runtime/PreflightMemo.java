@@ -18,6 +18,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.manifest.PluginModule;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;

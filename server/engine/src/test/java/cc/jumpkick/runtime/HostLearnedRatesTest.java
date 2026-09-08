@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
 
+import cc.jumpkick.runtime.base.HostLearnedRates;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;

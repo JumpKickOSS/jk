@@ -6,7 +6,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.host.Errors;
-import cc.jumpkick.runtime.ProjectInfoPlans;
+import cc.jumpkick.runtime.base.ProjectInfoPlans;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProjectInfo;
 import cc.jumpkick.wire.protocol.ProjectInfoRequest;

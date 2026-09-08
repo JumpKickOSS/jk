@@ -5,7 +5,7 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.host.Errors;
-import cc.jumpkick.runtime.GenerateOps;
+import cc.jumpkick.runtime.base.GenerateOps;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.GenerateRequest;
 import cc.jumpkick.wire.protocol.GeneratedFiles;

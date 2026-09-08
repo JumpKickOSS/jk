@@ -8,6 +8,8 @@ import cc.jumpkick.image.ImageConfig;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.runtime.base.ImageCredentials;
+import cc.jumpkick.runtime.workspace.ImagePlans;
 import cc.jumpkick.testing.RepoRoot;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -156,7 +158,8 @@ class ImageCredentialsTest {
 
     private static Path imagePlansSource() throws Exception {
         return RepoRoot.file(
-                ImageCredentialsTest.class, "server/engine/src/main/java/cc/jumpkick/runtime/ImagePlans.java");
+                ImageCredentialsTest.class,
+                "server/engine/src/main/java/cc/jumpkick/runtime/workspace/ImagePlans.java");
     }
 
     private static ImageConfig imageConfig(String registry) {

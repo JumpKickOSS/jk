@@ -8,7 +8,7 @@ import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.runtime.ExplainReport;
+import cc.jumpkick.runtime.workspace.ExplainReport;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ExplainRequest;
 import cc.jumpkick.wire.protocol.ProtoEvents;

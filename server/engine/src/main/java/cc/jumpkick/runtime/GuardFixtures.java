@@ -25,6 +25,7 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.GuardsConfig;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.runtime.base.GuardSuiteLibrary;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintStream;

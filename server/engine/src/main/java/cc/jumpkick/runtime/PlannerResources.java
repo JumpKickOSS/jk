@@ -17,6 +17,7 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.runtime.base.BuildLogicAnchor;
 import cc.jumpkick.task.ActionCache;
 import java.io.IOException;
 import java.nio.file.Files;

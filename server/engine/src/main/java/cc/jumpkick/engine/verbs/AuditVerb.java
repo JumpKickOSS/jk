@@ -8,7 +8,7 @@ import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
-import cc.jumpkick.runtime.AuditPlans;
+import cc.jumpkick.runtime.base.AuditPlans;
 import cc.jumpkick.wire.protocol.AuditRequest;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoEvents;

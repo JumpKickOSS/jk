@@ -23,6 +23,12 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.ContextPropagator;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.runtime.base.BuildMetrics;
+import cc.jumpkick.runtime.base.CompileSupport;
+import cc.jumpkick.runtime.base.Perf;
+import cc.jumpkick.runtime.base.SourceRefs;
+import cc.jumpkick.runtime.base.StepTimings;
+import cc.jumpkick.runtime.base.TestClassWalls;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.test.TestWorkers;
 import cc.jumpkick.util.JkDirs;
@@ -126,7 +132,7 @@ public final class EffortWeights {
     /** Omitted / no contribution. Prefer {@link #TOKEN} when the step still runs a short check. */
     static final int SKIP = 0;
 
-    static final int RESTORE = 3;
+    public static final int RESTORE = 3;
     /** Cold static reservation for test JVM fork + framework init. */
     static final int TEST_STARTUP = 15;
 
@@ -172,7 +178,7 @@ public final class EffortWeights {
             boolean fullyCached) {}
 
     /** {@code ceil(sources × 0.1)}, floored at 1 once the step runs at all. */
-    static int compileWeight(int sources) {
+    public static int compileWeight(int sources) {
         return Math.max(1, (sources + 9) / 10);
     }
 
@@ -225,7 +231,7 @@ public final class EffortWeights {
      * not whole-build priors. Every caller picks its own fallback, so there is deliberately no
      * combiner that tries own-then-host for them.
      */
-    static long stepOkAvgMillisOwn(BuildMetrics metrics, String dir, String step) {
+    public static long stepOkAvgMillisOwn(BuildMetrics metrics, String dir, String step) {
         String key = metricsStepName(step);
         if (key.isEmpty()) return 0;
         // Prefer last successful wall (more recent than trimmed mean) when credible.

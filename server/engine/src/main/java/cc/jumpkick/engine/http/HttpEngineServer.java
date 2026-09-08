@@ -4,7 +4,7 @@ package cc.jumpkick.engine.http;
 import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.engine.api.HttpLive;
 import cc.jumpkick.engine.journal.BuildJournal;
-import cc.jumpkick.runtime.BuildMetrics;
+import cc.jumpkick.runtime.base.BuildMetrics;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;

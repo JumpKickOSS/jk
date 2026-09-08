@@ -5,7 +5,7 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.host.Errors;
-import cc.jumpkick.runtime.EditOps;
+import cc.jumpkick.runtime.base.EditOps;
 import cc.jumpkick.wire.protocol.EditRequest;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoReads;

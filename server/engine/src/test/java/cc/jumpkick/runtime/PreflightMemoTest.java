@@ -10,6 +10,7 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.InputTrees;
+import cc.jumpkick.runtime.workspace.BuildService;
 import cc.jumpkick.task.IoLedger;
 import java.nio.file.Files;
 import java.nio.file.Path;

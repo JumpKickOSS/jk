@@ -416,7 +416,7 @@ public final class StatusCommand implements CliCommand {
         a.okAvgMillis = a.okCount == 0 ? 0 : a.okTotalMillis / a.okCount;
     }
 
-    /** Match {@link cc.jumpkick.runtime.BuildMetrics#sameBaseDir} without depending on engine. */
+    /** Match {@link cc.jumpkick.runtime.base.BuildMetrics#sameBaseDir} without depending on engine. */
     static boolean sameBaseDir(String dir, String candidate) {
         if (dir == null || candidate == null) return false;
         if (dir.equals(candidate)) return true;

@@ -3,6 +3,8 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.runtime.base.BuildMetrics;
+import cc.jumpkick.runtime.base.HostLearnedRates;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;

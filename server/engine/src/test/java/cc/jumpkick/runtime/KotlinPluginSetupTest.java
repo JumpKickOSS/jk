@@ -10,6 +10,7 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoArtifactStore;
+import cc.jumpkick.runtime.base.KotlinPluginSetup;
 import cc.jumpkick.wire.PluginJarNotFoundException;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;

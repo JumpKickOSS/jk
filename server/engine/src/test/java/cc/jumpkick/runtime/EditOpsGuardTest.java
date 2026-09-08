@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.engine.http.mcp.McpManifest;
 import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.runtime.base.EditOps;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;

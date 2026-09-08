@@ -15,7 +15,7 @@ import cc.jumpkick.giter8.TemplateSpec;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Layout;
-import cc.jumpkick.runtime.ProjectIds;
+import cc.jumpkick.runtime.base.ProjectIds;
 import cc.jumpkick.scaffold.NewInputs;
 import cc.jumpkick.scaffold.NewScaffolder;
 import cc.jumpkick.templates.OfficialTemplatesFreshen;

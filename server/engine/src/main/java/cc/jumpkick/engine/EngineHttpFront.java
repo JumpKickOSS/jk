@@ -16,7 +16,7 @@ import cc.jumpkick.engine.verbs.HostedVerb;
 import cc.jumpkick.engine.verbs.VerbRegistry;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.lock.ManifestPaths;
-import cc.jumpkick.runtime.BuildMetrics;
+import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.EnginePaths;
 import java.io.IOException;

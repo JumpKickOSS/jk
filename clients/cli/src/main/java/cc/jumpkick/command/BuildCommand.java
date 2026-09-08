@@ -418,7 +418,7 @@ public final class BuildCommand implements CliCommand {
 
     /**
      * Non-animated workspace build ({@code --output json} / {@code --verbose}). The engine
-     * ({@link cc.jumpkick.runtime.BuildService#buildWorkspace}) owns the whole loop and
+     * ({@link cc.jumpkick.runtime.workspace.BuildService#buildWorkspace}) owns the whole loop and
      * {@link WorkspaceRunView#headless} renders it; this method owns only {@code jk build}'s own
      * settle vocabulary, which has one arm the live ladder does not — a workspace that declares no
      * modules at all is neither a failure nor a build.

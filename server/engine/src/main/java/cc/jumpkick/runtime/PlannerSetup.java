@@ -36,6 +36,7 @@ import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.task.ActionCache;
 import java.nio.file.Files;
 import java.nio.file.Path;

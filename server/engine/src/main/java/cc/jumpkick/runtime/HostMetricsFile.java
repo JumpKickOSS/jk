@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.builds.MetricsHarvest;
+import cc.jumpkick.runtime.base.HostLearnedRates;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.MinimalToml;

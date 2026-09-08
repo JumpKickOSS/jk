@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.task.ActionKey;
 import java.nio.file.Files;
 import java.nio.file.Path;

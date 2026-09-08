@@ -10,6 +10,7 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.runtime.workspace.NativePlans;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;

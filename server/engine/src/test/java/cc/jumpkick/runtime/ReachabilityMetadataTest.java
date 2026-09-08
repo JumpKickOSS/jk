@@ -13,6 +13,7 @@ import cc.jumpkick.model.Scope;
 import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.runtime.base.ReachabilityMetadata;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;

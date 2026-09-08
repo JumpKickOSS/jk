@@ -7,6 +7,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.runtime.workspace.TrainPlans;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;

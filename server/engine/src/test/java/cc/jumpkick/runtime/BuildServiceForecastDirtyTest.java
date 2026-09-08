@@ -7,6 +7,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.runtime.workspace.BuildService;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Set;

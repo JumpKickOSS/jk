@@ -13,6 +13,8 @@ import cc.jumpkick.model.Variants;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.resolver.pubgrub.UnsatisfiableException;
+import cc.jumpkick.runtime.base.LockGate;
+import cc.jumpkick.runtime.base.LockMode;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;

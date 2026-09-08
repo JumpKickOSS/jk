@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.runtime.base.TaskPhases;
 import org.junit.jupiter.api.Test;
 
 class TaskPhasesTest {

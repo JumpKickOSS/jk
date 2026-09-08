@@ -15,6 +15,7 @@ import cc.jumpkick.model.Variants;
 import cc.jumpkick.plugin.manifest.VariantApply;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.runtime.base.PluginDescriptorOps;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;

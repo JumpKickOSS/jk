@@ -7,7 +7,7 @@ import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.model.command.Exit;
-import cc.jumpkick.runtime.LockMode;
+import cc.jumpkick.runtime.base.LockMode;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.LockRequest;

@@ -3,7 +3,7 @@ package cc.jumpkick.engine.http.mcp;
 
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jsonl.MiniJson;
-import cc.jumpkick.runtime.ProjectCard;
+import cc.jumpkick.runtime.base.ProjectCard;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

@@ -21,6 +21,8 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.runtime.base.CompileSupport;
+import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.JavaCompile;
 import cc.jumpkick.wire.runtime.TaskForecast;

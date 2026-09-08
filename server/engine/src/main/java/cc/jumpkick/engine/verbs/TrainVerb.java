@@ -10,7 +10,7 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
-import cc.jumpkick.runtime.TrainPlans;
+import cc.jumpkick.runtime.workspace.TrainPlans;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoEvents;
 import cc.jumpkick.wire.protocol.TrainRequest;

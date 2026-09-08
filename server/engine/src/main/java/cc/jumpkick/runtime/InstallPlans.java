@@ -106,7 +106,7 @@ public final class InstallPlans {
      * jar even when an explicit {@code jk native} (or a mode change) left a binary in
      * {@code target/}: that binary is not this install's output.
      */
-    static boolean installsNativeBinary(JkBuild project, BuildLayout layout) {
+    public static boolean installsNativeBinary(JkBuild project, BuildLayout layout) {
         return project.nativeMode() == JkBuild.NativeMode.ALWAYS && Files.isRegularFile(layout.nativeBinary());
     }
 
@@ -116,7 +116,7 @@ public final class InstallPlans {
      * is absent still gets its next-best declared rung), else empty. Declared-only: a
      * {@code target/} leftover from an undeclared artifact never outranks the thin jar.
      */
-    static Optional<Path> declaredFatJar(JkBuild project, BuildLayout layout) {
+    public static Optional<Path> declaredFatJar(JkBuild project, BuildLayout layout) {
         Path minified = layout.minifiedJar();
         if (project.minified() && Files.isRegularFile(minified)) return Optional.of(minified);
         Path assembly = layout.assemblyJar();

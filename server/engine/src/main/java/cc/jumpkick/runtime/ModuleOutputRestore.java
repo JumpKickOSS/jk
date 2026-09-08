@@ -10,6 +10,7 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import java.io.IOException;

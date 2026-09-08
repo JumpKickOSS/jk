@@ -5,8 +5,8 @@ import cc.jumpkick.engine.api.BuildHistoryKinds;
 import cc.jumpkick.engine.api.BuildJobFingerprint;
 import cc.jumpkick.engine.api.InFlightBuilds;
 import cc.jumpkick.engine.journal.BuildRecord;
-import cc.jumpkick.runtime.BuildNumberAllocator;
-import cc.jumpkick.runtime.ProjectIds;
+import cc.jumpkick.runtime.base.BuildNumberAllocator;
+import cc.jumpkick.runtime.base.ProjectIds;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
 import java.nio.file.Path;
 

@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.runtime.base.WorkspaceScheduler;
 import cc.jumpkick.testing.Await;
 import java.nio.file.Path;
 import java.time.Duration;

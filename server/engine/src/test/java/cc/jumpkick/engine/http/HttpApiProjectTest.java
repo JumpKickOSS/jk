@@ -8,7 +8,7 @@ import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.builds.ProjectIdentity;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jsonl.Jsonl;
-import cc.jumpkick.runtime.BuildMetrics;
+import cc.jumpkick.runtime.base.BuildMetrics;
 import java.net.Socket;
 import java.net.URI;
 import java.net.URLEncoder;

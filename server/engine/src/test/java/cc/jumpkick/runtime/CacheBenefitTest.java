@@ -4,9 +4,10 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
 
-import cc.jumpkick.runtime.CacheBenefit.ModuleInput;
-import cc.jumpkick.runtime.CacheBenefit.Result;
-import cc.jumpkick.runtime.CacheBenefit.StepInput;
+import cc.jumpkick.runtime.base.CacheBenefit;
+import cc.jumpkick.runtime.base.CacheBenefit.ModuleInput;
+import cc.jumpkick.runtime.base.CacheBenefit.Result;
+import cc.jumpkick.runtime.base.CacheBenefit.StepInput;
 import java.util.List;
 import java.util.Map;
 import java.util.OptionalLong;

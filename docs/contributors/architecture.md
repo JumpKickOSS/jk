@@ -219,9 +219,14 @@ table, history kinds and fingerprints, the coalescing listeners, the lock floor,
 the `SseEvents` surface — and imports no other engine package, so `jobs`, `journal`, `http`, `verbs`
 and `listen` read it instead of reaching back up. Worker-process budgeting (`JobWorkers`) lives with
 the worker launcher in `engine.plugin`, below `runtime`, `compile`, `test` and `git`, which all use it.
-The remaining package cycles are the three the guard's `cycle-baseline.txt` line counts: the planner
-core (`runtime`, `task`, `compile`, `test`), the MCP front (`http`, `http.mcp`, `http.mcp.tools`) and
-the job/journal pair.
+The build runtime is three packages in one direction: `runtime.base` (what the planner reads and
+nothing reads back — metrics and priors, compile and tool support, lock primitives, identities; no
+class there names the core or imports `task`, `compile`, `test` or `git`), `runtime` (the planner core:
+the plan builders, forecast, effort weights, lock pipeline — one strongly connected component of
+about fifty classes) and `runtime.workspace` (the workspace phases, the build service, the ETA and
+the plan builders that compose the core). The remaining package cycles are the three the guard's
+`cycle-baseline.txt` line counts: the planner core (`runtime`, `task`, `compile`, `test`), the MCP front
+(`http`, `http.mcp`, `http.mcp.tools`) and the job/journal pair.
 
 Ship layout (`./gradlew dist`): slim native `jk` + `lib/jk-engine-<version>.jar`.
 

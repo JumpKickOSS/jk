@@ -7,7 +7,7 @@ import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.model.ToolCoordSpec;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
-import cc.jumpkick.runtime.ToolPlans;
+import cc.jumpkick.runtime.base.ToolPlans;
 import cc.jumpkick.tool.ToolEnv;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoSession;

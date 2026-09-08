@@ -3,7 +3,7 @@ package cc.jumpkick.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.runtime.TestClassWalls;
+import cc.jumpkick.runtime.base.TestClassWalls;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 

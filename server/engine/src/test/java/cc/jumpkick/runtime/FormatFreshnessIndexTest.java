@@ -3,6 +3,8 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.runtime.base.FormatFreshnessIndex;
+import cc.jumpkick.runtime.base.FormatKey;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;

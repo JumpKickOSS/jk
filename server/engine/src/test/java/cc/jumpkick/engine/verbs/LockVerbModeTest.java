@@ -3,7 +3,7 @@ package cc.jumpkick.engine.verbs;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.runtime.LockMode;
+import cc.jumpkick.runtime.base.LockMode;
 import cc.jumpkick.wire.protocol.LockRequest;
 import java.util.List;
 import org.junit.jupiter.api.Test;

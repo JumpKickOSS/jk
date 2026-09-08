@@ -5,7 +5,7 @@ import cc.jumpkick.config.ModuleSelection;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.runtime.BuildGraph;
-import cc.jumpkick.runtime.ModuleHints;
+import cc.jumpkick.runtime.workspace.ModuleHints;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;

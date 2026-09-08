@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.runtime.base.IdeOps;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;

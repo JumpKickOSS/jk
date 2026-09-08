@@ -13,6 +13,7 @@ import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginDescriptors;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
+import cc.jumpkick.runtime.base.LockMode;
 import cc.jumpkick.testing.RepoRoot;
 import java.io.IOException;
 import java.nio.file.Files;

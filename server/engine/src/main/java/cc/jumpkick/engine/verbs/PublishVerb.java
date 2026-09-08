@@ -10,7 +10,7 @@ import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
-import cc.jumpkick.runtime.PublishPlans;
+import cc.jumpkick.runtime.base.PublishPlans;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoEvents;

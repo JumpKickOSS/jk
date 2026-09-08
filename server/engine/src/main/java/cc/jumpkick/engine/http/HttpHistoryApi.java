@@ -8,7 +8,7 @@ import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.jsonl.MiniJson;
-import cc.jumpkick.runtime.ProjectIds;
+import cc.jumpkick.runtime.base.ProjectIds;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;

@@ -5,8 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.run.TaskNames;
-import cc.jumpkick.runtime.TestSuiteRunners;
-import cc.jumpkick.runtime.TestSuiteScaling;
+import cc.jumpkick.runtime.base.TestSuiteRunners;
+import cc.jumpkick.runtime.base.TestSuiteScaling;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;

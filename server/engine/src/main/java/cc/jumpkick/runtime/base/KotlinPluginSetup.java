@@ -1,0 +1,68 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.runtime.base;
+
+import cc.jumpkick.cache.Cas;
+import cc.jumpkick.engine.plugin.PluginJar;
+import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
+import cc.jumpkick.kotlin.KotlinResolver;
+import cc.jumpkick.repo.RepoGroup;
+import java.io.IOException;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import org.jspecify.annotations.Nullable;
+
+/**
+ * Prepares everything a Kotlin compile needs to fork the {@code jk-kotlin-compiler} plugin: the
+ * plugin classpath (the plugin jar + the resolved Build Tools API implementation closure,
+ * version-matched to the project's Kotlin) and the version-matched {@code kotlin-stdlib} for the
+ * compilation classpath.
+ *
+ * <p>Shared by every Kotlin compile entry point ({@code jk build}'s {@code compile-kotlin}, {@code
+ * jk compile}, {@code jk run} scripts) so they resolve and locate consistently. Jar location itself
+ * is delegated to the shared {@link PluginJar} registry; this class adds only the Kotlin-specific
+ * closure/stdlib resolution on top.
+ */
+public final class KotlinPluginSetup {
+
+    /**
+     * Override for the {@code jk-kotlin-compiler} jar path (tests, dev). Takes precedence over the
+     * CAS lookup.
+     */
+    public static final String WORKER_JAR_PROPERTY = PluginJar.KOTLIN_COMPILER.jarProperty();
+
+    private KotlinPluginSetup() {}
+
+    /**
+     * @param workerClasspath plugin {@code -cp}: plugin jar + BTA closure
+     * @param stdlib the version-matched kotlin-stdlib for the compile classpath
+     */
+    public record Prepared(List<Path> workerClasspath, Path stdlib) {}
+
+    /**
+     * Resolve the closure + stdlib for {@code kotlinVersion} (null ⇒ jk's default) against {@code
+     * repos}, and locate the plugin jar.
+     */
+    public static Prepared prepare(RepoGroup repos, Cas cas, @Nullable String kotlinVersion)
+            throws IOException, InterruptedException {
+        String version =
+                (kotlinVersion == null || kotlinVersion.isBlank()) ? KotlinResolver.DEFAULT_VERSION : kotlinVersion;
+        List<Path> closure = KotlinBtaResolver.resolveClasspath(repos, cas, version);
+        Path stdlib = KotlinBtaResolver.resolveStdlib(repos, cas, version);
+
+        // Expand thin worker jar + Maven runtime closure from its POM, then BTA closure.
+        List<Path> workerClasspath = new ArrayList<>(WorkerLaunchClasspath.paths(locateWorkerJar(cas)));
+        for (Path p : closure) {
+            if (!workerClasspath.contains(p)) workerClasspath.add(p);
+        }
+        return new Prepared(workerClasspath, stdlib);
+    }
+
+    /**
+     * Locate the {@code jk-kotlin-compiler} plugin jar via the shared registry: the {@link
+     * #WORKER_JAR_PROPERTY} override, then the CAS by expected SHA.
+     */
+    public static Path locateWorkerJar(Cas cas) {
+        return PluginJar.KOTLIN_COMPILER.locate(cas);
+    }
+}

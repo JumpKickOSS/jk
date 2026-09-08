@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.data.Percentage.withPercentage;
 
+import cc.jumpkick.runtime.base.TestSuiteScaling;
 import org.junit.jupiter.api.Test;
 
 /**

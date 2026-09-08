@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.runtime.base.BuildLogicAnchor;
 import cc.jumpkick.task.ActionCache;
 import java.nio.file.Files;
 import java.nio.file.Path;
