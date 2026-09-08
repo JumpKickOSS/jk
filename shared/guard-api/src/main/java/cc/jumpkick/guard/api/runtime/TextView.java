@@ -3,6 +3,7 @@ package cc.jumpkick.guard.api.runtime;
 
 import cc.jumpkick.guard.api.Blank;
 import cc.jumpkick.guard.api.Text;
+import cc.jumpkick.host.OutputDirs;
 import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -124,12 +125,17 @@ public final class TextView implements Text {
     /**
      * Dot-directories and foreign build output are not the source tree — except {@code .github} and
      * {@code .jk}, which are the repository's own text. jk's own output tree at the root is skipped by
-     * where the report lives, not by a name this library would have to know.
+     * where the report lives, not by a name this library would have to know; Gradle's {@code build/}
+     * by the script beside it ({@link OutputDirs#isGradleBuildDir}), so a package named {@code build}
+     * is read like any other.
      */
     boolean skipped(String rel) {
         if (outputDir != null && (rel.equals(outputDir) || rel.startsWith(outputDir + "/"))) return true;
+        Path dir = root;
         for (String seg : rel.split("/")) {
-            if (seg.equals("build") || seg.equals("node_modules")) return true;
+            dir = dir.resolve(seg);
+            if (seg.equals("node_modules")) return true;
+            if (seg.equals("build") && OutputDirs.isGradleBuildDir(dir)) return true;
             if (seg.startsWith(".") && seg.length() > 1 && !seg.equals(".github") && !seg.equals(".jk")) return true;
         }
         return false;

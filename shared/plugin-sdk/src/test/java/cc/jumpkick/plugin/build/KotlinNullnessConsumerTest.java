@@ -37,8 +37,7 @@ class KotlinNullnessConsumerTest {
     }
 
     @Test
-    void nullable_sdk_results_cannot_flow_into_kotlin_non_null_types(@TempDir Path temp)
-            throws Exception {
+    void nullable_sdk_results_cannot_flow_into_kotlin_non_null_types(@TempDir Path temp) throws Exception {
         Path source = temp.resolve("InvalidConsumer.kt");
         Files.writeString(source, """
                 package consumer
@@ -80,10 +79,7 @@ class KotlinNullnessConsumerTest {
     }
 
     private static Path javaExecutable() {
-        return Path.of(
-                System.getProperty("java.home"),
-                "bin",
-                Os.isWindows() ? "java.exe" : "java");
+        return Path.of(System.getProperty("java.home"), "bin", Os.isWindows() ? "java.exe" : "java");
     }
 
     private record CompileResult(int exit, String output) {}

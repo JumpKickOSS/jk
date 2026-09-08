@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.build;
 
+import java.util.Locale;
 import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
@@ -75,12 +76,12 @@ public record In(Kind kind, @Nullable String step) {
     public String wireName() {
         if (kind == Kind.STEP_OUTPUT) return "step:" + step;
         if (kind == Kind.PROJECT_FILES) return "project:" + step;
-        return kind.name().toLowerCase(java.util.Locale.ROOT).replace('_', '-');
+        return kind.name().toLowerCase(Locale.ROOT).replace('_', '-');
     }
 
     public static In fromWire(String name) {
         if (name.startsWith("step:")) return stepOutput(name.substring("step:".length()));
         if (name.startsWith("project:")) return projectFiles(name.substring("project:".length()));
-        return new In(Kind.valueOf(name.toUpperCase(java.util.Locale.ROOT).replace('-', '_')), null);
+        return new In(Kind.valueOf(name.toUpperCase(Locale.ROOT).replace('-', '_')), null);
     }
 }

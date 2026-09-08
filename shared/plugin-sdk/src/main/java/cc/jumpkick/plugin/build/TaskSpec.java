@@ -34,6 +34,7 @@ public final class TaskSpec {
      * means the engine infers from task name / contributions.
      */
     private @Nullable String stage;
+
     private @Nullable Body body;
 
     private TaskSpec(String name) {

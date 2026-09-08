@@ -12,9 +12,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.jspecify.annotations.Nullable;
 
 /**
  * The job's network policy reaches the <em>body</em> of a step, a command and a packager — the
@@ -33,12 +33,14 @@ class WorkerOfflinePolicyTest {
     /** Reports what each surface was told, on the wire, as {@code offline=<bool>}. */
     private static final BuildPlugin FIXTURE = ctx -> {
         ctx.task(TaskSpec.named("probe-step").run(exec -> exec.label("offline=" + exec.offline())));
-        ctx.command(PluginCommandSpec.named("probe-command").description("report the policy").run(exec -> {
-            exec.out("offline=" + exec.offline());
-            return 0;
-        }));
-        ctx.packaging(PackagerSpec.replacingMainArtifact("probe-package")
-                .produce(io -> io.label("offline=" + io.offline())));
+        ctx.command(PluginCommandSpec.named("probe-command")
+                .description("report the policy")
+                .run(exec -> {
+                    exec.out("offline=" + exec.offline());
+                    return 0;
+                }));
+        ctx.packaging(
+                PackagerSpec.replacingMainArtifact("probe-package").produce(io -> io.label("offline=" + io.offline())));
     };
 
     @Test
@@ -91,13 +93,11 @@ class WorkerOfflinePolicyTest {
         return end < 0 ? "" : replyLine.substring(at, end);
     }
 
-    private static Path spec(
-            Path dir, String op, @Nullable String name, @Nullable Boolean offline)
-            throws Exception {
+    private static Path spec(Path dir, String op, @Nullable String name, @Nullable Boolean offline) throws Exception {
         Path spec = dir.resolve(op + "-" + offline + ".spec");
         List<String> lines = new ArrayList<>(List.of(
-                "{\"t\":\"op\",\"op\":\"" + op + "\""
-                        + (name == null ? "" : ",\"name\":\"" + name + "\"") + ",\"plugin\":\"fx\"}",
+                "{\"t\":\"op\",\"op\":\"" + op + "\"" + (name == null ? "" : ",\"name\":\"" + name + "\"")
+                        + ",\"plugin\":\"fx\"}",
                 "{\"t\":\"project\",\"group\":\"g\",\"name\":\"n\",\"version\":\"1\",\"javaRelease\":25,"
                         + "\"nativeDeclared\":false,\"kotlin\":false}"));
         if (offline != null) lines.add("{\"t\":\"offline\",\"value\":" + offline + "}");

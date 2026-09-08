@@ -8,7 +8,8 @@ import org.jspecify.annotations.Nullable;
  * The outcome of an {@link ImageExtension#image} run — enough for the worker entry to report it: a
  * pushed/loaded image {@code reference}, or a written {@code tarball} path. Exactly one is set.
  */
-public record ImageResult(@Nullable String reference, @Nullable Path tarball, boolean daemon) {
+public record ImageResult(
+        @Nullable String reference, @Nullable Path tarball, boolean daemon) {
 
     /** An image pushed to a registry. */
     public static ImageResult pushed(String reference) {

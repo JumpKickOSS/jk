@@ -35,7 +35,9 @@ class FormatPlansNotExcludedTest {
     @Test
     void build_and_vcs_dirs_are_excluded() {
         assertThat(FormatSources.notExcluded(Path.of("proj/target/Gen.java"))).isFalse();
-        assertThat(FormatSources.notExcluded(Path.of("proj/build/Gen.java"))).isFalse();
+        // A bare relative path cannot tell Gradle's build/ from a package named build; the directory
+        // prune (formatSkip, with the script beside it) decides, so the segment check lets it through.
+        assertThat(FormatSources.notExcluded(Path.of("proj/build/Gen.java"))).isTrue();
         assertThat(FormatSources.notExcluded(Path.of("proj/.git/Gen.java"))).isFalse();
         assertThat(FormatSources.notExcluded(Path.of("proj/node_modules/Gen.java")))
                 .isFalse();

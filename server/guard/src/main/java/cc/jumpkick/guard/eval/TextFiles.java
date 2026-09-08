@@ -2,6 +2,7 @@
 package cc.jumpkick.guard.eval;
 
 import cc.jumpkick.host.CodeText;
+import cc.jumpkick.host.OutputDirs;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.WalkSkip;
@@ -20,8 +21,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The corpus a text rule can see: every regular file under the root a reader could read, minus
- * build output, VCS metadata and binaries. Pruned by name <em>and position</em>: {@code build} at a
- * module root is output, {@code cc/jumpkick/plugin/build} under {@code src/} is a package. A nested
+ * build output, VCS metadata and binaries. Pruned by name <em>and position</em>: {@code build} beside
+ * a Gradle script is output, {@code cc/jumpkick/plugin/build} under {@code src/} is a package. A nested
  * checkout (a worktree, recognised by its {@code .git}) is another branch's tree.
  */
 final class TextFiles {
@@ -52,8 +53,8 @@ final class TextFiles {
         }
     }
 
-    private static final Set<String> SKIP_DIRS = Set.of(
-            BuildLayout.TARGET, "build", ".git", ".gradle", ".idea", ".kotlin", "node_modules", ".board", ".firebase");
+    private static final Set<String> SKIP_DIRS =
+            Set.of(BuildLayout.TARGET, ".git", ".gradle", ".idea", ".kotlin", "node_modules", ".board", ".firebase");
     private static final List<String> BINARY_EXT = List.of(
             ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".jar", ".zip", ".xz", ".gz", ".tar", ".class", ".aot",
             ".woff", ".woff2", ".ttf", ".pdf", ".so", ".dylib", ".exe", ".dll", ".bin", ".idx", ".lock");
@@ -82,9 +83,11 @@ final class TextFiles {
         if (name == null) return false;
         if (WalkSkip.nestedCheckout(dir)) return true;
         String n = name.toString();
+        // Gradle's build/ is the one beside a Gradle script; a package named build is a package.
+        if (n.equals("build")) return OutputDirs.isGradleBuildDir(dir);
         if (!SKIP_DIRS.contains(n)) return false;
         String rel = root.relativize(dir).toString().replace('\\', '/');
-        // `build` and `target` under a source root are packages, not output.
+        // `target` under a source root is a package, not output.
         return !rel.contains("/src/");
     }
 

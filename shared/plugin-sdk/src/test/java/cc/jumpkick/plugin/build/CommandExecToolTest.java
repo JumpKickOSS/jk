@@ -52,10 +52,11 @@ class CommandExecToolTest {
         // Assert on decoded payloads: wire lines JSON-escape '\\', so Path.toString() never
         // substring-matches the raw protocol text on Windows.
         List<String> payloads = commandOuts(out);
-        assertThat(payloads).contains(
-                "javaHome=" + pinned,
-                "keytool=" + JdkFingerprint.tool(pinned, "keytool"),
-                "java=" + JdkFingerprint.tool(pinned, "java"));
+        assertThat(payloads)
+                .contains(
+                        "javaHome=" + pinned,
+                        "keytool=" + JdkFingerprint.tool(pinned, "keytool"),
+                        "java=" + JdkFingerprint.tool(pinned, "java"));
         // The half that a silent fallback would pass: nothing resolved against the JVM we run on.
         Path running = Path.of(Objects.requireNonNull(System.getProperty("java.home"), "java.home"));
         assertThat(payloads).noneMatch(l -> l.contains(running.toString()));
@@ -82,8 +83,7 @@ class CommandExecToolTest {
         int exit = BuildPluginHarness.run(FIXTURE, List.of(spec.toString()), out.writer);
 
         assertThat(exit).isEqualTo(1);
-        assertThat(out.lines())
-                .anyMatch(l -> l.contains("command-failed") && l.contains("states no JDK"));
+        assertThat(out.lines()).anyMatch(l -> l.contains("command-failed") && l.contains("states no JDK"));
     }
 
     private static Path spec(Path dir, Path javaHome) throws Exception {
@@ -107,8 +107,7 @@ class CommandExecToolTest {
     private static List<String> commandOuts(Captured out) {
         return out.lines().stream()
                 .filter(l -> l.contains("\"t\":\"command-out\""))
-                .map(l -> Objects.requireNonNull(
-                        Jsonl.str(l.substring(l.indexOf('{')), "line"), "command-out.line"))
+                .map(l -> Objects.requireNonNull(Jsonl.str(l.substring(l.indexOf('{')), "line"), "command-out.line"))
                 .toList();
     }
 

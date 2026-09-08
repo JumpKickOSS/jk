@@ -2,8 +2,10 @@
 package cc.jumpkick.plugin.build;
 
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
+import cc.jumpkick.plugin.protocol.PluginReply;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -44,8 +46,7 @@ public final class BuildPluginHarness {
      * capability interfaces ({@link BuildExtension}/{@link PackageExtension}/…); either way this
      * replays its registration and answers the requested op.
      */
-    public static int run(cc.jumpkick.plugin.Plugin plugin, List<String> args, ProtocolWriter out)
-            throws Exception {
+    public static int run(Plugin plugin, List<String> args, ProtocolWriter out) throws Exception {
         return run(asBuildPlugin(plugin), args, out);
     }
 
@@ -55,7 +56,7 @@ public final class BuildPluginHarness {
      * {@link TaskSpec}/{@link PackagerSpec} declarations. A plugin that implements {@link BuildPlugin}
      * directly is returned unchanged.
      */
-    static BuildPlugin asBuildPlugin(cc.jumpkick.plugin.Plugin plugin) {
+    static BuildPlugin asBuildPlugin(Plugin plugin) {
         if (plugin instanceof BuildPlugin bp) {
             return bp;
         }
@@ -79,7 +80,8 @@ public final class BuildPluginHarness {
             } catch (Exception ex) {
                 throw new IllegalStateException(ex);
             }
-            if (plugin instanceof RunExtension || plugin instanceof ImageExtension
+            if (plugin instanceof RunExtension
+                    || plugin instanceof ImageExtension
                     || plugin instanceof PublishExtension) {
                 throw new IllegalStateException("terminal-target capability (run/image/publish) on plugin `" + id
                         + "` runs via its own worker entry, not the build harness");
@@ -124,8 +126,7 @@ public final class BuildPluginHarness {
             }
             case "command" -> {
                 @Nullable PluginCommandSpec command = recorder.command(spec.stepName());
-                PluginCommandSpec.@Nullable Body body =
-                        command == null ? null : command.body();
+                PluginCommandSpec.@Nullable Body body = command == null ? null : command.body();
                 if (body == null) {
                     out.emit("{\"t\":\"error\",\"code\":\"unknown-command\",\"message\":"
                             + Jsonl.quote("no registered command named " + spec.stepName()) + "}");
@@ -142,8 +143,7 @@ public final class BuildPluginHarness {
             }
             case "package" -> {
                 @Nullable PackagerSpec packager = recorder.packager();
-                PackagerSpec.@Nullable Body body =
-                        packager == null ? null : packager.body();
+                PackagerSpec.@Nullable Body body = packager == null ? null : packager.body();
                 if (body == null) {
                     out.emit("{\"t\":\"error\",\"code\":\"no-packager\",\"message\":"
                             + Jsonl.quote("plugin registered no packager") + "}");
@@ -174,7 +174,8 @@ public final class BuildPluginHarness {
                     .append(",\"requires\":")
                     .append(quoteArray(step.requires()))
                     .append(",\"inputs\":")
-                    .append(quoteArray(step.declaredInputs().stream().map(In::wireName).toList()))
+                    .append(quoteArray(
+                            step.declaredInputs().stream().map(In::wireName).toList()))
                     .append(",\"outputs\":")
                     .append(quoteArray(step.declaredOutputs()))
                     .append(",\"contributesClasses\":")
@@ -195,7 +196,8 @@ public final class BuildPluginHarness {
         @Nullable PackagerSpec packager = recorder.packager();
         if (packager != null) {
             out.emit("{\"t\":\"packager\",\"name\":" + Jsonl.quote(packager.name()) + ",\"inputs\":"
-                    + quoteArray(packager.declaredInputs().stream().map(In::wireName).toList()) + "}");
+                    + quoteArray(
+                            packager.declaredInputs().stream().map(In::wireName).toList()) + "}");
         }
         for (PluginCommandSpec command : recorder.commands()) {
             out.emit("{\"t\":\"command\",\"name\":" + Jsonl.quote(command.name()) + ",\"description\":"
@@ -244,8 +246,8 @@ public final class BuildPluginHarness {
         @Override
         public void packaging(PackagerSpec spec) {
             if (packager != null) {
-                throw new IllegalStateException("one packager may replace the main artifact — a second ("
-                        + spec.name() + ") conflicts with " + packager.name());
+                throw new IllegalStateException("one packager may replace the main artifact — a second (" + spec.name()
+                        + ") conflicts with " + packager.name());
             }
             packager = spec;
         }
@@ -254,12 +256,14 @@ public final class BuildPluginHarness {
             return steps;
         }
 
-        @Nullable TaskSpec step(@Nullable String name) {
+        @Nullable
+        TaskSpec step(@Nullable String name) {
             for (TaskSpec s : steps) if (s.name().equals(name)) return s;
             return null;
         }
 
-        @Nullable PackagerSpec packager() {
+        @Nullable
+        PackagerSpec packager() {
             return packager;
         }
 
@@ -272,7 +276,8 @@ public final class BuildPluginHarness {
             return commands;
         }
 
-        @Nullable PluginCommandSpec command(@Nullable String name) {
+        @Nullable
+        PluginCommandSpec command(@Nullable String name) {
             for (PluginCommandSpec v : commands) if (v.name().equals(name)) return v;
             return null;
         }
@@ -336,8 +341,7 @@ public final class BuildPluginHarness {
                     case "config" -> {
                         String key = required(Jsonl.str(line, "key"), "config.key");
                         switch (String.valueOf(Jsonl.str(line, "kind"))) {
-                            case "string" ->
-                                configValues.put(key, required(Jsonl.str(line, "value"), "config.value"));
+                            case "string" -> configValues.put(key, required(Jsonl.str(line, "value"), "config.value"));
                             case "bool" -> configValues.put(key, Jsonl.bool(line, "value", false));
                             case "int" -> configValues.put(key, Jsonl.longValue(line, "value", 0));
                             case "list" -> configValues.put(key, Jsonl.strArray(line, "values"));
@@ -367,10 +371,8 @@ public final class BuildPluginHarness {
                         @Nullable String scratchDir = Jsonl.str(line, "scratch");
                         if (scratchDir != null) scratch = Path.of(scratchDir);
                     }
-                    case "java-home" ->
-                        javaHome = Path.of(required(Jsonl.str(line, "path"), "java-home.path"));
-                    case "artifact" ->
-                        artifactPath = Path.of(required(Jsonl.str(line, "path"), "artifact.path"));
+                    case "java-home" -> javaHome = Path.of(required(Jsonl.str(line, "path"), "java-home.path"));
+                    case "artifact" -> artifactPath = Path.of(required(Jsonl.str(line, "path"), "artifact.path"));
                     case "cp" -> classpath.add(Path.of(required(Jsonl.str(line, "path"), "cp.path")));
                     case "entry" -> {
                         @Nullable String jarPath = Jsonl.str(line, "path");
@@ -410,8 +412,22 @@ public final class BuildPluginHarness {
             ProjectFacts facts =
                     new ProjectFacts(group, name, version, javaRelease, mainClass, nativeDeclared, kotlin, manifest);
             return new Spec(
-                    op, stepName, config, facts, classesDir, moduleDir, scratch, javaHome, artifactPath, classpath,
-                    entries, stepOutputs, extras, commandArgs, secrets, offline);
+                    op,
+                    stepName,
+                    config,
+                    facts,
+                    classesDir,
+                    moduleDir,
+                    scratch,
+                    javaHome,
+                    artifactPath,
+                    classpath,
+                    entries,
+                    stepOutputs,
+                    extras,
+                    commandArgs,
+                    secrets,
+                    offline);
         }
     }
 
@@ -507,8 +523,7 @@ public final class BuildPluginHarness {
 
         @Override
         public Optional<Path> mainArtifact() {
-            return Optional.ofNullable(spec.artifactPath())
-                    .filter(Files::isRegularFile);
+            return Optional.ofNullable(spec.artifactPath()).filter(Files::isRegularFile);
         }
 
         /**
@@ -535,7 +550,7 @@ public final class BuildPluginHarness {
 
         @Override
         public void out(String line) {
-            out.emit(cc.jumpkick.plugin.protocol.PluginReply.commandOut(line));
+            out.emit(PluginReply.commandOut(line));
         }
 
         @Override

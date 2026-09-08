@@ -23,7 +23,9 @@ class TextViewTest {
         write("src/main/java/a/B.java", "package a; // top\nclass B { String s = \"lit\"; }\n");
         write("src/main/java/a/C.kt", "val x = \"k\"\n");
         write("src/test/java/a/BTest.java", "class BTest {}\n");
-        write("src/main/java/build/Gen.java", "class Gen {}\n");
+        write("src/main/java/build/Gen.java", "class Gen {}\n"); // a package named build: source
+        write("build.gradle.kts", "plugins { java }\n");
+        write("build/generated/G.java", "class G {}\n"); // Gradle's build/, beside its script: output
         write("src/main/java/node_modules/x.js", "x\n");
         write("src/main/java/.hidden/H.java", "class H {}\n");
         write(".github/workflows/ci.yml", "on: push\n");
@@ -42,7 +44,9 @@ class TextViewTest {
     @Test
     void files_are_root_relative_sorted_and_matched_by_glob() {
         TextView t = new TextView(root, List.of(root.resolve("src")));
-        assertThat(t.files("**/*.java")).containsExactly("src/main/java/a/B.java", "src/test/java/a/BTest.java");
+        assertThat(t.files("**/*.java"))
+                .containsExactly(
+                        "src/main/java/a/B.java", "src/main/java/build/Gen.java", "src/test/java/a/BTest.java");
         assertThat(t.files("src/main/**/*.kt")).containsExactly("src/main/java/a/C.kt");
         assertThat(t.files("*.java"))
                 .as("a single star does not cross directories")
@@ -51,15 +55,19 @@ class TextViewTest {
     }
 
     @Test
-    void build_output_node_modules_and_dot_directories_are_not_the_source_tree() {
+    void node_modules_and_dot_directories_are_not_the_source_tree_but_a_package_named_build_is() {
         TextView t = new TextView(root, List.of(Path.of("src")));
         List<String> all = t.files("**");
-        assertThat(all)
-                .doesNotContain(
-                        "src/main/java/build/Gen.java",
-                        "src/main/java/node_modules/x.js",
-                        "src/main/java/.hidden/H.java");
-        assertThat(all).contains("src/main/java/a/B.java");
+        assertThat(all).doesNotContain("src/main/java/node_modules/x.js", "src/main/java/.hidden/H.java");
+        assertThat(all).contains("src/main/java/a/B.java", "src/main/java/build/Gen.java");
+    }
+
+    @Test
+    void gradles_build_directory_is_known_by_the_script_beside_it() {
+        TextView t = new TextView(root, List.of(Path.of("")), false, "target");
+        List<String> all = t.files("**");
+        assertThat(all).doesNotContain("build/generated/G.java");
+        assertThat(all).contains("build.gradle.kts", "src/main/java/build/Gen.java");
     }
 
     @Test
@@ -80,7 +88,8 @@ class TextViewTest {
         TextView t = new TextView(root, List.of(Path.of("src")), true, null);
         assertThat(t.files("**/src/main/java/**/*.java"))
                 .as("the fixture has no tree shape; the name pattern *.java is what matches")
-                .containsExactly("src/main/java/a/B.java", "src/test/java/a/BTest.java");
+                .containsExactly(
+                        "src/main/java/a/B.java", "src/main/java/build/Gen.java", "src/test/java/a/BTest.java");
         assertThat(t.files("x/y/B.java")).containsExactly("src/main/java/a/B.java");
     }
 

@@ -3,6 +3,7 @@ package cc.jumpkick.wire.protocol;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.OutputDirs;
 import cc.jumpkick.testing.RepoRoot;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -93,10 +94,11 @@ class WireKeyClosureTest {
             public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
                 String name = dir.getFileName() == null ? "" : dir.getFileName().toString();
                 if (name.equals(".git")) return FileVisitResult.SKIP_SUBTREE;
-                boolean moduleOutput = (name.equals("build") || name.equals("target"))
-                        && (Files.exists(dir.resolveSibling("build.gradle.kts"))
-                                || Files.exists(dir.resolveSibling("jk.toml"))
-                                || dir.getParent() != null && dir.getParent().equals(root));
+                boolean moduleOutput = OutputDirs.isGradleBuildDir(dir)
+                        || (name.equals("build") || name.equals("target"))
+                                && (Files.exists(dir.resolveSibling("jk.toml"))
+                                        || dir.getParent() != null
+                                                && dir.getParent().equals(root));
                 return moduleOutput ? FileVisitResult.SKIP_SUBTREE : FileVisitResult.CONTINUE;
             }
 

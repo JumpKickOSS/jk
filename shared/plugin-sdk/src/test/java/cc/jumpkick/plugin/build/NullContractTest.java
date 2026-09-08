@@ -13,8 +13,7 @@ class NullContractTest {
     void optional_result_and_runtime_entry_paths_are_explicit() {
         ImageResult pushed = ImageResult.pushed("registry.example/app:1");
         ImageResult tarball = ImageResult.tarball(Path.of("app.tar"));
-        PackageIo.RuntimeEntry container =
-                new PackageIo.RuntimeEntry("app.aar", null, false, Path.of("app-aar"));
+        PackageIo.RuntimeEntry container = new PackageIo.RuntimeEntry("app.aar", null, false, Path.of("app-aar"));
 
         assertThat(pushed.reference()).isEqualTo("registry.example/app:1");
         assertThat(pushed.tarball()).isNull();

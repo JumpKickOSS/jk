@@ -39,10 +39,12 @@ final class DefaultPackageContext implements PackageContext {
     @Override
     public void produce(String name, PackagerSpec.Body body) {
         if (produced) {
-            throw new IllegalStateException("a packager is already declared — one packager may replace the"
-                    + " main artifact");
+            throw new IllegalStateException(
+                    "a packager is already declared — one packager may replace the" + " main artifact");
         }
         produced = true;
-        ctx.packaging(PackagerSpec.replacingMainArtifact(name).inputs(inputs.toArray(new In[0])).produce(body));
+        ctx.packaging(PackagerSpec.replacingMainArtifact(name)
+                .inputs(inputs.toArray(new In[0]))
+                .produce(body));
     }
 }

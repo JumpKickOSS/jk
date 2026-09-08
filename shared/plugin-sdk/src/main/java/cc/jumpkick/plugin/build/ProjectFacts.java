@@ -27,9 +27,7 @@ public record ProjectFacts(
         Map<String, String> manifest) {
 
     public ProjectFacts {
-        manifest = manifest.isEmpty()
-                ? Map.of()
-                : Collections.unmodifiableMap(new LinkedHashMap<>(manifest));
+        manifest = manifest.isEmpty() ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(manifest));
     }
 
     /**

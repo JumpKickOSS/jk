@@ -3,6 +3,7 @@ package cc.jumpkick.plugin.build;
 
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.jdk.JdkFingerprint;
+import cc.jumpkick.plugin.PluginConfig;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -13,6 +14,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
@@ -36,7 +38,7 @@ public interface TaskExec {
     List<PackageIo.RuntimeEntry> runtimeEntries();
 
     /** The plugin's validated config table. */
-    cc.jumpkick.plugin.PluginConfig config();
+    PluginConfig config();
 
     /** Read-only project facts (coords, resolved main, capability flags). */
     ProjectFacts project();
@@ -52,16 +54,16 @@ public interface TaskExec {
      * artifact id — the fetched jar/binary's path. The author declares the coordinate in the
      * manifest and never learns where jk caches it.
      */
-    java.util.Optional<Path> extra(String name);
+    Optional<Path> extra(String name);
 
     /** A chained step's output root ({@link In#stepOutput} input); empty when it did not run. */
-    java.util.Optional<Path> stepOutput(String step);
+    Optional<Path> stepOutput(String step);
 
     /** As {@link #stepOutput} but required — a declared {@code In.stepOutput} is never absent. */
     default Path requireStepOutput(String step) {
         return stepOutput(step)
-                .orElseThrow(() -> new IllegalStateException("step output not provided: " + step
-                        + " — declare it with In.stepOutput(...)"));
+                .orElseThrow(() -> new IllegalStateException(
+                        "step output not provided: " + step + " — declare it with In.stepOutput(...)"));
     }
 
     /** As {@link #extra}, throwing with the missing artifact id (for required tools). */

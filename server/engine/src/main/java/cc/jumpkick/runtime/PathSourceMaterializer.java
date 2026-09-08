@@ -128,7 +128,7 @@ final class PathSourceMaterializer {
             for (Path p : (Iterable<Path>) walk::iterator) {
                 if (!Files.isRegularFile(p)) continue;
                 Path rel = projectDir.relativize(p);
-                if (isIgnored(rel)) continue;
+                if (isIgnored(projectDir, rel)) continue;
                 lines.add(rel.toString().replace('\\', '/') + "\0" + Files.size(p) + "\0" + Hashing.sha256Hex(p));
             }
         }
@@ -141,9 +141,13 @@ final class PathSourceMaterializer {
         return Hashing.hex(md.digest()).substring(0, 24);
     }
 
-    private static boolean isIgnored(Path relativePath) {
+    private static boolean isIgnored(Path projectDir, Path relativePath) {
+        // Judged with the directory in hand, not the bare segment: Gradle's build/ is known by the
+        // script beside it, and a package named build is a package.
+        Path dir = projectDir;
         for (Path segment : relativePath) {
-            if (WalkSkip.pathSource(segment)) return true;
+            dir = dir.resolve(segment);
+            if (WalkSkip.pathSource(dir)) return true;
         }
         return false;
     }

@@ -70,6 +70,17 @@ class FormatPlansCollectTest {
     }
 
     @Test
+    void a_package_named_build_is_collected_while_gradles_build_dir_is_not(@TempDir Path tmp) throws Exception {
+        Files.writeString(tmp.resolve("build.gradle.kts"), "plugins { java }");
+        Path gradleOut = Files.createDirectories(tmp.resolve("build/generated"));
+        Files.writeString(gradleOut.resolve("Gen.java"), "class Gen {}");
+        Path pkg = Files.createDirectories(tmp.resolve("src/main/java/cc/jumpkick/plugin/build"));
+        Path keep = pkg.resolve("Keep.java");
+        Files.writeString(keep, "class Keep {}");
+        assertThat(FormatSources.collectSources(tmp).javaFiles()).containsExactly(keep);
+    }
+
+    @Test
     void ancestor_named_build_does_not_hide_sources(@TempDir Path tmp) throws Exception {
         Path project = tmp.resolve("build/tmp/proj");
         Path src = project.resolve("src/main/java");

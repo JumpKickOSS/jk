@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.build;
 
+import cc.jumpkick.plugin.PluginConfig;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Optional;
 
 /** What a {@link PluginCommandSpec} body sees: its CLI args, the plugin config/project facts, and output. */
 public interface PluginCommandExec {
@@ -10,7 +12,7 @@ public interface PluginCommandExec {
     /** The args after the command on the jk command line, verbatim. */
     List<String> args();
 
-    cc.jumpkick.plugin.PluginConfig config();
+    PluginConfig config();
 
     ProjectFacts project();
 
@@ -23,20 +25,21 @@ public interface PluginCommandExec {
      * also runs) and every {@code [[contribute.command-dependency]]} (command-only tools — an adb,
      * an SDK root — provisioned only when the command runs and in no build action key).
      */
-    java.util.Optional<Path> extra(String name);
+    Optional<Path> extra(String name);
 
     /** As {@link #extra} but required. */
     default Path requireExtra(String name) {
-        return extra(name).orElseThrow(() -> new IllegalStateException("tool artifact not provided: " + name
-                + " — declare it as a [[contribute.command-dependency]] (command-only) or"
-                + " [[contribute.step-dependency]] (a step tool the command borrows)"));
+        return extra(name)
+                .orElseThrow(() -> new IllegalStateException("tool artifact not provided: " + name
+                        + " — declare it as a [[contribute.command-dependency]] (command-only) or"
+                        + " [[contribute.step-dependency]] (a step tool the command borrows)"));
     }
 
     /**
      * The built main artifact (the packager's, under its declared extension — an APK), or empty
      * when not built yet. Deploy-style commands consume this instead of learning jk's layout.
      */
-    java.util.Optional<Path> mainArtifact();
+    Optional<Path> mainArtifact();
 
     /** Emit one user-facing output line (the client prints these in order). */
     void out(String line);

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.build;
 
+import cc.jumpkick.plugin.PluginConfig;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
@@ -35,8 +36,7 @@ public interface PackageIo {
             String artifact,
             String version) {
 
-        public RuntimeEntry(
-                String fileName, @Nullable Path jar, boolean snapshot, @Nullable Path container) {
+        public RuntimeEntry(String fileName, @Nullable Path jar, boolean snapshot, @Nullable Path container) {
             this(fileName, jar, snapshot, container, "", "", "");
         }
 
@@ -54,7 +54,7 @@ public interface PackageIo {
     /** Lock-ordered production RUNTIME entries — {@link In#runtimeEntries()}. */
     List<RuntimeEntry> runtimeEntries();
 
-    cc.jumpkick.plugin.PluginConfig config();
+    PluginConfig config();
 
     ProjectFacts project();
 

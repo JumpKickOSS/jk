@@ -25,17 +25,21 @@ class BuildPluginHarnessCommandTest {
             .description("echo the command args")
             .run(exec -> {
                 exec.label("greeting");
-                exec.out("hello " + String.join("+", exec.args()) + " from " + exec.config().id());
+                exec.out("hello " + String.join("+", exec.args()) + " from "
+                        + exec.config().id());
                 return exec.args().contains("--fail") ? 3 : 0;
             }));
 
     @Test
     void describe_declares_the_verb(@TempDir Path dir) throws Exception {
         var out = capture();
-        int exit = BuildPluginHarness.run(FIXTURE, List.of(spec(dir, "describe", List.of()).toString()), out.writer);
+        int exit = BuildPluginHarness.run(
+                FIXTURE, List.of(spec(dir, "describe", List.of()).toString()), out.writer);
         assertThat(exit).isZero();
-        assertThat(out.lines()).anyMatch(l ->
-                l.contains("\"t\":\"command\"") && l.contains("hello-fixture") && l.contains("echo the command args"));
+        assertThat(out.lines())
+                .anyMatch(l -> l.contains("\"t\":\"command\"")
+                        && l.contains("hello-fixture")
+                        && l.contains("echo the command args"));
     }
 
     @Test
@@ -70,12 +74,14 @@ class BuildPluginHarnessCommandTest {
             argsArr.append('"').append(args.get(i)).append('"');
         }
         argsArr.append(']');
-        Files.write(spec, List.of(
-                "{\"t\":\"op\",\"op\":\"" + op + "\",\"name\":\"hello-fixture\",\"plugin\":\"fx\"}",
-                "{\"t\":\"config\",\"key\":\"version\",\"kind\":\"string\",\"value\":\"1.0\"}",
-                "{\"t\":\"project\",\"group\":\"g\",\"name\":\"n\",\"version\":\"1\",\"javaRelease\":25,"
-                        + "\"nativeDeclared\":false,\"kotlin\":false}",
-                "{\"t\":\"command-args\",\"values\":" + argsArr + "}"));
+        Files.write(
+                spec,
+                List.of(
+                        "{\"t\":\"op\",\"op\":\"" + op + "\",\"name\":\"hello-fixture\",\"plugin\":\"fx\"}",
+                        "{\"t\":\"config\",\"key\":\"version\",\"kind\":\"string\",\"value\":\"1.0\"}",
+                        "{\"t\":\"project\",\"group\":\"g\",\"name\":\"n\",\"version\":\"1\",\"javaRelease\":25,"
+                                + "\"nativeDeclared\":false,\"kotlin\":false}",
+                        "{\"t\":\"command-args\",\"values\":" + argsArr + "}"));
         return spec;
     }
 

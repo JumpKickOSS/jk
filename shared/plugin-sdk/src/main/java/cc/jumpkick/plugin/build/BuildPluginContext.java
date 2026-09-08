@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.build;
 
+import cc.jumpkick.plugin.PluginConfig;
+
 /**
  * The registration surface handed to {@link BuildPlugin#register}. Registration code may branch on
  * {@link #config()} / {@link #project()} — that is exactly where conditional shape belongs (the
@@ -11,7 +13,7 @@ package cc.jumpkick.plugin.build;
 public interface BuildPluginContext {
 
     /** The parsed, schema-validated table this plugin owns. */
-    cc.jumpkick.plugin.PluginConfig config();
+    PluginConfig config();
 
     /** Read-only project facts (coords, resolved main, capability flags). */
     ProjectFacts project();

@@ -46,10 +46,12 @@ class ToolRunForkTest {
     @Test
     void env_reaches_the_child_and_adds_to_the_inherited_environment() throws Exception {
         assertThat(probe().env(EnvEchoMain.VAR, "from-a-map").run().output()).contains("env=from-a-map");
-        assertThat(probe().env(Map.of(EnvEchoMain.VAR, "from-a-table")).run().output()).contains("env=from-a-table");
+        assertThat(probe().env(Map.of(EnvEchoMain.VAR, "from-a-table")).run().output())
+                .contains("env=from-a-table");
         // Additive, not replacing: PATH is still there, so the child is not run in a bare
         // environment (which is how a tool that shells out starts failing on some machines only).
-        assertThat(probe().env(EnvEchoMain.VAR, "x").arg("--path").run().output()).doesNotContain("path=<unset>");
+        assertThat(probe().env(EnvEchoMain.VAR, "x").arg("--path").run().output())
+                .doesNotContain("path=<unset>");
     }
 
     @Test

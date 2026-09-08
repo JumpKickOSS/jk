@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.build;
 
+import java.util.Locale;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -41,11 +42,11 @@ public enum InvocationPhase {
 
     /** Wire / JSON spelling ({@code resolve}, {@code plan}, {@code build}, …). */
     public String wireName() {
-        return name().toLowerCase(java.util.Locale.ROOT);
+        return name().toLowerCase(Locale.ROOT);
     }
 
     public static InvocationPhase fromWire(String name) {
-        return valueOf(name.toUpperCase(java.util.Locale.ROOT).replace('-', '_'));
+        return valueOf(name.toUpperCase(Locale.ROOT).replace('-', '_'));
     }
 
     public static @Nullable InvocationPhase fromWireOrNull(@Nullable String name) {

@@ -55,14 +55,16 @@ class CapabilityHarnessTest {
     @Test
     void capability_plugin_describes_step_and_packager(@TempDir Path dir) throws Exception {
         var out = capture();
-        int exit = BuildPluginHarness.run(new FixturePlugin(), List.of(describeSpec(dir).toString()), out.writer);
+        int exit = BuildPluginHarness.run(
+                new FixturePlugin(), List.of(describeSpec(dir).toString()), out.writer);
         assertThat(exit).isZero();
         List<String> lines = out.lines();
         // The BuildExtension's implicit step, translated to the same TaskSpec describe line register() would emit.
-        assertThat(lines).anyMatch(l -> l.contains("\"t\":\"task\"")
-                && l.contains("\"name\":\"gen-thing\"")
-                && l.contains("\"contributesSources\":[\"gen\"]")
-                && l.contains("\"outputs\":[\"gen\"]"));
+        assertThat(lines)
+                .anyMatch(l -> l.contains("\"t\":\"task\"")
+                        && l.contains("\"name\":\"gen-thing\"")
+                        && l.contains("\"contributesSources\":[\"gen\"]")
+                        && l.contains("\"outputs\":[\"gen\"]"));
         // The PackageExtension's packager.
         assertThat(lines).anyMatch(l -> l.contains("\"t\":\"packager\"") && l.contains("\"name\":\"fixture-jar\""));
     }
@@ -70,8 +72,8 @@ class CapabilityHarnessTest {
     @Test
     void terminal_goal_capability_is_rejected_by_the_build_harness(@TempDir Path dir) throws Exception {
         Plugin imagePlugin = new ImageFixture();
-        assertThatThrownBy(() ->
-                        BuildPluginHarness.run(imagePlugin, List.of(describeSpec(dir).toString()), capture().writer))
+        assertThatThrownBy(() -> BuildPluginHarness.run(
+                        imagePlugin, List.of(describeSpec(dir).toString()), capture().writer))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("own worker entry");
     }
@@ -96,11 +98,13 @@ class CapabilityHarnessTest {
 
     private static Path describeSpec(Path dir) throws Exception {
         Path spec = dir.resolve("describe.spec");
-        Files.write(spec, List.of(
-                "{\"t\":\"op\",\"op\":\"describe\",\"plugin\":\"jk-fixture\"}",
-                "{\"t\":\"config\",\"key\":\"version\",\"kind\":\"string\",\"value\":\"1.0\"}",
-                "{\"t\":\"project\",\"group\":\"g\",\"name\":\"n\",\"version\":\"1\",\"javaRelease\":25,"
-                        + "\"nativeDeclared\":false,\"kotlin\":false}"));
+        Files.write(
+                spec,
+                List.of(
+                        "{\"t\":\"op\",\"op\":\"describe\",\"plugin\":\"jk-fixture\"}",
+                        "{\"t\":\"config\",\"key\":\"version\",\"kind\":\"string\",\"value\":\"1.0\"}",
+                        "{\"t\":\"project\",\"group\":\"g\",\"name\":\"n\",\"version\":\"1\",\"javaRelease\":25,"
+                                + "\"nativeDeclared\":false,\"kotlin\":false}"));
         return spec;
     }
 

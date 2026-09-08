@@ -3,6 +3,7 @@ package cc.jumpkick.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.OutputDirs;
 import cc.jumpkick.testing.RepoRoot;
 import java.io.IOException;
 import java.nio.file.FileVisitResult;
@@ -111,7 +112,7 @@ class JUnitPinParityTest {
             @Override
             public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
                 String name = dir.getFileName() == null ? "" : dir.getFileName().toString();
-                boolean output = name.equals("build") || name.equals("target") || name.equals(".git");
+                boolean output = OutputDirs.isGradleBuildDir(dir) || name.equals("target") || name.equals(".git");
                 return output ? FileVisitResult.SKIP_SUBTREE : FileVisitResult.CONTINUE;
             }
 

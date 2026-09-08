@@ -26,7 +26,8 @@ class ToolRunTest {
     void named_tool_head_agrees_with_the_owner(@TempDir Path tmp) {
         Path javaHome = tmp.resolve("jdk");
         List<String> command = new TaskExec.ToolRun(javaHome, "javac").command();
-        assertThat(command.get(0)).isEqualTo(JdkFingerprint.tool(javaHome, "javac").toString());
+        assertThat(command.get(0))
+                .isEqualTo(JdkFingerprint.tool(javaHome, "javac").toString());
     }
 
     @Test
@@ -39,8 +40,9 @@ class ToolRunTest {
     @Test
     void classpath_contributes_cp_pair_joined_by_the_owner(@TempDir Path tmp) {
         List<Path> entries = List.of(tmp.resolve("a.jar"), tmp.resolve("lib"), tmp.resolve("b.jar"));
-        List<String> command =
-                new TaskExec.ToolRun(tmp.resolve("jdk"), "java").classpath(entries).command();
+        List<String> command = new TaskExec.ToolRun(tmp.resolve("jdk"), "java")
+                .classpath(entries)
+                .command();
         assertThat(command.subList(1, 3)).containsExactly("-cp", Classpaths.join(entries));
     }
 
