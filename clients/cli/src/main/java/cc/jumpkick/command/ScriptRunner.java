@@ -25,6 +25,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -92,7 +93,12 @@ final class ScriptRunner {
         ScriptHeader header = readHeader(script);
         EngineRequests.ScriptPrepareOutcome prep = prepare("java", script);
         if (!prep.result().success()) return failureExitCode(prep.result());
-        return execJava(prep.classesDir(), prep.classpath(), header.javaOptions(), prep.mainClass(), args);
+        return execJava(
+                prep.classesDir(),
+                prep.classpath(),
+                header.javaOptions(),
+                Objects.requireNonNull(prep.mainClass(), "script-prepare terminal carried no main class"),
+                args);
     }
 
     // --- .kt -------------------------------------------------------------
@@ -110,7 +116,12 @@ final class ScriptRunner {
         List<Path> runtime = new ArrayList<>(prep.classpath());
         if (prep.stdlib() != null) runtime.add(prep.stdlib());
 
-        return execJava(prep.classesDir(), runtime, header.javaOptions(), prep.mainClass(), args);
+        return execJava(
+                prep.classesDir(),
+                runtime,
+                header.javaOptions(),
+                Objects.requireNonNull(prep.mainClass(), "script-prepare terminal carried no main class"),
+                args);
     }
 
     // --- .kts ------------------------------------------------------------
@@ -179,7 +190,8 @@ final class ScriptRunner {
             return Exit.NO_INPUT;
         }
         EngineRequests.ScriptPrepareOutcome prep = prepare("jar", jar);
-        if (!prep.result().success() || prep.mainClass() == null) {
+        if (!prep.result().success()
+                || Objects.requireNonNull(prep.mainClass(), "script-prepare terminal carried no main class") == null) {
             for (BuildPlanResult.Diagnostic d : prep.result().errors()) {
                 if ("no-main-class".equals(d.code())) return Exit.DATA_ERR;
             }
@@ -198,7 +210,7 @@ final class ScriptRunner {
         } else {
             command.add("-cp");
             command.add(Classpaths.join(classpath));
-            command.add(prep.mainClass());
+            command.add(Objects.requireNonNull(prep.mainClass(), "script-prepare terminal carried no main class"));
         }
         command.addAll(args);
         Process p = CliOutput.handOffTerminal(new ProcessBuilder(command));

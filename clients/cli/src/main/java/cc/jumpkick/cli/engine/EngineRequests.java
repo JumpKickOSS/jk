@@ -262,14 +262,14 @@ public final class EngineRequests {
     public interface LockHandler {
         BuildPlanListener onModuleStart(String dir, String coord, List<Task> steps);
 
-        default void onPackage(String dir, String name, String version) {}
+        default void onPackage(@Nullable String dir, String name, @Nullable String version) {}
 
         /**
          * @param totalSeen cumulative packages at this sample ({@code ≥ 0}), or {@code -1} when the
          * event is a single unbatched package. Defaults to {@link #onPackage(String,
          * String, String)}.
          */
-        default void onPackage(String dir, String name, String version, int totalSeen) {
+        default void onPackage(@Nullable String dir, String name, @Nullable String version, int totalSeen) {
             onPackage(dir, name, version);
         }
 
@@ -368,11 +368,11 @@ public final class EngineRequests {
      */
     public record ImageSummary(
             @Nullable TestSummary testResult,
-            String ref,
-            String tarball,
-            String name,
-            String version,
-            String daemonExe) {}
+            @Nullable String ref,
+            @Nullable String tarball,
+            @Nullable String name,
+            @Nullable String version,
+            @Nullable String daemonExe) {}
 
     /** Everything an engine-hosted {@code jk import} needs — pre-flighted absolute paths. */
     public record ImportRequest(
@@ -385,7 +385,12 @@ public final class EngineRequests {
             Path cache) {}
 
     /** A hosted {@code jk import} run's summary, decoded from the terminal plan-finish. */
-    public record ImportOutcome(BuildPlanResult result, int exitCode, int warnings, String error, String diag) {}
+    public record ImportOutcome(
+            BuildPlanResult result,
+            int exitCode,
+            int warnings,
+            @Nullable String error,
+            @Nullable String diag) {}
 
     // ---- hosted plan commands ----------------------------------------------------------------
 
@@ -528,7 +533,9 @@ public final class EngineRequests {
 
     /** A hosted git fetch's outcome: the plan result plus the materialized checkout + sha (null on failure). */
     public record GitFetchOutcome(
-            BuildPlanResult result, @Nullable Path checkout, String sha) {}
+            BuildPlanResult result,
+            @Nullable Path checkout,
+            @Nullable String sha) {}
 
     // ---- hosted long-tail commands ----------------------------------------------------------------
 
@@ -550,7 +557,11 @@ public final class EngineRequests {
      * landed on, the resolved main class, and the classpath (null/empty on failure) — the
      * ingredients of a client-side {@code ToolEnv}.
      */
-    public record ToolResolveOutcome(BuildPlanResult result, String coord, String mainClass, List<Path> classpath) {}
+    public record ToolResolveOutcome(
+            BuildPlanResult result,
+            @Nullable String coord,
+            @Nullable String mainClass,
+            List<Path> classpath) {}
 
     /**
      * Everything an engine-hosted script/jar preparation needs ({@code jk tool run <file>}).
@@ -577,7 +588,7 @@ public final class EngineRequests {
      */
     public record ScriptPrepareOutcome(
             BuildPlanResult result,
-            String mainClass,
+            @Nullable String mainClass,
             List<Path> classpath,
             @Nullable Path classesDir,
             @Nullable Path kotlincBin,

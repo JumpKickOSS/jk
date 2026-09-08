@@ -12,9 +12,14 @@ import cc.jumpkick.wire.protocol.AffectedTestsReport;
 import cc.jumpkick.wire.protocol.AffectedTestsRequest;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.EngineWireException;
+import cc.jumpkick.wire.protocol.LockFinishEvent;
+import cc.jumpkick.wire.protocol.LockModuleEvent;
+import cc.jumpkick.wire.protocol.LockPackageEvent;
 import cc.jumpkick.wire.protocol.LockRequest;
 import cc.jumpkick.wire.protocol.OutdatedReport;
 import cc.jumpkick.wire.protocol.OutdatedRequest;
+import cc.jumpkick.wire.protocol.PlanFinishLockEvent;
+import cc.jumpkick.wire.protocol.PlanFinishSyncEvent;
 import cc.jumpkick.wire.protocol.SyncRequest;
 import cc.jumpkick.wire.protocol.UpdateRequest;
 import java.io.BufferedReader;
@@ -181,11 +186,12 @@ final class EngineResolveAdapter {
                         case EngineProtocol.PLAN_TASK -> steps.add(EngineEventDecoder.taskFromWire(line));
                         case EngineProtocol.PLAN_DONE -> listener = listenerFactory.apply(steps);
                         case EngineProtocol.BUILDPLAN_FINISH -> {
-                            if (fetchedOut != null) fetchedOut[0] = Jsonl.longValue(line, "syncFetched", 0);
-                            if (upToDateOut != null) upToDateOut[0] = Jsonl.longValue(line, "syncUpToDate", 0);
+                            PlanFinishSyncEvent e = PlanFinishSyncEvent.decode(line);
+                            if (fetchedOut != null) fetchedOut[0] = e.fetched();
+                            if (upToDateOut != null) upToDateOut[0] = e.upToDate();
                             BuildPlanResult result = new BuildPlanResult(
                                     "sync",
-                                    Jsonl.bool(line, "success", false),
+                                    e.success(),
                                     Duration.ZERO,
                                     List.of(),
                                     List.of(),
@@ -231,8 +237,9 @@ final class EngineResolveAdapter {
                 public EngineRequests.@Nullable LockOutcome onLine(String type, String line) throws IOException {
                     switch (type) {
                         case EngineProtocol.LOCK_MODULE -> {
-                            currentDir = Jsonl.str(line, "dir");
-                            currentCoord = Jsonl.str(line, "coord");
+                            LockModuleEvent e = LockModuleEvent.decode(line);
+                            currentDir = e.dir();
+                            currentCoord = e.coord();
                             steps = new ArrayList<>();
                             diagnostics = new ArrayList<>();
                             listener = null;
@@ -243,16 +250,15 @@ final class EngineResolveAdapter {
                                     Objects.requireNonNull(currentDir, "plan-done before module-start"),
                                     Objects.requireNonNull(currentCoord, "plan-done before module-start"),
                                     steps);
-                        case EngineProtocol.LOCK_PACKAGE ->
-                            handler.onPackage(
-                                    Jsonl.str(line, "dir"),
-                                    Jsonl.str(line, "name"),
-                                    Jsonl.str(line, "version"),
-                                    Jsonl.intValue(line, "total", -1));
+                        case EngineProtocol.LOCK_PACKAGE -> {
+                            LockPackageEvent e = LockPackageEvent.decode(line);
+                            handler.onPackage(e.dir(), e.name(), e.version(), e.totalSeen());
+                        }
                         case EngineProtocol.BUILDPLAN_FINISH -> {
+                            PlanFinishLockEvent e = PlanFinishLockEvent.decode(line);
                             BuildPlanResult result = new BuildPlanResult(
                                     planName,
-                                    Jsonl.bool(line, "success", false),
+                                    e.success(),
                                     Duration.ZERO,
                                     List.of(),
                                     List.of(),
@@ -261,20 +267,20 @@ final class EngineResolveAdapter {
                                     false);
                             if (listener != null) listener.planFinish(result);
                             listener = null; // settled — settle() must not settle it twice
+                            // Absent counts are unknown (-1) here, where the record reads 0.
                             handler.onModuleFinish(
                                     Objects.requireNonNull(currentDir, "module-finish before module-start"),
                                     result,
                                     new EngineRequests.LockCounts(
-                                            Jsonl.longValue(line, "lockPackages", -1),
-                                            Jsonl.longValue(line, "lockSources", -1),
-                                            Jsonl.longValue(line, "lockPlugins", -1)));
+                                            Jsonl.has(line, "lockPackages") ? e.packages() : -1,
+                                            Jsonl.has(line, "lockSources") ? e.sources() : -1,
+                                            Jsonl.has(line, "lockPlugins") ? e.plugins() : -1));
                         }
                         case EngineProtocol.LOCK_FINISH -> {
-                            return new EngineRequests.LockOutcome(
-                                    Jsonl.bool(line, "success", false),
-                                    Jsonl.intValue(line, "exitCode", 1),
-                                    Jsonl.strArray(line, "errors"),
-                                    Jsonl.intValue(line, "refreshed", -1));
+                            LockFinishEvent e = LockFinishEvent.decode(line);
+                            // An absent exit code is a failure here, where the record reads 0.
+                            int exitCode = Jsonl.has(line, "exitCode") ? e.exitCode() : 1;
+                            return new EngineRequests.LockOutcome(e.success(), exitCode, e.errors(), e.refreshed());
                         }
                         case EngineProtocol.ERROR ->
                             throw EngineWireException.fromJsonLine(line, "jk engine: run failed: ");

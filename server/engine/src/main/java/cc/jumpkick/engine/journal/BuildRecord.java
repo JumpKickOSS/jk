@@ -46,11 +46,11 @@ public record BuildRecord(
         long requestId) {
 
     /**
-     * The on-disk schema version stamped into every {@code record.json}. Purely descriptive: a
-     * record carrying any other value still parses, because additive fields absent from it read
-     * back as their defaults.
+     * The on-disk schema version stamped into every {@code record.json}: 1 until 1.0, like every
+     * schema jk writes. Descriptive: a record carrying another value still parses, because additive
+     * fields absent from it read back as their defaults.
      */
-    public static final int SCHEMA = 2;
+    public static final int SCHEMA = 1;
 
     public BuildRecord {
         modules = modules == null ? List.of() : List.copyOf(modules);

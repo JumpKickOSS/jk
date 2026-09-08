@@ -12,9 +12,14 @@ import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.EngineWireException;
+import cc.jumpkick.wire.protocol.ErrorLineEvent;
 import cc.jumpkick.wire.protocol.EtaEvent;
 import cc.jumpkick.wire.protocol.LabelEvent;
+import cc.jumpkick.wire.protocol.ModuleFinishEvent;
 import cc.jumpkick.wire.protocol.OutputEvent;
+import cc.jumpkick.wire.protocol.PlanDiagnosticEvent;
+import cc.jumpkick.wire.protocol.PlanFinishEvent;
+import cc.jumpkick.wire.protocol.PlanFinishOutcomeEvent;
 import cc.jumpkick.wire.protocol.PlanModuleEvent;
 import cc.jumpkick.wire.protocol.PlanStartEvent;
 import cc.jumpkick.wire.protocol.PlanTaskEvent;
@@ -23,6 +28,8 @@ import cc.jumpkick.wire.protocol.ProgressEvent;
 import cc.jumpkick.wire.protocol.TaskFinishEvent;
 import cc.jumpkick.wire.protocol.TaskStartEvent;
 import cc.jumpkick.wire.protocol.TickUpdateEvent;
+import cc.jumpkick.wire.protocol.WarnEvent;
+import cc.jumpkick.wire.protocol.WorkspaceFinishEvent;
 import cc.jumpkick.wire.protocol.WorkspaceProgressEvent;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.ModulePlan;
@@ -87,7 +94,7 @@ final class EngineEventDecoder {
             BufferedReader reader,
             Function<List<Task>, BuildPlanListener> listenerFactory,
             TestSummary @Nullable [] testResultOut,
-            String @Nullable [] buildOutcomeOut)
+            @Nullable String @Nullable [] buildOutcomeOut)
             throws IOException {
         return streamSingleBuildPlanEvents(reader, listenerFactory, testResultOut, buildOutcomeOut, null);
     }
@@ -103,7 +110,7 @@ final class EngineEventDecoder {
             BufferedReader reader,
             Function<List<Task>, BuildPlanListener> listenerFactory,
             TestSummary @Nullable [] testResultOut,
-            String @Nullable [] buildOutcomeOut,
+            @Nullable String @Nullable [] buildOutcomeOut,
             @Nullable SocketChannel ch)
             throws IOException {
         // The wire carries no duration; the summary's "took …" is this client-side
@@ -122,13 +129,18 @@ final class EngineEventDecoder {
                     case EngineProtocol.PLAN_TASK -> steps.add(taskFromWire(line));
                     case EngineProtocol.PLAN_DONE -> listener = listenerFactory.apply(steps);
                     case EngineProtocol.BUILDPLAN_FINISH -> {
-                        TestSummary counts = TestSummary.readCounts(line);
+                        PlanFinishOutcomeEvent e = PlanFinishOutcomeEvent.decode(line);
+                        TestSummary counts = e.total() < 0
+                                ? null
+                                : new TestSummary(e.total(), e.succeeded(), e.failed(), e.skipped(), List.of());
                         if (counts != null && testResultOut != null) testResultOut[0] = counts;
-                        if (buildOutcomeOut != null) buildOutcomeOut[0] = Jsonl.str(line, "buildOutcome");
+                        if (buildOutcomeOut != null) buildOutcomeOut[0] = e.buildOutcome();
+                        // `cancelled` is spliced onto any plan-finish after the fact (withCancelled);
+                        // the outcome record does not carry it.
                         boolean cancelled = Jsonl.bool(line, "cancelled", false);
                         BuildPlanResult result = new BuildPlanResult(
                                 "test",
-                                Jsonl.bool(line, "success", false),
+                                e.success(),
                                 Duration.ofNanos(System.nanoTime() - startNanos),
                                 List.of(),
                                 List.of(),
@@ -199,18 +211,18 @@ final class EngineEventDecoder {
                     case EngineProtocol.BUILDPLAN_FINISH -> {
                         ModuleMeta meta = planByDir.get(dir);
                         List<BuildPlanResult.Diagnostic> diags = diagnosticsByDir.remove(dir);
-                        boolean cancelled = Jsonl.bool(line, "cancelled", false);
+                        PlanFinishEvent e = PlanFinishEvent.decode(line);
                         planListenersByDir
                                 .getOrDefault(dir, NOOP)
                                 .planFinish(new BuildPlanResult(
                                         meta != null ? meta.planName : dir,
-                                        Jsonl.bool(line, "success", false),
+                                        e.success(),
                                         Duration.ZERO,
                                         List.of(),
                                         List.of(),
                                         diags != null ? diags : List.of(),
-                                        cancelled,
-                                        cancelled));
+                                        e.cancelled(),
+                                        e.cancelled()));
                     }
                     case EngineProtocol.MODULE_FINISH -> {
                         ModuleOutcome outcome = readOutcome(dir, line);
@@ -218,12 +230,11 @@ final class EngineEventDecoder {
                         listener.onModuleFinish(outcome);
                     }
                     case EngineProtocol.WORKSPACE_FINISH -> {
+                        WorkspaceFinishEvent e = WorkspaceFinishEvent.decode(line);
+                        // An absent exit code reads as failure here, where the record reads 0.
+                        int exitCode = Jsonl.has(line, "exitCode") ? e.exitCode() : 1;
                         WorkspaceResult result = new WorkspaceResult(
-                                Jsonl.bool(line, "success", false),
-                                Jsonl.intValue(line, "exitCode", 1),
-                                List.copyOf(outcomes),
-                                Jsonl.strArray(line, "errors"),
-                                Jsonl.bool(line, "cancelled", false));
+                                e.success(), exitCode, List.copyOf(outcomes), e.errors(), e.cancelled());
                         listener.onWorkspaceFinish(result);
                         return result;
                     }
@@ -313,8 +324,10 @@ final class EngineEventDecoder {
                 OutputEvent e = OutputEvent.decode(line);
                 listener.output(e.task(), e.line());
             }
-            case EngineProtocol.WARN ->
-                listener.warn(Jsonl.str(line, "task"), Jsonl.str(line, "code"), Jsonl.str(line, "message"));
+            case EngineProtocol.WARN -> {
+                WarnEvent e = WarnEvent.decode(line);
+                listener.warn(e.task(), e.code(), e.message());
+            }
             case EngineProtocol.ERROR_LINE -> dispatchError(listener, line);
             case EngineProtocol.TASK_FINISH -> {
                 TaskFinishEvent e = TaskFinishEvent.decode(line);
@@ -333,48 +346,81 @@ final class EngineEventDecoder {
 
     /** Dispatch a wire error line to the plan listener (enriched test-failure when fields present). */
     private static void dispatchError(BuildPlanListener listener, String line) {
-        TestFailureInfo failure = testFailureFromWire(line);
-        String task = Jsonl.str(line, "task");
-        String code = Jsonl.str(line, "code");
-        String message = Jsonl.str(line, "message");
+        ErrorLineEvent e = ErrorLineEvent.decode(line);
+        TestFailureInfo failure = testFailureOf(
+                line,
+                e.code(),
+                e.message(),
+                e.test(),
+                e.module(),
+                e.engine(),
+                e.testClass(),
+                e.method(),
+                e.exceptionClass(),
+                e.stack(),
+                e.file(),
+                e.worker(),
+                e.line(),
+                e.snippetStart(),
+                e.snippet());
         if (failure != null) {
-            listener.error(task, code, message, failure);
+            listener.error(e.task(), e.code(), e.message(), failure);
         } else {
-            listener.error(task, code, message, Jsonl.str(line, "test"), Jsonl.str(line, "exceptionClass"));
+            listener.error(e.task(), e.code(), e.message(), e.test(), e.exceptionClass());
         }
     }
 
     private static BuildPlanResult.Diagnostic diagnosticFromWire(String line) {
-        TestFailureInfo f = testFailureFromWire(line);
+        PlanDiagnosticEvent e = PlanDiagnosticEvent.decode(line);
+        TestFailureInfo f = testFailureOf(
+                line,
+                e.code(),
+                e.message(),
+                e.test(),
+                e.module(),
+                e.engine(),
+                e.testClass(),
+                e.method(),
+                e.exceptionClass(),
+                e.stack(),
+                e.file(),
+                e.worker(),
+                e.line(),
+                e.snippetStart(),
+                e.snippet());
         if (f != null) {
-            return new BuildPlanResult.Diagnostic(
-                    Jsonl.str(line, "task"), Jsonl.str(line, "code"), Jsonl.str(line, "message"), f);
+            return new BuildPlanResult.Diagnostic(e.task(), e.code(), e.message(), f);
         }
-        return new BuildPlanResult.Diagnostic(
-                Jsonl.str(line, "task"),
-                Jsonl.str(line, "code"),
-                Jsonl.str(line, "message"),
-                Jsonl.str(line, "test"),
-                Jsonl.str(line, "exceptionClass"));
+        return new BuildPlanResult.Diagnostic(e.task(), e.code(), e.message(), e.test(), e.exceptionClass());
     }
 
     /**
-     * Parse enriched test-failure fields from an error/diagnostic wire line. Returns null when no
-     * structured test identity is present (plain javac/resolve errors).
+     * The enriched test-failure identity of an error/diagnostic line, from the decoded fields. Null
+     * when no structured test identity is present (plain javac/resolve errors). The record reads
+     * absent strings as empty; the legacy nested {@code throwable.stack} — written by no current
+     * engine — is the one field still read off the raw line.
      */
-    private static @Nullable TestFailureInfo testFailureFromWire(String line) {
-        String module = nz(Jsonl.topStr(line, "module"));
-        String engine = nz(Jsonl.topStr(line, "engine"));
-        String className = nz(Jsonl.topStr(line, EngineProtocol.TEST_CLASS_FIELD));
-        String method = nz(Jsonl.topStr(line, "method"));
-        if (method.isEmpty()) method = nz(Jsonl.topStr(line, "test"));
-        String exceptionClass = nz(Jsonl.str(line, "exceptionClass"));
-        String stack = nz(Jsonl.str(line, "stack"));
+    private static @Nullable TestFailureInfo testFailureOf(
+            String line,
+            String code,
+            String message,
+            String test,
+            String module,
+            String engine,
+            String className,
+            String method,
+            String exceptionClass,
+            String stack,
+            String file,
+            int worker,
+            int lineNo,
+            int snippetStart,
+            List<String> snippet) {
+        if (method.isEmpty()) method = test;
         if (stack.isEmpty()) {
             String th = Jsonl.nested(line, "throwable");
             if (th != null) stack = nz(Jsonl.str(th, "stack"));
         }
-        String file = nz(Jsonl.str(line, "file"));
         boolean anyIdentity = !module.isEmpty()
                 || !engine.isEmpty()
                 || !className.isEmpty()
@@ -383,22 +429,21 @@ final class EngineEventDecoder {
                 || !file.isEmpty();
         // No identity at all: only a line the engine explicitly coded as a test failure counts,
         // and even then it must carry an exception class or there is nothing to render.
-        if (!anyIdentity && !"test-failure".equals(Jsonl.str(line, "code"))) return null;
+        if (!anyIdentity && !"test-failure".equals(code)) return null;
         if (!anyIdentity && exceptionClass.isEmpty()) return null;
-        int worker = Jsonl.intValue(line, "worker", 0);
         return new TestFailureInfo(
                 module,
                 engine,
                 className,
                 method,
                 exceptionClass,
-                nz(Jsonl.str(line, "message")),
+                message,
                 stack,
                 worker,
                 file,
-                Jsonl.intValue(line, "line", 0),
-                Jsonl.intValue(line, "snippetStart", 0),
-                Jsonl.strArray(line, "snippet"));
+                lineNo,
+                snippetStart,
+                snippet);
     }
 
     /** The engine's strategy percent when it sent one (clock-based once R0 is set), else num/den. */
@@ -421,22 +466,14 @@ final class EngineEventDecoder {
     }
 
     private static ModuleOutcome readOutcome(String dir, String line) {
-        // didWork defaults true for older engines that omit the field (fail-open "built").
-        ModuleOutcome outcome = new ModuleOutcome(
-                Jsonl.str(line, "coord"),
-                Path.of(dir),
-                Jsonl.bool(line, "success", false),
-                Jsonl.intValue(line, "exitCode", 1),
-                Jsonl.longValue(line, "millis", 0),
-                Jsonl.bool(line, "didWork", true),
-                Jsonl.bool(line, "cancelled", false));
-        if (!Jsonl.bool(line, "hasImage", false)) return outcome;
-        return outcome.withImage(new ModuleOutcome.Image(
-                Jsonl.str(line, "imageRef"),
-                Jsonl.str(line, "imageTarball"),
-                Jsonl.str(line, "imageName"),
-                Jsonl.str(line, "imageVersion"),
-                Jsonl.str(line, "imageDaemonExe")));
+        ModuleFinishEvent e = ModuleFinishEvent.decode(line);
+        // Older engines that omit the fields: didWork fails open ("built") and a missing exit code is
+        // a failure — the record reads both as their zero.
+        boolean didWork = Jsonl.has(line, "didWork") ? e.didWork() : true;
+        int exitCode = Jsonl.has(line, "exitCode") ? e.exitCode() : 1;
+        ModuleOutcome outcome =
+                new ModuleOutcome(e.coord(), Path.of(dir), e.success(), exitCode, e.millis(), didWork, e.cancelled());
+        return e.image() == null ? outcome : outcome.withImage(e.image());
     }
 
     /**

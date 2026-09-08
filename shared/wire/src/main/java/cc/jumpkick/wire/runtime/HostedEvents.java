@@ -20,7 +20,7 @@ public final class HostedEvents {
 
     /** One {@code jk format} per-file result, streamed as the formatter worker reports it. */
     public interface FileObserver {
-        void onFile(String path, String status, String message, int index, int total);
+        void onFile(String path, String status, @Nullable String message, int index, int total);
     }
 
     /** One {@code jk import} progress note (kind = {@code note}/{@code warning}/…). */

@@ -11,12 +11,14 @@ import cc.jumpkick.wire.protocol.CatalogReadAck;
 import cc.jumpkick.wire.protocol.CatalogReadRequest;
 import cc.jumpkick.wire.protocol.DenyCheckRequest;
 import cc.jumpkick.wire.protocol.DenyReport;
+import cc.jumpkick.wire.protocol.EditAck;
 import cc.jumpkick.wire.protocol.EditRequest;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.EngineWireException;
 import cc.jumpkick.wire.protocol.ExecPlan;
 import cc.jumpkick.wire.protocol.ExecPlanRequest;
 import cc.jumpkick.wire.protocol.ForecastRequest;
+import cc.jumpkick.wire.protocol.FreshenCatalogAck;
 import cc.jumpkick.wire.protocol.FreshenCatalogRequest;
 import cc.jumpkick.wire.protocol.GenerateRequest;
 import cc.jumpkick.wire.protocol.GeneratedFiles;
@@ -103,9 +105,9 @@ final class EngineReads {
                 EngineProtocol.EDIT_ACK,
                 "edit request",
                 line -> {
-                    String error = Jsonl.str(line, "error");
-                    if (error != null) throw new IOException(error);
-                    return Jsonl.bool(line, "changed", false);
+                    EditAck ack = EditAck.decode(line);
+                    if (ack.error() != null) throw new IOException(ack.error());
+                    return ack.changed();
                 });
         // Manifest just changed — drop memoized project summaries for this invocation.
         if (changed) ProjectInfos.forget();
@@ -119,9 +121,9 @@ final class EngineReads {
                 EngineProtocol.EDIT_ACK,
                 "edit request",
                 line -> {
-                    String error = Jsonl.str(line, "error");
-                    if (error != null) throw new IOException(error);
-                    String detail = Jsonl.str(line, "detail");
+                    EditAck ack = EditAck.decode(line);
+                    if (ack.error() != null) throw new IOException(ack.error());
+                    String detail = ack.detail();
                     return detail == null ? "" : detail;
                 });
     }
@@ -223,7 +225,7 @@ final class EngineReads {
                     new FreshenCatalogRequest(catalog, offline, url, cacheFile, force).encode(),
                     EngineProtocol.FRESHEN_CATALOG_ACK,
                     catalog + " freshen request",
-                    line -> Jsonl.bool(line, "ok", false));
+                    line -> FreshenCatalogAck.decode(line).ok());
         } catch (IOException ignored) {
             // Best-effort — local resolution proceeds against whatever the cache already holds.
         }
@@ -237,8 +239,9 @@ final class EngineReads {
                 EngineProtocol.FRESHEN_CATALOG_ACK,
                 catalog + " freshen request",
                 line -> {
-                    if (!Jsonl.bool(line, "ok", false)) {
-                        String error = Jsonl.str(line, "error");
+                    FreshenCatalogAck ack = FreshenCatalogAck.decode(line);
+                    if (!ack.ok()) {
+                        String error = ack.error();
                         return error == null || error.isBlank() ? "catalog refresh failed" : error;
                     }
                     return null;

@@ -6,7 +6,11 @@ import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.EtaEvent;
+import cc.jumpkick.wire.protocol.ExplainDoneEvent;
+import cc.jumpkick.wire.protocol.ExplainEdgeEvent;
+import cc.jumpkick.wire.protocol.ExplainModuleEvent;
 import cc.jumpkick.wire.protocol.ExplainRequest;
+import cc.jumpkick.wire.protocol.ExplainTaskEvent;
 import cc.jumpkick.wire.runtime.ExplainPlan;
 import cc.jumpkick.wire.runtime.TaskForecast;
 import java.io.IOException;
@@ -76,31 +80,25 @@ final class EngineExplainDecoder {
             return WireStream.pumpRead(reader, (type, line) -> {
                 switch (type) {
                     case EngineProtocol.EXPLAIN_MODULE -> {
-                        String dir = Jsonl.str(line, "dir");
+                        ExplainModuleEvent e = ExplainModuleEvent.decode(line);
+                        String dir = e.dir();
                         order.add(dir);
-                        coordByDir.put(dir, Jsonl.str(line, "coord"));
-                        countsByDir.put(dir, new int[] {
-                            Jsonl.intValue(line, "sourceCount", 0), Jsonl.intValue(line, "testCount", 0)
-                        });
-                        flagsByDir.put(dir, new boolean[] {
-                            Jsonl.bool(line, "producesJar", false), Jsonl.bool(line, "producesImage", false)
-                        });
+                        coordByDir.put(dir, e.coord());
+                        countsByDir.put(dir, new int[] {e.sourceCount(), e.testCount()});
+                        flagsByDir.put(dir, new boolean[] {e.producesJar(), e.producesImage()});
                         stepsByDir.put(dir, new ArrayList<>());
                     }
                     case EngineProtocol.EXPLAIN_TASK -> {
-                        String dir = Jsonl.str(line, "dir");
+                        ExplainTaskEvent e = ExplainTaskEvent.decode(line);
                         stepsByDir
-                                .computeIfAbsent(dir, k -> new ArrayList<>())
+                                .computeIfAbsent(e.dir(), k -> new ArrayList<>())
                                 .add(new TaskForecast.Task(
-                                        Jsonl.str(line, "name"),
-                                        TaskForecast.Status.valueOf(Jsonl.str(line, "status")),
-                                        Jsonl.str(line, "text"),
-                                        Jsonl.str(line, "key")));
+                                        e.name(), TaskForecast.Status.valueOf(e.status()), e.text(), e.key()));
                     }
                     case EngineProtocol.EXPLAIN_EDGE -> {
-                        Path dir = Path.of(Jsonl.str(line, "dir"));
-                        Path dependsOn = Path.of(Jsonl.str(line, "dependsOnDir"));
-                        edges.computeIfAbsent(dir, d -> new LinkedHashSet<>()).add(dependsOn);
+                        ExplainEdgeEvent e = ExplainEdgeEvent.decode(line);
+                        edges.computeIfAbsent(Path.of(e.dir()), d -> new LinkedHashSet<>())
+                                .add(Path.of(e.dependsOnDir()));
                     }
                     case EngineProtocol.ERROR -> errors.add(Jsonl.str(line, "message"));
                     case EngineProtocol.ETA -> {
@@ -126,7 +124,11 @@ final class EngineExplainDecoder {
                                     flags[0],
                                     flags[1]));
                         }
-                        return new ExplainPlan(modules, edges, Jsonl.intValue(line, "maxReadyWidth", 1), errors);
+                        // An absent width is one lane here, where the record reads 0.
+                        int width = Jsonl.has(line, "maxReadyWidth")
+                                ? ExplainDoneEvent.decode(line).maxReadyWidth()
+                                : 1;
+                        return new ExplainPlan(modules, edges, width, errors);
                     }
                     default -> {
                         /* forward-compatible no-op */

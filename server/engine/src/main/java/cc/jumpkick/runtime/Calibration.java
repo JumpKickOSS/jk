@@ -50,10 +50,11 @@ public final class Calibration {
     private static final long MAX_AGE_MILLIS = 60L * 86_400_000L; // ~60 days
 
     /**
-     * Schema 4 = probe components + continuous {@code learned-*} sample rings. Schema 3 files
-     * still load; missing learned rings are empty.
+     * The host-metrics schema: probe components + continuous {@code learned-*} sample rings. It is 1
+     * until 1.0, like every schema jk writes; a file at any other value is not this jk's and is
+     * ignored by {@link HostMetricsFile}, which costs one re-probe.
      */
-    public static final int SCHEMA = 4;
+    public static final int SCHEMA = 1;
 
     /** Floor/ceiling for <em>learned</em> absolute method samples (not cold baselines). */
     static final long METHOD_MS_FLOOR = 5;
@@ -545,7 +546,7 @@ public final class Calibration {
     }
 
     private Calibration withLearned(HostLearnedRates next) {
-        return toBuilder().schema(Math.max(schema, SCHEMA)).learned(next).build();
+        return toBuilder().schema(SCHEMA).learned(next).build();
     }
 
     // --- load / ensure -------------------------------------------------------
@@ -690,7 +691,7 @@ public final class Calibration {
                 .jkVersion(JkVersion.VERSION)
                 .updated(nowMillis)
                 .measured(measured || !learned.isEmpty())
-                .schema(Math.max(schema, SCHEMA))
+                .schema(SCHEMA)
                 .build();
     }
 
@@ -739,7 +740,7 @@ public final class Calibration {
                 .jkVersion(JkVersion.VERSION)
                 .updated(nowMillis)
                 .measured(true)
-                .schema(Math.max(prev.schema, SCHEMA))
+                .schema(SCHEMA)
                 .build();
     }
 

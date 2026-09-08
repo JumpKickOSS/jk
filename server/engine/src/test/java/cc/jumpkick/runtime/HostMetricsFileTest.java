@@ -49,7 +49,7 @@ class HostMetricsFileTest {
         Files.writeString(f, """
                 # host-metrics
                 [calibration]
-                schema = 4
+                schema = 1
                 ms-per-weight = 150
                 measured = true
                 jk-version = "%s"
@@ -72,7 +72,7 @@ class HostMetricsFileTest {
         Path f = dir.resolve("host-metrics.toml");
         Files.writeString(f, """
                 [calibration]
-                schema = 4
+                schema = 1
                 ms-per-weight = 150
                 measured = true
                 jk-version = "%s"
@@ -93,7 +93,7 @@ class HostMetricsFileTest {
         // the bad bucket is skipped, the float bucket folds, and calibration stays present.
         Files.writeString(f, """
                 [calibration]
-                schema = 4
+                schema = 1
                 ms-per-weight = 150
                 measured = true
                 jk-version = "%s"
@@ -155,7 +155,7 @@ class HostMetricsFileTest {
                 probe_wall_ms = 5150
 
                 [calibration]
-                schema = 4
+                schema = 1
                 ms-per-weight = 150
                 measured = true
                 jk-version = "%s"

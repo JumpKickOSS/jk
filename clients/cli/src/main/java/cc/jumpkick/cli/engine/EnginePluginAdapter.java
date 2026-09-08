@@ -11,6 +11,7 @@ import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.EngineWireException;
 import cc.jumpkick.wire.protocol.ProtoSession;
+import cc.jumpkick.wire.protocol.ProvisionResultEvent;
 import cc.jumpkick.wire.runtime.HostedEvents;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -171,13 +172,12 @@ final class EnginePluginAdapter {
                                     : SessionContext.current().graalHome().toString()));
 
             return WireStream.pumpJob(reader, ch, (type, line) -> switch (type) {
-                case EngineProtocol.PROVISION_RESULT ->
-                    new HostedEvents.Provision(
-                            Jsonl.str(line, "bin"),
-                            Jsonl.str(line, "version"),
-                            Jsonl.str(line, "source"),
-                            Jsonl.str(line, "error"),
-                            Jsonl.intValue(line, "exit", 1));
+                case EngineProtocol.PROVISION_RESULT -> {
+                    ProvisionResultEvent e = ProvisionResultEvent.decode(line);
+                    // An absent exit code is a failure here, where the record reads 0.
+                    yield new HostedEvents.Provision(
+                            e.bin(), e.version(), e.source(), e.error(), Jsonl.has(line, "exit") ? e.exit() : 1);
+                }
                 case EngineProtocol.ERROR -> throw EngineWireException.fromJsonLine(line, "jk engine: run failed: ");
                 // Anything else is a forward-compatible no-op: ask for the next line.
                 default -> null;

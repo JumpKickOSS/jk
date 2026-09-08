@@ -177,7 +177,7 @@ public final class LockCommand implements CliCommand {
             }
 
             @Override
-            public void onPackage(String moduleDir, String name, String version, int totalSeen) {
+            public void onPackage(@Nullable String moduleDir, String name, @Nullable String version, int totalSeen) {
                 String coord = coordByDir.get(moduleDir);
                 // Show active dep in the step row (module › dep via renderActiveRow).
                 view.stepMessage(coord, "lock", Coords.module(name, version));
@@ -251,7 +251,7 @@ public final class LockCommand implements CliCommand {
             }
 
             @Override
-            public void onPackage(String moduleDir, String name, String version) {
+            public void onPackage(@Nullable String moduleDir, String name, @Nullable String version) {
                 // The engine sends structured lock-package events instead of pre-themed labels;
                 // colorize here, client-side, exactly as the in-process plan labels itself.
                 Objects.requireNonNull(current, "lock-package before module-start")

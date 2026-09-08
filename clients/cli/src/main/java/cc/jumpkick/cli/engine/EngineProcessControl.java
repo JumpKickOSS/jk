@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
-import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.wire.EnginePaths;
+import cc.jumpkick.wire.protocol.ByeFrame;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
 import java.io.IOException;
@@ -58,7 +58,7 @@ public final class EngineProcessControl {
         try (SocketChannel ch = EngineWire.connect(socket)) {
             String bye = EngineWire.exchange(ch, ProtoLifecycle.shutdown(false));
             if (!EngineProtocol.BYE.equals(EngineProtocol.typeOf(bye))) return -1;
-            return Jsonl.intValue(bye, "plans", 0);
+            return ByeFrame.decode(bye).plans();
         } catch (IOException e) {
             return -1;
         }

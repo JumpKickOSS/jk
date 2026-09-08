@@ -909,9 +909,13 @@ why      = "a key the docs describe and the loader does not accept is a rule tha
 # G85. Every external format constant is 1 until 1.0; the shape changes in place, never by a new number.
 [guards.schema-freeze]
 kind    = "text"
-files   = ["**/Lockfile.java", "**/EngineProtocol.java", "**/McpEnvelope.java", "**/JsonlEnvelope.java", "**/CliSessionTranscript.java"]
+files   = [
+  "**/Lockfile.java", "**/EngineProtocol.java", "**/McpEnvelope.java", "**/JsonlEnvelope.java",
+  "**/CliSessionTranscript.java", "**/BuildRecord.java", "**/Calibration.java", "**/PreflightMemo.java",
+  "**/HostCalibrationStatus.java", "**/DepFrequency.java", "**/AotManifest.java", "**/BuildMetrics.java",
+]
 pattern = "int\\s+(CURRENT_VERSION|PROTOCOL|SCHEMA)\\s*=\\s*1\\s*;"
-count   = { exactly = 5, per = "tree" }
+count   = { exactly = 12, per = "tree" }
 hit     = "int CURRENT_VERSION = 1;"
 miss    = "int CURRENT_VERSION = 2;"
 instead = "keep version 1 until 1.0"

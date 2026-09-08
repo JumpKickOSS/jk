@@ -49,7 +49,7 @@ import org.jspecify.annotations.Nullable;
  */
 public final class PreflightMemo {
 
-    static final String SCHEMA = "3";
+    static final int SCHEMA = 1;
     private static final String DIRTY_FILE = "dirty-memo.txt";
     private static final String GRAPH_FILE = "graph-memo.txt";
     private static final String SHAPE_FILE = "shape-memo.txt";

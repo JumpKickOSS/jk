@@ -104,7 +104,7 @@ class MetricsHarvestTest {
                 native-image-floor-ms = 11200
 
                 [calibration]
-                schema = 4
+                schema = 1
                 ms-per-weight = 150
                 """);
         ProjectBuilds.RunDir run = ProjectBuilds.openRun(root, "g:demo", root.resolve("proj"));

@@ -4,6 +4,7 @@ package cc.jumpkick.cli.engine;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.protocol.JobStartFrame;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.channels.SocketChannel;
@@ -87,9 +88,11 @@ public final class WireStream {
                 String type = EngineProtocol.typeOf(line);
                 if (type == null) continue;
                 if (EngineProtocol.JOB_START.equals(type)) {
-                    notedJid = Jsonl.longValue(line, "jid", -1);
+                    JobStartFrame start = JobStartFrame.decode(line);
+                    // An absent jid is "none" (-1) here, where the record reads 0.
+                    notedJid = Jsonl.has(line, "jid") ? start.jid() : -1;
                     ActiveJobs.note(notedJid);
-                    notifyJobStart(line);
+                    notifyJobStart(start, notedJid);
                     continue;
                 }
                 T terminal = decoder.onLine(type, line);
@@ -106,15 +109,11 @@ public final class WireStream {
         }
     }
 
-    /** Decode a {@code job-start} line and hand its facts to the registered observer, if any. */
-    private static void notifyJobStart(String jobStartLine) {
+    /** Hand a decoded {@code job-start} to the registered observer, if any. */
+    private static void notifyJobStart(JobStartFrame start, long jid) {
         JobStartListener listener = jobStartListener;
         if (listener == null) return;
-        listener.jobStarted(
-                Jsonl.longValue(jobStartLine, "jid", -1),
-                Jsonl.longValue(jobStartLine, "buildNumber", 0),
-                Jsonl.str(jobStartLine, "detailsPath"),
-                Jsonl.longValue(jobStartLine, "etaMs", -1));
+        listener.jobStarted(jid, start.buildNumber(), start.detailsPath(), start.etaMs());
     }
 
     /**

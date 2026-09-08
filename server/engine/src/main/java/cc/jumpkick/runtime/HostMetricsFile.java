@@ -66,6 +66,9 @@ final class HostMetricsFile {
             if (mpw <= 0) mpw = EffortWeights.MS_PER_WEIGHT;
             if (Calibration.stale(version, updated, nowMillis) && learned.isEmpty()) return absent;
             int schema = cal.getLong("schema") != null ? Math.toIntExact(cal.getLong("schema")) : 1;
+            // A file at another schema is another jk's; ignoring it costs one re-probe, reading it
+            // would mint a second reader.
+            if (schema != Calibration.SCHEMA) return absent;
             long probeSuite = longOr(cal, "probe-test-suite-startup-ms", 0);
             long probeMethod = longOr(cal, "probe-test-method-ms", 0);
             long probeCompile = longOr(cal, "probe-compile-per-source-ms", 0);
@@ -253,7 +256,7 @@ final class HostMetricsFile {
                 resolve-used         = %s
                 updated              = %d
                 """.formatted(
-                        c.schema() <= 0 ? Calibration.SCHEMA : c.schema(),
+                        Calibration.SCHEMA,
                         round3(c.msPerWeightRaw()),
                         c.jvmForkMs(),
                         c.javacMs(),

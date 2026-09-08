@@ -110,7 +110,7 @@ public final class EngineClient {
             EngineRequests.SingleBuildRequest req,
             Function<List<Task>, BuildPlanListener> listenerFactory,
             TestSummary @Nullable [] testResultOut,
-            String @Nullable [] buildOutcomeOut)
+            @Nullable String @Nullable [] buildOutcomeOut)
             throws IOException {
         return EngineJobs.runSingleBuild(paths, req, listenerFactory, testResultOut, buildOutcomeOut);
     }

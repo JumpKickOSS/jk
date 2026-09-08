@@ -25,6 +25,7 @@ import cc.jumpkick.util.AotSettings;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.protocol.HelloAckFrame;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
 import java.io.IOException;
 import java.nio.channels.SocketChannel;
@@ -139,12 +140,15 @@ public final class EngineSpawn {
             if (Jsonl.intValue(ack, "proto", EngineProtocol.PROTOCOL) > EngineProtocol.PROTOCOL) {
                 return new Reachability.Unusable();
             }
-            String ackBuildId = Jsonl.str(ack, "buildId");
+            // The record does not carry `proto` (checked above); an absent pid or start reads as
+            // unknown (-1) here, where the record reads 0.
+            HelloAckFrame hello = HelloAckFrame.decode(ack);
+            String ackBuildId = hello.buildId();
             return new Reachability.Live(new EngineProbe.Handshake(
-                    Jsonl.str(ack, "version"),
-                    Jsonl.longValue(ack, "pid", -1),
-                    Jsonl.longValue(ack, "startedAt", -1),
-                    Jsonl.bool(ack, "draining", false),
+                    hello.version(),
+                    Jsonl.has(ack, "pid") ? hello.pid() : -1,
+                    Jsonl.has(ack, "startedAt") ? hello.startedAt() : -1,
+                    hello.draining(),
                     ackBuildId == null ? "" : ackBuildId));
         } catch (IOException e) {
             String msg = e.getMessage() == null ? "" : e.getMessage();

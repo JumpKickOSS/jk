@@ -8,14 +8,26 @@ import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.wire.EnginePaths;
+import cc.jumpkick.wire.protocol.AuditFindingEvent;
 import cc.jumpkick.wire.protocol.AuditRequest;
 import cc.jumpkick.wire.protocol.CachePruneRequest;
 import cc.jumpkick.wire.protocol.CompileRequest;
+import cc.jumpkick.wire.protocol.FormatFileEvent;
 import cc.jumpkick.wire.protocol.FormatRequest;
 import cc.jumpkick.wire.protocol.GitFetchRequest;
 import cc.jumpkick.wire.protocol.ImageRequest;
+import cc.jumpkick.wire.protocol.ImportNoteEvent;
 import cc.jumpkick.wire.protocol.ImportRequest;
+import cc.jumpkick.wire.protocol.PlanFinishCacheEvent;
+import cc.jumpkick.wire.protocol.PlanFinishFormatEvent;
+import cc.jumpkick.wire.protocol.PlanFinishGitFetchEvent;
+import cc.jumpkick.wire.protocol.PlanFinishImageEvent;
+import cc.jumpkick.wire.protocol.PlanFinishImportEvent;
+import cc.jumpkick.wire.protocol.PlanFinishPublishEvent;
+import cc.jumpkick.wire.protocol.PlanFinishScriptEvent;
+import cc.jumpkick.wire.protocol.PlanFinishToolEvent;
 import cc.jumpkick.wire.protocol.ProvisionRequest;
+import cc.jumpkick.wire.protocol.PruneWaitEvent;
 import cc.jumpkick.wire.protocol.PublishRequest;
 import cc.jumpkick.wire.protocol.ScriptPrepareRequest;
 import cc.jumpkick.wire.protocol.ToolResolveRequest;
@@ -61,12 +73,10 @@ final class EngineHosted {
                                 .encode(),
                         "audit",
                         listenerFactory,
-                        (type, line) -> findings.onFinding(
-                                Jsonl.str(line, "module"),
-                                Jsonl.str(line, "version"),
-                                Jsonl.str(line, "vulnId"),
-                                Jsonl.str(line, "severity"),
-                                Jsonl.str(line, "summary")))
+                        (type, line) -> {
+                            AuditFindingEvent e = AuditFindingEvent.decode(line);
+                            findings.onFinding(e.module(), e.version(), e.vulnId(), e.severity(), e.summary());
+                        })
                 .result();
     }
 
@@ -97,18 +107,19 @@ final class EngineHosted {
                         .encode(),
                 "format",
                 listenerFactory,
-                (type, line) -> files.onFile(
-                        Jsonl.str(line, "path"),
-                        Jsonl.str(line, "status"),
-                        Jsonl.str(line, "message"),
-                        Jsonl.intValue(line, "index", 0),
-                        Jsonl.intValue(line, "total", 0)));
+                (type, line) -> {
+                    FormatFileEvent e = FormatFileEvent.decode(line);
+                    files.onFile(e.path(), e.status(), e.message(), e.index(), e.total());
+                });
         // Per-file tallies (changed/clean/errors) do not ride the wire: the CLI counts
-        // them from the per-file format-file stream above.
+        // them from the per-file format-file stream above. An absent count is unknown (-1)
+        // here, where the record reads 0.
+        String finishLine = finish.finishLine();
+        PlanFinishFormatEvent e = PlanFinishFormatEvent.decode(finishLine);
         return new EngineRequests.FormatOutcome(
                 finish.result(),
-                Jsonl.intValue(finish.finishLine(), "formatTotal", -1),
-                Jsonl.intValue(finish.finishLine(), "formatWorkerExit", -1));
+                Jsonl.has(finishLine, "formatTotal") ? e.total() : -1,
+                Jsonl.has(finishLine, "formatWorkerExit") ? e.workerExit() : -1);
     }
 
     /** Run {@code jk publish}'s plan against the engine (the publisher worker forks engine-side). */
@@ -157,8 +168,12 @@ final class EngineHosted {
                 "publish",
                 listenerFactory,
                 (type, line) -> {});
+        // An absent file count is unknown (-1) here, where the record reads 0.
         return new EngineRequests.PublishOutcome(
-                finish.result(), Jsonl.intValue(finish.finishLine(), "publishFiles", -1));
+                finish.result(),
+                Jsonl.has(finish.finishLine(), "publishFiles")
+                        ? PlanFinishPublishEvent.decode(finish.finishLine()).files()
+                        : -1);
     }
 
     /**
@@ -194,13 +209,12 @@ final class EngineHosted {
                         listenerFactory,
                         (type, line) -> {},
                         line -> {
+                            PlanFinishImageEvent e = PlanFinishImageEvent.decode(line);
+                            TestSummary counts = e.total() < 0
+                                    ? null
+                                    : new TestSummary(e.total(), e.succeeded(), e.failed(), e.skipped(), List.of());
                             summaryOut[0] = new EngineRequests.ImageSummary(
-                                    TestSummary.readCounts(line),
-                                    Jsonl.str(line, "imageRef"),
-                                    Jsonl.str(line, "imageTarball"),
-                                    Jsonl.str(line, "imageName"),
-                                    Jsonl.str(line, "imageVersion"),
-                                    Jsonl.str(line, "imageDaemonExe"));
+                                    counts, e.ref(), e.tarball(), e.name(), e.version(), e.daemonExe());
                         })
                 .result();
     }
@@ -225,14 +239,15 @@ final class EngineHosted {
                         .encode(),
                 "import",
                 listenerFactory,
-                (type, line) -> notes.onNote(Jsonl.str(line, "kind"), Jsonl.str(line, "text")));
+                (type, line) -> {
+                    ImportNoteEvent e = ImportNoteEvent.decode(line);
+                    notes.onNote(e.kind(), e.text());
+                });
         String line = finish.finishLine();
-        return new EngineRequests.ImportOutcome(
-                finish.result(),
-                Jsonl.intValue(line, "importExit", 1),
-                Jsonl.intValue(line, "importWarnings", 0),
-                Jsonl.str(line, "importError"),
-                Jsonl.str(line, "importDiag"));
+        PlanFinishImportEvent e = PlanFinishImportEvent.decode(line);
+        // An absent worker exit code is a failure here, where the record reads 0.
+        int exitCode = Jsonl.has(line, "importExit") ? e.exitCode() : 1;
+        return new EngineRequests.ImportOutcome(finish.result(), exitCode, e.warnings(), e.error(), e.diag());
     }
 
     /**
@@ -365,9 +380,10 @@ final class EngineHosted {
                 "install-git-fetch",
                 listenerFactory,
                 (type, line) -> {});
-        String checkout = Jsonl.str(finish.finishLine(), "gitCheckout");
+        PlanFinishGitFetchEvent e = PlanFinishGitFetchEvent.decode(finish.finishLine());
+        String checkout = e.checkout();
         return new EngineRequests.GitFetchOutcome(
-                finish.result(), checkout != null ? Path.of(checkout) : null, Jsonl.str(finish.finishLine(), "gitSha"));
+                finish.result(), checkout != null ? Path.of(checkout) : null, e.sha());
     }
 
     /**
@@ -393,13 +409,12 @@ final class EngineHosted {
                 "tool-resolve",
                 listenerFactory,
                 (type, line) -> {});
+        PlanFinishToolEvent e = PlanFinishToolEvent.decode(finish.finishLine());
         return new EngineRequests.ToolResolveOutcome(
                 finish.result(),
-                Jsonl.str(finish.finishLine(), "toolCoord"),
-                Jsonl.str(finish.finishLine(), "toolMainClass"),
-                Jsonl.strArray(finish.finishLine(), "toolClasspath").stream()
-                        .map(Path::of)
-                        .toList());
+                e.toolCoord(),
+                e.toolMainClass(),
+                e.toolClasspath().stream().map(Path::of).toList());
     }
 
     /**
@@ -427,14 +442,14 @@ final class EngineHosted {
                 "script-prepare",
                 listenerFactory,
                 (type, line) -> {});
-        String line = finish.finishLine();
-        String classesDir = Jsonl.str(line, "scriptClassesDir");
-        String kotlincBin = Jsonl.str(line, "scriptKotlincBin");
-        String stdlib = Jsonl.str(line, "scriptStdlib");
+        PlanFinishScriptEvent e = PlanFinishScriptEvent.decode(finish.finishLine());
+        String classesDir = e.scriptClassesDir();
+        String kotlincBin = e.scriptKotlincBin();
+        String stdlib = e.scriptStdlib();
         return new EngineRequests.ScriptPrepareOutcome(
                 finish.result(),
-                Jsonl.str(line, "scriptMainClass"),
-                Jsonl.strArray(line, "scriptClasspath").stream().map(Path::of).toList(),
+                e.scriptMainClass(),
+                e.scriptClasspath().stream().map(Path::of).toList(),
                 classesDir != null ? Path.of(classesDir) : null,
                 kotlincBin != null ? Path.of(kotlincBin) : null,
                 stdlib != null ? Path.of(stdlib) : null);
@@ -469,10 +484,17 @@ final class EngineHosted {
                         requestLine,
                         "cache-" + req.op(),
                         listenerFactory,
-                        (type, line) ->
-                                onWait.accept(Jsonl.bool(line, "external", false), Jsonl.intValue(line, "plans", 0)),
-                        line -> summaryOut[0] = new EngineRequests.CacheMaintSummary(
-                                Jsonl.longValue(line, "cacheFiles", -1), Jsonl.longValue(line, "cacheBytes", -1)))
+                        (type, line) -> {
+                            PruneWaitEvent e = PruneWaitEvent.decode(line);
+                            onWait.accept(e.external(), e.plans());
+                        },
+                        line -> {
+                            // Absent sizes are unknown (-1) here, where the record reads 0.
+                            PlanFinishCacheEvent e = PlanFinishCacheEvent.decode(line);
+                            summaryOut[0] = new EngineRequests.CacheMaintSummary(
+                                    Jsonl.has(line, "cacheFiles") ? e.cacheFiles() : -1,
+                                    Jsonl.has(line, "cacheBytes") ? e.cacheBytes() : -1);
+                        })
                 .result();
     }
 }

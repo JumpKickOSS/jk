@@ -16,9 +16,9 @@ import java.util.regex.Pattern;
 public final class HostCalibrationStatus {
 
     private static final Pattern MEASURED = Pattern.compile("(?m)^\\s*measured\\s*=\\s*true\\s*$");
-    private static final Pattern SCHEMA = Pattern.compile("(?m)^\\s*schema\\s*=\\s*(\\d+)\\s*$");
-    /** Match engine schema 3+ multi-probe files. */
-    private static final int MIN_SCHEMA = 3;
+    private static final Pattern SCHEMA_LINE = Pattern.compile("(?m)^\\s*schema\\s*=\\s*(\\d+)\\s*$");
+    /** The host-metrics schema the engine writes (its {@code Calibration.SCHEMA}): 1 until 1.0. */
+    private static final int SCHEMA = 1;
 
     private static final long FAILURE_BACKOFF_MS = TimeUnit.HOURS.toMillis(24);
 
@@ -43,10 +43,10 @@ public final class HostCalibrationStatus {
         try {
             String text = Files.readString(f);
             if (!MEASURED.matcher(text).find()) return true;
-            Matcher m = SCHEMA.matcher(text);
+            Matcher m = SCHEMA_LINE.matcher(text);
             if (!m.find()) return true;
             int schema = Integer.parseInt(m.group(1));
-            return schema < MIN_SCHEMA;
+            return schema != SCHEMA;
         } catch (IOException | NumberFormatException e) {
             return true;
         }

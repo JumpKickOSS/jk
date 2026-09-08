@@ -196,7 +196,7 @@ final class EngineJobs {
             EngineRequests.SingleBuildRequest req,
             Function<List<Task>, BuildPlanListener> listenerFactory,
             TestSummary @Nullable [] testResultOut,
-            String @Nullable [] buildOutcomeOut)
+            @Nullable String @Nullable [] buildOutcomeOut)
             throws IOException {
         Session session = SessionContext.current();
         return singlePlan(
@@ -393,7 +393,7 @@ final class EngineJobs {
             String requestLine,
             Function<List<Task>, BuildPlanListener> listenerFactory,
             TestSummary @Nullable [] testResultOut,
-            String @Nullable [] buildOutcomeOut)
+            @Nullable String @Nullable [] buildOutcomeOut)
             throws IOException {
         return EngineWire.stream(
                 paths,

@@ -13,6 +13,7 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.wire.EnginePaths;
+import cc.jumpkick.wire.protocol.CancelAckFrame;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
@@ -87,9 +88,11 @@ public final class CancelCommand implements CliCommand {
             return Exit.SOFTWARE;
         }
         String line = ack.get();
-        boolean cancelled = Jsonl.bool(line, "cancelled", false);
-        String note = Jsonl.str(line, "note");
-        long jid = Jsonl.longValue(line, "jid", -1);
+        CancelAckFrame frame = CancelAckFrame.decode(line);
+        boolean cancelled = frame.cancelled();
+        String note = frame.note();
+        // An absent jid is "no job" (-1) here, where the record reads 0.
+        long jid = Jsonl.has(line, "jid") ? frame.jid() : -1;
         if (cancelled) {
             String msg = jid > 0 ? cancelledJobMessage(jid) : "Cancelled project build jobs";
             if (note != null && !note.isBlank() && jid <= 0) msg = msg + " (" + note + ")";
