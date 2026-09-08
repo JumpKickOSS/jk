@@ -909,7 +909,7 @@ why      = "a key the docs describe and the loader does not accept is a rule tha
 # G85. Every external format constant is 1 until 1.0; the shape changes in place, never by a new number.
 [guards.schema-freeze]
 kind    = "text"
-files   = ["**/Lockfile.java", "**/EngineProtocol.java", "**/McpEnvelope.java", "**/JsonlShape.java", "**/CliSessionTranscript.java"]
+files   = ["**/Lockfile.java", "**/EngineProtocol.java", "**/McpEnvelope.java", "**/JsonlEnvelope.java", "**/CliSessionTranscript.java"]
 pattern = "int\\s+(CURRENT_VERSION|PROTOCOL|SCHEMA)\\s*=\\s*1\\s*;"
 count   = { exactly = 5, per = "tree" }
 hit     = "int CURRENT_VERSION = 1;"
@@ -979,9 +979,9 @@ files    = ["**/src/main/java/**/*.java"]
 blank    = "comments"
 patterns = ['"\{\\"', '\+\s*",\\"']
 owner    = ["**/src/main/java/**/*.java"]
-hit      = 'return "{\"type\":\"" + type + "\",\"dir\":" + Jsonl.quote(dir) + "}";'
-miss     = 'return JsonFields.object().string("type", type).string("dir", dir).finish();'
-instead  = "build the line with JsonFields (RequestJson in the wire package): string/number/bool/token in field order, finish()"
+hit      = 'return "{\"type\":\"" + type + "}";'
+miss     = 'return JsonFields.object().string("type", type).finish();'
+instead  = "build the line with JsonFields (RequestJson in the wire package)"
 why      = "a hand-built JSON line spells its own separator and escaping, and every second speller has drifted from the first"
 
 # The ratchet over json-concat: per file, the count of hand-built JSON fragments, baselined at the
@@ -992,5 +992,4 @@ measure  = "matches:json-concat"
 per      = "file"
 cap      = 0
 baseline = true
-instead  = "build the line with JsonFields (RequestJson in the wire package) — see json-concat"
 why      = "a hand-built JSON line spells its own separator and escaping, and every second speller has drifted from the first"

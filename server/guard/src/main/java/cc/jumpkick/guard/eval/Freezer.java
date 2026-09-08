@@ -81,7 +81,10 @@ public final class Freezer {
         RuleBaseline current = baseline.of(ruleId);
         int accepted = 0;
         Lane lane = Evaluators.laneOf(rule);
-        for (EvalContext ctx : contexts(root, lane, rule)) {
+        for (EvalContext bare : contexts(root, lane, rule)) {
+            // The measure may name another rule (`metric matches:<id>`); the lane run hands every
+            // evaluator the loaded set, and so must the freeze.
+            EvalContext ctx = bare.withRules(load.rules());
             Evaluation e = LaneRun.evaluate(List.of(rule), ctx).get(ruleId);
             if (e == null) continue;
             // A module with nothing to examine (resources only, never built) is not this rule's

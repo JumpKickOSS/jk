@@ -30,7 +30,7 @@ import org.junit.jupiter.api.Test;
 /**
  * The bytes {@code JsonlShape} produced by string concatenation before its lines became records,
  * spelled out with a fixed clock. {@code details.jsonl} is read by agents and CI; a record that
- * reorders a field, changes a default or spells an optional field when it used to be omitted is a
+ * reorders a field, changes a default or spells an optional field the old line omitted is a
  * different line to every reader, and a round trip cannot see that.
  */
 class JsonlShapeFrozenBytesTest {

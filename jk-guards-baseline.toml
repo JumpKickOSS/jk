@@ -1733,6 +1733,49 @@ population = { files = 1207 }
 "server/engine" = { classes = 874, sites = 57043 }
 "shared/client-io" = { classes = 73, sites = 0 }
 
+[json-concat-ratchet]
+population = { units = 1762 }
+[[json-concat-ratchet.entries]]
+unit   = "clients/intellij/src/main/java/cc/jumpkick/idea/JkWireModel.java"
+value  = 1
+reason = "hand-built JSON fragments on 2026-09-07 after the wire and CLI moved to JsonFields; the ratchet lowers each file's count to zero"
+[[json-concat-ratchet.entries]]
+unit   = "server/engine/src/main/java/cc/jumpkick/engine/http/HttpEvents.java"
+value  = 1
+reason = "hand-built JSON fragments on 2026-09-07 after the wire and CLI moved to JsonFields; the ratchet lowers each file's count to zero"
+[[json-concat-ratchet.entries]]
+unit   = "server/guard/src/main/java/cc/jumpkick/guard/explain/GuardExplain.java"
+value  = 7
+reason = "hand-built JSON fragments on 2026-09-07 after the wire and CLI moved to JsonFields; the ratchet lowers each file's count to zero"
+[[json-concat-ratchet.entries]]
+unit   = "server/guard/src/main/java/cc/jumpkick/guard/explain/RuleSummaries.java"
+value  = 1
+reason = "hand-built JSON fragments on 2026-09-07 after the wire and CLI moved to JsonFields; the ratchet lowers each file's count to zero"
+[[json-concat-ratchet.entries]]
+unit   = "shared/core/src/main/java/cc/jumpkick/layout/InputTrees.java"
+value  = 9
+reason = "hand-built JSON fragments on 2026-09-07 after the wire and CLI moved to JsonFields; the ratchet lowers each file's count to zero"
+[[json-concat-ratchet.entries]]
+unit   = "shared/dynamic-surface/src/main/java/cc/jumpkick/surface/ReachabilityMetadataEmitter.java"
+value  = 12
+reason = "hand-built JSON fragments on 2026-09-07 after the wire and CLI moved to JsonFields; the ratchet lowers each file's count to zero"
+[[json-concat-ratchet.entries]]
+unit   = "shared/guard-api/src/main/java/cc/jumpkick/guard/api/runtime/Report.java"
+value  = 2
+reason = "hand-built JSON fragments on 2026-09-07 after the wire and CLI moved to JsonFields; the ratchet lowers each file's count to zero"
+[[json-concat-ratchet.entries]]
+unit   = "shared/plugin-sdk/src/main/java/cc/jumpkick/plugin/build/BuildPluginHarness.java"
+value  = 16
+reason = "hand-built JSON fragments on 2026-09-07 after the wire and CLI moved to JsonFields; the ratchet lowers each file's count to zero"
+[[json-concat-ratchet.entries]]
+unit   = "shared/plugin-sdk/src/main/java/cc/jumpkick/plugin/protocol/PluginReply.java"
+value  = 16
+reason = "hand-built JSON fragments on 2026-09-07 after the wire and CLI moved to JsonFields; the ratchet lowers each file's count to zero"
+[[json-concat-ratchet.entries]]
+unit   = "shared/plugin-sdk/src/main/java/cc/jumpkick/plugin/protocol/SpecWriter.java"
+value  = 35
+reason = "hand-built JSON fragments on 2026-09-07 after the wire and CLI moved to JsonFields; the ratchet lowers each file's count to zero"
+
 [lock-version-is-one]
 population = { files = 6 }
 

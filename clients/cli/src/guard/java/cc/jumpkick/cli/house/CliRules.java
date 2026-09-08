@@ -255,7 +255,8 @@ final class CliRules {
                     "JkWireModel reads no recognised wire field — the parse shape moved and this arm is blind");
         String emitted = raw(text, "shared/wire/src/main/java/cc/jumpkick/wire/protocol/IdeWireModel.java");
         for (String field : read)
-            if (!emitted.contains("\\\"" + field + "\\\":"))
+            // Emitted either as a JSON literal (`\"field\":`) or as the builder's first argument (`("field", …)`).
+            if (!emitted.contains("\\\"" + field + "\\\":") && !emitted.contains("(\"" + field + "\""))
                 v.add(
                         new TextSite(modelFile, 0, field),
                         "JkWireModel reads wire field " + field + ", which IdeWireModel.encode() does not emit");
