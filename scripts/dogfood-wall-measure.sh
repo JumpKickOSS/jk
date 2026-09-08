@@ -196,7 +196,9 @@ run_side() {  # run_side <label> <logbase> -- cmd...
 jk_detail() {
   local runs_root="$HOME/.jk/state/builds/projects"
   local latest
-  latest="$(find "$runs_root" -name details.jsonl -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)"
+  # awk reads to EOF: `head -1` would close the pipe under sort and, with pipefail, end the script
+  # with 141 once the runs root holds more records than one pipe buffer.
+  latest="$(find "$runs_root" -name details.jsonl -printf '%T@ %p\n' 2>/dev/null | sort -rn | awk 'NR==1{sub(/^[^ ]* /,""); print}')"
   [[ -z "$latest" ]] && { echo "  (no details.jsonl found)" >&2; return 0; }
   python3 - "$latest" "$(dirname "$latest")/metrics.toml" <<'PY' >> "$ROW_FILE"
 import json,re,sys
