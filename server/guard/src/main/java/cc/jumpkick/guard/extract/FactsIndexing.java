@@ -7,6 +7,7 @@ import cc.jumpkick.guard.facts.FactsIndex;
 import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -78,7 +79,16 @@ public final class FactsIndexing {
         for (String rel : current.keySet()) {
             String internal = rel.substring(0, rel.length() - ".class".length());
             if (classes.containsKey(internal)) continue;
-            byte[] bytes = Files.readAllBytes(classesDir.resolve(rel));
+            byte[] bytes;
+            try {
+                bytes = Files.readAllBytes(classesDir.resolve(rel));
+            } catch (NoSuchFileException e) {
+                throw new IOException(
+                        "class file " + rel + " vanished from " + classesDir
+                                + " between listing and reading — the classes directory changed under the guard step, "
+                                + "so a step that writes it is missing from the step's requires",
+                        e);
+            }
             ClassFacts facts = FactsExtractor.extract(bytes);
             classes.put(facts.name(), facts);
             reextracted++;

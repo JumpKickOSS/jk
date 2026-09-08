@@ -41,7 +41,7 @@ class GuardLanePlanTest {
     }
 
     @Test
-    void a_rules_file_adds_the_module_lane_after_compile_and_the_model_lane_at_the_root(@TempDir Path dir)
+    void a_rules_file_adds_the_module_lane_after_the_compiles_and_the_model_lane_at_the_root(@TempDir Path dir)
             throws Exception {
         Path project = scaffold(dir, true);
         assertThat(PlannerGuards.enabledAt(project)).as("enabledAt").isTrue();
@@ -54,7 +54,8 @@ class GuardLanePlanTest {
                 .isTrue();
         Map<String, Task> byName = index(plan(project, dir.resolve("cache"), TestSelection.DEFAULT));
         assertThat(byName).containsKeys(TaskNames.GUARD, TaskNames.GUARD_MODEL);
-        assertThat(byName.get(TaskNames.GUARD).requires()).containsExactly(TaskNames.COMPILE_JAVA);
+        assertThat(byName.get(TaskNames.GUARD).requires())
+                .containsExactly(TaskNames.COMPILE_JAVA, TaskNames.COMPILE_TEST); // the lane indexes test classes too
         assertThat(byName.get(TaskNames.GUARD_MODEL).requires()).containsExactly(TaskNames.RESOLVE_DEPS);
         assertThat(byName).as("the tree lane is a gate step").doesNotContainKey(TaskNames.GUARD_TREE);
     }

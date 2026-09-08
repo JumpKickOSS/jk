@@ -176,7 +176,7 @@ final class PlannerGuards {
      *     tails, see {@link PlannerTails}); otherwise it follows the last root lane here
      */
     static @Nullable String appendRootLanes(
-            BuildPlan.Builder b, BuildPlanner.Ctx cx, String after, boolean packagesHere) {
+            BuildPlan.Builder b, BuildPlanner.Ctx cx, String after, boolean packagesHere, BuildStage laneStage) {
         if (!cx.guards().enabled() || !PlannerResources.invocationRoot(cx.in().dir())) return null;
         b.addTask(modelStep(cx));
         String last = TaskNames.GUARD_MODEL;
@@ -185,7 +185,7 @@ final class PlannerGuards {
         // root, which the graph already orders after every member. A standalone project has no
         // second module to relate, so it has no such lane.
         if (hasMembers(cx) && moduleLanesOnThisBuild(cx.guards(), guard)) {
-            b.addTask(workspaceStep(cx, TaskNames.GUARD_MODEL, after));
+            b.addTask(workspaceStep(cx, laneStage, TaskNames.GUARD_MODEL, after));
             last = TaskNames.GUARD_WORKSPACE;
         }
         if (guard) {
@@ -215,10 +215,10 @@ final class PlannerGuards {
      * digest plus the rules and the baseline — N small indexes, never a class tree. Runs on every
      * build after the module lanes (the graph orders the root after its members).
      */
-    static Task workspaceStep(BuildPlanner.Ctx cx, String... requires) {
+    static Task workspaceStep(BuildPlanner.Ctx cx, BuildStage stage, String... requires) {
         GuardsPlan g = cx.guards();
         return Task.builder(TaskNames.GUARD_WORKSPACE)
-                .stage(BuildStage.COMPILE)
+                .stage(stage)
                 .label("Guards (workspace)")
                 .kind(TaskKind.CPU)
                 .requires(requires)
@@ -252,11 +252,15 @@ final class PlannerGuards {
         return ModuleLayout.isCompact(moduleDir);
     }
 
-    /** {@code guard}: this module's bytecode rules, after its compile(s). */
-    static Task moduleStep(BuildPlanner.Ctx cx, String... requires) {
+    /**
+     * {@code guard}: this module's bytecode rules, after its compile(s) — and after compile-test when
+     * the plan has one, since the lane indexes the test classes too; the stage follows the last step
+     * it waits for, because a step cannot require one from a later stage.
+     */
+    static Task moduleStep(BuildPlanner.Ctx cx, BuildStage stage, String... requires) {
         GuardsPlan g = cx.guards();
         return Task.builder(TaskNames.GUARD)
-                .stage(BuildStage.COMPILE)
+                .stage(stage)
                 .label("Guards")
                 .kind(TaskKind.CPU)
                 .requires(requires)

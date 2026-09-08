@@ -368,7 +368,7 @@ final class CorePlan {
      * step executes the whole workspace is built.
      */
     private BuildPlan.Builder workspaceRootPlan(BuildPlan.Builder b, BuildPlanner.Ctx cx) {
-        String guardTerminal = PlannerGuards.appendRootLanes(b, cx, TaskNames.RESOLVE_DEPS, false);
+        String guardTerminal = PlannerGuards.appendRootLanes(b, cx, TaskNames.RESOLVE_DEPS, false, BuildStage.COMPILE);
         if (guardTerminal != null) {
             b.alsoKeep(
                     TaskNames.GUARD_MODEL,
@@ -408,9 +408,15 @@ final class CorePlan {
             if (useGroovy) after.add(TaskNames.COMPILE_GROOVY);
             if (cx.mixed() || cx.mixedGroovy()) after.add(TaskNames.ASSEMBLE_CLASSES);
             if (s.hasGuardSuite()) after.add(TaskNames.COMPILE_GUARD);
-            b.addTask(PlannerGuards.moduleStep(cx, after.toArray(String[]::new)));
+            // The lane indexes the test classes too, so it waits for compile-test whenever the plan
+            // has one; without the edge a --redo rewrote classes/test under the indexer and a class
+            // it had just listed was gone by the read.
+            boolean afterTests = !in.compileOnly() && !PlannerResources.skipJUnit(in);
+            if (afterTests) after.add(TaskNames.COMPILE_TEST);
+            BuildStage guardStage = afterTests ? BuildStage.TEST : BuildStage.COMPILE;
+            b.addTask(PlannerGuards.moduleStep(cx, guardStage, after.toArray(String[]::new)));
             boolean packagesHere = !in.testOnly() && !in.compileOnly();
-            PlannerGuards.appendRootLanes(b, cx, TaskNames.GUARD, packagesHere);
+            PlannerGuards.appendRootLanes(b, cx, TaskNames.GUARD, packagesHere, guardStage);
             // Nothing downstream consumes a lane; keep them through the terminal prune.
             b.alsoKeep(
                     TaskNames.GUARD,
@@ -421,7 +427,8 @@ final class CorePlan {
                     TaskNames.GUARD_OUTPUT);
         } else if (cx.guards().enabled()) {
             // on-build = false: the module lanes wait for the gate; the model lane still runs.
-            PlannerGuards.appendRootLanes(b, cx, TaskNames.RESOLVE_DEPS, !in.testOnly() && !in.compileOnly());
+            PlannerGuards.appendRootLanes(
+                    b, cx, TaskNames.RESOLVE_DEPS, !in.testOnly() && !in.compileOnly(), BuildStage.COMPILE);
             b.alsoKeep(
                     TaskNames.GUARD_MODEL,
                     TaskNames.GUARD_WORKSPACE,
