@@ -67,14 +67,14 @@ class EngineAotCacheTest {
         Path noJdk = EngineSpawn.aotCachePath(paths, jarA, null);
         String heap = EngineSpawn.heapKey(JkEngineConfig.resolve());
         Path sameHeap = EngineSpawn.aotCachePath(paths, jarA, temurin("25.0.3"), JkVersion.VERSION, heap);
-        Path otherHeap = EngineSpawn.aotCachePath(paths, jarA, temurin("25.0.3"), JkVersion.VERSION, "heap=512m");
+        // a heap key the resolver never produces, so the test holds under any JK_ENGINE_MAX_HEAP_MB
+        Path otherHeap = EngineSpawn.aotCachePath(paths, jarA, temurin("25.0.3"), JkVersion.VERSION, "heap=probe");
 
         assertThat(base).isNotEqualTo(diffJar);
         assertThat(base).isNotEqualTo(diffVersion);
         assertThat(base).isNotEqualTo(diffVendor);
         assertThat(base).isNotEqualTo(noJdk);
         assertThat(base).isEqualTo(sameHeap);
-        assertThat(heap).isNotEqualTo("heap=512m");
         assertThat(base).isNotEqualTo(otherHeap); // a cache recorded under one -Xmx segfaults under another
         assertThat(base.getFileName().toString()).startsWith("engine-").endsWith(".aot");
     }
