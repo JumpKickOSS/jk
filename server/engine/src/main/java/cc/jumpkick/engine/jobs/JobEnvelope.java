@@ -3,6 +3,7 @@ package cc.jumpkick.engine.jobs;
 
 import cc.jumpkick.compile.JavaCompilerHost;
 import cc.jumpkick.config.JobLimits;
+import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.api.BuildJobFingerprint;
 import cc.jumpkick.engine.api.InFlightBuilds;
@@ -308,6 +309,7 @@ public final class JobEnvelope {
         } finally {
             RunNotices.closeSink(io);
             InputTrees.finishJob();
+            RequestScope.release();
             IoLedger.close();
             // Kill leftovers first, THEN drain the Zinc session: if the worker is mid-compile
             // its io thread is blocked in readLine and never sees end()'s POISON, so end() would

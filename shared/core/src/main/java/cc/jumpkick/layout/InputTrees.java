@@ -115,7 +115,11 @@ public final class InputTrees {
                 if (!TestSuites.isSuiteName(n) || TestSuites.SIMPLE_RESERVED.contains(n.toLowerCase(Locale.ROOT))) {
                     return true;
                 }
-                of(child);
+                // Discovery reads <suite>/src and nothing else of the sibling, so that is what is
+                // covered: a workspace root's children (clients/, server/ — 70k files of Gradle output
+                // and node_modules between them on jk's own tree) are suite names too, and covering
+                // the whole child listed every one of those files into the job's snapshot.
+                of(child.resolve("src"));
                 return true;
             });
         } catch (IOException ignored) {
@@ -140,6 +144,10 @@ public final class InputTrees {
                     table.misses.get(),
                     table.streamOnly);
             released = table.bytes;
+            // The listings die with the job whether or not the scope object does: a pooled thread that
+            // inherited this request's ledger would otherwise keep every FileRef alive for the engine's life.
+            table.byKey.clear();
+            table.covering.clear();
             table.bytes = 0;
             // Nothing may retain against a released table: a straggler still holding the
             // ambient ledger (a lane outliving the runner on cancel) would charge the pool with
@@ -606,11 +614,7 @@ public final class InputTrees {
         return switch (skipId) {
             case WalkSkip.ID_WORKSPACE_KEY -> WalkSkip::workspaceKey;
             case WalkSkip.ID_PATH_SOURCE -> WalkSkip::pathSource;
-            case WalkSkip.ID_FORMAT ->
-                dir -> {
-                    Path name = dir.getFileName();
-                    return name != null && WalkSkip.formatSegment(name.toString());
-                };
+            case WalkSkip.ID_FORMAT -> WalkSkip::formatSkip;
             default -> dir -> false;
         };
     }

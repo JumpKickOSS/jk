@@ -17,6 +17,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -46,6 +48,27 @@ class InputTreesTest {
             assertThat(InputTrees.of(dir.resolve("src")).anyExtension(".txt")).isTrue();
             assertThat(PathUtil.walks()).isEqualTo(1);
         });
+    }
+
+    @Test
+    void covering_a_compact_module_lists_each_sibling_suites_src_and_not_the_sibling(@TempDir Path dir)
+            throws Exception {
+        // Compact layout: no src/main. Discovery asks <suite>/src; a sibling with no src/ (a workspace
+        // root's clients/ or server/, with their Gradle output) must not be listed into the snapshot.
+        Files.writeString(Files.createDirectories(dir.resolve("test/src")).resolve("T.java"), "class T {}");
+        Files.writeString(Files.createDirectories(dir.resolve("demo/src")).resolve("D.java"), "class D {}");
+        Path big = Files.createDirectories(dir.resolve("clients/cli/build/classes"));
+        for (int i = 0; i < 5; i++) Files.writeString(big.resolve("C" + i + ".class"), "x");
+        InputTrees.configureForTest(new JkEngineConfig(256, null, false, 32));
+        inRequest(() -> {
+            InputTrees.coverModule(dir);
+            InputTrees.finishJob();
+        });
+        Matcher m = Pattern.compile("\\\"nodes\\\":(\\d+)").matcher(InputTrees.lastStatusJson());
+        assertThat(m.find()).isTrue();
+        assertThat(Integer.parseInt(m.group(1)))
+                .as("T.java and D.java under the suites' src; nothing under clients/")
+                .isEqualTo(2);
     }
 
     @Test
@@ -162,7 +185,8 @@ class InputTreesTest {
         Path src = Files.createDirectories(dir.resolve("src"));
         Files.writeString(src.resolve("A.java"), "class A {}");
         Files.createDirectories(dir.resolve("test"));
-        Path integration = Files.createDirectories(dir.resolve("integration"));
+        // Discovery reads <suite>/src, so that is the covered root — never the sibling itself.
+        Path integration = Files.createDirectories(dir.resolve("integration/src"));
         Files.writeString(integration.resolve("IT.java"), "class IT {}");
         // None of these can ever be a suite (dotted, capitalized, reserved-in-any-case) — covering
         // them would spend retain budget on trees no collector reads.
@@ -174,7 +198,7 @@ class InputTreesTest {
         inRequest(() -> {
             PathUtil.resetWalks();
             InputTrees.coverModule(dir);
-            // src, test, the sibling listing itself, and the one real suite dir — nothing else.
+            // src, test, the sibling listing itself, and the one real suite's src — nothing else.
             assertThat(PathUtil.walks()).isEqualTo(4);
             assertThat(InputTrees.of(integration).withExtension(".java")).hasSize(1);
             assertThat(PathUtil.walks()).as("the suite dir was pre-covered").isEqualTo(4);

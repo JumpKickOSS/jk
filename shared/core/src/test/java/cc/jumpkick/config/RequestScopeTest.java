@@ -130,6 +130,31 @@ class RequestScopeTest {
                 .isNull();
     }
 
+    @Test
+    void release_ends_the_scope_while_a_thread_still_holds_the_ledger() {
+        // The weak key is not what ends a scope: the ledger is an inheritable thread-local, and a
+        // pooled thread that inherited it keeps it — and the scope, and every listing the job memoised —
+        // for the engine's life. JobEnvelope releases explicitly, so the next request starts clean even
+        // though this reference is still live.
+        IoLedger ledger = new IoLedger();
+        IoLedger.open(ledger);
+        RequestScope before;
+        try {
+            before = RequestScope.current();
+            before.get("k", k -> "heavy");
+            assertThat(before.size()).isEqualTo(1);
+            RequestScope.release();
+            RequestScope after = RequestScope.current();
+            assertThat(after).isNotSameAs(before);
+            assertThat(after.size())
+                    .as("a fresh scope: the released facts are not visible")
+                    .isZero();
+        } finally {
+            IoLedger.close();
+        }
+        assertThat(ledger).isNotNull(); // still strongly held here, and the scope is gone regardless
+    }
+
     /** Run {@code work} on the shared CPU pool and hand back its result. */
     private static <T> T onCpuPool(Supplier<T> work) {
         return CompletableFuture.supplyAsync(work, JkThreads.cpu()).join();
