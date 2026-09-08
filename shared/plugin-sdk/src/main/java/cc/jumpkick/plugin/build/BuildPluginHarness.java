@@ -339,16 +339,8 @@ public final class BuildPluginHarness {
                         pluginId = required(Jsonl.str(line, "plugin"), "op.plugin");
                     }
                     case "config" -> {
-                        String key = required(Jsonl.str(line, "key"), "config.key");
-                        switch (String.valueOf(Jsonl.str(line, "kind"))) {
-                            case "string" -> configValues.put(key, required(Jsonl.str(line, "value"), "config.value"));
-                            case "bool" -> configValues.put(key, Jsonl.bool(line, "value", false));
-                            case "int" -> configValues.put(key, Jsonl.longValue(line, "value", 0));
-                            case "list" -> configValues.put(key, Jsonl.strArray(line, "values"));
-                            default -> {
-                                // unknown kind — treat as absent (forward compatibility)
-                            }
-                        }
+                        @Nullable Object value = configValue(line);
+                        if (value != null) configValues.put(required(Jsonl.str(line, "key"), "config.key"), value);
                     }
                     case "project" -> {
                         group = required(Jsonl.str(line, "group"), "project.group");
@@ -374,21 +366,7 @@ public final class BuildPluginHarness {
                     case "java-home" -> javaHome = Path.of(required(Jsonl.str(line, "path"), "java-home.path"));
                     case "artifact" -> artifactPath = Path.of(required(Jsonl.str(line, "path"), "artifact.path"));
                     case "cp" -> classpath.add(Path.of(required(Jsonl.str(line, "path"), "cp.path")));
-                    case "entry" -> {
-                        @Nullable String jarPath = Jsonl.str(line, "path");
-                        @Nullable String container = Jsonl.str(line, "container");
-                        @Nullable String g = Jsonl.str(line, "group");
-                        @Nullable String a = Jsonl.str(line, "artifact");
-                        @Nullable String v = Jsonl.str(line, "version");
-                        entries.add(new PackageIo.RuntimeEntry(
-                                required(Jsonl.str(line, "file"), "entry.file"),
-                                jarPath == null ? null : Path.of(jarPath),
-                                Jsonl.bool(line, "snapshot", false),
-                                container == null ? null : Path.of(container),
-                                g == null ? "" : g,
-                                a == null ? "" : a,
-                                v == null ? "" : v));
-                    }
+                    case "entry" -> entries.add(runtimeEntry(line));
                     case "step-output" ->
                         stepOutputs.put(
                                 required(Jsonl.str(line, "name"), "step-output.name"),
@@ -428,6 +406,33 @@ public final class BuildPluginHarness {
                     commandArgs,
                     secrets,
                     offline);
+        }
+
+        /** A {@code config} line's typed value, or null for a kind this harness does not know (forward compatibility). */
+        private static @Nullable Object configValue(String line) {
+            return switch (String.valueOf(Jsonl.str(line, "kind"))) {
+                case "string" -> required(Jsonl.str(line, "value"), "config.value");
+                case "bool" -> Jsonl.bool(line, "value", false);
+                case "int" -> Jsonl.longValue(line, "value", 0);
+                case "list" -> Jsonl.strArray(line, "values");
+                default -> null;
+            };
+        }
+
+        private static PackageIo.RuntimeEntry runtimeEntry(String line) {
+            @Nullable String jarPath = Jsonl.str(line, "path");
+            @Nullable String container = Jsonl.str(line, "container");
+            @Nullable String g = Jsonl.str(line, "group");
+            @Nullable String a = Jsonl.str(line, "artifact");
+            @Nullable String v = Jsonl.str(line, "version");
+            return new PackageIo.RuntimeEntry(
+                    required(Jsonl.str(line, "file"), "entry.file"),
+                    jarPath == null ? null : Path.of(jarPath),
+                    Jsonl.bool(line, "snapshot", false),
+                    container == null ? null : Path.of(container),
+                    g == null ? "" : g,
+                    a == null ? "" : a,
+                    v == null ? "" : v);
         }
     }
 
