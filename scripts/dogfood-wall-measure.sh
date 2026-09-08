@@ -165,11 +165,19 @@ timed() {
 # number beside the wall rather than folded into it. The manifest is restored however the row exits.
 # ---------------------------------------------------------------------------
 MANIFEST_BACKUP="$OUT_DIR/jk.toml.orig"
+LOCK_BACKUP="$OUT_DIR/jk-lock.toml.orig"
 guards_off() {
   cp jk.toml "$MANIFEST_BACKUP"
+  # The lock records the manifests' hash; the edited jk.toml makes jk rewrite that line, so the
+  # lock goes back with the manifest or the tree is left dirty by one hash.
+  [[ -f jk-lock.toml ]] && cp jk-lock.toml "$LOCK_BACKUP"
   printf '\n[guards]\non-build = false\n' >> jk.toml
 }
-guards_restore() { [[ -f "$MANIFEST_BACKUP" ]] && cp "$MANIFEST_BACKUP" jk.toml; }
+guards_restore() {
+  [[ -f "$MANIFEST_BACKUP" ]] && cp "$MANIFEST_BACKUP" jk.toml
+  [[ -f "$LOCK_BACKUP" ]] && cp "$LOCK_BACKUP" jk-lock.toml
+  return 0
+}
 has_guards() { [[ -f jk-guards.toml ]]; }
 
 run_side() {  # run_side <label> <logbase> -- cmd...
