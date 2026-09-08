@@ -19,64 +19,24 @@ public final class ProtoEvents {
     private ProtoEvents() {}
 
     public static String preflight(String stage, int done, int total, String label) {
-        return "{\"type\":\""
-                + EngineProtocol.PREFLIGHT
-                + "\",\"stage\":"
-                + Jsonl.quote(stage == null ? "" : stage)
-                + ",\"done\":"
-                + done
-                + ",\"total\":"
-                + total
-                + ",\"label\":"
-                + Jsonl.quote(label == null ? "" : label)
-                + "}";
+        return new PreflightEvent(stage, done, total, label).encode();
     }
 
     /** Outer invocation phase: {@code phase} wire name + {@code status} ({@code start}|{@code finish}). */
     public static String invocationPhase(String phase, String status) {
-        return "{\""
-                + EngineProtocol.TYPE_FIELD
-                + "\":\""
-                + EngineProtocol.INVOCATION_PHASE
-                + "\",\"phase\":"
-                + Jsonl.quote(phase == null ? "" : phase)
-                + ",\"status\":"
-                + Jsonl.quote(status == null ? "" : status)
-                + "}";
+        return new InvocationPhaseEvent(phase, status).encode();
     }
 
     public static String planModule(String dir, String coord, String planName, int weight, boolean fullyCached) {
-        return "{\"type\":\""
-                + EngineProtocol.PLAN_MODULE
-                + "\",\"dir\":"
-                + Jsonl.quote(dir)
-                + ",\"coord\":"
-                + Jsonl.quote(coord)
-                + ",\"planName\":"
-                + Jsonl.quote(planName)
-                + ",\"weight\":"
-                + weight
-                + ",\"fullyCached\":"
-                + fullyCached
-                + "}";
+        return new PlanModuleEvent(dir, coord, planName, weight, fullyCached).encode();
     }
 
     public static String planStep(String dir, String name, String label, String phase) {
-        return "{\"type\":\""
-                + EngineProtocol.PLAN_TASK
-                + "\",\"dir\":"
-                + Jsonl.quote(dir)
-                + ",\"name\":"
-                + Jsonl.quote(name)
-                + ",\"label\":"
-                + Jsonl.quote(label)
-                + ",\"stage\":"
-                + Jsonl.quote(phase)
-                + "}";
+        return new PlanTaskEvent(dir, name, label, phase).encode();
     }
 
     public static String planDone(int count) {
-        return "{\"type\":\"" + EngineProtocol.PLAN_DONE + "\",\"count\":" + count + "}";
+        return new PlanDoneEvent(count).encode();
     }
 
     /**
@@ -95,16 +55,7 @@ public final class ProtoEvents {
      * omits the field (non-explain EngineProtocol.ETA emitters).
      */
     public static String eta(long remainingMs, long fullMillis) {
-        StringBuilder sb = new StringBuilder(96);
-        sb.append("{\"type\":\"")
-                .append(EngineProtocol.ETA)
-                .append("\",\"millis\":")
-                .append(remainingMs)
-                .append(",\"remainingMs\":")
-                .append(remainingMs);
-        if (fullMillis >= 0) sb.append(",\"fullMillis\":").append(fullMillis);
-        sb.append('}');
-        return sb.toString();
+        return new EtaEvent(remainingMs, fullMillis).encode();
     }
 
     /**
@@ -146,34 +97,16 @@ public final class ProtoEvents {
             long remainingMs,
             long R0ms,
             double progressPercent) {
-        String prog = Double.isNaN(progressPercent)
-                ? progressPercent(numerator, denominator)
-                : WorkspaceProgressTracker.progressToken(progressPercent);
-        return "{\"schema\":1,\"type\":\""
-                + EngineProtocol.WORKSPACE_PROGRESS
-                + "\",\"dir\":"
-                + Jsonl.quote(dir == null ? "" : dir)
-                + ",\"numerator\":"
-                + numerator
-                + ",\"denominator\":"
-                + denominator
-                + ",\"progress\":"
-                + prog
-                + ",\"phase\":"
-                + Jsonl.quote(phase == null ? "" : phase)
-                + ",\"modulesComplete\":"
-                + modulesComplete
-                + ",\"modulesTotal\":"
-                + modulesTotal
-                + ",\"remainingMs\":"
-                + remainingMs
-                + ",\"R0\":"
-                + Math.max(0, R0ms)
-                + "}";
+        double percent = Double.isNaN(progressPercent)
+                ? WorkspaceProgressTracker.percentOf(numerator, denominator)
+                : progressPercent;
+        return new WorkspaceProgressEvent(
+                        dir, numerator, denominator, percent, phase, modulesComplete, modulesTotal, remainingMs, R0ms)
+                .encode();
     }
 
     public static String moduleStart(String dir) {
-        return "{\"type\":\"" + EngineProtocol.MODULE_START + "\",\"dir\":" + Jsonl.quote(dir) + "}";
+        return new ModuleStartEvent(dir).encode();
     }
 
     public static String planStart(
@@ -184,72 +117,11 @@ public final class ProtoEvents {
             int tasksTotal,
             int tasksComplete,
             boolean cancelled) {
-        return "{\"schema\":1,\"type\":\""
-                + EngineProtocol.BUILDPLAN_START
-                + "\",\"dir\":"
-                + Jsonl.quote(dir)
-                + ",\"planName\":"
-                + Jsonl.quote(planName)
-                + ",\"numerator\":"
-                + numerator
-                + ",\"denominator\":"
-                + denominator
-                + ",\"progress\":"
-                + progressPercent(numerator, denominator)
-                + ",\"tasksTotal\":"
-                + tasksTotal
-                + ",\"tasksComplete\":"
-                + tasksComplete
-                + ",\"cancelled\":"
-                + cancelled
-                + "}";
+        return new PlanStartEvent(dir, planName, numerator, denominator, tasksTotal, tasksComplete, cancelled).encode();
     }
 
     public static String stepStart(String dir, String step, String phase, int ticks) {
-        return "{\"schema\":1,\"type\":\""
-                + EngineProtocol.TASK_START
-                + "\",\"dir\":"
-                + Jsonl.quote(dir)
-                + ",\"task\":"
-                + Jsonl.quote(step)
-                + ",\"stage\":"
-                + Jsonl.quote(phase)
-                + ",\"ticks\":"
-                + ticks
-                + "}";
-    }
-
-    private static String progressLike(
-            String type,
-            String dir,
-            String step,
-            int delta,
-            long numerator,
-            long denominator,
-            int tasksTotal,
-            int tasksComplete,
-            boolean cancelled) {
-        return "{\"schema\":1,\"type\":\""
-                + type
-                + "\",\"dir\":"
-                + Jsonl.quote(dir)
-                + ",\"task\":"
-                + Jsonl.quote(step)
-                + ",\"delta\":"
-                + delta
-                + ",\"numerator\":"
-                + numerator
-                + ",\"denominator\":"
-                + denominator
-                + ",\"progress\":"
-                + progressPercent(numerator, denominator)
-                + ",\"tasksTotal\":"
-                + tasksTotal
-                + ",\"tasksComplete\":"
-                + tasksComplete
-                + ",\"cancelled\":"
-                + cancelled
-                + "}";
+        return new TaskStartEvent(dir, step, phase, ticks).encode();
     }
 
     /**
@@ -269,16 +141,8 @@ public final class ProtoEvents {
             int tasksTotal,
             int tasksComplete,
             boolean cancelled) {
-        return progressLike(
-                EngineProtocol.PROGRESS,
-                dir,
-                step,
-                delta,
-                numerator,
-                denominator,
-                tasksTotal,
-                tasksComplete,
-                cancelled);
+        return new ProgressEvent(dir, step, delta, numerator, denominator, tasksTotal, tasksComplete, cancelled)
+                .encode();
     }
 
     public static String tickUpdate(
@@ -290,40 +154,16 @@ public final class ProtoEvents {
             int tasksTotal,
             int tasksComplete,
             boolean cancelled) {
-        return progressLike(
-                EngineProtocol.TICK_UPDATE,
-                dir,
-                step,
-                delta,
-                numerator,
-                denominator,
-                tasksTotal,
-                tasksComplete,
-                cancelled);
+        return new TickUpdateEvent(dir, step, delta, numerator, denominator, tasksTotal, tasksComplete, cancelled)
+                .encode();
     }
 
     public static String label(String dir, String step, String label) {
-        return "{\"schema\":1,\"type\":\""
-                + EngineProtocol.LABEL
-                + "\",\"dir\":"
-                + Jsonl.quote(dir)
-                + ",\"task\":"
-                + Jsonl.quote(step)
-                + ",\"label\":"
-                + Jsonl.quote(label)
-                + "}";
+        return new LabelEvent(dir, step, label).encode();
     }
 
     public static String output(String dir, String step, String line) {
-        return "{\"schema\":1,\"type\":\""
-                + EngineProtocol.OUTPUT
-                + "\",\"dir\":"
-                + Jsonl.quote(dir)
-                + ",\"task\":"
-                + Jsonl.quote(step)
-                + ",\"line\":"
-                + Jsonl.quote(line)
-                + "}";
+        return new OutputEvent(dir, step, line).encode();
     }
 
     private static String diagnosticLike(
@@ -549,21 +389,7 @@ public final class ProtoEvents {
      */
     public static String stepFinish(
             String dir, String step, String phase, String status, long millis, long waitMillis) {
-        return "{\"type\":\""
-                + EngineProtocol.TASK_FINISH
-                + "\",\"dir\":"
-                + Jsonl.quote(dir)
-                + ",\"task\":"
-                + Jsonl.quote(step)
-                + ",\"stage\":"
-                + Jsonl.quote(phase)
-                + ",\"status\":"
-                + Jsonl.quote(status)
-                + ",\"millis\":"
-                + millis
-                + ",\"waitMillis\":"
-                + waitMillis
-                + "}";
+        return new TaskFinishEvent(dir, step, phase, status, millis, waitMillis).encode();
     }
 
     public static String planFinish(String dir, boolean success) {

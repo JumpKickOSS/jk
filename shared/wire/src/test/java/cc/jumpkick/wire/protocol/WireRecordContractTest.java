@@ -83,9 +83,16 @@ class WireRecordContractTest {
 
         for (Class<?> type : wireRecords()) {
             String line = encode(populated(type));
-            assertThat(line)
-                    .as("%s must open with its discriminator — every client dispatches on it", type.getSimpleName())
-                    .startsWith("{\"" + EngineProtocol.TYPE_FIELD + "\":\"");
+            // The hot build events have carried "schema":1 ahead of the type since before the wire
+            // froze; the bytes are frozen pre-1.0, so the discriminator is the first field or the one
+            // right after the schema — never later.
+            String typeFirst = "{\"" + EngineProtocol.TYPE_FIELD + "\":\"";
+            String schemaFirst = "{\"schema\":1,\"" + EngineProtocol.TYPE_FIELD + "\":\"";
+            assertThat(line.startsWith(typeFirst) || line.startsWith(schemaFirst))
+                    .as(
+                            "%s must open with its discriminator (after the schema at most) — every client dispatches on it: %s",
+                            type.getSimpleName(), line)
+                    .isTrue();
             String discriminator = requireNonNull(EngineProtocol.typeOf(line));
             assertThat(discriminator)
                     .as("%s's encoded line has a readable type", type.getSimpleName())
