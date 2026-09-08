@@ -126,8 +126,8 @@
     1  clients/cli-terminal/src/main/java/cc/jumpkick/terminal/windows/package-info.java
     1  clients/cli/src/main/java/cc/jumpkick/cli/Argv0.java
     2  clients/cli/src/test/java/cc/jumpkick/cli/tui/TableAppendTest.java
-    1  clients/cli/src/test/java/cc/jumpkick/command/CacheCommandTest.java
-    3  clients/cli/src/test/java/cc/jumpkick/command/SelfNukeCommandTest.java
+    1  clients/cli/src/test/java/cc/jumpkick/command/system/CacheCommandTest.java
+    3  clients/cli/src/test/java/cc/jumpkick/command/system/SelfNukeCommandTest.java
     2  plugins/image-builder/src/main/java/cc/jumpkick/plugin/image/BaseJre.java
     8  plugins/kotlin-compiler/src/main/java/cc/jumpkick/kotlin/compiler/KotlinCompiler.java
     3  plugins/test-runner/src/main/java/cc/jumpkick/testrunner/JUnitUniqueId.java

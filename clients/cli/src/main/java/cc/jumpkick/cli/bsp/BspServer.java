@@ -2,7 +2,7 @@
 package cc.jumpkick.cli.bsp;
 
 import cc.jumpkick.cli.ide.IdeEngineClient;
-import cc.jumpkick.command.ide.IdeSourceRoots;
+import cc.jumpkick.cli.ide.IdeSourceRoots;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.diagnostic.CompilerLocus;
 import cc.jumpkick.jsonl.JsonFields;

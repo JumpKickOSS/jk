@@ -31,14 +31,14 @@
 :engine | cc.jumpkick.engine.plugin.PluginLoaderTest     | workers   | success,failure | A forked plugin worker starts, and a bad spec exits non-zero instead of hanging the job.
 :engine | cc.jumpkick.engine.plugin.PluginProcessTest    | workers   | success         | The plugin fork's stdio split: protocol lines, passthrough output, and the pull queue over stdin.
 :engine | cc.jumpkick.compile.ForkedJavacTest            | workers   | success         | The javac worker launches, reports provenance, and is reused across compile and plan within one job.
-:cli    | cc.jumpkick.command.BuildCommandTest           | workspace | success,failure | The build verb over a real workspace, and that a compile error leaves a non-zero exit.
-:cli    | cc.jumpkick.command.TestCommandTest            | workspace | success,failure | The test verb end to end, including a failing suite surfacing as a failed build.
-:cli    | cc.jumpkick.command.SelectiveCommandTest       | workspace | success,failure | Module selection flags pick the right subgraph and reject a module the workspace does not have.
+:cli    | cc.jumpkick.command.pipeline.BuildCommandTest           | workspace | success,failure | The build verb over a real workspace, and that a compile error leaves a non-zero exit.
+:cli    | cc.jumpkick.command.pipeline.TestCommandTest            | workspace | success,failure | The test verb end to end, including a failing suite surfacing as a failed build.
+:cli    | cc.jumpkick.command.pipeline.SelectiveCommandTest       | workspace | success,failure | Module selection flags pick the right subgraph and reject a module the workspace does not have.
 :engine | cc.jumpkick.runtime.WorkspaceTestsKindE2eTest  | workspace | success         | A workspace member's tests compile against a sibling test-helper module, which is the multi-module test classpath in one case.
-:cli    | cc.jumpkick.command.InstallCommandTest         | install   | success,failure | Install writes the lib layout and launcher, publishes to the local Maven repo, and returns a usage error with no manifest.
+:cli    | cc.jumpkick.command.pipeline.InstallCommandTest         | install   | success,failure | Install writes the lib layout and launcher, publishes to the local Maven repo, and returns a usage error with no manifest.
 :cli    | cc.jumpkick.command.InstallWorkspaceTest       | install   | success,failure | Installing a workspace publishes every member and not the coordinator root, and a failing member names the module instead of exiting silently.
 :cli    | cc.jumpkick.cli.engine.EngineJarFetcherTest    | install   | success,failure | Materializing the engine jar into the home, and the checksum and missing-artifact refusals that keep a bad jar out.
-:cli    | cc.jumpkick.command.LockCommandTest            | lock      | success,failure | The lock pipeline for Java and Kotlin, plus the offline hard-failures when the lock does not cover a declared dependency.
-:cli    | cc.jumpkick.command.CacheCommandTest           | lock      | success,failure | The cache verbs over a real store, including the unconfirmed purge that aborts and the empty search that returns non-zero.
+:cli    | cc.jumpkick.command.project.LockCommandTest            | lock      | success,failure | The lock pipeline for Java and Kotlin, plus the offline hard-failures when the lock does not cover a declared dependency.
+:cli    | cc.jumpkick.command.system.CacheCommandTest           | lock      | success,failure | The cache verbs over a real store, including the unconfirmed purge that aborts and the empty search that returns non-zero.
 :cli    | cc.jumpkick.command.BuildCacheTest             | lock      | success         | Freshness stamp, action cache and rebuild bypass — the layers that decide whether a second build does work.
 :cli    | cc.jumpkick.command.CleanExplainWhyRebuiltTest | lock      | success         | Clean removes the trees it owns and `explain` reports each compile task's cache status, including the hit after a build.

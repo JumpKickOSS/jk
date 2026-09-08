@@ -14,7 +14,7 @@
         "pattern": "META-INF/jk-.*-sha256\\.txt"
       },
       {
-        "pattern": "cc/jumpkick/command/wrapper/.*"
+        "pattern": "cc/jumpkick/command/toolchain/wrapper/.*"
       },
       {
         "pattern": "cc/jumpkick/docs/.*"

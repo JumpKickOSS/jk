@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.args.ArgParser;
 import cc.jumpkick.cli.testing.Capture;
+import cc.jumpkick.command.pipeline.TestCommand;
 import cc.jumpkick.model.command.Command;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;

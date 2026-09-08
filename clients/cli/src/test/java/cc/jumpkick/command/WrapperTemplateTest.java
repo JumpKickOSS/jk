@@ -3,6 +3,7 @@ package cc.jumpkick.command;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.command.toolchain.WrapperCommand;
 import cc.jumpkick.repo.ReleaseVerifier;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;

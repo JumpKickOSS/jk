@@ -1,0 +1,159 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.command.toolchain;
+
+import cc.jumpkick.http.Http;
+import cc.jumpkick.jsonl.Jsonl;
+import java.io.IOException;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.function.Predicate;
+
+/**
+ * JBang catalog resolution for {@code alias@catalog} targets ({@code @user}, {@code @user/repo},
+ * or host URL). Trust gate runs on the catalog origin before scripts are fetched.
+ */
+final class JBangCatalog {
+
+    /** A located catalog: where it came from (for trust + relative refs) and the alias entry. */
+    record Resolved(
+            String pageOrigin,
+            URI rawBase,
+            String scriptRef,
+            List<String> arguments,
+            List<String> dependencies,
+            List<String> javaOptions) {}
+
+    private JBangCatalog() {}
+
+    /**
+     * Candidate catalog origins for {@code alias@rest} in fetch order, computed without any
+     * network I/O — the first entry is the origin the target names. Callers gate trust on these
+     * BEFORE {@link #resolve}: no request leaves the machine for an origin the user never allowed.
+     */
+    static List<String> origins(String target) {
+        return candidatesOf(target).stream().map(Candidate::pageOrigin).toList();
+    }
+
+    /** Resolve {@code alias@rest}; throws {@link IOException} with a user-ready message. */
+    static Resolved resolve(String target, Http http) throws IOException, InterruptedException {
+        return resolve(target, http, origin -> true);
+    }
+
+    /**
+     * As {@link #resolve(String, Http)}, but only candidates whose page origin passes
+     * {@code originAllowed} are fetched — the forge-fallback list may mix trusted and untrusted
+     * origins, and the untrusted ones must not be contacted.
+     */
+    static Resolved resolve(String target, Http http, Predicate<String> originAllowed)
+            throws IOException, InterruptedException {
+        int at = target.indexOf('@');
+        String alias = target.substring(0, at);
+
+        List<Candidate> candidates = candidatesOf(target);
+        IOException lastFailure = null;
+        for (Candidate c : candidates) {
+            if (!originAllowed.test(c.pageOrigin())) continue;
+            try {
+                var response = http.get(URI.create(c.catalogUrl()));
+                if (response.statusCode() != 200) continue;
+                // Jsonl's lookups expect the wire's compact form; catalogs are
+                // pretty-printed by humans — normalize before parsing.
+                String json = compact(new String(response.body(), StandardCharsets.UTF_8));
+                return toResolved(target, alias, c, json);
+            } catch (IOException e) {
+                lastFailure = e;
+            }
+        }
+        if (lastFailure != null) throw lastFailure;
+        throw new IOException("no jbang-catalog.json found for `" + target.substring(at + 1) + "` (tried "
+                + candidates.stream()
+                        .filter(c -> originAllowed.test(c.pageOrigin()))
+                        .map(Candidate::catalogUrl)
+                        .toList()
+                + ")");
+    }
+
+    private static Resolved toResolved(String target, String alias, Candidate c, String json) throws IOException {
+        String aliases = Jsonl.nested(json, "aliases");
+        String entry = aliases != null ? Jsonl.nested(aliases, alias) : null;
+        if (entry == null) {
+            throw new IOException("catalog " + c.catalogUrl() + " has no alias `" + alias + "`");
+        }
+        String scriptRef = Jsonl.str(entry, "script-ref");
+        if (scriptRef == null || scriptRef.isBlank()) {
+            throw new IOException("alias `" + alias + "` in " + c.catalogUrl() + " has no script-ref");
+        }
+        String base = c.catalogUrl().substring(0, c.catalogUrl().lastIndexOf('/') + 1);
+        return new Resolved(
+                c.pageOrigin(),
+                URI.create(base),
+                scriptRef,
+                Jsonl.strArray(entry, "arguments"),
+                Jsonl.strArray(entry, "dependencies"),
+                Jsonl.strArray(entry, "java-options"));
+    }
+
+    /** Strip whitespace outside string literals so Jsonl's compact-form lookups match. */
+    static String compact(String json) {
+        StringBuilder sb = new StringBuilder(json.length());
+        boolean inString = false;
+        for (int i = 0; i < json.length(); i++) {
+            char ch = json.charAt(i);
+            if (inString) {
+                sb.append(ch);
+                if (ch == '\\' && i + 1 < json.length()) sb.append(json.charAt(++i));
+                else if (ch == '"') inString = false;
+            } else if (ch == '"') {
+                inString = true;
+                sb.append(ch);
+            } else if (!Character.isWhitespace(ch)) {
+                sb.append(ch);
+            }
+        }
+        return sb.toString();
+    }
+
+    private record Candidate(String catalogUrl, String pageOrigin) {}
+
+    /** Parse {@code alias@rest[~path]} and expand the forge candidates. */
+    private static List<Candidate> candidatesOf(String target) {
+        String rest = target.substring(target.indexOf('@') + 1);
+        String path = "";
+        int tilde = rest.indexOf('~');
+        if (tilde >= 0) {
+            path = rest.substring(tilde + 1);
+            rest = rest.substring(0, tilde);
+        }
+        return candidatesFor(rest, path);
+    }
+
+    private static List<Candidate> candidatesFor(String rest, String path) {
+        String sub = path.isEmpty() ? "" : path + "/";
+        String[] parts = rest.split("/");
+        // A dot in the first segment = a hostname catalog, not a forge username.
+        if (parts[0].contains(".")) {
+            String tail = rest.endsWith("/") ? rest.substring(0, rest.length() - 1) : rest;
+            String scheme = parts[0].startsWith("127.0.0.1") || parts[0].startsWith("localhost") ? "http" : "https";
+            return List.of(new Candidate(
+                    scheme + "://" + tail + "/" + sub + "jbang-catalog.json",
+                    scheme + "://" + parts[0] + "/" + (parts.length > 1 ? parts[1] + "/" : "")));
+        }
+        String user = parts[0];
+        String repo = parts.length > 1 ? parts[1] : "jbang-catalog";
+        String branch = parts.length > 2 ? parts[2] : "HEAD";
+        return List.of(
+                new Candidate(
+                        "https://raw.githubusercontent.com/" + user + "/" + repo + "/" + branch + "/" + sub
+                                + "jbang-catalog.json",
+                        "https://github.com/" + user + "/"),
+                new Candidate(
+                        "https://gitlab.com/" + user + "/" + repo + "/-/raw/" + branch + "/" + sub
+                                + "jbang-catalog.json",
+                        "https://gitlab.com/" + user + "/"),
+                new Candidate(
+                        "https://bitbucket.org/" + user + "/" + repo + "/raw/" + branch + "/" + sub
+                                + "jbang-catalog.json",
+                        "https://bitbucket.org/" + user + "/"));
+    }
+}

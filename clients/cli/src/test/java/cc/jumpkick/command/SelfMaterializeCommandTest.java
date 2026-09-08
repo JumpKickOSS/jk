@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.testing.Capture;
+import cc.jumpkick.command.system.SelfCommand;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.util.JkDirs;

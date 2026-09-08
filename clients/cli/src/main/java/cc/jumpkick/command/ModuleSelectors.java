@@ -6,20 +6,21 @@ import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /** {@code -m}/{@code --affected-since}/{@code --affected} tokens forwarded to the engine. */
-final class ModuleSelectors {
+public final class ModuleSelectors {
 
     /** Engine token for {@code --affected} (WIP). Not {@code affected:<ref>} — a branch named wip must stay a ref. */
     static final String WIP_TOKEN = "affected-wip";
 
-    static final String BOTH_MESSAGE = "use --affected (WIP) or --affected-since=<ref>, not both";
+    public static final String BOTH_MESSAGE = "use --affected (WIP) or --affected-since=<ref>, not both";
 
     private ModuleSelectors() {}
 
-    static List<String> tokens(@Nullable String modulesSpec, @Nullable String affectedSince) {
+    public static List<String> tokens(@Nullable String modulesSpec, @Nullable String affectedSince) {
         return tokens(modulesSpec, affectedSince, false);
     }
 
-    static List<String> tokens(@Nullable String modulesSpec, @Nullable String affectedSince, boolean affectedWip) {
+    public static List<String> tokens(
+            @Nullable String modulesSpec, @Nullable String affectedSince, boolean affectedWip) {
         List<String> selectors = new ArrayList<>();
         if (modulesSpec != null && !modulesSpec.isBlank()) {
             for (String t : modulesSpec.split(",")) {
@@ -34,7 +35,7 @@ final class ModuleSelectors {
         return List.copyOf(selectors);
     }
 
-    static boolean bothSelectors(boolean affectedWip, @Nullable String affectedSince) {
+    public static boolean bothSelectors(boolean affectedWip, @Nullable String affectedSince) {
         return affectedWip && affectedSince != null && !affectedSince.isBlank();
     }
 
@@ -43,7 +44,8 @@ final class ModuleSelectors {
      * resolution with this — a hand-rolled disjunction is how {@code jk native --affected} shipped
      * accepting the flag and ignoring it.
      */
-    static boolean anySelector(@Nullable String modulesSpec, @Nullable String affectedSince, boolean affectedWip) {
+    public static boolean anySelector(
+            @Nullable String modulesSpec, @Nullable String affectedSince, boolean affectedWip) {
         return affectedWip
                 || (modulesSpec != null && !modulesSpec.isBlank())
                 || (affectedSince != null && !affectedSince.isBlank());

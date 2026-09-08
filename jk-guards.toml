@@ -146,7 +146,7 @@ why        = "re-resolving each path to ask again is the dominant cost of walkin
 [guards.jdk-removal-confined]
 kind       = "forbid"
 signatures = ["cc.jumpkick.jdk.JdkGarbage"]
-owner      = "cc.jumpkick.command.JdkUpdateCommand"
+owner      = "cc.jumpkick.command.toolchain.JdkUpdateCommand"
 instead    = "provisioning installs; only `jk jdk update` queues a superseded install and drains it, after asking"
 why        = "an ordinary build once deleted the JDK it was running on, twice in one afternoon"
 
@@ -201,11 +201,11 @@ instead = "BuildLayout.TARGET, or BuildLayout.moduleTargetDir(ws, mod)"
 why     = "the output directory is named once; renaming it must not miss a spelling"
 
 [[guards.target-dir.allow]]
-in     = "clients/cli/src/main/java/cc/jumpkick/command/ToolInstallCommand.java"
+in     = "clients/cli/src/main/java/cc/jumpkick/command/toolchain/ToolInstallCommand.java"
 reason = "a CLI parameter named target (a coordinate, a file, a directory or a git URL)"
 
 [[guards.target-dir.allow]]
-in     = "clients/cli/src/main/java/cc/jumpkick/command/ToolRunCommand.java"
+in     = "clients/cli/src/main/java/cc/jumpkick/command/toolchain/ToolRunCommand.java"
 reason = "a CLI parameter named target (a coordinate, a file, a directory or a git URL)"
 
 [[guards.target-dir.allow]]

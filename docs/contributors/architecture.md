@@ -228,6 +228,12 @@ the plan builders that compose the core). The remaining package cycles are the t
 `cycle-baseline.txt` line counts: the planner core (`runtime`, `task`, `compile`, `test`), the MCP front
 (`http`, `http.mcp`, `http.mcp.tools`) and the job/journal pair.
 
+The CLI's verbs are five families under `cc.jumpkick.command` — `pipeline`, `project`, `toolchain`,
+`interop`, `system` — each with a package charter, over a root that holds only what more than one
+family reads. A verb reaches the shell through `cli.api` and never names it: the two verbs that need
+the dispatcher (selective's re-entry, the completion scripts' command table) take it through their
+constructor, so `command.* -> cli` is zero and the dispatcher is outside every cycle.
+
 Ship layout (`./gradlew dist`): slim native `jk` + `lib/jk-engine-<version>.jar`.
 
 ## Dependency resolution

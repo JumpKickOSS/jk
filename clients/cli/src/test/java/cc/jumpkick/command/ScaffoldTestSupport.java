@@ -14,11 +14,11 @@ import java.nio.file.Path;
  * one established first. {@link #writeEmptyLock} drops in the empty lock {@code jk new} used to
  * create, standing in for "the project has been locked" without a network resolve.
  */
-final class ScaffoldTestSupport {
+public final class ScaffoldTestSupport {
 
     private ScaffoldTestSupport() {}
 
-    static void writeEmptyLock(Path projectDir) throws IOException {
+    public static void writeEmptyLock(Path projectDir) throws IOException {
         LockfileWriter.write(Lockfile.empty(JkVersion.VERSION), projectDir.resolve("jk-lock.toml"));
     }
 }

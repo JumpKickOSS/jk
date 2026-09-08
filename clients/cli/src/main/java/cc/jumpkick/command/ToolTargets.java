@@ -13,13 +13,13 @@ import java.util.List;
  * Resolves a non-file {@code jk tool run|install} target to a {@link ToolCoordSpec}. Bare names
  * hit the layered library catalog ({@code name@suffix} is a version selector when the name matches).
  */
-final class ToolTargets {
+public final class ToolTargets {
 
     /** A target resolved to wire shape: the coord spec to send and the launcher-name default. */
-    record Resolved(String coordSpec, String defaultBin) {}
+    public record Resolved(String coordSpec, String defaultBin) {}
 
     /** User-facing classification/lookup failure; the message is ready to print. */
-    static final class TargetException extends RuntimeException {
+    public static final class TargetException extends RuntimeException {
         TargetException(String message) {
             super(message);
         }
@@ -28,7 +28,7 @@ final class ToolTargets {
     private ToolTargets() {}
 
     /** Resolve a non-file target. Throws {@link TargetException} with a rendered message. */
-    static Resolved resolve(String target) {
+    public static Resolved resolve(String target) {
         return switch (ToolTarget.classify(target)) {
             case ToolTarget.RunnableFile f ->
                 throw new IllegalStateException("file targets are ScriptRunner's job: " + target);
@@ -58,7 +58,7 @@ final class ToolTargets {
      * Resolve each {@code --with} value — a coord spec ({@code g:a[:v|@sel]}) or a catalog
      * short-name ({@code name[@sel]}) — to wire shape.
      */
-    static List<String> resolveWith(List<String> with) {
+    public static List<String> resolveWith(List<String> with) {
         List<String> out = new ArrayList<>();
         for (String w : with) {
             if (w.contains(":")) {

@@ -20,11 +20,11 @@ import java.util.Map;
  * inherit it through {@code BuildPlanner.Inputs}' session default — so a command opts in with
  * two lines: options() in its flag list, install() before it builds.
  */
-final class VariantSelection {
+public final class VariantSelection {
 
     private VariantSelection() {}
 
-    static List<Opt> options() {
+    public static List<Opt> options() {
         return List.of(
                 Opt.flag("Use release build type", "--release"),
                 Opt.value("<dim>=<value>", "Select a variant value (repeatable)", "--variant")
@@ -58,7 +58,7 @@ final class VariantSelection {
      * Resolve the selection + client env and install both on the ambient session. Returns the
      * selector for commands that also thread it explicitly (jk build's request records).
      */
-    static String install(Invocation in, Path projectDir) {
+    public static String install(Invocation in, Path projectDir) {
         String selector = selector(in);
         Map<String, String> clientEnv = resolveClientEnv(projectDir);
         SessionContext.install(SessionContext.current().withVariant(selector, clientEnv));

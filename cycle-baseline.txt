@@ -40,6 +40,16 @@
 # both now point at `runtime.base`, which imports none of them, so the planner core is the pair
 # runtime+test (AffectedTestRun still reads BuildPlanner) and the engine line is 7.
 #
+# 2026-09-08, clients/cli: the verbs are five families under `command` — pipeline, project, toolchain,
+# interop, system — with the shared helpers (module selectors, cwd scope, variant selection, engine
+# edits, JkEnv, toolchain path, tool targets) left in the root, which reads no family. The six
+# shell classes a verb still read (EnsureFreshLock, BuildOptions, ParallelTestsOpts, GraalResolver,
+# OpenBrowser) moved to `cli.api`; IdeSourceRoots moved to `cli.ide` so the BSP server stopped
+# reading a command package; the two verbs that named the dispatcher (selective's re-entry, the
+# completion scripts' command table) take it through the constructor. `command.* -> cli` is 0 and
+# the dispatcher quartet is gone; the CLI's one remaining component is the api/engine/run/theme/tui
+# quintet, so the line is 5.
+#
 # Measured at landing: 1,432 main sources, 95 packages, 29 module source roots, 195 resolved
 # package edges. Method: per module, resolve each `import cc.jumpkick.*` to the longest declared
 # package prefix WITHIN that module, then Tarjan over the resulting package graph. Imports that
@@ -50,7 +60,7 @@
 # defends.
 
 server/engine 7
-clients/cli 9
+clients/cli 5
 shared/core 8
 clients/cli-terminal 3
 server/resolver 3

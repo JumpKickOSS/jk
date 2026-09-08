@@ -11,17 +11,17 @@ import java.util.List;
  * Client side of engine-hosted jk.toml edits ({@code EDIT_REQUEST}): client names the op; engine
  * parses/edits/writes.test.noEngine}.
  */
-final class EngineEdits {
+public final class EngineEdits {
 
     private EngineEdits() {}
 
     /** Apply one edit; returns whether the file changed. Throws with a ready-to-print message. */
-    static boolean apply(Path file, String op, List<String> args) throws IOException {
+    public static boolean apply(Path file, String op, List<String> args) throws IOException {
 
         return EngineClient.edit(EnginePaths.current(), file, op, args);
     }
 
-    static String applyDetail(Path file, String op, List<String> args) throws IOException {
+    public static String applyDetail(Path file, String op, List<String> args) throws IOException {
         return EngineClient.editDetail(EnginePaths.current(), file, op, args);
     }
 }

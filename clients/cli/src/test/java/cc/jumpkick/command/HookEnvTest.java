@@ -3,6 +3,12 @@ package cc.jumpkick.command;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.command.system.HookEnvCommand;
+import cc.jumpkick.command.system.JkDiff;
+import cc.jumpkick.command.toolchain.BashShell;
+import cc.jumpkick.command.toolchain.FishShell;
+import cc.jumpkick.command.toolchain.PwshShell;
+import cc.jumpkick.command.toolchain.ZshShell;
 import java.io.File;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;

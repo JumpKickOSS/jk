@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.tui.Answers;
+import cc.jumpkick.command.project.NewCommand;
+import cc.jumpkick.command.project.NewWizard;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.JkBuild;
 import java.io.IOException;

@@ -3,6 +3,11 @@ package cc.jumpkick.command;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.command.system.DoctorCommand;
+import cc.jumpkick.command.toolchain.FishShell;
+import cc.jumpkick.command.toolchain.Shell;
+import cc.jumpkick.command.toolchain.ShellInstallerBlock;
+import cc.jumpkick.command.toolchain.ZshShell;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;

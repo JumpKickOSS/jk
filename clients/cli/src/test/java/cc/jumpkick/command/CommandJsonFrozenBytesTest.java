@@ -5,6 +5,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.engine.EngineFleet;
 import cc.jumpkick.cli.engine.EngineProbe;
+import cc.jumpkick.command.project.OutdatedCommand;
+import cc.jumpkick.command.system.DoctorCommand;
+import cc.jumpkick.command.system.EngineAotCommand;
+import cc.jumpkick.command.system.EngineStatusCommand;
+import cc.jumpkick.command.system.EnvCommand;
 import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.util.AotManifest;
 import cc.jumpkick.wire.protocol.OutdatedReport;

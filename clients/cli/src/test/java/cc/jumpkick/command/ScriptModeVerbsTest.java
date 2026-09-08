@@ -3,8 +3,17 @@ package cc.jumpkick.command;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.command.interop.BspCommand;
+import cc.jumpkick.command.interop.ExportIdeaCommand;
+import cc.jumpkick.command.interop.IdeCommand;
+import cc.jumpkick.command.interop.VscodeCommand;
+import cc.jumpkick.command.pipeline.SelectiveCommand;
+import cc.jumpkick.command.project.ExplainCommand;
+import cc.jumpkick.command.system.TasksCommand;
+import cc.jumpkick.command.toolchain.ActivateCommand;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -24,8 +33,8 @@ class ScriptModeVerbsTest {
 
     @Test
     void activate_prints_a_script_only_with_a_shell_positional() {
-        assertThat(script(new ActivateCommand())).isFalse();
-        assertThat(script(new ActivateCommand(), "bash")).isTrue();
+        assertThat(script(new ActivateCommand(List::of))).isFalse();
+        assertThat(script(new ActivateCommand(List::of), "bash")).isTrue();
     }
 
     @Test
@@ -56,9 +65,9 @@ class ScriptModeVerbsTest {
 
     @Test
     void selective_resolve_is_script_mode_prepare_and_run_are_not() {
-        assertThat(script(new SelectiveCommand(), "resolve")).isTrue();
-        assertThat(script(new SelectiveCommand(), "prepare")).isFalse();
-        assertThat(script(new SelectiveCommand(), "run", "build")).isFalse();
+        assertThat(script(new SelectiveCommand(args -> 0), "resolve")).isTrue();
+        assertThat(script(new SelectiveCommand(args -> 0), "prepare")).isFalse();
+        assertThat(script(new SelectiveCommand(args -> 0), "run", "build")).isFalse();
     }
 
     @Test

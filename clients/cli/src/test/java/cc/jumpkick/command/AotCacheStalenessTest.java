@@ -3,6 +3,7 @@ package cc.jumpkick.command;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.command.pipeline.AotCachePackage;
 import cc.jumpkick.host.Hashing;
 import java.nio.file.Files;
 import java.nio.file.Path;

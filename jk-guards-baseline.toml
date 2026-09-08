@@ -6,7 +6,7 @@ population = { constants = 1, files = 3028, literals = 91653 }
 
 [archive-instant-owner]
 [archive-instant-owner.populations]
-"clients/cli" = { classes = 610, sites = 38538 }
+"clients/cli" = { classes = 639, sites = 39479 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "server/engine" = { classes = 876, sites = 57043 }
 "shared/client-io" = { classes = 73, sites = 4059 }
@@ -16,7 +16,7 @@ population = { files = 1745 }
 
 [blind-tree-walks]
 [blind-tree-walks.populations]
-"clients/cli" = { classes = 610, sites = 38538 }
+"clients/cli" = { classes = 639, sites = 39479 }
 "plugins/android" = { classes = 29, sites = 1906 }
 "plugins/formatter" = { classes = 14, sites = 856 }
 "plugins/image-builder" = { classes = 13, sites = 1201 }
@@ -49,43 +49,43 @@ at     = "cc.jumpkick.cli.watch.SourceWatch#registerTree(Ljava/nio/file/Path;)V 
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
 in     = "clients/cli"
-at     = "cc.jumpkick.command.AotCachePackage#extractBootLayout(Ljava/lang/String;Ljava/nio/file/Path;Ljava/nio/file/Path;Ljava/nio/file/Path;)Ljava/lang/String; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
-reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
-[[blind-tree-walks.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.command.BuildLogicTaskScan#discoverNames(Ljava/nio/file/Path;)Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
-reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
-[[blind-tree-walks.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.command.DoctorCommand#checkJdk()Lcc/jumpkick/command/DoctorCommand$Check; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
-reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
-[[blind-tree-walks.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.command.SelectiveCommand#fingerprintModule(Ljava/nio/file/Path;)Ljava/lang/String; -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
-reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
-[[blind-tree-walks.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.command.ToolListCommand#run(Lcc/jumpkick/model/command/Invocation;)I -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
-reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
-[[blind-tree-walks.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.command.ToolRunCommand#runDirectory(Ljava/nio/file/Path;Ljava/util/List;)I -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
-reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
-[[blind-tree-walks.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.command.UrlToolSource#topLevelFiles(Ljava/nio/file/Path;)Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
-reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
-[[blind-tree-walks.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.command.VerifyBuildCommand#touchLockfiles(Ljava/nio/file/Path;)V -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
-reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
-[[blind-tree-walks.entries]]
-in     = "clients/cli"
 at     = "cc.jumpkick.command.ide.IntellijSdkRegistrar#moduleNames(Ljava/nio/file/Path;)Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
 in     = "clients/cli"
 at     = "cc.jumpkick.command.ide.IntellijSdkRegistrar#targetTables()Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.pipeline.AotCachePackage#extractBootLayout(Ljava/lang/String;Ljava/nio/file/Path;Ljava/nio/file/Path;Ljava/nio/file/Path;)Ljava/lang/String; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.pipeline.SelectiveCommand#fingerprintModule(Ljava/nio/file/Path;)Ljava/lang/String; -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.project.VerifyBuildCommand#touchLockfiles(Ljava/nio/file/Path;)V -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.system.BuildLogicTaskScan#discoverNames(Ljava/nio/file/Path;)Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.system.DoctorCommand#checkJdk()Lcc/jumpkick/command/system/DoctorCommand$Check; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "pure move: the command split re-keyed the walk into its family package; same walk, same count"
+[[blind-tree-walks.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.toolchain.ToolListCommand#run(Lcc/jumpkick/model/command/Invocation;)I -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.toolchain.ToolRunCommand#runDirectory(Ljava/nio/file/Path;Ljava/util/List;)I -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
+reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
+[[blind-tree-walks.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.toolchain.UrlToolSource#topLevelFiles(Ljava/nio/file/Path;)Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
 in     = "plugins/android"
@@ -768,7 +768,7 @@ population = { constants = 29, files = 1794, literals = 33437 }
 
 [case-conversion-locale]
 [case-conversion-locale.populations]
-"clients/cli" = { classes = 610, sites = 38538 }
+"clients/cli" = { classes = 639, sites = 39479 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "server/engine" = { classes = 876, sites = 57043 }
 "shared/client-io" = { classes = 73, sites = 4059 }
@@ -785,19 +785,19 @@ population = { files = 1821 }
 
 [cli-no-parse-types]
 [cli-no-parse-types.populations]
-"clients/cli" = { examined = 318 }
+"clients/cli" = { examined = 325 }
 
 [cli-stdio-handoff-owner]
 [cli-stdio-handoff-owner.populations]
-"clients/cli" = { examined = 318 }
+"clients/cli" = { examined = 325 }
 
 [cli-test-isolated-state]
 [cli-test-isolated-state.populations]
-"clients/cli" = { examined = 274 }
+"clients/cli" = { examined = 254 }
 
 [clock-owner]
 [clock-owner.populations]
-"clients/cli" = { classes = 610, sites = 38538 }
+"clients/cli" = { classes = 639, sites = 39479 }
 "clients/cli-terminal" = { classes = 48, sites = 1630 }
 "plugins/image-builder" = { classes = 13, sites = 1201 }
 "plugins/java-compiler" = { classes = 25, sites = 1420 }
@@ -945,147 +945,147 @@ at     = "cc.jumpkick.cli.watch.SourceWatch#pollChange(JLjava/util/concurrent/Ti
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "clients/cli"
-at     = "cc.jumpkick.command.ActivityCommand#run(Lcc/jumpkick/model/command/Invocation;)I -> java.lang.System#currentTimeMillis()J"
+at     = "cc.jumpkick.command.pipeline.BuildCommand#runForDir(Ljava/nio/file/Path;)I -> java.lang.System#nanoTime()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "clients/cli"
-at     = "cc.jumpkick.command.BuildCommand#runForDir(Ljava/nio/file/Path;)I -> java.lang.System#nanoTime()J"
+at     = "cc.jumpkick.command.pipeline.BuildCommand#runGraphParallel(Ljava/nio/file/Path;)I -> java.lang.System#nanoTime()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "clients/cli"
-at     = "cc.jumpkick.command.BuildCommand#runGraphParallel(Ljava/nio/file/Path;)I -> java.lang.System#nanoTime()J"
+at     = "cc.jumpkick.command.pipeline.BuildCommand#runWorkspaceHeadless(Ljava/nio/file/Path;Ljava/nio/file/Path;Ljava/util/List;)I -> java.lang.System#nanoTime()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "clients/cli"
-at     = "cc.jumpkick.command.BuildCommand#runWorkspaceHeadless(Ljava/nio/file/Path;Ljava/nio/file/Path;Ljava/util/List;)I -> java.lang.System#nanoTime()J"
+at     = "cc.jumpkick.command.pipeline.BuildTails#elapsedMsSince(J)J -> java.lang.System#nanoTime()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "clients/cli"
-at     = "cc.jumpkick.command.BuildTails#elapsedMsSince(J)J -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.command.CacheCommand#lastPrunedLabel(Ljava/nio/file/Path;)Ljava/lang/String; -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.command.CleanCommand#run(Lcc/jumpkick/model/command/Invocation;)I -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.command.CompileCommand#runWorkspaceCompile(Ljava/nio/file/Path;Ljava/lang/String;Lcc/jumpkick/cli/api/GlobalOptions;Ljava/nio/file/Path;Ljava/util/List;Ljava/util/List;)I -> java.lang.System#nanoTime()J"
+at     = "cc.jumpkick.command.pipeline.CompileCommand#runWorkspaceCompile(Ljava/nio/file/Path;Ljava/lang/String;Lcc/jumpkick/cli/api/GlobalOptions;Ljava/nio/file/Path;Ljava/util/List;Ljava/util/List;)I -> java.lang.System#nanoTime()J"
 reason = "wall-clock reads on 2026-09-07; keys re-banked after the cli.api and engine.api moves changed descriptors (pure move); the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "clients/cli"
-at     = "cc.jumpkick.command.CompileCommand#runWorkspaceHeadless(Lcc/jumpkick/cli/engine/EngineRequests$CompileRequest;Lcc/jumpkick/cli/api/GlobalOptions;Ljava/nio/file/Path;Ljava/util/List;)I -> java.lang.System#nanoTime()J"
+at     = "cc.jumpkick.command.pipeline.CompileCommand#runWorkspaceHeadless(Lcc/jumpkick/cli/engine/EngineRequests$CompileRequest;Lcc/jumpkick/cli/api/GlobalOptions;Ljava/nio/file/Path;Ljava/util/List;)I -> java.lang.System#nanoTime()J"
 reason = "wall-clock reads on 2026-09-07; keys re-banked after the cli.api and engine.api moves changed descriptors (pure move); the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "clients/cli"
-at     = "cc.jumpkick.command.DoctorCommand#checkEngine()Lcc/jumpkick/command/DoctorCommand$Check; -> java.lang.System#currentTimeMillis()J"
+at     = "cc.jumpkick.command.pipeline.FormatCommand#run(Lcc/jumpkick/model/command/Invocation;)I -> java.lang.System#currentTimeMillis()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "clients/cli"
-at     = "cc.jumpkick.command.EngineStatusCommand#printFleet(Ljava/util/List;)V -> java.lang.System#currentTimeMillis()J"
+at     = "cc.jumpkick.command.pipeline.FormatCommand#runAnimated(Lcc/jumpkick/command/pipeline/FormatCommand$Run;)I -> java.lang.System#currentTimeMillis()J"
+reason = "pure move: the command split re-keyed the sites into command.pipeline, command.system and command.toolchain; same reads, same count"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.pipeline.FormatCommand#runPlain(Lcc/jumpkick/command/pipeline/FormatCommand$Run;)I -> java.lang.System#currentTimeMillis()J"
+reason = "pure move: the command split re-keyed the sites into command.pipeline, command.system and command.toolchain; same reads, same count"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.pipeline.ImageCommand#runWorkspaceHeadless(Lcc/jumpkick/cli/engine/EngineRequests$ImageRequest;Ljava/nio/file/Path;Ljava/util/List;)I -> java.lang.System#nanoTime()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "clients/cli"
-at     = "cc.jumpkick.command.EngineStatusCommand#run(Lcc/jumpkick/model/command/Invocation;)I -> java.lang.System#currentTimeMillis()J"
+at     = "cc.jumpkick.command.pipeline.ImageCommand#runWorkspaceImage(Ljava/nio/file/Path;Ljava/nio/file/Path;Ljava/nio/file/Path;)I -> java.lang.System#nanoTime()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "clients/cli"
-at     = "cc.jumpkick.command.EngineStopCommand#elapsed(J)J -> java.lang.System#currentTimeMillis()J"
+at     = "cc.jumpkick.command.pipeline.InstallCommand#runWorkspaceInstall(Ljava/nio/file/Path;Lcc/jumpkick/command/CwdModuleScope$Resolved;Ljava/lang/String;)I -> java.lang.System#nanoTime()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "clients/cli"
-at     = "cc.jumpkick.command.FormatCommand#run(Lcc/jumpkick/model/command/Invocation;)I -> java.lang.System#currentTimeMillis()J"
+at     = "cc.jumpkick.command.pipeline.NativeCommand#runWorkspaceHosted(Ljava/nio/file/Path;Ljava/nio/file/Path;Ljava/util/Map;Ljava/util/List;Lcc/jumpkick/cli/run/BuildPlanConsole$Mode;JIJ)I -> java.lang.System#nanoTime()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "clients/cli"
-at     = "cc.jumpkick.command.FormatCommand#runAnimated(Lcc/jumpkick/command/FormatCommand$Run;)I -> java.lang.System#currentTimeMillis()J"
+at     = "cc.jumpkick.command.pipeline.NativeCommand#runWorkspaceNative(Ljava/nio/file/Path;Ljava/nio/file/Path;)I -> java.lang.System#nanoTime()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "clients/cli"
-at     = "cc.jumpkick.command.FormatCommand#runPlain(Lcc/jumpkick/command/FormatCommand$Run;)I -> java.lang.System#currentTimeMillis()J"
+at     = "cc.jumpkick.command.pipeline.RunCommand#buildWorkspaceForRun(Ljava/nio/file/Path;Ljava/nio/file/Path;Lcc/jumpkick/cli/run/BuildPlanConsole$Mode;ZLcc/jumpkick/command/CwdModuleScope$Resolved;Lcc/jumpkick/config/Session;)Lcc/jumpkick/wire/runtime/WorkspaceResult; -> java.lang.System#nanoTime()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "clients/cli"
-at     = "cc.jumpkick.command.HistoryCommand$HistoryListCommand#run(Lcc/jumpkick/model/command/Invocation;)I -> java.lang.System#currentTimeMillis()J"
+at     = "cc.jumpkick.command.pipeline.RunCommand#runWorkspaceLive(Lcc/jumpkick/wire/runtime/WorkspaceRequest;Ljava/util/List;)Lcc/jumpkick/wire/runtime/WorkspaceResult; -> java.lang.System#nanoTime()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "clients/cli"
-at     = "cc.jumpkick.command.HistoryCommand$HistoryShowCommand#run(Lcc/jumpkick/model/command/Invocation;)I -> java.lang.System#currentTimeMillis()J"
+at     = "cc.jumpkick.command.pipeline.SelectiveCommand#prepare(Ljava/nio/file/Path;Ljava/nio/file/Path;Ljava/lang/String;Ljava/lang/String;Ljava/nio/file/Path;)I -> java.time.Instant#now()Ljava/time/Instant;"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "clients/cli"
-at     = "cc.jumpkick.command.ImageCommand#runWorkspaceHeadless(Lcc/jumpkick/cli/engine/EngineRequests$ImageRequest;Ljava/nio/file/Path;Ljava/util/List;)I -> java.lang.System#nanoTime()J"
+at     = "cc.jumpkick.command.pipeline.TestCommand#runWorkspaceTestsHeadless(Ljava/nio/file/Path;Ljava/nio/file/Path;ILjava/util/List;)I -> java.lang.System#nanoTime()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "clients/cli"
-at     = "cc.jumpkick.command.ImageCommand#runWorkspaceImage(Ljava/nio/file/Path;Ljava/nio/file/Path;Ljava/nio/file/Path;)I -> java.lang.System#nanoTime()J"
+at     = "cc.jumpkick.command.pipeline.TestCommand#runWorkspaceTestsLive(Ljava/nio/file/Path;Ljava/nio/file/Path;ILjava/util/List;Ljava/util/List;)I -> java.lang.System#nanoTime()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "clients/cli"
-at     = "cc.jumpkick.command.InstallCommand#runWorkspaceInstall(Ljava/nio/file/Path;Lcc/jumpkick/command/CwdModuleScope$Resolved;Ljava/lang/String;)I -> java.lang.System#nanoTime()J"
+at     = "cc.jumpkick.command.project.LockCommand#lockSuccessTail(IJLjava/nio/file/Path;)Ljava/lang/String; -> java.lang.System#nanoTime()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "clients/cli"
-at     = "cc.jumpkick.command.LibraryUpdateCommand#run(Lcc/jumpkick/model/command/Invocation;)I -> java.lang.System#nanoTime()J"
+at     = "cc.jumpkick.command.project.LockCommand#runHostedLive(Ljava/nio/file/Path;Ljava/nio/file/Path;Lcc/jumpkick/cli/run/BuildPlanConsole$Mode;)I -> java.lang.System#nanoTime()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "clients/cli"
-at     = "cc.jumpkick.command.LockCommand#lockSuccessTail(IJLjava/nio/file/Path;)Ljava/lang/String; -> java.lang.System#nanoTime()J"
+at     = "cc.jumpkick.command.project.VerifyBuildCommand#touchLockfiles(Ljava/nio/file/Path;)V -> java.lang.System#currentTimeMillis()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "clients/cli"
-at     = "cc.jumpkick.command.LockCommand#runHostedLive(Ljava/nio/file/Path;Ljava/nio/file/Path;Lcc/jumpkick/cli/run/BuildPlanConsole$Mode;)I -> java.lang.System#nanoTime()J"
+at     = "cc.jumpkick.command.system.ActivityCommand#run(Lcc/jumpkick/model/command/Invocation;)I -> java.lang.System#currentTimeMillis()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "clients/cli"
-at     = "cc.jumpkick.command.NativeCommand#runWorkspaceHosted(Ljava/nio/file/Path;Ljava/nio/file/Path;Ljava/util/Map;Ljava/util/List;Lcc/jumpkick/cli/run/BuildPlanConsole$Mode;JIJ)I -> java.lang.System#nanoTime()J"
+at     = "cc.jumpkick.command.system.CacheCommand#lastPrunedLabel(Ljava/nio/file/Path;)Ljava/lang/String; -> java.lang.System#currentTimeMillis()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "clients/cli"
-at     = "cc.jumpkick.command.NativeCommand#runWorkspaceNative(Ljava/nio/file/Path;Ljava/nio/file/Path;)I -> java.lang.System#nanoTime()J"
+at     = "cc.jumpkick.command.system.CleanCommand#run(Lcc/jumpkick/model/command/Invocation;)I -> java.lang.System#currentTimeMillis()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "clients/cli"
-at     = "cc.jumpkick.command.RunCommand#buildWorkspaceForRun(Ljava/nio/file/Path;Ljava/nio/file/Path;Lcc/jumpkick/cli/run/BuildPlanConsole$Mode;ZLcc/jumpkick/command/CwdModuleScope$Resolved;Lcc/jumpkick/config/Session;)Lcc/jumpkick/wire/runtime/WorkspaceResult; -> java.lang.System#nanoTime()J"
+at     = "cc.jumpkick.command.system.DoctorCommand#checkEngine()Lcc/jumpkick/command/system/DoctorCommand$Check; -> java.lang.System#currentTimeMillis()J"
+reason = "pure move: the command split re-keyed the sites into command.pipeline, command.system and command.toolchain; same reads, same count"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.system.EngineStatusCommand#printFleet(Ljava/util/List;)V -> java.lang.System#currentTimeMillis()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "clients/cli"
-at     = "cc.jumpkick.command.RunCommand#runWorkspaceLive(Lcc/jumpkick/wire/runtime/WorkspaceRequest;Ljava/util/List;)Lcc/jumpkick/wire/runtime/WorkspaceResult; -> java.lang.System#nanoTime()J"
+at     = "cc.jumpkick.command.system.EngineStatusCommand#run(Lcc/jumpkick/model/command/Invocation;)I -> java.lang.System#currentTimeMillis()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "clients/cli"
-at     = "cc.jumpkick.command.SelectiveCommand#prepare(Ljava/nio/file/Path;Ljava/nio/file/Path;Ljava/lang/String;Ljava/lang/String;Ljava/nio/file/Path;)I -> java.time.Instant#now()Ljava/time/Instant;"
+at     = "cc.jumpkick.command.system.EngineStopCommand#elapsed(J)J -> java.lang.System#currentTimeMillis()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "clients/cli"
-at     = "cc.jumpkick.command.TestCommand#runWorkspaceTestsHeadless(Ljava/nio/file/Path;Ljava/nio/file/Path;ILjava/util/List;)I -> java.lang.System#nanoTime()J"
+at     = "cc.jumpkick.command.system.HistoryCommand$HistoryListCommand#run(Lcc/jumpkick/model/command/Invocation;)I -> java.lang.System#currentTimeMillis()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "clients/cli"
-at     = "cc.jumpkick.command.TestCommand#runWorkspaceTestsLive(Ljava/nio/file/Path;Ljava/nio/file/Path;ILjava/util/List;Ljava/util/List;)I -> java.lang.System#nanoTime()J"
+at     = "cc.jumpkick.command.system.HistoryCommand$HistoryShowCommand#run(Lcc/jumpkick/model/command/Invocation;)I -> java.lang.System#currentTimeMillis()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "clients/cli"
-at     = "cc.jumpkick.command.VerifyBuildCommand#touchLockfiles(Ljava/nio/file/Path;)V -> java.lang.System#currentTimeMillis()J"
+at     = "cc.jumpkick.command.system.LibraryUpdateCommand#run(Lcc/jumpkick/model/command/Invocation;)I -> java.lang.System#nanoTime()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "clients/cli"
-at     = "cc.jumpkick.command.WindowsExecutionPolicy#ensure(Ljava/time/Duration;Lcc/jumpkick/command/WindowsExecutionPolicy$ProcessStarter;)Lcc/jumpkick/command/WindowsExecutionPolicy$Result; -> java.lang.System#nanoTime()J"
+at     = "cc.jumpkick.command.toolchain.WindowsExecutionPolicy#ensure(Ljava/time/Duration;Lcc/jumpkick/command/toolchain/WindowsExecutionPolicy$ProcessStarter;)Lcc/jumpkick/command/toolchain/WindowsExecutionPolicy$Result; -> java.lang.System#nanoTime()J"
+reason = "pure move: the command split re-keyed the sites into command.pipeline, command.system and command.toolchain; same reads, same count"
+[[clock-owner.entries]]
+in     = "clients/cli"
+at     = "cc.jumpkick.command.toolchain.WindowsExecutionPolicy#remaining(J)J -> java.lang.System#nanoTime()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "clients/cli"
-at     = "cc.jumpkick.command.WindowsExecutionPolicy#remaining(J)J -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+at     = "cc.jumpkick.command.toolchain.WindowsUserPath#ensure(Ljava/nio/file/Path;Ljava/time/Duration;Lcc/jumpkick/command/toolchain/WindowsUserPath$ProcessStarter;)Lcc/jumpkick/command/toolchain/WindowsUserPath$Result; -> java.lang.System#nanoTime()J"
+reason = "pure move: the command split re-keyed the sites into command.pipeline, command.system and command.toolchain; same reads, same count"
 [[clock-owner.entries]]
 in     = "clients/cli"
-at     = "cc.jumpkick.command.WindowsUserPath#ensure(Ljava/nio/file/Path;Ljava/time/Duration;Lcc/jumpkick/command/WindowsUserPath$ProcessStarter;)Lcc/jumpkick/command/WindowsUserPath$Result; -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.command.WindowsUserPath#remaining(J)J -> java.lang.System#nanoTime()J"
+at     = "cc.jumpkick.command.toolchain.WindowsUserPath#remaining(J)J -> java.lang.System#nanoTime()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "clients/cli-terminal"
@@ -1721,14 +1721,14 @@ population = { rows = 83 }
 
 [ide-client-wiring]
 [ide-client-wiring.populations]
-"clients/cli" = { examined = 134 }
+"clients/cli" = { examined = 118 }
 
 [install-tests-redirect-m2]
 population = { files = 1243 }
 
 [jdk-removal-confined]
 [jdk-removal-confined.populations]
-"clients/cli" = { classes = 610, sites = 38538 }
+"clients/cli" = { classes = 639, sites = 39479 }
 "plugins/quarkus" = { classes = 11, sites = 0 }
 "server/engine" = { classes = 876, sites = 57043 }
 "shared/client-io" = { classes = 73, sites = 0 }
@@ -1814,15 +1814,15 @@ unit   = "clients/cli/src/test/java/cc/jumpkick/cli/tui/TableAppendTest.java"
 value  = 2
 reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
 [[no-fqcn.entries]]
-unit   = "clients/cli/src/test/java/cc/jumpkick/command/CacheCommandTest.java"
-value  = 1
-reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
-[[no-fqcn.entries]]
 unit   = "clients/cli/src/test/java/cc/jumpkick/command/NewScaffolder.java"
 value  = 3
 reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
 [[no-fqcn.entries]]
-unit   = "clients/cli/src/test/java/cc/jumpkick/command/SelfNukeCommandTest.java"
+unit   = "clients/cli/src/test/java/cc/jumpkick/command/system/CacheCommandTest.java"
+value  = 1
+reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "clients/cli/src/test/java/cc/jumpkick/command/system/SelfNukeCommandTest.java"
 value  = 3
 reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
 [[no-fqcn.entries]]
@@ -2107,25 +2107,25 @@ population = { files = 3708 }
 
 [null-marked-packages]
 [null-marked-packages.populations]
-"clients/cli" = { classes = 610, elements = 12 }
+"clients/cli" = { classes = 639, elements = 18 }
 
 [one-digest-surface]
 [one-digest-surface.populations]
-"clients/cli" = { classes = 610, sites = 38538 }
+"clients/cli" = { classes = 639, sites = 39479 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "server/engine" = { classes = 876, sites = 57043 }
 "shared/client-io" = { classes = 73, sites = 4059 }
 
 [one-hex-spelling]
 [one-hex-spelling.populations]
-"clients/cli" = { classes = 610, sites = 38538 }
+"clients/cli" = { classes = 639, sites = 39479 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "server/engine" = { classes = 876, sites = 57043 }
 "shared/client-io" = { classes = 73, sites = 4059 }
 
 [one-host-surface]
 [one-host-surface.populations]
-"clients/cli" = { classes = 610, sites = 29000 }
+"clients/cli" = { classes = 639, sites = 29719 }
 "plugins/quarkus" = { classes = 11, sites = 640 }
 "server/engine" = { classes = 876, sites = 42312 }
 "shared/client-io" = { classes = 73, sites = 3010 }
@@ -2138,14 +2138,14 @@ population = { files = 1745 }
 
 [own-algorithm-by-name]
 [own-algorithm-by-name.populations]
-"clients/cli" = { classes = 610, sites = 29000 }
+"clients/cli" = { classes = 639, sites = 29719 }
 "plugins/quarkus" = { classes = 11, sites = 640 }
 "server/engine" = { classes = 876, sites = 42312 }
 "shared/client-io" = { classes = 73, sites = 3010 }
 
 [package-cycles]
 [package-cycles.populations]
-"clients/cli" = { edges = 43, slices = 12 }
+"clients/cli" = { edges = 73, slices = 18 }
 "clients/cli-terminal" = { edges = 4, slices = 3 }
 "plugins/quarkus" = { edges = 0, slices = 1 }
 "server/engine" = { edges = 89, slices = 19 }
@@ -2155,11 +2155,6 @@ population = { files = 1745 }
 "shared/core" = { edges = 30, slices = 16 }
 "shared/plugin-sdk" = { edges = 7, slices = 4 }
 "shared/toolchain-jdk" = { edges = 7, slices = 11 }
-[[package-cycles.entries]]
-in     = "clients/cli"
-unit   = "clients/cli:cli"
-value  = 4
-reason = "banked from cycle-baseline.txt on 2026-09-06 — the facts edges found the same 9 components the import regex did; per-module follow-up work shrinks them"
 [[package-cycles.entries]]
 in     = "clients/cli"
 unit   = "clients/cli:cli.api"
@@ -2227,7 +2222,7 @@ reason = "banked from cycle-baseline.txt on 2026-09-06 — the facts edges found
 
 [properties-render-owner]
 [properties-render-owner.populations]
-"clients/cli" = { classes = 610, sites = 38538 }
+"clients/cli" = { classes = 639, sites = 39479 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "server/engine" = { classes = 876, sites = 57043 }
 "shared/client-io" = { classes = 73, sites = 4059 }
@@ -2246,7 +2241,7 @@ population = { files = 1847 }
 
 [runnable-owner]
 [runnable-owner.populations]
-"clients/cli" = { classes = 610, sites = 38538 }
+"clients/cli" = { classes = 639, sites = 39479 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "server/engine" = { classes = 876, sites = 57043 }
 "shared/client-io" = { classes = 73, sites = 4059 }
@@ -2266,11 +2261,11 @@ population = { files = 3415 }
 [single-truth-set]
 population = { examined = 1707 }
 [[single-truth-set.entries]]
-unit   = "clients/cli/src/main/java/cc/jumpkick/command/ActivateCommand.java"
+unit   = "clients/cli/src/main/java/cc/jumpkick/command/toolchain/ActivateCommand.java"
 value  = 1
 reason = "readers of foreign formats (POM, giter8, JDK catalog, plugin manifests) compare against the format's own truth words; ratchet down, never exempt"
 [[single-truth-set.entries]]
-unit   = "clients/cli/src/main/java/cc/jumpkick/command/JdkInstallWizard.java"
+unit   = "clients/cli/src/main/java/cc/jumpkick/command/toolchain/JdkInstallWizard.java"
 value  = 1
 reason = "readers of foreign formats (POM, giter8, JDK catalog, plugin manifests) compare against the format's own truth words; ratchet down, never exempt"
 [[single-truth-set.entries]]
@@ -2347,7 +2342,7 @@ population = { files = 1 }
 
 [xml-parser-owner]
 [xml-parser-owner.populations]
-"clients/cli" = { classes = 610, sites = 38538 }
+"clients/cli" = { classes = 639, sites = 39479 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "server/engine" = { classes = 876, sites = 57043 }
 "shared/client-io" = { classes = 73, sites = 4059 }

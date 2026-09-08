@@ -4,7 +4,6 @@ package cc.jumpkick.cli;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.GlobalCancel;
-import cc.jumpkick.command.*;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.JkConfigLoader;
 import cc.jumpkick.config.SessionContext;

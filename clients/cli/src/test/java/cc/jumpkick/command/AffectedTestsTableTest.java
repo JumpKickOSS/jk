@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.command.pipeline.TestCommand;
 import cc.jumpkick.wire.protocol.AffectedTestsReport;
 import java.util.List;
 import org.junit.jupiter.api.Test;

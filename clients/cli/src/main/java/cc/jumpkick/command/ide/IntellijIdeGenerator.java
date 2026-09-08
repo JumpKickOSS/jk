@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.ide;
 
+import cc.jumpkick.cli.ide.IdeSourceRoots;
 import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.Scope;

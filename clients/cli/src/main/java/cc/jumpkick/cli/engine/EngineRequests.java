@@ -183,7 +183,7 @@ public final class EngineRequests {
 
     /**
      * Everything an engine-hosted {@code jk lock} needs — mirrors {@code LockCommand}'s local fields.
-     * {@code freshen} marks an invisible freshen ({@link cc.jumpkick.cli.EnsureFreshLock}): existing
+     * {@code freshen} marks an invisible freshen ({@link cc.jumpkick.cli.api.EnsureFreshLock}): existing
      * pins are always kept and an already-current lock is a no-op. Without it {@code force} decides
      * — bare {@code jk lock} keeps pins, {@code jk lock -F} floats within the declared ranges.
      */
