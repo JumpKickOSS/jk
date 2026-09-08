@@ -7,6 +7,7 @@ import cc.jumpkick.cli.engine.EngineSpawn.AotMode;
 import cc.jumpkick.cli.engine.EngineSpawn.EngineArtifact;
 import cc.jumpkick.cli.engine.EngineSpawn.EngineJdk;
 import cc.jumpkick.cli.engine.EngineSpawn.EngineTarget;
+import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.host.AotCacheFiles;
 import cc.jumpkick.jdk.JdkVendor;
 import cc.jumpkick.model.JkVersion;
@@ -64,12 +65,38 @@ class EngineAotCacheTest {
         Path diffVendor = EngineSpawn.aotCachePath(
                 paths, jarA, new EngineJdk(Path.of("/opt/jdk"), JdkVendor.ORACLE_GRAALVM, "25.0.3"));
         Path noJdk = EngineSpawn.aotCachePath(paths, jarA, null);
+        String heap = EngineSpawn.heapKey(JkEngineConfig.resolve());
+        Path sameHeap = EngineSpawn.aotCachePath(paths, jarA, temurin("25.0.3"), JkVersion.VERSION, heap);
+        Path otherHeap = EngineSpawn.aotCachePath(paths, jarA, temurin("25.0.3"), JkVersion.VERSION, "heap=512m");
 
         assertThat(base).isNotEqualTo(diffJar);
         assertThat(base).isNotEqualTo(diffVersion);
         assertThat(base).isNotEqualTo(diffVendor);
         assertThat(base).isNotEqualTo(noJdk);
+        assertThat(base).isEqualTo(sameHeap);
+        assertThat(heap).isNotEqualTo("heap=512m");
+        assertThat(base).isNotEqualTo(otherHeap); // a cache recorded under one -Xmx segfaults under another
         assertThat(base.getFileName().toString()).startsWith("engine-").endsWith(".aot");
+    }
+
+    @Test
+    void an_engine_that_dies_before_serving_with_a_cache_drops_it_and_refuses_the_key(@TempDir Path dir)
+            throws IOException {
+        EnginePaths.Paths paths = EnginePaths.resolve(dir);
+        Files.createDirectories(paths.dir());
+        Path jar = jar(dir, "jk-engine-1.jar", "aaa");
+        Path cache = EngineSpawn.aotCachePath(paths, jar, temurin("25.0.3"));
+        Files.createDirectories(cache.getParent());
+        Files.writeString(cache, "recorded under another heap");
+        var target = new EngineSpawn.EngineTarget(
+                new EngineArtifact(EngineArtifact.Kind.JAR, jar.toString(), "lib"), Path.of("/opt/jdk"), true, cache);
+        assertThat(EngineSpawn.chooseAotMode(target)).isEqualTo(EngineSpawn.AotMode.USE);
+
+        EngineSpawn.dropCacheAfterEarlyExit(paths, target);
+
+        assertThat(cache).doesNotExist();
+        assertThat(EngineSpawn.chooseAotMode(target)).isEqualTo(EngineSpawn.AotMode.NONE); // refused, not retrained
+        assertThat(Files.readString(paths.log())).contains("exited before serving while mapping its AOT cache");
     }
 
     @Test

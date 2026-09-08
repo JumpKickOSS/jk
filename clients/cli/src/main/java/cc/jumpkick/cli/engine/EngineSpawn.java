@@ -198,7 +198,8 @@ public final class EngineSpawn {
                 case TIMED_OUT -> throw notStarted(paths); // alive but never served → genuine hang
                 case CHILD_EXITED -> {
                     if (attempt == 0) {
-                        logReason(paths, "engine exited before serving; retrying after backoff");
+                        if (mode == AotMode.USE) dropCacheAfterEarlyExit(paths, target);
+                        else logReason(paths, "engine exited before serving; retrying after backoff");
                         sleepQuietly(1_500);
                         continue;
                     }
@@ -207,6 +208,20 @@ public final class EngineSpawn {
             }
         }
         throw notStarted(paths); // unreachable
+    }
+
+    /**
+     * The engine JVM died before it served while mapping an AOT cache: the cache is the suspect (a
+     * JDK 25 JVM segfaults in {@code AOTLinkedClassBulkLoader} on a cache recorded under another
+     * heap), so it is dropped and its key refused for the TTL, and the retry starts plain instead of
+     * dying the same way and reporting "could not start".
+     */
+    static void dropCacheAfterEarlyExit(EnginePaths.Paths paths, EngineTarget target) {
+        deleteQuietly(target.aotCache());
+        writeNoAotMarker(target.aotCache());
+        logReason(
+                paths,
+                "engine exited before serving while mapping its AOT cache; dropped the cache for this key, retrying without it");
     }
 
     private static IOException notStarted(EnginePaths.Paths paths) {
@@ -422,18 +437,27 @@ public final class EngineSpawn {
     }
 
     /**
-     * The engine's AOT cache path, keyed to the engine jar (name:size:mtime) <em>and</em> the host
-     * JDK identity (version + vendor). A mismatched cache is silently ignored by {@code
-     * AOTMode=auto} and never retrained, so folding the JDK into the key means a jar upgrade, a JDK
-     * build bump (Temurin 25.0.3→25.0.4), or a vendor swap all yield a fresh key that trains cleanly.
-     * Stale {@code .aot}/{@code .noaot} files from previous keys are deleted best-effort here.
+     * The engine's AOT cache path, keyed to the engine jar (name:size:mtime), the host JDK identity
+     * (version + vendor) <em>and</em> the engine heap it will run under. A mismatched cache is
+     * silently ignored by {@code AOTMode=auto} and never retrained, so folding the JDK into the key
+     * means a jar upgrade, a JDK build bump (Temurin 25.0.3→25.0.4), or a vendor swap all yield a
+     * fresh key that trains cleanly. The heap is in the key because a cache recorded under one
+     * {@code -Xmx} is not merely ignored under another: JDK 25 segfaults mapping it, which the client
+     * used to report as "could not start the build engine" (140 crash reports in one hour of a
+     * measurement that raised the heap to the CI default). Stale {@code .aot}/{@code .noaot} files
+     * from previous keys are deleted best-effort here.
      */
     static Path aotCachePath(EnginePaths.Paths paths, Path engineJar, EngineJdk jdk) {
-        return aotCachePath(paths, engineJar, jdk, JkVersion.VERSION);
+        return aotCachePath(paths, engineJar, jdk, JkVersion.VERSION, heapKey(JkEngineConfig.resolve()));
+    }
+
+    /** The heap dimension of the AOT key: the cap the spawner will pass, or "uncapped". */
+    static String heapKey(JkEngineConfig config) {
+        return config.heapCapped() ? "heap=" + config.maxHeapMb() + "m" : "heap=uncapped";
     }
 
     /** As above, version-scoped under {@code state/engine/<v>/} so engines never share AOT state. */
-    static Path aotCachePath(EnginePaths.Paths paths, Path engineJar, EngineJdk jdk, String version) {
+    static Path aotCachePath(EnginePaths.Paths paths, Path engineJar, EngineJdk jdk, String version, String heapKey) {
         StringBuilder signature = new StringBuilder();
         try {
             signature
@@ -451,7 +475,9 @@ public final class EngineSpawn {
                 .append(
                         jdk == null
                                 ? "no-jdk"
-                                : jdk.version() + "|" + jdk.vendor().name());
+                                : jdk.version() + "|" + jdk.vendor().name())
+                .append(':')
+                .append(heapKey);
         String hash = Hashing.sha256Hex(signature.toString()).substring(0, 16);
         // ONE home for every AOT cache — engine and workers alike live in ~/.jk/state/aot/ so a
         // user (or `jk engine aot`) finds them all side by side. The engine's file
