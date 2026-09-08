@@ -12,7 +12,7 @@ import cc.jumpkick.compat.ToolRegistry;
 import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.discovery.SymlinkProvisioner;
 import cc.jumpkick.jdk.JdkFingerprint;
-import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
@@ -109,17 +109,8 @@ public final class DoctorCommand implements CliCommand {
                 || lock.status == Status.FAIL; // tools alone (including a scan error) never fails
 
         if (global.outputIsJson()) {
-            String json = "{"
-                    + "\"engine\":" + checkJson(engine) + ","
-                    + "\"cache\":" + checkJson(cache) + ","
-                    + "\"jdk\":" + checkJson(jdk) + ","
-                    + "\"lock\":" + checkJson(lock) + ","
-                    + "\"shell\":" + checkJson(shell) + ","
-                    + "\"tools\":{\"healthy\":" + healthy + ",\"pruned\":" + pruned + ",\"verified\":" + verified
-                    + ",\"drifted\":" + drifted + ",\"firstSeen\":" + firstSeen + ",\"empty\":" + empty
-                    + ",\"error\":" + Jsonl.quote(toolsError) + "}"
-                    + "}";
-            CliOutput.out(json);
+            CliOutput.out(reportJson(
+                    engine, cache, jdk, lock, shell, healthy, pruned, verified, drifted, firstSeen, empty, toolsError));
             return hasFail ? 1 : 0;
         }
 
@@ -451,9 +442,45 @@ public final class DoctorCommand implements CliCommand {
         CliOutput.out(prefix + Theme.colorize(c.label, t.cyan()) + " — " + c.detail);
     }
 
-    private static String checkJson(Check c) {
-        return "{\"status\":" + Jsonl.quote(c.status.name().toLowerCase(Locale.ROOT)) + ",\"detail\":"
-                + Jsonl.quote(c.detail) + "}";
+    /** The `--output json` report: the five checks, then the tool tallies and the scan error. */
+    static String reportJson(
+            Check engine,
+            Check cache,
+            Check jdk,
+            Check lock,
+            Check shell,
+            int healthy,
+            int pruned,
+            int verified,
+            int drifted,
+            int firstSeen,
+            int empty,
+            @Nullable String toolsError) {
+        return JsonFields.object()
+                .token("engine", checkJson(engine))
+                .token("cache", checkJson(cache))
+                .token("jdk", checkJson(jdk))
+                .token("lock", checkJson(lock))
+                .token("shell", checkJson(shell))
+                .token(
+                        "tools",
+                        JsonFields.object()
+                                .number("healthy", healthy)
+                                .number("pruned", pruned)
+                                .number("verified", verified)
+                                .number("drifted", drifted)
+                                .number("firstSeen", firstSeen)
+                                .number("empty", empty)
+                                .string("error", toolsError)
+                                .finish())
+                .finish();
+    }
+
+    static String checkJson(Check c) {
+        return JsonFields.object()
+                .string("status", c.status.name().toLowerCase(Locale.ROOT))
+                .string("detail", c.detail)
+                .finish();
     }
 
     private static String formatUptime(long secs) {

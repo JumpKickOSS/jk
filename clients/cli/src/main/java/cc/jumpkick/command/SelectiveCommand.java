@@ -8,6 +8,7 @@ import cc.jumpkick.cli.api.ProjectContext;
 import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.lock.ManifestPaths;
@@ -142,8 +143,7 @@ public final class SelectiveCommand implements CliCommand {
         if (into != null) into.addAll(selectedDirs);
         List<String> rels = toRelPaths(dir, selectedDirs);
         if (json) {
-            CliOutput.out("{\"modules\":["
-                    + String.join(",", rels.stream().map(SelectiveCommand::q).toList()) + "]}");
+            CliOutput.out(JsonFields.object().array("modules", rels).finish());
         } else if (rels.isEmpty()) {
             CliOutput.out("(no modules selected)");
         } else {

@@ -46,19 +46,19 @@ public record CacheInventoryAck(
     }
 
     public String encode() {
-        return "{\"type\":\"" + EngineProtocol.CACHE_INVENTORY_ACK + "\""
-                + ",\"error\":" + (error == null ? "null" : Jsonl.quote(error))
-                + ",\"query\":" + Jsonl.quote(query)
-                + ",\"stats\":" + EngineProtocol.quoteArray(stats)
-                + ",\"totalFiles\":" + totalFiles
-                + ",\"totalBytes\":" + totalBytes
-                + ",\"entries\":" + EngineProtocol.quoteArray(entries)
-                + ",\"lines\":" + EngineProtocol.quoteArray(lines)
-                + ",\"evicted\":" + evicted
-                + ",\"missed\":" + missed
-                + ",\"files\":" + files
-                + ",\"bytes\":" + bytes
-                + "}";
+        return RequestJson.request(EngineProtocol.CACHE_INVENTORY_ACK)
+                .string("error", error)
+                .string("query", query)
+                .array("stats", stats)
+                .number("totalFiles", totalFiles)
+                .number("totalBytes", totalBytes)
+                .array("entries", entries)
+                .array("lines", lines)
+                .number("evicted", evicted)
+                .number("missed", missed)
+                .number("files", files)
+                .number("bytes", bytes)
+                .finish();
     }
 
     public static CacheInventoryAck decode(String line) {

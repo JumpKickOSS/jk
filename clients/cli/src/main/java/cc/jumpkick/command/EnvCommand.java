@@ -9,7 +9,7 @@ import cc.jumpkick.config.DotEnv;
 import cc.jumpkick.config.EnvLookup;
 import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.config.WorkspaceLocator;
-import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
@@ -172,25 +172,30 @@ public final class EnvCommand implements CliCommand {
     }
 
     private static void emitJson(List<Row> rows, boolean verbose) {
+        CliOutput.outRaw(toJson(rows, verbose));
+    }
+
+    /** One row per line, two-space indented, inside a bracket pair — the shape `jk env --output json` has always had. */
+    static String toJson(List<Row> rows, boolean verbose) {
         StringBuilder sb = new StringBuilder();
         sb.append("[\n");
         for (int i = 0; i < rows.size(); i++) {
             Row r = rows.get(i);
-            sb.append("  {");
-            sb.append("\"name\":").append(Jsonl.quote(r.name)).append(',');
-            sb.append("\"value\":").append(Jsonl.quote(displayValue(r))).append(',');
-            sb.append("\"source\":").append(Jsonl.quote(r.source)).append(',');
-            sb.append("\"secret\":").append(r.secret);
+            JsonFields row = JsonFields.object()
+                    .string("name", r.name)
+                    .string("value", displayValue(r))
+                    .string("source", r.source)
+                    .bool("secret", r.secret);
             if (verbose && r.shadowed != null) {
                 String sv = r.shadowed.length() >= SecretRedactor.MIN_SECRET_LENGTH ? SecretRedactor.MASK : r.shadowed;
-                sb.append(",\"shadowed\":").append(Jsonl.quote(sv));
+                row.string("shadowed", sv);
             }
-            sb.append('}');
+            sb.append("  ").append(row.finish());
             if (i + 1 < rows.size()) sb.append(',');
             sb.append('\n');
         }
         sb.append("]\n");
-        CliOutput.outRaw(sb.toString());
+        return sb.toString();
     }
 
     private static String displayValue(Row r) {

@@ -1,6 +1,28 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.run;
 
+import cc.jumpkick.cli.run.jsonl.ErrorLine;
+import cc.jumpkick.cli.run.jsonl.EtaLine;
+import cc.jumpkick.cli.run.jsonl.JobLine;
+import cc.jumpkick.cli.run.jsonl.JsonlEnvelope;
+import cc.jumpkick.cli.run.jsonl.LabelLine;
+import cc.jumpkick.cli.run.jsonl.ModuleFinishLine;
+import cc.jumpkick.cli.run.jsonl.ModuleStartLine;
+import cc.jumpkick.cli.run.jsonl.OutputLine;
+import cc.jumpkick.cli.run.jsonl.PlanFinishLine;
+import cc.jumpkick.cli.run.jsonl.PlanStartLine;
+import cc.jumpkick.cli.run.jsonl.PreflightLine;
+import cc.jumpkick.cli.run.jsonl.ProgressLine;
+import cc.jumpkick.cli.run.jsonl.SessionFinishLine;
+import cc.jumpkick.cli.run.jsonl.SessionStartLine;
+import cc.jumpkick.cli.run.jsonl.TaskFinishLine;
+import cc.jumpkick.cli.run.jsonl.TaskStartLine;
+import cc.jumpkick.cli.run.jsonl.TestFailureErrorLine;
+import cc.jumpkick.cli.run.jsonl.TickUpdateLine;
+import cc.jumpkick.cli.run.jsonl.WarnLine;
+import cc.jumpkick.cli.run.jsonl.WorkspaceFinishLine;
+import cc.jumpkick.cli.run.jsonl.WorkspaceProgressLine;
+import cc.jumpkick.cli.run.jsonl.WorkspaceStartLine;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
@@ -17,9 +39,9 @@ import org.jspecify.annotations.Nullable;
 /**
  * Stable wire format for plan events as one-JSON-object-per-line text. Shared by {@link
  * JsonlListener} (stdout for {@code --output json}/{@code jsonl}) and {@link CliSessionTranscript}
- * ({@code details.jsonl}).
- * Centralising the shape here means agents, CI, and future MCP tools share one schema — see
- * {@code docs/machine-output.md}.
+ * ({@code details.jsonl}). Every line is a record in {@link cc.jumpkick.cli.run.jsonl}; the methods
+ * here stamp the clock and hand over. Centralising the shape means agents, CI, and future MCP tools
+ * share one schema — see {@code docs/machine-output.md}.
  *
  * <p>Every object includes {@code schema} ({@link #SCHEMA}), {@code ts} (epoch ms), and {@code type}.
  * Most lines also carry an additive {@code progress} rider (0–100 aggregate % — via
@@ -31,7 +53,7 @@ public final class JsonlShape {
      * Stay on {@code 1} until jk <strong>1.0</strong> — no pre-release version churn (see
      * {@code docs/architecture.md} schema freeze). Additive fields only.
      */
-    public static final int SCHEMA = 1;
+    public static final int SCHEMA = JsonlEnvelope.SCHEMA;
 
     /** Hot-tick event types: heartbeat flush to disk (M4/M5); everything else flushes per line. */
     static final Set<String> HOT_TYPES = Set.of(
@@ -61,17 +83,6 @@ public final class JsonlShape {
         CliSessionTranscript.appendActive(decorated);
     }
 
-    /** Shared prefix: schema + ts + type. */
-    private static StringBuilder open(String type) {
-        return new StringBuilder(96)
-                .append("{\"schema\":")
-                .append(SCHEMA)
-                .append(",\"ts\":")
-                .append(nowMillis())
-                .append(",\"type\":")
-                .append(js(type));
-    }
-
     /**
      * Attach the aggregate {@code progress} percent rider from {@link LiveProgress}.
      * Idempotent if the line already ends with a progress field. Returns {@code line} unchanged when
@@ -83,33 +94,22 @@ public final class JsonlShape {
 
     /**
      * Attach {@code progress} (0–100 or JSON {@code null}) before the final {@code }}. Additive only;
-     * does not add {@code progress_num}/{@code progress_den}.
+     * does not add {@code progress_num}/{@code progress_den}. The one splice in this file: a rider on
+     * a line that was already encoded, whatever record encoded it.
      */
     public static String withProgress(String line, @Nullable Double progress) {
         if (line == null || line.isEmpty()) return line;
         int end = line.length() - 1;
-        if (line.charAt(end) != '}') return line;
+        if (line.charAt(end) != '}' || line.charAt(0) != '{') return line;
         // Avoid double-append if a caller already decorated the line.
         if (line.contains("\"progress\":")) return line;
-        StringBuilder sb = new StringBuilder(line.length() + 24);
-        sb.append(line, 0, end);
-        sb.append(",\"progress\":");
-        sb.append(progress == null ? "null" : WorkspaceProgressTracker.progressToken(progress));
-        sb.append('}');
-        return sb.toString();
+        String token = progress == null ? "null" : WorkspaceProgressTracker.progressToken(progress);
+        return Jsonl.append(line, "\"progress\":" + token);
     }
 
     /** Command session opened (details under project run dir). */
     public static String sessionStart(String command, List<String> argv) {
-        StringBuilder sb = open("session-start").append(",\"command\":").append(js(command));
-        sb.append(",\"argv\":[");
-        if (argv != null) {
-            for (int i = 0; i < argv.size(); i++) {
-                if (i > 0) sb.append(',');
-                sb.append(js(argv.get(i)));
-            }
-        }
-        return sb.append(']').append('}').toString();
+        return new SessionStartLine(nowMillis(), command, argv == null ? List.of() : argv).encode();
     }
 
     /**
@@ -117,16 +117,9 @@ public final class JsonlShape {
      * details.jsonl so agents can diagnose a run without other files.
      */
     public static String jobMeta(long jid, long buildNumber, long etaMs, @Nullable String detailsPath) {
-        StringBuilder sb = open("job");
-        if (jid > 0) sb.append(",\"jid\":").append(jid);
-        if (buildNumber > 0) sb.append(",\"buildNumber\":").append(buildNumber);
-        if (etaMs >= 0) sb.append(",\"etaMs\":").append(etaMs);
-        if (detailsPath != null && !detailsPath.isBlank())
-            sb.append(",\"detailsPath\":").append(js(detailsPath));
-        return sb.append('}').toString();
+        return new JobLine(nowMillis(), jid, buildNumber, etaMs, detailsPath).encode();
     }
 
-    /** ETA estimate event (ms wall). */
     /**
      * Workspace preflight verdict — the stage, its unit counts, and the engine's own label, which
      * is where the dirty-module count is spelled ({@code "7 module(s) dirty"}).
@@ -137,126 +130,46 @@ public final class JsonlShape {
      * `details.jsonl` could see every step that ran but not the verdict that chose them.
      */
     public static String preflight(String stage, int done, int totalUnits, String label) {
-        return open(EngineProtocol.PREFLIGHT)
-                .append(",\"stage\":")
-                .append(js(stage == null ? "" : stage))
-                .append(",\"done\":")
-                .append(Math.max(0, done))
-                .append(",\"totalUnits\":")
-                .append(Math.max(0, totalUnits))
-                .append(",\"label\":")
-                .append(js(label == null ? "" : label))
-                .append('}')
-                .toString();
+        return new PreflightLine(nowMillis(), stage, done, totalUnits, label).encode();
     }
 
+    /** ETA estimate event (ms wall). */
     public static String eta(long etaMs) {
-        return open(EngineProtocol.ETA)
-                .append(",\"etaMs\":")
-                .append(Math.max(0, etaMs))
-                .append('}')
-                .toString();
+        return new EtaLine(nowMillis(), etaMs).encode();
     }
 
     /** Command session finished — exit code + wall duration (+ optional summary fields). */
     public static String sessionFinish(int exit, long durationMs, @Nullable String wedge, List<String> modules) {
-        StringBuilder sb = open("session-finish")
-                .append(",\"exit\":")
-                .append(exit)
-                .append(",\"duration_ms\":")
-                .append(durationMs);
-        if (wedge != null && !wedge.isBlank()) sb.append(",\"wedge\":").append(js(wedge));
-        if (modules != null && !modules.isEmpty()) {
-            sb.append(",\"modules\":[");
-            for (int i = 0; i < modules.size(); i++) {
-                if (i > 0) sb.append(',');
-                sb.append(js(modules.get(i)));
-            }
-            sb.append(']');
-        }
-        return sb.append('}').toString();
+        return new SessionFinishLine(nowMillis(), exit, durationMs, wedge, modules == null ? List.of() : modules)
+                .encode();
     }
 
     static String planStart(BuildPlanView v) {
-        return open(EngineProtocol.BUILDPLAN_START)
-                .append(",\"plan\":")
-                .append(js(v.planName()))
-                .append(",\"denominator\":")
-                .append(v.denominator())
-                .append(",\"tasks\":")
-                .append(v.stepsTotal())
-                .append('}')
-                .toString();
+        return new PlanStartLine(nowMillis(), v.planName(), v.denominator(), v.stepsTotal()).encode();
     }
 
     static String stepStart(String step, String group, int ticks) {
-        return open(EngineProtocol.TASK_START)
-                .append(",\"task\":")
-                .append(js(step))
-                .append(",\"stage\":")
-                .append(js(group))
-                .append(",\"ticks\":")
-                .append(ticks)
-                .append('}')
-                .toString();
+        return new TaskStartLine(nowMillis(), step, group, ticks).encode();
     }
 
     static String progress(String step, int delta, BuildPlanView v) {
-        return open(EngineProtocol.PROGRESS)
-                .append(",\"task\":")
-                .append(js(step))
-                .append(",\"delta\":")
-                .append(delta)
-                .append(",\"numerator\":")
-                .append(v.numerator())
-                .append(",\"denominator\":")
-                .append(v.denominator())
-                .append('}')
-                .toString();
+        return new ProgressLine(nowMillis(), step, delta, v.numerator(), v.denominator()).encode();
     }
 
     static String tickUpdate(String step, int delta, BuildPlanView v) {
-        return open(EngineProtocol.TICK_UPDATE)
-                .append(",\"task\":")
-                .append(js(step))
-                .append(",\"delta\":")
-                .append(delta)
-                .append(",\"denominator\":")
-                .append(v.denominator())
-                .append('}')
-                .toString();
+        return new TickUpdateLine(nowMillis(), step, delta, v.denominator()).encode();
     }
 
     static String label(String step, String label) {
-        return open(EngineProtocol.LABEL)
-                .append(",\"task\":")
-                .append(js(step))
-                .append(",\"label\":")
-                .append(js(label))
-                .append('}')
-                .toString();
+        return new LabelLine(nowMillis(), step, label).encode();
     }
 
     static String output(String step, String line) {
-        return open(EngineProtocol.OUTPUT)
-                .append(",\"task\":")
-                .append(js(step))
-                .append(",\"line\":")
-                .append(js(line))
-                .append('}')
-                .toString();
+        return new OutputLine(nowMillis(), step, line).encode();
     }
 
     static String warn(String step, String code, String msg) {
-        return open(EngineProtocol.WARN)
-                .append(",\"task\":")
-                .append(js(step))
-                .append(",\"code\":")
-                .append(js(code))
-                .append(",\"message\":")
-                .append(js(msg))
-                .append('}')
-                .toString();
+        return new WarnLine(nowMillis(), step, code, msg).encode();
     }
 
     static String error(String step, String code, String msg) {
@@ -269,17 +182,7 @@ public final class JsonlShape {
      * the wire without bloating the common diagnostic shape.
      */
     static String error(String step, String code, String msg, @Nullable String test, @Nullable String exceptionClass) {
-        StringBuilder sb = open("error")
-                .append(",\"task\":")
-                .append(js(step))
-                .append(",\"code\":")
-                .append(js(code))
-                .append(",\"message\":")
-                .append(js(msg));
-        if (test != null && !test.isEmpty()) sb.append(",\"test\":").append(js(test));
-        if (exceptionClass != null && !exceptionClass.isEmpty())
-            sb.append(",\"exceptionClass\":").append(js(exceptionClass));
-        return sb.append('}').toString();
+        return new ErrorLine(nowMillis(), step, code, msg, test, exceptionClass).encode();
     }
 
     /**
@@ -289,67 +192,45 @@ public final class JsonlShape {
     static String error(String step, String code, String msg, @Nullable TestFailureInfo failure) {
         if (failure == null) return error(step, code, msg);
         String message = msg == null || msg.isEmpty() ? failure.message() : msg;
-        StringBuilder sb = open("error")
-                .append(",\"task\":")
-                .append(js(step))
-                .append(",\"code\":")
-                .append(js(code))
-                .append(",\"message\":")
-                .append(js(message));
-        if (!failure.module().isEmpty()) sb.append(",\"module\":").append(js(failure.module()));
-        if (!failure.engine().isEmpty()) sb.append(",\"engine\":").append(js(failure.engine()));
-        if (!failure.className().isEmpty()) sb.append(",\"class\":").append(js(failure.className()));
-        if (!failure.method().isEmpty()) sb.append(",\"method\":").append(js(failure.method()));
-        if (!failure.exceptionClass().isEmpty())
-            sb.append(",\"exceptionClass\":").append(js(failure.exceptionClass()));
-        if (failure.worker() > 0) sb.append(",\"worker\":").append(failure.worker());
-        if (!failure.file().isEmpty()) sb.append(",\"file\":").append(js(failure.file()));
-        if (failure.line() > 0) sb.append(",\"line\":").append(failure.line());
-        if (failure.snippetStart() > 0) sb.append(",\"snippetStart\":").append(failure.snippetStart());
-        if (!failure.snippet().isEmpty()) {
-            sb.append(",\"snippet\":[");
-            for (int i = 0; i < failure.snippet().size(); i++) {
-                if (i > 0) sb.append(',');
-                sb.append(js(failure.snippet().get(i)));
-            }
-            sb.append(']');
-        }
-        if (!failure.stack().isEmpty()) {
-            sb.append(",\"stack\":").append(js(failure.stack()));
-        }
-        return sb.append('}').toString();
+        return new TestFailureErrorLine(
+                        nowMillis(),
+                        step,
+                        code,
+                        message,
+                        failure.module(),
+                        failure.engine(),
+                        failure.className(),
+                        failure.method(),
+                        failure.exceptionClass(),
+                        failure.worker(),
+                        failure.file(),
+                        failure.line(),
+                        failure.snippetStart(),
+                        failure.snippet(),
+                        failure.stack())
+                .encode();
     }
 
     static String stepFinish(String step, String group, TaskStatus status, Duration duration, Duration waited) {
-        return open(EngineProtocol.TASK_FINISH)
-                .append(",\"task\":")
-                .append(js(step))
-                .append(",\"stage\":")
-                .append(js(group))
-                .append(",\"status\":")
-                .append(js(status.name()))
-                .append(",\"duration_ms\":")
-                .append(duration.toMillis())
-                .append(",\"wait_ms\":")
-                .append(waited == null ? 0 : waited.toMillis())
-                .append('}')
-                .toString();
+        return new TaskFinishLine(
+                        nowMillis(),
+                        step,
+                        group,
+                        status.name(),
+                        duration.toMillis(),
+                        waited == null ? 0 : waited.toMillis())
+                .encode();
     }
 
     static String planFinish(BuildPlanResult r) {
-        return open(EngineProtocol.BUILDPLAN_FINISH)
-                .append(",\"plan\":")
-                .append(js(r.planName()))
-                .append(",\"success\":")
-                .append(r.success())
-                .append(",\"duration_ms\":")
-                .append(r.duration().toMillis())
-                .append(",\"warnings\":")
-                .append(r.warnings().size())
-                .append(",\"errors\":")
-                .append(r.errors().size())
-                .append('}')
-                .toString();
+        return new PlanFinishLine(
+                        nowMillis(),
+                        r.planName(),
+                        r.success(),
+                        r.duration().toMillis(),
+                        r.warnings().size(),
+                        r.errors().size())
+                .encode();
     }
 
     /**
@@ -358,92 +239,40 @@ public final class JsonlShape {
      */
     public static String workspaceProgress(
             String dir, long numerator, long denominator, String phase, int modulesComplete, int modulesTotal) {
-        return open(EngineProtocol.WORKSPACE_PROGRESS)
-                .append(",\"dir\":")
-                .append(js(dir == null ? "" : dir))
-                .append(",\"numerator\":")
-                .append(numerator)
-                .append(",\"denominator\":")
-                .append(denominator)
-                .append(",\"phase\":")
-                .append(js(phase == null ? "" : phase))
-                .append(",\"modulesComplete\":")
-                .append(modulesComplete)
-                .append(",\"modulesTotal\":")
-                .append(modulesTotal)
-                .append('}')
-                .toString();
+        return new WorkspaceProgressLine(nowMillis(), dir, numerator, denominator, phase, modulesComplete, modulesTotal)
+                .encode();
     }
 
     public static String workspaceStart(int modules) {
-        return open("workspace-start")
-                .append(",\"modules\":")
-                .append(modules)
-                .append('}')
-                .toString();
+        return new WorkspaceStartLine(nowMillis(), modules).encode();
     }
 
     /** Workspace graph finished (all modules done or aborted on graph error). */
     public static String workspaceFinish(boolean success, long durationMs, int modules) {
-        return open(EngineProtocol.WORKSPACE_FINISH)
-                .append(",\"success\":")
-                .append(success)
-                .append(",\"duration_ms\":")
-                .append(durationMs)
-                .append(",\"modules\":")
-                .append(modules)
-                .append('}')
-                .toString();
+        return new WorkspaceFinishLine(nowMillis(), success, durationMs, modules).encode();
     }
 
     /** A workspace module is about to run its plan (brackets nested step events). */
     public static String moduleStart(String dir, String coord) {
-        return open(EngineProtocol.MODULE_START)
-                .append(",\"dir\":")
-                .append(js(dir))
-                .append(",\"coord\":")
-                .append(js(coord))
-                .append('}')
-                .toString();
+        return new ModuleStartLine(nowMillis(), dir, coord).encode();
     }
 
     /**
      * One guard violation row of the last run, as {@code jk guard --output json|jsonl} streams them
-     * after the build: the fields of {@code target/jk-guards.jsonl} under the envelope.
+     * after the build: the fields of {@code target/jk-guards.jsonl} under the envelope. The row is
+     * already an object, so this is the other splice: the envelope's fields ahead of the row's own.
      */
     public static String guard(String rowJson) {
-        // the row is already an object; splice its fields after the envelope prefix
         String body = rowJson.strip();
-        if (body.length() < 2 || body.charAt(0) != '{')
-            return open(EngineProtocol.GUARD_EVENT).append('}').toString();
-        return open(EngineProtocol.GUARD_EVENT)
-                .append(',')
-                .append(body, 1, body.length())
-                .toString();
+        String envelope =
+                JsonlEnvelope.open(nowMillis(), EngineProtocol.GUARD_EVENT).finish();
+        if (body.length() < 2 || body.charAt(0) != '{' || body.charAt(body.length() - 1) != '}') return envelope;
+        return Jsonl.append(envelope, body.substring(1, body.length() - 1));
     }
 
     /** A workspace module finished (success or failure). */
     public static String moduleFinish(String dir, String coord, boolean success, long durationMs) {
-        return open(EngineProtocol.MODULE_FINISH)
-                .append(",\"dir\":")
-                .append(js(dir))
-                .append(",\"coord\":")
-                .append(js(coord))
-                .append(",\"success\":")
-                .append(success)
-                .append(",\"duration_ms\":")
-                .append(durationMs)
-                .append('}')
-                .toString();
-    }
-
-    /**
-     * JSON string escaping — delegates to the shared {@link Jsonl#quote} codec (same escaping the
-     * worker wire protocol uses) so there's one implementation to keep correct. A {@code null}
-     * encodes as the bare literal {@code null}.
-     */
-    static String js(String s) {
-        return Jsonl.quote(s);
+        return new ModuleFinishLine(nowMillis(), dir, coord, success, durationMs).encode();
     }
 
     static long nowMillis() {

@@ -34,12 +34,12 @@ public record CatalogReadAck(
         for (Entry e : entries) {
             encoded.add(String.join("|", e.name(), e.group(), e.artifact(), e.layer(), String.join(",", e.cached())));
         }
-        return "{\"type\":\"" + EngineProtocol.CATALOG_READ_ACK + "\""
-                + ",\"error\":" + (error == null ? "null" : Jsonl.quote(error))
-                + ",\"warnings\":" + EngineProtocol.quoteArray(warnings)
-                + ",\"layerNames\":" + EngineProtocol.quoteArray(layerNames)
-                + ",\"entries\":" + EngineProtocol.quoteArray(encoded)
-                + "}";
+        return RequestJson.request(EngineProtocol.CATALOG_READ_ACK)
+                .string("error", error)
+                .array("warnings", warnings)
+                .array("layerNames", layerNames)
+                .array("entries", encoded)
+                .finish();
     }
 
     public static CatalogReadAck decode(String line) {

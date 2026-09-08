@@ -8,7 +8,7 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.Table;
-import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
@@ -18,7 +18,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -161,50 +160,33 @@ public final class EngineAotCommand implements CliCommand {
         return sb.toString();
     }
 
-    private static String toJson(Path aotDir, List<AotManifest.Entry> entries) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("{\"directory\":").append(Jsonl.quote(aotDir.toString()));
-        sb.append(",\"manifest\":")
-                .append(Files.isRegularFile(AotManifest.path(aotDir)))
-                .append(",\"caches\":[");
-        for (int i = 0; i < entries.size(); i++) {
-            if (i > 0) sb.append(',');
-            AotManifest.Entry e = entries.get(i);
-            sb.append('{');
-            sb.append("\"file\":").append(Jsonl.quote(e.file()));
-            appendJson(sb, "tool", e.tool());
-            appendJson(sb, "key", e.key());
-            appendJson(sb, "status", e.status());
-            if (e.sizeBytes() != null) sb.append(",\"sizeBytes\":").append(e.sizeBytes());
-            appendJson(sb, "jdkHome", e.jdkHome());
-            appendJson(sb, "jdkVendor", e.jdkVendor());
-            appendJson(sb, "jdkVersion", e.jdkVersion());
-            appendJson(sb, "gc", e.gc());
-            appendJson(sb, "jkVersion", e.jkVersion());
-            appendJson(sb, "engineJar", e.engineJar());
-            if (e.engineJarSize() != null) sb.append(",\"engineJarSize\":").append(e.engineJarSize());
-            if (e.engineJarMtimeMs() != null)
-                sb.append(",\"engineJarMtimeMs\":").append(e.engineJarMtimeMs());
-            appendJson(sb, "created", e.created());
-            appendJson(sb, "lastUsed", e.lastUsed());
-            if (!e.classpath().isEmpty()) {
-                sb.append(",\"classpath\":[")
-                        .append(e.classpath().stream().map(Jsonl::quote).collect(Collectors.joining(",")))
-                        .append(']');
-            }
-            if (!e.jvmFlags().isEmpty()) {
-                sb.append(",\"jvmFlags\":[")
-                        .append(e.jvmFlags().stream().map(Jsonl::quote).collect(Collectors.joining(",")))
-                        .append(']');
-            }
-            sb.append('}');
+    static String toJson(Path aotDir, List<AotManifest.Entry> entries) {
+        List<String> caches = new ArrayList<>();
+        for (AotManifest.Entry e : entries) {
+            JsonFields cache = JsonFields.object()
+                    .string("file", e.file())
+                    .optionalNonBlankString("tool", e.tool())
+                    .optionalNonBlankString("key", e.key())
+                    .optionalNonBlankString("status", e.status());
+            if (e.sizeBytes() != null) cache.number("sizeBytes", e.sizeBytes());
+            cache.optionalNonBlankString("jdkHome", e.jdkHome())
+                    .optionalNonBlankString("jdkVendor", e.jdkVendor())
+                    .optionalNonBlankString("jdkVersion", e.jdkVersion())
+                    .optionalNonBlankString("gc", e.gc())
+                    .optionalNonBlankString("jkVersion", e.jkVersion())
+                    .optionalNonBlankString("engineJar", e.engineJar());
+            if (e.engineJarSize() != null) cache.number("engineJarSize", e.engineJarSize());
+            if (e.engineJarMtimeMs() != null) cache.number("engineJarMtimeMs", e.engineJarMtimeMs());
+            cache.optionalNonBlankString("created", e.created())
+                    .optionalNonBlankString("lastUsed", e.lastUsed())
+                    .optionalArray("classpath", e.classpath())
+                    .optionalArray("jvmFlags", e.jvmFlags());
+            caches.add(cache.finish());
         }
-        sb.append("]}");
-        return sb.toString();
-    }
-
-    private static void appendJson(StringBuilder sb, @Nullable String key, @Nullable String value) {
-        if (value == null || value.isBlank()) return;
-        sb.append(",\"").append(key).append("\":").append(Jsonl.quote(value));
+        return JsonFields.object()
+                .string("directory", aotDir.toString())
+                .bool("manifest", Files.isRegularFile(AotManifest.path(aotDir)))
+                .token("caches", "[" + String.join(",", caches) + "]")
+                .finish();
     }
 }

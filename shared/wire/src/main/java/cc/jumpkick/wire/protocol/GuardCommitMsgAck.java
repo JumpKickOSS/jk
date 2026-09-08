@@ -12,11 +12,11 @@ public record GuardCommitMsgAck(@Nullable String error, String text, int failure
     }
 
     public String encode() {
-        return "{\"type\":\"" + EngineProtocol.GUARD_COMMIT_MSG_ACK + "\""
-                + ",\"error\":" + (error == null ? "null" : Jsonl.quote(error))
-                + ",\"text\":" + Jsonl.quote(text)
-                + ",\"failures\":" + failures
-                + "}";
+        return RequestJson.request(EngineProtocol.GUARD_COMMIT_MSG_ACK)
+                .string("error", error)
+                .string("text", text)
+                .number("failures", failures)
+                .finish();
     }
 
     public static GuardCommitMsgAck decode(String line) {

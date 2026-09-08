@@ -109,11 +109,7 @@ final class EnginePluginAdapter {
                 @Override
                 public @Nullable HostedFinish onLine(String type, String line) throws IOException {
                     switch (type) {
-                        case EngineProtocol.PLAN_TASK ->
-                            steps.add(Task.builder(Jsonl.str(line, "name"))
-                                    .label(Jsonl.str(line, "label"))
-                                    .group(EngineEventDecoder.wireGroup(Jsonl.str(line, "stage")))
-                                    .build());
+                        case EngineProtocol.PLAN_TASK -> steps.add(EngineEventDecoder.taskFromWire(line));
                         case EngineProtocol.PLAN_DONE -> listener = listenerFactory.apply(steps);
                         case EngineProtocol.AUDIT_FINDING,
                                 EngineProtocol.FORMAT_FILE,

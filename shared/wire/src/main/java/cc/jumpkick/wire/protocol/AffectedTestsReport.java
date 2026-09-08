@@ -44,14 +44,14 @@ public record AffectedTestsReport(
         for (Row r : rows) {
             encoded.add(r.score() + "|" + r.className() + "|" + r.reason());
         }
-        return "{\"type\":\"" + EngineProtocol.AFFECTED_TESTS_ACK + "\""
-                + ",\"refused\":" + refused
-                + ",\"error\":" + (error == null ? "null" : Jsonl.quote(error))
-                + ",\"refuseCode\":" + Jsonl.quote(refuseCode)
-                + ",\"cap\":" + cap
-                + ",\"candidateCount\":" + candidateCount
-                + ",\"rows\":" + EngineProtocol.quoteArray(encoded)
-                + "}";
+        return RequestJson.request(EngineProtocol.AFFECTED_TESTS_ACK)
+                .bool("refused", refused)
+                .string("error", error)
+                .string("refuseCode", refuseCode)
+                .number("cap", cap)
+                .number("candidateCount", candidateCount)
+                .array("rows", encoded)
+                .finish();
     }
 
     public Map<String, Object> toStructured() {

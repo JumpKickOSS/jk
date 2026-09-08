@@ -5,7 +5,7 @@ import cc.jumpkick.cli.ide.IdeEngineClient;
 import cc.jumpkick.command.ide.IdeSourceRoots;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.diagnostic.CompilerLocus;
-import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.wire.protocol.IdeWireModel;
@@ -92,17 +92,7 @@ public final class BspServer {
         if (method == null) return;
         try {
             switch (method) {
-                case "build/initialize" ->
-                    respond(
-                            id,
-                            "{\"displayName\":\"jk\",\"version\":"
-                                    + q(JkVersion.VERSION)
-                                    + ",\"bspVersion\":\"2.1.0\","
-                                    + "\"capabilities\":{"
-                                    + "\"compileProvider\":{\"languageIds\":[\"java\",\"kotlin\",\"groovy\"]},"
-                                    + "\"testProvider\":{\"languageIds\":[\"java\",\"kotlin\",\"groovy\"]},"
-                                    + "\"runProvider\":{\"languageIds\":[\"java\",\"kotlin\",\"groovy\"]},"
-                                    + "\"canReload\":true}}");
+                case "build/initialize" -> respond(id, initializeResultJson());
                 case "build/initialized" -> {
                     /* notification */
                 }
@@ -184,7 +174,11 @@ public final class BspServer {
                             case "compile" -> compileJson(requestJson, moduleDir);
                             case "test" -> testJson(requestJson, moduleDir);
                             case "run" -> runJson(moduleDir);
-                            default -> "{\"statusCode\":2,\"message\":" + q("unknown op " + kind) + "}";
+                            default ->
+                                JsonFields.object()
+                                        .number("statusCode", 2)
+                                        .string("message", "unknown op " + kind)
+                                        .finish();
                         };
                 respond(id, result);
             } catch (Exception e) {
@@ -265,7 +259,7 @@ public final class BspServer {
                     && !model.mainClasses().getFirst().isBlank();
             targets.add(targetJson(rootUri + "#root", display, rootUri, canRun));
         }
-        return "{\"targets\":[" + String.join(",", targets) + "]}";
+        return JsonFields.object().token("targets", arrayOf(targets)).finish();
     }
 
     /** Package-visible for contract tests. */
@@ -274,16 +268,51 @@ public final class BspServer {
     }
 
     static String targetJson(String id, String display, String baseDir, boolean canRun) {
-        return "{\"id\":{\"uri\":"
-                + q(id)
-                + "},\"displayName\":"
-                + q(display)
-                + ",\"baseDirectory\":"
-                + q(baseDir)
-                + ",\"tags\":[\"library\"],\"languageIds\":[\"java\",\"kotlin\",\"groovy\"],\"dependencies\":[],"
-                + "\"capabilities\":{\"canCompile\":true,\"canTest\":true,\"canRun\":"
-                + canRun
-                + "}}";
+        return JsonFields.object()
+                .token("id", uriJson(id))
+                .string("displayName", display)
+                .string("baseDirectory", baseDir)
+                .array("tags", List.of("library"))
+                .array("languageIds", LANGUAGE_IDS)
+                .array("dependencies", List.of())
+                .token(
+                        "capabilities",
+                        JsonFields.object()
+                                .bool("canCompile", true)
+                                .bool("canTest", true)
+                                .bool("canRun", canRun)
+                                .finish())
+                .finish();
+    }
+
+    private static final List<String> LANGUAGE_IDS = List.of("java", "kotlin", "groovy");
+
+    /** The {@code build/initialize} result: server identity and the three provider capabilities. */
+    static String initializeResultJson() {
+        String provider = JsonFields.object().array("languageIds", LANGUAGE_IDS).finish();
+        return JsonFields.object()
+                .string("displayName", "jk")
+                .string("version", JkVersion.VERSION)
+                .string("bspVersion", "2.1.0")
+                .token(
+                        "capabilities",
+                        JsonFields.object()
+                                .token("compileProvider", provider)
+                                .token("testProvider", provider)
+                                .token("runProvider", provider)
+                                .bool("canReload", true)
+                                .finish())
+                .finish();
+    }
+
+    /** {@code {"uri":…}} — the BSP identifier envelope every target and document carries. */
+    private static String uriJson(String uri) {
+        return JsonFields.object().string("uri", uri).finish();
+    }
+
+    /** A JSON array of already-encoded objects. */
+    private static String arrayOf(List<String> encodedObjects) {
+        return "[" + String.join(",", encodedObjects) + "]";
     }
 
     private String sourcesJson(String requestJson) throws IOException {
@@ -309,7 +338,7 @@ public final class BspServer {
                 items.add(sourcesItem(tid, ide.projectDir(), model, 0));
             }
         }
-        return "{\"items\":[" + String.join(",", items) + "]}";
+        return JsonFields.object().token("items", arrayOf(items)).finish();
     }
 
     private static String sourcesItem(String tid, Path mod, IdeWireModel model, int moduleIndex) {
@@ -320,7 +349,7 @@ public final class BspServer {
             int kind = root.test() ? 2 : 1;
             Path s = mod.resolve(root.relative());
             if (Files.isDirectory(s)) {
-                srcs.add("{\"uri\":" + q(pathUri(s)) + ",\"kind\":" + kind + ",\"generated\":false}");
+                srcs.add(sourceItemJson(pathUri(s), kind, false));
             }
         }
         // Generated sources from the engine model when present.
@@ -328,7 +357,18 @@ public final class BspServer {
             addGenRoot(srcs, model.genSrcDirs(), moduleIndex, false);
             addGenRoot(srcs, model.genTestSrcDirs(), moduleIndex, true);
         }
-        return "{\"target\":{\"uri\":" + q(tid) + "},\"sources\":[" + String.join(",", srcs) + "]}";
+        return JsonFields.object()
+                .token("target", uriJson(tid))
+                .token("sources", arrayOf(srcs))
+                .finish();
+    }
+
+    private static String sourceItemJson(String uri, int kind, boolean generated) {
+        return JsonFields.object()
+                .string("uri", uri)
+                .number("kind", kind)
+                .bool("generated", generated)
+                .finish();
     }
 
     private static void addGenRoot(List<String> srcs, List<String> dirs, int index, boolean test) {
@@ -338,7 +378,7 @@ public final class BspServer {
         Path p = Path.of(d);
         if (!Files.isDirectory(p)) return;
         int kind = test ? 2 : 1;
-        srcs.add("{\"uri\":" + q(pathUri(p)) + ",\"kind\":" + kind + ",\"generated\":true}");
+        srcs.add(sourceItemJson(pathUri(p), kind, true));
     }
 
     private String dependencyModulesJson(String requestJson) throws IOException {
@@ -357,15 +397,21 @@ public final class BspServer {
                 String tid = rootUri + "#" + name;
                 if (!requested.isEmpty() && !requested.contains(tid)) continue;
                 // Per-target: same resolved jars for v1 (engine model is workspace-wide).
-                items.add("{\"target\":{\"uri\":" + q(tid) + "},\"modules\":[" + String.join(",", depMods) + "]}");
+                items.add(JsonFields.object()
+                        .token("target", uriJson(tid))
+                        .token("modules", arrayOf(depMods))
+                        .finish());
             }
         } else {
             String tid = rootUri + "#root";
             if (requested.isEmpty() || requested.contains(tid)) {
-                items.add("{\"target\":{\"uri\":" + q(tid) + "},\"modules\":[" + String.join(",", depMods) + "]}");
+                items.add(JsonFields.object()
+                        .token("target", uriJson(tid))
+                        .token("modules", arrayOf(depMods))
+                        .finish());
             }
         }
-        return "{\"items\":[" + String.join(",", items) + "]}";
+        return JsonFields.object().token("items", arrayOf(items)).finish();
     }
 
     private static List<String> libJarModules(IdeWireModel model) {
@@ -383,22 +429,33 @@ public final class BspServer {
                     i < names.size() && names.get(i) != null && !names.get(i).isBlank()
                             ? names.get(i)
                             : p.getFileName().toString();
-            StringBuilder artifacts = new StringBuilder();
-            artifacts.append("{\"uri\":").append(q(pathUri(p))).append(",\"classifier\":\"\"}");
+            List<String> artifacts = new ArrayList<>();
+            artifacts.add(artifactJson(pathUri(p), ""));
             if (i < sources.size()) {
                 String src = sources.get(i);
                 if (src != null && !src.isBlank()) {
-                    Path sp = Path.of(src);
-                    artifacts.append(",{\"uri\":").append(q(pathUri(sp))).append(",\"classifier\":\"sources\"}");
+                    artifacts.add(artifactJson(pathUri(Path.of(src)), "sources"));
                 }
             }
-            modules.add("{\"name\":"
-                    + q(name)
-                    + ",\"version\":\"\",\"dataKind\":\"maven\",\"data\":{\"artifacts\":["
-                    + artifacts
-                    + "]}}");
+            modules.add(JsonFields.object()
+                    .string("name", name)
+                    .string("version", "")
+                    .string("dataKind", "maven")
+                    .token(
+                            "data",
+                            JsonFields.object()
+                                    .token("artifacts", arrayOf(artifacts))
+                                    .finish())
+                    .finish());
         }
         return modules;
+    }
+
+    private static String artifactJson(String uri, String classifier) {
+        return JsonFields.object()
+                .string("uri", uri)
+                .string("classifier", classifier)
+                .finish();
     }
 
     private String outputPathsJson(String requestJson) throws IOException {
@@ -423,7 +480,7 @@ public final class BspServer {
                 items.add(outputPathsItem(tid, model, 0));
             }
         }
-        return "{\"items\":[" + String.join(",", items) + "]}";
+        return JsonFields.object().token("items", arrayOf(items)).finish();
     }
 
     private static String outputPathsItem(String tid, IdeWireModel model, int i) {
@@ -432,14 +489,20 @@ public final class BspServer {
             addOutput(outs, model.classesDirs(), i, 1); // 1 = directory
             addOutput(outs, model.testClassesDirs(), i, 1);
         }
-        return "{\"target\":{\"uri\":" + q(tid) + "},\"outputPaths\":[" + String.join(",", outs) + "]}";
+        return JsonFields.object()
+                .token("target", uriJson(tid))
+                .token("outputPaths", arrayOf(outs))
+                .finish();
     }
 
     private static void addOutput(List<String> outs, List<String> dirs, int index, int kind) {
         if (dirs == null || index < 0 || index >= dirs.size()) return;
         String d = dirs.get(index);
         if (d == null || d.isBlank()) return;
-        outs.add("{\"uri\":" + q(pathUri(Path.of(d))) + ",\"kind\":" + kind + "}");
+        outs.add(JsonFields.object()
+                .string("uri", pathUri(Path.of(d)))
+                .number("kind", kind)
+                .finish());
     }
 
     private String compileJson(String requestJson, @Nullable Path moduleDir) throws IOException {
@@ -475,7 +538,12 @@ public final class BspServer {
         // stdout is the frame channel and must never carry raw program bytes.
         var outcome = ide.runModule(moduleDir, null, line -> {
             try {
-                notify("build/logMessage", "{\"type\":4,\"message\":" + q(line) + "}");
+                notify(
+                        "build/logMessage",
+                        JsonFields.object()
+                                .number("type", 4)
+                                .string("message", line)
+                                .finish());
             } catch (IOException clientGone) {
                 // The editor hung up mid-run; keep draining so the app can finish.
             }
@@ -501,13 +569,11 @@ public final class BspServer {
         for (Map.Entry<String, List<String>> e : byFile.entrySet()) {
             notify(
                     "build/publishDiagnostics",
-                    "{\"textDocument\":{\"uri\":"
-                            + q(e.getKey())
-                            + "},\"buildTarget\":{\"uri\":"
-                            + q(targetUri)
-                            + "},\"diagnostics\":["
-                            + String.join(",", e.getValue())
-                            + "]}");
+                    JsonFields.object()
+                            .token("textDocument", uriJson(e.getKey()))
+                            .token("buildTarget", uriJson(targetUri))
+                            .token("diagnostics", arrayOf(e.getValue()))
+                            .finish());
         }
     }
 
@@ -528,9 +594,21 @@ public final class BspServer {
         }
     }
 
-    private static String diagnosticJson(int line, int col, int severity, String message) {
-        return "{\"range\":{\"start\":{\"line\":" + line + ",\"character\":" + col + "},\"end\":{\"line\":" + line
-                + ",\"character\":" + col + "}},\"severity\":" + severity + ",\"message\":" + q(message) + "}";
+    static String diagnosticJson(int line, int col, int severity, String message) {
+        String position = JsonFields.object()
+                .number("line", line)
+                .number("character", col)
+                .finish();
+        return JsonFields.object()
+                .token(
+                        "range",
+                        JsonFields.object()
+                                .token("start", position)
+                                .token("end", position)
+                                .finish())
+                .number("severity", severity)
+                .string("message", message)
+                .finish();
     }
 
     /**
@@ -571,18 +649,16 @@ public final class BspServer {
         return out;
     }
 
-    private static String statusResult(IdeEngineClient.BuildOutcome outcome, String defaultFail) {
+    static String statusResult(IdeEngineClient.BuildOutcome outcome, String defaultFail) {
         int statusCode = outcome.success() ? 1 : 2; // BSP: 1=OK, 2=ERROR
-        StringBuilder sb = new StringBuilder();
-        sb.append("{\"statusCode\":").append(statusCode);
+        JsonFields json = JsonFields.object().number("statusCode", statusCode);
         if (!outcome.success()) {
             String msg = outcome.errors() != null && !outcome.errors().isEmpty()
                     ? String.join("; ", outcome.errors())
                     : defaultFail;
-            sb.append(",\"message\":").append(q(msg));
+            json.string("message", msg);
         }
-        sb.append('}');
-        return sb.toString();
+        return json.finish();
     }
 
     /**
@@ -645,21 +721,32 @@ public final class BspServer {
 
     private synchronized void respond(@Nullable String id, String resultJson) throws IOException {
         if (id == null) return;
-        writeMessage("{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"result\":" + resultJson + "}");
+        writeMessage(JsonFields.object()
+                .string("jsonrpc", "2.0")
+                .token("id", id)
+                .token("result", resultJson)
+                .finish());
     }
 
     private synchronized void notify(String method, String paramsJson) throws IOException {
-        writeMessage("{\"jsonrpc\":\"2.0\",\"method\":" + q(method) + ",\"params\":" + paramsJson + "}");
+        writeMessage(JsonFields.object()
+                .string("jsonrpc", "2.0")
+                .string("method", method)
+                .token("params", paramsJson)
+                .finish());
     }
 
     private synchronized void error(String id, int code, String message) throws IOException {
-        writeMessage("{\"jsonrpc\":\"2.0\",\"id\":"
-                + id
-                + ",\"error\":{\"code\":"
-                + code
-                + ",\"message\":"
-                + q(message)
-                + "}}");
+        writeMessage(JsonFields.object()
+                .string("jsonrpc", "2.0")
+                .token("id", id)
+                .token(
+                        "error",
+                        JsonFields.object()
+                                .number("code", code)
+                                .string("message", message)
+                                .finish())
+                .finish());
     }
 
     private void writeMessage(String body) throws IOException {
@@ -691,17 +778,6 @@ public final class BspServer {
 
     private static String pathUri(Path p) {
         return p.toAbsolutePath().normalize().toUri().toString();
-    }
-
-    /**
-     * JSON string literal, via the one escaper.
-     *
-     * <p>The local copy this replaced escaped only {@code \ " \n \r \t} and passed everything
-     * else through, so any control character below 0x20 — which an application's ANSI-coloured
-     * output routinely carries — produced invalid JSON-RPC on a protocol whose peer is an IDE.
-     */
-    private static String q(String s) {
-        return Jsonl.quote(s);
     }
 
     /**

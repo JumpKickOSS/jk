@@ -26,19 +26,7 @@ public final class ProtoSession {
      */
     public static String planFinishTool(
             String dir, boolean success, @Nullable String coord, @Nullable String mainClass, List<String> classpath) {
-        return "{\"type\":\""
-                + EngineProtocol.BUILDPLAN_FINISH
-                + "\",\"kind\":\"tool\",\"dir\":"
-                + Jsonl.quote(dir)
-                + ",\"success\":"
-                + success
-                + ",\"toolCoord\":"
-                + Jsonl.quote(coord)
-                + ",\"toolMainClass\":"
-                + Jsonl.quote(mainClass)
-                + ",\"toolClasspath\":"
-                + quoteArray(classpath)
-                + "}";
+        return new PlanFinishToolEvent(dir, success, coord, mainClass, classpath).encode();
     }
 
     /**
@@ -54,28 +42,12 @@ public final class ProtoSession {
             @Nullable String classesDir,
             @Nullable String kotlincBin,
             @Nullable String stdlib) {
-        return "{\"type\":\""
-                + EngineProtocol.BUILDPLAN_FINISH
-                + "\",\"kind\":\"script\",\"dir\":"
-                + Jsonl.quote(dir)
-                + ",\"success\":"
-                + success
-                + ",\"scriptMainClass\":"
-                + Jsonl.quote(mainClass)
-                + ",\"scriptClasspath\":"
-                + quoteArray(classpath)
-                + ",\"scriptClassesDir\":"
-                + Jsonl.quote(classesDir)
-                + ",\"scriptKotlincBin\":"
-                + Jsonl.quote(kotlincBin)
-                + ",\"scriptStdlib\":"
-                + Jsonl.quote(stdlib)
-                + "}";
+        return new PlanFinishScriptEvent(dir, success, mainClass, classpath, classesDir, kotlincBin, stdlib).encode();
     }
 
     /** The maintenance job is waiting for the cache to quiesce (see {@link EngineProtocol#PRUNE_WAIT}). */
     public static String pruneWait(int plans, boolean external) {
-        return "{\"type\":\"" + EngineProtocol.PRUNE_WAIT + "\",\"plans\":" + plans + ",\"external\":" + external + "}";
+        return new PruneWaitEvent(plans, external).encode();
     }
 
     /**
@@ -84,17 +56,7 @@ public final class ProtoSession {
      * reported no count.
      */
     public static String planFinishCache(String dir, boolean success, long files, long bytes) {
-        return "{\"type\":\""
-                + EngineProtocol.BUILDPLAN_FINISH
-                + "\",\"kind\":\"cache\",\"dir\":"
-                + Jsonl.quote(dir)
-                + ",\"success\":"
-                + success
-                + ",\"cacheFiles\":"
-                + files
-                + ",\"cacheBytes\":"
-                + bytes
-                + "}";
+        return new PlanFinishCacheEvent(dir, success, files, bytes).encode();
     }
 
     /**
@@ -154,32 +116,26 @@ public final class ProtoSession {
             boolean rebuild,
             boolean noTimeline,
             @Nullable String assemblyOverride) {
-        boolean hasVariant = variant != null && !variant.isBlank();
-        boolean hasEnv = clientEnv != null && !clientEnv.isEmpty();
         boolean hasJvm = t != null
                 && (t.maxRamPercent() != null
                         || t.gc() != null
                         || t.stringDedup() != null
                         || !t.extraArgs().isEmpty());
-        boolean hasAssembly = assemblyOverride != null && !assemblyOverride.isBlank();
-        StringBuilder b = new StringBuilder();
-        if (rebuild) b.append(",\"rebuild\":true");
-        if (noTimeline) b.append(",\"noTimeline\":true");
-        if (hasVariant) b.append(",\"variant\":").append(Jsonl.quote(variant));
-        if (hasEnv) b.append(",\"env\":").append(Jsonl.map(clientEnv));
-        if (hasAssembly) b.append(",\"assemblyOverride\":").append(Jsonl.quote(assemblyOverride));
+        RequestJson b = RequestJson.fields()
+                .optionalTrue("rebuild", rebuild)
+                .optionalTrue("noTimeline", noTimeline)
+                .optionalNonBlankString("variant", variant)
+                .optionalMap("env", clientEnv)
+                .optionalNonBlankString("assemblyOverride", assemblyOverride);
         if (hasJvm && t != null) {
-            if (t.maxRamPercent() != null)
-                b.append(",\"jvmMaxRam\":\"").append(t.maxRamPercent()).append('\"');
-            if (t.gc() != null) b.append(",\"jvmGc\":").append(Jsonl.quote(t.gc()));
-            if (t.stringDedup() != null)
-                b.append(",\"jvmStringDedup\":\"").append(t.stringDedup()).append('\"');
-            if (!t.extraArgs().isEmpty()) b.append(",\"jvmArgs\":").append(quoteArray(t.extraArgs()));
+            if (t.maxRamPercent() != null) b.string("jvmMaxRam", String.valueOf(t.maxRamPercent()));
+            b.optionalString("jvmGc", t.gc());
+            if (t.stringDedup() != null) b.string("jvmStringDedup", String.valueOf(t.stringDedup()));
+            b.optionalArray("jvmArgs", t.extraArgs());
         }
-        // Each fragment carries its own leading comma so the chain reads uniformly; the splicer
-        // owns the one that joins them to the request, and that one depends on whether the
-        // request is `{}`.
-        return Jsonl.append(request, b.isEmpty() ? "" : b.substring(1));
+        // The splicer owns the comma that joins the fragment to the request — it depends on whether
+        // the request is `{}`.
+        return Jsonl.append(request, b.body());
     }
 
     /**
@@ -202,14 +158,13 @@ public final class ProtoSession {
      */
     public static String withToolchain(
             String request, @Nullable String jdk, @Nullable String graal, @Nullable String graalHome) {
-        StringBuilder b = new StringBuilder();
-        if (jdk != null && !jdk.isBlank()) b.append(",\"jdk\":").append(Jsonl.quote(jdk));
-        if (graal != null && !graal.isBlank()) b.append(",\"graal\":").append(Jsonl.quote(graal));
-        if (graalHome != null && !graalHome.isBlank()) {
-            b.append(",\"graalHome\":").append(Jsonl.quote(graalHome));
-        }
-        if (b.isEmpty()) return request;
-        return Jsonl.append(request, b.substring(1));
+        String body = RequestJson.fields()
+                .optionalNonBlankString("jdk", jdk)
+                .optionalNonBlankString("graal", graal)
+                .optionalNonBlankString("graalHome", graalHome)
+                .body();
+        if (body.isEmpty()) return request;
+        return Jsonl.append(request, body);
     }
 
     /**
@@ -220,7 +175,8 @@ public final class ProtoSession {
      */
     public static String withTrigger(String request, @Nullable String trigger) {
         if (trigger == null || trigger.isBlank()) return request;
-        return Jsonl.append(request, "\"trigger\":" + Jsonl.quote(trigger));
+        return Jsonl.append(
+                request, RequestJson.fields().string("trigger", trigger).body());
     }
 
     /** Decode {@code assemblyOverride} from a session envelope ({@code fat}/{@code minified}/empty). */
@@ -293,10 +249,5 @@ public final class ProtoSession {
             // a malformed number degrades to absent, like every tolerant config read
         }
         return new PluginTuning(ram, gc, dedup == null ? null : Boolean.valueOf(dedup), args);
-    }
-
-    /** {@code Jsonl} only reads string arrays; it has no writer half, so this is the encode side. */
-    static String quoteArray(List<String> values) {
-        return Jsonl.array(values);
     }
 }

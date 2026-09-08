@@ -5,6 +5,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.protocol.EtaEvent;
 import cc.jumpkick.wire.protocol.ExplainRequest;
 import cc.jumpkick.wire.runtime.ExplainPlan;
 import cc.jumpkick.wire.runtime.TaskForecast;
@@ -104,10 +105,11 @@ final class EngineExplainDecoder {
                     case EngineProtocol.ERROR -> errors.add(Jsonl.str(line, "message"));
                     case EngineProtocol.ETA -> {
                         if (etaOut != null) {
-                            etaOut[0] = Jsonl.longValue(line, "millis", 0);
+                            EtaEvent e = EtaEvent.decode(line);
+                            etaOut[0] = e.remainingMs();
                             // Optional full-rebuild ETA (explain effort denominator); 0 when absent.
                             if (etaOut.length > 1) {
-                                etaOut[1] = Jsonl.longValue(line, "fullMillis", 0);
+                                etaOut[1] = Math.max(0, e.fullMillis());
                             }
                         }
                     }

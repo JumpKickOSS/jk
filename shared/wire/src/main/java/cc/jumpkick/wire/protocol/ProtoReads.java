@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.wire.protocol;
 
-import cc.jumpkick.jsonl.Jsonl;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 
@@ -17,53 +16,19 @@ public final class ProtoReads {
 
     public static String explainModule(
             String dir, String coord, int sourceCount, int testCount, boolean producesJar, boolean producesImage) {
-        return "{\"type\":\""
-                + EngineProtocol.EXPLAIN_MODULE
-                + "\",\"dir\":"
-                + Jsonl.quote(dir)
-                + ",\"coord\":"
-                + Jsonl.quote(coord)
-                + ",\"sourceCount\":"
-                + sourceCount
-                + ",\"testCount\":"
-                + testCount
-                + ",\"producesJar\":"
-                + producesJar
-                + ",\"producesImage\":"
-                + producesImage
-                + "}";
+        return new ExplainModuleEvent(dir, coord, sourceCount, testCount, producesJar, producesImage).encode();
     }
 
     public static String explainStep(String dir, String name, String status, String text, @Nullable String key) {
-        return "{\"type\":\""
-                + EngineProtocol.EXPLAIN_TASK
-                + "\",\"dir\":"
-                + Jsonl.quote(dir)
-                + ",\"name\":"
-                + Jsonl.quote(name)
-                + ",\"status\":"
-                + Jsonl.quote(status)
-                + ",\"text\":"
-                + Jsonl.quote(text)
-                + ",\"key\":"
-                + Jsonl.quote(key)
-                + "}";
+        return new ExplainTaskEvent(dir, name, status, text, key).encode();
     }
 
     public static String explainEdge(String dir, String dependsOnDir) {
-        return "{\"type\":\""
-                + EngineProtocol.EXPLAIN_EDGE
-                + "\",\"dir\":"
-                + Jsonl.quote(dir)
-                + ",\"dependsOnDir\":"
-                + Jsonl.quote(dependsOnDir)
-                + "}";
+        return new ExplainEdgeEvent(dir, dependsOnDir).encode();
     }
 
     public static String treeAck(@Nullable String error, @Nullable String rendered) {
-        return "{\"type\":\"" + EngineProtocol.TREE_ACK + "\",\"error\":" + Jsonl.quote(error)
-                + ",\"rendered\":" + Jsonl.quote(rendered == null ? "" : rendered)
-                + "}";
+        return new TreeAck(error, rendered == null ? "" : rendered).encode();
     }
 
     public static String editAck(boolean changed, @Nullable String error) {
@@ -71,38 +36,18 @@ public final class ProtoReads {
     }
 
     public static String editAck(boolean changed, @Nullable String error, @Nullable String detail) {
-        return "{\"type\":\"" + EngineProtocol.EDIT_ACK + "\",\"changed\":" + changed + ",\"error\":"
-                + Jsonl.quote(error)
-                + ((detail == null || detail.isBlank()) ? "" : ",\"detail\":" + Jsonl.quote(detail))
-                + "}";
+        return new EditAck(changed, error, detail).encode();
     }
 
     public static String freshenCatalogAck(boolean ok, @Nullable String error) {
-        return "{\"type\":\"" + EngineProtocol.FRESHEN_CATALOG_ACK + "\",\"ok\":" + ok + ",\"error\":"
-                + Jsonl.quote(error) + "}";
+        return new FreshenCatalogAck(ok, error).encode();
     }
 
     public static String forecastAck(List<String> dirtyDirs, boolean lockStale, boolean empty, List<String> errors) {
-        return "{\"type\":\""
-                + EngineProtocol.FORECAST_ACK
-                + "\",\"dirtyDirs\":"
-                + EngineProtocol.quoteArray(dirtyDirs)
-                + ",\"lockStale\":"
-                + lockStale
-                + ",\"empty\":"
-                + empty
-                + ",\"errors\":"
-                + EngineProtocol.quoteArray(errors)
-                + "}";
+        return new ForecastAck(dirtyDirs, lockStale, empty, errors).encode();
     }
 
     public static String explainDone(int maxReadyWidth, int moduleCount) {
-        return "{\"type\":\""
-                + EngineProtocol.EXPLAIN_DONE
-                + "\",\"maxReadyWidth\":"
-                + maxReadyWidth
-                + ",\"moduleCount\":"
-                + moduleCount
-                + "}";
+        return new ExplainDoneEvent(maxReadyWidth, moduleCount).encode();
     }
 }

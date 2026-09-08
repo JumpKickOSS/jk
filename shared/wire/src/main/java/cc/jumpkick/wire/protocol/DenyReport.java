@@ -22,13 +22,13 @@ public record DenyReport(
     }
 
     public String encode() {
-        return "{\"type\":\"" + EngineProtocol.DENY_CHECK_ACK + "\""
-                + ",\"error\":" + (error == null ? "null" : Jsonl.quote(error))
-                + ",\"checked\":" + checked
-                + ",\"modules\":" + EngineProtocol.quoteArray(modules)
-                + ",\"versions\":" + EngineProtocol.quoteArray(versions)
-                + ",\"reasons\":" + EngineProtocol.quoteArray(reasons)
-                + "}";
+        return RequestJson.request(EngineProtocol.DENY_CHECK_ACK)
+                .string("error", error)
+                .number("checked", checked)
+                .array("modules", modules)
+                .array("versions", versions)
+                .array("reasons", reasons)
+                .finish();
     }
 
     public static DenyReport decode(String line) {

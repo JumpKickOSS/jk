@@ -3,6 +3,10 @@ package cc.jumpkick.wire.protocol;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.SecretRedactor;
+import cc.jumpkick.run.TestFailureInfo;
+import cc.jumpkick.wire.runtime.ModuleOutcome;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -65,5 +69,135 @@ class ProtoEventsFrozenBytesTest {
         assertThat(ProtoEvents.stepFinish("a/b", "compile-java", "compile", "SUCCESS", 1200, 300))
                 .isEqualTo(
                         "{\"type\":\"task-finish\",\"dir\":\"a/b\",\"task\":\"compile-java\",\"stage\":\"compile\",\"status\":\"SUCCESS\",\"millis\":1200,\"waitMillis\":300}");
+    }
+
+    @Test
+    void diagnostics_omit_the_additive_fields_that_say_nothing_and_serialize_the_stack_once_last() {
+        assertThat(ProtoEvents.warn("a/b", "compile-java", "W1", "unchecked"))
+                .isEqualTo(
+                        "{\"type\":\"warn\",\"dir\":\"a/b\",\"task\":\"compile-java\",\"code\":\"W1\",\"message\":\"unchecked\"}");
+        assertThat(ProtoEvents.errorLine("a/b", "run-tests", "E1", "boom", "FooTest.bar", "java.lang.AssertionError"))
+                .isEqualTo(
+                        "{\"type\":\"error-line\",\"dir\":\"a/b\",\"task\":\"run-tests\",\"code\":\"E1\",\"message\":\"boom\",\"test\":\"FooTest.bar\",\"exceptionClass\":\"java.lang.AssertionError\"}");
+        assertThat(ProtoEvents.errorLine("a/b", "run-tests", "E1", "boom", "", ""))
+                .isEqualTo(
+                        "{\"type\":\"error-line\",\"dir\":\"a/b\",\"task\":\"run-tests\",\"code\":\"E1\",\"message\":\"boom\"}");
+        assertThat(ProtoEvents.errorLine(
+                        "a/b", "run-tests", "E1", "boom", "m", "junit", "FooTest", "bar", "AE", "at x\n"))
+                .isEqualTo(
+                        "{\"type\":\"error-line\",\"dir\":\"a/b\",\"task\":\"run-tests\",\"code\":\"E1\",\"message\":\"boom\",\"module\":\"m\",\"engine\":\"junit\",\"testClass\":\"FooTest\",\"method\":\"bar\",\"exceptionClass\":\"AE\",\"stack\":\"at x\\n\"}");
+        TestFailureInfo failure = new TestFailureInfo(
+                "m",
+                "junit",
+                "FooTest",
+                "bar",
+                "AE",
+                "expected 1",
+                "at x",
+                3,
+                "src/FooTest.java",
+                42,
+                40,
+                List.of("a", "b"));
+        assertThat(ProtoEvents.planDiagnostic("a/b", "run-tests", "E1", "", failure))
+                .isEqualTo(
+                        "{\"type\":\"buildplan-diagnostic\",\"dir\":\"a/b\",\"task\":\"run-tests\",\"code\":\"E1\",\"message\":\"expected 1\",\"module\":\"m\",\"engine\":\"junit\",\"testClass\":\"FooTest\",\"method\":\"bar\",\"exceptionClass\":\"AE\",\"file\":\"src/FooTest.java\",\"line\":42,\"snippetStart\":40,\"worker\":3,\"snippet\":[\"a\",\"b\"],\"stack\":\"at x\"}");
+        assertThat(ProtoEvents.planDiagnostic("a/b", "run-tests", "E1", "own message", failure))
+                .contains("\"message\":\"own message\"");
+        assertThat(ProtoEvents.planDiagnostic("a/b", "run-tests", "E1", "boom", "t", "AE"))
+                .isEqualTo(
+                        "{\"type\":\"buildplan-diagnostic\",\"dir\":\"a/b\",\"task\":\"run-tests\",\"code\":\"E1\",\"message\":\"boom\",\"test\":\"t\",\"exceptionClass\":\"AE\"}");
+    }
+
+    @Test
+    void plan_finish_shapes_carry_their_kind_and_only_their_own_fields() {
+        assertThat(ProtoEvents.planFinish("a/b", true))
+                .isEqualTo(
+                        "{\"type\":\"buildplan-finish\",\"kind\":\"build\",\"dir\":\"a/b\",\"success\":true,\"cancelled\":false}");
+        assertThat(ProtoEvents.planFinish("a/b", false, true))
+                .isEqualTo(
+                        "{\"type\":\"buildplan-finish\",\"kind\":\"build\",\"dir\":\"a/b\",\"success\":false,\"cancelled\":true}");
+        assertThat(ProtoEvents.planFinish("a/b", true, 10, 8, 1, 1))
+                .isEqualTo(
+                        "{\"type\":\"buildplan-finish\",\"kind\":\"build\",\"dir\":\"a/b\",\"success\":true,\"buildOutcome\":null,\"tests\":{\"total\":10,\"succeeded\":8,\"failed\":1,\"skipped\":1}}");
+        assertThat(ProtoEvents.planFinish("a/b", true, "up-to-date", -1, 0, 0, 0))
+                .isEqualTo(
+                        "{\"type\":\"buildplan-finish\",\"kind\":\"build\",\"dir\":\"a/b\",\"success\":true,\"buildOutcome\":\"up-to-date\"}");
+        assertThat(ProtoEvents.planFinishLock("a/b", true, 210, 3, 2))
+                .isEqualTo(
+                        "{\"type\":\"buildplan-finish\",\"kind\":\"lock\",\"dir\":\"a/b\",\"success\":true,\"lockPackages\":210,\"lockSources\":3,\"lockPlugins\":2}");
+        assertThat(ProtoEvents.planFinishSync("a/b", true, 4, 206))
+                .isEqualTo(
+                        "{\"type\":\"buildplan-finish\",\"kind\":\"sync\",\"dir\":\"a/b\",\"success\":true,\"syncFetched\":4,\"syncUpToDate\":206}");
+        assertThat(ProtoEvents.planFinishFormat("a/b", true, 16, 1))
+                .isEqualTo(
+                        "{\"type\":\"buildplan-finish\",\"kind\":\"format\",\"dir\":\"a/b\",\"success\":true,\"formatTotal\":16,\"formatWorkerExit\":1}");
+        assertThat(ProtoEvents.planFinishGitFetch("a/b", false, null, null))
+                .isEqualTo(
+                        "{\"type\":\"buildplan-finish\",\"kind\":\"git-fetch\",\"dir\":\"a/b\",\"success\":false,\"gitCheckout\":null,\"gitSha\":null}");
+        assertThat(ProtoEvents.planFinishPublish("a/b", true, 7))
+                .isEqualTo(
+                        "{\"type\":\"buildplan-finish\",\"kind\":\"publish\",\"dir\":\"a/b\",\"success\":true,\"publishFiles\":7}");
+        assertThat(ProtoEvents.planFinishImport("a/b", false, 2, 1, "bad pom", null))
+                .isEqualTo(
+                        "{\"type\":\"buildplan-finish\",\"kind\":\"import\",\"dir\":\"a/b\",\"success\":false,\"importExit\":2,\"importWarnings\":1,\"importError\":\"bad pom\",\"importDiag\":null}");
+        assertThat(ProtoEvents.planFinishImage("a/b", true, 3, 3, 0, 0, "ghcr.io/x:1", null, "x", "1", null))
+                .isEqualTo(
+                        "{\"type\":\"buildplan-finish\",\"kind\":\"image\",\"dir\":\"a/b\",\"success\":true,\"tests\":{\"total\":3,\"succeeded\":3,\"failed\":0,\"skipped\":0},\"imageRef\":\"ghcr.io/x:1\",\"imageTarball\":null,\"imageName\":\"x\",\"imageVersion\":\"1\",\"imageDaemonExe\":null}");
+        assertThat(ProtoEvents.planFinishImage("a/b", false, -1, 0, 0, 0, null, null, null, null, null))
+                .isEqualTo(
+                        "{\"type\":\"buildplan-finish\",\"kind\":\"image\",\"dir\":\"a/b\",\"success\":false,\"imageRef\":null,\"imageTarball\":null,\"imageName\":null,\"imageVersion\":null,\"imageDaemonExe\":null}");
+    }
+
+    @Test
+    void lock_audit_format_import_and_provision_lines() {
+        assertThat(ProtoEvents.lockModule("a/b", "g:a"))
+                .isEqualTo("{\"type\":\"lock-module\",\"dir\":\"a/b\",\"coord\":\"g:a\"}");
+        assertThat(ProtoEvents.lockPackage("a/b", "g:x", "1.2"))
+                .isEqualTo("{\"type\":\"lock-package\",\"dir\":\"a/b\",\"name\":\"g:x\",\"version\":\"1.2\"}");
+        assertThat(ProtoEvents.lockPackage(null, "g:x", null, 0))
+                .isEqualTo("{\"type\":\"lock-package\",\"dir\":null,\"name\":\"g:x\",\"version\":null,\"total\":0}");
+        assertThat(ProtoEvents.lockFinish(false, 6, List.of("no such artifact", "x"), -1))
+                .isEqualTo(
+                        "{\"type\":\"lock-finish\",\"success\":false,\"exitCode\":6,\"errors\":[\"no such artifact\",\"x\"],\"refreshed\":-1}");
+        assertThat(ProtoEvents.auditFinding("a/b", "g:x", "1.2", "GHSA-1", "HIGH", "bad"))
+                .isEqualTo(
+                        "{\"type\":\"audit-finding\",\"dir\":\"a/b\",\"module\":\"g:x\",\"version\":\"1.2\",\"vulnId\":\"GHSA-1\",\"severity\":\"HIGH\",\"summary\":\"bad\"}");
+        assertThat(ProtoEvents.formatFile("a/b", "src/A.java", "changed", null, 1, 16))
+                .isEqualTo(
+                        "{\"type\":\"format-file\",\"dir\":\"a/b\",\"path\":\"src/A.java\",\"status\":\"changed\",\"message\":null,\"index\":1,\"total\":16}");
+        assertThat(ProtoEvents.importNote("a/b", "warn", "skipped profile"))
+                .isEqualTo("{\"type\":\"import-note\",\"dir\":\"a/b\",\"kind\":\"warn\",\"text\":\"skipped profile\"}");
+        assertThat(ProtoEvents.provisionResult("/bin/mvn", "3.9", "downloaded", null, 0))
+                .isEqualTo(
+                        "{\"type\":\"provision-result\",\"bin\":\"/bin/mvn\",\"version\":\"3.9\",\"source\":\"downloaded\",\"error\":null,\"exit\":0}");
+    }
+
+    @Test
+    void module_and_workspace_terminals() {
+        assertThat(ProtoEvents.moduleFinish("a/b", "g:a", true, 0, 1200))
+                .isEqualTo(
+                        "{\"type\":\"module-finish\",\"dir\":\"a/b\",\"coord\":\"g:a\",\"success\":true,\"exitCode\":0,\"millis\":1200,\"didWork\":true,\"cancelled\":false}");
+        assertThat(ProtoEvents.moduleFinish("a/b", "g:a", false, 1, 5, false, true))
+                .isEqualTo(
+                        "{\"type\":\"module-finish\",\"dir\":\"a/b\",\"coord\":\"g:a\",\"success\":false,\"exitCode\":1,\"millis\":5,\"didWork\":false,\"cancelled\":true}");
+        assertThat(ProtoEvents.moduleFinish(
+                        "a/b",
+                        "g:a",
+                        true,
+                        0,
+                        9,
+                        true,
+                        false,
+                        new ModuleOutcome.Image("ghcr.io/x:1", null, "x", null, null)))
+                .isEqualTo(
+                        "{\"type\":\"module-finish\",\"dir\":\"a/b\",\"coord\":\"g:a\",\"success\":true,\"exitCode\":0,\"millis\":9,\"didWork\":true,\"cancelled\":false,\"imageRef\":\"ghcr.io/x:1\",\"imageName\":\"x\",\"hasImage\":true}");
+        assertThat(ProtoEvents.workspaceFinish(
+                        false, 2, SecretRedactor.of(List.of("s3cret")).redactAll(List.of("m1", "m2")), true))
+                .isEqualTo(
+                        "{\"type\":\"workspace-finish\",\"success\":false,\"exitCode\":2,\"errors\":[\"m1\",\"m2\"],\"cancelled\":true}");
+        assertThat(ProtoEvents.withCancelled(ProtoEvents.planFinish("a/b", true, "up-to-date", -1, 0, 0, 0), true))
+                .isEqualTo(
+                        "{\"type\":\"buildplan-finish\",\"kind\":\"build\",\"dir\":\"a/b\",\"success\":true,\"buildOutcome\":\"up-to-date\",\"cancelled\":true}");
     }
 }

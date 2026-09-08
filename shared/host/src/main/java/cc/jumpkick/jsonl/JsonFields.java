@@ -83,6 +83,11 @@ public final class JsonFields {
         return value == null || value.isEmpty() ? this : string(name, value);
     }
 
+    /** {@code value} unless null — a tri-state flag that rides only when it was set. */
+    public JsonFields optionalBool(String name, @Nullable Boolean value) {
+        return value == null ? this : bool(name, value);
+    }
+
     public JsonFields optionalNumber(String name, long value, long omitAtOrBelow) {
         return value <= omitAtOrBelow ? this : number(name, value);
     }
@@ -104,6 +109,12 @@ public final class JsonFields {
     public String finish() {
         if (!object) throw new IllegalStateException("field fragments use suffix()");
         return json.append('}').toString();
+    }
+
+    /** The fields with no braces and no leading comma, or {@code ""} when none — what {@link Jsonl#append} splices. */
+    public String body() {
+        if (object) throw new IllegalStateException("objects use finish()");
+        return json.toString();
     }
 
     /** The fields with a leading comma, or {@code ""} when none — for appending to an object built elsewhere. */

@@ -16,10 +16,10 @@ public record ModuleGraphAck(@Nullable String error, String graph) {
     }
 
     public String encode() {
-        return "{\"type\":\"" + EngineProtocol.MODULE_GRAPH_ACK + "\""
-                + ",\"error\":" + (error == null ? "null" : Jsonl.quote(error))
-                + ",\"graph\":" + Jsonl.quote(graph)
-                + "}";
+        return RequestJson.request(EngineProtocol.MODULE_GRAPH_ACK)
+                .string("error", error)
+                .string("graph", graph)
+                .finish();
     }
 
     public static ModuleGraphAck decode(String line) {

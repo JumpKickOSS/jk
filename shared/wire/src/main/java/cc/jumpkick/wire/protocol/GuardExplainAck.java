@@ -14,11 +14,11 @@ public record GuardExplainAck(@Nullable String error, String text, String json) 
     }
 
     public String encode() {
-        return "{\"type\":\"" + EngineProtocol.GUARD_EXPLAIN_ACK + "\""
-                + ",\"error\":" + (error == null ? "null" : Jsonl.quote(error))
-                + ",\"text\":" + Jsonl.quote(text)
-                + ",\"json\":" + Jsonl.quote(json)
-                + "}";
+        return RequestJson.request(EngineProtocol.GUARD_EXPLAIN_ACK)
+                .string("error", error)
+                .string("text", text)
+                .string("json", json)
+                .finish();
     }
 
     public static GuardExplainAck decode(String line) {

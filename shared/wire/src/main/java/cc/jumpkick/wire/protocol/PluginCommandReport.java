@@ -20,12 +20,12 @@ public record PluginCommandReport(@Nullable String error, boolean found, int exi
     }
 
     public String encode() {
-        return "{\"type\":\"" + EngineProtocol.PLUGIN_VERB_ACK + "\""
-                + ",\"error\":" + (error == null ? "null" : Jsonl.quote(error))
-                + ",\"found\":" + found
-                + ",\"exit\":" + exit
-                + ",\"output\":" + EngineProtocol.quoteArray(output)
-                + "}";
+        return RequestJson.request(EngineProtocol.PLUGIN_VERB_ACK)
+                .string("error", error)
+                .bool("found", found)
+                .number("exit", exit)
+                .array("output", output)
+                .finish();
     }
 
     public static PluginCommandReport decode(String line) {

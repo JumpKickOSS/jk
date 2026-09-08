@@ -12,6 +12,18 @@ import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.EngineWireException;
+import cc.jumpkick.wire.protocol.EtaEvent;
+import cc.jumpkick.wire.protocol.LabelEvent;
+import cc.jumpkick.wire.protocol.OutputEvent;
+import cc.jumpkick.wire.protocol.PlanModuleEvent;
+import cc.jumpkick.wire.protocol.PlanStartEvent;
+import cc.jumpkick.wire.protocol.PlanTaskEvent;
+import cc.jumpkick.wire.protocol.PreflightEvent;
+import cc.jumpkick.wire.protocol.ProgressEvent;
+import cc.jumpkick.wire.protocol.TaskFinishEvent;
+import cc.jumpkick.wire.protocol.TaskStartEvent;
+import cc.jumpkick.wire.protocol.TickUpdateEvent;
+import cc.jumpkick.wire.protocol.WorkspaceProgressEvent;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.ModulePlan;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
@@ -107,7 +119,7 @@ final class EngineEventDecoder {
             @Override
             public @Nullable BuildPlanResult onLine(String type, String line) throws IOException {
                 switch (type) {
-                    case EngineProtocol.PLAN_TASK -> steps.add(readTask(line));
+                    case EngineProtocol.PLAN_TASK -> steps.add(taskFromWire(line));
                     case EngineProtocol.PLAN_DONE -> listener = listenerFactory.apply(steps);
                     case EngineProtocol.BUILDPLAN_FINISH -> {
                         TestSummary counts = TestSummary.readCounts(line);
@@ -160,33 +172,25 @@ final class EngineEventDecoder {
                 String dir = Jsonl.str(line, "dir");
                 switch (type) {
                     case EngineProtocol.PLAN_MODULE -> {
-                        planByDir.put(
-                                dir,
-                                new ModuleMeta(
-                                        Jsonl.str(line, "coord"),
-                                        Jsonl.str(line, "planName"),
-                                        Jsonl.intValue(line, "weight", 0),
-                                        Jsonl.bool(line, "fullyCached", false)));
+                        PlanModuleEvent e = PlanModuleEvent.decode(line);
+                        planByDir.put(dir, new ModuleMeta(e.coord(), e.planName(), e.weight(), e.fullyCached()));
                         pendingPlanDir = dir;
                     }
                     case EngineProtocol.PLAN_TASK -> {
                         ModuleMeta m = planByDir.get(dir != null ? dir : pendingPlanDir);
-                        if (m != null) m.steps.add(readTask(line));
+                        if (m != null) m.steps.add(taskFromWire(line));
                     }
-                    case EngineProtocol.PREFLIGHT ->
-                        listener.onPreflight(
-                                Jsonl.str(line, "stage"),
-                                Jsonl.intValue(line, "done", 0),
-                                Jsonl.intValue(line, "total", 0),
-                                Jsonl.str(line, "label"));
-                    case EngineProtocol.WORKSPACE_PROGRESS -> listener.onWorkspaceProgress(readProgress(line));
+                    case EngineProtocol.PREFLIGHT -> {
+                        PreflightEvent e = PreflightEvent.decode(line);
+                        listener.onPreflight(e.stage(), e.done(), e.total(), e.label());
+                    }
+                    case EngineProtocol.WORKSPACE_PROGRESS ->
+                        listener.onWorkspaceProgress(snapshotOf(WorkspaceProgressEvent.decode(line)));
                     case EngineProtocol.PLAN_DONE -> listener.onPlan(buildModulePlans(planByDir, cache));
-                    case EngineProtocol.ETA -> {
-                        // Seed / re-seed only (R0). Client locks after execute starts.
-                        long rem = Jsonl.longValue(line, "remainingMs", -1);
-                        if (rem < 0) rem = Jsonl.longValue(line, "millis", 0);
-                        listener.onEtaEstimate(rem);
-                    }
+                    case EngineProtocol.ETA ->
+                        // Seed / re-seed only (R0). Client locks after execute starts. The line's
+                        // `millis` duplicates `remainingMs`; the record carries the one value.
+                        listener.onEtaEstimate(EtaEvent.decode(line).remainingMs());
                     case EngineProtocol.MODULE_START -> {
                         ModulePlan plan = buildModulePlan(dir, planByDir.get(dir), cache);
                         BuildPlanListener gl = listener.onModuleStart(plan);
@@ -259,26 +263,68 @@ final class EngineEventDecoder {
         }
         if (listener == null) return;
         switch (type) {
-            case EngineProtocol.BUILDPLAN_START -> listener.planStart(readBuildPlanView(line));
-            case EngineProtocol.TASK_START ->
-                listener.stepStart(
-                        Jsonl.str(line, "task"), wireGroup(Jsonl.str(line, "stage")), Jsonl.intValue(line, "ticks", 0));
-            case EngineProtocol.PROGRESS ->
-                listener.progress(Jsonl.str(line, "task"), Jsonl.intValue(line, "delta", 0), readBuildPlanView(line));
-            case EngineProtocol.TICK_UPDATE ->
-                listener.tickUpdate(Jsonl.str(line, "task"), Jsonl.intValue(line, "delta", 0), readBuildPlanView(line));
-            case EngineProtocol.LABEL -> listener.label(Jsonl.str(line, "task"), Jsonl.str(line, "label"));
-            case EngineProtocol.OUTPUT -> listener.output(Jsonl.str(line, "task"), Jsonl.str(line, "line"));
+            case EngineProtocol.BUILDPLAN_START -> {
+                PlanStartEvent e = PlanStartEvent.decode(line);
+                listener.planStart(new BuildPlanView(
+                        e.planName(),
+                        e.numerator(),
+                        e.denominator(),
+                        e.tasksTotal(),
+                        e.tasksComplete(),
+                        e.cancelled()));
+            }
+            case EngineProtocol.TASK_START -> {
+                TaskStartEvent e = TaskStartEvent.decode(line);
+                listener.stepStart(e.task(), wireGroup(e.stage()), e.ticks());
+            }
+            case EngineProtocol.PROGRESS -> {
+                ProgressEvent e = ProgressEvent.decode(line);
+                // A progress line names no plan: the view's plan name is whatever the line says,
+                // which is nothing — read as before, so the value the renderers see is unchanged.
+                listener.progress(
+                        e.task(),
+                        e.delta(),
+                        planView(
+                                line,
+                                e.numerator(),
+                                e.denominator(),
+                                e.tasksTotal(),
+                                e.tasksComplete(),
+                                e.cancelled()));
+            }
+            case EngineProtocol.TICK_UPDATE -> {
+                TickUpdateEvent e = TickUpdateEvent.decode(line);
+                listener.tickUpdate(
+                        e.task(),
+                        e.delta(),
+                        planView(
+                                line,
+                                e.numerator(),
+                                e.denominator(),
+                                e.tasksTotal(),
+                                e.tasksComplete(),
+                                e.cancelled()));
+            }
+            case EngineProtocol.LABEL -> {
+                LabelEvent e = LabelEvent.decode(line);
+                listener.label(e.task(), e.label());
+            }
+            case EngineProtocol.OUTPUT -> {
+                OutputEvent e = OutputEvent.decode(line);
+                listener.output(e.task(), e.line());
+            }
             case EngineProtocol.WARN ->
                 listener.warn(Jsonl.str(line, "task"), Jsonl.str(line, "code"), Jsonl.str(line, "message"));
             case EngineProtocol.ERROR_LINE -> dispatchError(listener, line);
-            case EngineProtocol.TASK_FINISH ->
+            case EngineProtocol.TASK_FINISH -> {
+                TaskFinishEvent e = TaskFinishEvent.decode(line);
                 listener.stepFinish(
-                        Jsonl.str(line, "task"),
-                        wireGroup(Jsonl.str(line, "stage")),
-                        TaskStatus.valueOf(Jsonl.str(line, "status")),
-                        Duration.ofMillis(Jsonl.longValue(line, "millis", 0)),
-                        Duration.ofMillis(Jsonl.longValue(line, "waitMillis", 0)));
+                        e.task(),
+                        wireGroup(e.stage()),
+                        TaskStatus.valueOf(e.status()),
+                        Duration.ofMillis(e.millis()),
+                        Duration.ofMillis(e.waitMillis()));
+            }
             default -> {
                 /* forward-compatible no-op */
             }
@@ -356,23 +402,22 @@ final class EngineEventDecoder {
     }
 
     /** The engine's strategy percent when it sent one (clock-based once R0 is set), else num/den. */
-    private static WorkspaceProgressTracker.Snapshot readProgress(String line) {
-        long num = Jsonl.longValue(line, "numerator", 0);
-        long den = Jsonl.longValue(line, "denominator", 0);
-        double pct = Jsonl.has(line, "progress") ? Jsonl.doubleValue(line, "progress", Double.NaN) : Double.NaN;
-        if (Double.isNaN(pct) && den > 0) pct = WorkspaceProgressTracker.percentOf(num, den);
-        String phase = Jsonl.str(line, "phase");
+    private static WorkspaceProgressTracker.Snapshot snapshotOf(WorkspaceProgressEvent e) {
+        double pct = e.progressPercent();
+        if (Double.isNaN(pct) && e.denominator() > 0) {
+            pct = WorkspaceProgressTracker.percentOf(e.numerator(), e.denominator());
+        }
         // Residual remainingMs rides the snapshot; AggregateContext re-anchors the countdown +
         // adaptive bar (the seed path stays on eta events only).
         return new WorkspaceProgressTracker.Snapshot(
-                num,
-                den,
+                e.numerator(),
+                e.denominator(),
                 pct,
-                phase == null ? "" : phase,
-                Jsonl.intValue(line, "modulesComplete", 0),
-                Jsonl.intValue(line, "modulesTotal", 0),
-                Jsonl.longValue(line, "remainingMs", -1),
-                Jsonl.longValue(line, "R0", 0));
+                e.phase() == null ? "" : e.phase(),
+                e.modulesComplete(),
+                e.modulesTotal(),
+                e.remainingMs(),
+                e.r0Ms());
     }
 
     private static ModuleOutcome readOutcome(String dir, String line) {
@@ -413,10 +458,12 @@ final class EngineEventDecoder {
         throw new EngineWireException(wire.code(), "jk engine: build failed: " + wire.getMessage());
     }
 
-    private static Task readTask(String line) {
-        return Task.builder(Jsonl.str(line, "name"))
-                .label(Jsonl.str(line, "label"))
-                .group(wireGroup(Jsonl.str(line, "stage")))
+    /** The inert client-side task a {@code plan-task} line describes: name, label and group only. */
+    static Task taskFromWire(String line) {
+        PlanTaskEvent e = PlanTaskEvent.decode(line);
+        return Task.builder(e.name())
+                .label(e.label())
+                .group(wireGroup(e.stage()))
                 .build();
     }
 
@@ -440,14 +487,10 @@ final class EngineEventDecoder {
         return ModulePlan.fromWire(Path.of(dir), m.coord, inertBuildPlan, m.weight, m.fullyCached, cache);
     }
 
-    private static BuildPlanView readBuildPlanView(String line) {
+    private static BuildPlanView planView(
+            String line, long numerator, long denominator, int tasksTotal, int tasksComplete, boolean cancelled) {
         return new BuildPlanView(
-                Jsonl.str(line, "planName"),
-                Jsonl.longValue(line, "numerator", 0),
-                Jsonl.longValue(line, "denominator", 0),
-                Jsonl.intValue(line, "tasksTotal", 0),
-                Jsonl.intValue(line, "tasksComplete", 0),
-                Jsonl.bool(line, "cancelled", false));
+                Jsonl.str(line, "planName"), numerator, denominator, tasksTotal, tasksComplete, cancelled);
     }
 
     static @Nullable String wireGroup(@Nullable String raw) {

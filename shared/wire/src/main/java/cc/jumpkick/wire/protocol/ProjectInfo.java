@@ -145,61 +145,61 @@ public record ProjectInfo(
     }
 
     public String encode() {
-        return "{\"type\":\"" + EngineProtocol.PROJECT_INFO_ACK + "\""
-                + ",\"error\":" + quoteOrNull(error)
-                + ",\"group\":" + Jsonl.quote(group)
-                + ",\"name\":" + Jsonl.quote(name)
-                + ",\"version\":" + Jsonl.quote(version)
-                + ",\"jdk\":" + Jsonl.quote(jdk)
-                + ",\"javaRelease\":" + javaRelease
-                + ",\"kotlin\":" + kotlin
-                + ",\"kotlinVersion\":" + Jsonl.quote(kotlinVersion)
-                + ",\"groovy\":" + groovy
-                + ",\"groovyVersion\":" + Jsonl.quote(groovyVersion)
-                + ",\"layoutSimple\":" + layoutSimple
-                + ",\"workspaceRoot\":" + workspaceRoot
-                + ",\"workspaceRootDir\":" + Jsonl.quote(workspaceRootDir)
-                + ",\"modules\":" + Jsonl.map(zipModules())
-                + ",\"application\":" + application
-                + ",\"mainClass\":" + Jsonl.quote(mainClass)
-                + ",\"assembly\":" + assembly
-                + ",\"applicationConfig\":" + Jsonl.quote(applicationConfig)
-                + ",\"nativeMode\":" + Jsonl.quote(nativeMode)
-                + ",\"graal\":" + Jsonl.quote(graal)
-                + ",\"springBoot\":" + springBoot
-                + ",\"springBootVersion\":" + Jsonl.quote(springBootVersion)
-                + ",\"formatStyle\":" + Jsonl.quote(formatStyle)
-                + ",\"formatJava\":" + Jsonl.quote(formatJava)
-                + ",\"formatKotlin\":" + Jsonl.quote(formatKotlin)
-                + optionalBoolJson("formatOptimizeImports", formatOptimizeImports)
-                + optionalBoolJson("formatImportOrder", formatImportOrder)
-                + optionalBoolJson("formatRemoveUnusedImports", formatRemoveUnusedImports)
-                + ",\"hasLock\":" + hasLock
-                + ",\"lockJdk\":" + Jsonl.quote(lockJdk)
-                + ",\"mainJarPath\":" + Jsonl.quote(mainJarPath)
-                + ",\"assemblyJarPath\":" + Jsonl.quote(assemblyJarPath)
-                + ",\"nativeBinPath\":" + Jsonl.quote(nativeBinPath)
-                + ",\"nativeLibPath\":" + Jsonl.quote(nativeLibPath)
-                + ",\"pathDeps\":" + EngineProtocol.quoteArray(pathDeps)
-                + ",\"sourcesJarPath\":" + Jsonl.quote(sourcesJarPath)
-                + ",\"javadocJarPath\":" + Jsonl.quote(javadocJarPath)
-                + ",\"envRefs\":" + EngineProtocol.quoteArray(envRefs)
-                + ",\"sourceCount\":" + sourceCount
-                + ",\"testCount\":" + testCount
-                + ",\"nativeExplicitlyDisabled\":" + nativeExplicitlyDisabled
-                + ",\"classesDir\":" + Jsonl.quote(classesDir)
-                + ",\"testClassesDir\":" + Jsonl.quote(testClassesDir)
-                + ",\"kotlinClassesDir\":" + Jsonl.quote(kotlinClassesDir)
-                + ",\"groovyClassesDir\":" + Jsonl.quote(groovyClassesDir)
-                + ",\"testResultsDir\":" + Jsonl.quote(testResultsDir)
-                + ",\"testIncludeTags\":" + EngineProtocol.quoteArray(testIncludeTags)
-                + ",\"testExcludeTags\":" + EngineProtocol.quoteArray(testExcludeTags)
-                + ",\"lockStale\":" + lockStale
-                + ",\"scala\":" + scala
-                + ",\"scalaVersion\":" + Jsonl.quote(scalaVersion)
-                + ",\"coordinatorOnly\":" + coordinatorOnly
-                + ",\"productLib\":" + Jsonl.quote(productLib)
-                + "}";
+        return RequestJson.request(EngineProtocol.PROJECT_INFO_ACK)
+                .string("error", error)
+                .string("group", group)
+                .string("name", name)
+                .string("version", version)
+                .string("jdk", jdk)
+                .number("javaRelease", javaRelease)
+                .bool("kotlin", kotlin)
+                .string("kotlinVersion", kotlinVersion)
+                .bool("groovy", groovy)
+                .string("groovyVersion", groovyVersion)
+                .bool("layoutSimple", layoutSimple)
+                .bool("workspaceRoot", workspaceRoot)
+                .string("workspaceRootDir", workspaceRootDir)
+                .map("modules", zipModules())
+                .bool("application", application)
+                .string("mainClass", mainClass)
+                .bool("assembly", assembly)
+                .string("applicationConfig", applicationConfig)
+                .string("nativeMode", nativeMode)
+                .string("graal", graal)
+                .bool("springBoot", springBoot)
+                .string("springBootVersion", springBootVersion)
+                .string("formatStyle", formatStyle)
+                .string("formatJava", formatJava)
+                .string("formatKotlin", formatKotlin)
+                .optionalBool("formatOptimizeImports", formatOptimizeImports)
+                .optionalBool("formatImportOrder", formatImportOrder)
+                .optionalBool("formatRemoveUnusedImports", formatRemoveUnusedImports)
+                .bool("hasLock", hasLock)
+                .string("lockJdk", lockJdk)
+                .string("mainJarPath", mainJarPath)
+                .string("assemblyJarPath", assemblyJarPath)
+                .string("nativeBinPath", nativeBinPath)
+                .string("nativeLibPath", nativeLibPath)
+                .array("pathDeps", pathDeps)
+                .string("sourcesJarPath", sourcesJarPath)
+                .string("javadocJarPath", javadocJarPath)
+                .array("envRefs", envRefs)
+                .number("sourceCount", sourceCount)
+                .number("testCount", testCount)
+                .bool("nativeExplicitlyDisabled", nativeExplicitlyDisabled)
+                .string("classesDir", classesDir)
+                .string("testClassesDir", testClassesDir)
+                .string("kotlinClassesDir", kotlinClassesDir)
+                .string("groovyClassesDir", groovyClassesDir)
+                .string("testResultsDir", testResultsDir)
+                .array("testIncludeTags", testIncludeTags)
+                .array("testExcludeTags", testExcludeTags)
+                .bool("lockStale", lockStale)
+                .bool("scala", scala)
+                .string("scalaVersion", scalaVersion)
+                .bool("coordinatorOnly", coordinatorOnly)
+                .string("productLib", productLib)
+                .finish();
     }
 
     public static ProjectInfo decode(String line) {
@@ -262,19 +262,10 @@ public record ProjectInfo(
     }
 
     /** {@code ,"key":true|false} when set; empty string when unset (tri-state). */
-    private static String optionalBoolJson(String key, @Nullable Boolean value) {
-        if (value == null) return "";
-        return ",\"" + key + "\":" + value;
-    }
-
     /** Present JSON boolean → its value; absent → {@code null}. */
     private static @Nullable Boolean optionalBool(String json, String key) {
         if (!Jsonl.has(json, key)) return null;
         return Jsonl.bool(json, key, false);
-    }
-
-    private static String quoteOrNull(@Nullable String s) {
-        return s == null ? "null" : Jsonl.quote(s);
     }
 
     /**

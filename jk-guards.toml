@@ -967,3 +967,30 @@ owner      = "cc.jumpkick.host.time.SystemClock"
 baseline   = true
 instead    = "take a cc.jumpkick.host.time.Clock (Clock.SYSTEM in production, FakeClock in tests) and read millis(), nanos() or instant()"
 why        = "a wall-clock read the caller cannot move is a test that has to sleep, and a sleep asserts a duration instead of a condition"
+
+# Every JSON object line is built through cc.jumpkick.jsonl.JsonFields (or the wire package's
+# RequestJson over it). A string literal that opens an object, or a `+ ",\"field\"` fragment, is a
+# second writer with its own separator and escaping. This rule measures the sites; the ratchet
+# below holds the count and only lets it fall — `owner` is the whole main tree because a match is
+# tolerated wherever the ratchet still lists it, never legal anywhere in particular.
+[guards.json-concat]
+kind     = "text"
+files    = ["**/src/main/java/**/*.java"]
+blank    = "comments"
+patterns = ['"\{\\"', '\+\s*",\\"']
+owner    = ["**/src/main/java/**/*.java"]
+hit      = 'return "{\"type\":\"" + type + "\",\"dir\":" + Jsonl.quote(dir) + "}";'
+miss     = 'return JsonFields.object().string("type", type).string("dir", dir).finish();'
+instead  = "build the line with JsonFields (RequestJson in the wire package): string/number/bool/token in field order, finish()"
+why      = "a hand-built JSON line spells its own separator and escaping, and every second speller has drifted from the first"
+
+# The ratchet over json-concat: per file, the count of hand-built JSON fragments, baselined at the
+# swept count and tightened on every build until the pattern is a straight ban.
+[guards.json-concat-ratchet]
+kind     = "metric"
+measure  = "matches:json-concat"
+per      = "file"
+cap      = 0
+baseline = true
+instead  = "build the line with JsonFields (RequestJson in the wire package) — see json-concat"
+why      = "a hand-built JSON line spells its own separator and escaping, and every second speller has drifted from the first"

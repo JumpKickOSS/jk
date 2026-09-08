@@ -11,7 +11,7 @@ import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.config.GlobalConfig;
-import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -20,6 +20,7 @@ import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.wire.EnginePaths;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -64,9 +65,7 @@ public final class EngineStatusCommand implements CliCommand {
             long stray = EngineProcessControl.unresponsiveHolderPid(EnginePaths.activeSocket(paths));
             List<EngineFleet.Member> others = EngineFleet.list();
             if (global.outputIsJson()) {
-                CliOutput.out("{\"running\":false"
-                        + (stray > 0 ? ",\"unresponsivePid\":" + stray : "")
-                        + ",\"engines\":" + enginesJson(others) + "}");
+                CliOutput.out(notRunningJson(stray, others));
             } else {
                 CommandWedge.envelopeStart();
                 String headline;
@@ -87,29 +86,7 @@ public final class EngineStatusCommand implements CliCommand {
         EngineProbe.Status s = status.get();
         long uptimeSeconds = Math.max(0, (System.currentTimeMillis() - s.startedAtMillis()) / 1000);
         if (global.outputIsJson()) {
-            CliOutput.out("{\"running\":true"
-                    + ",\"pid\":" + s.pid()
-                    + ",\"version\":" + Jsonl.quote(s.version())
-                    + ",\"startedAt\":" + s.startedAtMillis()
-                    + ",\"uptimeSeconds\":" + uptimeSeconds
-                    + ",\"activeRequests\":" + s.activeRequests()
-                    + ",\"heapUsedBytes\":" + s.heapUsedBytes()
-                    + ",\"heapCommittedBytes\":" + s.heapCommittedBytes()
-                    + ",\"heapMaxBytes\":" + s.heapMaxBytes()
-                    + ",\"rssBytes\":" + s.rssBytes()
-                    + ",\"aotTrainingPid\":" + s.aotTrainingPid()
-                    + ",\"cores\":" + s.cores()
-                    + ",\"totalMemoryBytes\":" + s.totalMemoryBytes()
-                    + ",\"availableMemoryBytes\":" + s.availableMemoryBytes()
-                    + ",\"systemCpuLoad\":" + s.systemCpuLoad()
-                    + ",\"systemLoadAverage\":" + s.systemLoadAverage()
-                    + ",\"engineEpoch\":" + (s.engineEpoch() != null ? Jsonl.quote(s.engineEpoch()) : "null")
-                    + ",\"httpUrl\":" + (s.httpUrl() != null ? Jsonl.quote(s.httpUrl()) : "null")
-                    + ",\"httpError\":" + (s.httpError() != null ? Jsonl.quote(s.httpError()) : "null")
-                    + ",\"mcpUrl\":" + (s.mcpUrl() != null ? Jsonl.quote(s.mcpUrl()) : "null")
-                    + (s.vfsJson() != null ? ",\"vfs\":" + s.vfsJson() : "")
-                    + ",\"engines\":" + enginesJson(EngineFleet.list())
-                    + "}");
+            CliOutput.out(runningJson(s, uptimeSeconds, EngineFleet.list()));
             return Exit.SUCCESS;
         }
         CommandWedge.envelopeStart();
@@ -176,33 +153,60 @@ public final class EngineStatusCommand implements CliCommand {
         CliOutput.out(" Stop this home with `jk engine stop --all`, or one engine with `jk engine stop --pid <pid>`.");
     }
 
-    private static String enginesJson(List<EngineFleet.Member> fleet) {
-        StringBuilder b = new StringBuilder("[");
-        for (int i = 0; i < fleet.size(); i++) {
-            EngineFleet.Member m = fleet.get(i);
-            if (i > 0) b.append(",");
-            b.append("{\"id\":")
-                    .append(Jsonl.quote(m.id()))
-                    .append(",\"pid\":")
-                    .append(m.pid())
-                    .append(",\"current\":")
-                    .append(m.current())
-                    .append(",\"responsive\":")
-                    .append(m.responsive());
+    /** The `--output json` line for a directory with no engine of its own; the fleet says what else is alive. */
+    static String notRunningJson(long unresponsivePid, List<EngineFleet.Member> fleet) {
+        return JsonFields.object()
+                .bool("running", false)
+                .optionalNumber("unresponsivePid", unresponsivePid, 0)
+                .token("engines", enginesJson(fleet))
+                .finish();
+    }
+
+    /** The `--output json` line for a running engine. */
+    static String runningJson(EngineProbe.Status s, long uptimeSeconds, List<EngineFleet.Member> fleet) {
+        JsonFields json = JsonFields.object()
+                .bool("running", true)
+                .number("pid", s.pid())
+                .string("version", s.version())
+                .number("startedAt", s.startedAtMillis())
+                .number("uptimeSeconds", uptimeSeconds)
+                .number("activeRequests", s.activeRequests())
+                .number("heapUsedBytes", s.heapUsedBytes())
+                .number("heapCommittedBytes", s.heapCommittedBytes())
+                .number("heapMaxBytes", s.heapMaxBytes())
+                .number("rssBytes", s.rssBytes())
+                .number("aotTrainingPid", s.aotTrainingPid())
+                .number("cores", s.cores())
+                .number("totalMemoryBytes", s.totalMemoryBytes())
+                .number("availableMemoryBytes", s.availableMemoryBytes())
+                .token("systemCpuLoad", Double.toString(s.systemCpuLoad()))
+                .token("systemLoadAverage", Double.toString(s.systemLoadAverage()))
+                .string("engineEpoch", s.engineEpoch())
+                .string("httpUrl", s.httpUrl())
+                .string("httpError", s.httpError())
+                .string("mcpUrl", s.mcpUrl());
+        if (s.vfsJson() != null) json.token("vfs", s.vfsJson());
+        return json.token("engines", enginesJson(fleet)).finish();
+    }
+
+    static String enginesJson(List<EngineFleet.Member> fleet) {
+        List<String> members = new ArrayList<>();
+        for (EngineFleet.Member m : fleet) {
+            JsonFields member = JsonFields.object()
+                    .string("id", m.id())
+                    .number("pid", m.pid())
+                    .bool("current", m.current())
+                    .bool("responsive", m.responsive());
             var st = m.status();
             if (m.responsive() && st != null) {
-                b.append(",\"startedAt\":")
-                        .append(st.startedAtMillis())
-                        .append(",\"activeBuildPlans\":")
-                        .append(st.activeBuildPlans())
-                        .append(",\"draining\":")
-                        .append(st.draining())
-                        .append(",\"version\":")
-                        .append(Jsonl.quote(st.version()));
+                member.number("startedAt", st.startedAtMillis())
+                        .number("activeBuildPlans", st.activeBuildPlans())
+                        .bool("draining", st.draining())
+                        .string("version", st.version());
             }
-            b.append("}");
+            members.add(member.finish());
         }
-        return b.append("]").toString();
+        return "[" + String.join(",", members) + "]";
     }
 
     /**

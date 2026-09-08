@@ -15,11 +15,11 @@ public record GuardFreezeAck(@Nullable String error, int accepted, int total) {
     }
 
     public String encode() {
-        return "{\"type\":\"" + EngineProtocol.GUARD_FREEZE_ACK + "\""
-                + ",\"error\":" + (error == null ? "null" : Jsonl.quote(error))
-                + ",\"accepted\":" + accepted
-                + ",\"total\":" + total
-                + "}";
+        return RequestJson.request(EngineProtocol.GUARD_FREEZE_ACK)
+                .string("error", error)
+                .number("accepted", accepted)
+                .number("total", total)
+                .finish();
     }
 
     public static GuardFreezeAck decode(String line) {

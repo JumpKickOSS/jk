@@ -48,11 +48,11 @@ public record OutdatedReport(@Nullable String error, boolean workspace, List<Row
                     r.latest(),
                     r.tip()));
         }
-        return "{\"type\":\"" + EngineProtocol.OUTDATED_ACK + "\""
-                + ",\"error\":" + (error == null ? "null" : Jsonl.quote(error))
-                + ",\"workspace\":" + workspace
-                + ",\"rows\":" + EngineProtocol.quoteArray(encoded)
-                + "}";
+        return RequestJson.request(EngineProtocol.OUTDATED_ACK)
+                .string("error", error)
+                .bool("workspace", workspace)
+                .array("rows", encoded)
+                .finish();
     }
 
     /**

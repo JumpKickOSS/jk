@@ -14,7 +14,7 @@ import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.RenderContext;
 import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.cli.tui.Table;
-import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.GitVersion;
 import cc.jumpkick.model.command.CliCommand;
@@ -153,30 +153,21 @@ public final class OutdatedCommand implements CliCommand {
 
     // JSON
 
-    private static String toJson(List<OutdatedReport.Row> rows) {
-        StringBuilder sb = new StringBuilder("[");
-        for (int i = 0; i < rows.size(); i++) {
-            OutdatedReport.Row r = rows.get(i);
-            if (i > 0) sb.append(',');
-            sb.append("{\"module\":")
-                    .append(Jsonl.quote(r.moduleLabel()))
-                    .append(",\"dependency\":")
-                    .append(Jsonl.quote(r.coordinate()))
-                    .append(",\"display\":")
-                    .append(Jsonl.quote(r.display()))
-                    .append(",\"scope\":")
-                    .append(Jsonl.quote(r.scope()))
-                    .append(",\"current\":")
-                    .append(Jsonl.quote(r.current()))
-                    .append(",\"compatible\":")
-                    .append(Jsonl.quote(r.compatible()))
-                    .append(",\"latest\":")
-                    .append(Jsonl.quote(r.latest()))
-                    .append(",\"tip\":")
-                    .append(Jsonl.quote(r.tip()))
-                    .append('}');
+    static String toJson(List<OutdatedReport.Row> rows) {
+        List<String> items = new ArrayList<>();
+        for (OutdatedReport.Row r : rows) {
+            items.add(JsonFields.object()
+                    .string("module", r.moduleLabel())
+                    .string("dependency", r.coordinate())
+                    .string("display", r.display())
+                    .string("scope", r.scope())
+                    .string("current", r.current())
+                    .string("compatible", r.compatible())
+                    .string("latest", r.latest())
+                    .string("tip", r.tip())
+                    .finish());
         }
-        return sb.append(']').toString();
+        return "[" + String.join(",", items) + "]";
     }
 
     // Rendering — box-drawn table mirroring JdkListCommand's style.

@@ -15,11 +15,11 @@ public record GuardTestAck(@Nullable String error, String text, int failures) {
     }
 
     public String encode() {
-        return "{\"type\":\"" + EngineProtocol.GUARD_TEST_ACK + "\""
-                + ",\"error\":" + (error == null ? "null" : Jsonl.quote(error))
-                + ",\"text\":" + Jsonl.quote(text)
-                + ",\"failures\":" + failures
-                + "}";
+        return RequestJson.request(EngineProtocol.GUARD_TEST_ACK)
+                .string("error", error)
+                .string("text", text)
+                .number("failures", failures)
+                .finish();
     }
 
     public static GuardTestAck decode(String line) {

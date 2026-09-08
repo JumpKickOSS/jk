@@ -178,11 +178,7 @@ final class EngineResolveAdapter {
                 @Override
                 public @Nullable BuildPlanResult onLine(String type, String line) throws IOException {
                     switch (type) {
-                        case EngineProtocol.PLAN_TASK ->
-                            steps.add(Task.builder(Jsonl.str(line, "name"))
-                                    .label(Jsonl.str(line, "label"))
-                                    .group(EngineEventDecoder.wireGroup(Jsonl.str(line, "stage")))
-                                    .build());
+                        case EngineProtocol.PLAN_TASK -> steps.add(EngineEventDecoder.taskFromWire(line));
                         case EngineProtocol.PLAN_DONE -> listener = listenerFactory.apply(steps);
                         case EngineProtocol.BUILDPLAN_FINISH -> {
                             if (fetchedOut != null) fetchedOut[0] = Jsonl.longValue(line, "syncFetched", 0);
@@ -241,11 +237,7 @@ final class EngineResolveAdapter {
                             diagnostics = new ArrayList<>();
                             listener = null;
                         }
-                        case EngineProtocol.PLAN_TASK ->
-                            steps.add(Task.builder(Jsonl.str(line, "name"))
-                                    .label(Jsonl.str(line, "label"))
-                                    .group(EngineEventDecoder.wireGroup(Jsonl.str(line, "stage")))
-                                    .build());
+                        case EngineProtocol.PLAN_TASK -> steps.add(EngineEventDecoder.taskFromWire(line));
                         case EngineProtocol.PLAN_DONE ->
                             listener = handler.onModuleStart(
                                     Objects.requireNonNull(currentDir, "plan-done before module-start"),

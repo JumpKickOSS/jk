@@ -17,12 +17,12 @@ public record GeneratedFiles(@Nullable String error, List<String> paths, List<St
     }
 
     public String encode() {
-        return "{\"type\":\"" + EngineProtocol.GENERATE_ACK + "\""
-                + ",\"error\":" + (error == null ? "null" : Jsonl.quote(error))
-                + ",\"paths\":" + EngineProtocol.quoteArray(paths)
-                + ",\"contents\":" + EngineProtocol.quoteArray(contents)
-                + ",\"notes\":" + EngineProtocol.quoteArray(notes)
-                + "}";
+        return RequestJson.request(EngineProtocol.GENERATE_ACK)
+                .string("error", error)
+                .array("paths", paths)
+                .array("contents", contents)
+                .array("notes", notes)
+                .finish();
     }
 
     public static GeneratedFiles decode(String line) {

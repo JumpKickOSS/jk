@@ -959,6 +959,8 @@ letter — is the Gradle-side follow-up recorded in `guard-parity.txt`.
 | G89 | `catalog-is-the-version-source` (jk-guards.toml, `text`) | a literal `group:artifact:version` coordinate in a Gradle script — every pin lives in gradle/libs.versions.toml, which the lockfiles and verification metadata are written from | text, `**/*.gradle.kts`, code only | `catalog-is-the-version-source` (text) |
 | G90 | `clock-owner` (jk-guards.toml, `forbid`) | a wall-clock or monotonic read (System.currentTimeMillis, System.nanoTime, Instant.now) outside cc.jumpkick.host.time — a time the caller cannot move is a test that has to sleep | forbid, baselined at the swept count and tightened on every build | `clock-owner` (forbid) |
 | G91 | `checkCoverageBand` | a module's unit-test line coverage falling below its `coverage-baseline.txt` line — and an improvement that is not banked, because a number nobody tightens stops meaning anything | ratchet, one line per module (`coverage-baseline.txt`); nightly, with the JaCoCo agent | — |
+| G92 | `json-concat` (jk-guards.toml, `text`) | a JSON object line built by string concatenation — a literal opening `{"` or a `+ ",\"field\"` fragment — in main code; measured here, held by G93 | text, `**/src/main/java`, comments blanked; measured only (the owner is the tree) | `json-concat` (text) |
+| G93 | `json-concat-ratchet` (jk-guards.toml, `metric`) | a file's count of hand-built JSON fragments growing past its baseline — the count only falls, until the pattern is a ban | metric, `matches:json-concat` per file, baselined and tightened on every build | `json-concat-ratchet` (metric) |
 <!-- guards:end -->
 
 `checkCliRuntimeClasspath` and `checkCliNoParseTypes` predate the letters.
@@ -1008,6 +1010,8 @@ by id, kind and why. This block is a `generated` guard's rendering
 | guard-schemas-doc | generated | a key the docs describe and the loader does not accept is a rule that fails to load |
 | install-tests-redirect-m2 | text | an install test without --m2-dir publishes into the developer's real ~/.m2 |
 | jdk-removal-confined | forbid | an ordinary build once deleted the JDK it was running on, twice in one afternoon |
+| json-concat | text | a hand-built JSON line spells its own separator and escaping, and every second speller has drifted from the first |
+| json-concat-ratchet | metric | a hand-built JSON line spells its own separator and escaping, and every second speller has drifted from the first |
 | lock-version-is-one | text | the lockfile schema is version 1 until 1.0 |
 | manifest-names | vocabulary | a file jk owns is named once, in ManifestPaths |
 | method-size | metric | a member that no longer fits a screen no longer fits a reviewer |

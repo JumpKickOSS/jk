@@ -66,30 +66,30 @@ public record ExecPlan(
     }
 
     public String encode() {
-        return "{\"type\":\"" + EngineProtocol.EXEC_PLAN_ACK + "\""
-                + ",\"error\":" + (error == null ? "null" : Jsonl.quote(error))
-                + ",\"mainIssue\":" + Jsonl.quote(mainIssue)
-                + ",\"kind\":" + Jsonl.quote(kind)
-                + ",\"argv\":" + EngineProtocol.quoteArray(argv)
-                + ",\"workingDir\":" + Jsonl.quote(workingDir)
-                + ",\"display\":" + Jsonl.quote(display)
-                + ",\"javaHome\":" + Jsonl.quote(javaHome)
-                + ",\"hotReload\":" + hotReload
-                + ",\"devtoolsInjected\":" + devtoolsInjected
-                + ",\"watchRoots\":" + EngineProtocol.quoteArray(watchRoots)
-                + ",\"linkSrcs\":" + EngineProtocol.quoteArray(linkSrcs)
-                + ",\"linkDests\":" + EngineProtocol.quoteArray(linkDests)
-                + ",\"launcherPath\":" + Jsonl.quote(launcherPath)
-                + ",\"launcherScript\":" + Jsonl.quote(launcherScript)
-                + ",\"binPath\":" + Jsonl.quote(binPath)
-                + ",\"boot\":" + boot
-                + ",\"mainJar\":" + Jsonl.quote(mainJar)
-                + ",\"tier\":" + Jsonl.quote(tier)
-                + ",\"mainClass\":" + Jsonl.quote(mainClass)
-                + ",\"libNames\":" + EngineProtocol.quoteArray(libNames)
-                + ",\"libPaths\":" + EngineProtocol.quoteArray(libPaths)
-                + ",\"deployCommand\":" + Jsonl.quote(deployCommand)
-                + "}";
+        return RequestJson.request(EngineProtocol.EXEC_PLAN_ACK)
+                .string("error", error)
+                .string("mainIssue", mainIssue)
+                .string("kind", kind)
+                .array("argv", argv)
+                .string("workingDir", workingDir)
+                .string("display", display)
+                .string("javaHome", javaHome)
+                .bool("hotReload", hotReload)
+                .bool("devtoolsInjected", devtoolsInjected)
+                .array("watchRoots", watchRoots)
+                .array("linkSrcs", linkSrcs)
+                .array("linkDests", linkDests)
+                .string("launcherPath", launcherPath)
+                .string("launcherScript", launcherScript)
+                .string("binPath", binPath)
+                .bool("boot", boot)
+                .string("mainJar", mainJar)
+                .string("tier", tier)
+                .string("mainClass", mainClass)
+                .array("libNames", libNames)
+                .array("libPaths", libPaths)
+                .string("deployCommand", deployCommand)
+                .finish();
     }
 
     public static ExecPlan decode(String line) {

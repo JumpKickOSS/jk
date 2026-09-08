@@ -16,12 +16,12 @@ public record NewProjectAck(@Nullable String error, String path, String projectI
     }
 
     public String encode() {
-        return "{\"type\":\"" + EngineProtocol.NEW_PROJECT_ACK + "\""
-                + ",\"error\":" + (error == null ? "null" : Jsonl.quote(error))
-                + ",\"path\":" + Jsonl.quote(path)
-                + ",\"projectId\":" + Jsonl.quote(projectId)
-                + ",\"filesWritten\":" + filesWritten
-                + "}";
+        return RequestJson.request(EngineProtocol.NEW_PROJECT_ACK)
+                .string("error", error)
+                .string("path", path)
+                .string("projectId", projectId)
+                .number("filesWritten", filesWritten)
+                .finish();
     }
 
     public static NewProjectAck decode(String line) {

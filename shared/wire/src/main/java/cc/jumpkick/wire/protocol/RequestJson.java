@@ -3,6 +3,7 @@ package cc.jumpkick.wire.protocol;
 
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.jsonl.JsonFields;
+import cc.jumpkick.jsonl.Jsonl;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
@@ -93,6 +94,11 @@ final class RequestJson {
         return this;
     }
 
+    RequestJson optionalBool(String name, @Nullable Boolean value) {
+        fields.optionalBool(name, value);
+        return this;
+    }
+
     RequestJson optionalNumber(String name, long value, long omitAtOrBelow) {
         fields.optionalNumber(name, value, omitAtOrBelow);
         return this;
@@ -131,5 +137,10 @@ final class RequestJson {
 
     String suffix() {
         return fields.suffix();
+    }
+
+    /** The fields with no braces and no leading comma, or {@code ""} — what {@link Jsonl#append} splices. */
+    String body() {
+        return fields.body();
     }
 }

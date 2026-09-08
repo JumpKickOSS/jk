@@ -7,7 +7,11 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
-/** Lifecycle + job-admit JSONL: hello, status, shutdown, cancel, errors. */
+/**
+ * Lifecycle + job-admit JSONL: hello, status, shutdown, cancel, errors. Each line is a record in
+ * this package with its own {@code encode}/{@code decode}; the factories here are the callers'
+ * spelling of them.
+ */
 public final class ProtoLifecycle {
 
     private ProtoLifecycle() {}
@@ -17,7 +21,7 @@ public final class ProtoLifecycle {
     }
 
     public static String auth(String token) {
-        return "{\"type\":\"" + EngineProtocol.AUTH + "\",\"token\":" + Jsonl.quote(token) + "}";
+        return new AuthFrame(token).encode();
     }
 
     public static String hello(String version) {
@@ -26,9 +30,7 @@ public final class ProtoLifecycle {
 
     /** {@code purpose} is {@code connect} (working channel) or {@code probe} (liveness/version). */
     public static String hello(String version, String purpose) {
-        return "{\"type\":\"" + EngineProtocol.HELLO + "\",\"version\":" + Jsonl.quote(version)
-                + ",\"proto\":" + EngineProtocol.PROTOCOL
-                + ",\"purpose\":" + Jsonl.quote(purpose) + "}";
+        return new HelloFrame(version, purpose).encode();
     }
 
     /**
@@ -38,33 +40,19 @@ public final class ProtoLifecycle {
      */
     public static String helloAck(
             String version, long pid, long startedAtMillis, boolean draining, @Nullable String buildId) {
-        return "{\"type\":\""
-                + EngineProtocol.HELLO_ACK
-                + "\",\"version\":"
-                + Jsonl.quote(version)
-                + ",\"pid\":"
-                + pid
-                + ",\"startedAt\":"
-                + startedAtMillis
-                + ",\"proto\":"
-                + EngineProtocol.PROTOCOL
-                + ",\"draining\":"
-                + draining
-                + ",\"buildId\":"
-                + Jsonl.quote(buildId == null ? "" : buildId)
-                + "}";
+        return new HelloAckFrame(version, pid, startedAtMillis, draining, buildId).encode();
     }
 
     public static String ping() {
-        return "{\"type\":\"" + EngineProtocol.PING + "\"}";
+        return new PingFrame().encode();
     }
 
     public static String pong() {
-        return "{\"type\":\"" + EngineProtocol.PONG + "\"}";
+        return new PongFrame().encode();
     }
 
     public static String statusRequest() {
-        return "{\"type\":\"" + EngineProtocol.STATUS + "\"}";
+        return new StatusRequestFrame().encode();
     }
 
     /**
@@ -78,23 +66,12 @@ public final class ProtoLifecycle {
     }
 
     public static String calibrateRequest(boolean force, long engineColdStartMs, boolean allowNetwork) {
-        StringBuilder b = new StringBuilder("{\"type\":\"")
-                .append(EngineProtocol.CALIBRATE_REQUEST)
-                .append("\",\"force\":")
-                .append(force)
-                .append(",\"allowNetwork\":")
-                .append(allowNetwork);
-        if (engineColdStartMs > 0) {
-            b.append(",\"engineColdStartMs\":").append(engineColdStartMs);
-        }
-        // Synthetic journal classification: a hosted calibrate is a fixture run, never history.
-        b.append(",\"trigger\":\"calibrate\"");
-        return b.append('}').toString();
+        return new CalibrateRequestFrame(force, engineColdStartMs, allowNetwork).encode();
     }
 
     /** Idle-optimize request: train worker AOT caches (java-compiler; language workers on-demand). */
     public static String optimizeRequest(boolean force) {
-        return "{\"type\":\"" + EngineProtocol.OPTIMIZE_REQUEST + "\",\"force\":" + force + "}";
+        return new OptimizeRequestFrame(force).encode();
     }
 
     /**
@@ -102,17 +79,7 @@ public final class ProtoLifecycle {
      * are comma-separated tool tags for machine consumers.
      */
     public static String optimizeAck(boolean ok, String trained, String skipped, String summary) {
-        return "{\"type\":\""
-                + EngineProtocol.OPTIMIZE_ACK
-                + "\",\"ok\":"
-                + ok
-                + ",\"trained\":"
-                + Jsonl.quote(trained == null ? "" : trained)
-                + ",\"skipped\":"
-                + Jsonl.quote(skipped == null ? "" : skipped)
-                + ",\"summary\":"
-                + Jsonl.quote(summary == null ? "" : summary)
-                + "}";
+        return new OptimizeAckFrame(ok, trained, skipped, summary).encode();
     }
 
     /**
@@ -135,39 +102,23 @@ public final class ProtoLifecycle {
             boolean junitPlatformUsed,
             boolean resolveUsed,
             String summary) {
-        return "{\"type\":\""
-                + EngineProtocol.CALIBRATE_ACK
-                + "\",\"ok\":"
-                + ok
-                + ",\"msPerWeight\":"
-                + msPerWeight
-                + ",\"jvmForkMs\":"
-                + jvmForkMs
-                + ",\"javacMs\":"
-                + javacMs
-                + ",\"diskIoMs\":"
-                + diskIoMs
-                + ",\"hashCpuMs\":"
-                + hashCpuMs
-                + ",\"junitForkMs\":"
-                + junitForkMs
-                + ",\"junitRunMs\":"
-                + junitRunMs
-                + ",\"junitPlatformMs\":"
-                + junitPlatformMs
-                + ",\"resolveMs\":"
-                + resolveMs
-                + ",\"engineColdStartMs\":"
-                + engineColdStartMs
-                + ",\"measured\":"
-                + measured
-                + ",\"junitPlatformUsed\":"
-                + junitPlatformUsed
-                + ",\"resolveUsed\":"
-                + resolveUsed
-                + ",\"summary\":"
-                + Jsonl.quote(summary == null ? "" : summary)
-                + "}";
+        return new CalibrateAckFrame(
+                        ok,
+                        msPerWeight,
+                        jvmForkMs,
+                        javacMs,
+                        diskIoMs,
+                        hashCpuMs,
+                        junitForkMs,
+                        junitRunMs,
+                        junitPlatformMs,
+                        resolveMs,
+                        engineColdStartMs,
+                        measured,
+                        junitPlatformUsed,
+                        resolveUsed,
+                        summary)
+                .encode();
     }
 
     /**
@@ -176,7 +127,8 @@ public final class ProtoLifecycle {
      * day — followed by the socket-only facts: {@code proto}, {@code draining}, the HTTP URL or the
      * bind error, and the MCP endpoint derived from the HTTP URL when MCP is enabled. Vitals are
      * carried as a map because this class cannot see the engine's snapshot type; the per-field
-     * parameter list this replaced is what let six of them go missing here.
+     * parameter list this replaced is what let six of them go missing here. Not a record: the
+     * vitals' value types are the snapshot's, which no fixed field list here should re-declare.
      */
     public static String statusAck(
             Map<String, Object> vitals,
@@ -212,7 +164,7 @@ public final class ProtoLifecycle {
 
     /** {@code force=true} exits the engine now (abandoning in-flight jobs); false drains gracefully. */
     public static String shutdown(boolean force) {
-        return "{\"type\":\"" + EngineProtocol.SHUTDOWN + "\",\"force\":" + force + "}";
+        return new ShutdownFrame(force).encode();
     }
 
     public static String bye() {
@@ -221,7 +173,7 @@ public final class ProtoLifecycle {
 
     /** Ack for {@link EngineProtocol#SHUTDOWN}: reports the in-flight job count and whether a drain is now underway. */
     public static String bye(int plans, boolean draining) {
-        return "{\"type\":\"" + EngineProtocol.BYE + "\",\"plans\":" + plans + ",\"draining\":" + draining + "}";
+        return new ByeFrame(plans, draining).encode();
     }
 
     /**
@@ -229,33 +181,17 @@ public final class ProtoLifecycle {
      * The successor is already bound; this is status, not a request for work.
      */
     public static String drainStatus(long pid, int plans, String version) {
-        return "{\"type\":\""
-                + EngineProtocol.DRAIN_STATUS
-                + "\",\"pid\":"
-                + pid
-                + ",\"plans\":"
-                + plans
-                + ",\"version\":"
-                + Jsonl.quote(version == null ? "" : version)
-                + "}";
+        return new DrainStatusFrame(pid, plans, version).encode();
     }
 
     /** Predecessor → successor: no in-flight jobs remain; this process is exiting. */
     public static String drainDone(long pid) {
-        return "{\"type\":\"" + EngineProtocol.DRAIN_DONE + "\",\"pid\":" + pid + "}";
+        return new DrainDoneFrame(pid).encode();
     }
 
-    // ---- build-request (client → server) -------------------------------------------------------
-
-    /**
-     * Start a workspace build. {@code force} implies refresh; {@code rerun} bypasses action cache
-     * only. {@code freshenLock} auto-refreshes a stale workspace lock ({@code jk verify} sends
-     * false). Engine forecasts dirty modules itself — no client {@code dirtyHint}.
-     *
-     * /** The one error envelope; see {@link EngineProtocol#ERROR} for the code vocabulary. */
+    /** The one error envelope; see {@link EngineProtocol#ERROR} for the code vocabulary. */
     public static String error(String code, String message) {
-        return "{\"type\":\"" + EngineProtocol.ERROR + "\",\"code\":" + Jsonl.quote(code) + ",\"message\":"
-                + Jsonl.quote(message) + "}";
+        return new ErrorFrame(code, message).encode();
     }
 
     /**
@@ -263,17 +199,7 @@ public final class ProtoLifecycle {
      * and holder {@code jid} when known so clients can render {@code Build #N is already running}.
      */
     public static String alreadyRunning(long buildNumber, long holderRequestId, String message) {
-        return "{\"type\":\""
-                + EngineProtocol.ERROR
-                + "\",\"code\":"
-                + Jsonl.quote(EngineProtocol.ERR_ALREADY_RUNNING)
-                + ",\"message\":"
-                + Jsonl.quote(message)
-                + ",\"buildNumber\":"
-                + buildNumber
-                + ",\"jid\":"
-                + holderRequestId
-                + "}";
+        return new AlreadyRunningFrame(buildNumber, holderRequestId, message).encode();
     }
 
     /** {@link EngineProtocol#JOB_START}: job admitted — {@code jid} is the public cancel handle. */
@@ -294,20 +220,7 @@ public final class ProtoLifecycle {
             long buildNumber,
             @Nullable String detailsPath,
             long etaMs) {
-        StringBuilder b = new StringBuilder("{\"type\":\"")
-                .append(EngineProtocol.JOB_START)
-                .append("\",\"jid\":")
-                .append(jid)
-                .append(",\"kind\":")
-                .append(Jsonl.quote(kind == null ? "" : kind))
-                .append(",\"dir\":")
-                .append(Jsonl.quote(dir == null ? "" : dir));
-        if (buildNumber > 0) b.append(",\"buildNumber\":").append(buildNumber);
-        if (detailsPath != null && !detailsPath.isBlank()) {
-            b.append(",\"detailsPath\":").append(Jsonl.quote(detailsPath));
-        }
-        if (etaMs >= 0) b.append(",\"etaMs\":").append(etaMs);
-        return b.append('}').toString();
+        return new JobStartFrame(jid, kind, dir, buildNumber, detailsPath, etaMs).encode();
     }
 
     /**
@@ -315,30 +228,22 @@ public final class ProtoLifecycle {
      * is going to write under the project's {@code target/}.
      */
     public static String jobFinish(long jid) {
-        return "{\"type\":\"" + EngineProtocol.JOB_FINISH + "\",\"jid\":" + jid + "}";
+        return new JobFinishFrame(jid).encode();
     }
 
     /** {@link EngineProtocol#CANCEL_REQUEST}: cancel by {@code jid} (optional {@code dir} to cancel all for a project). */
     public static String cancelRequest(long jid) {
-        return "{\"type\":\"" + EngineProtocol.CANCEL_REQUEST + "\",\"jid\":" + jid + "}";
+        return new CancelRequestFrame(jid).encode();
     }
 
     /** {@link EngineProtocol#CANCEL_REQUEST} with no jid: cancel every live job under {@code dir}. */
     public static String cancelRequestForDir(String dir) {
-        return "{\"type\":\"" + EngineProtocol.CANCEL_REQUEST + "\",\"dir\":" + Jsonl.quote(dir == null ? "" : dir)
-                + "}";
+        return new CancelDirRequestFrame(dir).encode();
     }
 
     /** {@link EngineProtocol#CANCEL_ACK}. */
     public static String cancelAck(long jid, boolean cancelled, @Nullable String note) {
-        StringBuilder b = new StringBuilder("{\"type\":\"")
-                .append(EngineProtocol.CANCEL_ACK)
-                .append("\",\"jid\":")
-                .append(jid)
-                .append(",\"cancelled\":")
-                .append(cancelled);
-        if (note != null && !note.isBlank()) b.append(",\"note\":").append(Jsonl.quote(note));
-        return b.append('}').toString();
+        return new CancelAckFrame(jid, cancelled, note).encode();
     }
 
     /** {@code error} with {@link EngineProtocol#ERR_REQUEST_FAILED} — the former build-error catch-all. */
@@ -348,6 +253,6 @@ public final class ProtoLifecycle {
 
     /** Keep-alive line during long jobs. */
     public static String heartbeat(long elapsedMillis) {
-        return "{\"type\":\"" + EngineProtocol.HEARTBEAT + "\",\"elapsedMillis\":" + elapsedMillis + "}";
+        return new HeartbeatFrame(elapsedMillis).encode();
     }
 }

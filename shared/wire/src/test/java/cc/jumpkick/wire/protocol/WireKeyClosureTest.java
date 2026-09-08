@@ -166,7 +166,8 @@ class WireKeyClosureTest {
     private static final Pattern MAP_PUT = Pattern.compile("\\.put\\(\\s*\"([^\"]+)\"\\s*,");
 
     private static final Pattern REQUEST_FIELD = Pattern.compile(
-            "(?:\\.|\\b)(?:bool|number|string|array|map|optionalTrue|optionalString|optionalNonBlankString|optionalArray|optionalMap)"
+            "(?:\\.|\\b)(?:bool|number|string|array|map|token|optionalTrue|optionalString|optionalNonBlankString"
+                    + "|optionalNonEmptyString|optionalNumber|optionalArray|optionalMap)"
                     + "\\(\\s*\"([^\"]+)\"\\s*,");
 
     /** Every key read as a string literal — the second argument of a {@code Jsonl} reader call. */
