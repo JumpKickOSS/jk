@@ -11,6 +11,10 @@ import cc.jumpkick.model.Scope;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.runtime.workspace.WorkspaceExecute;
+import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
+import cc.jumpkick.wire.runtime.WorkspaceRequest;
+import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -33,6 +37,96 @@ class WorkspaceTestsKindE2eTest {
     @Test
     void app_tests_can_use_sibling_test_helpers_via_kind_tests(@TempDir Path tmp) throws Exception {
         Path cache = Path.of(System.getProperty("user.dir"), "build", "android-spike-cache");
+        Path ws = testsKindWorkspace(tmp);
+
+        // Parse surface: kind on the test edge, not on main.
+        Path app = ws.resolve("app");
+        JkBuild appManifest = JkBuildParser.parse(app.resolve("jk.toml"));
+        assertThat(appManifest.dependencies().of(Scope.MAIN)).allMatch(d -> !d.isTestsKind());
+        assertThat(appManifest.dependencies().of(Scope.TEST)).anyMatch(d -> d.isTestsKind());
+
+        // Lock at workspace root (union).
+        JkBuild root = JkBuildParser.parse(ws.resolve("jk.toml"));
+        BuildPlan lock =
+                LockPlans.lockBuildPlan(ws, root, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+        assertThat(lock.run().success()).as("workspace lock").isTrue();
+        // Members redirect to the root lock.
+        Files.copy(ws.resolve("jk-lock.toml"), ws.resolve("lib/jk-lock.toml"));
+        Files.copy(ws.resolve("jk-lock.toml"), ws.resolve("app/jk-lock.toml"));
+
+        // Build lib first (incl. tests) so classes/test exists for the kind=tests edge.
+        assertThat(build(ws.resolve("lib"), cache).success())
+                .as("lib build+test")
+                .isTrue();
+        Path libTestClasses = ws.resolve("target/lib/classes/test");
+        assertThat(libTestClasses).isDirectory();
+        assertThat(Files.walk(libTestClasses)
+                        .anyMatch(p -> p.getFileName().toString().endsWith("LibTestHelper.class")))
+                .as("lib test helper compiled")
+                .isTrue();
+
+        // Classpath contract before app tests run.
+        var testCp = WorkspaceClasspath.resolve(app, appManifest, Set.of(Scope.EXPORT, Scope.MAIN, Scope.TEST));
+        assertThat(testCp.jars()).anyMatch(p -> p.endsWith(Path.of("classes/test")));
+        assertThat(testCp.missingSiblingJars()).isEmpty();
+
+        var mainCp = WorkspaceClasspath.resolve(app, appManifest, Set.of(Scope.EXPORT, Scope.MAIN));
+        assertThat(mainCp.jars().stream().map(Object::toString).toList()).noneMatch(p -> p.contains("classes/test"));
+
+        // App tests must pass only if kind=tests put the helper on the test CP.
+        assertThat(build(app, cache).success())
+                .as("app build+test uses sibling kind=tests helpers")
+                .isTrue();
+    }
+
+    /**
+     * The same workspace through the real scheduler, where the publish gate lives: a tests-kind
+     * edge still builds green end to end, with both modules admitted concurrently.
+     *
+     * <p>A smoke test, deliberately — and worth saying why, because the obvious reading is that it
+     * proves the ordering. It does not. An early publish only breaks the build when the consumer
+     * reaches its own {@code compile-test} before the producer's has finished, and in a two-module
+     * fixture it never does: forcing the predicate to "nothing is ever consumed" leaves this test
+     * green. The ordering is pinned deterministically in {@code WorkspacePublishGateTest}, against
+     * the publish callback itself; what this one adds is that the narrowed gate does not break a
+     * real workspace that has the edge.
+     */
+    @Test
+    void the_scheduler_holds_a_tests_kind_producer_until_its_test_classes_exist(@TempDir Path tmp) throws Exception {
+        Path cache = Files.createDirectories(tmp.resolve("cache"));
+        Path ws = testsKindWorkspace(tmp);
+
+        JkBuild root = JkBuildParser.parse(ws.resolve("jk.toml"));
+        BuildPlan lock =
+                LockPlans.lockBuildPlan(ws, root, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+        assertThat(lock.run().success()).as("workspace lock").isTrue();
+        Files.copy(ws.resolve("jk-lock.toml"), ws.resolve("lib/jk-lock.toml"));
+        Files.copy(ws.resolve("jk-lock.toml"), ws.resolve("app/jk-lock.toml"));
+
+        WorkspaceResult result = WorkspaceExecute.buildWorkspace(
+                new WorkspaceRequest(ws, cache, null, 0, null, false, false, 2, null, false, false),
+                new WorkspaceBuildListener() {});
+
+        assertThat(result.errors()).isEmpty();
+        assertThat(result.success())
+                .as("app's compile-test resolves LibTestHelper, so lib published after its own test compile")
+                .isTrue();
+
+        // lib's test classes are the artifact the edge selects: they must be on disk, complete.
+        Path libTestClasses = ws.resolve("target/lib/classes/test");
+        assertThat(libTestClasses).isDirectory();
+        try (var walk = Files.walk(libTestClasses)) {
+            assertThat(walk.anyMatch(p -> p.getFileName().toString().equals("LibTestHelper.class")))
+                    .isTrue();
+        }
+    }
+
+    /**
+     * lib publishes a test helper only its own {@code classes/test} carries; app selects it with
+     * {@code kind = "tests"}. The one workspace both tests read, so the classpath contract and the
+     * scheduler's publish gate cannot be checked against two different shapes.
+     */
+    private static Path testsKindWorkspace(Path tmp) throws Exception {
         Path ws = Files.createDirectories(tmp.resolve("ws"));
 
         Files.writeString(ws.resolve("jk.toml"), """
@@ -121,42 +215,7 @@ class WorkspaceTestsKindE2eTest {
                     }
                 }
                 """);
-
-        // Parse surface: kind on the test edge, not on main.
-        JkBuild appManifest = JkBuildParser.parse(app.resolve("jk.toml"));
-        assertThat(appManifest.dependencies().of(Scope.MAIN)).allMatch(d -> !d.isTestsKind());
-        assertThat(appManifest.dependencies().of(Scope.TEST)).anyMatch(d -> d.isTestsKind());
-
-        // Lock at workspace root (union).
-        JkBuild root = JkBuildParser.parse(ws.resolve("jk.toml"));
-        BuildPlan lock =
-                LockPlans.lockBuildPlan(ws, root, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
-        assertThat(lock.run().success()).as("workspace lock").isTrue();
-        // Members redirect to the root lock.
-        Files.copy(ws.resolve("jk-lock.toml"), lib.resolve("jk-lock.toml"));
-        Files.copy(ws.resolve("jk-lock.toml"), app.resolve("jk-lock.toml"));
-
-        // Build lib first (incl. tests) so classes/test exists for the kind=tests edge.
-        assertThat(build(lib, cache).success()).as("lib build+test").isTrue();
-        Path libTestClasses = ws.resolve("target/lib/classes/test");
-        assertThat(libTestClasses).isDirectory();
-        assertThat(Files.walk(libTestClasses)
-                        .anyMatch(p -> p.getFileName().toString().endsWith("LibTestHelper.class")))
-                .as("lib test helper compiled")
-                .isTrue();
-
-        // Classpath contract before app tests run.
-        var testCp = WorkspaceClasspath.resolve(app, appManifest, Set.of(Scope.EXPORT, Scope.MAIN, Scope.TEST));
-        assertThat(testCp.jars()).anyMatch(p -> p.endsWith(Path.of("classes/test")));
-        assertThat(testCp.missingSiblingJars()).isEmpty();
-
-        var mainCp = WorkspaceClasspath.resolve(app, appManifest, Set.of(Scope.EXPORT, Scope.MAIN));
-        assertThat(mainCp.jars().stream().map(Object::toString).toList()).noneMatch(p -> p.contains("classes/test"));
-
-        // App tests must pass only if kind=tests put the helper on the test CP.
-        assertThat(build(app, cache).success())
-                .as("app build+test uses sibling kind=tests helpers")
-                .isTrue();
+        return ws;
     }
 
     private static BuildPlanResult build(Path module, Path cache) {

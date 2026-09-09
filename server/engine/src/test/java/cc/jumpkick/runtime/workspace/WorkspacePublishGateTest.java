@@ -1,0 +1,214 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.runtime.workspace;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import cc.jumpkick.model.Dependency;
+import cc.jumpkick.model.DependencyKind;
+import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Project;
+import cc.jumpkick.model.Scope;
+import cc.jumpkick.model.VersionSelector;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildStage;
+import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.runtime.BuildGraph;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import org.junit.jupiter.api.Test;
+
+/**
+ * When a module may publish its artifacts to its dependents.
+ *
+ * <p>{@code compile-test} is readable across modules only through a {@code kind = "tests"} edge, so
+ * it gates the publish for the modules some sibling selects that way and for no others. Getting
+ * that predicate wrong is not loud: the consumer compiles against a {@code classes/test} that is
+ * missing or mid-write and reports {@code cannot find symbol} in an unrelated module. Both sides of
+ * it are pinned here.
+ */
+class WorkspacePublishGateTest {
+
+    private static final Path WS = Path.of("/ws");
+
+    @Test
+    void aTestsKindEdgeMarksTheProducerConsumed() {
+        var lib = unit("lib", deps(Map.of()));
+        var app = unit("app", deps(Map.of(Scope.TEST, List.of(Dependency.workspace("lib", DependencyKind.TESTS)))));
+
+        assertThat(WorkspaceRunPhase.testClassesConsumed(List.of(lib, app)))
+                .as("lib's test classes are on app's test classpath, so lib still waits")
+                .containsExactly(WS.resolve("lib"));
+    }
+
+    @Test
+    void aPlainWorkspaceEdgeMarksNothingConsumed() {
+        var lib = unit("lib", deps(Map.of()));
+        var app = unit("app", deps(Map.of(Scope.MAIN, List.of(Dependency.workspace("lib")))));
+
+        assertThat(WorkspaceRunPhase.testClassesConsumed(List.of(lib, app)))
+                .as("a main edge reads lib's jar, never its test output")
+                .isEmpty();
+    }
+
+    /** The engine reads merged manifests, where a placeholder may already be a real coord. */
+    @Test
+    void aTestsKindEdgeResolvesByCoordAsWellAsByPlaceholder() {
+        var lib = unit("lib", deps(Map.of()));
+        var app = unit(
+                "app",
+                deps(Map.of(
+                        Scope.TEST,
+                        List.of(Dependency.of("lib", "ex:lib", VersionSelector.parse("=1.0"))
+                                .withKind(DependencyKind.TESTS)))));
+
+        assertThat(WorkspaceRunPhase.testClassesConsumed(List.of(lib, app))).containsExactly(WS.resolve("lib"));
+    }
+
+    /** An external Maven test-jar selects no sibling, so it must not hold the whole workspace back. */
+    @Test
+    void anExternalTestsKindEdgeMarksNothingConsumed() {
+        var lib = unit("lib", deps(Map.of()));
+        var app = unit(
+                "app",
+                deps(Map.of(
+                        Scope.TEST,
+                        List.of(Dependency.of("guava", "com.google.guava:guava", VersionSelector.parse("=33.0"))
+                                .withKind(DependencyKind.TESTS)))));
+
+        assertThat(WorkspaceRunPhase.testClassesConsumed(List.of(lib, app))).isEmpty();
+    }
+
+    @Test
+    void anUnconsumedModuleDoesNotWaitForItsTestCompile() {
+        BuildPlan plan = planWith(
+                TaskNames.PACKAGE_JAR, TaskNames.COMPILE_TEST, TaskNames.COMPILE_TEST_FIXTURES, TaskNames.RUN_TESTS);
+
+        assertThat(WorkspaceRunPhase.artifactWaitSet(plan, false))
+                .containsExactlyInAnyOrder(TaskNames.PACKAGE_JAR, TaskNames.COMPILE_TEST_FIXTURES);
+    }
+
+    @Test
+    void aConsumedModuleStillWaitsForItsTestCompile() {
+        BuildPlan plan = planWith(
+                TaskNames.PACKAGE_JAR, TaskNames.COMPILE_TEST, TaskNames.COMPILE_TEST_FIXTURES, TaskNames.RUN_TESTS);
+
+        assertThat(WorkspaceRunPhase.artifactWaitSet(plan, true))
+                .containsExactlyInAnyOrder(
+                        TaskNames.PACKAGE_JAR, TaskNames.COMPILE_TEST, TaskNames.COMPILE_TEST_FIXTURES);
+    }
+
+    /** Fixtures are sibling-visible with no edge to declare, so they gate either way. */
+    @Test
+    void testFixturesGateThePublishUnconditionally() {
+        BuildPlan plan = planWith(TaskNames.PACKAGE_JAR, TaskNames.COMPILE_TEST_FIXTURES);
+
+        assertThat(WorkspaceRunPhase.artifactWaitSet(plan, false)).contains(TaskNames.COMPILE_TEST_FIXTURES);
+        assertThat(WorkspaceRunPhase.artifactWaitSet(plan, true)).contains(TaskNames.COMPILE_TEST_FIXTURES);
+    }
+
+    /**
+     * With nothing else to publish on, the scheduler's fallback is publish-on-completion, which sits
+     * behind {@code run-tests}. The test compile is earlier, so it stays the gate.
+     */
+    @Test
+    void aModuleWithNoPackagingStillPublishesAtItsTestCompile() {
+        BuildPlan plan = planWith(TaskNames.COMPILE_TEST, TaskNames.RUN_TESTS);
+
+        assertThat(WorkspaceRunPhase.artifactWaitSet(plan, false)).containsExactly(TaskNames.COMPILE_TEST);
+    }
+
+    @Test
+    void aPlanWithNoArtifactStepsWaitsForNothing() {
+        assertThat(WorkspaceRunPhase.artifactWaitSet(planWith(TaskNames.COMPILE_JAVA), false))
+                .isEmpty();
+    }
+
+    /**
+     * The gate observed as the scheduler observes it: when {@code artifactsReady} actually fires.
+     *
+     * <p>{@code artifactWaitSet} says which steps count; these two say that the publish lands on the
+     * last of them and not before. That is the ordering dependents are admitted on, and it is the
+     * half a wait-set assertion cannot reach — a workspace build is no use for it, because an
+     * early publish only loses the race when the consumer is quick enough to reach its own test
+     * compile first, which a two-module fixture is not.
+     */
+    @Test
+    void aConsumedModulePublishesOnlyAfterItsTestCompile() {
+        List<String> log = new ArrayList<>();
+        BuildPlan plan = orderedPlan(log);
+
+        WorkspaceRunPhase.watchArtifactSteps(plan, true, () -> log.add("PUBLISH"));
+        assertThat(plan.run().success()).isTrue();
+
+        assertThat(log)
+                .as("the test classes a sibling reads must exist before anything is admitted on them")
+                .containsExactly(TaskNames.PACKAGE_JAR, TaskNames.COMPILE_TEST, "PUBLISH", TaskNames.RUN_TESTS);
+    }
+
+    @Test
+    void anUnconsumedModulePublishesBeforeItsTestCompileRuns() {
+        List<String> log = new ArrayList<>();
+        BuildPlan plan = orderedPlan(log);
+
+        WorkspaceRunPhase.watchArtifactSteps(plan, false, () -> log.add("PUBLISH"));
+        assertThat(plan.run().success()).isTrue();
+
+        assertThat(log)
+                .as("nothing can read this module's test classes, so dependents wait on the jar alone")
+                .containsExactly(TaskNames.PACKAGE_JAR, "PUBLISH", TaskNames.COMPILE_TEST, TaskNames.RUN_TESTS);
+    }
+
+    /** package-jar → compile-test → run-tests, each recording itself as it executes. */
+    private static BuildPlan orderedPlan(List<String> log) {
+        BuildPlan.Builder b = BuildPlan.builder("module");
+        b.addTask(recording(TaskNames.PACKAGE_JAR, log));
+        b.addTask(Task.builder(TaskNames.COMPILE_TEST)
+                .stage(BuildStage.PACKAGE)
+                .requires(TaskNames.PACKAGE_JAR)
+                .ticks(1)
+                .execute(ctx -> log.add(TaskNames.COMPILE_TEST))
+                .build());
+        b.addTask(Task.builder(TaskNames.RUN_TESTS)
+                .stage(BuildStage.PACKAGE)
+                .requires(TaskNames.COMPILE_TEST)
+                .ticks(1)
+                .execute(ctx -> log.add(TaskNames.RUN_TESTS))
+                .build());
+        return b.build();
+    }
+
+    private static Task recording(String name, List<String> log) {
+        return Task.builder(name)
+                .stage(BuildStage.PACKAGE)
+                .ticks(1)
+                .execute(ctx -> log.add(name))
+                .build();
+    }
+
+    private static BuildPlan planWith(String... steps) {
+        BuildPlan.Builder b = BuildPlan.builder("module");
+        for (String step : steps) {
+            b.addTask(Task.builder(step)
+                    .stage(BuildStage.PACKAGE)
+                    .ticks(1)
+                    .execute(ctx -> {})
+                    .build());
+        }
+        return b.build();
+    }
+
+    private static JkBuild.Dependencies deps(Map<Scope, List<Dependency>> byScope) {
+        return new JkBuild.Dependencies(byScope);
+    }
+
+    private static BuildGraph.BuildUnit unit(String name, JkBuild.Dependencies dependencies) {
+        JkBuild manifest = JkBuild.builder(
+                        Project.builder("ex", name, "1.0").jdkMajor(25).java(25).build())
+                .dependencies(dependencies)
+                .build();
+        return new BuildGraph.BuildUnit(WS.resolve(name), manifest, "ex:" + name, BuildGraph.Origin.MODULE);
+    }
+}
