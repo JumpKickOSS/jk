@@ -93,14 +93,17 @@ class CodeFormatterTimeoutTest {
         assertThat(memo.timedOutAt(memo.keyFor(Files.readAllBytes(queued)))).isZero();
     }
 
+    /** Nesting deep enough to account for a stall — the shape the memo and the message both key on. */
+    private static final String NESTED = """
+            class Wedged {
+                Object o = a(b(c(d(e(f(g(h(i(j(k -> k))))))))));
+            }
+            """;
+
     @Test
     void a_timeout_message_carries_the_post_mortem_when_the_source_explains_it() throws Exception {
         var spec = spec("Wedged.java");
-        Files.writeString(dir.resolve("Wedged.java"), """
-                class Wedged {
-                    Object o = a(b(c(d(e(f(g(h(i(j(k -> k))))))))));
-                }
-                """, StandardCharsets.UTF_8);
+        Files.writeString(dir.resolve("Wedged.java"), NESTED, StandardCharsets.UTF_8);
         Emissions out = new Emissions();
 
         CodeFormatter.formatAll(spec, out.writer(), null, work());
@@ -136,8 +139,9 @@ class CodeFormatterTimeoutTest {
      * reading side.
      */
     @Test
-    void a_timed_out_file_is_remembered_for_the_next_run() throws Exception {
+    void a_timed_out_file_whose_shape_explains_it_is_remembered_for_the_next_run() throws Exception {
         var spec = spec("Wedged.java");
+        Files.writeString(dir.resolve("Wedged.java"), NESTED, StandardCharsets.UTF_8);
         FormatStampCache memo = new FormatStampCache(dir.resolve("stamps"), CONFIG_KEY);
         Emissions out = new Emissions();
 
@@ -145,6 +149,30 @@ class CodeFormatterTimeoutTest {
 
         Path file = spec.files.getFirst().file().toPath();
         assertThat(memo.timedOutAt(memo.keyFor(Files.readAllBytes(file)))).isEqualTo(spec.fileTimeoutMs);
+    }
+
+    /**
+     * An ordinary file that blew the limit is far more likely a host that stalled for a moment than a
+     * source nothing can format. Remembering that would refuse a good file on every later run until
+     * somebody edited it — much worse than paying the limit again.
+     */
+    @Test
+    void a_timed_out_file_of_ordinary_shape_is_not_remembered() throws Exception {
+        var spec = spec("Wedged.java");
+        FormatStampCache memo = new FormatStampCache(dir.resolve("stamps"), CONFIG_KEY);
+        Emissions out = new Emissions();
+
+        CodeFormatter.Tally tally = CodeFormatter.formatAll(spec, out.writer(), memo, work());
+
+        assertThat(tally.errors()).isEqualTo(1);
+        Path file = spec.files.getFirst().file().toPath();
+        assertThat(memo.timedOutAt(memo.keyFor(Files.readAllBytes(file)))).isZero();
+        assertThat(memo.timeoutCount()).isZero();
+        // And it says so, with the one knob that answers both remaining explanations: a very large
+        // file, or a very slow host. A bare "timed out" answers neither.
+        assertThat(out.lineFor("Wedged.java"))
+                .contains("nothing about this file's shape explains that")
+                .contains("jk.format.file-timeout-ms");
     }
 
     @Test

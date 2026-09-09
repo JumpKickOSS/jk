@@ -38,13 +38,24 @@ final class FormatWatchdog implements AutoCloseable {
     static final long DEFAULT_WARN_MS = 500;
 
     /**
-     * Kill threshold. The slowest single file across a 3,000-file Java and Kotlin tree is ~120&nbsp;ms,
-     * and ~785&nbsp;ms with the pool deliberately oversubscribed eight to one — a shape the run never
-     * chooses for itself, since {@code CodeFormatter.concurrency} sizes it to the visible cores. Two
-     * seconds is therefore not a slow file; it is a break search that has stopped tracking the size
-     * of its source. {@code jk.format.file-timeout-ms} raises it for a host that disagrees.
+     * Kill threshold, and deliberately more generous than measurement alone would ask for.
+     *
+     * <p>What the measurements say is the <em>shape</em> of the risk, not the number. The slowest
+     * single file across a 3,000-file Java and Kotlin tree is ~120&nbsp;ms, ~160&nbsp;ms with no
+     * worker AOT cache (a fresh host, cold JIT), and ~150&nbsp;ms with the engine pinned to two
+     * cores — because {@code CodeFormatter.concurrency} sizes the pool to the visible cores, so a
+     * small host lengthens the <em>run</em> rather than its files. Only eight-to-one
+     * oversubscription, which the run never chooses for itself, reaches ~785&nbsp;ms.
+     *
+     * <p>All of which is one machine. A fractional-vCPU runner, a host with bad I/O, or a
+     * multi-megabyte generated source are not in that sample, and the point of the ceiling is to be
+     * generous where the evidence is thin. Three seconds is a judgement, not a reading. It costs a
+     * pathological file one extra second exactly once, because the verdict is remembered
+     * ({@code FormatStampCache}), and it leaves a file that is merely on a bad host alone.
+     *
+     * <p>{@code jk.format.file-timeout-ms} moves it either way.
      */
-    static final long DEFAULT_TIMEOUT_MS = 2_000;
+    static final long DEFAULT_TIMEOUT_MS = 3_000;
 
     private static final long MIN_TICK_MS = 25;
     private static final long MAX_TICK_MS = 250;

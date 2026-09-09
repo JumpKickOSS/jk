@@ -3,21 +3,14 @@ package cc.jumpkick.format;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.io.File;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 
 /**
  * The post-mortem a timed-out file gets: the nesting shape that explains a formatter's line-break
- * search blowing up, and silence when the file's shape explains nothing.
+ * search blowing up, and silence when the file's shape explains nothing. The same threshold decides
+ * whether the run remembers the verdict.
  */
 class SourceShapeTest {
-
-    @TempDir
-    Path dir;
 
     /** The shape that pegged a formatter for minutes: providers built from nested {@code flatMap}s. */
     private static final String NESTED_LAMBDAS = """
@@ -66,10 +59,8 @@ class SourceShapeTest {
     }
 
     @Test
-    void the_post_mortem_names_the_nesting_and_the_line() throws Exception {
-        File file = write("Providers.java", NESTED_LAMBDAS);
-
-        assertThat(SourceShape.postMortem(file))
+    void the_post_mortem_names_the_nesting_and_the_line() {
+        assertThat(SourceShape.postMortem(NESTED_LAMBDAS))
                 .contains("deepest expression nesting here is")
                 .contains("at line 5")
                 .contains("6 nested lambdas")
@@ -77,20 +68,34 @@ class SourceShapeTest {
     }
 
     @Test
-    void an_unremarkable_file_gets_no_post_mortem() throws Exception {
-        File file = write("Ordinary.java", "class Ordinary {\n    int a = 1;\n}\n");
-
-        assertThat(SourceShape.postMortem(file)).isEmpty();
+    void an_unremarkable_shape_gets_no_post_mortem() {
+        assertThat(SourceShape.postMortem("class Ordinary {\n    int a = 1;\n}\n"))
+                .isEmpty();
     }
 
+    /**
+     * The same threshold decides whether a timeout is <em>remembered</em>, so both sides of it are
+     * pinned: nesting that explains a stall is worth recording, an ordinary file is not — recording
+     * that would refuse a good file on every later run over a host that hiccuped once.
+     */
     @Test
-    void an_unreadable_file_gets_no_post_mortem() {
-        assertThat(SourceShape.postMortem(dir.resolve("Missing.java").toFile())).isEmpty();
+    void only_a_shape_that_explains_a_stall_is_worth_remembering() {
+        assertThat(SourceShape.of(NESTED_LAMBDAS).explainsAStall()).isTrue();
+        assertThat(SourceShape.of("class Ordinary {\n    int a = Math.max(1, 2);\n}\n")
+                        .explainsAStall())
+                .isFalse();
     }
 
-    private File write(String name, String source) throws Exception {
-        Path p = dir.resolve(name);
-        Files.writeString(p, source, StandardCharsets.UTF_8);
-        return p.toFile();
+    /** Deep parentheses alone are enough; so are nested lambdas alone. Either arm, not both. */
+    @Test
+    void either_kind_of_nesting_explains_a_stall_on_its_own() {
+        assertThat(SourceShape.of("class A { Object o = a(b(c(d(e(f(g(h(1)))))))); }\n")
+                        .explainsAStall())
+                .as("8 parentheses deep, no lambdas")
+                .isTrue();
+        assertThat(SourceShape.of("class A { Object o = f(a -> g(b -> h(c -> c))); }\n")
+                        .explainsAStall())
+                .as("3 nested lambdas, only 3 parentheses deep")
+                .isTrue();
     }
 }

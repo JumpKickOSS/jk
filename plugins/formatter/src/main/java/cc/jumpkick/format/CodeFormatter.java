@@ -221,19 +221,38 @@ public final class CodeFormatter implements Plugin {
             FormatWatchdog dog, AtomicInteger abandoned, int slots, long limitMs, FormatStampCache memo) {}
 
     /**
-     * Report a file the run gave up on, and remember it so the next run does not spend the limit
-     * reaching the same verdict.
+     * Report a file the run gave up on, and — when its shape accounts for that — remember it so the
+     * next run does not spend the limit reaching the same verdict.
+     *
+     * <p>Only a shape that {@linkplain SourceShape.Shape#explainsAStall explains the stall} is
+     * remembered. A file of ordinary shape that blew the limit is far more likely a host that
+     * stalled than a source nothing can format, and a memo on it would refuse a good file on every
+     * later run until somebody edited it — worse than paying the limit again.
      *
      * <p>The memo is keyed on the bytes <em>as they are now</em>, which is what the next run will
      * read: the FQCN pass may already have rewritten the file before the formatter stalled on the
-     * result. One read serves both the memo key and the post-mortem.
+     * result. One read serves the key, the decision and the message.
      */
     private static FileResult timedOut(FileRef ref, String verdict, Settling s) {
         byte[] bytes = readOrNull(ref.file());
         if (bytes == null) return new FileResult(ref.file(), "error", verdict);
-        if (s.memo() != null) s.memo().recordTimeout(s.memo().keyFor(bytes), s.limitMs());
-        return new FileResult(ref.file(), "error", verdict + SourceShape.postMortem(text(bytes)));
+        SourceShape.Shape shape = SourceShape.of(text(bytes));
+        if (s.memo() != null && shape.explainsAStall()) {
+            s.memo().recordTimeout(s.memo().keyFor(bytes), s.limitMs());
+        }
+        String note = SourceShape.phrase(shape);
+        return new FileResult(ref.file(), "error", verdict + (note.isEmpty() ? UNEXPLAINED : note));
     }
+
+    /**
+     * What a timeout the source's shape does not account for says instead.
+     *
+     * <p>That file is deliberately not remembered, so it will be attempted again — and the user is
+     * the only one who can tell a genuinely enormous source from a host that was busy. Both are
+     * answered by the same knob, and a bare "timed out" answers neither.
+     */
+    private static final String UNEXPLAINED = "; nothing about this file's shape explains that, so it was not"
+            + " remembered — raise jk.format.file-timeout-ms if the file is simply very large, or this host slow";
 
     /**
      * Whether a remembered timeout still answers for this run.

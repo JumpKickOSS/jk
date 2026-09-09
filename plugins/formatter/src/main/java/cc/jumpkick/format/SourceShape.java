@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.format;
 
-import java.io.File;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.util.Arrays;
 
 /**
@@ -30,34 +27,38 @@ final class SourceShape {
      * Deepest parenthesis nesting in a file, the line it peaks on, and how many lambda arrows are
      * open at once at the deepest point of any nest.
      */
-    record Shape(int parenDepth, int parenLine, int lambdaNesting) {}
+    record Shape(int parenDepth, int parenLine, int lambdaNesting) {
 
-    /**
-     * As {@link #postMortem(String)}, reading {@code file}. Empty when it cannot be read — a
-     * diagnostic must not become the failure.
-     */
-    static String postMortem(File file) {
-        try {
-            return postMortem(Files.readString(file.toPath(), StandardCharsets.UTF_8));
-        } catch (Exception e) {
-            return "";
+        /**
+         * Whether this shape accounts for a formatter stalling on the file.
+         *
+         * <p>Two uses, and the second is why the threshold carries weight. It decides whether the
+         * timeout error can say <em>why</em>, and it decides whether the verdict is worth
+         * remembering: an ordinary file that blew the limit is far more likely a host that stalled
+         * than a source nothing can format, and remembering that would refuse a good file on every
+         * later run.
+         */
+        boolean explainsAStall() {
+            return parenDepth >= NOTABLE_PAREN_DEPTH || lambdaNesting >= NOTABLE_LAMBDA_NESTING;
         }
     }
 
     /**
-     * The tail to append to a timeout message: a phrase naming the shape, or empty when the source's
-     * shape is unremarkable and so explains nothing.
+     * The tail to append to a timeout message: a phrase naming the shape, or empty when the shape
+     * {@linkplain Shape#explainsAStall explains nothing}.
      */
-    static String postMortem(String source) {
-        Shape shape = of(source);
-        if (shape.parenDepth() < NOTABLE_PAREN_DEPTH && shape.lambdaNesting() < NOTABLE_LAMBDA_NESTING) {
-            return "";
-        }
+    static String phrase(Shape shape) {
+        if (!shape.explainsAStall()) return "";
         String lambdas = shape.lambdaNesting() >= 2 ? ", " + shape.lambdaNesting() + " nested lambdas" : "";
         return "; deepest expression nesting here is " + shape.parenDepth() + " parentheses at line "
                 + shape.parenLine() + lambdas
                 + " — a line-break search grows steeply with nesting, so splitting that expression into"
                 + " named locals or helper methods is usually the fix";
+    }
+
+    /** {@link #phrase} for {@code source}, measured. */
+    static String postMortem(String source) {
+        return phrase(of(source));
     }
 
     /**

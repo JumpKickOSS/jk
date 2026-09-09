@@ -148,34 +148,48 @@ nested lambdas can hold a thread far longer than a 60 KB class does.
 | Threshold | Default | What happens |
 |-----------|---------|--------------|
 | **Named** | 500 ms | The file is printed as `slow`, with its elapsed time, *while it is still being formatted*. Repeats on a doubling interval, so a long stall is named a handful of times rather than hundreds. |
-| **Timed out** | 2 s | jk gives up on that file. It is reported as an `error` naming the path, the rest of the run keeps going, and `jk format` exits non-zero. |
+| **Timed out** | 3 s | jk gives up on that file. It is reported as an `error` naming the path, the rest of the run keeps going, and `jk format` exits non-zero. |
 
-Two seconds is a wide margin, not a tight one: across a 3,000-file Java and Kotlin tree the
+Three seconds is a wide margin, not a tight one: across a 3,000-file Java and Kotlin tree the
 slowest single file is around 120 ms, and the 60 KB classes are nearer 110 ms. A file that has been
-running for two seconds is not a big file — it is a search that has stopped tracking the size of
-the source.
+running for three seconds is not a big file — it is a search that has stopped tracking the size of
+the source. The margin is deliberately generous for hosts that are nothing like that one.
 
 A timed-out file is **not** formatted and **not** recorded as clean, so `jk format` keeps
 reporting it and keeps exiting non-zero until you deal with it. When the source explains the
 stall, the error says so:
 
 ```
-  error  src/test/java/example/ProviderTest.java: timed out after 2.0s (limit 2000 ms);
+  error  src/test/java/example/ProviderTest.java: timed out after 3.0s (limit 3000 ms);
          deepest expression nesting here is 11 parentheses at line 214, 6 nested lambdas —
          a line-break search grows steeply with nesting, so splitting that expression into
          named locals or helper methods is usually the fix
 ```
 
-The timeout is paid **once**. jk remembers the file by content, so later runs report it straight
-away instead of spending the limit again:
+For those files the timeout is paid **once**: jk remembers them by content, so later runs report
+them straight away instead of spending the limit again.
 
 ```
-  error  src/test/java/example/ProviderTest.java: timed out at a 2000 ms limit on an earlier
+  error  src/test/java/example/ProviderTest.java: timed out at a 3000 ms limit on an earlier
          run and has not changed since, so it was not retried; deepest expression nesting …
 ```
 
-Editing the file — any change at all — or raising the limit makes the next run attempt it for
-real. So does a change to the formatting configuration, which re-keys every cache jk keeps.
+Only files whose nesting accounts for the stall are remembered. A file of ordinary shape that
+somehow blew the limit is far more likely a busy host — or a genuinely enormous source — than
+something that cannot be formatted, so it is reported and then **retried in full** next time; a
+wrong memo would refuse a good file on every later run. Those say so, and name the knob:
+
+```
+  error  build/generated/demo/Huge.java: timed out after 3.0s (limit 3000 ms); nothing about
+         this file's shape explains that, so it was not remembered — raise
+         jk.format.file-timeout-ms if the file is simply very large, or this host slow
+```
+
+For scale: a 4.7 MB, 200,000-line flat Java source takes about 9.5 s to format. Machine-generated
+sources that big are the main reason to raise the limit.
+
+Editing a remembered file — any change at all — or raising the limit makes the next run attempt it
+for real. So does a change to the formatting configuration, which re-keys every cache jk keeps.
 
 Both thresholds are formatter-worker JVM properties, in milliseconds; `0` turns either off. Raise
 the timeout if a genuinely slow host starts reporting files you know are fine — the error names
@@ -185,7 +199,7 @@ forks, not only the formatter.
 ```toml
 # jk.toml
 [jvm]
-args = ["-Djk.format.file-timeout-ms=10000", "-Djk.format.file-warn-ms=2000"]
+args = ["-Djk.format.file-timeout-ms=15000", "-Djk.format.file-warn-ms=2000"]
 ```
 
 ```bash
