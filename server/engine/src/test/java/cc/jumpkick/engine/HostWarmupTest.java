@@ -79,25 +79,20 @@ class HostWarmupTest {
     void needsCalibration_settles_once_a_measured_probe_is_on_disk(@TempDir Path home) throws Exception {
         withJkHome(home, () -> {
             Calibration.invalidateMemo();
-            assertThat(HostWarmup.needsCalibration())
-                    .as("nothing on disk yet")
-                    .isTrue();
+            assertThat(HostWarmup.needsCalibration()).as("nothing on disk yet").isTrue();
 
             // Written as text rather than through HostMetricsFile (package-private, and a
             // round-trip through the writer would only prove the writer agrees with itself).
             Path file = JkDirs.builds().resolve("host-metrics.toml");
             Files.createDirectories(file.getParent());
-            Files.writeString(
-                    file,
-                    """
+            Files.writeString(file, """
                     [calibration]
                     schema        = 1
                     ms-per-weight = 120.0
                     measured      = true
                     jk-version    = "%s"
                     updated       = %d
-                    """
-                            .formatted(JkVersion.VERSION, System.currentTimeMillis()));
+                    """.formatted(JkVersion.VERSION, System.currentTimeMillis()));
             Calibration.invalidateMemo();
 
             assertThat(HostWarmup.needsCalibration())

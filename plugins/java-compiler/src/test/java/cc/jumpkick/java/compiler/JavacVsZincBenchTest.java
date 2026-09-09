@@ -42,12 +42,14 @@ class JavacVsZincBenchTest {
         Path src = dir.resolve("src");
         List<Path> sources = generate(src, FILES);
 
-        long javac = best(RUNS, WARMUPS, () -> runJavac(dir, sources));
+        long javac = best(RUNS, WARMUPS, () -> runJavac(dir, sources, false));
+        long analysis = best(RUNS, WARMUPS, () -> runJavac(dir, sources, true));
         long zinc = best(RUNS, WARMUPS, () -> runZinc(dir, sources));
 
         System.out.printf(
-                "%njavac-vs-zinc  files=%d  javac=%d ms  zinc=%d ms  zinc/javac=%.2fx  os=%s%n",
-                FILES, javac, zinc, zinc / (double) javac, System.getProperty("os.name"));
+                "%njavac-vs-zinc  files=%d  javac=%d ms  analysis-only=%d ms  codegen+write=%d ms"
+                        + "  zinc=%d ms  zinc/javac=%.2fx  os=%s%n",
+                FILES, javac, analysis, javac - analysis, zinc, zinc / (double) javac, System.getProperty("os.name"));
 
         assertThat(countClasses(dir.resolve("out-javac"))).isEqualTo(FILES);
         assertThat(countClasses(dir.resolve("out-zinc"))).isEqualTo(FILES);
@@ -64,9 +66,7 @@ class JavacVsZincBenchTest {
             Path f = src.resolve("p/C" + i + ".java");
             Files.createDirectories(f.getParent());
             int peer = (i + 1) % n;
-            Files.writeString(
-                    f,
-                    """
+            Files.writeString(f, """
                     package p;
                     import java.util.*;
                     import java.util.stream.*;
@@ -88,17 +88,27 @@ class JavacVsZincBenchTest {
                         }
                         public Optional<C%d> peer() { return Optional.of(new C%d()); }
                     }
-                    """
-                            .formatted(i, i, peer, peer));
+                    """.formatted(i, i, peer, peer));
             out.add(f);
         }
         return out;
     }
 
-    /** In-process {@code javac} over a clean output directory. */
-    private static long runJavac(Path dir, List<Path> sources) throws IOException {
-        Path out = fresh(dir.resolve("out-javac"));
+    /**
+     * In-process {@code javac} over a clean output directory.
+     *
+     * <p>{@code analysisOnly} stops the compiler after flow analysis, so it parses and type-checks
+     * without generating or writing a single class file. The difference between the two runs is what
+     * code generation and output writing cost, which is the split that says whether a platform
+     * penalty is in the compiler's CPU or in its file output.
+     */
+    private static long runJavac(Path dir, List<Path> sources, boolean analysisOnly) throws IOException {
+        Path out = fresh(dir.resolve(analysisOnly ? "out-analysis" : "out-javac"));
         List<String> args = new ArrayList<>(List.of("-nowarn", "-d", out.toString()));
+        if (analysisOnly) {
+            args.add("-proc:none");
+            args.add("-XDshould-stop.ifNoError=FLOW");
+        }
         for (Path s : sources) args.add(s.toString());
         long t0 = System.nanoTime();
         int rc = ToolProvider.getSystemJavaCompiler().run(null, null, null, args.toArray(new String[0]));
