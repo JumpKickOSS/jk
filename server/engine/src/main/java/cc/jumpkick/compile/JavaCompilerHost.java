@@ -9,6 +9,7 @@ import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.engine.plugin.PluginProcess;
 import cc.jumpkick.engine.plugin.PluginSlots;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.jsonl.Jsonl;
@@ -47,6 +48,9 @@ public final class JavaCompilerHost {
 
     private static final ConcurrentHashMap<Long, Lanes> POOLS = new ConcurrentHashMap<>();
     private static final AtomicLong EPHEMERAL = new AtomicLong(-1L);
+
+    /** Monotonic readings: a work item's queue wait, and the teardown join deadline. */
+    private static final Clock CLOCK = Clock.SYSTEM;
 
     /**
      * Ceiling on lanes per job when the memory plan allows more. Each lane is a resident JVM with a
@@ -254,7 +258,7 @@ public final class JavaCompilerHost {
          * hanging {@code compile.get} forever.
          */
         private void enqueue(Work w) {
-            w.enqueuedNanos = System.nanoTime();
+            w.enqueuedNanos = CLOCK.nanos();
             queue.add(w);
             if (!grow()) drainFailQueued(new IOException("zinc worker exited"));
         }
@@ -323,9 +327,9 @@ public final class JavaCompilerHost {
                 lanes.clear();
             }
             for (int i = 0; i < live.size(); i++) queue.add(Work.POISON);
-            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
+            long deadline = CLOCK.nanos() + TimeUnit.SECONDS.toNanos(15);
             for (Session lane : live) {
-                lane.join(Math.max(1L, TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime())));
+                lane.join(Math.max(1L, TimeUnit.NANOSECONDS.toMillis(deadline - CLOCK.nanos())));
             }
         }
     }
@@ -409,7 +413,7 @@ public final class JavaCompilerHost {
                 // RESULT/ERROR/failure so an idle session holds none.
                 slot = PluginSlots.acquire();
                 try {
-                    next.waitNanos = System.nanoTime() - next.enqueuedNanos;
+                    next.waitNanos = CLOCK.nanos() - next.enqueuedNanos;
                     next.spec = ForkedJavac.writeSpec(next.req);
                     transcript.reset();
                     inflight = next;
