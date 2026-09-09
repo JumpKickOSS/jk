@@ -15,6 +15,7 @@ import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.runtime.base.LiveUnits;
 import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.wire.protocol.EngineProtocol;
@@ -319,6 +320,7 @@ public final class JobEnvelope {
             // shutdownForRequest finds an empty set and plugin/javac children keep running.
             JobWorkers.shutdownForRequest(eventRequestId, 0L);
             JavaCompilerHost.end(eventRequestId);
+            LiveUnits.end(eventRequestId);
             JobWorkers.close();
             host.unbindEventRequestId();
             if (plan) host.cacheGate().readLock().unlock();

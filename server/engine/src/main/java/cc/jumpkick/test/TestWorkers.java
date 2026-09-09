@@ -5,7 +5,6 @@ import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.Jobs;
 import cc.jumpkick.engine.plugin.HeapPlan;
 import cc.jumpkick.engine.plugin.MemoryProbe;
-import cc.jumpkick.engine.plugin.PluginSlots;
 
 /**
  * Within-module test JVM count (Mill {@code testParallelism} analogue).
@@ -84,17 +83,20 @@ public final class TestWorkers {
      * Raising the plan share for everyone does not fix it — a blanket {@code -w 8} makes the wide
      * phase oversubscribe and the build ends later, so the number has to be read late.
      *
-     * <p>{@link PluginSlots} is the reading: it already bounds every worker fork, so its free permits
-     * are what this suite could actually get right now — low while the build is wide, the whole budget
-     * once the rest has drained. The plan share is the floor (this never makes a suite narrower than
-     * planned) and the jobs budget the ceiling. An unbounded gate reports zero permits and answers
-     * nothing, so the plan share stands.
+     * <p>The denominator is the units actually running, which is what the plan-time share was
+     * dividing by all along — the same formula, read late. Free {@link PluginSlots} permits look like
+     * the same answer and are not: they are an instantaneous reading of a resource about to be
+     * contended, and sizing from them let mid-build suites take sixteen runners each and starve the
+     * compile lanes, which cost more at the front than the tail gained at the back.
+     *
+     * <p>The plan share is the floor, so this never makes a suite narrower than planned, and the jobs
+     * budget the ceiling. {@code unitsRunning <= 0} means no job scope to measure, so the plan stands.
      */
-    public static int liveShare(int planShare, int jobsBudget) {
+    public static int liveShare(int planShare, int jobsBudget, int unitsRunning) {
         int floor = Math.max(1, planShare);
-        int free = PluginSlots.permits();
-        if (free <= 0) return floor;
-        return Math.clamp(free, floor, Math.max(floor, jobsBudget));
+        if (unitsRunning <= 0) return floor;
+        int live = Math.max(1, jobsBudget) / unitsRunning;
+        return Math.clamp(live, floor, Math.max(floor, jobsBudget));
     }
 
     /**

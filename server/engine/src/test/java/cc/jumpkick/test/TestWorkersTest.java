@@ -3,8 +3,6 @@ package cc.jumpkick.test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.engine.plugin.PluginSlots;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 class TestWorkersTest {
@@ -38,45 +36,41 @@ class TestWorkersTest {
         assertThat(TestWorkers.resolve(0, 1, 16)).isEqualTo(1);
     }
 
-    @AfterEach
-    void reopenTheGate() {
-        PluginSlots.configure(0);
+    @Test
+    void outside_a_job_scope_the_plan_share_stands() {
+        assertThat(TestWorkers.liveShare(1, 20, 0)).isEqualTo(1);
+        assertThat(TestWorkers.liveShare(4, 20, 0)).isEqualTo(4);
     }
 
     @Test
-    void an_unbounded_gate_leaves_the_plan_share_alone() {
-        PluginSlots.configure(0);
-        assertThat(TestWorkers.liveShare(1, 20)).isEqualTo(1);
-        assertThat(TestWorkers.liveShare(4, 20)).isEqualTo(4);
+    void the_last_module_standing_gets_the_machine() {
+        // One unit running: the graph has narrowed to this suite, so the whole budget is its share.
+        assertThat(TestWorkers.liveShare(1, 20, 1)).isEqualTo(20);
     }
 
     @Test
-    void a_drained_build_lets_the_last_suite_widen() {
-        PluginSlots.configure(16);
-        // Nothing else is forking: the suite may take what the gate would actually give it.
-        assertThat(TestWorkers.liveShare(1, 20)).isEqualTo(16);
+    void a_wide_build_keeps_the_plan_share() {
+        // Thirteen units in flight is what the plan divided by; the late reading agrees with it.
+        assertThat(TestWorkers.liveShare(1, 20, 13)).isEqualTo(1);
+        assertThat(TestWorkers.liveShare(1, 20, 38)).isEqualTo(1);
     }
 
     @Test
-    void the_share_tracks_what_the_gate_still_has() {
-        PluginSlots.configure(16);
-        try (var held = PluginSlots.acquire()) {
-            // One permit is out, so fifteen is what this suite could actually fork right now.
-            assertThat(TestWorkers.liveShare(1, 20)).isEqualTo(15);
-        }
+    void the_share_widens_as_the_graph_narrows() {
+        assertThat(TestWorkers.liveShare(1, 20, 10)).isEqualTo(2);
+        assertThat(TestWorkers.liveShare(1, 20, 4)).isEqualTo(5);
+        assertThat(TestWorkers.liveShare(1, 20, 2)).isEqualTo(10);
     }
 
     @Test
     void the_share_never_narrows_below_the_plan() {
-        PluginSlots.configure(2);
-        assertThat(TestWorkers.liveShare(8, 20))
-                .as("a suite planned wider than the free permits keeps its plan")
+        assertThat(TestWorkers.liveShare(8, 20, 38))
+                .as("a suite planned wider than the live share keeps its plan")
                 .isEqualTo(8);
     }
 
     @Test
     void the_jobs_budget_is_the_ceiling() {
-        PluginSlots.configure(32);
-        assertThat(TestWorkers.liveShare(1, 4)).isEqualTo(4);
+        assertThat(TestWorkers.liveShare(1, 4, 1)).isEqualTo(4);
     }
 }

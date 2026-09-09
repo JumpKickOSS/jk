@@ -34,6 +34,7 @@ import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.base.CompileSupport;
+import cc.jumpkick.runtime.base.LiveUnits;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.runtime.base.StepTimings;
 import cc.jumpkick.runtime.base.TestEnv;
@@ -655,7 +656,7 @@ public final class PlannerTest {
         int planned = module.effectiveTestWorkers(in.workerCount());
         boolean pinned = module.effectiveTestWorkers(0) > 0 || in.session().requestedTestWorkers() > 0;
         if (pinned) return planned;
-        return TestWorkers.liveShare(planned, TestWorkers.effectiveJobs());
+        return TestWorkers.liveShare(planned, TestWorkers.effectiveJobs(), LiveUnits.running());
     }
 
     /**

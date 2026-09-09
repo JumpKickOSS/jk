@@ -296,7 +296,9 @@ public final class WorkspaceScheduler {
     private static <U, R> @Nullable R gated(
             BooleanSupplier stop, PhasedUnitTask<U, R> task, U unit, Runnable artifactsReady) {
         if (stop.getAsBoolean()) return null;
-        return task.run(unit, artifactsReady);
+        try (LiveUnits.Lease running = LiveUnits.enter()) {
+            return task.run(unit, artifactsReady);
+        }
     }
 
     /** Fail-fast path: in-flight modules keep building; only queued-not-started are prevented. */
