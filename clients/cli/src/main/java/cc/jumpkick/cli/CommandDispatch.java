@@ -417,8 +417,12 @@ public final class CommandDispatch {
      * between the two is a programming error and fails loudly: ArgParser indexes names last-wins,
      * so a silent merge would let a global quietly replace a command's option (this once broke
      * `jk self update <version>` — the global -V/--version flag ate the command's value option).
+     *
+     * <p>Public because dispatch is the only place that knows how a real invocation is parsed, and
+     * a test that reimplemented the merge would be asserting against a parse no user ever gets
+     * (see {@code BuildExplainPlanOptionsParityTest}).
      */
-    private static Command withGlobals(CliCommand cmd) {
+    public static Command withGlobals(CliCommand cmd) {
         List<Opt> opts = new ArrayList<>(cmd.options());
         Set<String> own = new HashSet<>();
         for (Opt opt : opts) own.addAll(opt.allNames());

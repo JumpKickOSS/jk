@@ -9,6 +9,7 @@ import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.api.GraalResolver;
 import cc.jumpkick.cli.api.ParallelTestsOpts;
 import cc.jumpkick.cli.api.PathDisplay;
+import cc.jumpkick.cli.api.PlanOptions;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EnginePrewarm;
 import cc.jumpkick.cli.engine.EngineRequests;
@@ -102,8 +103,8 @@ public final class BuildCommand implements CliCommand {
     @Nullable
     String profileName;
 
-    @Nullable
-    Integer workers;
+    /** Within-module test JVMs; {@code 0} = auto. Clamped by {@link PlanOptions}. */
+    int workers;
 
     @Nullable
     Path cacheDir;
@@ -142,18 +143,11 @@ public final class BuildCommand implements CliCommand {
 
     @Override
     public int run(Invocation in) throws Exception {
-        this.profileName = in.value("profile").orElse(null);
-        this.workers = in.value("workers").map(Integer::parseInt).orElse(null);
         this.cacheDir = in.value("cache-dir").map(CliPaths::abs).orElse(null);
-        this.jdksDir = CommonOpts.jdksDirValue(in);
         this.buildOpts = new BuildOptions();
-        this.buildOpts.skipTests = in.isSet("skip-tests");
         this.keepGoing = CommonOpts.keepGoingValue(in);
         this.aotCache = in.isSet("aot-cache");
         this.global = GlobalOptions.from(in);
-        this.jobs = global.jobsEffective();
-        // C2: cross-module tests parallel by default; --serial-tests opts out (TEST_GATE).
-        this.parallelTests = ParallelTestsOpts.enabled(in);
         this.affectedSince = in.value("affected-since").orElse(null);
         this.affectedWip = in.isSet("affected");
         this.modulesSpec = in.value("modules").orElse(null);
@@ -171,7 +165,16 @@ public final class BuildCommand implements CliCommand {
             return Exit.CONFIG;
         }
         TestCommand.warnGateOverride(in, global);
-        if (testSelection.scriptsOnly()) this.buildOpts.skipTests = true;
+        // The plan-affecting options, derived once for both `jk build` and `jk explain` so a
+        // forecast can never be computed from a different set than the build runs on. --scripts-only
+        // is skipTests to everything downstream, which is why the selection feeds this.
+        PlanOptions planOpts = PlanOptions.from(in, global, testSelection);
+        this.profileName = planOpts.profile();
+        this.workers = planOpts.workers();
+        this.jdksDir = planOpts.jdksDir();
+        this.buildOpts.skipTests = planOpts.skipTests();
+        this.jobs = planOpts.jobs();
+        this.parallelTests = planOpts.parallelTests();
         SessionContext.install(
                 SessionContext.current().withParallelTests(parallelTests).withTestSelection(testSelection));
         Path startDir = global.workingDir();
@@ -405,7 +408,7 @@ public final class BuildCommand implements CliCommand {
                         entryDir,
                         cache,
                         jdksDir,
-                        workers != null ? Math.max(0, workers) : 0,
+                        workers,
                         profileName,
                         buildOpts.skipTests,
                         global.verbose,
@@ -627,7 +630,7 @@ public final class BuildCommand implements CliCommand {
                             dir,
                             cache,
                             jdksDir,
-                            workers != null ? Math.max(0, workers) : 0,
+                            workers,
                             profileName,
                             buildOpts.skipTests,
                             global.verbose,

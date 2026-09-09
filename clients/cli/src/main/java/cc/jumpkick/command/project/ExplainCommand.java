@@ -7,6 +7,7 @@ import cc.jumpkick.cli.api.CommonOpts;
 import cc.jumpkick.cli.api.EnsureFreshLock;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.api.ParallelTestsOpts;
+import cc.jumpkick.cli.api.PlanOptions;
 import cc.jumpkick.cli.api.ProjectContext;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
@@ -183,19 +184,11 @@ public final class ExplainCommand implements CliCommand {
             return emitModuleGraph(graphDir, graphFmt, modulesSpec, affectedSinceEarly, graphOutPath);
         }
 
-        // HARD INVARIANT: bare `jk explain` uses the exact same defaults as bare `jk build`
-        // (-w 0 = auto, -j from jobsEffective, parallel-tests default on). The estimate must
-        // match the live countdown bit-for-bit — docs/perf/progress-contract.md.
-        boolean parallelTests = ParallelTestsOpts.enabled(in);
-        int jobs = global.jobsEffective();
-        boolean serial = jobs == 1;
-        // 0 = auto within-module test JVMs — same as BuildCommand when -w is omitted.
-        int workers = in.value("workers").map(Integer::parseInt).orElse(0);
-        boolean skipTests = in.isSet("skip-tests");
-        // Global --redo / --force: forecast full work + rebuild ETA priors.
-        boolean rebuild = global.rebuild || global.force;
-        String profile = in.value("profile").orElse(null);
-        Path jdksDir = CommonOpts.jdksDirValue(in);
+        // HARD INVARIANT: bare `jk explain` uses the exact same defaults as bare `jk build`, and
+        // the estimate must match the live countdown bit-for-bit. One derivation for both, so the
+        // two cannot drift apart by hand — see PlanOptions and BuildExplainPlanOptionsParityTest,
+        // and docs/contributors/progress-contract.md.
+        PlanOptions planOpts = PlanOptions.from(in, global, testSelection);
         String affectedSince = affectedSinceEarly;
 
         // Client-side module filter listing (before engine forecast) when selectors are set.
@@ -232,15 +225,15 @@ public final class ExplainCommand implements CliCommand {
                     new EngineRequests.ExplainRequest(
                             startDir,
                             cache,
-                            workers,
-                            skipTests,
-                            profile,
-                            jdksDir,
-                            serial,
-                            parallelTests,
-                            global.verbose,
-                            rebuild,
-                            jobs),
+                            planOpts.workers(),
+                            planOpts.skipTests(),
+                            planOpts.profile(),
+                            planOpts.jdksDir(),
+                            planOpts.serial(),
+                            planOpts.parallelTests(),
+                            planOpts.verbose(),
+                            planOpts.rebuild(),
+                            planOpts.jobs()),
                     etaOut,
                     prep == null ? null : prep::update);
         }
