@@ -146,8 +146,12 @@ val testBuildSrc = tasks.register<Exec>("testBuildSrc") {
     group = "verification"
     description = "Run buildSrc's own tests (guard catalog invariants)"
     val windows = System.getProperty("os.name").lowercase().contains("win")
+    // Absolute, not bare: Windows CreateProcess resolves a bare program name against PATH and the
+    // application directory, never against the child's working directory, so "gradlew.bat" is only
+    // found when the repo root happens to be on PATH.
+    val wrapper = projectDir.resolve(if (windows) "gradlew.bat" else "gradlew").absolutePath
     workingDir = projectDir
-    commandLine(if (windows) "gradlew.bat" else "./gradlew", "-p", "buildSrc", "test", "-q")
+    commandLine(wrapper, "-p", "buildSrc", "test", "-q")
     inputs.dir("buildSrc/src").withPathSensitivity(PathSensitivity.RELATIVE)
     inputs.file("buildSrc/build.gradle.kts")
     val marker = layout.buildDirectory.file("buildSrc-tests.ok")
