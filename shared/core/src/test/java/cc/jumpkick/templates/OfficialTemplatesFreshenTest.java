@@ -130,7 +130,10 @@ class OfficialTemplatesFreshenTest {
         String headBefore = gitOut(enclosing, "rev-parse", "HEAD");
 
         String ref = official.toUri().toString();
-        Path cacheRoot = enclosing.resolve("target/test-jk-home/store/templates");
+        // Shallow on purpose: the cache root only has to sit inside the enclosing repository for
+        // this test to mean anything, and a deep mirror of a real jk home spends MAX_PATH budget the
+        // clone underneath it needs.
+        Path cacheRoot = enclosing.resolve("tpl");
         Path dest = cacheRoot.resolve(OfficialTemplatesFreshen.parse(ref).cacheKey());
         Files.createDirectories(dest.resolve("java/spring/stale.g8"));
         assertTrue(OfficialTemplatesFreshen.looksLikeTemplateMonorepo(dest), "the fixture is catalog-shaped");
