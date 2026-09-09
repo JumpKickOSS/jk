@@ -101,6 +101,58 @@ class JavaCompilerHostLanesTest {
     }
 
     @Test
+    void a_broken_module_fails_alone_while_its_neighbours_compile(@TempDir Path dir) throws Exception {
+        Path worker = workerJar();
+        List<ForkedJavac.Request> good = new ArrayList<>();
+        for (int i = 0; i < 3; i++) good.add(moduleRequest(dir, worker, "ok" + i));
+
+        Path badRoot = dir.resolve("bad");
+        Path badSrc = badRoot.resolve("src/p/C.java");
+        Files.createDirectories(badSrc.getParent());
+        Files.writeString(badSrc, "package p; public class C { int n() { return \"not an int\"; } }");
+        ForkedJavac.Request bad = new ForkedJavac.Request(
+                Path.of(System.getProperty("java.home")),
+                worker,
+                List.of(badSrc),
+                List.of(),
+                List.of(),
+                badRoot.resolve("classes"),
+                badRoot.resolve("gen"),
+                21,
+                List.of(),
+                badRoot.resolve("zinc"));
+
+        long job = 9104L;
+        JobWorkers.open(job);
+        try {
+            List<Future<ForkedJavac.Result>> running = new ArrayList<>();
+            running.add(JkThreads.io().submit(() -> ForkedJavac.compile(bad)));
+            for (ForkedJavac.Request req : good) {
+                running.add(JkThreads.io().submit(() -> ForkedJavac.compile(req)));
+            }
+
+            ForkedJavac.Result broken = running.getFirst().get(120, TimeUnit.SECONDS);
+            assertThat(broken.success()).isFalse();
+            assertThat(broken.diagnostics())
+                    .as("the failure names the module that caused it, not a lane neighbour")
+                    .anySatisfy(d -> assertThat(d.toString()).contains("C.java"));
+
+            for (Future<ForkedJavac.Result> f : running.subList(1, running.size())) {
+                assertThat(f.get(120, TimeUnit.SECONDS).success())
+                        .as("a neighbour must not fail because another lane did")
+                        .isTrue();
+            }
+        } finally {
+            JavaCompilerHost.end(job);
+            JobWorkers.shutdownForRequest(job, 0L);
+            JobWorkers.close();
+        }
+        for (int i = 0; i < 3; i++) {
+            assertThat(dir.resolve("ok" + i + "/classes/p/C.class")).isRegularFile();
+        }
+    }
+
+    @Test
     void the_pool_is_dropped_with_the_job() throws Exception {
         long job = 9103L;
         assertThat(JavaCompilerHost.laneCount(job)).isZero();
