@@ -11,6 +11,7 @@ import cc.jumpkick.wire.protocol.ExplainEdgeEvent;
 import cc.jumpkick.wire.protocol.ExplainModuleEvent;
 import cc.jumpkick.wire.protocol.ExplainRequest;
 import cc.jumpkick.wire.protocol.ExplainTaskEvent;
+import cc.jumpkick.wire.protocol.PreflightEvent;
 import cc.jumpkick.wire.runtime.ExplainPlan;
 import cc.jumpkick.wire.runtime.TaskForecast;
 import java.io.IOException;
@@ -21,6 +22,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -48,7 +50,11 @@ final class EngineExplainDecoder {
      * array has a second slot — slot {@code [1]} the full-rebuild ETA (the rebuild-effort
      * denominator). Length-guarded, so a one-slot caller still gets the plain ETA.
      */
-    static ExplainPlan explain(EnginePaths.Paths paths, EngineRequests.ExplainRequest req, long @Nullable [] etaOut)
+    static ExplainPlan explain(
+            EnginePaths.Paths paths,
+            EngineRequests.ExplainRequest req,
+            long @Nullable [] etaOut,
+            @Nullable Consumer<String> onPreflightLabel)
             throws IOException {
         String request = new ExplainRequest(
                         req.entryDir().toString(),
@@ -99,6 +105,14 @@ final class EngineExplainDecoder {
                         ExplainEdgeEvent e = ExplainEdgeEvent.decode(line);
                         edges.computeIfAbsent(Path.of(e.dir()), d -> new LinkedHashSet<>())
                                 .add(Path.of(e.dependsOnDir()));
+                    }
+                    case EngineProtocol.PREFLIGHT -> {
+                        // The engine is telling us what it is doing before the plan burst — e.g.
+                        // the once-per-machine host probe. The client renders it, never predicts it.
+                        PreflightEvent e = PreflightEvent.decode(line);
+                        if (onPreflightLabel != null && e.done() < e.total() && !e.label().isEmpty()) {
+                            onPreflightLabel.accept(e.label());
+                        }
                     }
                     case EngineProtocol.ERROR -> errors.add(Jsonl.str(line, "message"));
                     case EngineProtocol.ETA -> {

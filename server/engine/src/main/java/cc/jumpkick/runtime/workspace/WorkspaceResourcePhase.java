@@ -42,10 +42,7 @@ final class WorkspaceResourcePhase {
         List<StepTimings.Sample> timingSamples = Collections.synchronizedList(new ArrayList<>());
         List<HostLearnedRates.HostSample> hostSamples = Collections.synchronizedList(new ArrayList<>());
 
-        boolean probing = Calibration.needsProbe();
-        if (probing) listener.onPreflight("calibrate", 0, 1, "Calibrating host…");
-        Calibration.ensure(incoming.jdksDir());
-        if (probing) listener.onPreflight("calibrate", 1, 1, "Calibrating host…");
+        Calibration.ensureAnnounced(incoming.jdksDir(), listener::onPreflight);
 
         List<BuildGraph.BuildUnit> dirtyUnits = new ArrayList<>();
         List<BuildGraph.BuildUnit> cleanUnits = new ArrayList<>();

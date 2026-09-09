@@ -9,6 +9,7 @@ import cc.jumpkick.runtime.base.HostLearnedRates;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -138,7 +139,13 @@ class CalibrationTest {
 
             assertThat(Calibration.needsProbe()).as("nothing left to bootstrap").isFalse();
 
-            Calibration kept = Calibration.ensure(null, false, false);
+            // ensureAnnounced is the one place that decides whether any client says
+            // "Calibrating host…" — build and explain both go through it, and nothing outside
+            // the engine gets to work the answer out for itself (JK-2951).
+            List<String> announced = new ArrayList<>();
+            Calibration kept = Calibration.ensureAnnounced(
+                    null, (stage, done, total, label) -> announced.add(stage + " " + done + "/" + total));
+            assertThat(announced).as("a calibrated host announces nothing").isEmpty();
             assertThat(kept.msPerWeight()).isCloseTo(12345.0, within(1e-6));
             assertThat(Files.readString(file)).as("ensure did not rewrite the file").isEqualTo(before);
             assertThat(Files.exists(Calibration.failureMarker()))

@@ -1668,10 +1668,6 @@ in     = "shared/core"
 at     = "cc.jumpkick.util.AotManifest#nowIso()Ljava/lang/String; -> java.time.Instant#now()Ljava/time/Instant;"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
-in     = "shared/core"
-at     = "cc.jumpkick.util.HostCalibrationStatus#failedRecently()Z -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
 in     = "shared/host"
 at     = "cc.jumpkick.host.AotCacheFiles#blocked(Ljava/nio/file/Path;)Z -> java.lang.System#currentTimeMillis()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"

@@ -35,7 +35,6 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.run.BuildStage;
-import cc.jumpkick.util.HostCalibrationStatus;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.ModuleGraphAck;
@@ -205,13 +204,13 @@ public final class ExplainCommand implements CliCommand {
             if (listed != null) return listed;
         }
 
-        // Live prep wedge: Locking versions… → Calculating build plan… (or Calibrating host…),
-        // then clear and print the settled Build Plan tree.
+        // Live prep wedge: Locking versions… → Calculating build plan…, re-labelled by whatever
+        // preflight the engine announces (e.g. Calibrating host…), then cleared for the settled
+        // Build Plan tree. Whether the host still needs its bootstrap probe is engine state; the
+        // client used to answer it from a second copy of the rule and got it wrong (JK-2951).
         boolean livePrep = EnsureFreshLock.isInteractiveAuto(global) && !global.outputIsJson();
         boolean needsLock = EnsureFreshLock.needsRefresh(startDir);
-        boolean needsCalibrate = HostCalibrationStatus.needsBootstrapProbe();
-        String prepMsg =
-                needsLock ? "Locking versions…" : needsCalibrate ? "Calibrating host…" : "Calculating build plan…";
+        String prepMsg = needsLock ? "Locking versions…" : "Calculating build plan…";
 
         ExplainPlan plan;
         long etaMillis;
@@ -226,9 +225,7 @@ public final class ExplainCommand implements CliCommand {
                 int lockCode = EnsureFreshLock.ensure(startDir, cache, global, "Explain", prep, false);
                 if (lockCode != 0) return lockCode;
             }
-            if (prep != null) {
-                prep.update(needsCalibrate ? "Calibrating host…" : "Calculating build plan…");
-            }
+            if (prep != null) prep.update("Calculating build plan…");
             // Forecast via engine: graph + per-step plan + schedule-aware ETA.
             plan = EngineClient.explain(
                     EnginePaths.current(),
@@ -244,7 +241,8 @@ public final class ExplainCommand implements CliCommand {
                             global.verbose,
                             rebuild,
                             jobs),
-                    etaOut);
+                    etaOut,
+                    prep == null ? null : prep::update);
         }
         etaMillis = etaOut[0];
         fullEtaMillis = etaOut[1];

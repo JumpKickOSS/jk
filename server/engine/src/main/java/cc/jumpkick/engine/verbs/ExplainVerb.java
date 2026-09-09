@@ -8,6 +8,7 @@ import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.runtime.Calibration;
 import cc.jumpkick.runtime.workspace.ExplainReport;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ExplainRequest;
@@ -72,13 +73,20 @@ public final class ExplainVerb implements HostedVerb {
                 if (maxModuleConcurrency <= 0 && req.serial()) {
                     maxModuleConcurrency = 1;
                 }
+                Path etaJdksDir = etaJdksDirStr != null ? Path.of(etaJdksDirStr) : null;
+                // Announce the bootstrap probe the same way the workspace build does, from the
+                // same decision — the client renders "Calibrating host…", it never predicts it.
+                Calibration.ensureAnnounced(
+                        etaJdksDir,
+                        (stage, done, total, label) ->
+                                host.sendQuiet(writer, ProtoEvents.preflight(stage, done, total, label)));
                 ExplainReport report = ExplainReport.compute(
                         entryDir,
                         entryBuild,
                         cache,
                         session,
                         new ExplainReport.Knobs(
-                                etaJdksDirStr != null ? Path.of(etaJdksDirStr) : null,
+                                etaJdksDir,
                                 req.profile(),
                                 req.workers(),
                                 maxModuleConcurrency,

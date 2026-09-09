@@ -495,11 +495,43 @@ public final class Calibration {
         return Math.max(1, Math.round(base * s * COLD_BIAS));
     }
 
+    /** The preflight stage and label every caller announces the bootstrap probe under. */
+    public static final String PROBE_STAGE = "calibrate";
+
+    public static final String PROBE_LABEL = "Calibrating host…";
+
     /**
-     * {@code true} when the next {@link #ensure} is likely to run the multi-second bootstrap probe
-     * (client may show "Calibrating host…").
+     * How {@link #ensureAnnounced} tells a client the bootstrap probe is running. Shaped like
+     * {@code WorkspaceBuildListener.onPreflight} so the workspace build can pass a method
+     * reference and the explain verb can write the same {@code ProtoEvents.preflight} line.
      */
-    public static boolean needsProbe() {
+    @FunctionalInterface
+    public interface ProbeAnnouncer {
+        void announce(String stage, int done, int total, String label);
+    }
+
+    /**
+     * {@link #ensure}, announcing the probe to {@code announcer} when one will actually run.
+     *
+     * <p>This is the <em>only</em> place that decides whether a client says "Calibrating host…".
+     * A client cannot answer it for itself: the decision is engine state, and a second
+     * implementation over on the client side is how it came to be wrong for every workspace build
+     * while {@code jk explain} was right (JK-2950, JK-2951).
+     */
+    public static Calibration ensureAnnounced(@Nullable Path jdksDir, ProbeAnnouncer announcer) {
+        boolean probing = needsProbe();
+        if (probing) announcer.announce(PROBE_STAGE, 0, 1, PROBE_LABEL);
+        Calibration c = ensure(jdksDir);
+        if (probing) announcer.announce(PROBE_STAGE, 1, 1, PROBE_LABEL);
+        return c;
+    }
+
+    /**
+     * {@code true} when the next {@link #ensure} is likely to run the multi-second bootstrap probe.
+     * Not public: callers announce through {@link #ensureAnnounced} rather than asking and then
+     * deciding for themselves.
+     */
+    static boolean needsProbe() {
         Calibration c = load();
         if (c.present() && c.measured) return false;
         return !failedRecently();

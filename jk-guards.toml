@@ -912,10 +912,10 @@ kind    = "text"
 files   = [
   "**/Lockfile.java", "**/EngineProtocol.java", "**/McpEnvelope.java", "**/JsonlEnvelope.java",
   "**/CliSessionTranscript.java", "**/BuildRecord.java", "**/Calibration.java", "**/PreflightMemo.java",
-  "**/HostCalibrationStatus.java", "**/DepFrequency.java", "**/AotManifest.java", "**/BuildMetrics.java",
+  "**/DepFrequency.java", "**/AotManifest.java", "**/BuildMetrics.java",
 ]
 pattern = "int\\s+(CURRENT_VERSION|PROTOCOL|SCHEMA)\\s*=\\s*1\\s*;"
-count   = { exactly = 12, per = "tree" }
+count   = { exactly = 11, per = "tree" }
 hit     = "int CURRENT_VERSION = 1;"
 miss    = "int CURRENT_VERSION = 2;"
 instead = "keep version 1 until 1.0"

@@ -34,6 +34,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.ObjIntConsumer;
 import org.jspecify.annotations.Nullable;
@@ -315,7 +316,22 @@ public final class EngineClient {
      */
     public static ExplainPlan explain(
             EnginePaths.Paths paths, EngineRequests.ExplainRequest req, long @Nullable [] etaOut) throws IOException {
-        return EngineExplainDecoder.explain(paths, req, etaOut);
+        return EngineExplainDecoder.explain(paths, req, etaOut, null);
+    }
+
+    /**
+     * As {@link #explain(EnginePaths.Paths, EngineRequests.ExplainRequest, long[])}, with
+     * {@code onPreflightLabel} taking each preflight label the engine announces before the plan
+     * burst (e.g. "Calibrating host…"). The client renders what the engine says it is doing; it
+     * does not work that out for itself.
+     */
+    public static ExplainPlan explain(
+            EnginePaths.Paths paths,
+            EngineRequests.ExplainRequest req,
+            long @Nullable [] etaOut,
+            @Nullable Consumer<String> onPreflightLabel)
+            throws IOException {
+        return EngineExplainDecoder.explain(paths, req, etaOut, onPreflightLabel);
     }
 
     /**
