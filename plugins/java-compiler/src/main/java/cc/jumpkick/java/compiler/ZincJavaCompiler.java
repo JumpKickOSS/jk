@@ -169,6 +169,7 @@ public final class ZincJavaCompiler {
         List<Path> processorPath = job.processorPath();
         RecordingJavaCompiler javac = null;
         ProcessorLoad processors = ProcessorLoad.none();
+        CompilePhases phases = CompilePhases.open();
         try {
             Files.createDirectories(classOutput);
             Files.createDirectories(workdir);
@@ -180,6 +181,7 @@ public final class ZincJavaCompiler {
             FileConverter converter = PlainVirtualFileConverter.converter();
             ApProvenance provenance = new ApProvenance();
             processors = loadProcessors(processorPath);
+            phases.mark("processors");
             javac = recordingJavac(converter, processors, provenance);
             Compilers compilers = ScalaBridge.compilersFor(javac, mixed);
 
@@ -193,6 +195,7 @@ public final class ZincJavaCompiler {
             }
             cp.add(classOutput);
             VirtualFile[] cpFiles = ZincSetup.virtual(cp, converter);
+            phases.mark("virtualise");
 
             CollectingReporter reporter = new CollectingReporter();
             AnalysisStore store = zinced.store();
@@ -219,6 +222,7 @@ public final class ZincJavaCompiler {
                     .withStamper(stamper);
 
             Optional<AnalysisContents> prev = zinced.readAnalysis(store);
+            phases.mark("read-analysis");
             if (prev.isEmpty()) {
                 // No usable previous analysis ⇒ a full compile. Zinc only deletes removed-source
                 // products when it has a prior analysis to diff against, so a full compile must start
@@ -226,12 +230,14 @@ public final class ZincJavaCompiler {
                 // ship in the jar.
                 deleteClassFiles(classOutput);
             }
+            phases.mark("clear-output");
             PreviousResult previous = prev.isPresent()
                     ? PreviousResult.of(prev.get().getAnalysis(), prev.get().getMiniSetup())
                     : PreviousResult.of(Optional.empty(), Optional.empty());
 
             Inputs inputs = Inputs.of(compilers, options, setup, previous);
             CompileResult compiled = zinc.compile(inputs, QuietLogger.INSTANCE);
+            phases.mark("zinc-compile");
             if (reporter.hasErrors()) {
                 return new Result(false, reporter.diagnostics(), javac.compiledSources(), provenance.generated);
             }
@@ -241,7 +247,10 @@ public final class ZincJavaCompiler {
             GeneratedProvenance.of(workdir)
                     .reconcile(sourceOutput, classOutput, javac.compiledSources(), provenance.generated);
             zinced.markAggregating(provenance.aggregating());
+            phases.mark("reconcile");
             zinced.persistAnalysis(store, AnalysisContents.create(compiled.analysis(), compiled.setup()));
+            phases.mark("persist-analysis");
+            phases.write(classOutput, sources.size());
             return new Result(true, reporter.diagnostics(), javac.compiledSources(), provenance.generated);
         } catch (IOException e) {
             // Errors.text, not getMessage(): a message-less IOException would otherwise put null on

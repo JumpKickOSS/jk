@@ -147,7 +147,9 @@ class CalibrationTest {
                     null, (stage, done, total, label) -> announced.add(stage + " " + done + "/" + total));
             assertThat(announced).as("a calibrated host announces nothing").isEmpty();
             assertThat(kept.msPerWeight()).isCloseTo(12345.0, within(1e-6));
-            assertThat(Files.readString(file)).as("ensure did not rewrite the file").isEqualTo(before);
+            assertThat(Files.readString(file))
+                    .as("ensure did not rewrite the file")
+                    .isEqualTo(before);
             assertThat(Files.exists(Calibration.failureMarker()))
                     .as("no probe ran, so no probe failed")
                     .isFalse();

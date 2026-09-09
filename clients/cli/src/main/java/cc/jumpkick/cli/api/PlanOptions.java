@@ -41,7 +41,10 @@ public record PlanOptions(
     public static PlanOptions from(Invocation in, GlobalOptions global, TestSelection selection) {
         return new PlanOptions(
                 // A negative -w is not "auto in the other direction"; both commands floor it.
-                in.value("workers").map(Integer::parseInt).map(w -> Math.max(0, w)).orElse(0),
+                in.value("workers")
+                        .map(Integer::parseInt)
+                        .map(w -> Math.max(0, w))
+                        .orElse(0),
                 in.isSet("skip-tests") || selection.scriptsOnly(),
                 in.value("profile").orElse(null),
                 CommonOpts.jdksDirValue(in),

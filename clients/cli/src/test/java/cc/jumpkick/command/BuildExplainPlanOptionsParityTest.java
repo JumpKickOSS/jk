@@ -106,9 +106,9 @@ class BuildExplainPlanOptionsParityTest {
         return PlanOptions.from(in, GlobalOptions.from(in), TestCommand.resolveTestSelection(in));
     }
 
-
     private static Invocation parse(CliCommand command, List<String> argv) {
-        List<String> full = new ArrayList<>(List.of("-C", project.toAbsolutePath().toString()));
+        List<String> full =
+                new ArrayList<>(List.of("-C", project.toAbsolutePath().toString()));
         full.addAll(argv);
         try {
             // Parse exactly as dispatch does: the command's options plus the shared globals.

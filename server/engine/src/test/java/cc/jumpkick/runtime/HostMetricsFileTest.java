@@ -167,8 +167,7 @@ class HostMetricsFileTest {
                 """);
 
         HostLearnedRates learned = new HostLearnedRates().withSample(HostLearnedRates.RUN_TESTS_PER_METHOD_MS, 42, 0);
-        HostMetricsFile.writeTo(
-                f, Calibration.testInstance(42.5, true, JkVersion.VERSION, NOW, learned, 200, 15, 20));
+        HostMetricsFile.writeTo(f, Calibration.testInstance(42.5, true, JkVersion.VERSION, NOW, learned, 200, 15, 20));
 
         assertThat(HostMetricsFile.readFrom(f, NOW).learned().meanMs(HostLearnedRates.RUN_TESTS_PER_METHOD_MS))
                 .as("the value just written, not the 5000 it replaced")

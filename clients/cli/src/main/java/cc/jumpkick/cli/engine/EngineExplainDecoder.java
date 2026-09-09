@@ -110,7 +110,9 @@ final class EngineExplainDecoder {
                         // The engine is telling us what it is doing before the plan burst — e.g.
                         // the once-per-machine host probe. The client renders it, never predicts it.
                         PreflightEvent e = PreflightEvent.decode(line);
-                        if (onPreflightLabel != null && e.done() < e.total() && !e.label().isEmpty()) {
+                        if (onPreflightLabel != null
+                                && e.done() < e.total()
+                                && !e.label().isEmpty()) {
                             onPreflightLabel.accept(e.label());
                         }
                     }
