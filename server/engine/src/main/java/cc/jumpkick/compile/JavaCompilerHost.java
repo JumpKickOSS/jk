@@ -161,7 +161,25 @@ public final class JavaCompilerHost {
         }
     }
 
-    private static final class Work {
+    /** How a pool starts a lane. Production forks a Zinc worker JVM; tests substitute a body. */
+    @FunctionalInterface
+    interface LaneStarter {
+        Session start(Lanes owner, int index);
+    }
+
+    /** What a lane's io thread runs. Production converses with the worker until it exits. */
+    @FunctionalInterface
+    interface LaneBody {
+        void run(Session self) throws Exception;
+    }
+
+    /** Writes the spec file a dispatch hands the worker. Production is {@link ForkedJavac#writeSpec}. */
+    @FunctionalInterface
+    interface SpecFile {
+        Path write(ForkedJavac.Request req) throws IOException;
+    }
+
+    static final class Work {
         final ForkedJavac.@Nullable Request req;
         final boolean plan;
         final CompletableFuture<ForkedJavac.Result> compile = new CompletableFuture<>();
@@ -214,14 +232,16 @@ public final class JavaCompilerHost {
      * <p><strong>A dead lane is not a dead pool.</strong> Its in-flight item fails — that work was
      * being compiled by the process that died and cannot be attributed elsewhere — but queued items
      * stay queued for the surviving lanes. Only when the last lane goes does the queue drain-fail,
-     * because at that point nothing will ever take those items.
+     * because at that point nothing will ever take those items. That holds after {@link #close} too:
+     * job teardown kills the workers <em>before</em> it calls {@code end()}, so the last lane
+     * usually dies with the pool already closed, and an item still queued then has no other taker.
      */
-    private static final class Lanes {
+    static final class Lanes {
 
-        private final long id;
-        private final ForkedJavac.Request template;
         private final BlockingQueue<Work> queue = new LinkedBlockingQueue<>();
-        private final int budget = laneBudget();
+        private final int budget;
+        private final LaneStarter starter;
+        final SpecFile specs;
 
         /** Live lanes. Guarded by {@code this}; {@link Session#working} is read without the lock. */
         private final List<Session> lanes = new ArrayList<>();
@@ -229,8 +249,17 @@ public final class JavaCompilerHost {
         private boolean closed;
 
         Lanes(long id, ForkedJavac.Request template) {
-            this.id = id;
-            this.template = template;
+            this(
+                    laneBudget(),
+                    (owner, index) -> new Session(owner, id, index, self -> self.converse(template)),
+                    ForkedJavac::writeSpec);
+        }
+
+        /** Test seam: a pool whose lanes run {@code starter}'s body instead of forking a worker. */
+        Lanes(int budget, LaneStarter starter, SpecFile specs) {
+            this.budget = budget;
+            this.starter = starter;
+            this.specs = specs;
         }
 
         ForkedJavac.Result submit(Work w) {
@@ -257,7 +286,7 @@ public final class JavaCompilerHost {
          * died between the add and now, its drain has already run and would never see this item,
          * hanging {@code compile.get} forever.
          */
-        private void enqueue(Work w) {
+        void enqueue(Work w) {
             w.enqueuedNanos = CLOCK.nanos();
             queue.add(w);
             if (!grow()) drainFailQueued(new IOException("zinc worker exited"));
@@ -265,18 +294,19 @@ public final class JavaCompilerHost {
 
         /**
          * Start a lane when the backlog outruns the lanes that could absorb it. Returns whether the
-         * pool has a lane at all — false only when the job is closing, which is the caller's cue
-         * that nothing will drain the queue.
+         * pool has a lane that will take the queue — false once the job is closing, which is the
+         * caller's cue that nothing will drain it: a post-close item would otherwise sit behind the
+         * POISONs forever, even with lanes still alive to take those.
          */
         private synchronized boolean grow() {
-            if (closed) return !lanes.isEmpty();
+            if (closed) return false;
             lanes.removeIf(lane -> !lane.alive());
             int free = 0;
             for (Session lane : lanes) {
                 if (!lane.working()) free++;
             }
             if (free < queue.size() && lanes.size() < budget) {
-                lanes.add(new Session(this, id, lanes.size(), template));
+                lanes.add(starter.start(this, lanes.size()));
             }
             return !lanes.isEmpty();
         }
@@ -287,15 +317,27 @@ public final class JavaCompilerHost {
             return lanes.size();
         }
 
+        /** Test seam: items waiting for a lane. */
+        int queued() {
+            return queue.size();
+        }
+
+        /** Test seam: whether {@link #close} has begun. */
+        synchronized boolean closing() {
+            return closed;
+        }
+
         /**
          * A lane's worker exited. Drop it, and if it was the last one there is no longer anything
-         * that will take the queue — fail what is on it rather than let those callers block.
+         * that will take the queue — fail what is on it rather than let those callers block. Closed
+         * or not: after {@code close()} the lanes are still the only takers, and job teardown kills
+         * them before it closes the pool, so "last lane dies after close" is the common order.
          */
         void laneDied(Session lane, Throwable cause) {
             boolean last;
             synchronized (this) {
                 lanes.remove(lane);
-                last = lanes.isEmpty() && !closed;
+                last = lanes.isEmpty();
             }
             if (last) drainFailQueued(cause);
         }
@@ -303,39 +345,46 @@ public final class JavaCompilerHost {
         /**
          * Fail every queued (not-yet-dispatched) Work. Safe from any thread — it only polls the
          * concurrent queue and completes futures, both idempotent — and never touches a lane's
-         * {@code slot} or {@code inflight}.
+         * {@code slot} or {@code inflight}. POISONs that were polled off go back on: a lane still
+         * alive to take one must still get its {@code DONE}.
          */
         private void drainFailQueued(Throwable e) {
+            int poisons = 0;
             Work w;
             while ((w = queue.poll()) != null) {
-                if (w == Work.POISON) continue;
+                if (w == Work.POISON) {
+                    poisons++;
+                    continue;
+                }
                 w.compile.completeExceptionally(e);
                 w.forecast.completeExceptionally(e);
             }
+            for (int i = 0; i < poisons; i++) queue.add(Work.POISON);
         }
 
         /**
          * One {@code DONE} per lane, then wait for the workers to exit. The join budget is the
          * pool's, not each lane's: a wedged worker must not multiply the teardown wait by the lane
-         * count.
+         * count. The lanes stay registered through the join so {@link #laneDied} still knows when
+         * the last one goes; whatever is still queued after the join has no taker and is failed.
          */
         void close() {
             List<Session> live;
             synchronized (this) {
                 closed = true;
                 live = List.copyOf(lanes);
-                lanes.clear();
             }
             for (int i = 0; i < live.size(); i++) queue.add(Work.POISON);
             long deadline = CLOCK.nanos() + TimeUnit.SECONDS.toNanos(15);
             for (Session lane : live) {
                 lane.join(Math.max(1L, TimeUnit.NANOSECONDS.toMillis(deadline - CLOCK.nanos())));
             }
+            drainFailQueued(new IOException("zinc worker pool closed"));
         }
     }
 
     /** One worker JVM, draining its pool's shared queue one item at a time. */
-    private static final class Session {
+    static final class Session {
         private final Lanes owner;
         private final Thread io;
         private volatile @Nullable Work inflight;
@@ -347,9 +396,9 @@ public final class JavaCompilerHost {
         // dispatch so it describes the work item that died, not the worker's first breath.
         private final WorkerTranscript transcript = new WorkerTranscript();
 
-        Session(Lanes owner, long id, int lane, ForkedJavac.Request template) {
+        Session(Lanes owner, long id, int lane, LaneBody body) {
             this.owner = owner;
-            io = Thread.ofVirtual().name("jk-zinc-host-" + id + "-" + lane).start(() -> run(template));
+            io = Thread.ofVirtual().name("jk-zinc-host-" + id + "-" + lane).start(() -> drive(body));
         }
 
         boolean alive() {
@@ -369,21 +418,10 @@ public final class JavaCompilerHost {
             }
         }
 
-        private void run(ForkedJavac.Request template) {
+        /** The lane's whole life: run the body, then tell the pool this lane is gone. */
+        private void drive(LaneBody body) {
             try {
-                Path hostJavaHome = JavaHomes.runningJavaHome();
-                Path javaExe = JdkFingerprint.java(hostJavaHome);
-                String workerCp = ForkedJavac.workerClasspath(template);
-                List<String> jvmFlags = new ArrayList<>(PluginAot.javaCompilerFlags(
-                        hostJavaHome,
-                        workerCp,
-                        (aotOutput, scratch) ->
-                                ForkedJavac.trainerCommand(template, workerCp, hostJavaHome, aotOutput, scratch)));
-                jvmFlags.addAll(JvmOptions.batchFlags(1));
-                List<String> command = PluginLoader.command(javaExe, workerCp, jvmFlags, List.of("--pull"));
-                new PluginClient(ForkedJavac.PREFIX)
-                        .passthrough(transcript::record)
-                        .converseNoSlot(command, (json, convo) -> onLine(json, convo));
+                body.run(this);
             } catch (Exception e) {
                 failAll(e);
             } finally {
@@ -392,12 +430,34 @@ public final class JavaCompilerHost {
             }
         }
 
-        private void onLine(String json, PluginProcess.Conversation convo) {
+        /** Fork the worker JVM and drive its READY / COMPILE / RESULT conversation until it exits. */
+        private void converse(ForkedJavac.Request template) throws Exception {
+            Path hostJavaHome = JavaHomes.runningJavaHome();
+            Path javaExe = JdkFingerprint.java(hostJavaHome);
+            String workerCp = ForkedJavac.workerClasspath(template);
+            List<String> jvmFlags = new ArrayList<>(PluginAot.javaCompilerFlags(
+                    hostJavaHome,
+                    workerCp,
+                    (aotOutput, scratch) ->
+                            ForkedJavac.trainerCommand(template, workerCp, hostJavaHome, aotOutput, scratch)));
+            jvmFlags.addAll(JvmOptions.batchFlags(1));
+            List<String> command = PluginLoader.command(javaExe, workerCp, jvmFlags, List.of("--pull"));
+            new PluginClient(ForkedJavac.PREFIX)
+                    .passthrough(transcript::record)
+                    .converseNoSlot(command, (json, convo) -> onLine(json, convo));
+        }
+
+        /** Block for the pool's next item. */
+        Work takeNext() throws InterruptedException {
+            return owner.queue.take();
+        }
+
+        void onLine(String json, PluginProcess.Conversation convo) {
             String t = Jsonl.str(json, PluginProtocol.T);
             if (PluginProtocol.READY.equals(t)) {
                 Work next;
                 try {
-                    next = owner.queue.take();
+                    next = takeNext();
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     convo.send("DONE");
@@ -414,7 +474,7 @@ public final class JavaCompilerHost {
                 slot = PluginSlots.acquire();
                 try {
                     next.waitNanos = CLOCK.nanos() - next.enqueuedNanos;
-                    next.spec = ForkedJavac.writeSpec(next.req);
+                    next.spec = owner.specs.write(next.req);
                     transcript.reset();
                     inflight = next;
                     convo.send((next.plan ? "PLAN " : "COMPILE ") + next.spec.toAbsolutePath());
