@@ -253,20 +253,30 @@ public final class OfficialTemplatesFreshen {
         try {
             proc = pb.start();
         } catch (IOException e) {
-            throw new IOException("git not on PATH", e);
+            throw new IOException(failure("git not on PATH", args), e);
         }
         try {
             if (!proc.waitFor(timeoutSec, TimeUnit.SECONDS)) {
                 proc.destroyForcibly();
-                throw new IOException("git timed out");
+                throw new IOException(failure("git timed out after " + timeoutSec + "s", args));
             }
-            if (proc.exitValue() != 0)
-                throw new IOException("git exit " + proc.exitValue() + ": " + String.join(" ", args));
+            if (proc.exitValue() != 0) throw new IOException(failure("git exit " + proc.exitValue(), args));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             proc.destroyForcibly();
-            throw new IOException("git interrupted", e);
+            throw new IOException(failure("git interrupted", args), e);
         }
+    }
+
+    /**
+     * Every way {@link #runGit} can fail, said the same way: what went wrong, then which invocation
+     * it went wrong on. Output is discarded at the OS level here, so this message is the only thing
+     * a caller ever sees — a bare "git exit 128" from a MAX_PATH clone named nothing anyone could
+     * act on, and a bare "git timed out" from the maintenance thread did not say which repository
+     * stalled. Wording matches {@code GitCliExtension}, the other place jk shells out to git.
+     */
+    private static String failure(String what, List<String> args) {
+        return what + ": " + String.join(" ", args);
     }
 
     static Parsed parse(String ref) {

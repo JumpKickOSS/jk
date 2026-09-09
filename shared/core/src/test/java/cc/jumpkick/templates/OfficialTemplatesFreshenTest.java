@@ -15,6 +15,7 @@ import java.nio.file.attribute.PosixFilePermission;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledOnOs;
 import org.junit.jupiter.api.condition.OS;
@@ -35,7 +36,15 @@ class OfficialTemplatesFreshenTest {
         IOException e =
                 assertThrows(IOException.class, () -> OfficialTemplatesFreshen.runGit(List.of(script.toString()), 2));
         long elapsedMs = (System.nanoTime() - start) / 1_000_000;
-        assertEquals("git timed out", e.getMessage());
+        // Prefix plus containment, not equality — same contract as the exit-code message: what
+        // went wrong, then which invocation. A stalled fetch that does not name the repository is
+        // the whole reason this message carries the command (JK-2959).
+        assertTrue(
+                e.getMessage().startsWith("git timed out after 2s"),
+                () -> "expected the timeout and its budget up front, got: " + e.getMessage());
+        assertTrue(
+                e.getMessage().contains(script.toString()),
+                () -> "expected the stalled command to be named, got: " + e.getMessage());
         // LIVENESS, not performance: the script sleeps 600s and runGit was given a 2s timeout, so
         // anything under 30s proves the timeout fired rather than the read blocking to EOF.
         assertTrue(
@@ -51,6 +60,53 @@ class OfficialTemplatesFreshenTest {
         // 8 MB of output overflows any pipe buffer if unread.
         Path script = script("#!/bin/sh\ndd if=/dev/zero bs=1024 count=8192 2>/dev/null\nexit 0\n");
         OfficialTemplatesFreshen.runGit(List.of(script.toString()), 30);
+    }
+
+    /**
+     * The two failures nothing used to cover. {@code runGit} discards the subprocess's output at
+     * the OS level, so its {@code IOException} message is the only thing a caller ever sees; every
+     * way out of it has to name the invocation, not just the one that happened to have a test.
+     */
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void runGitNamesTheCommandWhenItCannotStart() {
+        Path missing = tmp.resolve("no-such-git-binary");
+        IOException e =
+                assertThrows(IOException.class, () -> OfficialTemplatesFreshen.runGit(List.of(missing.toString()), 10));
+        assertTrue(
+                e.getMessage().startsWith("git not on PATH"),
+                () -> "expected the not-on-PATH reason up front, got: " + e.getMessage());
+        assertTrue(
+                e.getMessage().contains(missing.toString()),
+                () -> "expected the command to be named, got: " + e.getMessage());
+    }
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void runGitNamesTheCommandWhenTheWaitIsInterrupted() throws Exception {
+        Path script = script("#!/bin/sh\nsleep 600\n");
+        AtomicReference<IOException> caught = new AtomicReference<>();
+        // A generous timeout, so the only way out is the interrupt — not the timeout branch.
+        Thread waiter = new Thread(() -> {
+            try {
+                OfficialTemplatesFreshen.runGit(List.of(script.toString()), 600);
+            } catch (IOException e) {
+                caught.set(e);
+            }
+        });
+        waiter.start();
+        waiter.interrupt();
+        waiter.join(30_000);
+        assertTrue(!waiter.isAlive(), "runGit did not settle after the interrupt");
+
+        IOException e = caught.get();
+        assertTrue(e != null, "expected runGit to surface the interrupt as an IOException");
+        assertTrue(
+                e.getMessage().startsWith("git interrupted"),
+                () -> "expected the interrupt reason up front, got: " + e.getMessage());
+        assertTrue(
+                e.getMessage().contains(script.toString()),
+                () -> "expected the command to be named, got: " + e.getMessage());
     }
 
     /**
