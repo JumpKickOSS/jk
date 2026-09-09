@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Where one compile's wall time went, when {@code JK_COMPILE_PHASES} names a file to append to.
@@ -26,12 +27,12 @@ final class CompilePhases {
 
     private static final String ENV = "JK_COMPILE_PHASES";
 
-    private final @org.jspecify.annotations.Nullable Path sink;
+    private final @Nullable Path sink;
     private final Clock clock;
     private final List<String> phases = new ArrayList<>();
     private long mark;
 
-    private CompilePhases(@org.jspecify.annotations.Nullable Path sink, Clock clock) {
+    private CompilePhases(@Nullable Path sink, Clock clock) {
         this.sink = sink;
         this.clock = clock;
         this.mark = clock.nanos();
