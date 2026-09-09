@@ -82,6 +82,18 @@ public final class ImportVerb implements HostedVerb {
                 "web");
     }
 
+    /**
+     * The job verdict for an import, from the plan's verdict and the importer's own exit code.
+     *
+     * <p>{@code CompatPlans} publishes that code as a plan result rather than failing the step, so a
+     * conversion the importer refused still reaches the end of its plan. The code is carried through
+     * rather than flattened: it is what {@code jk import} exits with, and a journal row that
+     * disagreed with the command would be the same defect one layer down.
+     */
+    static JobOutcome verdict(JobOutcome planVerdict, int importerExit) {
+        return PlanBurst.withToolExit(planVerdict, importerExit);
+    }
+
     @Override
     public JobOutcome run(String requestLine, Session.CancelToken cancelToken, @Nullable BufferedWriter writer) {
         try {
@@ -102,7 +114,10 @@ public final class ImportVerb implements HostedVerb {
                         body.force(),
                         body.report() != null ? Path.of(body.report()) : null,
                         (kind, text) -> host.sendQuiet(writer, ProtoEvents.importNote(dir, kind, text)));
-                return host.streamSinglePlan(
+                // `result.success()` answers whether the conversion ran, not whether it worked:
+                // CompatPlans publishes the importer's exit as a result rather than a step failure,
+                // so the event carries both and the job verdict below folds them.
+                JobOutcome planVerdict = host.streamSinglePlan(
                         plan,
                         session,
                         writer,
@@ -113,6 +128,7 @@ public final class ImportVerb implements HostedVerb {
                                 plan.get(CompatPlans.WARNINGS).orElse(0),
                                 plan.get(CompatPlans.ERROR).orElse(null),
                                 plan.get(CompatPlans.DIAG).orElse(null)));
+                return verdict(planVerdict, plan.get(CompatPlans.EXIT).orElse(0));
             } catch (Exception e) {
                 host.sendQuiet(writer, host.requestFailedLine(null, e));
                 return JobOutcome.failed(Exit.FAILURE);

@@ -84,6 +84,21 @@ public final class FormatVerb implements HostedVerb {
                 "web");
     }
 
+    /**
+     * The job verdict for a format run, from the plan's verdict and the run's per-file error count.
+     *
+     * <p>Two different questions, and only one of them is the plan's. "Did the run reach the end" is
+     * {@code BuildPlanResult.success()}, which {@link FormatWorker#reconcile} fails for a worker that
+     * died. "Did the run do its job" also needs the files: a run that visited all of them and could
+     * not format one is not a green job, however completely it ran.
+     *
+     * <p>The count, not the worker's exit code: the worker exits {@code 1} for {@code --check} drift
+     * too, and a drifted tree is a complete, clean <em>job</em> whose command exits non-zero.
+     */
+    static JobOutcome verdict(JobOutcome planVerdict, int errors) {
+        return PlanBurst.withToolExit(planVerdict, errors > 0 ? Exit.FAILURE : 0);
+    }
+
     @Override
     public JobOutcome run(String requestLine, Session.CancelToken cancelToken, @Nullable BufferedWriter writer) {
         try {
@@ -102,12 +117,12 @@ public final class FormatVerb implements HostedVerb {
                         body.removeUnusedImports(),
                         (path, status, message, index, total) -> host.sendQuiet(
                                 writer, ProtoEvents.formatFile(dir, path, status, message, index, total)));
-                // `result.success()` is the run's verdict on every surface — this event, the journal
-                // row PlanBurst stamps from it, and the CLI's wedge. It is false when the worker
-                // died mid-run (FormatWorker.reconcile), so a partial format is never reported as a
-                // complete one. The changed/clean/errors tallies stay off the wire: the CLI tallies
+                // `result.success()` answers one question: did the format reach the end? It is false
+                // when the worker died mid-run (FormatWorker.reconcile), so a partial format is
+                // never reported as a complete one. That is what the event carries and what the CLI
+                // reads it as. The changed/clean/errors tallies stay off the wire: the CLI tallies
                 // all five summary categories from the per-file format-file stream.
-                return host.streamSinglePlan(
+                JobOutcome planVerdict = host.streamSinglePlan(
                         plan,
                         session,
                         writer,
@@ -116,6 +131,7 @@ public final class FormatVerb implements HostedVerb {
                                 result.success(),
                                 plan.get(FormatWorker.TOTAL).orElse(-1),
                                 plan.get(FormatWorker.WORKER_EXIT).orElse(-1)));
+                return verdict(planVerdict, plan.get(FormatWorker.ERRORS).orElse(0));
             } catch (Exception e) {
                 host.sendQuiet(writer, host.requestFailedLine(null, e));
                 return JobOutcome.failed(Exit.FAILURE);

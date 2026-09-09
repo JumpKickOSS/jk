@@ -73,4 +73,24 @@ final class PlanBurst {
         if (result.userCancelled()) return JobOutcome.cancelled();
         return result.success() ? JobOutcome.ok() : JobOutcome.failed(Exit.FAILURE);
     }
+
+    /**
+     * A plan's verdict, narrowed by the verdict of a tool the plan drove.
+     *
+     * <p>A plan verdict answers one question: did the run reach the end? A few verbs drive a tool
+     * whose refusal is published as a plan <em>result</em> rather than a step failure — the
+     * importer's exit code, the formatter's per-file error count — because that distinction is
+     * load-bearing elsewhere (it is how a dead worker is told from a file it could not format). A
+     * job that ran to the end with a tool that refused is still not a green job, and
+     * {@code JobEnvelope} stamps a body's verdict and nothing else, so folding the two here is the
+     * verb's only chance to say so.
+     *
+     * @param toolExit the tool's refusal code, or {@code 0} when it was satisfied
+     */
+    static JobOutcome withToolExit(JobOutcome planVerdict, int toolExit) {
+        if (toolExit == 0) return planVerdict;
+        // A plan that already failed keeps its own code: a dead worker is not re-diagnosed as its
+        // tool's complaint, and a cancelled run is not a failed one.
+        return planVerdict instanceof JobOutcome.Succeeded ? JobOutcome.failed(toolExit) : planVerdict;
+    }
 }

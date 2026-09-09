@@ -282,6 +282,28 @@ class FormatWorkerCompletenessTest {
                 .isFalse();
     }
 
+    /**
+     * A per-file {@code error} is not a shortfall: the worker visited every file and said so, and
+     * exit {@code 1} is its legitimate code for "not everything was clean". The plan therefore
+     * succeeds — it answers whether the run reached the end, nothing more — and the count is
+     * published for the reader that needs the other half. {@code FormatVerbVerdictTest} pins what
+     * the job is journaled as.
+     */
+    @Test
+    void a_file_the_worker_could_not_format_is_a_complete_run_with_an_error(@TempDir Path tmp) throws Exception {
+        List<Path> files = sources(tmp, 8);
+        List<String> statuses = new ArrayList<>(List.of("error"));
+        statuses.addAll(repeat("clean", 7));
+
+        Run r = run(0, 8, false, null, 1, statuses, files);
+
+        assertThat(r.result().success()).isTrue();
+        assertThat(r.result().errors()).isEmpty();
+        assertThat(r.plan().get(FormatWorker.ERRORS)).contains(1);
+        assertThat(r.plan().get(FormatWorker.CLEAN)).contains(7);
+        assertThat(r.plan().get(FormatWorker.WORKER_EXIT)).contains(1);
+    }
+
     /** Files the freshness index settled before the fork are part of the total, so they count. */
     @Test
     void files_settled_before_the_fork_count_toward_the_total(@TempDir Path tmp) throws Exception {
