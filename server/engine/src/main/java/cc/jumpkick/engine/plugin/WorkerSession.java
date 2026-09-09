@@ -23,7 +23,14 @@ import java.util.function.Predicate;
  */
 public final class WorkerSession {
 
-    private static final Path SETSID = Path.of("/usr/bin/setsid");
+    /**
+     * The detach tool, as the POSIX string {@code execve} will receive. Not a rendered {@link Path}:
+     * {@code Path.toString} uses the platform separator, so on Windows the argv element and the
+     * idempotence guard below would both read the Windows-shaped form instead.
+     */
+    private static final String SETSID = "/usr/bin/setsid";
+
+    private static final Path SETSID_FILE = Path.of(SETSID);
 
     private static final boolean AVAILABLE = available(Os.isWindows(), Files::isExecutable);
 
@@ -35,14 +42,14 @@ public final class WorkerSession {
     }
 
     static List<String> detached(List<String> command, boolean available) {
-        if (!available || command.isEmpty() || SETSID.toString().equals(command.getFirst())) return command;
+        if (!available || command.isEmpty() || SETSID.equals(command.getFirst())) return command;
         List<String> out = new ArrayList<>(command.size() + 1);
-        out.add(SETSID.toString());
+        out.add(SETSID);
         out.addAll(command);
         return List.copyOf(out);
     }
 
     static boolean available(boolean windows, Predicate<Path> executable) {
-        return !windows && executable.test(SETSID);
+        return !windows && executable.test(SETSID_FILE);
     }
 }
