@@ -67,11 +67,13 @@ public final class ExplainVerb implements HostedVerb {
                         // empty exclude-tag list is itself a stamp input — so the forecast computed
                         // a run-tests key no build had ever stored and called all 30 modules dirty.
                         .withTestSelection(req.selection())
-                        // WorkspaceBuildVerb puts this on its session too. Nothing on the forecast
-                        // path reads it today — the ETA takes parallelTests as an argument — but a
-                        // session that differs from the build's is the shape every explain/build
-                        // divergence has taken, so it does not get to differ.
-                        .withParallelTests(req.parallelTests());
+                        // WorkspaceBuildVerb puts both of these on its session too. Neither is
+                        // read on the forecast path today — the ETA takes parallelTests as an
+                        // argument, and requestedTestWorkers is a dispatch-time pin — but a session
+                        // that differs from the build's is the shape every explain/build divergence
+                        // has taken, so they do not get to differ.
+                        .withParallelTests(req.parallelTests())
+                        .withRequestedTestWorkers(req.workers());
                 JkBuild entryBuild = JkBuildParser.parse(entryDir.resolve(ManifestPaths.MANIFEST));
                 String etaJdksDirStr = req.jdksDir();
                 int maxModuleConcurrency = req.maxModuleConcurrency();
