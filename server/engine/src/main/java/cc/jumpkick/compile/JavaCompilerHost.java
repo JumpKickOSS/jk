@@ -388,6 +388,10 @@ public final class JavaCompilerHost {
         private final Lanes owner;
         private final Thread io;
         private volatile @Nullable Work inflight;
+        // Set the instant an item leaves the queue for this lane, before the slot wait and the spec
+        // write; inflight is set only once the command is on the wire. grow() reads this one:
+        // a lane parked in PluginSlots.acquire() holds an item and is not capacity.
+        private volatile boolean busy;
         private volatile boolean dead;
         // Held only while a COMPILE/PLAN is in flight, so the resident worker does not pin a
         // PluginSlots permit while idle. Touched only by the io thread.
@@ -405,9 +409,12 @@ public final class JavaCompilerHost {
             return !dead && io.isAlive();
         }
 
-        /** Whether a COMPILE/PLAN is on the wire — a lane that is starting up counts as free. */
+        /**
+         * Whether this lane holds an item — taken off the queue, or already on the wire. A lane
+         * that is starting up, or blocked in {@code take()}, counts as free.
+         */
         boolean working() {
-            return inflight != null;
+            return busy;
         }
 
         void join(long millis) {
@@ -447,9 +454,11 @@ public final class JavaCompilerHost {
                     .converseNoSlot(command, (json, convo) -> onLine(json, convo));
         }
 
-        /** Block for the pool's next item. */
+        /** Block for the pool's next item; the lane is busy from the moment it has one. */
         Work takeNext() throws InterruptedException {
-            return owner.queue.take();
+            Work next = owner.queue.take();
+            busy = true;
+            return next;
         }
 
         void onLine(String json, PluginProcess.Conversation convo) {
@@ -489,6 +498,7 @@ public final class JavaCompilerHost {
                 for (String s : Jsonl.strArray(json, "whys")) w.whys.add(s);
                 complete(w);
                 inflight = null;
+                busy = false;
                 releaseSlot();
                 return;
             }
@@ -498,6 +508,7 @@ public final class JavaCompilerHost {
                 w.forecast.completeExceptionally(err);
                 deleteSpec(w);
                 inflight = null;
+                busy = false;
                 releaseSlot();
             }
         }
@@ -591,6 +602,7 @@ public final class JavaCompilerHost {
             releaseSlot();
             Work cur = inflight;
             inflight = null;
+            busy = false;
             if (cur != null) {
                 deleteSpec(cur);
                 Throwable withTail = withWorkerTail(e);

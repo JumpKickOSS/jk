@@ -145,6 +145,34 @@ class JavaCompilerHostPoolTest {
         awaitTrue(good.compile::isDone, "the lane's death fails the item it had on the wire");
     }
 
+    @Test
+    void a_lane_that_has_taken_an_item_but_not_yet_dispatched_it_is_not_free(@TempDir Path dir) throws Exception {
+        // Between take() and the COMPILE line sits PluginSlots.acquire(), which blocks for as long
+        // as a permit takes. A lane parked there holds an item; growth must not count it as
+        // capacity, or the next module queues behind a wait a fresh lane would have skipped.
+        CountDownLatch release = new CountDownLatch(1);
+        AtomicReference<Session> first = new AtomicReference<>();
+        Lanes pool = new Lanes(
+                2,
+                (owner, index) -> {
+                    Session s = new Session(owner, 6L, index, self -> {
+                        self.takeNext();
+                        release.await();
+                    });
+                    first.compareAndSet(null, s);
+                    return s;
+                },
+                ForkedJavac::writeSpec);
+        pool.enqueue(Work.compile(request(dir, "a")));
+        awaitTrue(() -> pool.queued() == 0 && first.get().working(), "the first lane takes the item and is busy");
+
+        pool.enqueue(Work.compile(request(dir, "b")));
+        assertThat(pool.liveLanes())
+                .as("a lane holding an undispatched item is busy, so the second item opens a second lane")
+                .isEqualTo(2);
+        release.countDown();
+    }
+
     private static PluginProcess.Conversation recording(List<String> sent) {
         return new PluginProcess.Conversation() {
             @Override
