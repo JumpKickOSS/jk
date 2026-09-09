@@ -237,12 +237,6 @@ public final class NativeImageDriver {
     }
 
     /**
-     * Assemble the {@code native-image} command line. Executable builds end with the main class;
-     * shared-library builds ({@code --shared}) take no main class and let native-image derive {@code
-     * lib<name>.<ext>} + headers from {@code -o}. Package-private for unit testing the assembly
-     * without execing.
-     */
-    /**
      * The {@code -o} value: native-image takes a basename and appends the platform executable suffix
      * itself, so handing it a path that already ends in {@code .exe} makes Windows write
      * {@code jk.exe.exe}. The request carries the on-disk name, which the presence probe and the
@@ -254,6 +248,12 @@ public final class NativeImageDriver {
         return s.regionMatches(true, s.length() - 4, ".exe", 0, 4) ? s.substring(0, s.length() - 4) : s;
     }
 
+    /**
+     * Assemble the {@code native-image} command line. Executable builds end with the main class;
+     * shared-library builds ({@code --shared}) take no main class and let native-image derive {@code
+     * lib<name>.<ext>} + headers from {@code -o}. Package-private for unit testing the assembly
+     * without execing.
+     */
     static List<String> buildCommand(Path binary, Request request) {
         List<String> command = new ArrayList<>();
         command.add(binary.toString());
