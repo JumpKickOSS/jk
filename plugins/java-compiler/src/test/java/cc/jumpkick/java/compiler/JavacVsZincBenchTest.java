@@ -4,6 +4,8 @@ package cc.jumpkick.java.compiler;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
+import java.lang.management.GarbageCollectorMXBean;
+import java.lang.management.ManagementFactory;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -34,8 +36,8 @@ class JavacVsZincBenchTest {
     /** Enough files that per-invocation cost does not dominate, few enough to stay a minute-ish. */
     private static final int FILES = 400;
 
-    private static final int WARMUPS = 1;
-    private static final int RUNS = 3;
+    private static final int WARMUPS = 3;
+    private static final int RUNS = 7;
 
     @Test
     void javac_and_zinc_compile_the_same_sources(@TempDir Path dir) throws Exception {
@@ -50,6 +52,16 @@ class JavacVsZincBenchTest {
                 "%njavac-vs-zinc  files=%d  javac=%d ms  analysis-only=%d ms  codegen+write=%d ms"
                         + "  zinc=%d ms  zinc/javac=%.2fx  os=%s%n",
                 FILES, javac, analysis, javac - analysis, zinc, zinc / (double) javac, System.getProperty("os.name"));
+        System.out.printf(
+                "javac-vs-zinc  host: cpus=%d maxHeap=%d MB jdk=%s (%s) gc=%s%n",
+                Runtime.getRuntime().availableProcessors(),
+                Runtime.getRuntime().maxMemory() / (1024 * 1024),
+                System.getProperty("java.version"),
+                System.getProperty("java.vm.vendor"),
+                ManagementFactory.getGarbageCollectorMXBeans().stream()
+                        .map(GarbageCollectorMXBean::getName)
+                        .reduce((x, y) -> x + "+" + y)
+                        .orElse("?"));
 
         assertThat(countClasses(dir.resolve("out-javac"))).isEqualTo(FILES);
         assertThat(countClasses(dir.resolve("out-zinc"))).isEqualTo(FILES);
