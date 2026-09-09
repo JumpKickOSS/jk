@@ -19,6 +19,7 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 /**
  * Single serial worker that walks project run directories, reaps old runs, and writes host-metrics
@@ -34,6 +35,23 @@ public final class MetricsHarvest {
 
     /** Default: drop runs older than 90 days. */
     public static final int DEFAULT_MAX_AGE_DAYS = 90;
+
+    /**
+     * The {@code host-metrics.toml} sections neither writer of that file owns, and which therefore
+     * have to survive a rewrite by either of them. {@code [probe]} has no writer left but three
+     * readers, including {@link AggregatedMetrics}, so a file written by an older jk can still
+     * carry one; dropping it here would silently discard it on the next rewrite.
+     *
+     * <p>The two writers own different tables — this one owns {@code [mean]}'s run keys, {@code
+     * HostMetricsFile} owns {@code [calibration]} — so each also preserves the other's. That is
+     * the whole difference between the two lists, and it is the reason this shared part is one
+     * constant: they diverged once already, and {@code [probe]} was what fell out.
+     */
+    public static final List<String> FOREIGN_SECTIONS = List.of("probe", "bootstrap", "lock", "fetch");
+
+    /** {@link #FOREIGN_SECTIONS} plus {@code [calibration]}, the table the other writer owns. */
+    private static final List<String> HARVEST_PRESERVES =
+            Stream.concat(FOREIGN_SECTIONS.stream(), Stream.of("calibration")).toList();
 
     private static final Pattern KEY_EQ_NUM =
             Pattern.compile("(?m)^([a-zA-Z0-9._:/-]+)\\s*=\\s*([0-9]+(?:\\.[0-9]+)?)\\s*$");
@@ -254,7 +272,7 @@ public final class MetricsHarvest {
         if (Files.isRegularFile(file)) {
             try {
                 String existing = Files.readString(file, StandardCharsets.UTF_8);
-                for (String section : List.of("probe", "bootstrap", "lock", "fetch", "calibration")) {
+                for (String section : HARVEST_PRESERVES) {
                     int idx = existing.indexOf("\n[" + section + "]");
                     if (idx < 0) idx = existing.startsWith("[" + section + "]") ? 0 : -1;
                     if (idx >= 0) {

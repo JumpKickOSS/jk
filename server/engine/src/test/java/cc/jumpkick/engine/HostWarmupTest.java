@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.engine.plugin.PluginAot;
 import cc.jumpkick.host.AotCacheFiles;
+import cc.jumpkick.model.JkVersion;
+import cc.jumpkick.runtime.Calibration;
 import cc.jumpkick.testing.RepoRoot;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
@@ -67,10 +69,42 @@ class HostWarmupTest {
         assertThat(HostWarmup.missingKeyNeedsTrain(null)).isTrue();
     }
 
+    /**
+     * Both answers have to be reachable, and an assertion of {@code isIn(true, false)} says
+     * nothing: it admits every boolean, so a predicate pinned at {@code true} passes it. A pinned
+     * {@code true} here means the engine finds warmup work at every idle boundary forever instead
+     * of settling once a measured probe is on disk.
+     */
     @Test
-    void needsCalibration_is_true_when_no_host_metrics() {
-        // Without isolating JK state this is environment-dependent; only assert non-throw.
-        assertThat(HostWarmup.needsCalibration()).isIn(true, false);
+    void needsCalibration_settles_once_a_measured_probe_is_on_disk(@TempDir Path home) throws Exception {
+        withJkHome(home, () -> {
+            Calibration.invalidateMemo();
+            assertThat(HostWarmup.needsCalibration())
+                    .as("nothing on disk yet")
+                    .isTrue();
+
+            // Written as text rather than through HostMetricsFile (package-private, and a
+            // round-trip through the writer would only prove the writer agrees with itself).
+            Path file = JkDirs.builds().resolve("host-metrics.toml");
+            Files.createDirectories(file.getParent());
+            Files.writeString(
+                    file,
+                    """
+                    [calibration]
+                    schema        = 1
+                    ms-per-weight = 120.0
+                    measured      = true
+                    jk-version    = "%s"
+                    updated       = %d
+                    """
+                            .formatted(JkVersion.VERSION, System.currentTimeMillis()));
+            Calibration.invalidateMemo();
+
+            assertThat(HostWarmup.needsCalibration())
+                    .as("a measured current-version probe is the end of it")
+                    .isFalse();
+        });
+        Calibration.invalidateMemo();
     }
 
     /**

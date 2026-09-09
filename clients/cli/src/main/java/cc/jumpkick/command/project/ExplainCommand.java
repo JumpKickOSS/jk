@@ -199,8 +199,8 @@ public final class ExplainCommand implements CliCommand {
 
         // Live prep wedge: Locking versions… → Calculating build plan…, re-labelled by whatever
         // preflight the engine announces (e.g. Calibrating host…), then cleared for the settled
-        // Build Plan tree. Whether the host still needs its bootstrap probe is engine state; the
-        // client used to answer it from a second copy of the rule and got it wrong (JK-2951).
+        // Build Plan tree. Whether the host still needs its bootstrap probe is engine state, and a
+        // client that answers it from its own copy of the rule answers a question it cannot see.
         boolean livePrep = EnsureFreshLock.isInteractiveAuto(global) && !global.outputIsJson();
         boolean needsLock = EnsureFreshLock.needsRefresh(startDir);
         String prepMsg = needsLock ? "Locking versions…" : "Calculating build plan…";

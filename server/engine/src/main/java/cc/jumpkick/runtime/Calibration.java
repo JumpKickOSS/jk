@@ -515,8 +515,8 @@ public final class Calibration {
      *
      * <p>This is the <em>only</em> place that decides whether a client says "Calibrating host…".
      * A client cannot answer it for itself: the decision is engine state, and a second
-     * implementation over on the client side is how it came to be wrong for every workspace build
-     * while {@code jk explain} was right (JK-2950, JK-2951).
+     * implementation on the client side is one that drifts silently — it reads the same file and
+     * reaches its own verdict, with nothing to hold the two together.
      */
     public static Calibration ensureAnnounced(@Nullable Path jdksDir, ProbeAnnouncer announcer) {
         boolean probing = needsProbe();

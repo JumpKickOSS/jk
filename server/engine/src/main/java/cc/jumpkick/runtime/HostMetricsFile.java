@@ -191,8 +191,10 @@ final class HostMetricsFile {
             try {
                 String existing = Files.readString(file);
                 splitMeanLines(existing, harvestKeys, continuousKeys);
-                // Keep the non-calibration sections from the harvest / lock-fetch writers.
-                for (String section : List.of("lock", "fetch", "bootstrap")) {
+                // Keep every section this writer does not own. The list is MetricsHarvest's, not
+                // a second copy of it — [calibration] is absent because this writer regenerates it
+                // below, and that is the only difference between the two writers' views.
+                for (String section : MetricsHarvest.FOREIGN_SECTIONS) {
                     int idx = existing.indexOf("\n[" + section + "]");
                     if (idx < 0) idx = existing.startsWith("[" + section + "]") ? 0 : -1;
                     if (idx >= 0) {

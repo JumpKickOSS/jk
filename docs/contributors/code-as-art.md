@@ -961,6 +961,7 @@ letter — is the Gradle-side follow-up recorded in `guard-parity.txt`.
 | G91 | `checkCoverageBand` | a module's unit-test line coverage falling below its `coverage-baseline.txt` line — and an improvement that is not banked, because a number nobody tightens stops meaning anything | ratchet, one line per module (`coverage-baseline.txt`); nightly, with the JaCoCo agent | — |
 | G92 | `json-concat` (jk-guards.toml, `text`) | a JSON object line built by string concatenation — a literal opening `{"` or a `+ ",\"field\"` fragment — in main code; measured here, held by G93 | text, `**/src/main/java`, comments blanked; measured only (the owner is the tree) | `json-concat` (text) |
 | G93 | `json-concat-ratchet` (jk-guards.toml, `metric`) | a file's count of hand-built JSON fragments growing past its baseline — the count only falls, until the pattern is a ban | metric, `matches:json-concat` per file, baselined and tightened on every build | `json-concat-ratchet` (metric) |
+| G94 | `schema-compared-to-its-constant` (jk-guards.toml, `text`) | a schema field compared to an integer literal (`schema >= 3`) instead of to its `SCHEMA` constant — G85 pins the constant and nothing pinned the comparisons, so a rolled-back schema left three unsatisfiable tests behind | text, no match tree-wide | `schema-compared-to-its-constant` (text) |
 <!-- guards:end -->
 
 `checkCliRuntimeClasspath` and `checkCliNoParseTypes` predate the letters.
@@ -1041,6 +1042,7 @@ by id, kind and why. This block is a `generated` guard's rendering
 | repository-names | vocabulary | a repository name spelled twice is a store that silently never hits |
 | retired-wire-keys | text | a retired spelling back in production source is a reader of a shape nobody writes |
 | runnable-owner | forbid | an access check off Windows, an extension test on it: 64x cheaper where it matters |
+| schema-compared-to-its-constant | text | G85 pins the constant and nothing pinned the comparisons against it |
 | schema-freeze | text | a bump before 1.0 mints a dual reader with no users |
 | ship-layout-installer-gradle | parity | install.sh reads <dir-of-binary>/<name>/; a dist that writes another name is one the installer walks past |
 | ship-layout-installer-jk | parity | install.sh reads <dir-of-binary>/<name>/; a dist that writes another name is one the installer walks past |

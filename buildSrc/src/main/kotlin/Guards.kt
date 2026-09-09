@@ -950,6 +950,18 @@ object Guards {
                 ruleId = "json-concat-ratchet",
             ),
             spec(
+                94,
+                "schema-compared-to-its-constant",
+                "a schema field compared to an integer literal (`schema >= 3`) instead of to its `SCHEMA` constant — G85 pins the constant and nothing pinned the comparisons, so a rolled-back schema left three unsatisfiable tests behind",
+                "text, no match tree-wide",
+                GuardHome.SELF_HOSTED,
+                tableTask = "`schema-compared-to-its-constant` (jk-guards.toml, `text`)",
+                inFastGate = false,
+                gradleLetter = false,
+                attach = emptySet(),
+                ruleId = "schema-compared-to-its-constant",
+            ),
+            spec(
                 91,
                 "checkCoverageBand",
                 "a module's unit-test line coverage falling below its `coverage-baseline.txt` line — and an improvement that is not banked, because a number nobody tightens stops meaning anything",

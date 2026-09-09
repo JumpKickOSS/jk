@@ -921,6 +921,20 @@ miss    = "int CURRENT_VERSION = 2;"
 instead = "keep version 1 until 1.0"
 why     = "a bump before 1.0 mints a dual reader with no users"
 
+# G94. A schema is compared to its constant, never to a number. G85 pins the constant and nothing
+# pinned the comparisons: Calibration.SCHEMA rolled 3 -> 1 to satisfy G85 and three `schema >= 3` /
+# `schema() < 3` tests were left behind, each unsatisfiable, so an "already calibrated, skip it"
+# fast path was dead code and every workspace build re-ran a multi-second host probe.
+[guards.schema-compared-to-its-constant]
+kind      = "text"
+languages = ["java"]
+pattern   = "(?i)\\bschema\\b\\s*\\(?\\)?\\s*(?:[<>]=?|[=!]=)\\s*\\d"
+count     = { max = 0, per = "tree" }
+hit       = "if (c.schema() < 3) return true;"
+miss      = "if (schema != Calibration.SCHEMA) return absent;"
+instead   = "compare against the SCHEMA constant"
+why       = "G85 pins the constant and nothing pinned the comparisons against it"
+
 # G86. A committed lock is version 1; anything else is a shape this jk refuses to read.
 [guards.lock-version-is-one]
 kind    = "text"

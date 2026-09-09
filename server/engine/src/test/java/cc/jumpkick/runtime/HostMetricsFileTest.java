@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
 
+import cc.jumpkick.builds.MetricsHarvest;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.runtime.base.HostLearnedRates;
 import java.nio.file.Files;
@@ -202,6 +203,37 @@ class HostMetricsFileTest {
                 .contains("task.guard.wall-ms = 182.548")
                 .contains("native-image-ms-per-mib = 222")
                 .doesNotContain("native-image-ms-per-mib = 111");
+    }
+
+    /**
+     * The foreign-section list is {@link MetricsHarvest#FOREIGN_SECTIONS} and not a second copy of
+     * it. The two lists diverged once — this writer's was missing {@code [probe]}, so a calibration
+     * rewrite discarded a section the harvest writer and {@code AggregatedMetrics} both preserve.
+     * Driven off the constant, so adding a section to it without teaching this writer fails here.
+     */
+    @Test
+    void every_foreign_section_survives_a_calibration_rewrite(@TempDir Path dir) throws Exception {
+        Path f = dir.resolve("host-metrics.toml");
+        StringBuilder fixture = new StringBuilder("[mean]\ntask.compile-java.wall-ms = 1234.5\n");
+        for (String section : MetricsHarvest.FOREIGN_SECTIONS) {
+            fixture.append("\n[").append(section).append("]\n").append(section).append("-marker = 7\n");
+        }
+        Files.writeString(f, fixture.toString());
+
+        HostMetricsFile.writeTo(f, Calibration.testInstance(42.5, true, JkVersion.VERSION, NOW));
+
+        String rewritten = Files.readString(f);
+        for (String section : MetricsHarvest.FOREIGN_SECTIONS) {
+            assertThat(rewritten)
+                    .as("[%s] must survive a calibration rewrite", section)
+                    .contains("[" + section + "]")
+                    .contains(section + "-marker = 7");
+        }
+        assertThat(Toml.parse(rewritten).hasErrors()).isFalse();
+        // Named, not just iterated: the loop above shrinks with the constant, so it would follow
+        // [probe] straight back out of the list. [probe] has no writer and three readers, so
+        // nothing else would notice it going.
+        assertThat(MetricsHarvest.FOREIGN_SECTIONS).contains("probe");
     }
 
     /**

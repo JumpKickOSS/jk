@@ -141,7 +141,7 @@ class CalibrationTest {
 
             // ensureAnnounced is the one place that decides whether any client says
             // "Calibrating host…" — build and explain both go through it, and nothing outside
-            // the engine gets to work the answer out for itself (JK-2951).
+            // the engine gets to work the answer out for itself.
             List<String> announced = new ArrayList<>();
             Calibration kept = Calibration.ensureAnnounced(
                     null, (stage, done, total, label) -> announced.add(stage + " " + done + "/" + total));

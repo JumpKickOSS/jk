@@ -138,7 +138,7 @@ public final class HostWarmup {
 
     static boolean needsCalibration(long nowMillis) {
         Calibration c = Calibration.load();
-        if (!c.present() || !c.measured() || c.schema() < 3) return true;
+        if (!c.present() || !c.measured()) return true;
         if (c.jkVersion() == null || !JkVersion.VERSION.equals(c.jkVersion())) return true;
         if (Calibration.stale(c.jkVersion(), c.updated(), nowMillis)) return true;
         String hostJdk = hostJdkId();

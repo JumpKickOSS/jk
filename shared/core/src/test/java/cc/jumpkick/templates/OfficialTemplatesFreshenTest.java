@@ -38,7 +38,7 @@ class OfficialTemplatesFreshenTest {
         long elapsedMs = (System.nanoTime() - start) / 1_000_000;
         // Prefix plus containment, not equality — same contract as the exit-code message: what
         // went wrong, then which invocation. A stalled fetch that does not name the repository is
-        // the whole reason this message carries the command (JK-2959).
+        // the whole reason this message carries the command.
         assertTrue(
                 e.getMessage().startsWith("git timed out after 2s"),
                 () -> "expected the timeout and its budget up front, got: " + e.getMessage());
