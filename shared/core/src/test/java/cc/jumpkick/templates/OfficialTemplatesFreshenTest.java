@@ -53,13 +53,24 @@ class OfficialTemplatesFreshenTest {
         OfficialTemplatesFreshen.runGit(List.of(script.toString()), 30);
     }
 
+    /**
+     * The exit code, and which invocation produced it. {@code 3d05952e3} added the command to this
+     * message because a bare "git exit 128" from a MAX_PATH clone failure named nothing you could
+     * act on — so the command is part of the contract, not incidental text. Asserted as a prefix
+     * plus a containment rather than the whole string, so adding more context cannot break it again.
+     */
     @Test
     @DisabledOnOs(OS.WINDOWS)
-    void runGitSurfacesNonZeroExit() throws Exception {
+    void runGitSurfacesNonZeroExitAndTheCommandThatFailed() throws Exception {
         Path script = script("#!/bin/sh\nexit 3\n");
         IOException e =
                 assertThrows(IOException.class, () -> OfficialTemplatesFreshen.runGit(List.of(script.toString()), 10));
-        assertEquals("git exit 3", e.getMessage());
+        assertTrue(
+                e.getMessage().startsWith("git exit 3"),
+                () -> "expected the exit code up front, got: " + e.getMessage());
+        assertTrue(
+                e.getMessage().contains(script.toString()),
+                () -> "expected the failing command to be named, got: " + e.getMessage());
     }
 
     /** One git attempt per cache key per TTL — success or failure — so a missing
