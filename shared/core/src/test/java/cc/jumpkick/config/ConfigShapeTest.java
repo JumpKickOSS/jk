@@ -135,6 +135,7 @@ class ConfigShapeTest {
                         new Object[] {new PluginTuning(null, "G1", null, List.of("-Xmx1g"))},
                         List.of("jvm")),
                 new Wither("withParallelTests", new Object[] {true}, List.of("parallelTests")),
+                new Wither("withRequestedTestWorkers", new Object[] {8}, List.of("requestedTestWorkers")),
                 new Wither("withCancel", new Object[] {Session.CancelToken.NONE}, List.of("cancel")),
                 new Wither("withAssemblyOverride", new Object[] {"minified"}, List.of("assemblyOverride")),
                 new Wither(
