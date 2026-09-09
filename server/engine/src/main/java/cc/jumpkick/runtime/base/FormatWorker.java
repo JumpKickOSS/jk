@@ -23,10 +23,17 @@ public final class FormatWorker {
     /**
      * Receives each file's result as the plugin streams it: {@code status} is {@code changed},
      * {@code clean}, {@code skipped}, or {@code error}.
+     *
+     * <p>{@link #SLOW} is the exception — a file still in flight, not a verdict. It carries no
+     * progress and is not counted; it exists so a multi-minute peg on one file names that file
+     * instead of going quiet.
      */
     public interface FileObserver {
         void onFile(String path, String status, String message, int index, int total);
     }
+
+    /** The per-file status that reports a file is <em>still</em> being formatted. */
+    public static final String SLOW = "slow";
 
     /**
      * Whether a per-file result may be recorded in the mtime/size {@link FormatFreshnessIndex}.
@@ -36,7 +43,7 @@ public final class FormatWorker {
      * always excluded.
      */
     static boolean recordsFreshness(String status, boolean check) {
-        if ("error".equals(status)) return false;
+        if ("error".equals(status) || SLOW.equals(status)) return false;
         // Under --check nothing was written, so a "changed" file's bytes are still the unformatted ones.
         return !check || !"changed".equals(status);
     }
@@ -91,6 +98,13 @@ public final class FormatWorker {
                 .on("file", json -> {
                     String status = Jsonl.str(json, "status");
                     String path = Jsonl.str(json, "path");
+                    if (SLOW.equals(status)) {
+                        // Live chatter about a file the run has not settled: it keeps its place in the
+                        // stream (the CLI names it) but touches no tally, no freshness record, and no
+                        // progress — its verdict is still to come.
+                        observer.onFile(path, status, Jsonl.str(json, "msg"), index.get(), total);
+                        return;
+                    }
                     if ("changed".equals(status)) {
                         changed.incrementAndGet();
                     } else if ("error".equals(status)) {

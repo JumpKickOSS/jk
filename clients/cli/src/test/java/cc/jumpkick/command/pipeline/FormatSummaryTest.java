@@ -4,6 +4,7 @@ package cc.jumpkick.command.pipeline;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.model.command.Exit;
+import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -11,6 +12,21 @@ import org.junit.jupiter.api.Test;
  * exit code.
  */
 class FormatSummaryTest {
+
+    /**
+     * A file still in flight is chatter, not a verdict: the wedge's counts must not see it, and the
+     * line must name the path — a stalled run that says nothing is the defect this line exists for.
+     */
+    @Test
+    void a_file_still_in_flight_is_named_with_its_elapsed_time() {
+        String line = FormatCommand.slowLine(
+                "/w/proj/src/main/java/demo/Nested.java", Path.of("/w/proj"), "still formatting after 6.4s");
+
+        assertThat(line)
+                .contains("slow")
+                .contains("src/main/java/demo/Nested.java")
+                .endsWith("still formatting after 6.4s");
+    }
 
     @Test
     void check_on_drift_reads_as_a_failure_and_names_the_fix() {

@@ -100,6 +100,16 @@ class FormatPlansCollectTest {
         assertThat(FormatWorker.recordsFreshness("error", true)).isFalse();
     }
 
+    /**
+     * A file the worker is <em>still</em> formatting has no verdict yet, so recording it would claim
+     * a file was finished on the strength of a progress notice.
+     */
+    @Test
+    void a_file_still_in_flight_is_never_recorded_fresh() {
+        assertThat(FormatWorker.recordsFreshness(FormatWorker.SLOW, false)).isFalse();
+        assertThat(FormatWorker.recordsFreshness(FormatWorker.SLOW, true)).isFalse();
+    }
+
     /** …and the statuses that were recorded before still are. */
     @Test
     void settled_files_are_still_recorded_fresh() {

@@ -238,6 +238,50 @@ class FormatWorkerCompletenessTest {
         assertThat(r.result().errors().get(0).message()).contains("exited 139").contains("exit law is 0 or 1");
     }
 
+    /**
+     * A {@code slow} event says a file is <em>still</em> being formatted, so it is not a result. If
+     * the tally counted it, a run that named one slow file twice would report ten results for eight
+     * files and fail as "more results than files" — the completeness check turned against the
+     * progress notice that exists to keep a long peg visible.
+     */
+    @Test
+    void in_flight_notices_are_not_results(@TempDir Path tmp) throws Exception {
+        List<Path> files = sources(tmp, 8);
+        List<String> statuses = new ArrayList<>(List.of(FormatWorker.SLOW, FormatWorker.SLOW));
+        statuses.addAll(repeat("clean", 8));
+        List<Path> paths = new ArrayList<>(List.of(files.get(3), files.get(3)));
+        paths.addAll(files);
+
+        Run r = run(0, 8, false, null, 0, statuses, paths);
+
+        assertThat(r.result().success()).isTrue();
+        assertThat(r.plan().get(FormatWorker.CLEAN)).contains(8);
+        assertThat(r.plan().get(FormatWorker.ERRORS)).contains(0);
+        // The client still sees them: they are what names the file a stalled bar is waiting on.
+        assertThat(r.observed()).hasSize(10).startsWith(FormatWorker.SLOW, FormatWorker.SLOW);
+    }
+
+    /**
+     * The index is the outer filter — a recorded path is not sent to the worker at all next run — so
+     * a file that has only been named as slow must not be stamped on the strength of that notice.
+     */
+    @Test
+    void an_in_flight_notice_does_not_stamp_the_file_fresh(@TempDir Path tmp) throws Exception {
+        Path project = tmp.resolve("proj");
+        Path cache = tmp.resolve("cache");
+        List<Path> files = sources(project.resolve("src"), 4);
+        String configKey = "0123456789abcdef";
+        FormatFreshnessIndex index = FormatFreshnessIndex.open(cache, project, configKey);
+
+        // The worker names file 0 as slow, then dies before reporting a verdict for it.
+        Run r = run(0, 4, false, index, 139, List.of(FormatWorker.SLOW), List.of(files.get(0)));
+
+        assertThat(r.result().success()).isFalse();
+        assertThat(FormatFreshnessIndex.open(cache, project, configKey).isClean(files.get(0)))
+                .as("named, not finished — the next run must still format it")
+                .isFalse();
+    }
+
     /** Files the freshness index settled before the fork are part of the total, so they count. */
     @Test
     void files_settled_before_the_fork_count_toward_the_total(@TempDir Path tmp) throws Exception {

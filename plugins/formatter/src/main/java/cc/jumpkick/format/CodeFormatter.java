@@ -2,6 +2,7 @@
 package cc.jumpkick.format;
 
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginConfig;
@@ -33,10 +34,14 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 
 /**
@@ -46,6 +51,9 @@ import java.util.regex.Pattern;
  * <p>Java Spotless pipeline: {@code importOrder} → {@code removeUnusedImports} → Palantir / Google
  * / AOSP. Kotlin is ktfmt. Groovy is semicolon removal. Scala is scalafmt. FQCN shortening is a
  * first-party index pass (no compiler) that runs before Spotless.
+ *
+ * <p>Every file runs under a wall bound ({@link FormatWatchdog}): one pathological source cannot
+ * dominate the run, and a file that is merely slow is named while it is still in flight.
  */
 public final class CodeFormatter implements Plugin {
 
@@ -71,32 +79,88 @@ public final class CodeFormatter implements Plugin {
         // isolation, so its type cache had to be per-thread and parallelism partly cancelled it.
         TypeIndex index = spec.optimizeImports ? TypeIndex.scan(spec.indexFiles) : null;
 
-        int changed = 0, clean = 0, errors = 0;
         Workers workers = new Workers(spec);
+        Tally tally;
         try {
-            // Work runs in parallel; results are emitted in spec order, so the per-file stream — and
-            // every tally the host derives from it — does not depend on thread timing.
+            tally = formatAll(spec, out, (ref, i, dog) -> {
+                // Untimed on purpose: the first file a thread sees pays for its Spotless step chain
+                // and the classloaders behind it, which is not that file's own cost.
+                Formatter fmt = workers.get().formatter(ref.kind());
+                // The host listed a file but sent no jars for its language. Reported, not skipped in
+                // silence: a file the run was told to visit and said nothing about is
+                // indistinguishable from a dead worker, which is the shortfall
+                // FormatWorker.reconcile exists to catch.
+                if (fmt == null) {
+                    return new FileResult(ref.file(), "error", "no " + ref.kind() + " formatter jars were provided");
+                }
+                try (var window = dog.watch(i, ref.file())) {
+                    return formatOne(ref, fmt, spec, stampCache, index);
+                }
+            });
+        } finally {
+            workers.close();
+            // One write for the whole run: every contains/record above was a map operation.
+            if (stampCache != null) stampCache.save();
+        }
+
+        return tally.errors() > 0 || (!spec.apply && tally.changed() > 0) ? 1 : 0;
+    }
+
+    /** One file's verdict, decided off-thread and emitted in spec order by {@link #formatAll}. */
+    record FileResult(File file, String status, String msg) {}
+
+    /** How the run's files fell out, counted as they were emitted. */
+    record Tally(int changed, int clean, int errors) {}
+
+    /**
+     * One file's work as the run's pool sees it. The seam is the wall bound: open a
+     * {@link FormatWatchdog#watch window} around the part that formats, and do any per-thread setup
+     * before it.
+     */
+    interface FileWork {
+        FileResult apply(FileRef ref, int index, FormatWatchdog dog);
+    }
+
+    /**
+     * Format every file in the spec in parallel, emitting per-file results in spec order.
+     *
+     * <p>Spec order is what keeps the stream — and every tally the host derives from it —
+     * independent of thread timing. It is also why the wall bound matters here rather than in the
+     * work: a file that never returns stalls the emission of every file behind it, so
+     * {@link FormatWatchdog} has to be able to settle one on the run's behalf.
+     *
+     * <p>A settled timeout leaves its thread interrupted but very possibly still running, since
+     * nothing obliges a formatter to notice. The run therefore adds a replacement thread per
+     * abandoned one (up to as many as it started with) so the remaining files keep the concurrency
+     * they were planned for.
+     */
+    static Tally formatAll(Spec spec, ProtocolWriter out, FileWork work) {
+        int slots = concurrency(spec);
+        ThreadPoolExecutor pool = new ThreadPoolExecutor(
+                slots, slots, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>(), CodeFormatter::formatThread);
+        AtomicInteger abandoned = new AtomicInteger();
+        FormatWatchdog dog = new FormatWatchdog(
+                spec.fileWarnMs,
+                spec.fileTimeoutMs,
+                Clock.SYSTEM,
+                (file, elapsedMs) ->
+                        emitFile(out, file, "slow", "still formatting after " + FormatWatchdog.human(elapsedMs)),
+                () -> replaceSlot(pool, slots, abandoned));
+        int changed = 0, clean = 0, errors = 0;
+        try {
             List<Future<FileResult>> pending = new ArrayList<>(spec.files.size());
-            ExecutorService pool = Executors.newFixedThreadPool(concurrency(spec));
+            dog.start();
             try {
-                for (FileRef ref : spec.files) {
-                    pending.add(pool.submit(() -> formatOne(ref, spec, stampCache, index, workers)));
+                for (int i = 0; i < spec.files.size(); i++) {
+                    FileRef ref = spec.files.get(i);
+                    int index = i;
+                    pending.add(pool.submit(() -> work.apply(ref, index, dog)));
                 }
             } finally {
                 pool.shutdown();
             }
             for (int i = 0; i < pending.size(); i++) {
-                FileResult result;
-                try {
-                    result = pending.get(i).get();
-                } catch (ExecutionException e) {
-                    // pending is index-aligned with spec.files, so the crashed task's file is
-                    // knowable — name it, or reconcile blames the wrong "never visited" file.
-                    Throwable cause = e.getCause() == null ? e : e.getCause();
-                    errors++;
-                    emitFile(out, spec.files.get(i).file(), "error", String.valueOf(cause.getMessage()));
-                    continue;
-                }
+                FileResult result = settle(pending.get(i), i, spec.files.get(i), dog, abandoned, slots);
                 switch (result.status()) {
                     case "changed" -> changed++;
                     case "error" -> errors++;
@@ -105,28 +169,111 @@ public final class CodeFormatter implements Plugin {
                 emitFile(out, result.file(), result.status(), result.msg());
             }
         } finally {
-            workers.close();
-            // One write for the whole run: every contains/record above was a map operation.
-            if (stampCache != null) stampCache.save();
+            dog.close();
+            pool.shutdownNow();
         }
-
-        int exit = errors > 0 || (!spec.apply && changed > 0) ? 1 : 0;
-        return exit;
+        return new Tally(changed, clean, errors);
     }
 
-    /** One file's verdict, decided off-thread and emitted in spec order by {@link #run}. */
-    private record FileResult(File file, String status, String msg) {}
+    /** How long {@link #settle} waits between asking the watchdog whether a file is still the run's. */
+    private static final long SETTLE_POLL_MS = 200;
+
+    /**
+     * The verdict for one file: the task's own, or the run's when the task will not produce one.
+     * Every arm names the file — {@code pending} is index-aligned with {@code spec.files}, so a task
+     * that crashed or was abandoned is still knowable, and reconcile never blames the wrong
+     * "never visited" file.
+     */
+    private static FileResult settle(
+            Future<FileResult> f, int index, FileRef ref, FormatWatchdog dog, AtomicInteger abandoned, int slots) {
+        while (true) {
+            try {
+                FileResult result = f.get(SETTLE_POLL_MS, TimeUnit.MILLISECONDS);
+                // Coming back late does not un-abandon a file. The run already acted on the verdict
+                // — replaced the slot, named the file — and a result that depends on whether a task
+                // beat a poll by a few milliseconds is not one anybody can reason about.
+                String verdict = dog.verdict(index);
+                return verdict == null ? result : timedOut(ref, verdict);
+            } catch (TimeoutException e) {
+                String verdict = dog.verdict(index);
+                if (verdict != null) {
+                    f.cancel(true);
+                    return timedOut(ref, verdict);
+                }
+                if (abandoned.get() >= tolerable(slots) && f.cancel(false)) return unstarted(ref);
+            } catch (CancellationException e) {
+                String verdict = dog.verdict(index);
+                return verdict != null
+                        ? timedOut(ref, verdict)
+                        : new FileResult(ref.file(), "error", "formatting was cancelled before it finished");
+            } catch (ExecutionException e) {
+                Throwable cause = e.getCause() == null ? e : e.getCause();
+                return new FileResult(ref.file(), "error", String.valueOf(cause.getMessage()));
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return new FileResult(ref.file(), "error", "the format run was interrupted");
+            }
+        }
+    }
+
+    private static FileResult timedOut(FileRef ref, String verdict) {
+        return new FileResult(ref.file(), "error", verdict + SourceShape.postMortem(ref.file()));
+    }
+
+    /**
+     * The run has spent its replacement threads, so nothing is going to start this file. Reached
+     * only when {@link Future#cancel(boolean) cancel(false)} succeeds, which it does for a task that
+     * never ran and only for one — so this is a fact about the file, not a guess, and it cannot race
+     * a result the file was about to produce.
+     */
+    private static FileResult unstarted(FileRef ref) {
+        return new FileResult(
+                ref.file(),
+                "error",
+                "not formatted: every formatter thread the run could spare was left wedged by a file that timed out");
+    }
+
+    /**
+     * Replace the thread a timed-out file kept. It was interrupted, but nothing obliges a formatter
+     * to notice, so it no longer counts as a slot.
+     *
+     * <p>One replacement per slot the run started with. Past that the pool would grow a live
+     * formatter per pathological file inside a heap sized for one worker, so the run stops promising
+     * the files behind them a thread and {@linkplain #unstarted settles them with a reason} instead.
+     */
+    private static void replaceSlot(ThreadPoolExecutor pool, int slots, AtomicInteger abandoned) {
+        int lost = abandoned.incrementAndGet();
+        if (lost > slots) return;
+        pool.setMaximumPoolSize(slots + lost);
+        pool.setCorePoolSize(slots + lost);
+    }
+
+    /** How many files a run will lose to the timeout before it stops replacing their threads. */
+    private static int tolerable(int slots) {
+        return slots * 2;
+    }
+
+    private static final AtomicInteger THREAD_SEQ = new AtomicInteger();
+
+    /**
+     * A pool thread. Daemon because a file that outlasted its timeout may hold this thread forever:
+     * the worker's exit must not wait on it.
+     */
+    private static Thread formatThread(Runnable r) {
+        Thread t = new Thread(r, "jk-format-" + THREAD_SEQ.incrementAndGet());
+        t.setDaemon(true);
+        return t;
+    }
 
     /**
      * How many files to format at once. The work is per-file independent and CPU-bound, and the host
      * launches this worker as its only fork, so {@code ActiveProcessorCount} is the whole machine.
      * Capped at 8: past that the curve flattens and every thread adds a live Spotless step chain to a
-     * heap sized for one worker. {@code jk.format.threads} overrides for measurement.
+     * heap sized for one worker. {@link Spec#threads} overrides for measurement.
      */
     static int concurrency(Spec spec) {
-        Integer override = Integer.getInteger("jk.format.threads");
         int files = Math.max(1, spec.files.size());
-        if (override != null && override > 0) return Math.min(override, files);
+        if (spec.threads > 0) return Math.min(spec.threads, files);
         int cores = Math.max(1, Runtime.getRuntime().availableProcessors());
         long heapMb = Runtime.getRuntime().maxMemory() / (1024 * 1024);
         int byHeap = (int) Math.max(1, heapMb / 256);
@@ -198,17 +345,56 @@ public final class CodeFormatter implements Plugin {
                             case SCALA -> spec.scalaJars.isEmpty() ? null : scalaSteps(spec);
                         };
                 if (steps == null) return null;
-                return Formatter.builder()
+                Formatter f = Formatter.builder()
                         .lineEndingsPolicy(LineEnding.UNIX.createPolicy())
                         .encoding(StandardCharsets.UTF_8)
                         .steps(steps)
                         .build();
+                warm(f, kind);
+                return f;
+            }
+
+            /**
+             * Format a stub so the chain's lazy state — a provisioned classloader per jar set, the
+             * formatter object behind it — exists before any real file is measured against it. Without
+             * this the first file a thread sees carries that cost and can look pathological to the
+             * per-file timeout. Best-effort: a chain that cannot format a stub will say so on its
+             * first real file, like any other failure.
+             */
+            private static void warm(Formatter f, Kind kind) {
+                String stub =
+                        switch (kind) {
+                            case JAVA, GROOVY -> "class A {}\n";
+                            case KOTLIN, SCALA -> "class A\n";
+                        };
+                try {
+                    DirtyState.of(f, new File("A" + extension(kind)), stub.getBytes(StandardCharsets.UTF_8));
+                } catch (RuntimeException ignored) {
+                    // Warming is an optimization, never a requirement.
+                }
+            }
+
+            private static String extension(Kind kind) {
+                return switch (kind) {
+                    case JAVA -> ".java";
+                    case KOTLIN -> ".kt";
+                    case GROOVY -> ".groovy";
+                    case SCALA -> ".scala";
+                };
             }
 
             @Override
             public void close() {
                 for (Formatter f : byKind.values()) {
-                    if (f != null) f.close();
+                    if (f == null) continue;
+                    try {
+                        f.close();
+                    } catch (Throwable ignored) {
+                        // A thread abandoned to the per-file timeout may still be inside this
+                        // formatter. Its step chain dies with the process either way, and a close
+                        // that trips over the live use must not turn a reported timeout into a
+                        // worker crash — reconcile reads any exit outside {0, 1} as a death.
+                    }
                 }
             }
         }
@@ -216,17 +402,11 @@ public final class CodeFormatter implements Plugin {
 
     /**
      * One file, start to finish: stamp lookup, the FQCN pass, then Spotless. Runs on a pool thread
-     * and returns its verdict rather than emitting it, so {@link #run} keeps the stream in spec order.
+     * under the run's wall bound, and returns its verdict rather than emitting it, so
+     * {@link #formatAll} keeps the stream in spec order.
      */
     private static FileResult formatOne(
-            FileRef ref, Spec spec, FormatStampCache stampCache, TypeIndex index, Workers workers) {
-        Formatter fmt = workers.get().formatter(ref.kind());
-        // The host listed a file but sent no jars for its language. Reported, not skipped in silence:
-        // a file the run was told to visit and said nothing about is indistinguishable from a dead
-        // worker, which is the shortfall FormatWorker.reconcile exists to catch.
-        if (fmt == null) {
-            return new FileResult(ref.file(), "error", "no " + ref.kind() + " formatter jars were provided");
-        }
+            FileRef ref, Formatter fmt, Spec spec, FormatStampCache stampCache, TypeIndex index) {
         try {
             byte[] originalBytes = Files.readAllBytes(ref.file().toPath());
             String stampKey = stampCache != null ? stampCache.keyFor(originalBytes) : null;
@@ -404,6 +584,15 @@ public final class CodeFormatter implements Plugin {
         /** All project sources the type index should read (may be a superset of {@link #files}). */
         List<Path> indexFiles = List.of();
 
+        /** How long one file may be in flight before the run names it. 0 or less disables the notice. */
+        long fileWarnMs = FormatWatchdog.DEFAULT_WARN_MS;
+
+        /** How long one file may be in flight before the run gives up on it. 0 or less disables the bound. */
+        long fileTimeoutMs = FormatWatchdog.DEFAULT_TIMEOUT_MS;
+
+        /** Files to format at once; 0 lets {@link #concurrency} size the run to the machine. */
+        int threads = 0;
+
         final List<FileRef> files = new ArrayList<>();
 
         static Spec from(PluginSpec ws) {
@@ -423,6 +612,9 @@ public final class CodeFormatter implements Plugin {
             s.optimizeImports = c.bool("optimizeImports", false);
             s.importOrder = c.bool("importOrder", true);
             s.removeUnusedImports = c.bool("removeUnusedImports", true);
+            s.fileWarnMs = longProperty("jk.format.file-warn-ms", s.fileWarnMs);
+            s.fileTimeoutMs = longProperty("jk.format.file-timeout-ms", s.fileTimeoutMs);
+            s.threads = (int) longProperty("jk.format.threads", s.threads);
             c.stringOpt("cacheDir").ifPresent(p -> s.cacheDir = Path.of(p));
             c.stringOpt("configKey").ifPresent(k -> s.configKey = k);
             List<Path> index = new ArrayList<>();
@@ -438,6 +630,21 @@ public final class CodeFormatter implements Plugin {
             }
             s.indexFiles = List.copyOf(index);
             return s;
+        }
+
+        /**
+         * A tuning knob from a system property, or {@code fallback} when unset or unparseable. These
+         * reach the worker through {@code [jvm] args} or {@code JK_JVM_ARGS}, the same way any other
+         * worker-JVM flag does.
+         */
+        private static long longProperty(String name, long fallback) {
+            String raw = System.getProperty(name);
+            if (raw == null || raw.isBlank()) return fallback;
+            try {
+                return Long.parseLong(raw.strip());
+            } catch (NumberFormatException e) {
+                return fallback;
+            }
         }
 
         private static Set<File> jars(List<String> paths) {

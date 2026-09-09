@@ -153,7 +153,9 @@ public final class FormatCommand implements CliCommand {
         FormatStyles.Resolved styles = run.styles();
         int[] counts = {0, 0, 0}; // changed, clean, errors
         HostedEvents.FileObserver observer = (path, status, msg, index, total) -> {
-            if ("changed".equals(status)) {
+            if ("slow".equals(status)) {
+                CliOutput.err(slowLine(path, projectDir, msg));
+            } else if ("changed".equals(status)) {
                 counts[0]++;
                 if (!global.outputIsJson()) {
                     // Under --check a changed file is a finding, not an accomplishment: the
@@ -177,7 +179,7 @@ public final class FormatCommand implements CliCommand {
                 }
             } else if ("error".equals(status)) {
                 counts[2]++;
-                CliOutput.err("  error  " + path + ": " + msg);
+                CliOutput.err("  error  " + PathDisplay.of(Path.of(path), projectDir) + ": " + msg);
             } else {
                 counts[1]++;
             }
@@ -237,6 +239,10 @@ public final class FormatCommand implements CliCommand {
 
             int[] counts = {0, 0, 0}; // changed, clean, errors
             HostedEvents.FileObserver observer = (path, status, msg, index, total) -> {
+                if ("slow".equals(status)) {
+                    cm.writeAbove(slowLine(path, projectDir, msg));
+                    return;
+                }
                 // Advance bar on every file so the scan is visually smooth.
                 cm.progress(index, total);
                 if ("changed".equals(status)) {
@@ -244,7 +250,8 @@ public final class FormatCommand implements CliCommand {
                     cm.addCompletion(completionLine(path, projectDir));
                 } else if ("error".equals(status)) {
                     counts[2]++;
-                    cm.writeAbove(Theme.colorize("  error", Theme.active().error()) + "  " + path + ": " + msg);
+                    cm.writeAbove(Theme.colorize("  error", Theme.active().error()) + "  "
+                            + PathDisplay.of(Path.of(path), projectDir) + ": " + msg);
                 } else {
                     counts[1]++;
                 }
@@ -387,6 +394,19 @@ public final class FormatCommand implements CliCommand {
                 "Formatted " + changed + " file" + (changed == 1 ? "" : "s")
                         + (clean > 0 ? ", " + clean + " already clean" : "") + " " + took,
                 false);
+    }
+
+    /**
+     * The line a file still in flight gets. It carries no verdict and no progress — the point is
+     * that a bar which has not moved for a minute names the file it is waiting on, rather than
+     * leaving the user with a silent, busy process.
+     */
+    static String slowLine(String absPath, Path projectDir, @Nullable String msg) {
+        return Theme.colorize("  slow", Theme.active().warning())
+                + "   "
+                + PathDisplay.of(Path.of(absPath), projectDir)
+                + ": "
+                + msg;
     }
 
     /** Format a single completion line: {@code ✓ path/to/File.java}. */
