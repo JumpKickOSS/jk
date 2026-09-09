@@ -119,11 +119,22 @@ public final class JavaCompilerHost {
      * explain}, tests), which the cap then dominates anyway.
      */
     static int laneBudget() {
-        int override = envLanes();
+        int override = laneBudgetForTests > 0 ? laneBudgetForTests : envLanes();
         if (override > 0) return override;
         HeapPlan.Plan plan = JvmOptions.processHeapPlan();
         int budget = plan != null ? plan.parallelism() : Runtime.getRuntime().availableProcessors();
         return Math.max(1, Math.min(budget, DEFAULT_LANE_CAP));
+    }
+
+    private static volatile int laneBudgetForTests;
+
+    /**
+     * Test seam: pin {@link #laneBudget()} to {@code lanes} for pools created from now on; {@code 0}
+     * clears it. The only other override is the {@code JK_COMPILE_LANES} environment variable, which
+     * a test cannot set.
+     */
+    static void overrideLaneBudgetForTests(int lanes) {
+        laneBudgetForTests = Math.max(0, lanes);
     }
 
     /** {@code JK_COMPILE_LANES}, or 0 when unset or not a positive integer. */

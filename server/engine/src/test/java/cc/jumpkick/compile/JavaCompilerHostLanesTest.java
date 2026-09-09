@@ -29,6 +29,7 @@ class JavaCompilerHostLanesTest {
     @AfterEach
     void clearSharedPlan() {
         JvmOptions.resetSharedPlanForTests();
+        JavaCompilerHost.overrideLaneBudgetForTests(0);
     }
 
     @Test
@@ -48,11 +49,14 @@ class JavaCompilerHostLanesTest {
             for (ForkedJavac.Request req : requests) {
                 running.add(JkThreads.io().submit(() -> ForkedJavac.compile(req)));
             }
-            // Poll while the compiles are in flight; lanes are torn down with the job, not per item.
+            // Poll while the compiles are in flight; lanes are torn down with the job, not per item,
+            // so the sample taken once every future is done still sees them. Stop there whatever the
+            // peak: a pool that never fanned out must fail on the assertion below, not spin out the
+            // whole deadline first.
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(120);
             while (System.nanoTime() < deadline) {
                 peak = Math.max(peak, JavaCompilerHost.laneCount(job));
-                if (peak > 1 && running.stream().allMatch(Future::isDone)) break;
+                if (running.stream().allMatch(Future::isDone)) break;
                 Thread.sleep(20);
             }
             for (Future<ForkedJavac.Result> f : running) {
@@ -77,7 +81,8 @@ class JavaCompilerHostLanesTest {
     @Test
     void every_queued_module_compiles_when_lanes_are_capped_to_one(@TempDir Path dir) throws Exception {
         Path worker = workerJar();
-        assumeTrue(JavaCompilerHost.laneBudget() >= 1, "lane budget must be positive");
+        JavaCompilerHost.overrideLaneBudgetForTests(1);
+        assertThat(JavaCompilerHost.laneBudget()).isEqualTo(1);
 
         long job = 9102L;
         JobWorkers.open(job);
@@ -90,6 +95,9 @@ class JavaCompilerHostLanesTest {
             for (Future<ForkedJavac.Result> f : running) {
                 assertThat(f.get(120, TimeUnit.SECONDS).success()).isTrue();
             }
+            assertThat(JavaCompilerHost.laneCount(job))
+                    .as("three modules queued together drained through the one lane the budget allows")
+                    .isEqualTo(1);
         } finally {
             JavaCompilerHost.end(job);
             JobWorkers.shutdownForRequest(job, 0L);
