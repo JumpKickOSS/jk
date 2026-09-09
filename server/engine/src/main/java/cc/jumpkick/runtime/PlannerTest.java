@@ -204,6 +204,22 @@ public final class PlannerTest {
             return javaTest.isEmpty() && ktTest.isEmpty() && gvTest.isEmpty() && scTest.isEmpty();
         }
 
+        /**
+         * javac is driven from the primary root plus an explicit file list, so every selected Java
+         * source that does not live under that root — the other suites' roots and {@code [test]
+         * extra-src} — has to be named. Selecting {@code test} and {@code integration} together
+         * once compiled {@code src/test/java} alone: the integration classes never existed, the
+         * runner found nothing to run, and {@code --guard} reported green.
+         */
+        List<Path> javaOutsidePrimaryRoot() {
+            Path primary = javaTestSrc.toAbsolutePath().normalize();
+            List<Path> out = new ArrayList<>();
+            for (Path p : javaTest) {
+                if (!p.toAbsolutePath().normalize().startsWith(primary) && !out.contains(p)) out.add(p);
+            }
+            return out;
+        }
+
         /** Every selected source, for the TestStamp in run-tests. */
         List<Path> all() {
             List<Path> allTestSources = new ArrayList<>();
@@ -381,7 +397,7 @@ public final class PlannerTest {
                 genDir,
                 cas,
                 in.cache(),
-                CompileSupport.concatDistinct(src.scTest(), src.javaTestExtra()),
+                CompileSupport.concatDistinct(src.scTest(), src.javaOutsidePrimaryRoot()),
                 scalaSetup);
         if (!ok) throw new RuntimeException("test compile failed");
     }
