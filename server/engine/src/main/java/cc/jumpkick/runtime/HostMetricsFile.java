@@ -174,38 +174,78 @@ final class HostMetricsFile {
     }
 
     static void writeTo(Path file, Calibration c) throws IOException {
-        // Merge [calibration] into host-metrics.toml; preserve [mean]/ [lock], [fetch], language buckets.
+        // Merge [calibration] into host-metrics.toml; carry [lock], [fetch], [bootstrap] and the
+        // language buckets verbatim, and fold this calibration's learned rates into the ONE [mean].
+        // [mean] is co-owned: MetricsHarvest owns the run keys (task.*/phase.*/module.*/...), this
+        // writer owns the continuous rates. Appending a second [mean] header instead of merging
+        // makes the file illegal TOML and leaves the two readers disagreeing about which copy wins
+        // (tomlj takes the first, MetricsHarvest.parseContinuousMeanKeys takes the last), so a
+        // freshly written trimmed mean is discarded on the way back in.
         StringBuilder out = new StringBuilder();
         out.append("# host-metrics — probe + continuous means\n");
+        // key -> verbatim line, so a carried-forward value never churns its formatting.
+        Map<String, String> harvestKeys = new LinkedHashMap<>();
+        Map<String, String> continuousKeys = new LinkedHashMap<>();
+        StringBuilder foreign = new StringBuilder();
         if (Files.isRegularFile(file)) {
             try {
                 String existing = Files.readString(file);
-                // Keep [mean] and non-calibration sections from harvest / lock-fetch writers.
-                for (String section : List.of("mean", "lock", "fetch", "bootstrap")) {
+                splitMeanLines(existing, harvestKeys, continuousKeys);
+                // Keep the non-calibration sections from the harvest / lock-fetch writers.
+                for (String section : List.of("lock", "fetch", "bootstrap")) {
                     int idx = existing.indexOf("\n[" + section + "]");
                     if (idx < 0) idx = existing.startsWith("[" + section + "]") ? 0 : -1;
                     if (idx >= 0) {
                         int end = existing.indexOf("\n[", idx + 2);
                         String block = end < 0 ? existing.substring(idx) : existing.substring(idx, end);
-                        if (!block.isBlank()) out.append(block.strip()).append('\n');
+                        if (!block.isBlank()) foreign.append(block.strip()).append('\n');
                     }
                 }
                 // Preserve mean.by_language.* tables written by jk optimize.
-                out.append(extractByLanguageBlocks(existing));
+                foreign.append(extractByLanguageBlocks(existing));
             } catch (IOException ignored) {
             }
         }
-        // Learned rates as scalar means under [mean] (no sample rings).
-        out.append("\n[mean]\n");
+        // Learned rates as scalar means under [mean] (no sample rings) — freshest value wins.
         if (c.learned() != null && !c.learned().isEmpty()) {
             for (var e : c.learned().samples().entrySet()) {
                 double m = HostLearnedRates.trimmedMean(e.getValue());
-                if (m > 0)
-                    out.append(e.getKey()).append(" = ").append(round3(m)).append('\n');
+                if (m > 0) continuousKeys.put(e.getKey(), e.getKey() + " = " + round3(m));
             }
         }
+        out.append("\n[mean]\n");
+        for (String line : harvestKeys.values()) out.append(line).append('\n');
+        for (String line : continuousKeys.values()) out.append(line).append('\n');
+        if (!foreign.isEmpty()) out.append('\n').append(foreign);
         out.append('\n').append(renderCalibrationSection(c));
         AtomicWrites.replace(file, out.toString());
+    }
+
+    /**
+     * Split every {@code [mean]} scalar in {@code existing} into the run-harvest keys and the
+     * continuous-rate keys, each mapped to its verbatim line. Sub-tables ({@code
+     * [mean.by_language.*]}) are not {@code [mean]} and travel via {@link #extractByLanguageBlocks}.
+     *
+     * <p>A legacy file may carry more than one {@code [mean]} header (see {@link #writeTo}); the
+     * last occurrence of a key wins, because the trailing block is the one this writer appended
+     * most recently. One rewrite collapses the duplicate for good.
+     */
+    static void splitMeanLines(String existing, Map<String, String> harvest, Map<String, String> continuous) {
+        if (existing == null || existing.isBlank()) return;
+        boolean inMean = false;
+        for (String raw : existing.split("\n", -1)) {
+            String line = raw.strip();
+            if (line.startsWith("[")) {
+                inMean = line.equals("[mean]");
+                continue;
+            }
+            if (!inMean || line.isEmpty() || line.startsWith("#")) continue;
+            int eq = line.indexOf('=');
+            if (eq <= 0) continue;
+            String key = line.substring(0, eq).strip();
+            if (key.isEmpty()) continue;
+            (MetricsHarvest.isContinuousMeanKey(key) ? continuous : harvest).put(key, line);
+        }
     }
 
     /** Extract contiguous {@code [mean.by_language.*]} tables from an existing host-metrics file. */

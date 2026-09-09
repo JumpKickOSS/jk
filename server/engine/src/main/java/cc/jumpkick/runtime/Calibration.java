@@ -501,7 +501,7 @@ public final class Calibration {
      */
     public static boolean needsProbe() {
         Calibration c = load();
-        if (c.present() && c.measured && c.schema >= 3) return false;
+        if (c.present() && c.measured) return false;
         return !failedRecently();
     }
 
@@ -593,8 +593,10 @@ public final class Calibration {
      */
     public static Calibration ensure(@Nullable Path jdksDir, boolean force, boolean allowNetwork) {
         Calibration current = load();
-        // Skip when we already have a current-schema multi-probe result, unless forced.
-        if (!force && current.present() && current.measured && current.schema >= 3) return current;
+        // Skip when we already have a measured result, unless forced. The schema equality gate
+        // and the version/age staleness gate both live in HostMetricsFile.readFrom, so anything
+        // that loaded is already current: re-testing schema here only re-probes every build.
+        if (!force && current.present() && current.measured) return current;
         if (!force && failedRecently()) return current;
         Calibration probed = probe(jdksDir, allowNetwork);
         if (probed != null && probed.present()) {

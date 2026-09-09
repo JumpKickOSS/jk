@@ -6,8 +6,12 @@ import static org.assertj.core.api.Assertions.within;
 
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.runtime.base.HostLearnedRates;
+import cc.jumpkick.util.JkDirs;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /** Host calibration model: the probe-derived anchor, staleness policy, and refine fold. */
 class CalibrationTest {
@@ -111,5 +115,56 @@ class CalibrationTest {
     void derive_method_ms_clamps_synth_body() {
         // 8 worker methods, 40 ms body → 5 ms/method (floor) — diagnostic residual only.
         assertThat(Calibration.deriveMethodMs(40, false, 0)).isEqualTo(Calibration.METHOD_MS_FLOOR);
+    }
+
+    /**
+     * A measured calibration on disk must end the bootstrap probe for good. The skip used to test
+     * {@code schema >= 3} while {@link Calibration#SCHEMA} is 1 (guard G85 freezes every external
+     * format constant at 1 until 1.0) and {@link HostMetricsFile#readFrom} already rejects any
+     * other schema — so the condition was unsatisfiable and every workspace build re-ran the
+     * multi-second HardwareProbe. Pin the skip against the constant, not against a literal.
+     */
+    @Test
+    void a_measured_calibration_on_disk_ends_the_bootstrap_probe(@TempDir Path home) throws Exception {
+        withJkHome(home, () -> {
+            Calibration.invalidateMemo();
+            Path file = JkDirs.builds().resolve("host-metrics.toml");
+            Files.createDirectories(file.getParent());
+            // 12345.0 is a value no real probe produces: if ensure() probes, it is overwritten.
+            HostMetricsFile.writeTo(
+                    file, Calibration.testInstance(12345.0, true, JkVersion.VERSION, System.currentTimeMillis()));
+            String before = Files.readString(file);
+            Calibration.invalidateMemo();
+
+            assertThat(Calibration.needsProbe()).as("nothing left to bootstrap").isFalse();
+
+            Calibration kept = Calibration.ensure(null, false, false);
+            assertThat(kept.msPerWeight()).isCloseTo(12345.0, within(1e-6));
+            assertThat(Files.readString(file)).as("ensure did not rewrite the file").isEqualTo(before);
+            assertThat(Files.exists(Calibration.failureMarker()))
+                    .as("no probe ran, so no probe failed")
+                    .isFalse();
+        });
+        Calibration.invalidateMemo();
+    }
+
+    /**
+     * Relocate the whole jk layout for the body. {@code jk.env.<NAME>} is {@link JkDirs}'s
+     * documented in-process seam — env vars are fixed at JVM start, system properties are not.
+     */
+    private static void withJkHome(Path home, ThrowingRunnable body) throws Exception {
+        String key = "jk.env.JK_HOME";
+        String previous = System.getProperty(key);
+        System.setProperty(key, home.toAbsolutePath().toString());
+        try {
+            body.run();
+        } finally {
+            if (previous == null) System.clearProperty(key);
+            else System.setProperty(key, previous);
+        }
+    }
+
+    private interface ThrowingRunnable {
+        void run() throws Exception;
     }
 }

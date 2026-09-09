@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.tomlj.Toml;
 
 /**
  * The {@code host-metrics.toml} format: calibration round-trip, staleness on read, language-bucket
@@ -130,6 +131,77 @@ class HostMetricsFileTest {
         assertThat(read.probeTestMethodMs()).isEqualTo(15);
         assertThat(read.probeTestSuiteStartupMs()).isEqualTo(200);
         assertThat(read.testMethodMs()).isEqualTo(45); // learned wins over probe
+    }
+
+    /**
+     * [mean] is co-owned by MetricsHarvest (run keys) and this writer (continuous rates), so a
+     * calibration rewrite has to merge into the single table rather than append a second header.
+     * Two [mean] tables are illegal TOML, and the file's two readers resolve the duplicate in
+     * opposite directions — tomlj keeps the first copy of a key, MetricsHarvest keeps the last.
+     */
+    @Test
+    void a_rewrite_emits_one_mean_table_and_parses_without_errors(@TempDir Path dir) throws Exception {
+        Path f = dir.resolve("host-metrics.toml");
+        HostLearnedRates learned = new HostLearnedRates().withSample(HostLearnedRates.RUN_TESTS_PER_METHOD_MS, 42, 0);
+        Calibration c = Calibration.testInstance(42.5, true, JkVersion.VERSION, NOW, learned, 200, 15, 20);
+
+        HostMetricsFile.writeTo(f, c);
+        HostMetricsFile.writeTo(f, c);
+        HostMetricsFile.writeTo(f, c);
+
+        String text = Files.readString(f);
+        assertThat(text.lines().filter(l -> l.strip().equals("[mean]")).count())
+                .as("one [mean] no matter how many rewrites")
+                .isEqualTo(1);
+        assertThat(Toml.parse(text).hasErrors()).as("valid TOML").isFalse();
+    }
+
+    @Test
+    void a_fresh_continuous_mean_overwrites_the_one_already_on_disk(@TempDir Path dir) throws Exception {
+        Path f = dir.resolve("host-metrics.toml");
+        Files.writeString(f, """
+                [mean]
+                task.compile-java.wall-ms = 1655.625
+                run-tests-per-method-ms = 5000
+                """);
+
+        HostLearnedRates learned = new HostLearnedRates().withSample(HostLearnedRates.RUN_TESTS_PER_METHOD_MS, 42, 0);
+        HostMetricsFile.writeTo(
+                f, Calibration.testInstance(42.5, true, JkVersion.VERSION, NOW, learned, 200, 15, 20));
+
+        assertThat(HostMetricsFile.readFrom(f, NOW).learned().meanMs(HostLearnedRates.RUN_TESTS_PER_METHOD_MS))
+                .as("the value just written, not the 5000 it replaced")
+                .hasValueCloseTo(42.0, within(1e-6));
+        assertThat(Files.readString(f))
+                .as("a run-harvest key is carried forward byte for byte")
+                .contains("task.compile-java.wall-ms = 1655.625")
+                .doesNotContain("5000");
+    }
+
+    @Test
+    void a_legacy_duplicate_mean_collapses_and_the_later_copy_wins(@TempDir Path dir) throws Exception {
+        Path f = dir.resolve("host-metrics.toml");
+        Files.writeString(f, """
+                [mean]
+                task.guard.wall-ms = 182.548
+                native-image-ms-per-mib = 111
+
+                [mean]
+                native-image-ms-per-mib = 222
+
+                [calibration]
+                schema = 1
+                """);
+
+        HostMetricsFile.writeTo(f, Calibration.testInstance(42.5, true, JkVersion.VERSION, NOW));
+
+        String text = Files.readString(f);
+        assertThat(text.lines().filter(l -> l.strip().equals("[mean]")).count()).isEqualTo(1);
+        assertThat(Toml.parse(text).hasErrors()).isFalse();
+        assertThat(text)
+                .contains("task.guard.wall-ms = 182.548")
+                .contains("native-image-ms-per-mib = 222")
+                .doesNotContain("native-image-ms-per-mib = 111");
     }
 
     /**
