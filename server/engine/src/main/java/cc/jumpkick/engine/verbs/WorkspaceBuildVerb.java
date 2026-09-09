@@ -253,6 +253,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                     .withCacheDir(cache)
                     .withJdksDir(jdksDir)
                     .withParallelTests(parallelTests)
+                    .withRequestedTestWorkers(workers)
                     .withTestSelection(body.selection())
                     .withAffected(Jsonl.bool(requestLine, "affected", false))
                     .withCancel(cancelToken)

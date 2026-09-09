@@ -46,6 +46,7 @@ import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.test.AffectedTestRun;
 import cc.jumpkick.test.JUnitLauncher;
 import cc.jumpkick.test.TestProgressListener;
+import cc.jumpkick.test.TestWorkers;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -485,7 +486,7 @@ public final class PlannerTest {
                     List<Path> runtimeCp = testRuntimeCpWithLanguageRuntimes(ctx, cx, cas, testRtCp, testSrcs);
                     // Module pin ([test] workers / [build] test-workers) wins over CLI for hermetic
                     // opt-out (Mill testParallelism = false). 0 = auto min(jobs, classes).
-                    int testWorkers = projectUnderTest.build().effectiveTestWorkers(in.workerCount());
+                    int testWorkers = dispatchWorkers(in, projectUnderTest.build());
                     String moduleLabel = projectUnderTest.project().group() + ":"
                             + projectUnderTest.project().name();
                     TestFailureSource.Cache snippets = new TestFailureSource.Cache();
@@ -640,6 +641,21 @@ public final class PlannerTest {
             }
         }
         return runtimeCp;
+    }
+
+    /**
+     * Test JVMs for this module, decided now rather than at plan time.
+     *
+     * <p>A module pin and an explicit {@code -w N} are both answers the caller already gave, so they
+     * stand. Auto is the one case with something left to decide: the plan share was the jobs budget
+     * divided by the graph's widest point, and by the time the last module's suite dispatches that
+     * width is long gone. {@link TestWorkers#liveShare} re-reads it, and can only widen.
+     */
+    private static int dispatchWorkers(BuildPlanner.Inputs in, JkBuild.Build module) {
+        int planned = module.effectiveTestWorkers(in.workerCount());
+        boolean pinned = module.effectiveTestWorkers(0) > 0 || in.session().requestedTestWorkers() > 0;
+        if (pinned) return planned;
+        return TestWorkers.liveShare(planned, TestWorkers.effectiveJobs());
     }
 
     /**

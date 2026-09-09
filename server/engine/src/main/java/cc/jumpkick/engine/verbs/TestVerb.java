@@ -91,6 +91,7 @@ public final class TestVerb implements HostedVerb {
                     .withCancel(cancelToken)
                     .withJvm(ProtoSession.jvmTuning(requestLine))
                     .withParallelTests(parallelTests)
+                    .withRequestedTestWorkers(workers)
                     .withTestSelection(body.selection())
                     .withAffected(Jsonl.bool(requestLine, "affected", false))
                     // The request's env belongs on the session too, not only on the request: it is

@@ -48,6 +48,15 @@ public record Session(
          */
         @Nullable Path graalHome,
         @With boolean parallelTests,
+        /**
+         * The raw {@code -w N} the caller asked for, or {@code 0} for auto.
+         *
+         * <p>Distinct from the resolved share the build plans with: once auto has been turned
+         * into a number, nothing downstream can tell an explicit {@code -w 1} from a share that
+         * happened to land on one, and a suite dispatching into an idle machine must be free to
+         * grow only in the second case.
+         */
+        @With int requestedTestWorkers,
         @With CancelToken cancel,
         // Variant selection + client-resolved env (env: indirection for signing secrets).
         String variant,
@@ -89,6 +98,7 @@ public record Session(
                 graalSpec,
                 graalHome,
                 parallelTests,
+                requestedTestWorkers,
                 cancel,
                 variant == null ? "" : variant,
                 clientEnv,
@@ -159,6 +169,7 @@ public record Session(
                 null,
                 null,
                 false,
+                0,
                 CancelToken.live(),
                 "",
                 null,
@@ -181,6 +192,7 @@ public record Session(
                 graalSpec,
                 graalHome,
                 parallelTests,
+                requestedTestWorkers,
                 cancel,
                 variant,
                 clientEnv,
@@ -203,6 +215,7 @@ public record Session(
                 graalSpec,
                 graalHome,
                 parallelTests,
+                requestedTestWorkers,
                 cancel,
                 variant,
                 clientEnv,
@@ -229,6 +242,7 @@ public record Session(
                 blankToNull(graal),
                 graalHome,
                 parallelTests,
+                requestedTestWorkers,
                 cancel,
                 variant,
                 clientEnv,
