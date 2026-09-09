@@ -11,12 +11,12 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Locale;
 import javax.tools.DiagnosticCollector;
 import javax.tools.JavaFileObject;
 import javax.tools.StandardJavaFileManager;
 import javax.tools.StandardLocation;
 import javax.tools.ToolProvider;
+import org.jspecify.annotations.Nullable;
 import sbt.internal.inc.javac.DiagnosticsReporter;
 import xsbti.Logger;
 import xsbti.PathBasedFile;
@@ -57,15 +57,21 @@ final class ProvenanceJavac implements JavaCompiler {
         // This path reads sources through the file manager, and the charset given here is what
         // decides: it outranks -encoding, which BaseFileManager.getDecoder only falls back to.
         // Same constant as the flag, so the two spellings of the charset cannot drift apart.
-        try (StandardJavaFileManager fm = javac.getStandardFileManager(diags, Locale.ROOT, encoding)) {
+        StandardJavaFileManager fm = ReusedJavacFileManager.acquire(javac, encoding, diags);
+        try {
             Files.createDirectories(classOut);
             fm.setLocationFromPaths(StandardLocation.CLASS_OUTPUT, List.of(classOut));
-            for (int i = 0; i < options.length - 1; i++) {
-                if ("-s".equals(options[i])) {
-                    Path srcOut = Path.of(options[i + 1]);
-                    Files.createDirectories(srcOut);
-                    fm.setLocationFromPaths(StandardLocation.SOURCE_OUTPUT, List.of(srcOut));
-                }
+            // Every location this compile depends on is set on every compile, never left to whatever
+            // the last one set: the manager is reused, so a module compiled without -s must clear the
+            // previous module's generated-source directory instead of inheriting it and writing its
+            // generated sources there. Clearing goes through setLocation, the only one of the two
+            // that documents null as "reset to the default" — setLocationFromPaths throws on it.
+            Path srcOut = sourceOutput(options);
+            if (srcOut == null) {
+                fm.setLocation(StandardLocation.SOURCE_OUTPUT, null);
+            } else {
+                Files.createDirectories(srcOut);
+                fm.setLocationFromPaths(StandardLocation.SOURCE_OUTPUT, List.of(srcOut));
             }
             List<Path> srcPaths = new ArrayList<>();
             for (VirtualFile vf : sources) {
@@ -81,5 +87,18 @@ final class ProvenanceJavac implements JavaCompiler {
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
+    }
+
+    /**
+     * The {@code -s} generated-source directory, or null when this compile did not ask for one. The
+     * last {@code -s} wins, which is both what javac does with a repeated option and what the loop
+     * this replaced did by setting the location once per match.
+     */
+    private static @Nullable Path sourceOutput(String[] options) {
+        Path srcOut = null;
+        for (int i = 0; i < options.length - 1; i++) {
+            if ("-s".equals(options[i])) srcOut = Path.of(options[i + 1]);
+        }
+        return srcOut;
     }
 }
