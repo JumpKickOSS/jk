@@ -38,11 +38,13 @@ final class FormatWatchdog implements AutoCloseable {
     static final long DEFAULT_WARN_MS = 500;
 
     /**
-     * Kill threshold: ~100x the slowest file measured in a large Java tree, and generous on purpose.
-     * A false kill is worse than a late one — the file goes unformatted and {@code --check} fails —
-     * while the incident this bounds ran for minutes, so seconds of headroom cost the user nothing.
+     * Kill threshold. The slowest single file across a 3,000-file Java and Kotlin tree is ~120&nbsp;ms,
+     * and ~785&nbsp;ms with the pool deliberately oversubscribed eight to one — a shape the run never
+     * chooses for itself, since {@code CodeFormatter.concurrency} sizes it to the visible cores. Two
+     * seconds is therefore not a slow file; it is a break search that has stopped tracking the size
+     * of its source. {@code jk.format.file-timeout-ms} raises it for a host that disagrees.
      */
-    static final long DEFAULT_TIMEOUT_MS = 20_000;
+    static final long DEFAULT_TIMEOUT_MS = 2_000;
 
     private static final long MIN_TICK_MS = 25;
     private static final long MAX_TICK_MS = 250;

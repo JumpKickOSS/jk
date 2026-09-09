@@ -148,25 +148,32 @@ nested lambdas can hold a thread far longer than a 60 KB class does.
 | Threshold | Default | What happens |
 |-----------|---------|--------------|
 | **Named** | 500 ms | The file is printed as `slow`, with its elapsed time, *while it is still being formatted*. Repeats on a doubling interval, so a long stall is named a handful of times rather than hundreds. |
-| **Timed out** | 20 s | jk gives up on that file. It is reported as an `error` naming the path, the rest of the run keeps going, and `jk format` exits non-zero. |
+| **Timed out** | 2 s | jk gives up on that file. It is reported as an `error` naming the path, the rest of the run keeps going, and `jk format` exits non-zero. |
+
+Two seconds is a wide margin, not a tight one: across a 3,000-file Java and Kotlin tree the
+slowest single file is around 120 ms, and the 60 KB classes are nearer 110 ms. A file that has been
+running for two seconds is not a big file — it is a search that has stopped tracking the size of
+the source.
 
 A timed-out file is **not** formatted and **not** recorded as clean, so the next `jk format`
 tries it again. When the source explains the stall, the error says so:
 
 ```
-  error  src/test/java/example/ProviderTest.java: timed out after 20.0s (limit 20000 ms);
+  error  src/test/java/example/ProviderTest.java: timed out after 2.0s (limit 2000 ms);
          deepest expression nesting here is 11 parentheses at line 214, 6 nested lambdas —
          a line-break search grows steeply with nesting, so splitting that expression into
          named locals or helper methods is usually the fix
 ```
 
-Both thresholds are formatter-worker JVM properties, in milliseconds; `0` turns either off.
-Note that `[jvm] args` reaches every worker jk forks, not only the formatter.
+Both thresholds are formatter-worker JVM properties, in milliseconds; `0` turns either off. Raise
+the timeout if a genuinely slow host starts reporting files you know are fine — the error names
+the path, so you can tell that case from a real one. Note that `[jvm] args` reaches every worker jk
+forks, not only the formatter.
 
 ```toml
 # jk.toml
 [jvm]
-args = ["-Djk.format.file-timeout-ms=60000", "-Djk.format.file-warn-ms=2000"]
+args = ["-Djk.format.file-timeout-ms=10000", "-Djk.format.file-warn-ms=2000"]
 ```
 
 ```bash
