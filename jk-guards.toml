@@ -1,7 +1,7 @@
-# jk's house rules — the declarative tier. Each letter of docs/contributors/code-as-art.md's
-# registry that has moved here names its rule in Guards.kt (ruleId); G51 keeps the two in step.
-# Exemptions go in `allow` with a reason; never a comment in code, never a hand edit of
-# jk-guards-baseline.toml. `jk guard explain <id>` prints a rule; `--schema <kind>` prints a kind.
+# JumpKick's house rules. Enforced by every `jk build` / `jk test` and by `jk guard`.
+# Exempt a site with `allow` + reason. Never edit jk-guards-baseline.toml by hand —
+# use `jk guard freeze <id> --reason "…"`. `jk guard explain <id>` prints a rule;
+# `--schema <kind>` prints a kind. Registry: docs/contributors/code-as-art.md.
 
 # G3. jk parses XML in one place, with one hardening posture. A second factory is a second XXE
 # posture to get wrong; DomXml hands out documents, never a factory or a builder.
