@@ -64,7 +64,7 @@ listOf("testFixturesApiElements", "testFixturesRuntimeElements").forEach { name 
 // here too. The SDK's version line stays independent: `jk-plugin-sdk` at 0.1.0 simply pins the floor
 // it compiles against. Cost accepted: :host's version is public API from now on.
 group = "cc.jumpkick"
-version = "0.13.1"
+version = "0.13.2"
 
 publishing {
     publications {

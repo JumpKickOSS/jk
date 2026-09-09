@@ -9,7 +9,7 @@ plugins {
 
 // Must match cc.jumpkick.model.JkVersion.VERSION: the client only spawns an engine jar whose
 // filename version equals its own baked-in version.
-version = "0.13.1"
+version = "0.13.2"
 
 description = "jk build engine: EngineMain, BuildPlan/Task scheduler, and build pipeline. " +
         "Server-only — never links the CLI. Ships as jk-engine-<version>.jar."
