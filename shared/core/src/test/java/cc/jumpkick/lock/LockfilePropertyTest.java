@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Set;
 import net.jqwik.api.Arbitraries;
 import net.jqwik.api.Arbitrary;
+import net.jqwik.api.Combinators;
 import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
 import net.jqwik.api.Provide;
@@ -40,11 +41,11 @@ class LockfilePropertyTest {
                 Arbitraries.of("platform:org.acme:bom", "lock", "manifest").injectNull(0.5);
         Arbitrary<String> path =
                 Arbitraries.of("libs/a.jar", "../sibling/target/x.jar").injectNull(0.7);
-        return ga.flatMap(n -> version.flatMap(v -> source.flatMap(s -> sha.injectNull(0.2)
-                .flatMap(c -> scopes.flatMap(sc ->
-                        deps.flatMap(d -> pinnedBy.flatMap(p -> path.flatMap(pa -> sha.injectNull(0.7)
-                                .map(src -> new Lockfile.Artifact(
-                                        n, v, s, c, pa, new ArrayList<>(sc), d, p, null, src))))))))));
+        // Combinators keeps the source shallow: nested flatMap lambdas make palantir-java-format's
+        // break search explode (minutes of CPU on this one file during `jk format`).
+        return Combinators.combine(ga, version, source, sha.injectNull(0.2), scopes, deps, pinnedBy, path)
+                .flatAs((n, v, s, c, sc, d, p, pa) -> sha.injectNull(0.7)
+                        .map(src -> new Lockfile.Artifact(n, v, s, c, pa, new ArrayList<>(sc), d, p, null, src)));
     }
 
     @Provide
@@ -59,24 +60,23 @@ class LockfilePropertyTest {
         Arbitrary<String> jkMin = Arbitraries.of("0.12.0", "0.13.0").injectNull(0.5);
         Arbitrary<String> digest = hex(64).injectNull(0.5);
         Arbitrary<String> projectId = hex(32).injectNull(0.5);
-        return arts.flatMap(a -> jdk.injectNull(0.3)
-                .flatMap(
-                        j -> kotlin.flatMap(k -> jkMin.flatMap(m -> digest.flatMap(d -> projectId.map(p -> new Lockfile(
-                                Lockfile.CURRENT_VERSION,
-                                "jk 0.13.0",
-                                Lockfile.RESOLUTION_ALGORITHM,
-                                j,
-                                null,
-                                k,
-                                null,
-                                a,
-                                List.of(),
-                                List.of(),
-                                List.of(),
-                                m,
-                                d,
-                                p,
-                                null)))))));
+        return Combinators.combine(arts, jdk.injectNull(0.3), kotlin, jkMin, digest, projectId)
+                .as((a, j, k, m, d, p) -> new Lockfile(
+                        Lockfile.CURRENT_VERSION,
+                        "jk 0.13.0",
+                        Lockfile.RESOLUTION_ALGORITHM,
+                        j,
+                        null,
+                        k,
+                        null,
+                        a,
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        m,
+                        d,
+                        p,
+                        null));
     }
 
     private static List<Lockfile.Artifact> dedupeByName(List<Lockfile.Artifact> in) {
