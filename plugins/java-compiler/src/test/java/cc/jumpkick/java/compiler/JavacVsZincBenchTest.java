@@ -62,6 +62,14 @@ class JavacVsZincBenchTest {
                         .map(GarbageCollectorMXBean::getName)
                         .reduce((x, y) -> x + "+" + y)
                         .orElse("?"));
+        System.out.printf(
+                "javac-vs-zinc  gc: collections=%d totalPaused=%d ms%n",
+                ManagementFactory.getGarbageCollectorMXBeans().stream()
+                        .mapToLong(GarbageCollectorMXBean::getCollectionCount)
+                        .sum(),
+                ManagementFactory.getGarbageCollectorMXBeans().stream()
+                        .mapToLong(GarbageCollectorMXBean::getCollectionTime)
+                        .sum());
 
         assertThat(countClasses(dir.resolve("out-javac"))).isEqualTo(FILES);
         assertThat(countClasses(dir.resolve("out-zinc"))).isEqualTo(FILES);
