@@ -3,6 +3,7 @@ package cc.jumpkick.tool;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.Os;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -165,6 +166,40 @@ class NativeImageDriverTest {
         try (Stream<Path> leftovers = Files.list(outputDir)) {
             assertThat(leftovers).isEmpty();
         }
+    }
+
+    @Test
+    void the_o_argument_drops_the_suffix_native_image_appends_itself() {
+        Path bare = Path.of("target/clients/cli/jk");
+        Path onDisk = Path.of("target/clients/cli/jk.exe");
+
+        assertThat(NativeImageDriver.imageBasename(bare))
+                .isEqualTo(bare.toAbsolutePath().toString());
+
+        if (Os.isWindows()) {
+            // The request carries the file that lands on disk; native-image must be given the
+            // basename or it writes jk.exe.exe and the presence probe misses it.
+            assertThat(NativeImageDriver.imageBasename(onDisk))
+                    .isEqualTo(bare.toAbsolutePath().toString())
+                    .doesNotEndWith(".exe");
+        } else {
+            // Nothing is appended off Windows, so a name is passed through exactly as given.
+            assertThat(NativeImageDriver.imageBasename(onDisk))
+                    .isEqualTo(onDisk.toAbsolutePath().toString());
+        }
+    }
+
+    @Test
+    void the_command_carries_the_basename_not_the_on_disk_name() {
+        var req = new NativeImageDriver.Request(
+                Path.of("/opt/graalvm"),
+                List.of(Path.of("app.jar")),
+                "com.example.Main",
+                Path.of("target/clients/cli/jk.exe"),
+                List.of());
+        List<String> cmd = NativeImageDriver.buildCommand(BIN, req);
+
+        assertThat(cmd).containsSequence("-o", NativeImageDriver.imageBasename(Path.of("target/clients/cli/jk.exe")));
     }
 
     private static Throwable catchThrowable(Runnable r) {

@@ -242,6 +242,18 @@ public final class NativeImageDriver {
      * lib<name>.<ext>} + headers from {@code -o}. Package-private for unit testing the assembly
      * without execing.
      */
+    /**
+     * The {@code -o} value: native-image takes a basename and appends the platform executable suffix
+     * itself, so handing it a path that already ends in {@code .exe} makes Windows write
+     * {@code jk.exe.exe}. The request carries the on-disk name, which the presence probe and the
+     * action cache need; the tool gets it back without the suffix it is about to add.
+     */
+    static String imageBasename(Path outputPath) {
+        String s = outputPath.toAbsolutePath().toString();
+        if (!Os.isWindows() || s.length() <= 4) return s;
+        return s.regionMatches(true, s.length() - 4, ".exe", 0, 4) ? s.substring(0, s.length() - 4) : s;
+    }
+
     static List<String> buildCommand(Path binary, Request request) {
         List<String> command = new ArrayList<>();
         command.add(binary.toString());
@@ -255,7 +267,7 @@ public final class NativeImageDriver {
             command.add("--shared");
         }
         command.add("-o");
-        command.add(request.outputPath().toAbsolutePath().toString());
+        command.add(imageBasename(request.outputPath()));
         command.add("--no-fallback");
         command.addAll(request.extraArgs());
         if (!request.shared()) {
