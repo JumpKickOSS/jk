@@ -6,18 +6,33 @@ import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * SHA-256-keyed content-addressed store ({@code <root>/sha256/AB/CD/<rest>}). Atomic writes;
  * reads verify the hash. Puts never hard-link external paths into the store (see {@link #putFile}).
  */
 public final class Cas {
+
+    /**
+     * Staging-name discriminator. A blob is staged as {@code .put-<hex>-<pid>-<n>.tmp}: unique by
+     * construction, so the create needs none of the random-name generation and collision retry
+     * {@link Files#createTempFile} does, which is measurable when one build deposits thousands of
+     * outputs. The {@code .put-} prefix and {@code .tmp} suffix are the shape the cache GC and
+     * {@code CasSweep} recognise as a leaked temp; the pid keeps two engines staging the same blob
+     * off each other's file.
+     */
+    private static final AtomicLong STAGING_SEQ = new AtomicLong();
+
+    private static final long PID = ProcessHandle.current().pid();
 
     private final Path root;
 
@@ -136,7 +151,7 @@ public final class Cas {
                 Files.deleteIfExists(tmp);
                 return new Stored(target, hex, size);
             }
-            Files.createDirectories(target.getParent());
+            ensureShard(target.getParent());
             AtomicWrites.moveInto(tmp, target);
             return new Stored(target, hex, size);
         } catch (IOException | RuntimeException e) {
@@ -147,6 +162,27 @@ public final class Cas {
 
     /** A blob stored in the CAS: its on-disk path, hex hash, and byte size. */
     public record Stored(Path path, String sha256, long size) {}
+
+    /** A staging sibling for {@code hex}: unique by construction, no random-name retry. */
+    private static Path staging(Path shard, String hex) {
+        return shard.resolve(".put-" + hex + "-" + PID + "-" + STAGING_SEQ.getAndIncrement() + ".tmp");
+    }
+
+    /**
+     * Create the two-level shard directory. {@link Files#createDirectories} walks and stats every
+     * ancestor on each call; the shard almost always exists already, and with 65,536 buckets it is
+     * almost never the same one twice, so the walk is paid per blob and never amortised. One
+     * {@code createDirectory} answers the common case in a single syscall.
+     */
+    private static void ensureShard(Path shard) throws IOException {
+        try {
+            Files.createDirectory(shard);
+        } catch (FileAlreadyExistsException present) {
+            // The common case on a warm store.
+        } catch (NoSuchFileException coldRoot) {
+            Files.createDirectories(shard);
+        }
+    }
 
     /**
      * Store {@code source} under {@code hex} by HARD LINK, falling back to a copy when the filesystem
@@ -163,7 +199,7 @@ public final class Cas {
         if (Files.exists(target)) {
             return target;
         }
-        Files.createDirectories(target.getParent());
+        ensureShard(target.getParent());
         try {
             Files.createLink(target, source);
             return target;
@@ -182,8 +218,9 @@ public final class Cas {
         if (Files.exists(target)) {
             return target;
         }
-        Files.createDirectories(target.getParent());
-        Path tmp = Files.createTempFile(target.getParent(), ".put-", ".tmp");
+        Path shard = target.getParent();
+        ensureShard(shard);
+        Path tmp = staging(shard, hex);
         // Cleanup on the failure path only: moveInto consumed tmp on success, so a finally unlink
         // is a guaranteed miss once per blob.
         boolean moved = false;

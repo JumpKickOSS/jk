@@ -10,6 +10,14 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -107,5 +115,62 @@ class CasTest {
         assertThatThrownBy(() -> cas.read(expected))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("CAS corruption");
+    }
+
+    @Test
+    void concurrent_putFile_of_one_blob_lands_once_and_leaves_no_staging_file(@TempDir Path tempDir) throws Exception {
+        Cas cas = new Cas(tempDir.resolve("cas"));
+        byte[] body = "the same bytes from every writer".getBytes(StandardCharsets.UTF_8);
+        String hex = Hashing.sha256Hex(body);
+
+        int writers = 8;
+        List<Path> sources = new ArrayList<>();
+        for (int i = 0; i < writers; i++) {
+            Path src = tempDir.resolve("src" + i + "/out.bin");
+            Files.createDirectories(src.getParent());
+            Files.write(src, body);
+            sources.add(src);
+        }
+
+        ExecutorService pool = Executors.newFixedThreadPool(writers);
+        CountDownLatch go = new CountDownLatch(1);
+        List<Future<Path>> results = new ArrayList<>();
+        try {
+            for (Path src : sources) {
+                results.add(pool.submit(() -> {
+                    go.await(10, TimeUnit.SECONDS);
+                    return cas.putFile(src, hex);
+                }));
+            }
+            go.countDown();
+            for (Future<Path> r : results) {
+                assertThat(r.get(30, TimeUnit.SECONDS)).isEqualTo(cas.pathFor(hex));
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+
+        assertThat(cas.pathFor(hex)).hasBinaryContent(body);
+        try (Stream<Path> shard = Files.list(cas.pathFor(hex).getParent())) {
+            assertThat(shard.map(p -> p.getFileName().toString()))
+                    .as("a racing writer must not leave its staging file behind")
+                    .containsExactly(hex.substring(4));
+        }
+    }
+
+    @Test
+    void a_staging_file_is_never_mistaken_for_a_blob(@TempDir Path tempDir) throws IOException {
+        Cas cas = new Cas(tempDir.resolve("cas"));
+        byte[] body = "content".getBytes(StandardCharsets.UTF_8);
+        Path src = Files.write(Files.createDirectories(tempDir.resolve("in")).resolve("f"), body);
+        String hex = Hashing.sha256Hex(body);
+        cas.putFile(src, hex);
+
+        Path leaked = cas.pathFor(hex).resolveSibling(".put-" + hex + "-1-0.tmp");
+        Files.write(leaked, body);
+
+        assertThat(Cas.isBlobPath(leaked)).isFalse();
+        assertThat(cas.hashFromPath(leaked)).isEmpty();
+        assertThat(Cas.isBlobPath(cas.pathFor(hex))).isTrue();
     }
 }

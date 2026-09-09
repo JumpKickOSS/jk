@@ -8,6 +8,7 @@ import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.util.AtomicWrites;
 import java.io.File;
 import java.io.IOException;
@@ -34,6 +35,8 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 
@@ -47,6 +50,16 @@ import org.jspecify.annotations.Nullable;
  * Class-C tasks also keep a short generation list ({@code tasks/<taskId>.gens}).
  */
 public final class ActionCache {
+
+    /**
+     * Ceiling on concurrent output deposits. The work is filesystem latency, not CPU, so the useful
+     * width is set by what the device will absorb rather than by cores; past this the copies queue
+     * on the device and the extra threads only add contention.
+     */
+    private static final int DEPOSIT_LANES = 16;
+
+    /** Files a lane must be worth before one is opened; below this the deposit runs on the caller. */
+    private static final int MIN_FILES_PER_DEPOSIT_LANE = 32;
 
     private final Cas cas;
     private final @Nullable Cas storeCas; // dual-CAS lookup for promoted Class-C blobs
@@ -202,6 +215,7 @@ public final class ActionCache {
         Map<String, String> outputs = new TreeMap<>();
         Set<String> executables = new TreeSet<>();
         if (Files.exists(outputDir)) {
+            List<Path> files = new ArrayList<>();
             try (Stream<Path> stream = Files.find(outputDir, Integer.MAX_VALUE, (p, attrs) -> attrs.isRegularFile())) {
                 for (Path file : (Iterable<Path>) stream::iterator) {
                     // FreshnessStamp's sentinels (.jstamp/.kstamp) live inside
@@ -211,24 +225,10 @@ public final class ActionCache {
                     // `.jk-*` scratch (a plugin's private bootstrap repo/staging — the
                     // plugin-sdk copyTree convention) is never an action output.
                     if (hasJkScratchSegment(outputDir.relativize(file))) continue;
-                    // Through the memo, not Hashing directly: on a warm rebuild this answers from
-                    // the map and the output is never read at all, where the old direct hash read
-                    // every one of them (6,733 class files in this checkout). putFile's own exists()
-                    // then skips the copy for a blob already present, so a warm store costs one stat
-                    // per output.
-                    String hex = FileHashMemo.contentHash(file);
-                    cas.putFile(file, hex);
-                    // Seed the memo with the digest we just established. Without this every
-                    // downstream ClasspathFingerprint re-hashed the whole tree from cold, because
-                    // contentHash refuses to record a file written inside its settle window — which
-                    // is exactly what rememberContent exists to bypass, and it was only ever called
-                    // on the restore paths.
-                    FileHashMemo.rememberContent(file, hex);
-                    String relPath = outputDir.relativize(file).toString().replace(File.separatorChar, '/');
-                    outputs.put(relPath, hex);
-                    if (executableBit(file)) executables.add(relPath);
+                    files.add(file);
                 }
             }
+            deposit(files, outputDir, outputs, executables);
         }
         // Refuse empty success records: a non-empty source set that produced zero classes
         // must not become a cache hit that restores an empty tree on the next build.
@@ -236,6 +236,87 @@ public final class ActionCache {
             return new ActionRecord(taskId, actionKey, inputs, Map.of(), Map.of());
         }
         return storeWithOutputs(taskId, actionKey, inputs, outputs, Map.of(), executables);
+    }
+
+    /**
+     * Hash and deposit every output, then fill {@code outputs} / {@code executables}.
+     *
+     * <p><strong>Concurrent, because the deposit is the slow part and nothing in it is shared.</strong>
+     * Each blob is an independent copy into its own content-addressed name, idempotent and guarded by
+     * its own {@code exists()}; a cold store of this tree's ~7,500 outputs is seconds of pure
+     * filesystem latency on a host where a create costs 12x what it does on Linux. Lanes are sized off
+     * the file count so a small module never pays for threads it cannot use, and every deposit is
+     * joined before the caller writes the record — a record naming a blob that is not on disk is not
+     * recoverable by re-running.
+     *
+     * <p>{@link JkThreads#io()} rather than {@code cpu()}: this waits on the filesystem, and the CPU
+     * pool is what the compile lanes want.
+     */
+    private void deposit(List<Path> files, Path outputDir, Map<String, String> outputs, Set<String> executables)
+            throws IOException {
+        int lanes = Math.clamp(files.size() / MIN_FILES_PER_DEPOSIT_LANE, 1, DEPOSIT_LANES);
+        Map<String, String> hashes = new ConcurrentHashMap<>();
+        Set<String> executableRel = ConcurrentHashMap.newKeySet();
+        if (lanes == 1) {
+            for (Path file : files) depositOne(file, outputDir, hashes, executableRel);
+        } else {
+            List<Future<?>> pending = new ArrayList<>(lanes);
+            int chunk = (files.size() + lanes - 1) / lanes;
+            for (int lane = 0; lane < lanes; lane++) {
+                List<Path> slice =
+                        files.subList(Math.min(lane * chunk, files.size()), Math.min((lane + 1) * chunk, files.size()));
+                pending.add(JkThreads.io().submit(() -> {
+                    for (Path file : slice) depositOne(file, outputDir, hashes, executableRel);
+                    return null;
+                }));
+            }
+            join(pending);
+        }
+        outputs.putAll(hashes);
+        executables.addAll(executableRel);
+    }
+
+    /** Hash one output, put it in the CAS, and record its relative path. */
+    private void depositOne(Path file, Path outputDir, Map<String, String> hashes, Set<String> executableRel)
+            throws IOException {
+        // Through the memo, not Hashing directly: on a warm rebuild this answers from
+        // the map and the output is never read at all, where the old direct hash read
+        // every one of them (6,733 class files in this checkout). putFile's own exists()
+        // then skips the copy for a blob already present, so a warm store costs one stat
+        // per output.
+        String hex = FileHashMemo.contentHash(file);
+        cas.putFile(file, hex);
+        // Seed the memo with the digest we just established. Without this every
+        // downstream ClasspathFingerprint re-hashed the whole tree from cold, because
+        // contentHash refuses to record a file written inside its settle window — which
+        // is exactly what rememberContent exists to bypass, and it was only ever called
+        // on the restore paths.
+        FileHashMemo.rememberContent(file, hex);
+        String relPath = outputDir.relativize(file).toString().replace(File.separatorChar, '/');
+        hashes.put(relPath, hex);
+        if (executableBit(file)) executableRel.add(relPath);
+    }
+
+    /**
+     * Wait for every deposit lane, surfacing the first failure as the {@code IOException} the caller
+     * expects. A lane that failed must not leave the others running into a record write.
+     */
+    private static void join(List<Future<?>> pending) throws IOException {
+        IOException failure = null;
+        for (Future<?> f : pending) {
+            try {
+                f.get();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IOException("interrupted depositing outputs", e);
+            } catch (ExecutionException e) {
+                Throwable cause = e.getCause() == null ? e : e.getCause();
+                if (failure == null) {
+                    failure = cause instanceof IOException io ? io : new IOException(cause);
+                }
+            }
+        }
+        if (failure != null) throw failure;
     }
 
     /**

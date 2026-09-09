@@ -25,6 +25,38 @@ import org.junit.jupiter.api.io.TempDir;
 class ActionCacheTest {
 
     @Test
+    void a_tree_wide_enough_to_fan_out_stores_and_restores_every_output(@TempDir Path tempDir) throws IOException {
+        Cas cas = new Cas(tempDir.resolve("cas"));
+        ActionCache cache = new ActionCache(cas, tempDir.resolve("actions"));
+
+        // Comfortably past MIN_FILES_PER_DEPOSIT_LANE so the deposit runs on several lanes, and
+        // spread over packages so the blobs land in different CAS shards.
+        Path outputs = tempDir.resolve("classes");
+        int count = 400;
+        for (int i = 0; i < count; i++) {
+            Path f = outputs.resolve("p" + (i % 20)).resolve("C" + i + ".class");
+            Files.createDirectories(f.getParent());
+            Files.writeString(f, "class body " + i);
+        }
+
+        cache.store("compile-java", "wide", Map.of("src/A.java", "aaa"), outputs);
+        var record = cache.lookup("wide").orElseThrow();
+
+        assertThat(record.outputs()).hasSize(count);
+        for (var e : record.outputs().entrySet()) {
+            assertThat(cas.pathFor(e.getValue()))
+                    .as("every recorded blob is on disk before the record names it: %s", e.getKey())
+                    .isRegularFile();
+        }
+
+        Path restored = tempDir.resolve("restored");
+        cache.restore(record, restored);
+        for (int i = 0; i < count; i++) {
+            assertThat(restored.resolve("p" + (i % 20) + "/C" + i + ".class")).hasContent("class body " + i);
+        }
+    }
+
+    @Test
     void store_then_lookup_round_trip(@TempDir Path tempDir) throws IOException {
         Cas cas = new Cas(tempDir.resolve("cas"));
         ActionCache cache = new ActionCache(cas, tempDir.resolve("actions"));
