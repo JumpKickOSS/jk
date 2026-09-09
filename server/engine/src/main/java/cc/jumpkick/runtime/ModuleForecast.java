@@ -6,6 +6,7 @@ import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.JavacLint;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.BuildStamps;
@@ -424,10 +425,14 @@ final class ModuleForecast {
         List<Path> mainSrc = prepared.mainSrc();
         List<Path> ktSrc = prepared.ktSrc();
         List<Path> gvSrc = prepared.gvSrc();
-        // ---- compile-test (all discovered suites —---
+        // ---- compile-test (the suites this session selected) ----
+        // The selection, not every suite on disk: the build compiles what the session asked for, so
+        // hashing every discovered suite here forecast a phantom compile-test on each default build
+        // of a multi-suite module. The run-tests stamp has keyed on the selection all along.
         allTestSrc = List.of();
         try {
-            allTestSrc = TestSupport.collectAllSuiteTestSources(dir, compact);
+            allTestSrc = TestSupport.collectSelectedSuiteTestSources(
+                    dir, compact, SessionContext.current().testSelection());
         } catch (IOException ignored) {
             // forecast degrades
         }

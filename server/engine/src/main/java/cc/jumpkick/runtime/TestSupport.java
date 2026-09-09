@@ -191,16 +191,40 @@ public final class TestSupport {
 
     /** Collect all test sources for every discovered suite (deduped paths). */
     public static List<Path> collectAllSuiteTestSources(Path moduleDir, boolean compact) throws IOException {
-        LinkedHashSet<Path> out = new LinkedHashSet<>();
-        List<String> suites = TestSuites.discover(moduleDir, compact);
-        if (suites.isEmpty()) {
-            // Fall back to default suite dirs even if empty of sources
-            suites = List.of(TestSuites.DEFAULT);
+        return collectSuiteTestSources(moduleDir, compact, TestSuites.discover(moduleDir, compact));
+    }
+
+    /**
+     * The sources of the suites a SELECTION will actually run — the set compile-test's key hashes.
+     *
+     * <p>{@link #collectAllSuiteTestSources} is the estimate-side answer, every suite on disk, which
+     * is right for a count and wrong for a key. The build compiles the selection and nothing else, so
+     * a forecast over every discovered suite hashes a strictly larger list than the build did and
+     * reports a phantom compile-test on every default build of a module that has more than one suite
+     * — {@link TestSelection#DEFAULT} is the {@code test} suite alone. Unresolvable selections fall
+     * back to all discovered suites, the same rule {@link #estimateSelectedSuiteTestCount} uses.
+     */
+    public static List<Path> collectSelectedSuiteTestSources(
+            Path moduleDir, boolean compact, @Nullable TestSelection selection) throws IOException {
+        List<String> discovered = TestSuites.discover(moduleDir, compact);
+        List<String> suites = discovered;
+        if (selection != null) {
+            var resolved = selection.resolve(discovered);
+            if (resolved.ok()) suites = resolved.suites();
         }
-        out.addAll(TestSuites.collectJavaSources(moduleDir, compact, suites));
-        out.addAll(TestSuites.collectKotlinSources(moduleDir, compact, suites));
-        out.addAll(TestSuites.collectGroovySources(moduleDir, compact, suites));
-        out.addAll(TestSuites.collectScalaSources(moduleDir, compact, suites));
+        return collectSuiteTestSources(moduleDir, compact, suites);
+    }
+
+    private static List<Path> collectSuiteTestSources(Path moduleDir, boolean compact, List<String> suites)
+            throws IOException {
+        // Fall back to the default suite's dirs even when empty of sources, so compile-test no-ops
+        // cleanly rather than being forecast against nothing at all.
+        List<String> eff = suites.isEmpty() ? List.of(TestSuites.DEFAULT) : suites;
+        LinkedHashSet<Path> out = new LinkedHashSet<>();
+        out.addAll(TestSuites.collectJavaSources(moduleDir, compact, eff));
+        out.addAll(TestSuites.collectKotlinSources(moduleDir, compact, eff));
+        out.addAll(TestSuites.collectGroovySources(moduleDir, compact, eff));
+        out.addAll(TestSuites.collectScalaSources(moduleDir, compact, eff));
         return new ArrayList<>(out);
     }
 
