@@ -69,7 +69,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
 import java.util.function.Supplier;
@@ -603,10 +602,11 @@ final class PlannerGuards {
         ectx = ectx.withRules(load.rules());
         Path baselineFile = GuardsPresence.baselineFile(g.root());
         Baseline baseline = BaselineFile.read(baselineFile);
-        boolean orphans = lane == Lane.MODEL && reportOrphans(ctx, g, load, baseline);
+        if (lane == Lane.MODEL && reportOrphans(ctx, g, load, baseline)) {
+            throw new GuardsRed("baseline names retired rules");
+        }
         if (rules.isEmpty() && !EngineValidations.applies(lane)) {
             ctx.label("no rules for this lane");
-            if (orphans) throw new GuardsRed("baseline names retired rules");
             return;
         }
         // The key's inputs are gathered only once there is a rule to key: a lane with nothing to
@@ -673,12 +673,11 @@ final class PlannerGuards {
 
     /**
      * Model lane only: a baseline entry for a rule no source declares is an error. Live ids are the
-     * TOML rules plus every guard the compiled suites declare. True when any orphan was reported.
+     * TOML rules plus every {@code @Guard} id under {@code src/guard}. True when any orphan was reported.
      */
     private static boolean reportOrphans(TaskContext ctx, GuardsPlan g, LoadResult load, Baseline baseline)
             throws IOException {
-        Set<String> live = new TreeSet<>(load.rules().rules().keySet());
-        live.addAll(GuardSuites.declaredAcrossWorkspace(g.root()).keySet());
+        Set<String> live = GuardSuites.liveIds(g.root(), load.rules().rules().keySet());
         boolean orphans = false;
         for (String orphan : baseline.orphans(live)) {
             orphans = true;

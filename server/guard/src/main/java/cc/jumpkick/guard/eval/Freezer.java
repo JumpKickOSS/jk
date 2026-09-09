@@ -48,7 +48,8 @@ public final class Freezer {
             return new Result(
                     "jk-guards.toml did not load: " + load.errors().get(0).render(), 0, 0);
         if (retire) {
-            if (load.rules().rule(ruleId).isPresent())
+            if (load.rules().rule(ruleId).isPresent()
+                    || GuardSuites.declaredIdsInSource(root).contains(ruleId))
                 return new Result(
                         "`" + ruleId + "` is still declared; remove the rule first, then retire its baseline entries",
                         0,

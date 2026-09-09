@@ -13,18 +13,23 @@ import cc.jumpkick.guard.rules.Rule;
 import cc.jumpkick.guard.rules.RuleSet;
 import cc.jumpkick.guard.rules.RuleSource;
 import cc.jumpkick.guard.schema.Kind;
+import cc.jumpkick.host.CodeText;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.layout.TestSuites;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 import org.tomlj.Toml;
 
@@ -43,6 +48,7 @@ public final class GuardSuites {
     static final String FIXTURE = "cc.jumpkick.guard.api.Fixture";
     static final String TEXT_PARAM = "Lcc/jumpkick/guard/api/Text;";
     public static final String REPORT = "report.jsonl";
+    private static final Pattern GUARD_ID = Pattern.compile("\\bid\\s*=\\s*\"([a-z0-9][a-z0-9-]*)\"");
 
     private GuardSuites() {}
 
@@ -154,9 +160,8 @@ public final class GuardSuites {
     public record Located(Declared declared, String module) {}
 
     /**
-     * Every guard the workspace's compiled suites declare, by id, from the {@code guard-guard.idx}
-     * each module lane left behind — what freeze, explain and the rule-removed check need without a
-     * JVM. A module whose lane has not run yet declares nothing here.
+     * Compiled-suite ids from each module's {@code guard-guard.idx}. Freeze and explain use this; a
+     * module whose lane has not run yet is absent. Rule-removed uses {@link #declaredIdsInSource}.
      */
     public static Map<String, Located> declaredAcrossWorkspace(Path root) throws IOException {
         Map<String, Located> out = new TreeMap<>();
@@ -167,6 +172,77 @@ public final class GuardSuites {
             for (Declared d : declared(FactsFormat.read(idx))) out.putIfAbsent(d.id(), new Located(d, rel));
         }
         return out;
+    }
+
+    /**
+     * Every {@code @Guard} id under {@code src/guard} (and the compact {@code guard/src} twin), from
+     * source. The model lane runs before compile-guard, so the compiled index is not the declaration.
+     */
+    public static Set<String> declaredIdsInSource(Path root) throws IOException {
+        Set<String> ids = new TreeSet<>();
+        Set<Path> modules = new LinkedHashSet<>();
+        modules.add(root);
+        modules.addAll(WorkspaceModules.of(root));
+        for (Path m : modules) {
+            if (!Files.isDirectory(m)) continue;
+            for (boolean compact : List.of(false, true)) {
+                for (Path src : TestSuites.guardSources(m, compact)) {
+                    ids.addAll(idsDeclaredIn(Files.readString(src)));
+                }
+            }
+        }
+        return ids;
+    }
+
+    /** TOML rule ids plus every {@code @Guard} id in source — the set {@code rule-removed} compares. */
+    public static Set<String> liveIds(Path root, Set<String> tomlIds) throws IOException {
+        Set<String> live = new TreeSet<>(tomlIds);
+        live.addAll(declaredIdsInSource(root));
+        return live;
+    }
+
+    /** {@code @Guard} ids in one Java source; comments and string literals are not declarations. */
+    static Set<String> idsDeclaredIn(String source) {
+        String structure = CodeText.blank(source, CodeText.Blank.COMMENTS_AND_STRINGS);
+        String keep = CodeText.blank(source, CodeText.Blank.COMMENTS);
+        Set<String> ids = new TreeSet<>();
+        int i = 0;
+        while (i < structure.length()) {
+            int at = structure.indexOf("@Guard", i);
+            if (at < 0) break;
+            int after = at + 6;
+            if ((at > 0 && identChar(structure.charAt(at - 1)))
+                    || (after < structure.length() && identChar(structure.charAt(after)))) {
+                i = after;
+                continue;
+            }
+            int open = after;
+            while (open < structure.length() && Character.isWhitespace(structure.charAt(open))) open++;
+            if (open >= structure.length() || structure.charAt(open) != '(') {
+                i = after;
+                continue;
+            }
+            int close = matchingParen(structure, open);
+            if (close < 0) break;
+            Matcher m = GUARD_ID.matcher(keep.substring(open + 1, close));
+            if (m.find()) ids.add(m.group(1));
+            i = close + 1;
+        }
+        return ids;
+    }
+
+    private static int matchingParen(String code, int open) {
+        int depth = 0;
+        for (int i = open; i < code.length(); i++) {
+            char c = code.charAt(i);
+            if (c == '(') depth++;
+            else if (c == ')' && --depth == 0) return i;
+        }
+        return -1;
+    }
+
+    private static boolean identChar(char c) {
+        return c == '_' || c == '$' || Character.isLetterOrDigit(c);
     }
 
     /** The module a synthetic rule's suite lives in. */

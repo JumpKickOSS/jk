@@ -109,6 +109,22 @@ class GuardLaneE2eTest {
                 .isEqualTo(TaskStatus.SKIPPED);
     }
 
+    @Test
+    void model_lane_fails_when_the_baseline_names_a_rule_source_does_not_declare(@TempDir Path tmp) throws Exception {
+        Path project = scaffold(tmp);
+        Path cache = Files.createDirectories(tmp.resolve("cache"));
+        BaselineFile.write(
+                GuardsPresence.baselineFile(project),
+                Baseline.EMPTY.with("gone", RuleBaseline.of(Map.of("examined", 1L), List.of())));
+        BuildPlanResult r = build(project, cache);
+        assertThat(r.success()).isFalse();
+        assertThat(status(r, TaskNames.GUARD_MODEL)).isEqualTo(TaskStatus.FAIL);
+        assertThat(r.errors()).anySatisfy(d -> {
+            assertThat(d.code()).isEqualTo("gone");
+            assertThat(d.message()).contains("rule-removed");
+        });
+    }
+
     private static TaskStatus status(BuildPlanResult r, String step) {
         return r.steps().stream()
                 .filter(s -> s.name().equals(step))

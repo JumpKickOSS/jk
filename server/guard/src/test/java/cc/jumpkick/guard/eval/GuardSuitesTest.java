@@ -3,7 +3,9 @@ package cc.jumpkick.guard.eval;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.guard.baseline.Baseline;
 import cc.jumpkick.guard.baseline.Observation;
+import cc.jumpkick.guard.baseline.RuleBaseline;
 import cc.jumpkick.guard.extract.FactsExtractor;
 import cc.jumpkick.guard.extract.FactsIndexing;
 import cc.jumpkick.guard.facts.ClassFacts;
@@ -23,6 +25,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.objectweb.asm.AnnotationVisitor;
@@ -284,5 +287,74 @@ class GuardSuitesTest {
                 .contains("a.Esc#write()V -> java.lang.String#replace(CC)Ljava/lang/String;")
                 .contains("grandfathered");
         assertThat(Freezer.freeze(root, "nope", "r", false).error()).contains("no rule `nope`");
+    }
+
+    @Test
+    void source_guard_ids_are_live_without_a_compiled_index(@TempDir Path root) throws Exception {
+        Files.writeString(root.resolve("jk.toml"), """
+                group = "t"
+                name = "ws"
+                version = "0.0.1"
+
+                [workspace]
+                modules = ["cli"]
+                """);
+        Files.createDirectories(root.resolve("cli"));
+        Files.writeString(root.resolve("cli/jk.toml"), """
+                group = "t"
+                name = "cli"
+                version = "0.0.1"
+                """);
+        Path trad = Files.createDirectories(root.resolve("cli/src/guard/java/house"));
+        Files.writeString(trad.resolve("House.java"), """
+                package house;
+                import cc.jumpkick.guard.api.Guard;
+                import cc.jumpkick.guard.api.GuardSuite;
+                import cc.jumpkick.guard.api.Scope;
+                @GuardSuite(scope = Scope.MODULE)
+                final class House {
+                  @Guard(
+                      id = "still-here",
+                      why = "a live rule (parens in why)")
+                  void stillHere() {}
+                  // @Guard(id = "commented-out", why = "w")
+                  void other() {}
+                }
+                """);
+        Path compact = Files.createDirectories(root.resolve("cli/guard/src/house"));
+        Files.writeString(compact.resolve("Compact.java"), """
+                package house;
+                import cc.jumpkick.guard.api.Guard;
+                import cc.jumpkick.guard.api.GuardSuite;
+                import cc.jumpkick.guard.api.Scope;
+                @GuardSuite(scope = Scope.MODULE)
+                final class Compact {
+                  @Guard(id = "compact-id", why = "from the compact root")
+                  void compact() {}
+                }
+                """);
+        assertThat(GuardSuites.declaredAcrossWorkspace(root)).isEmpty();
+        assertThat(GuardSuites.declaredIdsInSource(root)).containsExactly("compact-id", "still-here");
+        assertThat(GuardSuites.liveIds(root, Set.of("toml-rule")))
+                .containsExactly("compact-id", "still-here", "toml-rule");
+        Baseline baseline = Baseline.EMPTY
+                .with("still-here", RuleBaseline.of(Map.of("examined", 1L), List.of()))
+                .with("gone", RuleBaseline.of(Map.of("examined", 1L), List.of()));
+        assertThat(baseline.orphans(GuardSuites.liveIds(root, Set.of()))).containsExactly("gone");
+    }
+
+    @Test
+    void ids_declared_in_ignore_suite_annotation_comments_and_strings() {
+        assertThat(GuardSuites.idsDeclaredIn("""
+                @GuardSuite(scope = Scope.MODULE)
+                class H {
+                  @Guard(id = "one", why = "w")
+                  void a() {}
+                }
+                """)).containsExactly("one");
+        assertThat(GuardSuites.idsDeclaredIn("String s = \"@Guard(id = \\\"nope\\\", why = \\\"w\\\")\";"))
+                .isEmpty();
+        assertThat(GuardSuites.idsDeclaredIn("// @Guard(id = \"nope\", why = \"w\")\nclass H {}"))
+                .isEmpty();
     }
 }

@@ -75,4 +75,25 @@ class FreezerTest {
         assertThat(retired.accepted()).isEqualTo(1);
         assertThat(BaselineFile.read(GuardsPresence.baselineFile(p)).rules()).isEmpty();
     }
+
+    @Test
+    void retire_refuses_a_guard_still_declared_in_source(@TempDir Path dir) throws Exception {
+        Path p = project(dir);
+        Path src = Files.createDirectories(p.resolve("src/guard/java/house"));
+        Files.writeString(src.resolve("House.java"), """
+                package house;
+                import cc.jumpkick.guard.api.Guard;
+                import cc.jumpkick.guard.api.GuardSuite;
+                import cc.jumpkick.guard.api.Scope;
+                @GuardSuite(scope = Scope.MODULE)
+                final class House {
+                  @Guard(id = "still-here", why = "live")
+                  void stillHere() {}
+                }
+                """);
+        BaselineFile.write(
+                GuardsPresence.baselineFile(p),
+                Baseline.EMPTY.with("still-here", RuleBaseline.of(Map.of(), List.of(new Entry.Site("x", "r")))));
+        assertThat(Freezer.freeze(p, "still-here", null, true).error()).contains("still declared");
+    }
 }
