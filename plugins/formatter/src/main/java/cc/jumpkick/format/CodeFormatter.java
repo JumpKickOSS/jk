@@ -82,7 +82,7 @@ public final class CodeFormatter implements Plugin {
         Workers workers = new Workers(spec);
         Tally tally;
         try {
-            tally = formatAll(spec, out, (ref, i, dog) -> {
+            tally = formatAll(spec, out, stampCache, (ref, i, dog) -> {
                 // Untimed on purpose: the first file a thread sees pays for its Spotless step chain
                 // and the classloaders behind it, which is not that file's own cost.
                 Formatter fmt = workers.get().formatter(ref.kind());
@@ -134,7 +134,7 @@ public final class CodeFormatter implements Plugin {
      * abandoned one (up to as many as it started with) so the remaining files keep the concurrency
      * they were planned for.
      */
-    static Tally formatAll(Spec spec, ProtocolWriter out, FileWork work) {
+    static Tally formatAll(Spec spec, ProtocolWriter out, FormatStampCache memo, FileWork work) {
         int slots = concurrency(spec);
         ThreadPoolExecutor pool = new ThreadPoolExecutor(
                 slots, slots, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>(), CodeFormatter::formatThread);
@@ -146,6 +146,7 @@ public final class CodeFormatter implements Plugin {
                 (file, elapsedMs) ->
                         emitFile(out, file, "slow", "still formatting after " + FormatWatchdog.human(elapsedMs)),
                 () -> replaceSlot(pool, slots, abandoned));
+        Settling settling = new Settling(dog, abandoned, slots, spec.fileTimeoutMs, memo);
         int changed = 0, clean = 0, errors = 0;
         try {
             List<Future<FileResult>> pending = new ArrayList<>(spec.files.size());
@@ -160,7 +161,7 @@ public final class CodeFormatter implements Plugin {
                 pool.shutdown();
             }
             for (int i = 0; i < pending.size(); i++) {
-                FileResult result = settle(pending.get(i), i, spec.files.get(i), dog, abandoned, slots);
+                FileResult result = settle(pending.get(i), i, spec.files.get(i), settling);
                 switch (result.status()) {
                     case "changed" -> changed++;
                     case "error" -> errors++;
@@ -184,27 +185,26 @@ public final class CodeFormatter implements Plugin {
      * that crashed or was abandoned is still knowable, and reconcile never blames the wrong
      * "never visited" file.
      */
-    private static FileResult settle(
-            Future<FileResult> f, int index, FileRef ref, FormatWatchdog dog, AtomicInteger abandoned, int slots) {
+    private static FileResult settle(Future<FileResult> f, int index, FileRef ref, Settling s) {
         while (true) {
             try {
                 FileResult result = f.get(SETTLE_POLL_MS, TimeUnit.MILLISECONDS);
                 // Coming back late does not un-abandon a file. The run already acted on the verdict
                 // — replaced the slot, named the file — and a result that depends on whether a task
                 // beat a poll by a few milliseconds is not one anybody can reason about.
-                String verdict = dog.verdict(index);
-                return verdict == null ? result : timedOut(ref, verdict);
+                String verdict = s.dog().verdict(index);
+                return verdict == null ? result : timedOut(ref, verdict, s);
             } catch (TimeoutException e) {
-                String verdict = dog.verdict(index);
+                String verdict = s.dog().verdict(index);
                 if (verdict != null) {
                     f.cancel(true);
-                    return timedOut(ref, verdict);
+                    return timedOut(ref, verdict, s);
                 }
-                if (abandoned.get() >= tolerable(slots) && f.cancel(false)) return unstarted(ref);
+                if (s.abandoned().get() >= tolerable(s.slots()) && f.cancel(false)) return unstarted(ref);
             } catch (CancellationException e) {
-                String verdict = dog.verdict(index);
+                String verdict = s.dog().verdict(index);
                 return verdict != null
-                        ? timedOut(ref, verdict)
+                        ? timedOut(ref, verdict, s)
                         : new FileResult(ref.file(), "error", "formatting was cancelled before it finished");
             } catch (ExecutionException e) {
                 Throwable cause = e.getCause() == null ? e : e.getCause();
@@ -216,8 +216,57 @@ public final class CodeFormatter implements Plugin {
         }
     }
 
-    private static FileResult timedOut(FileRef ref, String verdict) {
-        return new FileResult(ref.file(), "error", verdict + SourceShape.postMortem(ref.file()));
+    /** What settling one file needs beyond the file itself. */
+    private record Settling(
+            FormatWatchdog dog, AtomicInteger abandoned, int slots, long limitMs, FormatStampCache memo) {}
+
+    /**
+     * Report a file the run gave up on, and remember it so the next run does not spend the limit
+     * reaching the same verdict.
+     *
+     * <p>The memo is keyed on the bytes <em>as they are now</em>, which is what the next run will
+     * read: the FQCN pass may already have rewritten the file before the formatter stalled on the
+     * result. One read serves both the memo key and the post-mortem.
+     */
+    private static FileResult timedOut(FileRef ref, String verdict, Settling s) {
+        byte[] bytes = readOrNull(ref.file());
+        if (bytes == null) return new FileResult(ref.file(), "error", verdict);
+        if (s.memo() != null) s.memo().recordTimeout(s.memo().keyFor(bytes), s.limitMs());
+        return new FileResult(ref.file(), "error", verdict + SourceShape.postMortem(text(bytes)));
+    }
+
+    /**
+     * Whether a remembered timeout still answers for this run.
+     *
+     * <p>A limit that has been <em>raised</em> since is a request to try the file again, and a run
+     * with the bound off ({@code 0}) is a request to let it take as long as it likes. A limit that is
+     * the same or tighter would only reach the same verdict, later — which is the whole cost the memo
+     * exists to stop paying.
+     */
+    static boolean remembersTimeout(long recordedLimitMs, long limitMs) {
+        return recordedLimitMs > 0 && limitMs > 0 && recordedLimitMs >= limitMs;
+    }
+
+    /**
+     * The message for a file the run declined to attempt. It reports the limit that was actually
+     * spent, on the run that spent it — claiming this run's elapsed time would be a duration nobody
+     * waited for.
+     */
+    private static String rememberedTimeout(long recordedLimitMs, byte[] source) {
+        return "timed out at a " + recordedLimitMs + " ms limit on an earlier run and has not changed"
+                + " since, so it was not retried" + SourceShape.postMortem(text(source));
+    }
+
+    private static byte[] readOrNull(File file) {
+        try {
+            return Files.readAllBytes(file.toPath());
+        } catch (IOException | RuntimeException e) {
+            return null;
+        }
+    }
+
+    private static String text(byte[] bytes) {
+        return new String(bytes, StandardCharsets.UTF_8);
     }
 
     /**
@@ -405,13 +454,17 @@ public final class CodeFormatter implements Plugin {
      * under the run's wall bound, and returns its verdict rather than emitting it, so
      * {@link #formatAll} keeps the stream in spec order.
      */
-    private static FileResult formatOne(
-            FileRef ref, Formatter fmt, Spec spec, FormatStampCache stampCache, TypeIndex index) {
+    static FileResult formatOne(FileRef ref, Formatter fmt, Spec spec, FormatStampCache stampCache, TypeIndex index) {
         try {
             byte[] originalBytes = Files.readAllBytes(ref.file().toPath());
             String stampKey = stampCache != null ? stampCache.keyFor(originalBytes) : null;
             if (stampKey != null && stampCache.contains(stampKey)) {
                 return new FileResult(ref.file(), "clean", null);
+            }
+
+            long timedOutAt = stampKey != null ? stampCache.timedOutAt(stampKey) : 0;
+            if (remembersTimeout(timedOutAt, spec.fileTimeoutMs)) {
+                return new FileResult(ref.file(), "error", rememberedTimeout(timedOutAt, originalBytes));
             }
 
             if (ref.kind() == Kind.JAVA && isUnnamedClass(originalBytes)) {

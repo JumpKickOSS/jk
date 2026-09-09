@@ -42,7 +42,7 @@ class CodeFormatterTimeoutTest {
         var spec = spec("Fast1.java", "Wedged.java", "Fast2.java");
         Emissions out = new Emissions();
 
-        CodeFormatter.Tally tally = CodeFormatter.formatAll(spec, out.writer(), work());
+        CodeFormatter.Tally tally = CodeFormatter.formatAll(spec, out.writer(), null, work());
 
         assertThat(tally.errors()).isEqualTo(1);
         assertThat(tally.clean()).isEqualTo(2);
@@ -56,7 +56,7 @@ class CodeFormatterTimeoutTest {
         var spec = spec("Wedged.java", "Fast1.java", "Fast2.java", "Fast3.java");
         Emissions out = new Emissions();
 
-        CodeFormatter.Tally tally = CodeFormatter.formatAll(spec, out.writer(), work());
+        CodeFormatter.Tally tally = CodeFormatter.formatAll(spec, out.writer(), null, work());
 
         assertThat(tally.clean()).isEqualTo(3);
         assertThat(out.statuses()).containsExactly("error", "clean", "clean", "clean");
@@ -67,7 +67,7 @@ class CodeFormatterTimeoutTest {
         var spec = spec("Wedged.java");
         Emissions out = new Emissions();
 
-        CodeFormatter.formatAll(spec, out.writer(), work());
+        CodeFormatter.formatAll(spec, out.writer(), null, work());
 
         List<String> slow = out.linesWithStatus("slow");
         assertThat(slow).isNotEmpty();
@@ -80,12 +80,17 @@ class CodeFormatterTimeoutTest {
     void a_file_that_no_thread_will_ever_start_is_settled_rather_than_waited_on() throws Exception {
         // One slot buys one replacement, so two wedged files leave nothing to run the third on.
         var spec = spec("Wedged1.java", "Wedged2.java", "Queued.java");
+        FormatStampCache memo = new FormatStampCache(dir.resolve("stamps"), CONFIG_KEY);
         Emissions out = new Emissions();
 
-        CodeFormatter.Tally tally = CodeFormatter.formatAll(spec, out.writer(), work());
+        CodeFormatter.Tally tally = CodeFormatter.formatAll(spec, out.writer(), memo, work());
 
         assertThat(tally.errors()).isEqualTo(3);
         assertThat(out.lineFor("Queued.java")).contains("was left wedged by a file that timed out");
+        // It was never attempted, so there is nothing to remember about it: a memo here would make
+        // the next run refuse a file that has never been tried.
+        Path queued = spec.files.get(2).file().toPath();
+        assertThat(memo.timedOutAt(memo.keyFor(Files.readAllBytes(queued)))).isZero();
     }
 
     @Test
@@ -98,7 +103,7 @@ class CodeFormatterTimeoutTest {
                 """, StandardCharsets.UTF_8);
         Emissions out = new Emissions();
 
-        CodeFormatter.formatAll(spec, out.writer(), work());
+        CodeFormatter.formatAll(spec, out.writer(), null, work());
 
         assertThat(out.lineFor("Wedged.java")).contains("deepest expression nesting here is");
     }
@@ -113,7 +118,7 @@ class CodeFormatterTimeoutTest {
         var spec = spec("Late.java");
         Emissions out = new Emissions();
 
-        CodeFormatter.Tally tally = CodeFormatter.formatAll(spec, out.writer(), (ref, index, dog) -> {
+        CodeFormatter.Tally tally = CodeFormatter.formatAll(spec, out.writer(), null, (ref, index, dog) -> {
             try (var window = dog.watch(index, ref.file())) {
                 holdFor(spec.fileTimeoutMs + 150);
                 return new CodeFormatter.FileResult(ref.file(), "changed", null);
@@ -125,6 +130,23 @@ class CodeFormatterTimeoutTest {
         assertThat(out.lineFor("Late.java")).contains("timed out after");
     }
 
+    /**
+     * The run remembers what it gave up on, keyed on the bytes it gave up on — so the next run
+     * reports the file without spending the limit again. {@code FormatTimeoutMemoTest} covers the
+     * reading side.
+     */
+    @Test
+    void a_timed_out_file_is_remembered_for_the_next_run() throws Exception {
+        var spec = spec("Wedged.java");
+        FormatStampCache memo = new FormatStampCache(dir.resolve("stamps"), CONFIG_KEY);
+        Emissions out = new Emissions();
+
+        CodeFormatter.formatAll(spec, out.writer(), memo, work());
+
+        Path file = spec.files.getFirst().file().toPath();
+        assertThat(memo.timedOutAt(memo.keyFor(Files.readAllBytes(file)))).isEqualTo(spec.fileTimeoutMs);
+    }
+
     @Test
     void a_zero_timeout_leaves_the_run_unbounded() throws Exception {
         var spec = spec("Fast1.java", "Fast2.java");
@@ -132,7 +154,7 @@ class CodeFormatterTimeoutTest {
         spec.fileTimeoutMs = 0;
         Emissions out = new Emissions();
 
-        CodeFormatter.Tally tally = CodeFormatter.formatAll(spec, out.writer(), work());
+        CodeFormatter.Tally tally = CodeFormatter.formatAll(spec, out.writer(), null, work());
 
         assertThat(tally.clean()).isEqualTo(2);
         assertThat(out.linesWithStatus("slow")).isEmpty();
@@ -177,6 +199,8 @@ class CodeFormatterTimeoutTest {
             }
         }
     }
+
+    private static final String CONFIG_KEY = "2222222222222222222222222222222222222222222222222222222222222222";
 
     /** A one-slot run with short thresholds, over files that exist so the post-mortem can read them. */
     private CodeFormatter.Spec spec(String... names) throws Exception {

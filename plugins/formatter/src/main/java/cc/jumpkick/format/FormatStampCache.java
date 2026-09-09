@@ -17,13 +17,18 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Settled-file stamps for one formatter configuration: <strong>one index file</strong> at
- * {@code <cache>/format/stamps/<configKey>.keys}, held in memory for the run and written once.
+ * What one formatter configuration already knows about a file's bytes, in two index files under
+ * {@code <cache>/format/stamps/}: {@code <configKey>.keys} for bytes that are settled, and
+ * {@code <configKey>.timeouts} for bytes that defeated the formatter. Both are held in memory for
+ * the run and written once.
  *
- * <p>A hit means the file's bytes are already settled under the config in the key, so the formatter
- * can skip it. Fail-open throughout: a lost or corrupt index costs one extra format pass and never
- * an error. {@code record} is a map write; the index is one read at load and one write at
- * {@link #save()}.
+ * <p>Both are verdicts about the same thing — this content, under this configuration — so they are
+ * mutually exclusive and the newer one replaces the older. A {@code .keys} hit means the formatter
+ * can skip the file; a {@code .timeouts} hit means it should not spend the per-file limit reaching
+ * the same error again.
+ *
+ * <p>Fail-open throughout: a lost or corrupt index costs one extra format pass and never an error.
+ * Recording is a map write; each index is one read at load and one write at {@link #save()}.
  */
 final class FormatStampCache {
 
@@ -34,14 +39,30 @@ final class FormatStampCache {
      */
     private static final int MAX_ENTRIES = 65_536;
 
-    /** Suffix for the one file per configuration. */
+    /**
+     * Timeouts one index keeps. A file that defeats the formatter is rare by construction — a
+     * population anywhere near this cap means something other than one bad expression is wrong — so
+     * this is a bound on pathology, not on ordinary growth.
+     */
+    private static final int MAX_TIMEOUTS = 1_024;
+
+    /** Suffixes for the two files per configuration. */
     private static final String INDEX_SUFFIX = ".keys";
 
+    private static final String TIMEOUT_SUFFIX = ".timeouts";
+
     private final Path index;
+    private final Path timeoutIndex;
     private final String configKey;
 
     /** key → use tick. A map rather than a set because eviction ranks by recency. */
     private final ConcurrentMap<String, Long> keys = new ConcurrentHashMap<>();
+
+    /** key → the per-file limit these bytes blew through, and when the fact was last consulted. */
+    private final ConcurrentMap<String, Timeout> timeouts = new ConcurrentHashMap<>();
+
+    /** One remembered timeout: the limit it happened under, and its recency for eviction. */
+    private record Timeout(long limitMs, long tick) {}
 
     private final AtomicLong tick = new AtomicLong();
     private volatile boolean dirty;
@@ -53,7 +74,9 @@ final class FormatStampCache {
     FormatStampCache(Path root, String configKey) {
         this.configKey = configKey;
         this.index = root.resolve(configKey + INDEX_SUFFIX);
+        this.timeoutIndex = root.resolve(configKey + TIMEOUT_SUFFIX);
         load();
+        loadTimeouts();
         sweepResidue(root);
     }
 
@@ -80,11 +103,37 @@ final class FormatStampCache {
     void record(String key) {
         if (key == null) return;
         keys.put(key, tick.incrementAndGet());
+        // These bytes formatted, so whatever they did on an earlier run under a tighter limit is no
+        // longer the verdict on them.
+        timeouts.remove(key);
         dirty = true;
     }
 
     /**
-     * Write the index once, most-recently-used last, capped at {@link #MAX_ENTRIES}.
+     * The per-file limit, in milliseconds, that {@code key}'s bytes already blew through under this
+     * configuration — or {@code 0} when they have not. Touched on read, so {@link #save()} keeps what
+     * this run actually consulted.
+     */
+    long timedOutAt(String key) {
+        if (key == null) return 0;
+        Timeout t = timeouts.computeIfPresent(key, (k, v) -> new Timeout(v.limitMs(), tick.incrementAndGet()));
+        return t == null ? 0 : t.limitMs();
+    }
+
+    /**
+     * Remember that {@code key}'s bytes did not finish inside {@code limitMs}. Replaces any settled
+     * stamp for the same bytes: the run just proved otherwise.
+     */
+    void recordTimeout(String key, long limitMs) {
+        if (key == null || limitMs <= 0) return;
+        timeouts.put(key, new Timeout(limitMs, tick.incrementAndGet()));
+        keys.remove(key);
+        dirty = true;
+    }
+
+    /**
+     * Write both indexes once, most-recently-used last, capped at {@link #MAX_ENTRIES} and
+     * {@link #MAX_TIMEOUTS}.
      *
      * <p>Called at the end of a run. Not atomic-replaced: this is a pure cache whose loss costs one
      * format pass, and {@code AtomicWrites} is a 372.7&nbsp;µs operation on NTFS buying durability no
@@ -102,9 +151,56 @@ final class FormatStampCache {
                 sb.append(ordered.get(i).getKey()).append('\n');
             }
             Files.writeString(index, sb.toString());
+            saveTimeouts();
             dirty = false;
         } catch (IOException | RuntimeException ignored) {
             // A cache, never a requirement.
+        }
+    }
+
+    /**
+     * Write the timeout index, most-recently-consulted last, capped at {@link #MAX_TIMEOUTS}. One
+     * line per entry: the key, a space, and the limit it blew through — the limit is what lets a
+     * later run with a more generous one try again instead of inheriting the verdict.
+     *
+     * <p>Deleted rather than left behind when the run has no timeouts, so a fixed file stops costing
+     * every later run a read of a stale list.
+     */
+    private void saveTimeouts() throws IOException {
+        if (timeouts.isEmpty()) {
+            Files.deleteIfExists(timeoutIndex);
+            return;
+        }
+        List<Map.Entry<String, Timeout>> ordered = new ArrayList<>(timeouts.entrySet());
+        ordered.sort(Comparator.comparingLong(e -> e.getValue().tick()));
+        int drop = Math.max(0, ordered.size() - MAX_TIMEOUTS);
+        StringBuilder sb = new StringBuilder();
+        for (int i = drop; i < ordered.size(); i++) {
+            sb.append(ordered.get(i).getKey())
+                    .append(' ')
+                    .append(ordered.get(i).getValue().limitMs())
+                    .append('\n');
+        }
+        Files.writeString(timeoutIndex, sb.toString());
+    }
+
+    /** Load the timeout index. A line this cannot parse is a line that never happened. */
+    private void loadTimeouts() {
+        try {
+            for (String line : Files.readAllLines(timeoutIndex, StandardCharsets.UTF_8)) {
+                int space = line.indexOf(' ');
+                if (space <= 0) continue;
+                try {
+                    long limitMs = Long.parseLong(line.substring(space + 1).strip());
+                    if (limitMs > 0) {
+                        timeouts.put(line.substring(0, space), new Timeout(limitMs, tick.incrementAndGet()));
+                    }
+                } catch (NumberFormatException ignored) {
+                    // A half-written line is not a verdict; the file gets formatted for real.
+                }
+            }
+        } catch (IOException | RuntimeException ignored) {
+            // No timeouts recorded yet, or an unreadable list: nothing is remembered.
         }
     }
 
@@ -133,7 +229,10 @@ final class FormatStampCache {
     private static void sweepResidue(Path root) {
         try (var children = Files.list(root)) {
             for (Path p : (Iterable<Path>) children::iterator) {
-                if (Files.isRegularFile(p) && p.getFileName().toString().endsWith(INDEX_SUFFIX)) continue;
+                String name = p.getFileName().toString();
+                if (Files.isRegularFile(p) && (name.endsWith(INDEX_SUFFIX) || name.endsWith(TIMEOUT_SUFFIX))) {
+                    continue;
+                }
                 PathUtil.deleteRecursively(p);
             }
         } catch (IOException | RuntimeException ignored) {
@@ -144,5 +243,10 @@ final class FormatStampCache {
     /** Test seam: entries currently held. */
     int size() {
         return keys.size();
+    }
+
+    /** Test seam: remembered timeouts currently held. */
+    int timeoutCount() {
+        return timeouts.size();
     }
 }

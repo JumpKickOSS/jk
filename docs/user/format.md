@@ -155,8 +155,9 @@ slowest single file is around 120 ms, and the 60 KB classes are nearer 110 ms. A
 running for two seconds is not a big file — it is a search that has stopped tracking the size of
 the source.
 
-A timed-out file is **not** formatted and **not** recorded as clean, so the next `jk format`
-tries it again. When the source explains the stall, the error says so:
+A timed-out file is **not** formatted and **not** recorded as clean, so `jk format` keeps
+reporting it and keeps exiting non-zero until you deal with it. When the source explains the
+stall, the error says so:
 
 ```
   error  src/test/java/example/ProviderTest.java: timed out after 2.0s (limit 2000 ms);
@@ -164,6 +165,17 @@ tries it again. When the source explains the stall, the error says so:
          a line-break search grows steeply with nesting, so splitting that expression into
          named locals or helper methods is usually the fix
 ```
+
+The timeout is paid **once**. jk remembers the file by content, so later runs report it straight
+away instead of spending the limit again:
+
+```
+  error  src/test/java/example/ProviderTest.java: timed out at a 2000 ms limit on an earlier
+         run and has not changed since, so it was not retried; deepest expression nesting …
+```
+
+Editing the file — any change at all — or raising the limit makes the next run attempt it for
+real. So does a change to the formatting configuration, which re-keys every cache jk keeps.
 
 Both thresholds are formatter-worker JVM properties, in milliseconds; `0` turns either off. Raise
 the timeout if a genuinely slow host starts reporting files you know are fine — the error names
@@ -183,8 +195,8 @@ JK_JVM_ARGS=-Djk.format.file-timeout-ms=0 jk format   # no bound at all
 ## Limitations
 
 - **Gradle Groovy DSL is not formatted.** `*.gradle` / `*.gradle.kts` stay out of `jk format`.
-- **A file the formatter cannot finish is dropped, not waited on** — see
-  [the per-file timeout](#slow-files-and-the-per-file-timeout).
+- **A file the formatter cannot finish is dropped, not waited on**, and stays reported until you
+  change it — see [the per-file timeout](#slow-files-and-the-per-file-timeout).
 - **Not a linter.** `jk format` rewrites style; it does not run Checkstyle, SpotBugs, or
   detekt. Java analysis: install Checkstyle as a tool — [Tools](tools.md) and the
   [checkstyle-recipe example](examples/checkstyle-recipe/). Kotlin analysis (detekt) is

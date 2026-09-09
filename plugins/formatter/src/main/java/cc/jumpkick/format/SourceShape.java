@@ -33,16 +33,23 @@ final class SourceShape {
     record Shape(int parenDepth, int parenLine, int lambdaNesting) {}
 
     /**
-     * The tail to append to a timeout message: a phrase naming the shape, or empty when the file's
-     * shape is unremarkable or unreadable. Never throws — a diagnostic must not become the failure.
+     * As {@link #postMortem(String)}, reading {@code file}. Empty when it cannot be read — a
+     * diagnostic must not become the failure.
      */
     static String postMortem(File file) {
-        Shape shape;
         try {
-            shape = of(Files.readString(file.toPath(), StandardCharsets.UTF_8));
+            return postMortem(Files.readString(file.toPath(), StandardCharsets.UTF_8));
         } catch (Exception e) {
             return "";
         }
+    }
+
+    /**
+     * The tail to append to a timeout message: a phrase naming the shape, or empty when the source's
+     * shape is unremarkable and so explains nothing.
+     */
+    static String postMortem(String source) {
+        Shape shape = of(source);
         if (shape.parenDepth() < NOTABLE_PAREN_DEPTH && shape.lambdaNesting() < NOTABLE_LAMBDA_NESTING) {
             return "";
         }
