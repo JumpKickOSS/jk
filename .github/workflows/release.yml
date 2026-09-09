@@ -1,6 +1,6 @@
 # Tag-triggered release build + sign for the jumpkick.build layout.
 #
-# Trigger: push tag v0.13.0 (or any vX.Y.Z matching JkVersion without the v).
+# Trigger: push tag v0.13.1 (or any vX.Y.Z matching JkVersion without the v).
 #
 # Secrets:
 #   JK_RELEASE_RSA_SIGNING_KEY — base64 PKCS#8 DER RSA-3072 private key (required for .sig)
@@ -20,9 +20,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (no v prefix), e.g. 0.13.0'
+        description: 'Version to release (no v prefix), e.g. 0.13.1'
         required: true
-        default: '0.13.0'
+        default: '0.13.1'
 
 env:
   TERM: xterm-256color

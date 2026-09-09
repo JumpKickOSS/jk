@@ -19,7 +19,7 @@ fun copyReplacing(src: File, dest: File) = CopyReplacing.copy(src, dest)
 // Coordinates + version must match cc.jumpkick.model.JkVersion.VERSION and the
 // cc.jumpkick.engine.plugin.PluginJar registry (artifactId = jk-<projectName>).
 group = "cc.jumpkick"
-version = "0.13.0"
+version = "0.13.1"
 
 val workerArtifact = "jk-${project.name}"
 

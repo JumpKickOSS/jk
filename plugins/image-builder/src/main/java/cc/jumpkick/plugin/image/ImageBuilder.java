@@ -351,13 +351,7 @@ public final class ImageBuilder {
         // Entrypoint: java -cp <app classpath> <main>
         List<String> entrypoint = new ArrayList<>();
         entrypoint.add("java");
-        if (!cfg.env().isEmpty()) {
-            // JAVA_OPTS is the conventional hook; values are joined with spaces.
-            String javaOpts = cfg.env().get("JAVA_OPTS");
-            if (javaOpts != null && !javaOpts.isBlank()) {
-                for (String token : javaOpts.trim().split("\\s+")) entrypoint.add(token);
-            }
-        }
+        entrypoint.addAll(javaOpts(cfg));
         if (aot != null) {
             entrypoint.add("-XX:AOTCache=" + AotCacheTrainer.CACHE_FILE);
             entrypoint.addAll(aot.runArgs());
@@ -368,6 +362,17 @@ public final class ImageBuilder {
         }
         builder = builder.setEntrypoint(entrypoint);
         return finish(builder, plan, containerizer, auth);
+    }
+
+    /**
+     * The JVM flags {@code [image] env JAVA_OPTS} carries, split on whitespace. They lead the
+     * entrypoint and every AOT training run alike: a cache is only valid for the collector and
+     * heap shape it was trained with, so the two must never differ.
+     */
+    static List<String> javaOpts(ImageConfig cfg) {
+        String javaOpts = cfg.env().get("JAVA_OPTS");
+        if (javaOpts == null || javaOpts.isBlank()) return List.of();
+        return List.of(javaOpts.trim().split("\\s+"));
     }
 
     /** Everything after the entrypoint: identity, ports, env, labels, platforms, and the build. */
@@ -408,10 +413,20 @@ public final class ImageBuilder {
         // action key, so a cache hit and a cache miss on identical inputs would disagree.
         builder = builder.setCreationTime(AotCacheTrainer.LAYER_TIME.toInstant());
 
+        // Jib keys its application-layer cache on each entry's paths, permissions and modification
+        // times — never on content. Every entry here carries the one pinned instant (and the AOT
+        // staging tree's files are stamped to it, because the cache header records mtimes), so a
+        // rebuilt jar under an unchanged name looks to Jib like the layer it already has, and the
+        // image ships the previous build's bytes while the cache beside it was trained on the new
+        // ones. A cache that lives only as long as this build cannot remember a previous one. The
+        // base-image layer cache is untouched: those layers are content-addressed by the registry.
+        Path applicationLayers = Files.createTempDirectory("jk-image-layers-");
         try {
-            return auth.containerize(builder, containerizer);
+            return auth.containerize(builder, containerizer.setApplicationLayersCache(applicationLayers));
         } catch (RegistryException | ExecutionException | CacheDirectoryCreationException e) {
             throw new IOException("image build failed: " + e.getMessage(), e);
+        } finally {
+            PathUtil.deleteRecursively(applicationLayers);
         }
     }
 

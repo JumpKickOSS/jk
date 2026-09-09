@@ -174,6 +174,9 @@ final class AotCacheTrainer {
         String assembleName = "jk-aot-create-" + UUID.randomUUID();
         String verifyName = "jk-aot-verify-" + UUID.randomUUID();
         List<String> prefix = prefixFor.apply(trainName);
+        // The same flags the entrypoint runs with; a cache trained under another collector or heap
+        // shape is one the production JVM silently declines.
+        List<String> javaOpts = ImageBuilder.javaOpts(plan.config());
 
         // Two steps, deliberately. The one-step -XX:AOTCacheOutput assembles the cache from a child
         // JVM that the application spawns as it exits normally — and a server does not exit
@@ -181,11 +184,19 @@ final class AotCacheTrainer {
         // runs, leaving a 33 MiB .aotconf and no cache. Recording and assembling separately puts
         // the assembly in jk's hands, which is also how Quarkus drives its own Leyden path.
         List<String> record = new ArrayList<>(prefix);
+        record.addAll(javaOpts);
         record.add("-XX:AOTMode=record");
         record.add("-XX:AOTConfiguration=" + CONFIG_FILE);
         record.addAll(runArgs);
 
         Output recorded = runUntilSettled(record, localJre != null ? staging : null, runtime, trainName, log);
+        if (recorded.diedOnItsOwn()) {
+            // The JVM still writes a recording at exit, so the file check below would pass and the
+            // image would ship a cache describing a process that never started.
+            throw new IOException("the training run exited " + recorded.exit() + " before it settled.\n"
+                    + "  command: " + String.join(" ", record) + "\n"
+                    + tail(recorded.text()));
+        }
         Path config = staging.resolve(CONFIG_FILE);
         if (!Files.isRegularFile(config) || sizeOrZero(config) == 0) {
             throw new IOException("the training run recorded nothing.\n"
@@ -194,13 +205,14 @@ final class AotCacheTrainer {
         }
 
         List<String> assemble = new ArrayList<>(prefixFor.apply(assembleName));
+        assemble.addAll(javaOpts);
         assemble.add("-XX:AOTMode=create");
         assemble.add("-XX:AOTConfiguration=" + CONFIG_FILE);
         assemble.add("-XX:AOTCache=" + CACHE_FILE);
         assemble.addAll(runArgs);
         Output assembled = runUntilSettled(assemble, localJre != null ? staging : null, runtime, assembleName, log);
         Path cache = staging.resolve(CACHE_FILE);
-        if (!Files.isRegularFile(cache) || sizeOrZero(cache) == 0) {
+        if (assembled.diedOnItsOwn() || !Files.isRegularFile(cache) || sizeOrZero(cache) == 0) {
             throw new IOException("the recording could not be assembled into a cache.\n"
                     + "  command: " + String.join(" ", assemble) + "\n"
                     + tail(assembled.text()));
@@ -211,13 +223,18 @@ final class AotCacheTrainer {
         // Prove it loads before it becomes a layer. A rejected cache is silent at default log
         // level, so an unverified one is indistinguishable from a working one.
         List<String> verify = new ArrayList<>(prefixFor.apply(verifyName));
+        verify.addAll(javaOpts);
         verify.add("-Xlog:aot=info");
         verify.add("-XX:AOTCache=" + CACHE_FILE);
         verify.addAll(runArgs);
 
-        String refusal = AotCacheFiles.refusal(
-                runUntilSettled(verify, localJre != null ? staging : null, runtime, verifyName, log)
-                        .text());
+        Output verified = runUntilSettled(verify, localJre != null ? staging : null, runtime, verifyName, log);
+        if (verified.diedOnItsOwn()) {
+            throw new IOException("the application does not start with the cache (exit " + verified.exit() + ").\n"
+                    + "  command: " + String.join(" ", verify) + "\n"
+                    + tail(verified.text()));
+        }
+        String refusal = AotCacheFiles.refusal(verified.text());
         if (refusal != null) {
             throw new IOException("the AOT cache was trained but the JVM refused it:\n  " + refusal);
         }
@@ -416,7 +433,13 @@ final class AotCacheTrainer {
         return false;
     }
 
-    private record Output(String text, int exit) {}
+    /** {@code stopped}: jk asked the process to stop; otherwise it ended on its own. */
+    private record Output(String text, int exit, boolean stopped) {
+        /** Ended by itself with a failure: an application that crashed, not a server that was stopped. */
+        boolean diedOnItsOwn() {
+            return !stopped && exit != 0;
+        }
+    }
 
     /**
      * Start the application, wait for it to settle, then ask it to stop, and return everything it
@@ -483,7 +506,7 @@ final class AotCacheTrainer {
                     .append('\n');
         }
         synchronized (out) {
-            return new Output(out.toString(), process.isAlive() ? -1 : process.exitValue());
+            return new Output(out.toString(), process.isAlive() ? -1 : process.exitValue(), asked);
         }
     }
 

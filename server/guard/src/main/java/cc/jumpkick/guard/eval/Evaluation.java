@@ -53,6 +53,16 @@ public record Evaluation(
         return new Evaluation(Outcome.UNSUPPORTED, Map.of(), List.of(), note);
     }
 
+    /**
+     * A module-lane rule over test classes in a module that has none: clean, nothing examined, no
+     * bite evidence. Not {@link #notEvaluated}: the inputs were produced, there is simply nothing in
+     * this module for the rule to have an opinion on, and a workspace has modules like that.
+     */
+    public static Evaluation noTestClasses() {
+        return new Evaluation(
+                Outcome.CLEAN, Map.of("test-classes", 0L), List.of(), "this module has no test classes", false);
+    }
+
     public static Evaluation notEvaluated(String note) {
         return new Evaluation(Outcome.NOT_EVALUATED, Map.of(), List.of(), note);
     }

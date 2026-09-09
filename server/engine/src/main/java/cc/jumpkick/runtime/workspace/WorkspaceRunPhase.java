@@ -180,11 +180,13 @@ final class WorkspaceRunPhase {
         String daemon = !daemonMode
                 ? null
                 : config != null && config.dockerExecutable() != null ? config.dockerExecutable() : "docker";
-        return new ModuleOutcome.Image(
-                reference,
-                tarball != null ? tarball.toString() : null,
-                project != null ? project.project().name() : null,
-                project != null ? project.project().version() : null,
-                daemon);
+        // What the daemon now holds, resolved the way the worker tagged it.
+        String name = project == null ? null : project.project().name();
+        String version = project == null ? null : project.project().version();
+        if (config != null && name != null && version != null) {
+            name = config.repository(name);
+            version = config.tagOr(version);
+        }
+        return new ModuleOutcome.Image(reference, tarball != null ? tarball.toString() : null, name, version, daemon);
     }
 }

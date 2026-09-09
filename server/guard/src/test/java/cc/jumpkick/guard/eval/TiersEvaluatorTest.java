@@ -168,7 +168,8 @@ class TiersEvaluatorTest {
                 () -> null,
                 List::of);
         Evaluation none = Evaluators.forKind(r.kind()).evaluate(r, ctx);
-        assertThat(none.outcome()).isEqualTo(Outcome.NOT_EVALUATED);
+        assertThat(none.outcome()).isEqualTo(Outcome.CLEAN);
+        assertThat(none.bites()).isFalse();
 
         LoadResult bad = load(root, "tagged = [\"slow\", \"nightly\"]\nsuite  = \"e2e\"\n");
         assertThat(bad.hasErrors()).isTrue();

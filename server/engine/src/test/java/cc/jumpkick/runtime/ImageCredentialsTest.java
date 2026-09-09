@@ -164,7 +164,19 @@ class ImageCredentialsTest {
 
     private static ImageConfig imageConfig(String registry) {
         return new ImageConfig(
-                BASE, null, List.of(), Map.of(), Map.of(), registry, "1", List.of("linux/amd64"), null, null, null);
+                BASE,
+                null,
+                null,
+                List.of(),
+                Map.of(),
+                Map.of(),
+                registry,
+                "1",
+                List.of("linux/amd64"),
+                null,
+                null,
+                null,
+                false);
     }
 
     /** The worker spec for {@code module}: tarball mode unless {@code registry} is set. */

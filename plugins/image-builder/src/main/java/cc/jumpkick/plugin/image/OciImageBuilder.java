@@ -134,6 +134,7 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
 
         ImageConfig config = new ImageConfig(
                 base,
+                c.stringOpt("name").orElse(null),
                 c.stringOpt("user").orElse(null),
                 ports,
                 env,

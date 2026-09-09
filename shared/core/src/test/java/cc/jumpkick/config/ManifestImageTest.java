@@ -36,6 +36,7 @@ class ManifestImageTest {
 
                 [image]
                 base = "eclipse-temurin:{java-major-version}-jre"
+                name = "acme-demo"
                 registry = "ghcr.io/acme"
                 ports = [8080, 9990]
                 platforms = ["linux/amd64"]
@@ -43,6 +44,7 @@ class ManifestImageTest {
                 env = { LANG = "C.UTF-8" }
                 """);
         assertThat(data.base()).isEqualTo("eclipse-temurin:{java-major-version}-jre");
+        assertThat(data.name()).isEqualTo("acme-demo");
         assertThat(data.registry()).isEqualTo("ghcr.io/acme");
         assertThat(data.ports()).containsExactly(8080, 9990);
         assertThat(data.platforms()).containsExactly("linux/amd64");
@@ -84,6 +86,7 @@ class ManifestImageTest {
         var project = new ManifestImage.ImageConfigData(
                 "project-base",
                 null,
+                null,
                 List.of(),
                 Map.of("A", "project"),
                 Map.of(),
@@ -96,6 +99,7 @@ class ManifestImageTest {
                 null);
         var global = new ManifestImage.ImageConfigData(
                 "global-base",
+                "global-name",
                 "nobody",
                 List.of(8080),
                 Map.of("A", "global", "B", "global"),
@@ -109,6 +113,9 @@ class ManifestImageTest {
                 true);
         var merged = ManifestImage.merge(project, global);
         assertThat(merged.base()).isEqualTo("project-base");
+        assertThat(merged.name())
+                .as("an unset project name falls back to the global one")
+                .isEqualTo("global-name");
         assertThat(merged.user()).isEqualTo("nobody");
         assertThat(merged.registry()).isEqualTo("ghcr.io/acme");
         assertThat(merged.ports()).containsExactly(8080);

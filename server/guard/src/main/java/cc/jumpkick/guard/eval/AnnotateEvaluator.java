@@ -68,7 +68,7 @@ final class AnnotateEvaluator implements Evaluator {
         FactsIndex facts = ctx.facts();
         if (on.equals("test-class")) {
             FactsIndex test = ctx.testFacts();
-            if (test == null) return Evaluation.notEvaluated("this module has no test classes");
+            if (test == null) return Evaluation.noTestClasses();
             facts = test;
         }
 

@@ -26,7 +26,8 @@ import org.tomlj.TomlTable;
  * one of the named tags must live in {@code suite} or carry {@code tag}. The class's suite is the
  * suite whose source root holds its source file, across every suite the module declares — the
  * module's test index carries all compiled suites together. Fingerprint: the class. A module with
- * no test classes is {@code not-evaluated}: the rule has nothing to say there.
+ * no test classes is clean with no bite: the rule has nothing to say there, and a workspace has
+ * modules like that.
  */
 final class TiersEvaluator implements Evaluator {
 
@@ -42,7 +43,7 @@ final class TiersEvaluator implements Evaluator {
         Path moduleDir = ctx.moduleDir();
         if (moduleDir == null) return Evaluation.failed("tiers runs in the module lane");
         FactsIndex test = ctx.testFacts();
-        if (test == null) return Evaluation.notEvaluated("this module has no test classes");
+        if (test == null) return Evaluation.noTestClasses();
         List<Pattern> typeGlobs = new ArrayList<>();
         for (String g : uses) typeGlobs.add(typeGlob(g));
         boolean compact = ModuleLayout.isCompact(moduleDir);

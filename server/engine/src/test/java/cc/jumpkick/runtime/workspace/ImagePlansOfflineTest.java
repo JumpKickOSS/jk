@@ -102,7 +102,7 @@ class ImagePlansOfflineTest {
         Files.createDirectories(tarball.getParent());
         Path workerJar = Files.writeString(tmp.resolve("jk-image-builder.jar"), "WORKER");
         ImageConfig config = new ImageConfig(
-                base, null, List.of(), Map.of(), Map.of(), null, null, List.of(), null, null, null, false);
+                base, null, null, List.of(), Map.of(), Map.of(), null, null, List.of(), null, null, null, false);
         return new Fixture(project, layout, config, tmp.resolve("cache"), tarball, workerJar);
     }
 

@@ -199,7 +199,8 @@ class AnnotateEvaluatorTest {
         FactsIndex main = facts(Sample.class);
         FactsIndex tests = facts(AnnotateEvaluatorTest.class, Sample.class);
         Evaluation none = run(dir, "require = \"java.lang.Deprecated\"\non = \"test-class\"\n", main);
-        assertThat(none.outcome()).isEqualTo(Outcome.NOT_EVALUATED);
+        assertThat(none.outcome()).isEqualTo(Outcome.CLEAN);
+        assertThat(none.bites()).isFalse();
         Evaluation e = run(dir, "require = \"java.lang.Deprecated\"\non = \"test-class\"\n", main, tests);
         assertThat(e.population()).containsEntry("elements", 1L);
         assertThat(e.observations())

@@ -12,6 +12,8 @@ import org.jspecify.annotations.Nullable;
  */
 public record ImageConfig(
         @Nullable String base,
+        /** Repository name of the image; null → the module's artifact id. */
+        @Nullable String name,
         @Nullable String user,
         List<Integer> ports,
         Map<String, String> env,
@@ -30,36 +32,33 @@ public record ImageConfig(
          */
         boolean aotCache) {
 
-    /** Without an AOT cache — the shape every existing caller builds. */
-    public ImageConfig(
-            @Nullable String base,
-            @Nullable String user,
-            List<Integer> ports,
-            Map<String, String> env,
-            Map<String, String> labels,
-            @Nullable String registry,
-            @Nullable String tag,
-            List<String> platforms,
-            @Nullable String main,
-            @Nullable String dockerExecutable,
-            @Nullable String dockerFile) {
-        this(base, user, ports, env, labels, registry, tag, platforms, main, dockerExecutable, dockerFile, false);
-    }
-
     public ImageConfig {
         ports = ports == null ? List.of() : List.copyOf(ports);
         env = env == null ? Map.of() : Map.copyOf(env);
         labels = labels == null ? Map.of() : Map.copyOf(labels);
         platforms = (platforms == null || platforms.isEmpty()) ? List.of("linux/amd64") : List.copyOf(platforms);
-        // base, user, registry, tag, main, dockerExecutable, dockerFile may be null
+        // base, name, user, registry, tag, main, dockerExecutable, dockerFile may be null
     }
 
-    /** Resolve the final {@code <registry>/<image>:<tag>} target. */
+    /**
+     * Resolve the final {@code <registry>/<image>:<tag>} target: {@code name} when set, else the
+     * module's {@code artifact}; {@code tag} when set, else {@code version}.
+     */
     public String targetReference(String artifact, String version) {
+        String repository = repository(artifact);
+        String image = (registry != null && !registry.isBlank()) ? registry + "/" + repository : repository;
+        return image + ":" + tagOr(version);
+    }
+
+    /** The image repository: {@code name} when set, else the module's artifact id. */
+    public String repository(String artifact) {
         Objects.requireNonNull(artifact, "artifact");
+        return (name != null && !name.isBlank()) ? name : artifact;
+    }
+
+    /** The image tag: {@code tag} when set, else the module version. */
+    public String tagOr(String version) {
         Objects.requireNonNull(version, "version");
-        String image = (registry != null && !registry.isBlank()) ? registry + "/" + artifact : artifact;
-        String t = (tag != null && !tag.isBlank()) ? tag : version;
-        return image + ":" + t;
+        return (tag != null && !tag.isBlank()) ? tag : version;
     }
 }

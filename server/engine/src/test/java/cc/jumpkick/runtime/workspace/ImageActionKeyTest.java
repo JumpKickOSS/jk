@@ -23,7 +23,7 @@ class ImageActionKeyTest {
 
     private static ImageConfig config() {
         return new ImageConfig(
-                CONFIG_BASE, null, List.of(), Map.of(), Map.of(), null, null, List.of(), null, null, null, false);
+                CONFIG_BASE, null, null, List.of(), Map.of(), Map.of(), null, null, List.of(), null, null, null, false);
     }
 
     private static String token(List<String> tokens, String prefix) {

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.workspace;
 
-import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.ClasspathResolver;
+import cc.jumpkick.compile.ModuleRuntimeClasspath;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.ManifestImage;
@@ -24,6 +24,7 @@ import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PackageId;
+import cc.jumpkick.model.Scope;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
 import cc.jumpkick.run.BuildPlan;
@@ -47,6 +48,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -193,23 +195,14 @@ public final class ImagePlans {
                             ctx.error("no-main", "no main class — pass --main, set image.main, or set project.main.");
                             throw new RuntimeException("missing main class");
                         }
-                        if (PluginBuild.shape(project, projectDir)
-                                .map(sh -> sh.layeredImage())
-                                .orElse(false)) {
-                            // Layered-image packagers: production RUNTIME
-                            // deps only, snapshots split into their own layer, app classes
-                            // exploded — the layer cadence matches how the bytes actually change.
-                            List<Path> releases = new ArrayList<>();
-                            List<Path> snapshots = new ArrayList<>();
-                            // Same lock as casJarNames (layout.moduleRoot()) — in a workspace
-                            // these can diverge, and jars then fall back to digest names.
-                            splitBootDependencyJars(layout.moduleRoot(), cache, releases, snapshots);
-                            ctx.put(DEP_JARS, releases);
-                            ctx.put(SNAPSHOT_JARS, snapshots);
-                        } else {
-                            ctx.put(DEP_JARS, loadDependencyJars(projectDir, cache));
-                            ctx.put(SNAPSHOT_JARS, List.of());
-                        }
+                        // This module's production runtime closure — the same set the fat jar
+                        // nests — with SNAPSHOT versions split into their own layer, because they
+                        // churn while releases do not. Never the whole workspace lock, and never
+                        // the CAS alone: with [m2] integration on, the jars live in ~/.m2.
+                        RuntimeJars jars =
+                                runtimeJars(layout.moduleRoot(), project, LockPaths.lockFile(layout.moduleRoot()));
+                        ctx.put(DEP_JARS, jars.releases());
+                        ctx.put(SNAPSHOT_JARS, jars.snapshots());
                     }
                     ctx.progress(1);
                 })
@@ -335,6 +328,7 @@ public final class ImagePlans {
 
         return new ImageConfig(
                 base,
+                data.name(),
                 data.user(),
                 data.ports(),
                 data.env(),
@@ -379,6 +373,7 @@ public final class ImagePlans {
         // against; that tree belongs under the root BASE_JRE's bound covers, not in the
         // module's target/, where nothing reclaims it and `jk clean` throws it away.
         sw.configString("jkCache", cache.toAbsolutePath().toString());
+        if (config.name() != null) sw.configString("name", config.name());
         if (config.user() != null) sw.configString("user", config.user());
         if (config.registry() != null) sw.configString("registry", config.registry());
         if (config.tag() != null) sw.configString("tag", config.tag());
@@ -407,7 +402,7 @@ public final class ImagePlans {
         sw.artifact(layout.mainJar());
         // Name each jar by its coordinate. The path is a CAS digest, so shipping that name
         // into the image leaves a lib/ directory neither a human nor a scanner can read.
-        Map<Path, String> names = casJarNames(layout.moduleRoot(), cache);
+        Map<Path, String> names = jarNames(lockRows(LockPaths.lockFile(layout.moduleRoot())));
         for (Path dep : depJars) sw.entry(jarName(names, dep), dep, false, null);
         for (Path dep : snapshotJars) sw.entry(jarName(names, dep), dep, true, null);
         if (classesDir != null) sw.layout(Map.of("classesDir", classesDir));
@@ -669,44 +664,50 @@ public final class ImagePlans {
         return null;
     }
 
-    /**
-     * Boot layer mapping: production RUNTIME deps only (dev/test-dev never enter the image),
-     * SNAPSHOT versions split into their own layer, paths from the named-repo store when
-     * available so entries keep readable names.
-     */
-    private static void splitBootDependencyJars(Path projectDir, Path cache, List<Path> releases, List<Path> snapshots)
-            throws IOException {
-        Path lockPath = LockPaths.lockFile(projectDir);
-        if (!Files.exists(lockPath)) return;
-        Lockfile lock = LockfileReader.read(lockPath);
-        ClasspathResolver resolver = new ClasspathResolver(JkStores.storeCas());
-        for (ClasspathResolver.Entry entry : resolver.entriesFor(lock, ClasspathResolver.RUNTIME)) {
-            if (!Files.exists(entry.jar())) continue;
-            (entry.artifact().version().contains("SNAPSHOT") ? snapshots : releases).add(entry.jar());
-        }
-    }
+    /** A module's runtime jars for the image, release and SNAPSHOT versions apart. */
+    record RuntimeJars(List<Path> releases, List<Path> snapshots) {}
 
     /**
-     * CAS path → {@code <artifact>-<version>[-<classifier>].jar}, from the lock that put it
-     * there. Lock rows are keyed {@code g:a:type:classifier}, so two classifier variants of one
-     * GA (netty's per-arch natives) or one artifactId under two groups are distinct rows — they
-     * must land as distinct file names, or the tar layer silently keeps only the last one.
-     * Colliding names are qualified with the group; a residual collision fails the build.
+     * The module's production runtime closure: its declared externals and its workspace siblings'
+     * transitive closure through the lock, plus the siblings' own thin jars. Located the way every
+     * other classpath is (the store, or {@code ~/.m2} when integration is on), so the layer holds
+     * exactly what the fat jar would nest.
      */
-    private static Map<Path, String> casJarNames(Path projectDir, Path cache) throws IOException {
-        Path lockPath = LockPaths.lockFile(projectDir);
-        if (!Files.exists(lockPath)) return Map.of();
-        Cas cas = JkStores.storeCas();
+    static RuntimeJars runtimeJars(Path moduleDir, JkBuild project, Path lockFile) throws IOException {
+        return split(
+                ModuleRuntimeClasspath.jars(moduleDir, project, lockFile, JkStores.storeCas()), lockRows(lockFile));
+    }
+
+    /** Pure half of {@link #runtimeJars}: a sibling's thin jar has no lock row and is a release. */
+    static RuntimeJars split(List<Path> jars, Map<Path, Lockfile.Artifact> rows) {
+        List<Path> releases = new ArrayList<>();
+        List<Path> snapshots = new ArrayList<>();
+        for (Path jar : jars) {
+            Lockfile.Artifact row = rows.get(jar);
+            (row != null && row.version().contains("SNAPSHOT") ? snapshots : releases).add(jar);
+        }
+        return new RuntimeJars(releases, snapshots);
+    }
+
+    /** Every lock row by the path its jar resolves to, whatever scope it is in. */
+    static Map<Path, Lockfile.Artifact> lockRows(Path lockFile) throws IOException {
+        if (!Files.exists(lockFile)) return Map.of();
         Map<Path, Lockfile.Artifact> rows = new LinkedHashMap<>();
-        for (Lockfile.Artifact pkg : LockfileReader.read(lockPath).artifacts()) {
-            if (pkg.checksum() == null) continue;
-            String hex = pkg.checksumHex();
-            rows.put(cas.pathFor(hex), pkg);
+        ClasspathResolver resolver = new ClasspathResolver(JkStores.storeCas());
+        for (ClasspathResolver.Entry entry :
+                resolver.entriesFor(LockfileReader.read(lockFile), EnumSet.allOf(Scope.class))) {
+            rows.put(entry.jar(), entry.artifact());
         }
-        return jarNames(rows);
+        return rows;
     }
 
-    /** Pure naming half of {@link #casJarNames}. Package-visible for tests. */
+    /**
+     * {@code <artifact>-<version>[-<classifier>].jar} for every row. Lock rows are keyed {@code
+     * g:a:type:classifier}, so two classifier variants of one GA (netty's per-arch natives) or one
+     * artifactId under two groups are distinct rows — they must land as distinct file names, or
+     * the tar layer silently keeps only the last one. Colliding names are qualified with the
+     * group; a residual collision fails the build. Package-visible for tests.
+     */
     static Map<Path, String> jarNames(Map<Path, Lockfile.Artifact> rows) throws IOException {
         Map<Path, String> names = new LinkedHashMap<>();
         Map<String, Set<Path>> byName = new LinkedHashMap<>();
@@ -742,20 +743,5 @@ public final class ImagePlans {
     private static String jarName(Map<Path, String> names, Path jar) {
         String named = names.get(jar);
         return named != null ? named : jar.getFileName().toString();
-    }
-
-    private static List<Path> loadDependencyJars(Path projectDir, Path cache) throws IOException {
-        Path lockPath = LockPaths.lockFile(projectDir);
-        if (!Files.exists(lockPath)) return List.of();
-        Lockfile lock = LockfileReader.read(lockPath);
-        List<Path> result = new ArrayList<>();
-        Cas cas = JkStores.storeCas();
-        for (Lockfile.Artifact pkg : lock.artifacts()) {
-            if (pkg.checksum() == null) continue;
-            String hex = pkg.checksumHex();
-            Path candidate = cas.pathFor(hex);
-            if (Files.exists(candidate)) result.add(candidate);
-        }
-        return result;
     }
 }

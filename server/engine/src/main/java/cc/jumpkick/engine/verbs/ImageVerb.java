@@ -192,8 +192,16 @@ public final class ImageVerb implements HostedVerb {
                             testResult != null ? testResult.skipped() : -1,
                             plan.get(ImagePlans.IMAGE_REF).orElse(null),
                             tarball != null ? tarball.toString() : null,
-                            project != null ? project.project().name() : null,
-                            project != null ? project.project().version() : null,
+                            project == null
+                                    ? null
+                                    : cfg == null
+                                            ? project.project().name()
+                                            : cfg.repository(project.project().name()),
+                            project == null
+                                    ? null
+                                    : cfg == null
+                                            ? project.project().version()
+                                            : cfg.tagOr(project.project().version()),
                             daemonExe);
                 });
             } catch (Exception e) {

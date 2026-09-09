@@ -21,6 +21,7 @@ class ImageBuilderAppTreeTest {
         return new ImageConfig(
                 "bellsoft/liberica-runtime-container:jre-25-slim-glibc",
                 null,
+                null,
                 List.of(),
                 Map.of(),
                 Map.of(),

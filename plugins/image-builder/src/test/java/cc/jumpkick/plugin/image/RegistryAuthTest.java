@@ -304,6 +304,7 @@ class RegistryAuthTest {
         return new ImageConfig(
                 base,
                 null,
+                null,
                 List.of(),
                 Map.of(),
                 Map.of(),
@@ -312,7 +313,8 @@ class RegistryAuthTest {
                 List.of("linux/amd64"),
                 null,
                 null,
-                null);
+                null,
+                false);
     }
 
     private ImageBuilder.Plan plan(Path tmp) throws Exception {

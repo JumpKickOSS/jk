@@ -46,7 +46,7 @@ class ImageWorkerSpecTest {
                         project,
                         BuildLayout.of(module, project),
                         new ImageConfig(
-                                TAG, null, List.of(), Map.of(), Map.of(), null, null, List.of(), null, null, null,
+                                TAG, null, null, List.of(), Map.of(), Map.of(), null, null, List.of(), null, null, null,
                                 true),
                         base,
                         "com.example.Main",

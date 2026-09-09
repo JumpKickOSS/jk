@@ -19,6 +19,8 @@ public final class ManifestImage {
 
     public record ImageConfigData(
             @Nullable String base,
+            /** {@code image.name} — the image repository; default the module's artifact id. */
+            @Nullable String name,
             @Nullable String user,
             List<Integer> ports,
             Map<String, String> env,
@@ -36,7 +38,7 @@ public final class ManifestImage {
 
         /** No {@code [image]} table anywhere — every field unset. */
         public static final ImageConfigData EMPTY = new ImageConfigData(
-                null, null, List.of(), Map.of(), Map.of(), null, null, List.of(), null, null, null, null);
+                null, null, null, List.of(), Map.of(), Map.of(), null, null, List.of(), null, null, null, null);
     }
 
     private ManifestImage() {}
@@ -48,6 +50,7 @@ public final class ManifestImage {
      */
     public static ImageConfigData merge(ImageConfigData project, ImageConfigData global) {
         String base = nonBlank(project.base()) != null ? project.base() : global.base();
+        String name = nonBlank(project.name()) != null ? project.name() : global.name();
         String user = nonBlank(project.user()) != null ? project.user() : global.user();
         String registry = nonBlank(project.registry()) != null ? project.registry() : global.registry();
         String tag = nonBlank(project.tag()) != null ? project.tag() : global.tag();
@@ -64,6 +67,7 @@ public final class ManifestImage {
         Boolean aotCache = project.aotCache() != null ? project.aotCache() : global.aotCache();
         return new ImageConfigData(
                 base,
+                name,
                 user,
                 ports,
                 Map.copyOf(env),
@@ -87,6 +91,7 @@ public final class ManifestImage {
         if (image == null) return ImageConfigData.EMPTY;
         return new ImageConfigData(
                 image.getString("base"),
+                image.getString("name"),
                 image.getString("user"),
                 optionalIntList(image, "ports"),
                 optionalStringMap(image, "env"),

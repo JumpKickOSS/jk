@@ -21,7 +21,7 @@ class AotCacheTrainerTest {
 
     private static ImageConfig config(String base) {
         return new ImageConfig(
-                base, null, List.of(), Map.of(), Map.of(), null, null, List.of(), null, null, null, true);
+                base, null, null, List.of(), Map.of(), Map.of(), null, null, List.of(), null, null, null, true);
     }
 
     private static ImageBuilder.Plan plan(Path classesDir) {

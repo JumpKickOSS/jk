@@ -6,10 +6,10 @@ How JumpKick ships installable binaries. For day-to-day use see [user install](.
 
 | Line | Meaning |
 |------|---------|
-| **`0.13.0`** | Current product version (no `-SNAPSHOT` on `main`) |
-| Tag **`v0.13.0`** | Next public release cut from that line |
-| Prior | **`0.11.0`** — previous product line; **`0.10.1`** first public (store migration shim) |
-| Later | Semver-ish: `0.12.1`, `0.13.0`, … |
+| **`0.13.1`** | Current product version (no `-SNAPSHOT` on `main`) |
+| Tag **`v0.13.1`** | Next public release cut from that line |
+| Prior | **`0.13.0`** — previous product line; **`0.10.1`** first public (store migration shim) |
+| Later | Semver-ish: `0.13.2`, `0.14.0`, … |
 
 Bump `JkVersion.VERSION`, Gradle `version` in plugin conventions, and workspace `jk.toml`
 coordinates together (search for the old version string).
@@ -44,15 +44,15 @@ Layout under the bucket (and under the CDN path `/releases`):
 ```text
 releases/
   latest/
-    VERSION                 # single line, e.g. 0.13.0  (Cache-Control: no-cache)
-  0.13.0/
-    jk-linux-x86_64-0.13.0.xz
-    jk-linux-aarch64-0.13.0.xz
-    jk-macos-x86_64-0.13.0.xz
-    jk-macos-aarch64-0.13.0.xz
-    jk-windows-x86_64-0.13.0.xz    # self-update (engine inflates; no system xz needed)
-    jk-windows-x86_64-0.13.0.zip   # install.ps1 / jk.bat only
-    jk-engine-0.13.0.jar
+    VERSION                 # single line, e.g. 0.13.1  (Cache-Control: no-cache)
+  0.13.1/
+    jk-linux-x86_64-0.13.1.xz
+    jk-linux-aarch64-0.13.1.xz
+    jk-macos-x86_64-0.13.1.xz
+    jk-macos-aarch64-0.13.1.xz
+    jk-windows-x86_64-0.13.1.xz    # self-update (engine inflates; no system xz needed)
+    jk-windows-x86_64-0.13.1.zip   # install.ps1 / jk.bat only
+    jk-engine-0.13.1.jar
     SHA256SUMS              # coreutils: <hex>  <filename>
     SHA256SUMS.sig          # base64 RSA/SHA-256 signature over exact SHA256SUMS bytes
 ```
@@ -89,7 +89,7 @@ bytes. Local file installs remain an explicit unsigned development path.
 
 Workflow: [`.github/workflows/release.yml`](../../.github/workflows/release.yml)
 
-1. Push tag `v0.13.0` (must match `JkVersion` without the `v` prefix, or set `JK_VERSION`).
+1. Push tag `v0.13.1` (must match `JkVersion` without the `v` prefix, or set `JK_VERSION`).
 2. Matrix builds native client + engine jar per OS/arch.
 3. `scripts/assemble-release-dir.sh` produces per-platform dirs + `SHA256SUMS` + `.sig`.
 4. Merge job re-signs the combined tree, then **`gsutil rsync`** to GCS when secrets are set.
@@ -110,8 +110,8 @@ workflow artifacts for a staged dry-run.
 
 ```bash
 # After assemble-release-dir.sh (or downloading the merged workflow artifact):
-gsutil -m rsync -r -d build/release/0.13.0/ gs://$BUCKET/releases/0.13.0/
-echo 0.13.0 | gsutil -h "Cache-Control:no-cache,max-age=0" cp - \
+gsutil -m rsync -r -d build/release/0.13.1/ gs://$BUCKET/releases/0.13.1/
+echo 0.13.1 | gsutil -h "Cache-Control:no-cache,max-age=0" cp - \
   gs://$BUCKET/releases/latest/VERSION
 ```
 
@@ -121,7 +121,7 @@ echo 0.13.0 | gsutil -h "Cache-Control:no-cache,max-age=0" cp - \
 ./gradlew clean dist
 export JK_RELEASE_RSA_SIGNING_KEY_FILE=/owner-only/path/release-key.pem
 scripts/assemble-release-dir.sh
-# inspect build/release/0.13.0/
+# inspect build/release/0.13.1/
 ```
 
 ## Rotation
