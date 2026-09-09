@@ -2,6 +2,7 @@
 package cc.jumpkick.templates;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -156,5 +157,41 @@ class OfficialTemplatesFreshenTest {
         String out = new String(proc.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
         if (proc.waitFor() != 0) throw new IOException("git " + String.join(" ", args) + " failed: " + out);
         return out.strip();
+    }
+
+    @Test
+    void a_real_source_key_is_unchanged_and_stays_readable() {
+        // The official catalog and anything like it must keep the name it already has on disk, or
+        // every existing cache directory is orphaned and re-cloned on upgrade.
+        assertEquals(
+                "github.com_jumpkickoss_jk-templates",
+                OfficialTemplatesFreshen.parse("https://github.com/JumpKickOSS/jk-templates.git")
+                        .cacheKey());
+    }
+
+    @Test
+    void a_long_source_key_is_bounded_and_still_unique() {
+        String deep = "file:///C:/Users/someone/src/oss/jk-some-worktree/shared/core/build/tmp/"
+                + "junit-17705283888040414576/official/";
+        String other = deep.replace("official", "another");
+
+        String a = OfficialTemplatesFreshen.parse(deep).cacheKey();
+        String b = OfficialTemplatesFreshen.parse(other).cacheKey();
+
+        assertTrue(a.length() <= 60, "key is bounded, was " + a.length() + ": " + a);
+        assertTrue(b.length() <= 60, "key is bounded, was " + b.length() + ": " + b);
+        assertNotEquals(a, b, "two long sources must not collide once truncated");
+        assertEquals(a, OfficialTemplatesFreshen.parse(deep).cacheKey(), "the key is deterministic");
+        assertTrue(a.startsWith("file_c_users_someone"), "the readable prefix survives: " + a);
+    }
+
+    @Test
+    void a_pinned_rev_still_separates_long_sources() {
+        String deep =
+                "file:///C:/Users/someone/src/oss/jk-some-worktree/shared/core/build/tmp/junit-1770528388/official/";
+        String a = OfficialTemplatesFreshen.parse(deep + "#v1").cacheKey();
+        String b = OfficialTemplatesFreshen.parse(deep + "#v2").cacheKey();
+        assertNotEquals(a, b, "a pin is part of the identity even when the key is truncated");
+        assertTrue(a.length() <= 60 && b.length() <= 60);
     }
 }

@@ -2,6 +2,7 @@
 package cc.jumpkick.templates;
 
 import cc.jumpkick.config.JkTemplatesConfig;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.StoreWriteGate;
@@ -259,7 +260,8 @@ public final class OfficialTemplatesFreshen {
                 proc.destroyForcibly();
                 throw new IOException("git timed out");
             }
-            if (proc.exitValue() != 0) throw new IOException("git exit " + proc.exitValue());
+            if (proc.exitValue() != 0)
+                throw new IOException("git exit " + proc.exitValue() + ": " + String.join(" ", args));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             proc.destroyForcibly();
@@ -291,7 +293,29 @@ public final class OfficialTemplatesFreshen {
         if (rev != null && !rev.isBlank()) {
             base = base + "_" + rev.replaceAll("[^a-zA-Z0-9._-]+", "_");
         }
-        return base;
+        return bound(base, rev == null ? url : url + "#" + rev);
+    }
+
+    /**
+     * Longest directory name a cache key may produce. A real source is far shorter — the official
+     * catalog keys as {@code github.com_jumpkickoss_jk-templates}, 35 characters — so the bound never
+     * fires for one and no existing cache directory changes name.
+     */
+    private static final int MAX_CACHE_KEY = 60;
+
+    /**
+     * Keep a cache key inside {@link #MAX_CACHE_KEY}. The key is a sanitised copy of the whole source
+     * URL and it names a directory that a clone then writes a repository underneath, so a
+     * {@code file://} source under a deep path produced a directory name longer than the path it came
+     * from — enough to cross Windows' MAX_PATH and fail the clone.
+     *
+     * <p>The prefix survives rather than the tail because the readable part of a URL is its host and
+     * owner; a digest of the full identity is what keeps two long sources apart.
+     */
+    private static String bound(String key, String identity) {
+        if (key.length() <= MAX_CACHE_KEY) return key;
+        String digest = Hashing.sha256Hex(identity).substring(0, 12);
+        return key.substring(0, MAX_CACHE_KEY - digest.length() - 1) + "_" + digest;
     }
 
     record Parsed(String url, @Nullable String rev, String cacheKey) {
