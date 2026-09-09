@@ -84,7 +84,7 @@ public final class TestWorkers {
      * phase oversubscribe and the build ends later, so the number has to be read late.
      *
      * <p>The denominator is the units actually running, which is what the plan-time share was
-     * dividing by all along — the same formula, read late. Free {@link PluginSlots} permits look like
+     * dividing by all along — the same formula, read late. Free {@code PluginSlots} permits look like
      * the same answer and are not: they are an instantaneous reading of a resource about to be
      * contended, and sizing from them let mid-build suites take sixteen runners each and starve the
      * compile lanes, which cost more at the front than the tail gained at the back.
