@@ -5,12 +5,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.compile.JavaCompilerHost.Lanes;
 import cc.jumpkick.compile.JavaCompilerHost.Session;
+import cc.jumpkick.compile.JavaCompilerHost.SpecFile;
 import cc.jumpkick.compile.JavaCompilerHost.Work;
+import cc.jumpkick.engine.plugin.PluginProcess;
+import cc.jumpkick.plugin.protocol.PluginProtocol;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -96,6 +103,60 @@ class JavaCompilerHostPoolTest {
         release.countDown();
         closer.join(TimeUnit.SECONDS.toMillis(30));
         assertThat(closer.isAlive()).isFalse();
+    }
+
+    @Test
+    void a_spec_that_cannot_be_written_fails_its_item_and_the_lane_dispatches_the_next(@TempDir Path dir)
+            throws Exception {
+        // The worker has said READY and is waiting for a command. If the host fails to write the
+        // spec and then sends nothing, worker and lane wait on each other for the rest of the job.
+        Path badRoot = dir.resolve("bad");
+        SpecFile specs = req -> {
+            if (req.classOutput().startsWith(badRoot)) throw new IOException("no room for a spec");
+            return Files.writeString(dir.resolve(req.classOutput().getParent().getFileName() + ".spec"), "spec");
+        };
+        CountDownLatch release = new CountDownLatch(1);
+        AtomicReference<Session> lane = new AtomicReference<>();
+        Lanes pool = new Lanes(
+                1,
+                (owner, index) -> {
+                    Session s = new Session(owner, 5L, index, self -> release.await());
+                    lane.set(s);
+                    return s;
+                },
+                specs);
+        Work bad = Work.compile(request(dir, "bad"));
+        Work good = Work.compile(request(dir, "good"));
+        pool.enqueue(bad);
+        pool.enqueue(good);
+
+        List<String> sent = new ArrayList<>();
+        lane.get().onLine("{\"" + PluginProtocol.T + "\":\"" + PluginProtocol.READY + "\"}", recording(sent));
+
+        assertThat(bad.compile).isCompletedExceptionally();
+        assertThat(sent)
+                .as("the worker got a command for the item behind the one that failed")
+                .hasSize(1);
+        assertThat(sent.getFirst()).startsWith("COMPILE ").endsWith("good.spec");
+        assertThat(good.compile).isNotDone();
+        assertThat(lane.get().working()).isTrue();
+
+        release.countDown();
+        awaitTrue(good.compile::isDone, "the lane's death fails the item it had on the wire");
+    }
+
+    private static PluginProcess.Conversation recording(List<String> sent) {
+        return new PluginProcess.Conversation() {
+            @Override
+            public void send(String line) {
+                sent.add(line);
+            }
+
+            @Override
+            public void closeInput() {
+                sent.add("<eof>");
+            }
+        };
     }
 
     private static ForkedJavac.Result ok() {

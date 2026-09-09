@@ -455,34 +455,7 @@ public final class JavaCompilerHost {
         void onLine(String json, PluginProcess.Conversation convo) {
             String t = Jsonl.str(json, PluginProtocol.T);
             if (PluginProtocol.READY.equals(t)) {
-                Work next;
-                try {
-                    next = takeNext();
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    convo.send("DONE");
-                    convo.closeInput();
-                    return;
-                }
-                if (next == Work.POISON || next.req == null) {
-                    convo.send("DONE");
-                    convo.closeInput();
-                    return;
-                }
-                // Take a worker slot only for the duration of this exchange; released on
-                // RESULT/ERROR/failure so an idle session holds none.
-                slot = PluginSlots.acquire();
-                try {
-                    next.waitNanos = CLOCK.nanos() - next.enqueuedNanos;
-                    next.spec = owner.specs.write(next.req);
-                    transcript.reset();
-                    inflight = next;
-                    convo.send((next.plan ? "PLAN " : "COMPILE ") + next.spec.toAbsolutePath());
-                } catch (IOException e) {
-                    next.compile.completeExceptionally(e);
-                    next.forecast.completeExceptionally(e);
-                    releaseSlot();
-                }
+                dispatchNext(convo);
                 return;
             }
             Work w = inflight;
@@ -526,6 +499,46 @@ public final class JavaCompilerHost {
                 deleteSpec(w);
                 inflight = null;
                 releaseSlot();
+            }
+        }
+
+        /**
+         * The worker is at READY: hand it the next item, or {@code DONE}. A spec that cannot be
+         * written fails only its own item and the loop takes the next one — the worker is still
+         * waiting for a command, and returning without sending one would leave it, and this lane,
+         * waiting on each other for the rest of the job.
+         */
+        private void dispatchNext(PluginProcess.Conversation convo) {
+            while (true) {
+                Work next;
+                try {
+                    next = takeNext();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    convo.send("DONE");
+                    convo.closeInput();
+                    return;
+                }
+                if (next == Work.POISON || next.req == null) {
+                    convo.send("DONE");
+                    convo.closeInput();
+                    return;
+                }
+                // Take a worker slot only for the duration of this exchange; released on
+                // RESULT/ERROR/failure so an idle session holds none.
+                slot = PluginSlots.acquire();
+                try {
+                    next.waitNanos = CLOCK.nanos() - next.enqueuedNanos;
+                    next.spec = owner.specs.write(next.req);
+                    transcript.reset();
+                    inflight = next;
+                    convo.send((next.plan ? "PLAN " : "COMPILE ") + next.spec.toAbsolutePath());
+                    return;
+                } catch (IOException e) {
+                    next.compile.completeExceptionally(e);
+                    next.forecast.completeExceptionally(e);
+                    releaseSlot();
+                }
             }
         }
 
