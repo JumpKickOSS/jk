@@ -222,7 +222,11 @@ tasks.withType<Test>().matching { it.name in engineSpawningTiers }.configureEach
         cliTestTmpDirShort.mkdirs()
         cliTestStateDirShort.mkdirs()
         environment("JK_STATE_DIR", cliTestStateDirShort.absolutePath)
-        val testJkHome = layout.buildDirectory.dir("test-jk-home").get().asFile.absolutePath
+        // The same out-of-tree home the convention plugin resolves (JkLayoutPaths.testHomeFor), not a
+        // second one under build/: this suite seeds a store, and a store-shaped directory inside the
+        // checkout is what a stray git command walks up out of. This module's sandbox is the one that
+        // did it.
+        val testJkHome = JkLayoutPaths.testHomeFor(rootDir, project.path).absolutePath
         environment("JK_HOME", testJkHome)
         environment("JK_JDKS_DIR", "$testJkHome/jdks")
         environment("JK_JDK_PROBES", "java-home,jk")
