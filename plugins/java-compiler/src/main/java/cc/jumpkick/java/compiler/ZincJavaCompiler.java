@@ -181,7 +181,7 @@ public final class ZincJavaCompiler {
             IncrementalCompiler zinc = ZincUtil.defaultIncrementalCompiler();
             FileConverter converter = PlainVirtualFileConverter.converter();
             ApProvenance provenance = new ApProvenance();
-            processors = loadProcessors(processorPath);
+            processors = processorsFor(processorPath);
             phases.mark("processors");
             javac = recordingJavac(converter, processors, provenance);
             Compilers compilers = ScalaBridge.compilersFor(javac, mixed);
@@ -272,8 +272,6 @@ public final class ZincJavaCompiler {
                     ? e.getClass().getName()
                     : e.getClass().getName() + ": " + e.getMessage();
             return new Result(false, List.of(new Diag("ERROR", null, 0, 0, msg)), List.of());
-        } finally {
-            processors.close();
         }
     }
 
@@ -495,23 +493,65 @@ public final class ZincJavaCompiler {
     }
 
     /**
-     * The processor path's classloader, kept open for the whole compile. Holds no {@link Processor}
+     * The processor path's classloader, held for the life of the worker. Holds no {@link Processor}
      * instances: each javac round loads its own (see {@link #freshProcessors}).
      */
-    private record ProcessorLoad(boolean any, URLClassLoader loader) implements AutoCloseable {
+    record ProcessorLoad(boolean any, @Nullable URLClassLoader loader) {
         static ProcessorLoad none() {
             return new ProcessorLoad(false, null);
         }
 
-        @Override
-        public void close() {
+        void discard() {
             if (loader == null) return;
             try {
                 loader.close();
             } catch (IOException ignored) {
-                // compile is finished; unload is best-effort
+                // nothing is compiling against it any more; unload is best-effort
             }
         }
+    }
+
+    /** How many distinct processor paths a worker keeps loaders for before evicting the oldest. */
+    private static final int PROCESSOR_LOADER_CAP = 4;
+
+    /**
+     * One loader per processor path, reused by every compile in the job that asks for that path.
+     *
+     * <p>Building it per compile means each module loads the processor's classes from its jar from
+     * scratch. That is close to free on Linux and brutal on NTFS: a build was measured opening one
+     * Lombok jar 14,797 times in fifteen seconds, and every open is followed by a walk of all nine
+     * path components to canonicalise it, at roughly 92 µs an open against 4 µs on ext4.
+     *
+     * <p>Bounded and evicting, because a workspace may use several processor paths and a loader that
+     * nothing will ask for again should not be held open. Access is synchronized: a worker compiles
+     * one module at a time today, but the protocol allows concurrent items and a classloader shared
+     * by accident is worse than a lock nobody contends.
+     */
+    private static final LinkedHashMap<List<Path>, ProcessorLoad> PROCESSOR_LOADERS =
+            new LinkedHashMap<>(8, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<List<Path>, ProcessorLoad> eldest) {
+                    if (size() <= PROCESSOR_LOADER_CAP) return false;
+                    eldest.getValue().discard();
+                    return true;
+                }
+            };
+
+    /**
+     * The loader for {@code processorPath}, built once per worker and reused after that.
+     *
+     * <p>Reuse is bounded by the job: the worker's pull loop stays up across the modules of one job
+     * and exits on {@code DONE}, so no loader outlives the build that created it, and a processor jar
+     * is read from the immutable dependency store rather than rewritten under a running build.
+     */
+    static synchronized ProcessorLoad processorsFor(List<Path> processorPath) {
+        if (processorPath == null || processorPath.isEmpty()) return ProcessorLoad.none();
+        List<Path> key = List.copyOf(processorPath);
+        ProcessorLoad cached = PROCESSOR_LOADERS.get(key);
+        if (cached != null) return cached;
+        ProcessorLoad load = loadProcessors(key);
+        PROCESSOR_LOADERS.put(key, load);
+        return load;
     }
 
     private static ProcessorLoad loadProcessors(List<Path> processorPath) {
