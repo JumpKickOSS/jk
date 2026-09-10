@@ -155,20 +155,7 @@ public final class OfficialTemplatesFreshen {
         }
         // Existing shallow clone: cheap fetch + hard reset (no merge noise).
         try {
-            List<String> fetch = new ArrayList<>();
-            fetch.add("git");
-            fetch.add("-C");
-            fetch.add(dest.toString());
-            fetch.add("fetch");
-            fetch.add("--depth");
-            fetch.add("1");
-            fetch.add("origin");
-            if (p.rev() != null && !p.rev().isBlank()) {
-                fetch.add(p.rev());
-            }
-            runGit(fetch, 60);
-            List<String> reset = List.of("git", "-C", dest.toString(), "reset", "--hard", "FETCH_HEAD");
-            runGit(reset, 30);
+            fetchAndReset(dest, p.rev());
         } catch (IOException fetchFailed) {
             // Corrupt / auth-skewed cache: delete and clone clean.
             PathUtil.deleteRecursivelyOrThrow(dest);
@@ -229,6 +216,48 @@ public final class OfficialTemplatesFreshen {
         } catch (IOException e) {
             return false;
         }
+    }
+
+    /**
+     * Bring an existing cache clone up to date in place: shallow fetch, hard reset, no merge noise.
+     *
+     * <p>Package-private because the state worth testing is the one no caller can arrange — {@code
+     * dest} having stopped being a repository between {@link #isRepositoryRoot} and here, which is what
+     * a sandbox teardown or a sibling test JVM does. A test calls this directly to pin that the
+     * invocations refuse rather than retarget.
+     */
+    static void fetchAndReset(Path dest, @Nullable String rev) throws IOException {
+        List<String> fetch = new ArrayList<>(pinnedGit(dest, "fetch", "--depth", "1", "origin"));
+        if (rev != null && !rev.isBlank()) {
+            fetch.add(rev);
+        }
+        runGit(fetch, 60);
+        runGit(pinnedGit(dest, "reset", "--hard", "FETCH_HEAD"), 30);
+    }
+
+    /**
+     * A git command pinned to the repository at {@code dest}, never {@code -C dest}.
+     *
+     * <p>{@code git -C <dir>} does not mean "operate on the repository at {@code <dir>}"; it means "cd
+     * there first", and git then searches upwards. So the moment {@code dest} stops being a repository
+     * root — it was deleted, it never was one — the command retargets itself at whatever repository
+     * encloses it, which for a cache under a source tree is the developer's checkout. {@code fetch
+     * --depth 1} makes that checkout shallow and {@code reset --hard} discards their work.
+     *
+     * <p>{@link #isRepositoryRoot} cannot prevent it. That is a check and this is the use, and nothing
+     * holds between them: a clone that passes the check and is then removed by a sandbox teardown or a
+     * sibling test JVM leaves the calls pointing at the enclosing repository. Pinning is the property
+     * that does not depend on timing — {@code --git-dir} names the repository outright, so a missing one
+     * fails the command instead of choosing another. A {@code .git} that is a worktree file rather than
+     * a directory fails here too, and falls to the re-clone below, which is the safe direction.
+     */
+    private static List<String> pinnedGit(Path dest, String... args) {
+        List<String> out = new ArrayList<>();
+        out.add("git");
+        out.add("--git-dir=" + dest.resolve(".git"));
+        out.add("--work-tree=" + dest);
+        out.addAll(List.of(args));
+        return out;
     }
 
     /** Whether {@code dir} is a repository of its own — a {@code .git} directory or worktree file of its own. */

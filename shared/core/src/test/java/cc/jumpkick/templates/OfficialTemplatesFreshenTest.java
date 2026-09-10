@@ -216,6 +216,61 @@ class OfficialTemplatesFreshenTest {
         assertTrue(Files.isDirectory(dest.resolve("java/spring/hello.g8")), "with the official catalog in it");
     }
 
+    /**
+     * The state the check cannot cover: {@code dest} is not a repository at the moment the fetch and
+     * reset run. {@link OfficialTemplatesFreshen#isRepositoryRoot} passing and then the directory going
+     * away — a sandbox teardown, a sibling test JVM, a {@code clean} — is the window that has reset two
+     * developers' checkouts and left both shallow, once before the root check existed and once after.
+     *
+     * <p>Calling the refresh directly is the point: through {@code refreshRef} the check would route
+     * this to a clone and the invocations would never run. What has to hold is that they are pinned to a
+     * named repository, so a missing one fails the command rather than choosing the enclosing one.
+     *
+     * <p>The enclosing repository is a full stand-in for a developer's checkout — an {@code origin} it
+     * is behind, and an uncommitted edit. Without the remote the fetch fails for the wrong reason and
+     * the test passes whether the invocations are pinned or not, which is worth stating because that is
+     * how it was first written.
+     */
+    @Test
+    void a_refresh_of_a_vanished_cache_fails_instead_of_resetting_the_enclosing_repository() throws Exception {
+        Path upstream = tmp.resolve("upstream");
+        Files.createDirectories(upstream);
+        Files.writeString(upstream.resolve("work.txt"), "committed\n");
+        git(upstream, "init", "-q", "-b", "main");
+        git(upstream, "add", ".");
+        git(upstream, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "first");
+
+        Path enclosing = tmp.resolve("checkout");
+        git(tmp, "clone", "-q", upstream.toUri().toString(), enclosing.toString());
+        String headBefore = gitOut(enclosing, "rev-parse", "HEAD");
+
+        // Upstream moves on, so a reset to FETCH_HEAD would be a visible move, and the developer has
+        // work in the tree that such a reset would take with it.
+        Files.writeString(upstream.resolve("work.txt"), "upstream moved\n");
+        git(upstream, "add", ".");
+        git(upstream, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "second");
+        Files.writeString(enclosing.resolve("work.txt"), "edited, never committed\n");
+
+        // Inside the enclosing repository, catalog-shaped, and not a repository of its own — what is
+        // left once the clone that passed the check is deleted underneath it.
+        Path dest = enclosing.resolve("tpl/github.com_jumpkickoss_jk-templates");
+        Files.createDirectories(dest.resolve("java/spring/stale.g8"));
+        assertTrue(!OfficialTemplatesFreshen.isRepositoryRoot(dest), "the fixture is not a repository");
+
+        assertThrows(
+                IOException.class,
+                () -> OfficialTemplatesFreshen.fetchAndReset(dest, null),
+                "a refresh of something that is not a repository must fail, not pick another one");
+
+        assertEquals(headBefore, gitOut(enclosing, "rev-parse", "HEAD"), "the enclosing branch did not move");
+        assertEquals(
+                "edited, never committed\n",
+                Files.readString(enclosing.resolve("work.txt")),
+                "the uncommitted edit survived");
+        assertTrue(
+                !Files.exists(enclosing.resolve(".git/shallow")), "the enclosing repository was not shallow-fetched");
+    }
+
     private static void git(Path dir, String... args) throws Exception {
         gitOut(dir, args);
     }
