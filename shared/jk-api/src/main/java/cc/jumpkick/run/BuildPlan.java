@@ -22,11 +22,13 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.LongAdder;
@@ -52,6 +54,21 @@ public final class BuildPlan {
 
     /** How long we wait for async steps to notice cancellation before calling {@code Future.cancel}. */
     static final Duration COOPERATIVE_CANCEL_GRACE = Duration.ofMillis(200);
+
+    /**
+     * How long the plan waits for a cancelled step's body to actually stop before returning.
+     *
+     * <p>{@code CompletableFuture.cancel} completes the future and nothing else — the flag it takes
+     * "has no effect in this implementation", so the body keeps running on its pool. Returning then
+     * hands the caller a finished plan whose steps are still writing: a compile still emitting class
+     * files, its worker JVM still alive in the module's output directory. Whoever cleans up next
+     * loses a race it has no way to see.
+     *
+     * <p>Bounded, so a step that ignores cancellation delays a failed build by this much and no
+     * more. Cooperative cancellation is what makes the wait short in practice; this is the backstop
+     * for the window between the flag being set and the body noticing it.
+     */
+    static final Duration CANCELLED_BODY_DRAIN = Duration.ofSeconds(5);
 
     /** How often the interpolation interpTimer eases opaque steps forward. */
     private static final long INTERP_TICK_MS = 100;
@@ -204,6 +221,9 @@ public final class BuildPlan {
         // cannot grow: every offer is matched by exactly one take below.
         BlockingQueue<Done> events = new LinkedBlockingQueue<>();
         Set<CompletableFuture<TaskStatus>> outstanding = ConcurrentHashMap.newKeySet();
+        // The bodies behind those handles. Cancelling a handle does not stop its body, so the plan
+        // keeps these to wait on before it calls itself finished.
+        Set<CompletableFuture<TaskStatus>> bodies = ConcurrentHashMap.newKeySet();
         int running = 0;
         boolean failed = false;
         try {
@@ -222,7 +242,7 @@ public final class BuildPlan {
                             // at a time, exactly as the wave executor ran it. Admission stalls for
                             // its duration, which is why SYNC is reserved for near-zero steps
                             // (parse-build, write-stamp, joins) and every heavy step is IO/CPU.
-                            TaskStatus s = Objects.requireNonNull(startStep(p, initialTicks, weights, null, null));
+                            TaskStatus s = Objects.requireNonNull(startStep(p, initialTicks, weights, null, null, null));
                             if (isOk(s)) {
                                 completedOk.add(p.name());
                                 admittedInline = true;
@@ -235,7 +255,7 @@ public final class BuildPlan {
                             }
                             break; // re-scan from the top: readiness changed
                         }
-                        startStep(p, initialTicks, weights, events, outstanding);
+                        startStep(p, initialTicks, weights, events, outstanding, bodies);
                         running++;
                     }
                 }
@@ -260,6 +280,10 @@ public final class BuildPlan {
             }
         } finally {
             if (interpTimer != null) interpTimer.shutdownNow();
+            // Terminal means stopped, not merely reported. A cancelled handle completes at once
+            // while its body runs on, so without this the plan returns while a step is still
+            // writing — and the caller's own cleanup races a compile it was told had finished.
+            drainBodies(bodies);
         }
 
         // Any un-started steps are CANCELLED because a dep failed (or the plan was cancelled).
@@ -342,7 +366,8 @@ public final class BuildPlan {
             Map<String, Integer> initialTicks,
             Map<String, Integer> weights,
             @Nullable BlockingQueue<Done> events,
-            @Nullable Set<CompletableFuture<TaskStatus>> outstanding) {
+            @Nullable Set<CompletableFuture<TaskStatus>> outstanding,
+            @Nullable Set<CompletableFuture<TaskStatus>> bodies) {
         int ticks = initialTicks.getOrDefault(p.name(), 0);
         int weight = weights.getOrDefault(p.name(), ticks);
         statuses.put(p.name(), TaskStatus.RUNNING);
@@ -352,16 +377,43 @@ public final class BuildPlan {
         if (p.kind() == TaskKind.SYNC) {
             return runOneStep(p, ticks, weight);
         }
-        CompletableFuture<TaskStatus> f =
+        // Two handles on one body. `body` completes only when the step really stops, so the plan can
+        // wait for it; `f` is the copy the plan cancels. Cancelling a copy leaves the original
+        // running, which is the point: the drain loop still gets its one event per step immediately,
+        // and the plan can still tell the difference between "reported" and "stopped".
+        CompletableFuture<TaskStatus> body =
                 CompletableFuture.supplyAsync(() -> runOneStep(p, ticks, weight), executorFor(p.kind()));
+        CompletableFuture<TaskStatus> f = body.copy();
         Set<CompletableFuture<TaskStatus>> asyncOutstanding = Objects.requireNonNull(outstanding);
         BlockingQueue<Done> asyncEvents = Objects.requireNonNull(events);
+        Objects.requireNonNull(bodies).add(body);
         asyncOutstanding.add(f);
         // whenComplete fires exactly once per future, including when we cancel it, which is what
         // lets the drain loop count events down to zero. The derived future is deliberately dropped
         // — `f` is the one we keep so it stays cancellable.
         f.whenComplete((s, ex) -> asyncEvents.add(new Done(p, s, f)));
         return null;
+    }
+
+    /**
+     * Wait for cancelled step bodies to stop before the plan reports itself finished.
+     *
+     * <p>Best-effort and bounded: a body still running when the budget expires is left to the pool,
+     * because a plan that cannot finish is worse than one that finishes while a straggler writes.
+     * Failures are the point of the wait, not an error in it — a cancelled body completes
+     * exceptionally and that is fine.
+     */
+    private static void drainBodies(Set<CompletableFuture<TaskStatus>> bodies) {
+        if (bodies.isEmpty()) return;
+        try {
+            CompletableFuture.allOf(bodies.toArray(CompletableFuture[]::new))
+                    .get(CANCELLED_BODY_DRAIN.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (ExecutionException | TimeoutException | RuntimeException ignored) {
+            // A step that failed, was cancelled (CancellationException is a RuntimeException), or
+            // outlasted the budget: nothing more to wait on either way.
+        }
     }
 
     /**
