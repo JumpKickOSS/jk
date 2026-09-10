@@ -116,17 +116,6 @@ final class ProvenanceJavac implements JavaCompiler {
         }
     }
 
-    /**
-     * Clears every location, so a reused manager looks to javac exactly like a freshly opened one.
-     *
-     * <p>This is what makes reuse safe rather than merely fast. javac sets locations on the file
-     * manager as it parses options — {@code -classpath}, {@code -processorpath}, {@code -s} — and
-     * only the ones this compile names get set. Anything the <em>previous</em> compile set and this
-     * one does not mention would otherwise still be there: a module that declares no processor path
-     * would inherit the last module's and silently run its processors, generating code into a build
-     * that never asked for any. Null is documented as "reset to the default", which is precisely the
-     * state a new manager would be in.
-     */
     /** Whether this compile names its own {@code -processorpath}. */
     private static boolean declaresProcessorPath(String[] options) {
         for (String option : options) {
