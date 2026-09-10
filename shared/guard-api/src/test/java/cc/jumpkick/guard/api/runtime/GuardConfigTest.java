@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 class GuardConfigTest {
@@ -77,7 +78,10 @@ class GuardConfigTest {
 
     @Test
     void the_properties_text_escapes_what_properties_files_treat_specially() throws Exception {
-        Path odd = dir.resolve("a=b:c");
+        // A colon is illegal in a Windows filename, yet every Windows path carries one in its drive
+        // letter — so the colon under test comes from the name on POSIX and from the root here.
+        boolean windows = OS.WINDOWS.isCurrentOs();
+        Path odd = dir.resolve(windows ? "a=b" : "a=b:c");
         GuardConfig c = new GuardConfig(
                 odd.resolve("r.jsonl"),
                 odd,
@@ -92,7 +96,8 @@ class GuardConfigTest {
                 null,
                 false);
         String text = c.toProperties();
-        assertThat(text).contains("\\=b\\:c");
+        assertThat(text).contains(windows ? "\\=b" : "\\=b\\:c");
+        assertThat(text).as("a colon is escaped wherever it comes from").contains("\\:");
         assertThat(text).doesNotContain("model=").doesNotContain("coverage=");
         Path f = dir.resolve("odd.properties");
         Files.writeString(f, text);
@@ -106,7 +111,20 @@ class GuardConfigTest {
         GuardConfig c = GuardConfig.read(f);
         assertThat(c.facts()).containsExactly(Path.of("/a.idx"), Path.of("/b.idx"));
         assertThat(c.jars()).isEmpty();
-        assertThat(c.toProperties()).contains("facts=/a.idx|/b.idx\n");
+        // The rendering of a path is the platform's; what this pins is the joining — one pipe
+        // between two segments, and no empty segment where the input had a run of them.
+        String facts = c.toProperties()
+                .lines()
+                .filter(l -> l.startsWith("facts="))
+                .findFirst()
+                .orElseThrow();
+        assertThat(facts.substring("facts=".length()).split("\\|", -1))
+                .containsExactly(rendered(Path.of("/a.idx")), rendered(Path.of("/b.idx")));
+    }
+
+    /** A path as the properties text carries it: the platform's separators, escaped. */
+    private static String rendered(Path p) {
+        return p.toString().replace("\\", "\\\\").replace(":", "\\:").replace("=", "\\=");
     }
 
     @Test
