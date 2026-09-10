@@ -88,6 +88,9 @@ public final class FactsIndexing {
                                 + " between listing and reading — the classes directory changed under the guard step, "
                                 + "so a step that writes it is missing from the step's requires",
                         e);
+            } catch (IOException e) {
+                throw new IOException(
+                        e.getClass().getSimpleName() + " reading class file " + rel + " from " + classesDir, e);
             }
             ClassFacts facts = FactsExtractor.extract(bytes);
             classes.put(facts.name(), facts);

@@ -2,16 +2,22 @@
 package cc.jumpkick.guard.extract;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.guard.extract.FactsIndexing.Ensured;
 import cc.jumpkick.guard.extract.fixture.FixtureBytes;
 import cc.jumpkick.guard.extract.fixture.Sample;
 import cc.jumpkick.guard.facts.FactsIndex;
 import java.io.IOException;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import java.nio.file.attribute.PosixFilePermissions;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 class FactsIndexingTest {
@@ -66,5 +72,28 @@ class FactsIndexingTest {
         assertThat(e.tier()).isEqualTo(Ensured.Tier.ABSENT);
         assertThat(FactsIndexing.load(e).classes()).isEmpty();
         assertThat(Files.exists(dir.resolve("g.idx"))).isFalse();
+    }
+
+    /**
+     * A read failure that is not a vanished file names its exception type, so the message carries
+     * more than the path. The unreadable file here is the portable stand-in for any such failure.
+     */
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void an_unreadable_class_file_names_the_failure(@TempDir Path dir) throws IOException {
+        Path classes = classes(dir);
+        Path locked = classes.resolve("cc/jumpkick/guard/extract/fixture/Sample.class");
+        Files.setPosixFilePermissions(locked, PosixFilePermissions.fromString("---------"));
+        assumeTrue(!Files.isReadable(locked), "not running as root");
+        try {
+            Path idx = FactsIndexing.indexPath(dir.resolve("target"), "main");
+            assertThatThrownBy(() -> FactsIndexing.ensure(classes, idx))
+                    .isInstanceOf(IOException.class)
+                    .hasMessageContaining("AccessDeniedException")
+                    .hasMessageContaining("Sample.class")
+                    .hasCauseInstanceOf(AccessDeniedException.class);
+        } finally {
+            Files.setPosixFilePermissions(locked, PosixFilePermissions.fromString("rw-r--r--"));
+        }
     }
 }
