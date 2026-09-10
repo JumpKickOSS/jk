@@ -66,6 +66,13 @@ tasks.withType<Test>().configureEach {
     }
     environment("JK_AUTO_PRUNE", "false")
     environment("JK_HTTP_ENABLED", "false")
+    // No suite may prompt. A worker with a console attached — every Windows one — otherwise counts
+    // as promptable, so a command that confirms takes the raw keystroke path and reads that console
+    // instead of the stdin the test injected. Nobody types into it, and a native console read
+    // answers no interrupt, so the per-test timeout above cannot end it either: the whole task sits
+    // until its own cap and reports no result. A CI environment already forces this off; a
+    // developer machine now agrees with it.
+    environment("JK_NONINTERACTIVE", "1")
     systemProperty("junit.jupiter.execution.timeout.default", "120s")
     systemProperty("junit.jupiter.execution.timeout.mode", "disabled_on_debug")
     systemProperty("jk.http.cooldown.dir", layout.buildDirectory.dir("test-http-cooldown").get().asFile.absolutePath)
