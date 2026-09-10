@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.java.compiler;
 
+import cc.jumpkick.host.time.Clock;
 import java.io.FilterInputStream;
 import java.io.FilterOutputStream;
 import java.io.IOException;
@@ -48,19 +49,21 @@ final class FileOps {
     private static final String ENV = "JK_FILE_OPS";
 
     private final @Nullable Path sink;
+    private final Clock clock;
 
     /** Operation name to {@code {count, nanos}}, in first-seen order so the line reads consistently. */
     private final Map<String, long[]> tally = new LinkedHashMap<>();
 
-    private FileOps(@Nullable Path sink) {
+    private FileOps(@Nullable Path sink, Clock clock) {
         this.sink = sink;
+        this.clock = clock;
     }
 
     /** A recorder that writes where {@code JK_FILE_OPS} points, or one that does nothing. */
     static FileOps open() {
         String path = System.getenv(ENV);
-        if (path == null || path.isBlank()) return new FileOps(null);
-        return new FileOps(Path.of(path.trim()));
+        if (path == null || path.isBlank()) return new FileOps(null, Clock.SYSTEM);
+        return new FileOps(Path.of(path.trim()), Clock.SYSTEM);
     }
 
     boolean enabled() {
@@ -86,11 +89,11 @@ final class FileOps {
     }
 
     private <T> T timed(String op, Call<T> call) throws IOException {
-        long t0 = System.nanoTime();
+        long t0 = clock.nanos();
         try {
             return call.get();
         } finally {
-            add(op, System.nanoTime() - t0);
+            add(op, clock.nanos() - t0);
         }
     }
 
@@ -112,11 +115,11 @@ final class FileOps {
 
             @Override
             public void close() throws IOException {
-                long t0 = System.nanoTime();
+                long t0 = clock.nanos();
                 try {
                     super.close();
                 } finally {
-                    add("closeOutputStream", System.nanoTime() - t0);
+                    add("closeOutputStream", clock.nanos() - t0);
                 }
             }
         };
@@ -126,11 +129,11 @@ final class FileOps {
         return new FilterInputStream(in) {
             @Override
             public void close() throws IOException {
-                long t0 = System.nanoTime();
+                long t0 = clock.nanos();
                 try {
                     super.close();
                 } finally {
-                    add("closeInputStream", System.nanoTime() - t0);
+                    add("closeInputStream", clock.nanos() - t0);
                 }
             }
         };
@@ -229,11 +232,11 @@ final class FileOps {
 
         @Override
         public String inferBinaryName(Location location, JavaFileObject file) {
-            long t0 = System.nanoTime();
+            long t0 = clock.nanos();
             try {
                 return super.inferBinaryName(location, unwrap(file));
             } finally {
-                add("inferBinaryName", System.nanoTime() - t0);
+                add("inferBinaryName", clock.nanos() - t0);
             }
         }
 
@@ -244,11 +247,11 @@ final class FileOps {
 
         @Override
         public boolean isSameFile(FileObject a, FileObject b) {
-            long t0 = System.nanoTime();
+            long t0 = clock.nanos();
             try {
                 return super.isSameFile(unwrap(a), unwrap(b));
             } finally {
-                add("isSameFile", System.nanoTime() - t0);
+                add("isSameFile", clock.nanos() - t0);
             }
         }
     }
@@ -291,21 +294,21 @@ final class FileOps {
 
         @Override
         public long getLastModified() {
-            long t0 = System.nanoTime();
+            long t0 = clock.nanos();
             try {
                 return super.getLastModified();
             } finally {
-                add("getLastModified", System.nanoTime() - t0);
+                add("getLastModified", clock.nanos() - t0);
             }
         }
 
         @Override
         public boolean delete() {
-            long t0 = System.nanoTime();
+            long t0 = clock.nanos();
             try {
                 return super.delete();
             } finally {
-                add("delete", System.nanoTime() - t0);
+                add("delete", clock.nanos() - t0);
             }
         }
     }
@@ -337,11 +340,11 @@ final class FileOps {
 
         @Override
         public long getLastModified() {
-            long t0 = System.nanoTime();
+            long t0 = clock.nanos();
             try {
                 return super.getLastModified();
             } finally {
-                add("getLastModified", System.nanoTime() - t0);
+                add("getLastModified", clock.nanos() - t0);
             }
         }
     }
