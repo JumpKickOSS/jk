@@ -11,6 +11,7 @@ import cc.jumpkick.guard.extract.fixture.Sample;
 import cc.jumpkick.guard.facts.FactsIndex;
 import java.io.IOException;
 import java.nio.file.AccessDeniedException;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
@@ -94,6 +95,33 @@ class FactsIndexingTest {
                     .hasCauseInstanceOf(AccessDeniedException.class);
         } finally {
             Files.setPosixFilePermissions(locked, PosixFilePermissions.fromString("rw-r--r--"));
+        }
+    }
+
+    @Test
+    void a_denial_on_windows_reads_as_a_vanished_file_and_on_posix_as_a_permission() {
+        Path classes = Path.of("classes");
+        var denied = new AccessDeniedException("Sample.class");
+
+        assertThat(FactsIndexing.readFailure("Sample.class", classes, denied, true))
+                .as("Windows: delete-pending keeps the name listed and refuses the reopen")
+                .hasMessageContaining("vanished")
+                .hasMessageContaining("missing from the step's requires");
+
+        assertThat(FactsIndexing.readFailure("Sample.class", classes, denied, false))
+                .as("POSIX: a denial is a permission fault, not a concurrent write")
+                .hasMessageContaining("AccessDeniedException")
+                .hasMessageNotContaining("vanished");
+    }
+
+    @Test
+    void a_missing_class_file_reads_as_vanished_on_either_platform() {
+        Path classes = Path.of("classes");
+        var missing = new NoSuchFileException("Sample.class");
+        for (boolean onWindows : new boolean[] {true, false}) {
+            assertThat(FactsIndexing.readFailure("Sample.class", classes, missing, onWindows))
+                    .hasMessageContaining("vanished")
+                    .hasCause(missing);
         }
     }
 }

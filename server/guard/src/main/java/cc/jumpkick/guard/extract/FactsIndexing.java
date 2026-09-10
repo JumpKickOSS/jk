@@ -4,8 +4,10 @@ package cc.jumpkick.guard.extract;
 import cc.jumpkick.guard.facts.ClassFacts;
 import cc.jumpkick.guard.facts.FactsFormat;
 import cc.jumpkick.guard.facts.FactsIndex;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
@@ -82,15 +84,8 @@ public final class FactsIndexing {
             byte[] bytes;
             try {
                 bytes = Files.readAllBytes(classesDir.resolve(rel));
-            } catch (NoSuchFileException e) {
-                throw new IOException(
-                        "class file " + rel + " vanished from " + classesDir
-                                + " between listing and reading — the classes directory changed under the guard step, "
-                                + "so a step that writes it is missing from the step's requires",
-                        e);
             } catch (IOException e) {
-                throw new IOException(
-                        e.getClass().getSimpleName() + " reading class file " + rel + " from " + classesDir, e);
+                throw readFailure(rel, classesDir, e, Os.isWindows());
             }
             ClassFacts facts = FactsExtractor.extract(bytes);
             classes.put(facts.name(), facts);
@@ -135,5 +130,25 @@ public final class FactsIndexing {
             out.put(rel, attrs.size() + ":" + attrs.lastModifiedTime().to(TimeUnit.NANOSECONDS));
         });
         return out;
+    }
+
+    /**
+     * Why a listed class file would not read. Missing means the classes directory changed under
+     * the guard step. On Windows a denial says the same thing: a file deleted while another
+     * process holds it open stays listed and refuses to reopen. A POSIX denial is a permission
+     * this process does not have — a different fault, and it names itself rather than blaming the
+     * step graph.
+     */
+    static IOException readFailure(String rel, Path classesDir, IOException cause, boolean onWindows) {
+        if (cause instanceof NoSuchFileException
+                || (onWindows && cause instanceof AccessDeniedException)) {
+            return new IOException(
+                    "class file " + rel + " vanished from " + classesDir
+                            + " between listing and reading — the classes directory changed under the guard step, "
+                            + "so a step that writes it is missing from the step's requires",
+                    cause);
+        }
+        return new IOException(
+                cause.getClass().getSimpleName() + " reading class file " + rel + " from " + classesDir, cause);
     }
 }
