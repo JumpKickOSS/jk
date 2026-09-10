@@ -55,14 +55,18 @@ class EngineJobsEncodeTest {
     /** A package build ships the client-resolved GraalVM home of every always-native module. */
     @Test
     void graal_homes_ride_the_package_build_request() {
-        Map<Path, Path> homes = Map.of(Path.of("/proj/app"), Path.of("/jdks/graalvm-25"));
+        // The wire carries each path as the platform renders it, so the expectation is the same
+        // rendering rather than one platform's spelling of it.
+        Path appDir = Path.of("/proj/app");
+        Path graalHome = Path.of("/jdks/graalvm-25");
+        Map<Path, Path> homes = Map.of(appDir, graalHome);
         WorkspaceRequest req = request().withSpec(WorkspaceSpec.DEFAULT.withGraalByDir(homes));
 
         String json = EngineJobs.encodeWorkspaceRequest(req, Session.defaults());
 
         BuildRequest back = BuildRequest.decode(json);
         assertThat(back.workspaceTarget()).as("still a plain package build").isNull();
-        assertThat(back.graalHomes()).containsEntry("/proj/app", "/jdks/graalvm-25");
+        assertThat(back.graalHomes()).containsEntry(appDir.toString(), graalHome.toString());
         assertThat(new SingleBuildRequest(
                                 "/proj/app",
                                 "/cache",
@@ -87,12 +91,13 @@ class EngineJobsEncodeTest {
      */
     @Test
     void the_m2_root_rides_the_install_request() {
-        WorkspaceRequest req = request().withSpec(WorkspaceSpec.install(Set.of(), Map.of(), Path.of("/tmp/ws/m2")));
+        Path m2 = Path.of("/tmp/ws/m2");
+        WorkspaceRequest req = request().withSpec(WorkspaceSpec.install(Set.of(), Map.of(), m2));
 
         BuildRequest back = BuildRequest.decode(EngineJobs.encodeWorkspaceRequest(req, Session.defaults()));
 
         assertThat(back.workspaceTarget()).isEqualTo("install");
-        assertThat(back.m2Dir()).isEqualTo("/tmp/ws/m2");
+        assertThat(back.m2Dir()).as("as the platform renders it").isEqualTo(m2.toString());
         // Default ~/.m2 stays off the wire, so the engine's own fallback still applies.
         WorkspaceRequest plain = request().withSpec(WorkspaceSpec.install(Set.of(), Map.of(), null));
         assertThat(EngineJobs.encodeWorkspaceRequest(plain, Session.defaults())).doesNotContain("m2Dir");

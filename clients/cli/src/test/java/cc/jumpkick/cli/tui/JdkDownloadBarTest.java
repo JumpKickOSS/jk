@@ -62,7 +62,9 @@ class JdkDownloadBarTest {
                 bar.update(1_000, 10_000);
                 bar.update(9_999, 10_000);
             }
-            String out = buf.toString(StandardCharsets.UTF_8);
+            // The envelope blank is a println, so the terminator is the host's. Normalising it
+            // leaves a lone carriage return alone, which is the one the frame check below is about.
+            String out = Capture.lf(buf.toString(StandardCharsets.UTF_8));
             assertThat(out).isEqualTo("\n"); // the envelope blank, and only that
             assertThat(out).doesNotContain(Ansi.HIDE_CURSOR).doesNotContain(Ansi.SHOW_CURSOR);
             assertThat(out).doesNotContain("\u001b]9;4;"); // OSC 9;4 progress
@@ -88,7 +90,7 @@ class JdkDownloadBarTest {
 
             assertThat(active.renderCanceled()).isFalse();
 
-            assertThat(buf.toString(StandardCharsets.UTF_8)).isEqualTo("\n");
+            assertThat(Capture.lf(buf.toString(StandardCharsets.UTF_8))).isEqualTo("\n");
             return null;
         });
     }

@@ -137,8 +137,11 @@ class CommandJsonFrozenBytesTest {
                 56L,
                 "2026-09-07",
                 "2026-09-08");
+        // A Windows path puts backslashes in the value, and JSON escapes each one — so the
+        // expectation escapes them too rather than assuming a separator that needs no escape.
+        String dirJson = dir.toString().replace("\\", "\\\\");
         assertThat(EngineAotCommand.toJson(dir, List.of(bare, full)))
-                .isEqualTo("{\"directory\":\"" + dir + "\",\"manifest\":false,\"caches\":["
+                .isEqualTo("{\"directory\":\"" + dirJson + "\",\"manifest\":false,\"caches\":["
                         + "{\"file\":\"a.aot\"},"
                         + "{\"file\":\"b.aot\",\"tool\":\"java-compiler\",\"key\":\"k1\",\"status\":\"ok\",\"sizeBytes\":12,"
                         + "\"jdkHome\":\"/jdk\",\"jdkVendor\":\"temurin\",\"jdkVersion\":\"25\",\"gc\":\"serial\","
