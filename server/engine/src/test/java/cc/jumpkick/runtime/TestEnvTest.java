@@ -14,6 +14,7 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.runtime.base.TestEnv;
 import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.util.TestHomes;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -42,20 +43,44 @@ class TestEnvTest {
         assertThat(System.getenv(UNSET)).isNull();
     }
 
+    /**
+     * The home is sandboxed and it is <b>outside the project</b>. Inside it, jk's layout — a
+     * {@code store/templates/<key>/} among the rest — sat in the user's source tree, where a {@code
+     * git} command handed a path that has stopped existing resolves to the enclosing repository. Two
+     * checkouts were reset and left shallow that way. {@code TestHomes} owns the location; what this
+     * pins is that the environment points at it and not under {@code tmp}.
+     */
     @Test
-    void jk_home_and_m2_are_sandboxed_under_the_module_by_default(@TempDir Path tmp) throws Exception {
+    void jk_home_and_m2_are_sandboxed_outside_the_project(@TempDir Path tmp) throws Exception {
         JkBuild project = project(tmp, "");
         var env = TestEnv.forModule(project, tmp, BuildLayout.of(tmp, project));
 
-        Path sandbox = tmp.resolve("target/test-jk-home").toAbsolutePath();
+        Path sandbox = TestHomes.pathFor(tmp);
         assertThat(env.get("JK_HOME")).isEqualTo(sandbox.toString());
         assertThat(env.get("JK_JDKS_DIR")).isEqualTo(sandbox.resolve("jdks").toString());
         assertThat(env.get("JK_M2_LOCAL"))
-                .isEqualTo(tmp.resolve("target/test-m2").toAbsolutePath().toString());
-        // Never the real product home.
+                .isEqualTo(TestHomes.slotFor(tmp).resolve("test-m2").toString());
+        assertThat(env.get("JK_HOME"))
+                .as("not inside the project under test — the whole point")
+                .doesNotStartWith(tmp.toAbsolutePath().toString());
+        // Never the real product home either.
         assertThat(env.get("JK_HOME")).doesNotContain(System.getProperty("user.home") + "/.jk/store");
         assertThat(env.get("JK_HTTP_ENABLED")).isEqualTo("false");
         assertThat(env.get("JK_HTTP_PORT")).isEqualTo("0");
+    }
+
+    /**
+     * The launcher derives the shared test cache as a sibling of {@code JK_HOME}, so the home cannot be
+     * the slot itself: flattening it would give every module on the machine one shared cache.
+     */
+    @Test
+    void the_shared_cache_sibling_of_the_home_stays_per_module(@TempDir Path tmp) throws Exception {
+        Path a = tmp.resolve("ws/a");
+        Path b = tmp.resolve("ws/b");
+
+        assertThat(TestHomes.pathFor(a).getParent())
+                .isNotEqualTo(TestHomes.pathFor(b).getParent());
+        assertThat(TestHomes.pathFor(a).getParent()).isEqualTo(TestHomes.slotFor(a));
     }
 
     @Test
@@ -106,7 +131,7 @@ class TestEnvTest {
         assertThat(env.get("JK_M2_LOCAL")).endsWith("test-m2");
         assertThat(Path.of(env.get("JK_M2_LOCAL")))
                 .as("a standalone project has no workspace to share with, so the cache is its own")
-                .isEqualTo(tmp.resolve("target/test-m2").toAbsolutePath());
+                .isEqualTo(TestHomes.slotFor(tmp).resolve("test-m2"));
     }
 
     @Test

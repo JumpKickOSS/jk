@@ -7,6 +7,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.runtime.base.TestEnv;
+import cc.jumpkick.util.TestHomes;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
@@ -20,6 +21,9 @@ import org.junit.jupiter.api.io.TempDir;
  * <p>An m2 is a content-addressed artifact cache with nothing module-specific in it, so a copy per
  * module fetches and stores the same dependency once per module. A product home is state, locks,
  * learned rates and a calibration, which concurrent suites must not share.
+ *
+ * <p>Both now live outside the project under test ({@code TestHomes}); the sharing rule is unchanged,
+ * which is what these assertions are for — relocating a path is an easy way to lose it.
  */
 class TestEnvSharedM2Test {
 
@@ -71,8 +75,11 @@ class TestEnvSharedM2Test {
 
         assertThat(m2Of(a)).isEqualTo(m2Of(b));
         assertThat(Path.of(m2Of(a)))
-                .as("under the workspace's own target dir, not either member's")
-                .isEqualTo(root.resolve("target/test-m2").toAbsolutePath());
+                .as("in the workspace's own slot, not either member's")
+                .isEqualTo(TestHomes.slotFor(root).resolve("test-m2"));
+        assertThat(m2Of(a))
+                .as("and outside the checkout, like every sandbox path now")
+                .doesNotStartWith(root.toAbsolutePath().toString());
     }
 
     /** The product home is the opposite call: per module, because it holds state that races. */
@@ -90,7 +97,7 @@ class TestEnvSharedM2Test {
     void a_standalone_project_keeps_a_local_cache(@TempDir Path tmp) throws Exception {
         Path solo = member(tmp, "solo");
 
-        assertThat(Path.of(m2Of(solo))).isEqualTo(solo.resolve("target/test-m2").toAbsolutePath());
+        assertThat(Path.of(m2Of(solo))).isEqualTo(TestHomes.slotFor(solo).resolve("test-m2"));
     }
 
     /** Proximity is not membership — an unlisted project nested under a workspace keeps its own. */
@@ -101,6 +108,6 @@ class TestEnvSharedM2Test {
         Path stranger = member(root, "target/fixture");
 
         assertThat(Path.of(m2Of(stranger)))
-                .isEqualTo(stranger.resolve("target/test-m2").toAbsolutePath());
+                .isEqualTo(TestHomes.slotFor(stranger).resolve("test-m2"));
     }
 }

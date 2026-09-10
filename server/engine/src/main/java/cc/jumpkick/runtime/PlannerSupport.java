@@ -49,6 +49,7 @@ import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.TestStamp;
+import cc.jumpkick.util.TestHomes;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -588,12 +589,11 @@ public final class PlannerSupport {
      * ({@link #enrichCliTestProps}), not by sharing the host store.
      */
     static Map<String, String> nestedEngineTestEnv(Path moduleDir) throws IOException {
-        Path jkHome = moduleDir.resolve(BuildLayout.TARGET).resolve("test-jk-home");
-        Files.createDirectories(jkHome);
+        Path jkHome = TestHomes.prepare(moduleDir);
         String runId = Long.toString(System.currentTimeMillis(), 36) + "-"
                 + Integer.toHexString(System.identityHashCode(moduleDir) & 0xffff);
-        // Under this module's target/, which `jk clean` already owns — not /tmp, and not a
-        // name that collides with Gradle's sandbox. Nested engines here use TCP
+        // Under this module's sandbox home, which is outside the project (see TestHomes) and which
+        // `jk clean` removes for this module. Nested engines here use TCP
         // (JK_ENGINE_TRANSPORT=tcp), so UDS path length does not constrain depth.
         Path stateDir = jkHome.resolve("engine-state").resolve(runId);
         Files.createDirectories(stateDir);

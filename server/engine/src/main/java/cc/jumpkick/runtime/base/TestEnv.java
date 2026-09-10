@@ -2,13 +2,11 @@
 package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.config.BuildEnv;
-import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.TestEnvValues;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.layout.BuildLayout;
-import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
-import java.io.IOException;
+import cc.jumpkick.util.TestHomes;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -88,20 +86,17 @@ public final class TestEnv {
      * <p>Not part of the run-tests action key — the key hashes the module's declared
      * {@code [test] env}, not the sandbox underneath it — so moving it re-runs nothing.
      */
-    private static Path sandboxM2(Path moduleDir, Path moduleTarget) {
+    private static Path sandboxM2(Path moduleDir) {
         try {
             Optional<Path> root = WorkspaceScan.findRoot(moduleDir);
-            if (root.isPresent()) {
-                Path rootDir = root.get();
-                BuildLayout rootLayout =
-                        BuildLayout.of(rootDir, JkBuildParser.parse(rootDir.resolve(ManifestPaths.MANIFEST)));
-                return rootLayout.moduleTargetDir().resolve("test-m2").toAbsolutePath();
-            }
-        } catch (IOException | RuntimeException e) {
-            // A workspace root that will not read or parse is the build's error to report, not this
-            // one's: fall back to the module-local cache so a test JVM still gets a sandbox.
+            // The workspace's slot, not its home: the m2 is a sibling of one member's home rather
+            // than inside it, so it outlives a home being wiped and `jk clean` at the root takes it.
+            if (root.isPresent()) return TestHomes.slotFor(root.get()).resolve("test-m2");
+        } catch (RuntimeException e) {
+            // A workspace root that will not read is the build's error to report, not this one's:
+            // fall back to the module's own slot so a test JVM still gets a sandbox.
         }
-        return moduleTarget.resolve("test-m2").toAbsolutePath();
+        return TestHomes.slotFor(moduleDir).resolve("test-m2");
     }
 
     /**
@@ -121,11 +116,13 @@ public final class TestEnv {
         Map<String, String> out = new LinkedHashMap<>();
         // Caller's PATH/HOME/… first so a declared [test] env entry can still replace them.
         out.putAll(BuildEnv.machine());
-        // Sandbox next so a declared value replaces it.
-        Path sandboxHome = target.resolve("test-jk-home").toAbsolutePath();
+        // Sandbox next so a declared value replaces it. The home is outside the project — see
+        // TestHomes — while the temp root below stays under the build output, which is a different
+        // argument and still holds.
+        Path sandboxHome = TestHomes.pathFor(moduleDir);
         out.put(JK_HOME, sandboxHome.toString());
         out.put(JK_JDKS_DIR, sandboxHome.resolve("jdks").toString());
-        out.put(JK_M2_LOCAL, sandboxM2(moduleDir, target).toString());
+        out.put(JK_M2_LOCAL, sandboxM2(moduleDir).toString());
         // Created at launch, not here: this method answers what the environment is, and the
         // directory has to exist before a worker starts. JUnitLauncher makes it.
         String testTmp = target.resolve("tmp").toAbsolutePath().toString();

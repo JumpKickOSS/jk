@@ -22,6 +22,7 @@ import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
+import cc.jumpkick.util.TestHomes;
 import cc.jumpkick.wire.EnginePaths;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -106,8 +107,14 @@ public final class CleanCommand implements CliCommand {
      * Delete each project's output tree (or, with {@code keepArtifacts}, only its intermediates).
      * Outputs live at the layout-resolved target dir — {@code <workspace>/target/<rel>/} for a
      * member, not {@code <member>/target/}. A distinct member-local {@code target/} is also
-     * swept when present: nested-engine test modules write their sandbox home there
-     * ({@code PlannerSupport}), so it is current output, not a leftover.
+     * swept when present.
+     *
+     * <p>The module's test sandbox home goes too. It is no longer under {@code target/} — it holds
+     * jk's whole layout and a directory of that shape inside a source tree is what a stray {@code
+     * git} command walks up out of ({@link TestHomes}) — so a full clean names it explicitly, which
+     * is what keeps {@code jk clean} reaching the whole sandbox. Only a full clean:
+     * {@code --keep-artifacts} keeps intermediates, and a warm store is the most intermediate thing
+     * here.
      */
     static void cleanTargets(Path workspaceRoot, List<Path> projectDirs, boolean keepArtifacts, long[] stats)
             throws IOException {
@@ -118,6 +125,7 @@ public final class CleanCommand implements CliCommand {
             if (!keepArtifacts) {
                 deleteRecursively(layoutTarget, stats);
                 if (distinct) deleteRecursively(memberLocalTarget, stats);
+                deleteRecursively(TestHomes.slotFor(projectDir), stats);
             } else {
                 for (String sub : INTERMEDIATE_SUBDIRS) {
                     deleteRecursively(layoutTarget.resolve(sub), stats);

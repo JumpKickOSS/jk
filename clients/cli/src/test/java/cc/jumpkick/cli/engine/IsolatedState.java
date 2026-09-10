@@ -11,7 +11,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
  * Gives every test method in the class its own fresh state root — the {@link IsolatedStore} twin
  * for {@code <JK_HOME>/state} rather than {@code <JK_HOME>/store}.
  *
- * <p>The tier's {@code JK_HOME} ({@code clients/cli/build/test-jk-home}) is shared by every one of
+ * <p>The tier's {@code JK_HOME} ({@code JK_HOME} (out-of-tree; see {@code JkLayoutPaths.testHomeFor})) is shared by every one of
  * the task's parallel forks <em>and</em> by every previous run — no task cleans it. So {@code
  * state/aot}, {@code state/builds} and {@code state/engine} are ambient input: a class that plants
  * a fixture there is asserting against whatever the last run and the sibling forks left behind.
