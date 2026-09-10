@@ -21,10 +21,11 @@ import xsbti.compile.SingleOutput;
 
 /**
  * Every in-process compile goes through {@link ProvenanceJavac}, whether or not it has a processor
- * path, so that all of them compile through a file manager held across compiles. The two behaviours
- * that could be lost by widening it that way are the ones pinned here: a module with no
- * {@code -processorpath} must still be able to run a processor from its own compile classpath, and a
- * source this path cannot name as a file must fail loudly instead of being dropped.
+ * path, so that all of them compile through a file manager held across compiles. Three behaviours
+ * could be lost by widening it that way, and each is pinned here: a module with no
+ * {@code -processorpath} must still be able to run a processor from its own compile classpath, it
+ * must not inherit the <em>previous</em> module's processor path from the held manager, and a source
+ * this path cannot name as a file must fail loudly instead of being dropped.
  */
 class ProvenanceJavacTest {
 
@@ -60,6 +61,61 @@ class ProvenanceJavacTest {
         assertThat(classes.resolve("gen/Generated.class"))
                 .as("the classpath-registered processor did not run")
                 .exists();
+    }
+
+    /**
+     * The manager is reused across compiles, and javac sets {@code ANNOTATION_PROCESSOR_PATH} on it
+     * from {@code -processorpath}. A module that declares no processor path must not inherit the
+     * previous module's: it would silently run that module's processors and generate code into a
+     * build that never asked for any.
+     */
+    @Test
+    void a_compile_does_not_inherit_the_previous_compiles_processor_path(@TempDir Path dir) throws Exception {
+        Path procDir = writeGeneratingProcessor(dir.resolve("proc"));
+
+        // First: a module whose processor path really does hold the generating processor.
+        Path firstClasses = dir.resolve("first-classes");
+        ZincJavaCompiler.Result first = ZincJavaCompiler.compileJava(new JavaCompileJob(
+                List.of(writeSource(dir.resolve("first-src"), "a")),
+                List.of(),
+                firstClasses,
+                dir.resolve("first-work"),
+                dir.resolve("first-gen"),
+                25,
+                List.of(),
+                List.of(procDir)));
+        assertThat(first.success())
+                .as("first compile failed: %s", first.diagnostics())
+                .isTrue();
+        assertThat(firstClasses.resolve("gen/Generated.class"))
+                .as("fixture is vacuous unless the first compile really runs the processor")
+                .exists();
+
+        // Second, on this same thread and so the same manager: no processor path at all.
+        Path secondClasses = dir.resolve("second-classes");
+        ZincJavaCompiler.Result second = ZincJavaCompiler.compileJava(new JavaCompileJob(
+                List.of(writeSource(dir.resolve("second-src"), "b")),
+                List.of(),
+                secondClasses,
+                dir.resolve("second-work"),
+                dir.resolve("second-gen"),
+                25,
+                List.of(),
+                List.of()));
+
+        assertThat(second.success())
+                .as("second compile failed: %s", second.diagnostics())
+                .isTrue();
+        assertThat(secondClasses.resolve("gen/Generated.class"))
+                .as("the second compile inherited the first compile's processor path")
+                .doesNotExist();
+    }
+
+    private static Path writeSource(Path srcDir, String pkg) throws Exception {
+        Path src = srcDir.resolve(pkg + "/A.java");
+        Files.createDirectories(src.getParent());
+        Files.writeString(src, "package " + pkg + "; public class A {}");
+        return src;
     }
 
     /**

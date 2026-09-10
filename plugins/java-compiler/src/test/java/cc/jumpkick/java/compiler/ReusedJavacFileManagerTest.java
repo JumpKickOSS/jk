@@ -32,8 +32,8 @@ class ReusedJavacFileManagerTest {
 
     @Test
     void the_same_thread_gets_one_manager_back_rather_than_a_new_one() {
-        StandardJavaFileManager first = ReusedJavacFileManager.acquire(JAVAC, StandardCharsets.UTF_8, d -> {});
-        StandardJavaFileManager second = ReusedJavacFileManager.acquire(JAVAC, StandardCharsets.UTF_8, d -> {});
+        StandardJavaFileManager first = ReusedJavacFileManager.acquire(JAVAC, StandardCharsets.UTF_8, d -> {}, false);
+        StandardJavaFileManager second = ReusedJavacFileManager.acquire(JAVAC, StandardCharsets.UTF_8, d -> {}, false);
 
         assertThat(second).isSameAs(first);
     }
@@ -44,22 +44,23 @@ class ReusedJavacFileManagerTest {
      */
     @Test
     void a_different_charset_replaces_the_manager_instead_of_reusing_it() {
-        StandardJavaFileManager utf8 = ReusedJavacFileManager.acquire(JAVAC, StandardCharsets.UTF_8, d -> {});
-        StandardJavaFileManager latin1 = ReusedJavacFileManager.acquire(JAVAC, StandardCharsets.ISO_8859_1, d -> {});
+        StandardJavaFileManager utf8 = ReusedJavacFileManager.acquire(JAVAC, StandardCharsets.UTF_8, d -> {}, false);
+        StandardJavaFileManager latin1 =
+                ReusedJavacFileManager.acquire(JAVAC, StandardCharsets.ISO_8859_1, d -> {}, false);
 
         assertThat(latin1).isNotSameAs(utf8);
-        assertThat(ReusedJavacFileManager.acquire(JAVAC, StandardCharsets.UTF_8, d -> {}))
+        assertThat(ReusedJavacFileManager.acquire(JAVAC, StandardCharsets.UTF_8, d -> {}, false))
                 .isNotSameAs(utf8);
     }
 
     /** Not thread-safe, so a second compile thread must get its own rather than share this one. */
     @Test
     void another_thread_gets_its_own_manager() throws Exception {
-        StandardJavaFileManager mine = ReusedJavacFileManager.acquire(JAVAC, StandardCharsets.UTF_8, d -> {});
+        StandardJavaFileManager mine = ReusedJavacFileManager.acquire(JAVAC, StandardCharsets.UTF_8, d -> {}, false);
         ExecutorService pool = Executors.newSingleThreadExecutor();
         try {
             Future<StandardJavaFileManager> theirs =
-                    pool.submit(() -> ReusedJavacFileManager.acquire(JAVAC, StandardCharsets.UTF_8, d -> {}));
+                    pool.submit(() -> ReusedJavacFileManager.acquire(JAVAC, StandardCharsets.UTF_8, d -> {}, false));
 
             assertThat(theirs.get()).isNotSameAs(mine);
         } finally {
@@ -77,7 +78,7 @@ class ReusedJavacFileManagerTest {
         Path out = Files.createDirectories(dir.resolve("out"));
         buildDep(dir, dep, "public int v() { return 1; }");
 
-        StandardJavaFileManager fm = ReusedJavacFileManager.acquire(JAVAC, StandardCharsets.UTF_8, d -> {});
+        StandardJavaFileManager fm = ReusedJavacFileManager.acquire(JAVAC, StandardCharsets.UTF_8, d -> {}, false);
         assertThat(compileAgainst(fm, dir, out, dep, "v")).isTrue();
 
         buildDep(dir, dep, "public int v() { return 1; } public int w() { return 2; }");
@@ -92,7 +93,7 @@ class ReusedJavacFileManagerTest {
         Path out = Files.createDirectories(dir.resolve("out"));
         buildDep(dir, dep, "public int v() { return 1; }");
 
-        StandardJavaFileManager fm = ReusedJavacFileManager.acquire(JAVAC, StandardCharsets.UTF_8, d -> {});
+        StandardJavaFileManager fm = ReusedJavacFileManager.acquire(JAVAC, StandardCharsets.UTF_8, d -> {}, false);
         assertThat(compileAgainst(fm, dir, out, dep, "v")).isTrue();
 
         deleteTree(dep);

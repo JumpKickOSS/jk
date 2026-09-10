@@ -9,6 +9,7 @@ import javax.tools.DiagnosticListener;
 import javax.tools.JavaCompiler;
 import javax.tools.JavaFileObject;
 import javax.tools.StandardJavaFileManager;
+import javax.tools.StandardLocation;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -53,21 +54,49 @@ final class ReusedJavacFileManager {
      * The calling thread's manager, reporting file-manager diagnostics to {@code diags} until the
      * next call. A manager built for a different charset is discarded rather than reused, because
      * the charset a manager is constructed with is what decodes sources and cannot be changed after.
+     *
+     * <p>{@code declaresProcessorPath} says whether the compile about to run names its own
+     * {@code -processorpath}. If it does not, and the held manager still carries one, that manager is
+     * thrown away rather than handed over — see {@link #staleProcessorPath}.
      */
     static StandardJavaFileManager acquire(
-            JavaCompiler javac, Charset encoding, DiagnosticListener<JavaFileObject> diags) {
-        return PER_THREAD.get().get(javac, encoding, diags);
+            JavaCompiler javac,
+            Charset encoding,
+            DiagnosticListener<JavaFileObject> diags,
+            boolean declaresProcessorPath) {
+        return PER_THREAD.get().get(javac, encoding, diags, declaresProcessorPath);
     }
 
-    private StandardJavaFileManager get(JavaCompiler javac, Charset wanted, DiagnosticListener<JavaFileObject> diags) {
+    private StandardJavaFileManager get(
+            JavaCompiler javac,
+            Charset wanted,
+            DiagnosticListener<JavaFileObject> diags,
+            boolean declaresProcessorPath) {
         relay.to = diags;
         StandardJavaFileManager current = fm;
-        if (current != null && wanted.equals(encoding)) return current;
+        if (current != null && wanted.equals(encoding) && !staleProcessorPath(current, declaresProcessorPath)) {
+            return current;
+        }
         close(current);
         StandardJavaFileManager fresh = javac.getStandardFileManager(relay, Locale.ROOT, wanted);
         fm = fresh;
         encoding = wanted;
         return fresh;
+    }
+
+    /**
+     * Whether the held manager carries a processor path the compile about to run never asked for.
+     *
+     * <p>Such a manager has to be discarded rather than corrected, because the location cannot be put
+     * back to "never set": clearing it with a null leaves javac treating the processor path as
+     * declared and empty, which stops it falling back to the compile classpath for {@code -proc:full}
+     * discovery. Leaving it alone instead is worse — the compile would silently run the previous
+     * module's processors and generate code into a build that never asked for any. Discarding costs
+     * one manager on a transition between a module with processors and one without, and nothing on a
+     * run of either kind.
+     */
+    private static boolean staleProcessorPath(StandardJavaFileManager held, boolean declaresProcessorPath) {
+        return !declaresProcessorPath && held.hasLocation(StandardLocation.ANNOTATION_PROCESSOR_PATH);
     }
 
     /**
