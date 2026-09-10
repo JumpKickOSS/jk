@@ -26,6 +26,7 @@ import java.util.ServiceConfigurationError;
 import java.util.ServiceLoader;
 import java.util.Set;
 import javax.annotation.processing.Processor;
+import javax.tools.ToolProvider;
 import org.jspecify.annotations.Nullable;
 import sbt.internal.inc.Analysis;
 import sbt.internal.inc.CompileFailed;
@@ -74,10 +75,10 @@ import xsbti.compile.analysis.Stamp;
 public final class ZincJavaCompiler {
 
     /**
-     * The charset every source is read as. Both javac front ends here already reach UTF-8 without
-     * being told — Zinc through sbt.io's hardcoded default, {@link ProvenanceJavac} through the
-     * charset its file manager is built with — so naming it changes no bytes today. What it
-     * changes is who owns the decision: javac's own fallback is the host's
+     * The charset every source is read as. {@link ProvenanceJavac}, the in-process front end, already
+     * reaches UTF-8 without being told, through the charset its file manager is built with, so naming
+     * it changes no bytes today. What it changes is who owns the decision: javac's own fallback is
+     * the host's
      * {@link Charset#defaultCharset()}, not a build input jk can reproduce, and a charset that is
      * two libraries' defaults cannot be moved on purpose. This one can. {@link #javacOptions}
      * declares it, {@link ProvenanceJavac} pins its file manager to it, and the engine hashes the
@@ -473,15 +474,23 @@ public final class ZincJavaCompiler {
         }
     }
 
+    /**
+     * Every in-process compile goes through {@link ProvenanceJavac}, with or without processors,
+     * because it compiles through a file manager held across compiles while Zinc's own
+     * {@code JavaCompiler.local} opens one per compile and re-indexes the whole classpath with it.
+     *
+     * <p>The processor loader is handed over only when there is actually something to install:
+     * {@code setProcessors} with an empty list would disable a processor-free module's ability to
+     * discover a processor from its own compile classpath.
+     *
+     * <p>Forking stays the fallback for a runtime with no in-process compiler — a JRE rather than a
+     * JDK — which is the one case {@link ProvenanceJavac} cannot serve.
+     */
     private static RecordingJavaCompiler recordingJavac(
             FileConverter converter, ProcessorLoad processors, ApProvenance provenance) {
-        JavaCompiler javac;
-        if (processors.any()) {
-            javac = new ProvenanceJavac(processors.loader(), provenance, SOURCE_ENCODING);
-        } else {
-            Option<JavaCompiler> local = sbt.internal.inc.javac.JavaCompiler.local();
-            javac = local.isDefined() ? local.get() : sbt.internal.inc.javac.JavaCompiler.fork(Option.empty());
-        }
+        JavaCompiler javac = ToolProvider.getSystemJavaCompiler() != null
+                ? new ProvenanceJavac(processors.any() ? processors.loader() : null, provenance, SOURCE_ENCODING)
+                : sbt.internal.inc.javac.JavaCompiler.fork(Option.empty());
         return new RecordingJavaCompiler(javac, converter);
     }
 

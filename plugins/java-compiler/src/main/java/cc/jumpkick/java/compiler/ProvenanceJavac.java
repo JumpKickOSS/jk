@@ -27,16 +27,30 @@ import xsbti.compile.JavaCompiler;
 import xsbti.compile.Output;
 
 /**
- * ToolProvider javac that installs wrapped processors so generated-file provenance is recorded.
- * Used instead of Zinc's {@code JavaCompiler.local} when a processor path is present.
+ * ToolProvider javac for every in-process compile this worker runs, installing wrapped processors so
+ * generated-file provenance is recorded when there are processors to install.
+ *
+ * <p>This is used instead of Zinc's {@code JavaCompiler.local} whether or not a processor path is
+ * present, because the file manager it compiles through is held across compiles rather than opened
+ * per compile — see {@link ReusedJavacFileManager} for what that is worth. Zinc's own compiler opens
+ * one per compile, so a build that used it for its processor-free modules would pay full classpath
+ * indexing on most of its compiles.
  */
 final class ProvenanceJavac implements JavaCompiler {
 
-    private final URLClassLoader loader;
+    /**
+     * Null when this compile has no processors to install, which is not the same as installing an
+     * empty list: {@code setProcessors} with an empty list turns annotation processing <em>off</em>
+     * outright, while leaving it unset lets javac decide. A compile without a {@code -processorpath}
+     * that asks for {@code -proc:full} is entitled to run a processor from its own compile classpath,
+     * and that only works if this stays unset.
+     */
+    private final @Nullable URLClassLoader loader;
+
     private final ApProvenance provenance;
     private final Charset encoding;
 
-    ProvenanceJavac(URLClassLoader loader, ApProvenance provenance, Charset encoding) {
+    ProvenanceJavac(@Nullable URLClassLoader loader, ApProvenance provenance, Charset encoding) {
         this.loader = loader;
         this.provenance = provenance;
         this.encoding = encoding;
@@ -75,11 +89,20 @@ final class ProvenanceJavac implements JavaCompiler {
             }
             List<Path> srcPaths = new ArrayList<>();
             for (VirtualFile vf : sources) {
-                if (vf instanceof PathBasedFile pathFile) srcPaths.add(pathFile.toPath());
+                // Every source this worker compiles is a real file, because the converter Zinc is set
+                // up with is PlainVirtualFileConverter. Refusing anything else is deliberate: this
+                // path can only compile what it can name as a path, and dropping a source silently
+                // would ship a jar with a class missing and no diagnostic to explain it.
+                if (!(vf instanceof PathBasedFile pathFile)) {
+                    throw new IllegalStateException("source is not a file on disk: " + vf.id());
+                }
+                srcPaths.add(pathFile.toPath());
             }
             Iterable<? extends JavaFileObject> units = fm.getJavaFileObjectsFromPaths(srcPaths);
             JavacTask task = (JavacTask) javac.getTask(null, fm, diags, Arrays.asList(options), null, units);
-            task.setProcessors(provenance.wrap(ZincJavaCompiler.freshProcessors(loader)));
+            if (loader != null) {
+                task.setProcessors(provenance.wrap(ZincJavaCompiler.freshProcessors(loader)));
+            }
             boolean ok = task.call();
             DiagnosticsReporter bridge = new DiagnosticsReporter(reporter);
             for (var d : diags.getDiagnostics()) bridge.report(d);
