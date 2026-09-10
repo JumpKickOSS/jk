@@ -152,6 +152,12 @@ final class EngineEventDecoder {
                         if (listener != null) listener.planFinish(result);
                         return result;
                     }
+                    case EngineProtocol.WORKSPACE_FINISH -> {
+                        BuildPlanResult result = planResultOf(
+                                line, "test", Duration.ofNanos(System.nanoTime() - startNanos), diagnostics);
+                        if (listener != null) listener.planFinish(result);
+                        return result;
+                    }
                     case EngineProtocol.ERROR ->
                         throw EngineWireException.fromJsonLine(line, "jk engine: run failed: ");
                     default -> dispatch(type, line, listener, diagnostics::add);
@@ -159,6 +165,28 @@ final class EngineEventDecoder {
                 return null;
             }
         });
+    }
+
+    /**
+     * A workspace terminal read by a single-plan reader. The engine answers a compile on a
+     * workspace member in the workspace vocabulary — prerequisites packaged, the member compiled,
+     * one {@code workspace-finish} — while {@code jk watch run} and every other hosted single-plan
+     * caller asked for one plan. The outcome is the same kind of fact either way, so it ends the
+     * read instead of leaving the caller to report a closed connection on a job the engine
+     * recorded green.
+     */
+    static BuildPlanResult planResultOf(
+            String workspaceFinishLine, String planName, Duration took, List<BuildPlanResult.Diagnostic> diagnostics) {
+        WorkspaceFinishEvent e = WorkspaceFinishEvent.decode(workspaceFinishLine);
+        return new BuildPlanResult(
+                planName,
+                e.success() && !e.cancelled(),
+                took,
+                List.of(),
+                List.of(),
+                diagnostics,
+                e.cancelled(),
+                e.cancelled());
     }
 
     /**

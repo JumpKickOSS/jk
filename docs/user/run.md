@@ -52,7 +52,7 @@ docs = { command = ["mkdocs", "serve"], env = { PORT = "8001" }, ready-pattern =
 | `command` | A string split like a shell would (quotes group; nothing is expanded, no shell runs) or an argv array |
 | `cwd` | Working directory, relative to the manifest that declares the sidecar. Default `.` |
 | `env` | Values laid over the inherited environment. `.env` at the workspace root and the module apply first, the way they do for every process jk spawns |
-| `ready` | An HTTP(S) URL polled every 250 ms until it answers 2xx/3xx |
+| `ready` | An HTTP(S) URL polled every 250 ms (HTTP/1.1) until it answers 2xx/3xx. A `localhost` URL is tried on both `127.0.0.1` and `[::1]` — Node binds only `::1` on many hosts |
 | `ready-pattern` | A regex matched against the sidecar's output lines — the other probe; a sidecar has one or the other. With neither, one second alive is ready |
 | `ready-timeout` | `"60s"` (default), `"2m"`, `"500ms"`, or seconds. A probe that times out **fails the session** — a broken dev server is not a warning |
 | `front-door` | Print this sidecar's `ready` URL once everything is up: `jk watch run: ready · http://localhost:5173 (java -cp … com.example.App)` |

@@ -10,6 +10,8 @@ import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.terminal.Signals;
 import cc.jumpkick.terminal.Terminals;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * App-level SIGINT handler — cancel the live engine job through the same
@@ -47,7 +49,52 @@ public final class GlobalCancel {
      */
     private static volatile boolean interrupted;
 
+    /**
+     * What a verb wants done before this process halts: children to stop, mostly. {@link
+     * Runtime#halt} skips finally blocks and shutdown hooks, so a {@code jk dev} that owns an app
+     * and its sidecars would otherwise leave them running whenever SIGINT reaches only jk — an IDE
+     * stop button, a {@code kill -INT}, a terminal that did not forward to the process group.
+     */
+    private static final List<Runnable> INTERRUPT_HOOKS = new CopyOnWriteArrayList<>();
+
+    /** How long the hooks may take together; a wedged child must not defeat the halt. */
+    static final long HOOKS_BOUND_MILLIS = 6_000;
+
     private GlobalCancel() {}
+
+    /** Register {@code cleanup} to run on SIGINT; close the handle when the verb has cleaned up itself. */
+    public static Registration onInterrupt(Runnable cleanup) {
+        INTERRUPT_HOOKS.add(cleanup);
+        return () -> INTERRUPT_HOOKS.remove(cleanup);
+    }
+
+    /** The handle {@link #onInterrupt} returns; closing it withdraws the hook. */
+    public interface Registration extends AutoCloseable {
+        @Override
+        void close();
+    }
+
+    /**
+     * Run every registered hook on one daemon thread, waiting at most {@code boundMillis} for all
+     * of them. A hook that throws does not stop the next; a hook that hangs is abandoned.
+     */
+    static void runInterruptHooks(long boundMillis) {
+        if (INTERRUPT_HOOKS.isEmpty()) return;
+        Thread hooks = Thread.ofPlatform().daemon(true).name("jk-sigint-hooks").start(() -> {
+            for (Runnable hook : INTERRUPT_HOOKS) {
+                try {
+                    hook.run();
+                } catch (RuntimeException ignored) {
+                    // the next hook still runs; halt follows regardless
+                }
+            }
+        });
+        try {
+            hooks.join(boundMillis);
+        } catch (InterruptedException ignored) {
+            // halt follows regardless
+        }
+    }
 
     /**
      * The code the process must exit with, given the verb returned {@code verbExit}. Once Ctrl-C
@@ -84,6 +131,9 @@ public final class GlobalCancel {
                     .daemon(true)
                     .name("jk-sigint-cancel")
                     .start(() -> EngineCancel.cancelBestEffortForInterrupt(dir));
+            // 1b) The verb's own children — an app under `jk dev`, its sidecars — stop here, before
+            // the halt below skips every finally block that would have stopped them.
+            runInterruptHooks(HOOKS_BOUND_MILLIS);
 
             // 2) Settle the live region (plan → cancelled job line) or a one-line notice.
             LiveRegion active = LiveRegion.active();

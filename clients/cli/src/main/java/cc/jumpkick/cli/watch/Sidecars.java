@@ -7,6 +7,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -195,22 +196,30 @@ public final class Sidecars implements AutoCloseable {
                 return timedOut("output never matched /" + spec.readyPattern() + "/");
             }
             if (!spec.ready().isEmpty()) {
+                // HTTP/1.1 only: a dev server that ignores the h2c upgrade would otherwise hang the
+                // probe until its timeout, and none of them speak HTTP/2 on plain TCP anyway.
                 HttpClient client = HttpClient.newBuilder()
+                        .version(HttpClient.Version.HTTP_1_1)
                         .connectTimeout(Duration.ofSeconds(2))
                         .followRedirects(HttpClient.Redirect.NEVER)
                         .build();
-                HttpRequest request = HttpRequest.newBuilder(URI.create(spec.ready()))
-                        .timeout(Duration.ofSeconds(2))
-                        .GET()
-                        .build();
+                List<HttpRequest> requests = new ArrayList<>();
+                for (URI candidate : readyCandidates(URI.create(spec.ready()))) {
+                    requests.add(HttpRequest.newBuilder(candidate)
+                            .timeout(Duration.ofSeconds(2))
+                            .GET()
+                            .build());
+                }
                 while (clock.nanos() < deadline) {
                     if (exit != Integer.MIN_VALUE) return exitedEarly();
-                    try {
-                        int status = client.send(request, HttpResponse.BodyHandlers.discarding())
-                                .statusCode();
-                        if (status >= 200 && status < 400) return null;
-                    } catch (IOException | RuntimeException notYet) {
-                        // not listening yet
+                    for (HttpRequest request : requests) {
+                        try {
+                            int status = client.send(request, HttpResponse.BodyHandlers.discarding())
+                                    .statusCode();
+                            if (status >= 200 && status < 400) return null;
+                        } catch (IOException | RuntimeException notYet) {
+                            // not listening on this address yet
+                        }
                     }
                     Thread.sleep(250);
                 }
@@ -250,6 +259,27 @@ public final class Sidecars implements AutoCloseable {
                 }
                 if (h.isAlive()) h.destroyForcibly();
             }
+        }
+    }
+
+    /**
+     * The addresses a {@code ready} URL is tried on. {@code localhost} becomes both loopbacks:
+     * Node binds {@code ::1} alone on a dual-stack host while the JDK client resolves the name to
+     * {@code 127.0.0.1}, and a probe that only tried one of them would call a serving Vite "not
+     * ready" for the whole timeout.
+     */
+    static List<URI> readyCandidates(URI url) {
+        String host = url.getHost();
+        if (host == null || !host.equalsIgnoreCase("localhost")) return List.of(url);
+        return List.of(withHost(url, "127.0.0.1"), withHost(url, "[::1]"));
+    }
+
+    private static URI withHost(URI url, String host) {
+        String authority = url.getPort() < 0 ? host : host + ":" + url.getPort();
+        try {
+            return new URI(url.getScheme(), authority, url.getPath(), url.getQuery(), url.getFragment());
+        } catch (URISyntaxException e) {
+            throw new IllegalArgumentException(e);
         }
     }
 

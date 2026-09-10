@@ -9,6 +9,7 @@ import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.GlobalCancel;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.lock.ManifestPaths;
@@ -25,6 +26,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
 
@@ -70,7 +72,14 @@ public final class AppWatchLoop {
             sidecars.close();
             throw e;
         }
-        try (sidecars;
+        // Ctrl-C halts this process without unwinding, so the children are stopped from the
+        // signal handler; the finally below does the same on every other way out.
+        AtomicReference<Process> running = new AtomicReference<>(app);
+        try (GlobalCancel.Registration onInterrupt = GlobalCancel.onInterrupt(() -> {
+                    stop(running.get());
+                    sidecars.close();
+                });
+                sidecars;
                 SourceWatch watch = SourceWatch.open(projectDir, watchRoots)) {
             if (!sidecars.isEmpty()) {
                 Optional<String> notReady = sidecars.awaitReady();
@@ -103,6 +112,7 @@ public final class AppWatchLoop {
                         }
                         devtools = plan.hotReload();
                         app = restartApp(app, plan, appArgs);
+                        running.set(app);
                     }
                     continue;
                 }
@@ -115,13 +125,11 @@ public final class AppWatchLoop {
                     CliOutput.err(logPrefix + ": recompiled — DevTools restarts the context.");
                 } else {
                     app = restartApp(app, plan, appArgs);
+                    running.set(app);
                 }
             }
         } finally {
-            if (app.isAlive()) {
-                app.destroy();
-                if (!app.waitFor(5, TimeUnit.SECONDS)) app.destroyForcibly();
-            }
+            stop(app);
         }
     }
 
@@ -247,12 +255,21 @@ public final class AppWatchLoop {
 
     private Process restartApp(Process app, ExecPlan plan, List<String> appArgs)
             throws IOException, InterruptedException {
-        if (app.isAlive()) {
-            app.destroy();
-            if (!app.waitFor(5, TimeUnit.SECONDS)) app.destroyForcibly();
-        }
+        stop(app);
         CliOutput.err(logPrefix + ": restarting app");
         return startApp(plan, appArgs);
+    }
+
+    /** SIGTERM, five seconds, SIGKILL; a process that is already gone is nothing to do. */
+    private static void stop(@Nullable Process app) {
+        if (app == null || !app.isAlive()) return;
+        app.destroy();
+        try {
+            if (!app.waitFor(5, TimeUnit.SECONDS)) app.destroyForcibly();
+        } catch (InterruptedException e) {
+            app.destroyForcibly();
+            Thread.currentThread().interrupt();
+        }
     }
 
     /** Resolve cache dir from override or defaults. */

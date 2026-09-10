@@ -102,42 +102,63 @@ final class EnginePluginAdapter {
                                     ? null
                                     : SessionContext.current().graalHome().toString()));
 
-            return WireStream.pumpJob(reader, ch, new WireStream.Decoder<HostedFinish>() {
-                private final List<Task> steps = new ArrayList<>();
-                private final List<BuildPlanResult.Diagnostic> diagnostics = new ArrayList<>();
-                private @Nullable BuildPlanListener listener;
-
-                @Override
-                public @Nullable HostedFinish onLine(String type, String line) throws IOException {
-                    switch (type) {
-                        case EngineProtocol.PLAN_TASK -> steps.add(EngineEventDecoder.taskFromWire(line));
-                        case EngineProtocol.PLAN_DONE -> listener = listenerFactory.apply(steps);
-                        case EngineProtocol.AUDIT_FINDING,
-                                EngineProtocol.FORMAT_FILE,
-                                EngineProtocol.IMPORT_NOTE,
-                                EngineProtocol.PRUNE_WAIT -> onEvent.accept(type, line);
-                        case EngineProtocol.BUILDPLAN_FINISH -> {
-                            BuildPlanResult result = new BuildPlanResult(
-                                    planName,
-                                    Jsonl.bool(line, "success", false),
-                                    Duration.ZERO,
-                                    List.of(),
-                                    List.of(),
-                                    diagnostics,
-                                    false,
-                                    false);
-                            if (preFinish != null) preFinish.accept(line);
-                            if (listener != null) listener.planFinish(result);
-                            return new HostedFinish(result, line);
-                        }
-                        case EngineProtocol.ERROR ->
-                            throw EngineWireException.fromJsonLine(line, "jk engine: run failed: ");
-                        default -> EngineEventDecoder.dispatch(type, line, listener, diagnostics::add);
-                    }
-                    return null;
-                }
-            });
+            return WireStream.pumpJob(reader, ch, hostedDecoder(planName, listenerFactory, onEvent, preFinish));
         }
+    }
+
+    /**
+     * The single-plan reader every hosted verb shares. It ends on the plan's own terminal or on a
+     * workspace terminal — the engine answers a member's compile in the workspace vocabulary — and
+     * refuses on the engine's error frame.
+     */
+    static WireStream.Decoder<HostedFinish> hostedDecoder(
+            String planName,
+            Function<List<Task>, BuildPlanListener> listenerFactory,
+            BiConsumer<String, String> onEvent,
+            @Nullable Consumer<String> preFinish) {
+        return new WireStream.Decoder<>() {
+            private final List<Task> steps = new ArrayList<>();
+            private final List<BuildPlanResult.Diagnostic> diagnostics = new ArrayList<>();
+            private @Nullable BuildPlanListener listener;
+
+            @Override
+            public @Nullable HostedFinish onLine(String type, String line) throws IOException {
+                switch (type) {
+                    case EngineProtocol.PLAN_TASK -> steps.add(EngineEventDecoder.taskFromWire(line));
+                    case EngineProtocol.PLAN_DONE -> listener = listenerFactory.apply(steps);
+                    case EngineProtocol.AUDIT_FINDING,
+                            EngineProtocol.FORMAT_FILE,
+                            EngineProtocol.IMPORT_NOTE,
+                            EngineProtocol.PRUNE_WAIT -> onEvent.accept(type, line);
+                    case EngineProtocol.BUILDPLAN_FINISH -> {
+                        BuildPlanResult result = new BuildPlanResult(
+                                planName,
+                                Jsonl.bool(line, "success", false),
+                                Duration.ZERO,
+                                List.of(),
+                                List.of(),
+                                diagnostics,
+                                false,
+                                false);
+                        return finish(result, line);
+                    }
+                    case EngineProtocol.WORKSPACE_FINISH -> {
+                        return finish(
+                                EngineEventDecoder.planResultOf(line, planName, Duration.ZERO, diagnostics), line);
+                    }
+                    case EngineProtocol.ERROR ->
+                        throw EngineWireException.fromJsonLine(line, "jk engine: run failed: ");
+                    default -> EngineEventDecoder.dispatch(type, line, listener, diagnostics::add);
+                }
+                return null;
+            }
+
+            private HostedFinish finish(BuildPlanResult result, String line) {
+                if (preFinish != null) preFinish.accept(line);
+                if (listener != null) listener.planFinish(result);
+                return new HostedFinish(result, line);
+            }
+        };
     }
 
     /**

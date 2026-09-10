@@ -7,6 +7,7 @@ import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.wire.protocol.ExecPlan;
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
+import java.net.URI;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -83,6 +84,16 @@ class SidecarsTest {
             assertThat(sidecars.awaitReady())
                     .hasValueSatisfying(msg -> assertThat(msg).contains("web").contains("never matched"));
         }
+    }
+
+    @Test
+    void localhost_is_probed_on_both_loopbacks_and_other_hosts_as_given() {
+        assertThat(Sidecars.readyCandidates(URI.create("http://localhost:5173/app?x=1")))
+                .extracting(URI::toString)
+                .containsExactly("http://127.0.0.1:5173/app?x=1", "http://[::1]:5173/app?x=1");
+        assertThat(Sidecars.readyCandidates(URI.create("http://0.0.0.0:8001")))
+                .extracting(URI::toString)
+                .containsExactly("http://0.0.0.0:8001");
     }
 
     @Test
