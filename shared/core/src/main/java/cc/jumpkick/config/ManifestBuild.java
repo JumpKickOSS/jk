@@ -28,6 +28,9 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 import org.tomlj.TomlArray;
@@ -58,6 +61,7 @@ public final class ManifestBuild {
                 "train",
                 "build",
                 "test",
+                "dev",
                 "format",
                 "resolve",
                 "variants",
@@ -293,6 +297,7 @@ public final class ManifestBuild {
                     List.of(),
                     policies.platform(),
                     policies.unmapped(),
+                    List.of(),
                     List.of());
         }
         BuildSettings s = new BuildSettings();
@@ -312,6 +317,7 @@ public final class ManifestBuild {
                 s.testSerialTags,
                 policies.platform(),
                 policies.unmapped(),
+                List.of(),
                 List.of());
     }
 
@@ -495,6 +501,138 @@ public final class ManifestBuild {
                 if (!str.isBlank()) s.testSerialTags.add(str);
             }
         }
+    }
+
+    /** The keys one {@code [dev.sidecars.<name>]} table may carry; the schema names exactly these. */
+    public static final List<String> SIDECAR_KEYS =
+            List.of("command", "cwd", "env", "ready", "ready-pattern", "ready-timeout", "front-door", "restart");
+
+    /** The keys {@code [dev]} itself may carry. */
+    public static final List<String> DEV_KEYS = List.of("sidecars");
+
+    /**
+     * {@code [dev.sidecars]} — one table per sidecar, keyed by name, in manifest order:
+     *
+     * <pre>
+     * [dev.sidecars]
+     * web = { command = "npm run dev", cwd = "../web", ready = "http://localhost:5173" }
+     * </pre>
+     *
+     * {@code command} is a string split like a shell would (quotes group, no expansion, no shell)
+     * or an array. {@code ready-timeout} is a duration — {@code "90s"}, {@code "2m"}, or a bare
+     * number of seconds. Unknown keys fail the parse: {@code redy = …} would otherwise leave a
+     * sidecar silently unprobed.
+     */
+    static List<JkBuild.Sidecar> parseDevSidecars(TomlTable root) {
+        TomlTable dev = root.getTable("dev");
+        if (dev == null) return List.of();
+        for (String key : dev.keySet()) {
+            if (!DEV_KEYS.contains(key)) {
+                throw new JkBuildParseException("[dev] unknown key `" + key + "` — expected sidecars");
+            }
+        }
+        TomlTable sidecars = dev.getTable("sidecars");
+        if (sidecars == null) return List.of();
+        List<JkBuild.Sidecar> out = new ArrayList<>();
+        for (String name : sidecars.keySet()) {
+            String where = "[dev.sidecars." + name + "]";
+            if (!(sidecars.get(List.of(name)) instanceof TomlTable table)) {
+                throw new JkBuildParseException(where + " must be a table: { command = \"…\" }");
+            }
+            out.add(parseSidecar(name, table, where));
+        }
+        return List.copyOf(out);
+    }
+
+    private static JkBuild.Sidecar parseSidecar(String name, TomlTable table, String where) {
+        for (String key : table.keySet()) {
+            if (!SIDECAR_KEYS.contains(key)) {
+                throw new JkBuildParseException(
+                        where + " unknown key `" + key + "` — expected one of: " + String.join(", ", SIDECAR_KEYS));
+            }
+        }
+        Object rawCommand = table.get(List.of("command"));
+        List<String> command;
+        if (rawCommand instanceof String s) {
+            try {
+                command = ShellWords.split(s);
+            } catch (IllegalArgumentException e) {
+                throw new JkBuildParseException(where + ".command: " + e.getMessage());
+            }
+        } else if (rawCommand instanceof TomlArray arr) {
+            command = new ArrayList<>();
+            for (int i = 0; i < arr.size(); i++) command.add(scalar(arr.get(i), where + ".command[" + i + "]"));
+        } else {
+            throw new JkBuildParseException(
+                    where + " needs command = \"npm run dev\" or command = [\"npm\", \"run\", \"dev\"]");
+        }
+        if (command.isEmpty()) throw new JkBuildParseException(where + " command is empty");
+        String cwd = table.contains("cwd") ? scalar(table.get(List.of("cwd")), where + ".cwd") : ".";
+        Map<String, String> env = new LinkedHashMap<>();
+        if (table.contains("env")) {
+            if (!(table.get(List.of("env")) instanceof TomlTable envTable)) {
+                throw new JkBuildParseException(where + ".env must be a table: env = { PORT = \"5173\" }");
+            }
+            for (String key : envTable.keySet()) {
+                env.put(key, scalar(envTable.get(List.of(key)), where + ".env." + key));
+            }
+        }
+        String ready = table.contains("ready") ? scalar(table.get(List.of("ready")), where + ".ready") : null;
+        String pattern = table.contains("ready-pattern")
+                ? scalar(table.get(List.of("ready-pattern")), where + ".ready-pattern")
+                : null;
+        if (ready != null && pattern != null) {
+            throw new JkBuildParseException(where + " sets both ready and ready-pattern — a sidecar has one probe");
+        }
+        if (pattern != null) {
+            try {
+                Pattern.compile(pattern);
+            } catch (PatternSyntaxException e) {
+                throw new JkBuildParseException(where + ".ready-pattern is not a regex: " + e.getDescription());
+            }
+        }
+        long timeout = table.contains("ready-timeout")
+                ? durationMillis(table.get(List.of("ready-timeout")), where + ".ready-timeout")
+                : JkBuild.Sidecar.DEFAULT_READY_TIMEOUT_MILLIS;
+        boolean frontDoor = false;
+        if (table.contains("front-door")) {
+            if (!(table.get(List.of("front-door")) instanceof Boolean b)) {
+                throw new JkBuildParseException(where + ".front-door must be true or false");
+            }
+            frontDoor = b;
+        }
+        JkBuild.SidecarRestart restart = JkBuild.SidecarRestart.NEVER;
+        if (table.contains("restart")) {
+            try {
+                restart = JkBuild.SidecarRestart.parse(scalar(table.get(List.of("restart")), where + ".restart"));
+            } catch (IllegalArgumentException e) {
+                throw new JkBuildParseException(where + ".restart " + e.getMessage());
+            }
+        }
+        return new JkBuild.Sidecar(name, command, cwd, env, ready, pattern, timeout, frontDoor, restart);
+    }
+
+    private static final Pattern DURATION = Pattern.compile("(\\d+)\\s*(ms|s|m)?");
+
+    /** {@code "90s"}, {@code "2m"}, {@code "1500ms"}, or a bare number of seconds. */
+    static long durationMillis(@Nullable Object value, String where) {
+        if (value instanceof Long seconds && seconds > 0) return seconds * 1000;
+        if (value instanceof String s) {
+            Matcher m = DURATION.matcher(s.trim());
+            if (m.matches()) {
+                long n = Long.parseLong(m.group(1));
+                String unit = m.group(2) == null ? "s" : m.group(2);
+                long millis =
+                        switch (unit) {
+                            case "ms" -> n;
+                            case "m" -> n * 60_000;
+                            default -> n * 1000;
+                        };
+                if (millis > 0) return millis;
+            }
+        }
+        throw new JkBuildParseException(
+                where + " must be a positive duration like \"60s\", \"2m\", \"500ms\", or seconds");
     }
 
     /**

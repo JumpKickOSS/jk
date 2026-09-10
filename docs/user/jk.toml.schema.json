@@ -199,6 +199,35 @@
       "type": "object",
       "description": "[test] table; keys are documented in docs/user."
     },
+    "dev": {
+      "type": "object",
+      "description": "[dev] table: what `jk dev` runs beside the application. Read by no other verb; never part of an action key.",
+      "properties": {
+        "sidecars": {
+          "type": "object",
+          "description": "One table per sidecar, keyed by name, started in this order.",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "command": {
+                "description": "A string split like a shell would (quotes group; no expansion, no shell) or an argv array.",
+                "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }]
+              },
+              "cwd": { "type": "string", "description": "Working directory, relative to the manifest that declares the sidecar (default \".\")." },
+              "env": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Values laid over the inherited environment and the .env files." },
+              "ready": { "type": "string", "description": "HTTP(S) URL polled until it answers 2xx/3xx." },
+              "ready-pattern": { "type": "string", "description": "Regex matched against the sidecar's output lines; the alternative to `ready`." },
+              "ready-timeout": { "description": "How long a probe may take: \"60s\" (default), \"2m\", \"500ms\", or seconds.", "oneOf": [{ "type": "string" }, { "type": "integer" }] },
+              "front-door": { "type": "boolean", "description": "Print this sidecar's `ready` URL once the whole session is ready." },
+              "restart": { "type": "string", "enum": ["never", "on-exit"], "description": "What to do when the sidecar exits on its own (default never)." }
+            },
+            "required": ["command"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
     "format": {
       "type": "object",
       "description": "[format] table; keys are documented in docs/user."

@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.wire.protocol;
 
+import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.jsonl.Jsonl;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -32,7 +35,68 @@ public record ExecPlan(
         String mainClass,
         List<String> libNames,
         List<String> libPaths,
-        String deployCommand) {
+        String deployCommand,
+        /** {@code [dev.sidecars]} resolved for this module — dev plans only; every other kind carries none. */
+        List<Sidecar> sidecars) {
+
+    /**
+     * One sidecar the client is to run beside the app: {@code cwd} absolute, {@code env} the
+     * values to lay over the inherited environment, probe fields as the manifest states them and
+     * {@code restart} as its manifest spelling ({@code never} or {@code on-exit}).
+     */
+    public record Sidecar(
+            String name,
+            List<String> command,
+            String cwd,
+            Map<String, String> env,
+            String ready,
+            String readyPattern,
+            long readyTimeoutMillis,
+            boolean frontDoor,
+            String restart) {
+
+        String encode() {
+            return JsonFields.object()
+                    .string("name", name)
+                    .array("command", command)
+                    .string("cwd", cwd)
+                    .map("env", env)
+                    .string("ready", ready)
+                    .string("readyPattern", readyPattern)
+                    .number("readyTimeoutMillis", readyTimeoutMillis)
+                    .bool("frontDoor", frontDoor)
+                    .string("restart", restart)
+                    .finish();
+        }
+
+        static Sidecar decode(String object) {
+            return new Sidecar(
+                    orEmpty(Jsonl.str(object, "name")),
+                    Jsonl.strArray(object, "command"),
+                    orEmpty(Jsonl.str(object, "cwd")),
+                    Jsonl.strMap(object, "env"),
+                    orEmpty(Jsonl.str(object, "ready")),
+                    orEmpty(Jsonl.str(object, "readyPattern")),
+                    Jsonl.longValue(object, "readyTimeoutMillis", 60_000L),
+                    Jsonl.bool(object, "frontDoor", false),
+                    orEmpty(Jsonl.str(object, "restart")));
+        }
+
+        static String encodeAll(List<Sidecar> sidecars) {
+            StringBuilder sb = new StringBuilder("[");
+            for (int i = 0; i < sidecars.size(); i++) {
+                if (i > 0) sb.append(',');
+                sb.append(sidecars.get(i).encode());
+            }
+            return sb.append(']').toString();
+        }
+
+        static List<Sidecar> decodeAll(String line) {
+            List<Sidecar> out = new ArrayList<>();
+            for (String object : Jsonl.objectArray(line, "sidecars")) out.add(decode(object));
+            return List.copyOf(out);
+        }
+    }
 
     public static ExecPlan error(@Nullable String kind, String message) {
         return error(kind, message, "");
@@ -62,7 +126,8 @@ public record ExecPlan(
                 "",
                 List.of(),
                 List.of(),
-                "");
+                "",
+                List.of());
     }
 
     public String encode() {
@@ -89,6 +154,7 @@ public record ExecPlan(
                 .array("libNames", libNames)
                 .array("libPaths", libPaths)
                 .string("deployCommand", deployCommand)
+                .token("sidecars", Sidecar.encodeAll(sidecars))
                 .finish();
     }
 
@@ -115,7 +181,8 @@ public record ExecPlan(
                 orEmpty(Jsonl.str(line, "mainClass")),
                 Jsonl.strArray(line, "libNames"),
                 Jsonl.strArray(line, "libPaths"),
-                orEmptyDeploy(Jsonl.str(line, "deployCommand")));
+                orEmptyDeploy(Jsonl.str(line, "deployCommand")),
+                Sidecar.decodeAll(line));
     }
 
     private static String orEmptyDeploy(@Nullable String s) {

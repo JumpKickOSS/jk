@@ -302,6 +302,47 @@ public final class Jsonl {
      * string (suitable for passing back to other {@code Jsonl} methods), or {@code null} when
      * absent.
      */
+    /**
+     * The elements of {@code "key":[{…},{…}]}, each as its own object text, in order. Empty when the
+     * key is absent or the array holds no objects. Braces inside strings do not count.
+     */
+    public static List<String> objectArray(String json, String key) {
+        if (json == null) return Collections.emptyList();
+        String needle = "\"" + key + "\":";
+        int start = json.indexOf(needle);
+        if (start < 0) return Collections.emptyList();
+        start += needle.length();
+        while (start < json.length() && Character.isWhitespace(json.charAt(start))) start++;
+        if (start >= json.length() || json.charAt(start) != '[') return Collections.emptyList();
+        List<String> out = new ArrayList<>();
+        int i = start + 1;
+        int depth = 0;
+        int objectStart = -1;
+        boolean inString = false;
+        while (i < json.length()) {
+            char c = json.charAt(i);
+            if (inString) {
+                if (c == '\\') i++;
+                else if (c == '"') inString = false;
+            } else if (c == '"') {
+                inString = true;
+            } else if (c == '{') {
+                if (depth == 0) objectStart = i;
+                depth++;
+            } else if (c == '}') {
+                depth--;
+                if (depth == 0 && objectStart >= 0) {
+                    out.add(json.substring(objectStart, i + 1));
+                    objectStart = -1;
+                }
+            } else if (c == ']' && depth == 0) {
+                break;
+            }
+            i++;
+        }
+        return out;
+    }
+
     public static String nested(String json, String key) {
         if (json == null) return null;
         String needle = "\"" + key + "\":{";

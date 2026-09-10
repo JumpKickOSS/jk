@@ -106,8 +106,8 @@ public final class ExecPlans {
                     .build();
             BuildLayout layout = BuildLayout.of(dir, project);
             return switch (kind == null ? "" : kind) {
-                case "run" -> runPlan(dir, cache, project, layout, false);
-                case "dev" -> runPlan(dir, cache, project, layout, true);
+                case "run" -> runPlan(dir, cache, project, layout, false, clientEnv);
+                case "dev" -> runPlan(dir, cache, project, layout, true, clientEnv);
                 case "install" -> installPlan(dir, cache, project, layout, mainOverride, binName, binDir, libDir);
                 case "aot-cache" -> aotCachePlan(dir, cache, project, layout);
                 case "jshell" -> jshellPlan(dir, cache, project, layout);
@@ -172,7 +172,8 @@ public final class ExecPlans {
                 "",
                 List.of(),
                 paths,
-                "");
+                "",
+                List.of());
     }
 
     /**
@@ -207,7 +208,8 @@ public final class ExecPlans {
      * classes-dir) and assemble the full command line. Dev mode always runs from the classes dir
      * (the loop recompiles into it, and DevTools watches it) with the RUN classpath.
      */
-    private static ExecPlan runPlan(Path dir, Path cache, JkBuild project, BuildLayout layout, boolean dev)
+    private static ExecPlan runPlan(
+            Path dir, Path cache, JkBuild project, BuildLayout layout, boolean dev, Map<String, String> clientEnv)
             throws IOException, InterruptedException {
         // Workspace root: pick the runnable module (declared [application] main, else unique scan).
         // Without this, jk run at the workspace coordinator fails even when e.g. app/ has main.
@@ -217,7 +219,7 @@ public final class ExecPlans {
         if (project.isWorkspaceRoot()) {
             String rootMain = project.mainClass();
             if (rootMain == null || rootMain.isBlank() || !CompileSupport.hasSources(dir)) {
-                return runWorkspace(dir, cache, project, dev);
+                return runWorkspace(dir, cache, project, dev, clientEnv);
             }
         }
         // A device-mode artifact (an APK) is not host-runnable — the plugin's deploy command is
@@ -238,7 +240,7 @@ public final class ExecPlans {
                         "this project packages a device artifact (exec-mode=device) — it cannot run on the"
                                 + " host JVM; deploy it with the owning plugin's command instead");
             }
-            return devicePlan(dir, dev, deployCommand);
+            return devicePlan(dir, dev, deployCommand, dev ? DevSidecars.resolve(dir, project, clientEnv) : List.of());
         }
         Path javaHome = projectJavaHome(dir);
         String java = javaBin(javaHome);
@@ -247,11 +249,19 @@ public final class ExecPlans {
             ExecPlan packaged = packagedPlan(dir, layout, hostShape, javaHome, java);
             if (packaged != null) return packaged;
         }
-        return classpathPlan(dir, cache, project, layout, dev, javaHome, java);
+        return classpathPlan(
+                dir,
+                cache,
+                project,
+                layout,
+                dev,
+                javaHome,
+                java,
+                dev ? DevSidecars.resolve(dir, project, clientEnv) : List.of());
     }
 
     /** Device artifact: client runs the plugin deploy command (dev re-dispatches after rebuild). */
-    private static ExecPlan devicePlan(Path dir, boolean dev, String deployCommand) {
+    private static ExecPlan devicePlan(Path dir, boolean dev, String deployCommand, List<ExecPlan.Sidecar> sidecars) {
         List<String> deviceWatch = new ArrayList<>();
         if (dev) {
             if (Files.isDirectory(dir.resolve("src")))
@@ -283,7 +293,8 @@ public final class ExecPlans {
                 "",
                 List.of(),
                 List.of(),
-                deployCommand);
+                deployCommand,
+                sidecars);
     }
 
     /**
@@ -302,6 +313,7 @@ public final class ExecPlans {
                     nativeBin.getFileName().toString(),
                     false,
                     false,
+                    List.of(),
                     List.of());
         }
         Path assemblyJar = layout.assemblyJar();
@@ -314,6 +326,7 @@ public final class ExecPlans {
                     "java -jar " + dir.relativize(assemblyJar),
                     false,
                     false,
+                    List.of(),
                     List.of());
         }
         // Self-contained packager output (Quarkus fast-jar / Boot fat-jar): run via -jar.
@@ -332,6 +345,7 @@ public final class ExecPlans {
                         "java -jar " + dir.relativize(mainJar),
                         false,
                         false,
+                        List.of(),
                         List.of());
             }
             return ExecPlan.error(
@@ -347,7 +361,14 @@ public final class ExecPlans {
      * BOOT-INF nesting) never lands on a -cp.
      */
     private static ExecPlan classpathPlan(
-            Path dir, Path cache, JkBuild project, BuildLayout layout, boolean dev, Path javaHome, String java)
+            Path dir,
+            Path cache,
+            JkBuild project,
+            BuildLayout layout,
+            boolean dev,
+            Path javaHome,
+            String java,
+            List<ExecPlan.Sidecar> sidecars)
             throws IOException, InterruptedException {
         List<Path> classpath = new ArrayList<>();
         boolean classesEntry = dev
@@ -416,7 +437,8 @@ public final class ExecPlans {
         List<String> watchRoots = new ArrayList<>();
         if (dev && Files.isDirectory(dir.resolve("src")))
             watchRoots.add(dir.resolve("src").toString());
-        return runAck(dev ? "dev" : "run", argv, dir, javaHome, display, hotReload, devtoolsInjected, watchRoots);
+        return runAck(
+                dev ? "dev" : "run", argv, dir, javaHome, display, hotReload, devtoolsInjected, watchRoots, sidecars);
     }
 
     /** Whether the lock already carries Spring Boot DevTools, in any of the spellings a lock uses. */
@@ -437,7 +459,8 @@ public final class ExecPlans {
      * module with a unique scanned {@code main} in its classes/jar; else a clear missing/ambiguous
      * error naming the candidates.
      */
-    private static ExecPlan runWorkspace(Path root, Path cache, JkBuild rootBuild, boolean dev)
+    private static ExecPlan runWorkspace(
+            Path root, Path cache, JkBuild rootBuild, boolean dev, Map<String, String> clientEnv)
             throws IOException, InterruptedException {
         String kind = dev ? "dev" : "run";
         Map<Path, JkBuild> modules = WorkspaceLoader.loadModules(root, rootBuild);
@@ -456,7 +479,7 @@ public final class ExecPlans {
         if (declaredApps.size() == 1) {
             Path modDir = declaredApps.get(0);
             JkBuild mod = Objects.requireNonNull(modules.get(modDir));
-            return runPlan(modDir, cache, mod, BuildLayout.of(modDir, mod), dev);
+            return runPlan(modDir, cache, mod, BuildLayout.of(modDir, mod), dev, clientEnv);
         }
         if (declaredApps.size() > 1) {
             String names = declaredApps.stream()
@@ -517,7 +540,7 @@ public final class ExecPlans {
         }
         Path modDir = scannedModules.iterator().next();
         JkBuild mod = Objects.requireNonNull(modules.get(modDir));
-        return runPlan(modDir, cache, mod, BuildLayout.of(modDir, mod), dev);
+        return runPlan(modDir, cache, mod, BuildLayout.of(modDir, mod), dev, clientEnv);
     }
 
     private static ExecPlan runAck(
@@ -528,7 +551,8 @@ public final class ExecPlans {
             String display,
             boolean hotReload,
             boolean devtoolsInjected,
-            List<String> watchRoots) {
+            List<String> watchRoots,
+            List<ExecPlan.Sidecar> sidecars) {
         return new ExecPlan(
                 null,
                 "",
@@ -551,7 +575,8 @@ public final class ExecPlans {
                 "",
                 List.of(),
                 List.of(),
-                "");
+                "",
+                sidecars);
     }
 
     /**
@@ -685,7 +710,8 @@ public final class ExecPlans {
                 "",
                 List.of(),
                 List.of(),
-                "");
+                "",
+                List.of());
     }
 
     /** {@code jk build --aot-cache}: everything the client's layout/training step needs. */
@@ -742,7 +768,8 @@ public final class ExecPlans {
                 mainClass,
                 libNames,
                 libPaths,
-                "");
+                "",
+                List.of());
     }
 
     // ------------------------------------------------------------- helpers

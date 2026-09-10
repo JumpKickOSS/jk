@@ -73,14 +73,28 @@ class WireProducersFrozenBytesTest {
                 "Main",
                 List.of("a"),
                 List.of("/a.jar"),
-                "deploy");
+                "deploy",
+                List.of(new ExecPlan.Sidecar(
+                        "web",
+                        List.of("npm", "run", "dev"),
+                        "/w/web",
+                        Map.of("PORT", "5173"),
+                        "http://localhost:5173",
+                        "",
+                        60000L,
+                        true,
+                        "never")));
         assertThat(plan.encode())
                 .isEqualTo("{\"type\":\"exec-plan-ack\",\"error\":null,\"mainIssue\":\"issue\",\"kind\":\"run\","
                         + "\"argv\":[\"java\",\"-jar\"],\"workingDir\":\"/w\",\"display\":\"disp\",\"javaHome\":\"/jdk\","
                         + "\"hotReload\":true,\"devtoolsInjected\":false,\"watchRoots\":[\"src\"],\"linkSrcs\":[],"
                         + "\"linkDests\":[],\"launcherPath\":\"/l\",\"launcherScript\":\"/l.sh\",\"binPath\":\"/bin\","
                         + "\"boot\":true,\"mainJar\":\"/m.jar\",\"tier\":\"T1\",\"mainClass\":\"Main\",\"libNames\":[\"a\"],"
-                        + "\"libPaths\":[\"/a.jar\"],\"deployCommand\":\"deploy\"}");
+                        + "\"libPaths\":[\"/a.jar\"],\"deployCommand\":\"deploy\","
+                        + "\"sidecars\":[{\"name\":\"web\",\"command\":[\"npm\",\"run\",\"dev\"],\"cwd\":\"/w/web\","
+                        + "\"env\":{\"PORT\":\"5173\"},\"ready\":\"http://localhost:5173\",\"readyPattern\":\"\","
+                        + "\"readyTimeoutMillis\":60000,\"frontDoor\":true,\"restart\":\"never\"}]}");
+        assertThat(ExecPlan.decode(plan.encode())).isEqualTo(plan);
         String ide =
                 "{\"type\":\"ide-model-ack\",\"error\":\"e\",\"wsRoot\":\"/w\",\"rootName\":\"r\",\"workspace\":true,"
                         + "\"moduleDirs\":[\"a\"],\"names\":[\"n\"],\"javaReleases\":[\"25\"],\"mainClasses\":[\"M\"],"

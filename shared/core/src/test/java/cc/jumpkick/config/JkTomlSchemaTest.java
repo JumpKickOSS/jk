@@ -46,6 +46,20 @@ class JkTomlSchemaTest {
     }
 
     @Test
+    void dev_sidecar_properties_are_exactly_the_parser_s_sidecar_keys() throws Exception {
+        String schema = Files.readString(SCHEMA);
+        String dev = Jsonl.nested(Jsonl.nested(schema, "properties"), "dev");
+        assertThat(keysOf(Jsonl.nested(dev, "properties"))).containsExactlyInAnyOrderElementsOf(ManifestBuild.DEV_KEYS);
+        String sidecar =
+                Jsonl.nested(Jsonl.nested(Jsonl.nested(dev, "properties"), "sidecars"), "additionalProperties");
+        assertThat(keysOf(Jsonl.nested(sidecar, "properties")))
+                .containsExactlyInAnyOrderElementsOf(ManifestBuild.SIDECAR_KEYS);
+        // the sidecar's own additionalProperties is its last one; env's nested one comes first
+        int last = sidecar.lastIndexOf("\"additionalProperties\"");
+        assertThat(sidecar.substring(last).replaceAll("\\s", "")).startsWith("\"additionalProperties\":false");
+    }
+
+    @Test
     void the_schema_names_the_dependency_scope_tables_the_parser_reads() throws Exception {
         String schema = Files.readString(SCHEMA);
         for (Scope s : Scope.values()) {

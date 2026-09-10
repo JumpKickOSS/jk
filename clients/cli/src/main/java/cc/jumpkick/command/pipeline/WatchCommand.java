@@ -54,7 +54,8 @@ public final class WatchCommand implements CliCommand {
                 Opt.value(
                         "<ms>",
                         "Debounce source changes (default " + SourceWatch.DEBOUNCE_MILLIS + " ms)",
-                        "--debounce-ms")));
+                        "--debounce-ms"),
+                Opt.flag("Run the app alone, no [dev.sidecars]", "--no-sidecars")));
         opts.addAll(VariantSelection.options());
         return opts;
     }
@@ -114,7 +115,11 @@ public final class WatchCommand implements CliCommand {
 
         return switch (verb) {
             case "run" ->
-                new AppWatchLoop(global, jdksDir, "jk watch run")
+                new AppWatchLoop(
+                                global,
+                                jdksDir,
+                                "jk watch run",
+                                in.flag("no-sidecars").orElse(false))
                         .run(projectDir, AppWatchLoop.cache(cacheOverride), rest);
             case "compile", "test", "build" -> verbLoop(verb, projectDir, global, debounceMs);
             default -> {

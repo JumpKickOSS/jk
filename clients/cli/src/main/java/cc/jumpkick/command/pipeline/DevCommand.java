@@ -54,6 +54,7 @@ public final class DevCommand implements CliCommand {
         for (String name : List.of("cache-dir", CommonOpts.JDKS_DIR, "variant", "features")) {
             in.value(name).ifPresent(v -> b.putValue(name, v));
         }
+        in.flag("no-sidecars").ifPresent(v -> b.flag("no-sidecars", v));
         return watch.run(b.build());
     }
 }

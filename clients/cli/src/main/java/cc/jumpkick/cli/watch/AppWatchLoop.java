@@ -10,6 +10,7 @@ import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlanResult;
@@ -38,6 +39,7 @@ public final class AppWatchLoop {
     private final GlobalOptions global;
     private final @Nullable Path jdksDir;
     private final String logPrefix;
+    private final boolean noSidecars;
 
     public int run(Path projectDir, Path cache, List<String> appArgs) throws IOException, InterruptedException {
         if (!build(projectDir, cache)) return 1;
@@ -59,8 +61,27 @@ public final class AppWatchLoop {
         List<Path> watchRoots = rootsFromPlan(plan);
         logWatching(projectDir, watchRoots, devtools ? "DevTools hot-restart" : "process restart on change");
 
-        Process app = startApp(plan, appArgs);
-        try (SourceWatch watch = SourceWatch.open(projectDir, watchRoots)) {
+        // Sidecars start once and outlive every app restart below; they are torn down with the session.
+        Sidecars sidecars = Sidecars.start(noSidecars ? List.of() : plan.sidecars(), CliOutput::err, Clock.SYSTEM);
+        Process app;
+        try {
+            app = startApp(plan, appArgs);
+        } catch (IOException | RuntimeException e) {
+            sidecars.close();
+            throw e;
+        }
+        try (sidecars;
+                SourceWatch watch = SourceWatch.open(projectDir, watchRoots)) {
+            if (!sidecars.isEmpty()) {
+                Optional<String> notReady = sidecars.awaitReady();
+                if (notReady.isPresent()) {
+                    CliOutput.err(logPrefix + ": " + notReady.get());
+                    return Exit.SOFTWARE;
+                }
+                CliOutput.err(logPrefix + ": ready · "
+                        + sidecars.frontDoor().map(url -> url + " ").orElse("")
+                        + "(" + plan.display() + ")");
+            }
             while (true) {
                 Optional<SourceWatch.Changes> maybe = watch.pollChange(500, TimeUnit.MILLISECONDS);
                 if (maybe.isEmpty()) {

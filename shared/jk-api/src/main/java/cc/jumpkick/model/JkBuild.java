@@ -7,6 +7,7 @@ import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -750,7 +751,14 @@ public record JkBuild(
              * then a rule the manifest can express instead of one a reader has to memorise: later
              * wins, top to bottom.
              */
-            List<TestEnvDecl> testEnv) {
+            List<TestEnvDecl> testEnv,
+            /**
+             * {@code [dev.sidecars]} — processes {@code jk dev} runs beside the application (a
+             * frontend dev server, a docs server), in manifest order. Dev-only: {@code jk run},
+             * {@code jk build}, and {@code jk test} never read it, and nothing here enters an action
+             * key. Not a build input, like {@code [test]}, hence its home here.
+             */
+            List<Sidecar> devSidecars) {
 
         /** Default {@code [test] fixtures = true} root — {@code src/fixtures/java}. */
         public static final String DEFAULT_FIXTURES = "src/fixtures/java";
@@ -768,6 +776,7 @@ public record JkBuild(
                 List.of(),
                 PlatformPolicy.ENFORCED,
                 UnmappedPolicy.MEDIATE,
+                List.of(),
                 List.of());
 
         public Build {
@@ -783,6 +792,7 @@ public record JkBuild(
             platformPolicy = platformPolicy == null ? PlatformPolicy.ENFORCED : platformPolicy;
             unmappedPolicy = unmappedPolicy == null ? UnmappedPolicy.MEDIATE : unmappedPolicy;
             testEnv = testEnv == null ? List.of() : List.copyOf(testEnv);
+            devSidecars = devSidecars == null ? List.of() : List.copyOf(devSidecars);
         }
 
         /** True when this module declares a fixtures source root. */
@@ -808,7 +818,8 @@ public record JkBuild(
                     testSerialTags,
                     platformPolicy,
                     unmappedPolicy,
-                    testEnv);
+                    testEnv,
+                    devSidecars);
         }
 
         public Build withPlatformPolicy(PlatformPolicy policy) {
@@ -825,7 +836,8 @@ public record JkBuild(
                     testSerialTags,
                     policy == null ? PlatformPolicy.ENFORCED : policy,
                     unmappedPolicy,
-                    testEnv);
+                    testEnv,
+                    devSidecars);
         }
 
         /**
@@ -860,6 +872,58 @@ public record JkBuild(
      * is the one thing a reader of this manifest most needs to be sure of. A {@code default} arm
      * would let a new consumer inherit whichever answer it happened to fall through to.
      */
+    /**
+     * One {@code [dev.sidecars]} entry as the manifest states it: {@code command} already split
+     * into argv, {@code cwd} module-relative, {@code env} literal values laid over the inherited
+     * environment. {@code ready} is an HTTP(S) URL polled for 2xx/3xx; {@code readyPattern} a
+     * regex matched against the sidecar's output lines; at most one is set, and neither means
+     * "ready once it has stayed alive for a second". {@code readyTimeoutMillis} bounds either probe.
+     * {@code frontDoor} names the URL {@code jk dev} prints once everything is ready.
+     */
+    public record Sidecar(
+            String name,
+            List<String> command,
+            String cwd,
+            Map<String, String> env,
+            @Nullable String ready,
+            @Nullable String readyPattern,
+            long readyTimeoutMillis,
+            boolean frontDoor,
+            SidecarRestart restart) {
+
+        /** Default {@code ready-timeout}: a Vite or webpack cold start on a slow laptop fits in it. */
+        public static final long DEFAULT_READY_TIMEOUT_MILLIS = 60_000;
+
+        public Sidecar {
+            Objects.requireNonNull(name, "name");
+            command = List.copyOf(command);
+            if (command.isEmpty()) throw new IllegalArgumentException("sidecar `" + name + "` has an empty command");
+            cwd = cwd == null || cwd.isBlank() ? "." : cwd;
+            env = env == null || env.isEmpty() ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(env));
+            if (ready != null && readyPattern != null) {
+                throw new IllegalArgumentException("sidecar `" + name + "` sets both ready and ready-pattern");
+            }
+            if (readyTimeoutMillis <= 0) readyTimeoutMillis = DEFAULT_READY_TIMEOUT_MILLIS;
+            restart = restart == null ? SidecarRestart.NEVER : restart;
+        }
+    }
+
+    /** What {@code jk dev} does when a sidecar exits on its own. */
+    public enum SidecarRestart {
+        /** Report the exit once and carry on without it. */
+        NEVER,
+        /** Start it again with backoff; give up after five failures in a row. */
+        ON_EXIT;
+
+        public static SidecarRestart parse(String raw) {
+            return switch (raw.trim().toLowerCase(Locale.ROOT)) {
+                case "never" -> NEVER;
+                case "on-exit" -> ON_EXIT;
+                default -> throw new IllegalArgumentException("restart is never or on-exit, not `" + raw + "`");
+            };
+        }
+    }
+
     public sealed interface TestEnvDecl {
 
         /** The variable this entry is about. */

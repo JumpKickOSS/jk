@@ -373,7 +373,8 @@ public final class JkBuildParser {
                     build.testSerialTags(),
                     build.platformPolicy(),
                     build.unmappedPolicy(),
-                    build.testEnv());
+                    build.testEnv(),
+                    build.devSidecars());
         }
         // [test] is its own top-level table (test settings are not build inputs), but it folds into
         // the Build block, which already carries the other test-scoped setting, test-plugin-jars.
@@ -392,7 +393,27 @@ public final class JkBuildParser {
                     build.testSerialTags(),
                     build.platformPolicy(),
                     build.unmappedPolicy(),
-                    testEnv);
+                    testEnv,
+                    build.devSidecars());
+        }
+        // [dev] is a live-loop concern, not a build input; it folds into the same block as [test].
+        List<JkBuild.Sidecar> devSidecars = ManifestBuild.parseDevSidecars(result);
+        if (!devSidecars.isEmpty()) {
+            build = new JkBuild.Build(
+                    build.orderAfter(),
+                    build.testPluginJars(),
+                    build.lint(),
+                    build.kotlinPlugins(),
+                    build.kspOptions(),
+                    build.extraSrc(),
+                    build.testExtraSrc(),
+                    build.fixtures(),
+                    build.testWorkers(),
+                    build.testSerialTags(),
+                    build.platformPolicy(),
+                    build.unmappedPolicy(),
+                    build.testEnv(),
+                    devSidecars);
         }
         JkBuild.FormatConfig format = ManifestTables.parseFormat(result);
         JkBuild.Install install = ManifestTables.parseInstall(result).orElse(null);
