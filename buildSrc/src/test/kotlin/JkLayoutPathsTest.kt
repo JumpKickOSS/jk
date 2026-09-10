@@ -80,4 +80,36 @@ class JkLayoutPathsTest {
         check(f.setExecutable(true)) { "cannot make $f executable" }
         return f
     }
+
+    /**
+     * The home a test's `JK_HOME` points at must be outside the checkout. A sandbox carrying jk's whole layout inside
+     * the source tree is what let a git command walk up into the developer's repository and reset it; the path shape is
+     * the mitigation, so it is pinned rather than eyeballed.
+     */
+    @Test
+    fun the_test_home_is_outside_the_checkout(@TempDir root: Path) {
+        val home = JkLayoutPaths.testHomeFor(root.toFile(), ":server:engine")
+
+        assertThat(home.absoluteFile.normalize().path).doesNotStartWith(root.toFile().absoluteFile.normalize().path)
+        assertThat(home.path).endsWith("server-engine")
+    }
+
+    /** Sibling worktrees check out under the same name, so the name alone is not an identity. */
+    @Test
+    fun sibling_checkouts_of_one_name_do_not_share_a_home(@TempDir tmp: Path) {
+        val a = tmp.resolve("a/jk").toFile().apply { mkdirs() }
+        val b = tmp.resolve("b/jk").toFile().apply { mkdirs() }
+
+        assertThat(JkLayoutPaths.testHomeFor(a, ":cli")).isNotEqualTo(JkLayoutPaths.testHomeFor(b, ":cli"))
+        assertThat(JkLayoutPaths.checkoutKey(a)).startsWith("jk-").isNotEqualTo(JkLayoutPaths.checkoutKey(b))
+    }
+
+    /** Warm across runs and across a module's tiers is deliberate; the key is the module, not the task. */
+    @Test
+    fun one_module_has_one_home_and_the_root_project_is_named() {
+        assertThat(JkLayoutPaths.moduleKey(":server:engine")).isEqualTo("server-engine")
+        assertThat(JkLayoutPaths.moduleKey(":cli")).isEqualTo("cli")
+        assertThat(JkLayoutPaths.moduleKey(":")).isEqualTo("root")
+        assertThat(JkLayoutPaths.moduleKey("")).isEqualTo("root")
+    }
 }

@@ -142,6 +142,18 @@ tasks.register("checkCoverageBand") {
 // root build — Gradle only compiles buildSrc — so they are run here as a nested invocation and
 // the branch gate depends on it. Named test*, not check*: checkGateCoverage treats every root
 // check* task as a lettered guard.
+// The test homes moved out of the checkout (see jk.testing), so `clean` no longer reaches them and
+// the age/size sweep in jk.testing is what bounds them. This is the manual escape hatch, scoped to
+// this checkout's key so a sibling worktree's primed store is not collateral.
+tasks.register<Delete>("cleanTestHomes") {
+    group = "build"
+    description = "Delete this checkout's out-of-tree test JK_HOMEs (jk.testing sweeps them by age and size)"
+    val root = JkLayoutPaths.testHomeRoot()
+    val key = JkLayoutPaths.checkoutKey(rootDir)
+    delete(File(root, key))
+    doLast { println("removed test homes under ${File(root, key)}") }
+}
+
 val testBuildSrc = tasks.register<Exec>("testBuildSrc") {
     group = "verification"
     description = "Run buildSrc's own tests (guard catalog invariants)"

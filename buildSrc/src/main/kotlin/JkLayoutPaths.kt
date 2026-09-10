@@ -139,6 +139,49 @@ object JkLayoutPaths {
         return if (isWindows() && bat) listOf("cmd.exe", "/c", client) + args else listOf(client) + args.toList()
     }
 
+    /**
+     * Root for the `JK_HOME` a test runs against, **outside the checkout**: `JK_TEST_HOME_ROOT`, else
+     * `$HOME/.jk-test-homes`.
+     *
+     * Everything jk writes under `JK_HOME` during a test used to land in `<module>/build/test-jk-home`, inside the
+     * source tree. A git command handed a path under there that has stopped existing resolves to the repository that
+     * encloses it — the developer's own checkout — which is how two of them were reset to their remote and left
+     * shallow. Pinning the freshener's invocations is the fix for that command; moving the root out of the tree is what
+     * stops a test sandbox being a plausible target for the next one. The property to hold is "not inside a git
+     * repository", not "not inside `build/`".
+     */
+    fun testHomeRoot(): File {
+        nonBlank(System.getenv("JK_TEST_HOME_ROOT"))?.let {
+            require(File(it).isAbsolute) { "JK_TEST_HOME_ROOT must be an absolute path: $it" }
+            return File(it)
+        }
+        return File(userHome(), ".jk-test-homes")
+    }
+
+    /**
+     * The `JK_HOME` for one module's tests: `<root>/<checkout>/<module>`.
+     *
+     * Per module, and warm across runs and across that module's tiers, which is deliberate — two suites prime the store
+     * on purpose and the age/size sweep in `jk.testing` is what bounds it. Keyed by checkout so sibling worktrees of
+     * the same repository do not share one home and race in it.
+     */
+    fun testHomeFor(rootDir: File, projectPath: String): File =
+        testHomeRoot().resolve(checkoutKey(rootDir)).resolve(moduleKey(projectPath))
+
+    /**
+     * `<dir name>-<8 hex of the absolute path>`. The name alone collides between worktrees checked out as `jk` twice;
+     * the hash alone is unreadable in a stack trace or a `du` listing.
+     */
+    fun checkoutKey(rootDir: File): String {
+        val abs = rootDir.absoluteFile.normalize()
+        val digest = java.security.MessageDigest.getInstance("SHA-256").digest(abs.path.toByteArray())
+        val hex = digest.take(4).joinToString("") { "%02x".format(it) }
+        return "${abs.name.ifBlank { "root" }}-$hex"
+    }
+
+    /** `:server:engine` becomes `server-engine`; the root project becomes `root`. */
+    fun moduleKey(projectPath: String): String = projectPath.trim(':').ifEmpty { "root" }.replace(':', '-')
+
     private fun userHome(): String = System.getProperty("user.home")
 
     /**

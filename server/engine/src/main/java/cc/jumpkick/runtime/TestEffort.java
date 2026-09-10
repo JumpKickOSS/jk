@@ -9,6 +9,7 @@ import cc.jumpkick.runtime.base.TestSuiteScaling;
 import java.util.Collection;
 import java.util.Map;
 import java.util.OptionalDouble;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Prices the {@code run-tests} task for progress weights and ETA.
@@ -63,7 +64,37 @@ public final class TestEffort {
             Collection<String> projectDirs,
             BuildMetrics metrics,
             int testWorkers) {
-        long startup = suiteStartupMs();
+        return wallMillis(
+                moduleDir,
+                classWallsMs,
+                classesToRun,
+                methodCount,
+                timings,
+                projectDirs,
+                metrics,
+                testWorkers,
+                loadedCalibration());
+    }
+
+    /**
+     * The estimate with the host calibration handed in rather than read from {@code JK_HOME}.
+     *
+     * <p>Both cold rungs end at the calibration — {@link #suiteStartupMs} and the last arm of {@link
+     * #methodMs} — so loading it inside makes them a function of whatever this machine has learned. A
+     * caller that means to exercise a cold ladder has to supply the rung it is pricing against;
+     * otherwise it measures the host, which is a different question and not a stable one.
+     */
+    static long wallMillis(
+            String moduleDir,
+            Map<String, Long> classWallsMs,
+            Collection<String> classesToRun,
+            int methodCount,
+            StepTimings timings,
+            Collection<String> projectDirs,
+            BuildMetrics metrics,
+            int testWorkers,
+            @Nullable Calibration cal) {
+        long startup = suiteStartupMs(cal);
         // This module's own measured suite wall first — always beats methodCount × cold method-ms
         // for a known module. (Host-tier suite average is NOT a substitute: it mixes tiny and huge
         // suites and under-prices a cold 1000-test module.)
@@ -113,7 +144,7 @@ public final class TestEffort {
             return Math.max(startup, Calibration.STATIC_SUITE_STARTUP_MS);
         }
         // Known method count on a cold module → hierarchical method-ms product (not host suite avg).
-        double perMethod = methodMs(moduleDir, timings, projectDirs);
+        double perMethod = methodMs(moduleDir, timings, projectDirs, cal);
         int w = Math.max(1, testWorkers);
         long body = Math.round(methods * perMethod);
         long parallelBody = w <= 1 ? body : (body + w - 1) / w;
@@ -122,6 +153,12 @@ public final class TestEffort {
 
     /** Hierarchical method-ms: module residual → project median → host absolute → calibration. */
     public static double methodMs(String moduleDir, StepTimings timings, Collection<String> projectDirs) {
+        return methodMs(moduleDir, timings, projectDirs, loadedCalibration());
+    }
+
+    /** {@link #methodMs} with the calibration rung supplied; {@code null} means fall to the baseline. */
+    static double methodMs(
+            String moduleDir, StepTimings timings, Collection<String> projectDirs, @Nullable Calibration cal) {
         if (timings != null) {
             var own = timings.perUnit(moduleDir == null ? "" : moduleDir, TaskNames.RUN_TESTS);
             if (own.isPresent() && own.getAsDouble() > 0) {
@@ -142,19 +179,29 @@ public final class TestEffort {
                 return hostRate.getAsDouble() * EffortWeights.MS_PER_WEIGHT;
             }
         }
+        if (cal == null) return Calibration.BASELINE_METHOD_MS;
+        var learned = cal.learned().meanMs(HostLearnedRates.RUN_TESTS_PER_METHOD_MS);
+        if (learned.isPresent()) return learned.getAsDouble();
+        return Calibration.scaleBaseline(Calibration.BASELINE_METHOD_MS, 1.0);
+    }
+
+    /** The host calibration, or {@code null} when it cannot be read — the cold rungs then use the baseline. */
+    private static @Nullable Calibration loadedCalibration() {
         try {
-            Calibration cal = Calibration.load();
-            var learned = cal.learned().meanMs(HostLearnedRates.RUN_TESTS_PER_METHOD_MS);
-            if (learned.isPresent()) return learned.getAsDouble();
-            return Calibration.scaleBaseline(Calibration.BASELINE_METHOD_MS, 1.0);
+            return Calibration.load();
         } catch (RuntimeException e) {
-            return Calibration.BASELINE_METHOD_MS;
+            return null;
         }
     }
 
     static long suiteStartupMs() {
+        return suiteStartupMs(loadedCalibration());
+    }
+
+    /** {@link #suiteStartupMs} against a supplied calibration; {@code null} means the baseline. */
+    static long suiteStartupMs(@Nullable Calibration cal) {
+        if (cal == null) return Math.round(Calibration.scaleBaseline(Calibration.BASELINE_SUITE_STARTUP_MS, 1.0));
         try {
-            Calibration cal = Calibration.load();
             var learned = cal.learned().meanMs(HostLearnedRates.RUN_TESTS_SUITE_STARTUP_MS);
             if (learned.isPresent()) return Math.round(learned.getAsDouble());
             if (cal.hasColdPriors()) {

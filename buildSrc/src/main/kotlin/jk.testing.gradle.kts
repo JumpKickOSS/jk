@@ -21,15 +21,26 @@ fun tier(name: String): TestTier = TestTiers.all.first { it.task == name }
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
     // Isolate tests from the developer's real product layout. JK_HOME relocates the whole tree.
-    val testJkHome = layout.buildDirectory.dir("test-jk-home").get().asFile.absolutePath
+    //
+    // Outside the checkout, not under build/: a git command handed a path in the source tree that has
+    // stopped existing resolves to the repository enclosing it, and a test sandbox full of jk's own
+    // layout is a plausible thing to hand one. Two checkouts were reset to their remote and left
+    // shallow that way. The require() below is the property, stated where it cannot drift — a home
+    // that moves back inside the tree fails configuration rather than waiting for the next incident.
+    val testHomeDir = JkLayoutPaths.testHomeFor(rootDir, project.path)
+    require(!testHomeDir.absoluteFile.normalize().startsWith(rootDir.absoluteFile.normalize())) {
+        "test JK_HOME must be outside the checkout, was $testHomeDir under $rootDir"
+    }
+    val testJkHome = testHomeDir.absolutePath
     environment("JK_HOME", testJkHome)
     environment("JK_JDKS_DIR", "$testJkHome/jdks")
     // The probe chain is the machine's unless narrowed: sdkman, mise, IntelliJ, /usr/lib/jvm. A jdk
     // verb under test would list, default to, write pointers at or uninstall the developer's own
     // installs. Only the JDK this build runs on and jk's own root are visible to a test.
     environment("JK_JDK_PROBES", "java-home,jk")
-    // M2Dirs honours JK_M2_LOCAL so mock-Maven tests cannot overwrite ~/.m2.
-    val testM2 = layout.buildDirectory.dir("test-m2").get().asFile.absolutePath
+    // M2Dirs honours JK_M2_LOCAL so mock-Maven tests cannot overwrite ~/.m2. It travels with the home
+    // for the same reason, and the sweep below deletes the pair together.
+    val testM2 = File(testHomeDir.parentFile, "${testHomeDir.name}-m2").absolutePath
     environment("JK_M2_LOCAL", testM2)
     // The warm home is a feature (two suites prime the store on purpose) and a liability when it is
     // unbounded: measured at 744 MB for clients/cli (the CAS 540 MB, the store 117 MB, the state root
