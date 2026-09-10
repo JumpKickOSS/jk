@@ -99,12 +99,15 @@ final class ProvenanceJavac implements JavaCompiler {
                 }
                 srcPaths.add(pathFile.toPath());
             }
-            Iterable<? extends JavaFileObject> units = fm.getJavaFileObjectsFromPaths(srcPaths);
-            JavacTask task = (JavacTask) javac.getTask(null, fm, diags, Arrays.asList(options), null, units);
+            FileOps fileOps = FileOps.open();
+            Iterable<? extends JavaFileObject> units = fileOps.wrapUnits(fm.getJavaFileObjectsFromPaths(srcPaths));
+            JavacTask task =
+                    (JavacTask) javac.getTask(null, fileOps.wrap(fm), diags, Arrays.asList(options), null, units);
             if (loader != null) {
                 task.setProcessors(provenance.wrap(ZincJavaCompiler.freshProcessors(loader)));
             }
             boolean ok = task.call();
+            fileOps.write(classOut);
             DiagnosticsReporter bridge = new DiagnosticsReporter(reporter);
             for (var d : diags.getDiagnostics()) bridge.report(d);
             return ok && !bridge.hasErrors();
