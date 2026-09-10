@@ -30,6 +30,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -256,7 +257,14 @@ public final class DoctorCommand implements CliCommand {
     private static Check checkJdk() {
         try {
             Path jdksDir = JkDirs.jdks();
-            long count = Files.isDirectory(jdksDir) ? Files.list(jdksDir).count() : 0;
+            long count = 0;
+            if (Files.isDirectory(jdksDir)) {
+                // Closed, not left to the collector: the stream holds a directory handle, and on
+                // Windows an open one refuses that directory its own delete.
+                try (Stream<Path> installs = Files.list(jdksDir)) {
+                    count = installs.count();
+                }
+            }
             String javaHome = System.getenv("JAVA_HOME");
             String detail = count + " installs under " + jdksDir + (javaHome != null ? " · JAVA_HOME=" + javaHome : "");
             return new Check(Status.OK, "jdk", detail);

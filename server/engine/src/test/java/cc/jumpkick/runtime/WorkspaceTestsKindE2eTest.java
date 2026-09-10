@@ -60,10 +60,11 @@ class WorkspaceTestsKindE2eTest {
                 .isTrue();
         Path libTestClasses = ws.resolve("target/lib/classes/test");
         assertThat(libTestClasses).isDirectory();
-        assertThat(Files.walk(libTestClasses)
-                        .anyMatch(p -> p.getFileName().toString().endsWith("LibTestHelper.class")))
-                .as("lib test helper compiled")
-                .isTrue();
+        try (var walk = Files.walk(libTestClasses)) {
+            assertThat(walk.anyMatch(p -> p.getFileName().toString().endsWith("LibTestHelper.class")))
+                    .as("lib test helper compiled")
+                    .isTrue();
+        }
 
         // Classpath contract before app tests run.
         var testCp = WorkspaceClasspath.resolve(app, appManifest, Set.of(Scope.EXPORT, Scope.MAIN, Scope.TEST));
