@@ -6,13 +6,19 @@ import cc.jumpkick.run.ContextPropagator;
 import cc.jumpkick.run.JkThreads;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Per-request registry of forked worker {@link Process}es (plugin/test JVMs). On cancel or job wall
@@ -25,8 +31,14 @@ import java.util.concurrent.TimeUnit;
  * <p><strong>Cancel contract</strong> {@link #shutdownForRequest} signals <em>all</em>
  * live workers first (tight loop — effectively simultaneous), then waits one shared wall-clock
  * grace (the caller's configured shared window for the whole set, not per process), then
- * force-kills survivors. Cancel never hangs. Plugins must treat that shared
- * sub-second window as all they get.
+ * force-kills survivors, then waits once more — also shared — for those kills to land. Cancel never
+ * hangs: both waits are bounded, and a process that outlasts the second one is left to the OS.
+ * Plugins must treat that shared sub-second window as all they get.
+ *
+ * <p>The second wait is what makes "shut down" mean gone rather than told to go. A force-kill
+ * returns as soon as the OS accepts it, and until termination finishes the worker still holds its
+ * handles — so a caller that kills a worker and deletes the tree it was writing can find that tree
+ * undeletable on Windows, at a moment and in a place unrelated to the cancel.
  *
  * <p><strong>Windows:</strong> {@link Process#destroy} is <em>not</em> SIGTERM. On the HotSpot
  * Windows implementation it typically maps to an immediate terminate (similar to
@@ -63,6 +75,12 @@ public final class JobWorkers {
     private static final Set<Long> TOMBSTONES = ConcurrentHashMap.newKeySet();
 
     private static final int MAX_TOMBSTONES = 4_096;
+
+    /**
+     * How long a force-kill waits for the process to actually be gone. Paid only on the kill path,
+     * which is already the exceptional one; a killed JVM is normally gone in well under a second.
+     */
+    private static final long KILL_SETTLE_MS = 5_000;
 
     static {
         // SessionContext's static init uses bind() (displaces); force it to land before our add().
@@ -161,7 +179,7 @@ public final class JobWorkers {
         if (id == null) return;
         if (TOMBSTONES.contains(id)) {
             // Request already shut down — kill on arrival instead of resurrecting the entry.
-            signalTree(process, true);
+            forceKillAndAwait(process);
             return;
         }
         BY_REQUEST.computeIfAbsent(id, k -> ConcurrentHashMap.newKeySet()).add(process);
@@ -169,10 +187,10 @@ public final class JobWorkers {
         // (or entry) may be orphaned. Kill directly — signalTree is idempotent, so racing the
         // shutdown's own kill loop is harmless.
         if (TOMBSTONES.contains(id)) {
-            signalTree(process, true);
+            forceKillAndAwait(process);
             Set<Process> orphan = BY_REQUEST.remove(id);
             if (orphan != null) {
-                for (Process p : orphan) signalTree(p, true);
+                for (Process p : orphan) forceKillAndAwait(p);
             }
         }
     }
@@ -235,12 +253,16 @@ public final class JobWorkers {
         if (set == null || set.isEmpty()) return 0;
         int aliveAtStart = 0;
         boolean soft = graceMs > 0;
+        // Snapshot each tree before signalling: after the root dies its descendants() is empty, and
+        // phase 3 still has to outlast the grandchildren.
+        Map<Process, List<ProcessHandle>> trees = new HashMap<>();
         // Phase 1: signal everyone first (simultaneous for practical purposes), including
         // grandchildren (native-image under a plugin JVM, etc.).
         for (Process p : set) {
             try {
                 if (p.isAlive()) {
                     aliveAtStart++;
+                    trees.put(p, descendantsOf(p));
                     signalTree(p, !soft);
                 }
             } catch (RuntimeException ignored) {
@@ -267,6 +289,9 @@ public final class JobWorkers {
                 }
             }
         }
+        // Phase 3: one shared wait for the whole set, so "shut down" means gone rather than
+        // told to go. Shared, not per process, for the same reason the grace above is.
+        if (aliveAtStart > 0) awaitGone(set, trees, KILL_SETTLE_MS);
         return aliveAtStart;
     }
 
@@ -296,7 +321,64 @@ public final class JobWorkers {
      */
     public static void destroyTree(Process process) {
         if (process == null) return;
+        forceKillAndAwait(process);
+    }
+
+    /**
+     * Force-kill one tree and do not return until it is gone (or the budget runs out).
+     *
+     * <p>Every force-kill outside the batched cancel path goes through here. Returning while the
+     * corpse still holds its handles is what makes a kill look successful and a later delete fail.
+     */
+    private static void forceKillAndAwait(Process process) {
+        // Snapshot first: once the root is gone its descendants() is empty, and the grandchildren
+        // still to outlast have been reparented away from us.
+        List<ProcessHandle> tree = descendantsOf(process);
         signalTree(process, true);
+        awaitGone(List.of(process), Map.of(process, tree), KILL_SETTLE_MS);
+    }
+
+    private static List<ProcessHandle> descendantsOf(Process p) {
+        try {
+            return p.descendants().toList();
+        } catch (RuntimeException e) {
+            return List.of();
+        }
+    }
+
+    /**
+     * Wait for force-killed processes to be gone, not merely told to go.
+     *
+     * <p>{@code destroyForcibly} starts the kill and returns — {@code TerminateProcess} on Windows,
+     * {@code SIGKILL} on POSIX. Until termination completes the process still holds every handle it
+     * had, its working directory among them, and Windows refuses to delete a directory any live
+     * handle covers. So a caller that force-kills a worker and then removes the tree that worker was
+     * building finds it undeletable for as long as the corpse takes to finish. How long that is
+     * depends on machine load, which is why it presents as an intermittent failure somewhere else
+     * rather than as a kill that did not work.
+     *
+     * <p>Bounded, and bounded is not the same as hanging: a process that will not die inside the
+     * budget is left to the OS and the caller carries on.
+     */
+    private static void awaitGone(
+            Collection<Process> processes, Map<Process, List<ProcessHandle>> trees, long budgetMs) {
+        List<CompletableFuture<?>> exits = new ArrayList<>();
+        for (Process p : processes) {
+            try {
+                exits.add(p.onExit());
+                for (ProcessHandle h : trees.getOrDefault(p, List.of())) exits.add(h.onExit());
+            } catch (RuntimeException ignored) {
+                // A handle we may not observe: nothing to wait on, and not worth failing a kill for.
+            }
+        }
+        if (exits.isEmpty()) return;
+        try {
+            CompletableFuture.allOf(exits.toArray(CompletableFuture[]::new)).get(budgetMs, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (ExecutionException | TimeoutException | RuntimeException ignored) {
+            // Best-effort: the budget is a bound on our patience, not a promise about the OS.
+        }
     }
 
     /** SIGTERM (or SIGKILL when {@code force}) the process and every live descendant. */
