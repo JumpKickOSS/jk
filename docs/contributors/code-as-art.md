@@ -962,6 +962,7 @@ letter — is the Gradle-side follow-up recorded in `guard-parity.txt`.
 | G92 | `json-concat` (jk-guards.toml, `text`) | a JSON object line built by string concatenation — a literal opening `{"` or a `+ ",\"field\"` fragment — in main code; measured here, held by G93 | text, `**/src/main/java`, comments blanked; measured only (the owner is the tree) | `json-concat` (text) |
 | G93 | `json-concat-ratchet` (jk-guards.toml, `metric`) | a file's count of hand-built JSON fragments growing past its baseline — the count only falls, until the pattern is a ban | metric, `matches:json-concat` per file, baselined and tightened on every build | `json-concat-ratchet` (metric) |
 | G94 | `schema-compared-to-its-constant` (jk-guards.toml, `text`) | a schema field compared to an integer literal (`schema >= 3`) instead of to its `SCHEMA` constant — G85 pins the constant and nothing pinned the comparisons, so a rolled-back schema left three unsatisfiable tests behind | text, no match tree-wide | `schema-compared-to-its-constant` (text) |
+| G95 | `git-writes-are-pinned` (jk-guards.toml, `text`) | a git write reached through `-C <dir>` instead of `--git-dir` — the write searches upward and lands in whatever repository encloses the path, which twice was a developer's own checkout left shallow with work discarded | text, no match tree-wide | `git-writes-are-pinned` (text) |
 <!-- guards:end -->
 
 `checkCliRuntimeClasspath` and `checkCliNoParseTypes` predate the letters.
@@ -1005,6 +1006,7 @@ by id, kind and why. This block is a `generated` guard's rendering
 | cli-runtime-modules | layers | a CLI edge to an engine-side module puts engine code in the native image |
 | clock-owner | forbid | a wall-clock read the caller cannot move is a test that has to sleep, and a sleep asserts a duration instead of a condition |
 | file-size | metric | a file that no longer fits a context window no longer fits a reviewer |
+| git-writes-are-pinned | text | a write that searches upward mutates whichever repository encloses the path, not the one meant |
 | guard-kinds-doc | generated | a kind the docs describe and the loader does not know is a rule nobody can write |
 | guard-registry-doc | generated | the registry drifted twice by hand; the third reconciliation is not by hand |
 | guard-rules-registered | parity | a rule no letter claims, or a letter whose rule is gone, is the registry lagging the code |

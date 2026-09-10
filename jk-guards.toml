@@ -921,6 +921,26 @@ miss    = "int CURRENT_VERSION = 2;"
 instead = "keep version 1 until 1.0"
 why     = "a bump before 1.0 mints a dual reader with no users"
 
+# G95. A git write names the repository it writes to. `git -C <dir>` does not mean "operate on the
+# repository at <dir>"; it means "chdir there, then search upward", so a write whose directory has
+# stopped being a repository root retargets itself at whatever repository encloses it. Twice that was
+# a developer's own checkout: `fetch --depth 1` made it shallow and `reset --hard` discarded the
+# working copy. A check cannot fix it — the check and the call are not atomic — so the shape is the
+# rule. Reads are deliberately not covered: `rev-parse HEAD` on a monorepo member has to walk up,
+# because the member has no `.git` of its own and the repository's commit is the answer. Anchored on
+# the `"git"` argument because `-C` is also jk's own change-directory flag and `clean` is also a
+# Maven goal — unanchored, this matched `jk mvn -C <dir> … clean`. Main sources only: a test that
+# runs `git -C` inside a directory it just created owns that directory.
+[guards.git-writes-are-pinned]
+kind      = "text"
+files     = ["**/src/main/java/**/*.java"]
+pattern   = "\"git\"[^;]{0,60}\"-C\"[^;]{0,240}\"(?:fetch|reset|checkout|clean|push|merge|rebase|switch|restore)\""
+count     = { max = 0, per = "tree" }
+hit       = "List.of(\"git\", \"-C\", dest.toString(), \"reset\", \"--hard\", \"FETCH_HEAD\")"
+miss      = "List.of(\"git\", \"--git-dir=\" + gitDir, \"reset\", \"--hard\", \"FETCH_HEAD\")"
+instead   = "name the repository: --git-dir=<dir>/.git --work-tree=<dir>"
+why       = "a write that searches upward mutates whichever repository encloses the path, not the one meant"
+
 # G94. A schema is compared to its constant, never to a number. G85 pins the constant and nothing
 # pinned the comparisons: Calibration.SCHEMA rolled 3 -> 1 to satisfy G85 and three `schema >= 3` /
 # `schema() < 3` tests were left behind, each unsatisfiable, so an "already calibrated, skip it"

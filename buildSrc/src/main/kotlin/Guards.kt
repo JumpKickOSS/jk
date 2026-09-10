@@ -950,6 +950,18 @@ object Guards {
                 ruleId = "json-concat-ratchet",
             ),
             spec(
+                95,
+                "git-writes-are-pinned",
+                "a git write reached through `-C <dir>` instead of `--git-dir` — the write searches upward and lands in whatever repository encloses the path, which twice was a developer's own checkout left shallow with work discarded",
+                "text, no match tree-wide",
+                GuardHome.SELF_HOSTED,
+                tableTask = "`git-writes-are-pinned` (jk-guards.toml, `text`)",
+                inFastGate = false,
+                gradleLetter = false,
+                attach = emptySet(),
+                ruleId = "git-writes-are-pinned",
+            ),
+            spec(
                 94,
                 "schema-compared-to-its-constant",
                 "a schema field compared to an integer literal (`schema >= 3`) instead of to its `SCHEMA` constant — G85 pins the constant and nothing pinned the comparisons, so a rolled-back schema left three unsatisfiable tests behind",
