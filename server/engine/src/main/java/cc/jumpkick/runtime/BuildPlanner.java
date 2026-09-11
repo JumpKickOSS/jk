@@ -382,6 +382,7 @@ public final class BuildPlanner {
             AtomicReference<@Nullable List<Path>> kotlinMainSrcRef,
             AtomicReference<@Nullable List<Path>> groovyMainSrcRef,
             AtomicReference<@Nullable List<String>> buildLogicInputTokensRef,
+            BuildLogicScope buildLogicScope,
             Path javaMainSrcDir,
             boolean compact,
             boolean mixed,

@@ -260,6 +260,7 @@ final class CorePlan {
                 kotlinMainSrcRef,
                 groovyMainSrcRef,
                 buildLogicInputTokensRef,
+                BuildLogicScope.of(in.dir()),
                 javaMainSrcDir,
                 compact,
                 mixed,

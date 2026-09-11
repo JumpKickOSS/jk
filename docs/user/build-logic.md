@@ -137,8 +137,12 @@ the build graph — the root becomes a unit that depends on all its members — 
 nothing records a verdict) and the other *budget*. Tree-scan checks that are not house
 rules — a release-notes lint, a generated-file freshness probe — belong here so the inner
 loop does not pay them; house rules themselves are `jk-guards.toml`, not a script
-(`jk guard explain` walks them). A standalone project root may use `guard` too; a workspace
-**member** may not.
+(`jk guard explain` walks them). A standalone project root is the invocation root and the
+module at once, so it carries the module stems (`before-compile`, `after-compile`,
+`after-resources`, `before-package`) and `guard` side by side, and `jk build`, `jk guard`
+and `jk test --guard` all accept that same set. `after-build` stays a sourceless workspace
+root's stem — a standalone project has no members to be after. A workspace **member** may
+not use `guard`.
 
 `--scripts-only` runs the guard stem without JUnit (legal with or without `--guard`).
 `--no-scripts` runs `--guard` tests without the extra scripts. Combining the two flags is
@@ -151,8 +155,8 @@ The two sets do not mix, in either direction, and using the wrong one **fails th
 rather than being skipped:
 
 - A module stem (`before-compile`, `after-compile`, `after-resources`, `before-package`)
-  at the root is an error. A root compiles and packages nothing, so there is no cut for
-  them to be relative to.
+  at a sourceless workspace root is an error. Such a root compiles and packages nothing, so
+  there is no cut for them to be relative to.
 - `after-build` or `guard` inside a module is an error. A module has no "after every
   member" moment.
 

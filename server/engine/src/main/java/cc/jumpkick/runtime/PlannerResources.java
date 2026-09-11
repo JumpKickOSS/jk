@@ -115,6 +115,7 @@ public final class PlannerResources {
                                 actionCache,
                                 classes,
                                 BuildLogicAnchor.AFTER_RESOURCES,
+                                cx.buildLogicScope(),
                                 ctx::label,
                                 ctx::output,
                                 buildLogicInputTokensRef);
@@ -193,6 +194,7 @@ public final class PlannerResources {
                                 actionCache,
                                 classes,
                                 BuildLogicAnchor.BEFORE_COMPILE,
+                                cx.buildLogicScope(),
                                 ctx::label,
                                 ctx::output,
                                 buildLogicInputTokensRef);
@@ -230,6 +232,7 @@ public final class PlannerResources {
                                 actionCache,
                                 classes,
                                 BuildLogicAnchor.AFTER_COMPILE,
+                                cx.buildLogicScope(),
                                 ctx::label,
                                 ctx::output,
                                 buildLogicInputTokensRef);
@@ -266,6 +269,7 @@ public final class PlannerResources {
                                 actionCache,
                                 classes,
                                 BuildLogicAnchor.BEFORE_PACKAGE,
+                                cx.buildLogicScope(),
                                 ctx::label,
                                 ctx::output,
                                 buildLogicInputTokensRef);
@@ -309,6 +313,7 @@ public final class PlannerResources {
                                 actionCache,
                                 /* classesDir */ null,
                                 BuildLogicAnchor.AFTER_BUILD,
+                                cx.buildLogicScope(),
                                 ctx::label,
                                 ctx::output,
                                 buildLogicInputTokensRef);
@@ -347,6 +352,7 @@ public final class PlannerResources {
                                 actionCache,
                                 /* classesDir */ null,
                                 BuildLogicAnchor.GUARD,
+                                cx.buildLogicScope(),
                                 ctx::label,
                                 ctx::output,
                                 buildLogicInputTokensRef);

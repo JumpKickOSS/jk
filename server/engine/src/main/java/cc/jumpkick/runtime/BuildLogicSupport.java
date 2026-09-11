@@ -4,7 +4,6 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.config.BuildLogicToml;
 import cc.jumpkick.config.BuildLogicToml.Logic;
 import cc.jumpkick.config.SessionContext;
-import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
@@ -51,8 +50,9 @@ public final class BuildLogicSupport {
     private BuildLogicSupport() {}
 
     /**
-     * As {@link #run(Path, BuildLayout, ActionCache, Path, BuildLogicAnchor, Consumer,
-     * AtomicReference)}, with no cross-anchor token cache.
+     * As {@link #run(Path, BuildLayout, ActionCache, Path, BuildLogicAnchor, BuildLogicScope,
+     * Consumer, Consumer, AtomicReference)}, classifying the directory here, with no output sink
+     * and no cross-anchor token cache.
      */
     public static boolean run(
             Path projectDir,
@@ -62,7 +62,16 @@ public final class BuildLogicSupport {
             BuildLogicAnchor anchor,
             Consumer<String> label)
             throws IOException, InterruptedException {
-        return run(projectDir, layout, actionCache, classesDir, anchor, label, new AtomicReference<>());
+        return run(
+                projectDir,
+                layout,
+                actionCache,
+                classesDir,
+                anchor,
+                BuildLogicScope.of(projectDir),
+                label,
+                line -> {},
+                new AtomicReference<>());
     }
 
     /**
@@ -82,41 +91,17 @@ public final class BuildLogicSupport {
     }
 
     /**
-     * Reject a script whose anchor does not belong to the scope it was found in.
+     * Reject a script whose anchor the directory's {@link BuildLogicScope} does not accept.
      *
      * <p>A module has a compile to be before and a jar to be after; a workspace root has neither,
      * and a module has no "after every member" moment. Silently skipping the wrong stem is the one
      * behaviour worth ruling out — a script that does not run and does not complain is
-     * indistinguishable from one that passed.
+     * indistinguishable from one that passed. Every anchor's pass applies the same scope, so a
+     * stem the build accepted is never refused by the guard.
      */
-    static void rejectMisplacedStems(List<BuildLogicScripts.ScriptTask> scripts, boolean workspaceRoot, Path logicDir) {
-        rejectMisplacedStems(scripts, workspaceRoot, logicDir, logicDir.getParent());
-    }
-
-    static void rejectMisplacedStems(
-            List<BuildLogicScripts.ScriptTask> scripts,
-            boolean workspaceRoot,
-            Path logicDir,
-            @Nullable Path projectDir) {
-        boolean member =
-                projectDir != null && WorkspaceScan.findRoot(projectDir).isPresent();
+    static void rejectMisplacedStems(List<BuildLogicScripts.ScriptTask> scripts, BuildLogicScope scope, Path logicDir) {
         for (BuildLogicScripts.ScriptTask s : scripts) {
-            if (s.anchor() == BuildLogicAnchor.GUARD) {
-                if (!member) continue;
-                throw misplaced(
-                        logicDir,
-                        s,
-                        "a module",
-                        "before-compile / after-compile / after-resources / before-package —"
-                                + " after-build and gate are the invocation root's anchors");
-            }
-            if (s.anchor().workspaceScoped() == workspaceRoot) continue;
-            String where = workspaceRoot ? "a workspace root" : "a module";
-            String use = workspaceRoot
-                    ? "after-build or gate — the root has no compile or package step for the others to cut against"
-                    : "before-compile / after-compile / after-resources / before-package —"
-                            + " after-build and gate are the invocation root's anchors";
-            throw misplaced(logicDir, s, where, use);
+            if (!scope.accepts(s.anchor())) throw misplaced(logicDir, s, scope.where(), scope.use());
         }
     }
 
@@ -164,27 +149,16 @@ public final class BuildLogicSupport {
      * into {@code classesDir}. Returns whether any logic is configured for this project (even if
      * this anchor has zero tasks).
      *
+     * <p>{@code scope} is what the directory is to build logic, classified once per build by the
+     * planner and applied on every anchor's pass, so the stems the build accepts and the stems the
+     * guard accepts are the same set.
+     *
      * <p>{@code inputTokensRef} caches {@link #projectInputTokens} across the (up to four) anchor
      * calls one module's build makes: computed once by whichever anchor needs it first, reused by
      * the rest. Caller owns the reference's lifetime — one per module per build, never reused
      * across builds.
-     */
-    public static boolean run(
-            Path projectDir,
-            BuildLayout layout,
-            ActionCache actionCache,
-            @Nullable Path classesDir,
-            BuildLogicAnchor anchor,
-            Consumer<String> label,
-            AtomicReference<@Nullable List<String>> inputTokensRef)
-            throws IOException, InterruptedException {
-        return run(projectDir, layout, actionCache, classesDir, anchor, label, line -> {}, inputTokensRef);
-    }
-
-    /**
-     * As above with an {@code output} sink for whatever the scripts print.
      *
-     * <p>Separate parameter rather than folded into {@code label}: a label is a one-line status the
+     * <p>{@code output} is a separate sink from {@code label}: a label is a one-line status the
      * live view replaces in place, and script output is a transcript that belongs above the region
      * with the compilers' and native-image's — buffered for the Ctrl-O peek ring, printed under
      * {@code -v}. Passing one for the other either overwrites a status with a log or buries a log
@@ -196,6 +170,7 @@ public final class BuildLogicSupport {
             ActionCache actionCache,
             @Nullable Path classesDir,
             BuildLogicAnchor anchor,
+            BuildLogicScope scope,
             Consumer<String> label,
             Consumer<String> output,
             AtomicReference<@Nullable List<String>> inputTokensRef)
@@ -205,7 +180,7 @@ public final class BuildLogicSupport {
         Logic c = cfg.get();
         rejectCompiledSources(c.dir());
         List<BuildLogicScripts.ScriptTask> scripts = BuildLogicScripts.discover(c.dir());
-        rejectMisplacedStems(scripts, anchor.workspaceScoped(), c.dir(), projectDir);
+        rejectMisplacedStems(scripts, scope, c.dir());
         if (scripts.isEmpty()) {
             if (anchor == BuildLogicAnchor.AFTER_RESOURCES
                     || anchor == BuildLogicAnchor.AFTER_BUILD

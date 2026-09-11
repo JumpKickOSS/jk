@@ -31,8 +31,9 @@ import java.util.Optional;
  * </pre>
  *
  * <p>The first four are module anchors and the last two are root-scoped; neither set is legal in
- * the other's scope. {@code guard} is also legal on a standalone project. {@link BuildLogicSupport}
- * enforces that, because only it knows which one it is looking at.
+ * the other's scope, and a standalone project — root and module at once — carries the module
+ * stems and {@code guard}. {@link BuildLogicScope} classifies the directory and
+ * {@link BuildLogicSupport} enforces it on every anchor's pass.
  *
  * <p>Optional suffix for multiple scripts at one anchor: {@code before-compile-collections.groovy}
  * → task name {@code before-compile-collections}, same anchor. Underscores accepted as aliases

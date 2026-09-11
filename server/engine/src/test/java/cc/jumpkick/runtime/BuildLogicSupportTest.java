@@ -245,13 +245,14 @@ class BuildLogicSupportTest {
         Files.createDirectories(classes);
 
         int before = BuildLogicSupport.PROJECT_INPUT_TOKENS_CALLS_FOR_TESTS.get();
+        // One scope and one token cache for the build, as the planner carries them.
+        BuildLogicScope scope = BuildLogicScope.of(project);
         var sharedTokens = new AtomicReference<@Nullable List<String>>();
-        assertTrue(BuildLogicSupport.run(
-                project, layout, ac, classes, BuildLogicAnchor.BEFORE_COMPILE, s -> {}, sharedTokens));
-        assertTrue(BuildLogicSupport.run(
-                project, layout, ac, classes, BuildLogicAnchor.AFTER_COMPILE, s -> {}, sharedTokens));
-        assertTrue(BuildLogicSupport.run(
-                project, layout, ac, classes, BuildLogicAnchor.BEFORE_PACKAGE, s -> {}, sharedTokens));
+        for (BuildLogicAnchor anchor : List.of(
+                BuildLogicAnchor.BEFORE_COMPILE, BuildLogicAnchor.AFTER_COMPILE, BuildLogicAnchor.BEFORE_PACKAGE)) {
+            assertTrue(BuildLogicSupport.run(
+                    project, layout, ac, classes, anchor, scope, s -> {}, line -> {}, sharedTokens));
+        }
         int after = BuildLogicSupport.PROJECT_INPUT_TOKENS_CALLS_FOR_TESTS.get();
 
         assertEquals(
@@ -418,19 +419,35 @@ class BuildLogicSupportTest {
 
     @Test
     void the_root_stem_inside_a_module_is_rejected(@TempDir Path dir) throws Exception {
-        Path project = scaffold(dir);
-        Files.createDirectories(project.resolve(".jk"));
-        Files.writeString(project.resolve(".jk/after-build.groovy"), "// wrong scope\n");
+        Path root = dir.resolve("ws");
+        Path core = root.resolve("core");
+        Files.createDirectories(core.resolve(".jk"));
+        Files.createDirectories(core.resolve("src/main/java/demo"));
+        Files.writeString(root.resolve("jk.toml"), """
+                group = "t"
+                name = "ws"
+                version = "0.0.1"
+                jdk = 25
+
+                [workspace]
+                modules = ["core"]
+                """);
+        Files.writeString(core.resolve("jk.toml"), """
+                name = "core"
+                version = "0.0.1"
+                """);
+        Files.writeString(core.resolve("src/main/java/demo/A.java"), "package demo; class A {}\n");
+        Files.writeString(core.resolve(".jk/after-build.groovy"), "// wrong scope\n");
 
         ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
-        BuildLayout layout = BuildLayout.of(project, JkBuildParser.parse(project.resolve("jk.toml")));
+        BuildLayout layout = BuildLayout.of(core, JkBuildParser.parse(core.resolve("jk.toml")));
         Path classes = layout.classesDir();
         Files.createDirectories(classes);
 
         IllegalStateException ex = assertThrows(
                 IllegalStateException.class,
-                () -> BuildLogicSupport.run(project, layout, ac, classes, BuildLogicAnchor.AFTER_RESOURCES, s -> {}));
-        assertThat(ex.getMessage()).contains("after-build.groovy");
+                () -> BuildLogicSupport.run(core, layout, ac, classes, BuildLogicAnchor.AFTER_RESOURCES, s -> {}));
+        assertThat(ex.getMessage()).contains("after-build.groovy is not a valid stem for a module");
         assertThat(ex.getMessage()).contains("before-compile");
     }
 
@@ -633,6 +650,80 @@ class BuildLogicSupportTest {
         assertEquals(1, Files.readString(ran).length());
         assertTrue(BuildLogicSupport.run(project, layout, ac, null, BuildLogicAnchor.GUARD, s -> {}));
         assertEquals(1, Files.readString(ran).length(), "unchanged tree caches the gate verdict");
+    }
+
+    /**
+     * A standalone project is the invocation root and the module at once, so the stem the build
+     * ran at {@code after-resources} is still a valid stem when the guard's anchor looks at the
+     * same directory.
+     */
+    @Test
+    void a_standalone_root_keeps_its_module_stems_through_the_guard_anchor(@TempDir Path dir) throws Exception {
+        Path project = scaffold(dir);
+        Files.createDirectories(project.resolve(".jk"));
+        writeStampGroovy(project.resolve(".jk/after-resources.groovy"));
+
+        ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
+        BuildLayout layout = BuildLayout.of(project, JkBuildParser.parse(project.resolve("jk.toml")));
+        Path classes = layout.classesDir();
+        Files.createDirectories(classes);
+
+        assertTrue(BuildLogicSupport.run(project, layout, ac, classes, BuildLogicAnchor.AFTER_RESOURCES, s -> {}));
+        assertEquals("ok", Files.readString(classes.resolve("stamp.txt")).trim());
+
+        StringBuilder labels = new StringBuilder();
+        assertTrue(BuildLogicSupport.run(project, layout, ac, null, BuildLogicAnchor.GUARD, s -> labels.append(s)
+                .append(';')));
+        assertThat(labels.toString()).as("no guard tasks, no refusal").isEmpty();
+    }
+
+    @Test
+    void a_module_stem_at_a_workspace_root_is_refused_on_the_guard_anchor_too(@TempDir Path dir) throws Exception {
+        Path root = dir.resolve("ws");
+        Files.createDirectories(root.resolve(".jk"));
+        Files.writeString(root.resolve("jk.toml"), """
+                group = "t"
+                name = "ws"
+                version = "0.0.1"
+                jdk = 25
+
+                [workspace]
+                modules = []
+                """);
+        writeStampGroovy(root.resolve(".jk/after-resources.groovy"));
+
+        ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
+        BuildLayout layout = BuildLayout.of(root, JkBuildParser.parse(root.resolve("jk.toml")));
+
+        IllegalStateException ex = assertThrows(
+                IllegalStateException.class,
+                () -> BuildLogicSupport.run(root, layout, ac, null, BuildLogicAnchor.GUARD, s -> {}));
+        assertThat(ex.getMessage())
+                .startsWith(
+                        "[build] .jk/after-resources.groovy is not a valid stem for a workspace root. Use after-build or gate");
+    }
+
+    /**
+     * {@code after-build} is the sourceless workspace root's anchor and a standalone plan never
+     * reaches it, so accepting the stem would be the silent skip the check exists to rule out.
+     */
+    @Test
+    void after_build_on_a_standalone_is_refused_rather_than_silently_skipped(@TempDir Path dir) throws Exception {
+        Path project = scaffold(dir);
+        Files.createDirectories(project.resolve(".jk"));
+        Files.writeString(project.resolve(".jk/after-build.groovy"), "// nothing runs this here\n");
+
+        ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
+        BuildLayout layout = BuildLayout.of(project, JkBuildParser.parse(project.resolve("jk.toml")));
+        Path classes = layout.classesDir();
+        Files.createDirectories(classes);
+
+        IllegalStateException ex = assertThrows(
+                IllegalStateException.class,
+                () -> BuildLogicSupport.run(project, layout, ac, classes, BuildLogicAnchor.AFTER_RESOURCES, s -> {}));
+        assertThat(ex.getMessage())
+                .contains("after-build.groovy is not a valid stem for a standalone project")
+                .contains("guard");
     }
 
     @Test
