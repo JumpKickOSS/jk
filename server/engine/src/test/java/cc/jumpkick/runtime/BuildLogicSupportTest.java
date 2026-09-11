@@ -17,12 +17,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.BuildLogicToml;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.runtime.base.BuildLogicAnchor;
 import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.task.ActionKey;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.Nullable;
@@ -244,7 +248,7 @@ class BuildLogicSupportTest {
         Path classes = layout.classesDir();
         Files.createDirectories(classes);
 
-        int before = BuildLogicSupport.PROJECT_INPUT_TOKENS_CALLS_FOR_TESTS.get();
+        int before = BuildLogicSupport.SCOPE_WALKS_FOR_TESTS.get();
         // One scope and one token cache for the build, as the planner carries them.
         BuildLogicScope scope = BuildLogicScope.of(project);
         var sharedTokens = new AtomicReference<@Nullable List<String>>();
@@ -253,13 +257,120 @@ class BuildLogicSupportTest {
             assertTrue(BuildLogicSupport.run(
                     project, layout, ac, classes, anchor, scope, s -> {}, line -> {}, sharedTokens));
         }
-        int after = BuildLogicSupport.PROJECT_INPUT_TOKENS_CALLS_FOR_TESTS.get();
+        int after = BuildLogicSupport.SCOPE_WALKS_FOR_TESTS.get();
 
         assertEquals(
                 1, after - before, "three anchors sharing one reference must hash the project once, not three times");
         assertTrue(Files.isRegularFile(generated(layout, "before-compile", "before-compile.txt")));
         assertTrue(Files.isRegularFile(classes.resolve("after-compile.txt")));
         assertTrue(Files.isRegularFile(classes.resolve("before-package.txt")));
+    }
+
+    /**
+     * An `always` script has no key to look up and none to store, so the scope it could read is
+     * never hashed for it. A root whose only script is `always` used to pay the whole-checkout walk
+     * on every build for a key nothing consulted.
+     */
+    @Test
+    void an_anchor_whose_scripts_are_all_always_never_walks_the_scope(@TempDir Path dir) throws Exception {
+        Path root = workspace(dir);
+        Path ran = dir.resolve("root-ran.log");
+        Files.writeString(
+                root.resolve(".jk/after-build.groovy"),
+                "// jk: always\nnew File('" + ran.toString().replace("\\", "\\\\") + "').append('x')\n");
+
+        ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
+        BuildLayout layout = BuildLayout.of(root, JkBuildParser.parse(root.resolve("jk.toml")));
+
+        int before = BuildLogicSupport.SCOPE_WALKS_FOR_TESTS.get();
+        for (int i = 0; i < 2; i++) {
+            assertTrue(BuildLogicSupport.run(root, layout, ac, null, BuildLogicAnchor.AFTER_BUILD, s -> {}));
+        }
+        assertEquals(0, BuildLogicSupport.SCOPE_WALKS_FOR_TESTS.get() - before, "no key to compute, no walk");
+        assertEquals(2, Files.readString(ran).length(), "and the script still ran on both builds");
+    }
+
+    /**
+     * A script that consults the cache is keyed exactly as before the walk went lazy: the logic
+     * dir, every script's bytes, the anchor, the scope's inputs, and the task's name and kind, at
+     * both scopes.
+     */
+    @Test
+    void a_cache_consulting_module_script_keys_on_the_module_as_before(@TempDir Path dir) throws Exception {
+        Path project = scaffold(dir);
+        Files.createDirectories(project.resolve(".jk"));
+        Path script = project.resolve(".jk/after-resources.groovy");
+        writeStampGroovy(script);
+
+        ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
+        BuildLayout layout = BuildLayout.of(project, JkBuildParser.parse(project.resolve("jk.toml")));
+        Path classes = Files.createDirectories(layout.classesDir());
+        assertTrue(BuildLogicSupport.run(project, layout, ac, classes, BuildLogicAnchor.AFTER_RESOURCES, s -> {}));
+
+        String expected = expectedKey(
+                project, script, BuildLogicAnchor.AFTER_RESOURCES, BuildLogicSupport.projectInputTokens(project));
+        assertTrue(ac.lookup(expected).isPresent(), "the record sits under today's key");
+    }
+
+    @Test
+    void a_cache_consulting_root_script_keys_on_the_workspace_as_before(@TempDir Path dir) throws Exception {
+        Path root = workspace(dir);
+        Path script = root.resolve(".jk/after-build.groovy");
+        Files.writeString(script, "outDir.resolve('verdict.txt').toFile().text = 'clean'\n");
+
+        ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
+        BuildLayout layout = BuildLayout.of(root, JkBuildParser.parse(root.resolve("jk.toml")));
+        assertTrue(BuildLogicSupport.run(root, layout, ac, null, BuildLogicAnchor.AFTER_BUILD, s -> {}));
+
+        String expected =
+                expectedKey(root, script, BuildLogicAnchor.AFTER_BUILD, BuildLogicSupport.workspaceInputTokens(root));
+        assertTrue(ac.lookup(expected).isPresent(), "the record sits under today's key");
+    }
+
+    /**
+     * Laziness must not turn one walk into several: an anchor with an `always` script beside a
+     * cached one walks for the cached one and once only, and a later anchor on the same build's
+     * reference reuses it.
+     */
+    @Test
+    void a_mixed_anchor_walks_the_scope_exactly_once(@TempDir Path dir) throws Exception {
+        Path project = scaffold(dir);
+        Files.createDirectories(project.resolve(".jk"));
+        writeStampGroovy(project.resolve(".jk/after-resources.groovy"));
+        Path ran = dir.resolve("sweep-ran.log");
+        Files.writeString(
+                project.resolve(".jk/after-resources-sweep.groovy"),
+                "// jk: always\nnew File('" + ran.toString().replace("\\", "\\\\") + "').append('x')\n");
+        Files.writeString(
+                project.resolve(".jk/before-package.groovy"),
+                "outDir.resolve('before-package.txt').toFile().text = 'p'\n");
+
+        ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
+        BuildLayout layout = BuildLayout.of(project, JkBuildParser.parse(project.resolve("jk.toml")));
+        Path classes = Files.createDirectories(layout.classesDir());
+        BuildLogicScope scope = BuildLogicScope.of(project);
+        var sharedTokens = new AtomicReference<@Nullable List<String>>();
+
+        int before = BuildLogicSupport.SCOPE_WALKS_FOR_TESTS.get();
+        StringBuilder labels = new StringBuilder();
+        for (BuildLogicAnchor anchor : List.of(BuildLogicAnchor.AFTER_RESOURCES, BuildLogicAnchor.BEFORE_PACKAGE)) {
+            assertTrue(BuildLogicSupport.run(
+                    project,
+                    layout,
+                    ac,
+                    classes,
+                    anchor,
+                    scope,
+                    s -> labels.append(s).append(';'),
+                    line -> {},
+                    sharedTokens));
+        }
+        assertEquals(1, BuildLogicSupport.SCOPE_WALKS_FOR_TESTS.get() - before, "one walk for the whole build");
+        assertEquals("ok", Files.readString(classes.resolve("stamp.txt")).trim());
+        assertEquals(
+                "p", Files.readString(classes.resolve("before-package.txt")).trim());
+        assertEquals(1, Files.readString(ran).length());
+        assertFalse(labels.toString().contains("cache hit"), labels.toString());
     }
 
     @Test
@@ -783,6 +894,45 @@ class BuildLogicSupportTest {
         int n = 0;
         for (int i = text.indexOf(needle); i >= 0; i = text.indexOf(needle, i + needle.length())) n++;
         return n;
+    }
+
+    /** The key {@code runAnchor} files a task's record under, derived from the same public pieces. */
+    private static String expectedKey(Path projectDir, Path script, BuildLogicAnchor anchor, List<String> inputTokens)
+            throws Exception {
+        String stem = script.getFileName().toString().replaceFirst("\\.groovy$", "");
+        List<String> tokens = new ArrayList<>();
+        tokens.add("dir:" + projectDir.relativize(script.getParent()));
+        tokens.add("script:" + script.getFileName() + ":" + Hashing.sha256Hex(Files.readAllBytes(script)));
+        tokens.add("anchor:" + anchor.name());
+        tokens.addAll(inputTokens);
+        tokens.add("task:" + stem);
+        tokens.add("kind:script");
+        return ActionKey.forArtifact(
+                ActionKey.qualifiedTaskId("build-logic-" + stem, projectDir), BuildIdentity.cacheKeyVersion(), tokens);
+    }
+
+    /** A sourceless workspace root with one member and an empty {@code .jk/}. */
+    private static Path workspace(Path dir) throws Exception {
+        Path root = dir.resolve("ws");
+        Files.createDirectories(root.resolve(".jk"));
+        Files.writeString(root.resolve("jk.toml"), """
+                group = "t"
+                name = "ws"
+                version = "0.0.1"
+                jdk = 25
+
+                [workspace]
+                modules = ["core"]
+                """);
+        Files.createDirectories(root.resolve("core/src/main/java/demo"));
+        Files.writeString(root.resolve("core/jk.toml"), """
+                group = "t"
+                name = "core"
+                version = "0.0.1"
+                jdk = 25
+                """);
+        Files.writeString(root.resolve("core/src/main/java/demo/A.java"), "package demo; class A {}\n");
+        return root;
     }
 
     private static Path scaffold(Path dir) throws Exception {

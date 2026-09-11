@@ -70,7 +70,9 @@ reads the changed file, and a script is never skipped on inputs it did read. Tha
 is the only cost of not declaring inputs, and computing the key is cheap — every hash is
 memoized on the file's size and mtime, so a warm engine pays one stat per file (tens of
 milliseconds for a few-thousand-file checkout, once per build across a module's anchors)
-and only reads a file that changed since it was last hashed.
+and only reads a file that changed since it was last hashed. The key is computed for the
+first script at an anchor that consults the cache, so an anchor whose scripts are all
+`jk: always` never walks its scope at all.
 
 **A script that must run every time says so.** A `//` comment line `jk: always` in the
 script's header (its first 40 lines) exempts it from both the verdict and the artifact

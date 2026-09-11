@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import static java.util.Objects.requireNonNull;
+
 import cc.jumpkick.config.BuildLogicToml;
 import cc.jumpkick.config.BuildLogicToml.Logic;
 import cc.jumpkick.config.SessionContext;
@@ -153,10 +155,10 @@ public final class BuildLogicSupport {
      * planner and applied on every anchor's pass, so the stems the build accepts and the stems the
      * guard accepts are the same set.
      *
-     * <p>{@code inputTokensRef} caches {@link #projectInputTokens} across the (up to four) anchor
-     * calls one module's build makes: computed once by whichever anchor needs it first, reused by
-     * the rest. Caller owns the reference's lifetime — one per module per build, never reused
-     * across builds.
+     * <p>{@code inputTokensRef} caches the scope's input tokens across the (up to four) anchor
+     * calls one module's build makes: walked once by the first task that consults the cache,
+     * reused by the rest, and never walked at all when every task runs unconditionally. Caller
+     * owns the reference's lifetime — one per module per build, never reused across builds.
      *
      * <p>{@code output} is a separate sink from {@code label}: a label is a one-line status the
      * live view replaces in place, and script output is a transcript that belongs above the region
@@ -231,17 +233,10 @@ public final class BuildLogicSupport {
         }
         sourceTokens.add("anchor:" + anchor.name());
 
-        List<String> inputTokens = inputTokensRef.get();
-        if (inputTokens == null) {
-            // The key must cover everything the script can read, and the two scopes read different
-            // things: a module script sees its own module, a root script sees the whole workspace.
-            // Keying a workspace-wide check on one directory's inputs would replay a stale verdict
-            // the moment any other module changed.
-            inputTokens = anchor.workspaceScoped() ? workspaceInputTokens(projectDir) : projectInputTokens(projectDir);
-            inputTokensRef.compareAndSet(null, inputTokens);
-            inputTokens = inputTokensRef.get();
-        }
-        sourceTokens.addAll(inputTokens);
+        // A forced session re-runs every cached task but still records the result, so it needs
+        // the key; only an `always` task has no use for one at all.
+        boolean sessionBypassesLookup = SessionContext.current().config().forceOr(false)
+                || SessionContext.current().config().rebuildOr(false);
 
         // BEFORE_COMPILE is codegen: its output joins the compile source set (like KSP), it is
         // never merged into classes/. Merging there compiled nothing — a generated .java was
@@ -258,17 +253,21 @@ public final class BuildLogicSupport {
                     : layout.generatedSourcesDir("jk-logic-out-" + simple);
             Files.createDirectories(outDir);
             String taskId = ActionKey.qualifiedTaskId("build-logic-" + simple, projectDir);
-            List<String> tokens = new ArrayList<>(sourceTokens);
-            tokens.add("task:" + simple);
-            tokens.add("kind:" + task.kind());
-            String key = ActionKey.forArtifact(taskId, BuildIdentity.cacheKeyVersion(), tokens);
 
             // An `always` script judges state the key cannot see (build output it reclaims), so a
-            // hit on the same sources says nothing about what it would do now.
-            boolean useCache = !task.always()
-                    && !SessionContext.current().config().forceOr(false)
-                    && !SessionContext.current().config().rebuildOr(false);
-            Optional<ActionCache.ActionRecord> hit = useCache ? actionCache.lookup(key) : Optional.empty();
+            // hit on the same sources says nothing about what it would do now: nothing is looked up
+            // and nothing is stored, and no key is computed. That is what keeps the scope walk off
+            // an anchor whose scripts all run unconditionally.
+            @Nullable String key = null;
+            if (!task.always()) {
+                List<String> tokens = new ArrayList<>(sourceTokens);
+                tokens.addAll(scopeInputTokens(projectDir, anchor, inputTokensRef));
+                tokens.add("task:" + simple);
+                tokens.add("kind:" + task.kind());
+                key = ActionKey.forArtifact(taskId, BuildIdentity.cacheKeyVersion(), tokens);
+            }
+            Optional<ActionCache.ActionRecord> hit =
+                    key != null && !sessionBypassesLookup ? actionCache.lookup(key) : Optional.empty();
             if (hit.isPresent()) {
                 // A record with no outputs is a VERDICT, not a miss: the script ran on these exact
                 // inputs and produced nothing, which is the whole result of a check. Skipping it is
@@ -307,18 +306,37 @@ public final class BuildLogicSupport {
                 throw taskFailure(simple, e);
             }
             // Only a success is recorded: the throw above leaves this line unreached, so a failing
-            // script is re-run next build rather than replaying its own red.
-            Map<String, String> inputs = Map.of(TaskNames.BUILD_LOGIC, key);
-            if (task.always()) {
-                // Nothing to replay: the next build asks the question again.
-            } else if (isEmptyDir(outDir)) {
-                actionCache.storeVerdict(taskId, key, inputs);
-            } else {
-                actionCache.store(taskId, key, inputs, outDir);
+            // script is re-run next build rather than replaying its own red. An `always` task has
+            // no key and nothing to replay: the next build asks the question again.
+            if (key != null) {
+                Map<String, String> inputs = Map.of(TaskNames.BUILD_LOGIC, key);
+                if (isEmptyDir(outDir)) {
+                    actionCache.storeVerdict(taskId, key, inputs);
+                } else {
+                    actionCache.store(taskId, key, inputs, outDir);
+                }
             }
             if (mergesIntoClasses) mergeIntoClasses(outDir, classesDir);
         }
         return true;
+    }
+
+    /**
+     * The scope's input tokens for a task that consults the cache, walked on the first such task of
+     * the build and shared by every later one through {@code ref}, whichever anchor it runs at.
+     *
+     * <p>The key must cover everything the script can read, and the two scopes read different
+     * things: a module script sees its own module, a root script sees the whole workspace. Keying a
+     * workspace-wide check on one directory's inputs would replay a stale verdict the moment any
+     * other module changed.
+     */
+    private static List<String> scopeInputTokens(
+            Path projectDir, BuildLogicAnchor anchor, AtomicReference<@Nullable List<String>> ref) throws IOException {
+        List<String> tokens = ref.get();
+        if (tokens != null) return tokens;
+        tokens = anchor.workspaceScoped() ? workspaceInputTokens(projectDir) : projectInputTokens(projectDir);
+        ref.compareAndSet(null, tokens);
+        return requireNonNull(ref.get());
     }
 
     /** Run {@link BuildLogicAnchor#AFTER_RESOURCES} only. */
@@ -404,6 +422,9 @@ public final class BuildLogicSupport {
         }
     }
 
+    /** Scope walks taken, either scope; tests count them to prove an anchor walked once or not at all. */
+    static final AtomicInteger SCOPE_WALKS_FOR_TESTS = new AtomicInteger();
+
     /**
      * What a build-logic task can read through {@code projectDir}, as cache-key tokens: the
      * module's source roots plus {@code jk.toml}/{@code jk-lock.toml}. Conservative on purpose — a
@@ -413,10 +434,8 @@ public final class BuildLogicSupport {
      * read classes. Classes are a function of these sources, and hashing the classes tree would be
      * self-referential: post-compile anchors merge their own output into it.
      */
-    static final AtomicInteger PROJECT_INPUT_TOKENS_CALLS_FOR_TESTS = new AtomicInteger();
-
-    private static List<String> projectInputTokens(Path projectDir) throws IOException {
-        PROJECT_INPUT_TOKENS_CALLS_FOR_TESTS.incrementAndGet();
+    static List<String> projectInputTokens(Path projectDir) throws IOException {
+        SCOPE_WALKS_FOR_TESTS.incrementAndGet();
         List<String> tokens = new ArrayList<>();
         LinkedHashSet<Path> dirs = new LinkedHashSet<>(ModuleLayout.fingerprintDirs(projectDir, /* skipTests */ false));
         for (var root : ModuleLayoutPlugins.pluginContributedRoots(projectDir)) {
@@ -453,6 +472,7 @@ public final class BuildLogicSupport {
      * per file rather than a re-read.
      */
     static List<String> workspaceInputTokens(Path rootDir) throws IOException {
+        SCOPE_WALKS_FOR_TESTS.incrementAndGet();
         Path root = rootDir.toAbsolutePath().normalize();
         List<String> tokens = new ArrayList<>();
         PathUtil.forEachRegularFile(root, WalkSkip::workspaceKey, (file, attrs) -> {
