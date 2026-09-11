@@ -198,18 +198,7 @@ public final class TestCommand implements CliCommand {
             return finishSession(showAffected(dir));
         }
 
-        if (debugJvm != null) {
-            // Settled once, here, so every JVM this run forks is told the same address that was
-            // announced — the workspace and single-project paths both read it off the session.
-            try {
-                this.debugJvm = DebugAttach.bind(debugJvm);
-            } catch (IOException e) {
-                CommandWedge.printFail("Test", "--debug-jvm: " + e.getMessage());
-                return finishSession(Exit.CONFIG);
-            }
-            SessionContext.install(SessionContext.current().withDebugJvm(debugJvm));
-            DebugAttach.announce(debugJvm);
-        }
+        if (!armDebugger()) return finishSession(Exit.CONFIG);
 
         var info = ProjectInfos.orNull(dir);
         CwdModuleScope.Resolved cwdScope = CwdModuleScope.resolve(dir, modulesSpec, info);
@@ -557,6 +546,24 @@ public final class TestCommand implements CliCommand {
 
     static String testFailureMessage(TestSummary testResult, BuildPlanResult result) {
         return (testResult != null && !testResult.allPassed()) ? "Tests failed" : "Build failed";
+    }
+
+    /**
+     * Settle and announce the {@code --debug-jvm} listener once, so every JVM this run forks is
+     * told the address that was announced — the workspace and single-project paths both read it
+     * off the session. False when the port could not be settled (already printed).
+     */
+    private boolean armDebugger() {
+        if (debugJvm == null) return true;
+        try {
+            this.debugJvm = DebugAttach.bind(debugJvm);
+        } catch (IOException e) {
+            CommandWedge.printFail("Test", "--debug-jvm: " + e.getMessage());
+            return false;
+        }
+        SessionContext.install(SessionContext.current().withDebugJvm(debugJvm));
+        DebugAttach.announce(debugJvm);
+        return true;
     }
 
     /** {@code --guard} is one option identity. */
