@@ -181,7 +181,8 @@ public final class AotCachePackage {
      * {@code -Xlog:aot} is the only place the refusal is visible; at default log level a rejected
      * cache is indistinguishable from a working one.
      */
-    private static String verifyLoads(String java, Path outDir, String runFlag, String appJarName, boolean springBoot)
+    private static @Nullable String verifyLoads(
+            String java, Path outDir, String runFlag, String appJarName, boolean springBoot)
             throws IOException, InterruptedException {
         List<String> command = new ArrayList<>();
         command.add(java);

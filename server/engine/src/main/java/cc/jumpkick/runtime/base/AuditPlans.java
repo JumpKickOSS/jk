@@ -111,7 +111,7 @@ public final class AuditPlans {
         try {
             Path spec = writeSpec(lockPath, osvBatchUrl, osvVulnsUrl);
             try {
-                String[] error = {null};
+                @Nullable String[] error = {null};
                 // Bounded: a worker that fails by printing megabytes must not be the reason the
                 // engine runs out of heap reporting it.
                 Deque<String> tail = new ArrayDeque<>();
@@ -154,7 +154,7 @@ public final class AuditPlans {
                 module,
                 version,
                 id,
-                Jsonl.str(json, "summary"),
+                Jsonl.requiredStr(json, "summary"),
                 AuditReport.Severity.parse(Jsonl.str(json, "severity")),
                 Jsonl.str(json, "fixedIn"));
     }

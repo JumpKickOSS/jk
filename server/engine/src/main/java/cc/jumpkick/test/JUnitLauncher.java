@@ -894,7 +894,8 @@ public final class JUnitLauncher {
                         if (!uid.isEmpty()) dynamicIds.add(uid);
                     }
                 }
-                case "warning" -> listener.onWarning(Jsonl.str(json, "code"), Jsonl.str(json, "message"));
+                case "warning" ->
+                    listener.onWarning(Jsonl.requiredStr(json, "code"), Jsonl.requiredStr(json, "message"));
                 case "started" -> onStarted(json);
                 case "finished" -> onFinished(json);
                 case "skipped" -> onSkipped(json);
@@ -912,7 +913,7 @@ public final class JUnitLauncher {
         private void onFinished(String json) {
             boolean isTest = "TEST".equals(Jsonl.str(json, "type"));
             String id = identityKey(json);
-            String status = Jsonl.str(json, "status");
+            String status = Objects.requireNonNullElse(Jsonl.str(json, "status"), "");
             String label = progressLabel(json);
             long duration = Jsonl.intValue(json, "duration_ms", 0);
             int w = eventWorker(json);
@@ -920,7 +921,7 @@ public final class JUnitLauncher {
             String cls = classNameOf(json);
             if (isTest) {
                 if (!cls.isEmpty()) executedClasses.add(cls);
-                switch (status != null ? status : "") {
+                switch (status) {
                     case "SUCCESSFUL" -> succeeded++;
                     case "FAILED" -> captureFailure(json, label, false);
                     case "ABORTED" -> skipped++;
@@ -1045,7 +1046,7 @@ public final class JUnitLauncher {
          * input that rides every downstream copy (wire, SSE, journal), and a deep-recursion failure
          * can produce megabytes of frames that no reader wants.
          */
-        static String readStack(String throwableJson) {
+        static String readStack(@Nullable String throwableJson) {
             if (throwableJson == null) return "";
             String s = Jsonl.str(throwableJson, "stack");
             if (s == null) {

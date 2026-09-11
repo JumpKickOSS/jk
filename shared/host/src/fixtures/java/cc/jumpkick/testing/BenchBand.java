@@ -10,6 +10,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The bench tier's side of the wall ratchet: a microbenchmark reports its median under a name, and
@@ -41,7 +42,7 @@ public final class BenchBand {
         }
     }
 
-    static Long banked(String name) {
+    static @Nullable Long banked(String name) {
         String file = System.getProperty("jk.wallBaseline");
         if (file == null || file.isBlank()) return null;
         Path p = Path.of(file);

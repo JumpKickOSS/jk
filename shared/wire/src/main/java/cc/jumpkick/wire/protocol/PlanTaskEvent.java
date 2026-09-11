@@ -16,6 +16,9 @@ public record PlanTaskEvent(String dir, String name, String label, String stage)
 
     public static PlanTaskEvent decode(String json) {
         return new PlanTaskEvent(
-                Jsonl.str(json, "dir"), Jsonl.str(json, "name"), Jsonl.str(json, "label"), Jsonl.str(json, "stage"));
+                Jsonl.requiredStr(json, "dir"),
+                Jsonl.requiredStr(json, "name"),
+                Jsonl.requiredStr(json, "label"),
+                Jsonl.requiredStr(json, "stage"));
     }
 }

@@ -18,8 +18,8 @@ public record ModuleFinishLine(long ts, String dir, String coord, boolean succes
     public static ModuleFinishLine decode(String json) {
         return new ModuleFinishLine(
                 Jsonl.longValue(json, "ts", 0),
-                Jsonl.str(json, "dir"),
-                Jsonl.str(json, "coord"),
+                Jsonl.requiredStr(json, "dir"),
+                Jsonl.requiredStr(json, "coord"),
                 Jsonl.bool(json, "success", false),
                 Jsonl.longValue(json, "duration_ms", 0));
     }

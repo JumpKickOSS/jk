@@ -19,8 +19,8 @@ public record ExplainModuleEvent(
 
     public static ExplainModuleEvent decode(String json) {
         return new ExplainModuleEvent(
-                Jsonl.str(json, "dir"),
-                Jsonl.str(json, "coord"),
+                Jsonl.requiredStr(json, "dir"),
+                Jsonl.requiredStr(json, "coord"),
                 Jsonl.intValue(json, "sourceCount", 0),
                 Jsonl.intValue(json, "testCount", 0),
                 Jsonl.bool(json, "producesJar", false),

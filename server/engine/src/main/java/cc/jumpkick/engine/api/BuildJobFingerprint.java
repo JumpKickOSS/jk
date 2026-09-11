@@ -44,7 +44,7 @@ public final class BuildJobFingerprint {
     public static String ofRequest(String kind, String requestLine) {
         String dir = Jsonl.str(requestLine, "dir");
         // Build-like: dir+kind exclusivity so concurrent rebuild/modules cannot race target/.
-        if (BuildHistoryKinds.isBuildLike(kind)) {
+        if (dir != null && BuildHistoryKinds.isBuildLike(kind)) {
             return ofProject(kind, dir);
         }
         return of(

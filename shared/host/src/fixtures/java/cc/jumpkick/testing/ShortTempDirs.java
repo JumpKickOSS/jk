@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.extension.AfterEachCallback;
 import org.junit.jupiter.api.extension.ExtensionContext;
 
@@ -45,7 +46,7 @@ public final class ShortTempDirs implements AfterEachCallback {
 
     private static final List<Path> LIVE = Collections.synchronizedList(new ArrayList<>());
 
-    private static volatile Path jvmRoot;
+    private static volatile @Nullable Path jvmRoot;
 
     static {
         Runtime.getRuntime().addShutdownHook(new Thread(ShortTempDirs::reapLive, "jk-test-tmp-cleanup"));

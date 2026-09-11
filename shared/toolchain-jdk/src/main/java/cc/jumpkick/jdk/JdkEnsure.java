@@ -5,6 +5,7 @@ import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.Lockfile.JdkPin;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
@@ -43,7 +44,11 @@ public final class JdkEnsure {
     private JdkEnsure() {}
 
     public static Outcome ensure(
-            Path projectDir, Path jdksDirOverride, JkBuild build, Lockfile lock, Consumer<String> warn)
+            Path projectDir,
+            @Nullable Path jdksDirOverride,
+            @Nullable JkBuild build,
+            @Nullable Lockfile lock,
+            Consumer<String> warn)
             throws IOException, InterruptedException {
         return ensure(projectDir, jdksDirOverride, build, lock, warn, true);
     }
@@ -58,9 +63,9 @@ public final class JdkEnsure {
      */
     public static Outcome ensure(
             Path projectDir,
-            Path jdksDirOverride,
-            JkBuild build,
-            Lockfile lock,
+            @Nullable Path jdksDirOverride,
+            @Nullable JkBuild build,
+            @Nullable Lockfile lock,
             Consumer<String> warn,
             boolean allowInstall)
             throws IOException, InterruptedException {
@@ -73,9 +78,9 @@ public final class JdkEnsure {
      */
     public static Outcome ensure(
             Path projectDir,
-            Path jdksDirOverride,
-            JkBuild build,
-            Lockfile lock,
+            @Nullable Path jdksDirOverride,
+            @Nullable JkBuild build,
+            @Nullable Lockfile lock,
             Consumer<String> warn,
             boolean allowInstall,
             JdkInstallListener progress)
@@ -98,10 +103,10 @@ public final class JdkEnsure {
      */
     public static Outcome ensure(
             Path projectDir,
-            Path jdksDirOverride,
-            String projectJdkSpec,
+            @Nullable Path jdksDirOverride,
+            @Nullable String projectJdkSpec,
             int javaRelease,
-            Lockfile.JdkPin lockJdk,
+            @Nullable JdkPin lockJdk,
             Consumer<String> warn,
             boolean allowInstall)
             throws IOException, InterruptedException {
@@ -123,10 +128,10 @@ public final class JdkEnsure {
      */
     public static Outcome ensure(
             Path projectDir,
-            Path jdksDirOverride,
-            String projectJdkSpec,
+            @Nullable Path jdksDirOverride,
+            @Nullable String projectJdkSpec,
             int javaRelease,
-            Lockfile.JdkPin lockJdk,
+            @Nullable JdkPin lockJdk,
             Consumer<String> warn,
             boolean allowInstall,
             JdkInstallListener progress)

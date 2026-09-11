@@ -6,6 +6,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Where GraalVM's {@code native-image} launcher lives inside a GraalVM home, and — given a launcher
@@ -103,7 +104,7 @@ public final class GraalLauncher {
      * GraalVM home. A regular file is enough: a launcher that exists but is not executable fails
      * loudly at exec time with the OS's own message, which beats silently reporting "no GraalVM".
      */
-    public static Optional<Path> in(Path home) {
+    public static Optional<Path> in(@Nullable Path home) {
         if (home == null) return Optional.empty();
         for (Path candidate : candidatesIn(home)) {
             if (Files.isRegularFile(candidate)) return Optional.of(candidate);
@@ -120,7 +121,7 @@ public final class GraalLauncher {
      * <p>Splitting {@code $PATH} is the caller's job; this class owns the layout, not the search
      * policy.
      */
-    public static Optional<Path> onPathEntry(Path dir) {
+    public static Optional<Path> onPathEntry(@Nullable Path dir) {
         if (dir == null) return Optional.empty();
         for (String name : filenames()) {
             Path candidate = dir.resolve(name);
@@ -138,7 +139,7 @@ public final class GraalLauncher {
      * answer: guessing a fixed depth produces a plausible path that is not a home, and a plausible
      * wrong path is worse than none.
      */
-    public static Optional<Path> homeOf(Path launcher) {
+    public static Optional<Path> homeOf(@Nullable Path launcher) {
         if (launcher == null) return Optional.empty();
         Path dir = launcher.getParent();
         if (dir == null) return Optional.empty();
@@ -164,7 +165,7 @@ public final class GraalLauncher {
     }
 
     /** {@code dir} with {@code rel} removed from its tail, or {@code null} when it does not end there. */
-    private static Path stripSuffix(Path dir, List<String> rel) {
+    private static @Nullable Path stripSuffix(Path dir, List<String> rel) {
         Path walk = dir;
         for (int i = rel.size() - 1; i >= 0; i--) {
             if (walk == null) return null;

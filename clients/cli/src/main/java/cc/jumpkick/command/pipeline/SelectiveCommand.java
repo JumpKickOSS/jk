@@ -301,7 +301,11 @@ public final class SelectiveCommand implements CliCommand {
         return reentry.execute(args.toArray(String[]::new));
     }
 
-    private record Plan(String since, String modulesSpec, List<String> modules, Map<String, String> contentHashes) {}
+    private record Plan(
+            @Nullable String since,
+            @Nullable String modulesSpec,
+            List<String> modules,
+            Map<String, String> contentHashes) {}
 
     private static Plan readPlan(Path planPath) throws Exception {
         Object root = MiniJson.parse(Files.readString(planPath, StandardCharsets.UTF_8));

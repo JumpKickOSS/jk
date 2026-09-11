@@ -10,6 +10,6 @@ public record AuthFrame(String token) {
     }
 
     public static AuthFrame decode(String json) {
-        return new AuthFrame(Jsonl.str(json, "token"));
+        return new AuthFrame(Jsonl.requiredStr(json, "token"));
     }
 }

@@ -55,12 +55,12 @@ public record AuditFindingEvent(
 
     public static AuditFindingEvent decode(String json) {
         return new AuditFindingEvent(
-                Jsonl.str(json, "dir"),
-                Jsonl.str(json, "package"),
-                Jsonl.str(json, "version"),
-                Jsonl.str(json, "id"),
-                Jsonl.str(json, "severity"),
-                Jsonl.str(json, "summary"),
+                Jsonl.requiredStr(json, "dir"),
+                Jsonl.requiredStr(json, "package"),
+                Jsonl.requiredStr(json, "version"),
+                Jsonl.requiredStr(json, "id"),
+                Jsonl.requiredStr(json, "severity"),
+                Jsonl.requiredStr(json, "summary"),
                 Jsonl.str(json, "fixedIn"),
                 Jsonl.str(json, "ignoreReason"),
                 Jsonl.str(json, "ignoreUntil"),

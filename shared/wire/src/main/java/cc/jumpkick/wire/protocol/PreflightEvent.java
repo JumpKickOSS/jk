@@ -16,9 +16,9 @@ public record PreflightEvent(String stage, int done, int total, String label) {
 
     public static PreflightEvent decode(String json) {
         return new PreflightEvent(
-                Jsonl.str(json, "stage"),
+                Jsonl.requiredStr(json, "stage"),
                 Jsonl.intValue(json, "done", 0),
                 Jsonl.intValue(json, "total", 0),
-                Jsonl.str(json, "label"));
+                Jsonl.requiredStr(json, "label"));
     }
 }

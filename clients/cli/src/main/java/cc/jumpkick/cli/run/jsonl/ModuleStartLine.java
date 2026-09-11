@@ -14,6 +14,7 @@ public record ModuleStartLine(long ts, String dir, String coord) {
     }
 
     public static ModuleStartLine decode(String json) {
-        return new ModuleStartLine(Jsonl.longValue(json, "ts", 0), Jsonl.str(json, "dir"), Jsonl.str(json, "coord"));
+        return new ModuleStartLine(
+                Jsonl.longValue(json, "ts", 0), Jsonl.requiredStr(json, "dir"), Jsonl.requiredStr(json, "coord"));
     }
 }

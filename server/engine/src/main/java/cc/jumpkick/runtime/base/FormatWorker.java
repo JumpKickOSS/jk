@@ -29,7 +29,7 @@ public final class FormatWorker {
      * instead of going quiet.
      */
     public interface FileObserver {
-        void onFile(String path, String status, String message, int index, int total);
+        void onFile(String path, String status, @Nullable String message, int index, int total);
     }
 
     /** The per-file status that reports a file is <em>still</em> being formatted. */
@@ -96,8 +96,8 @@ public final class FormatWorker {
         AtomicInteger index = new AtomicInteger();
         int exit = new PluginClient("##JKFMT:")
                 .on("file", json -> {
-                    String status = Jsonl.str(json, "status");
-                    String path = Jsonl.str(json, "path");
+                    String status = Jsonl.requiredStr(json, "status");
+                    String path = Jsonl.requiredStr(json, "path");
                     if (SLOW.equals(status)) {
                         // Live chatter about a file the run has not settled: it keeps its place in the
                         // stream (the CLI names it) but touches no tally, no freshness record, and no

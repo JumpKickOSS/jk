@@ -17,9 +17,9 @@ public record PlanModuleEvent(String dir, String coord, String planName, int wei
 
     public static PlanModuleEvent decode(String json) {
         return new PlanModuleEvent(
-                Jsonl.str(json, "dir"),
-                Jsonl.str(json, "coord"),
-                Jsonl.str(json, "planName"),
+                Jsonl.requiredStr(json, "dir"),
+                Jsonl.requiredStr(json, "coord"),
+                Jsonl.requiredStr(json, "planName"),
                 Jsonl.intValue(json, "weight", 0),
                 Jsonl.bool(json, "fullyCached", false));
     }

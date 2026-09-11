@@ -18,7 +18,7 @@ public record PlanFinishLockEvent(String dir, boolean success, long packages, lo
 
     public static PlanFinishLockEvent decode(String json) {
         return new PlanFinishLockEvent(
-                Jsonl.str(json, "dir"),
+                Jsonl.requiredStr(json, "dir"),
                 Jsonl.bool(json, "success", false),
                 Jsonl.longValue(json, "lockPackages", 0),
                 Jsonl.longValue(json, "lockSources", 0),

@@ -2,6 +2,7 @@
 package cc.jumpkick.model.command;
 
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * An executable, CLI-presentable {@link Command}: it can have aliases and subcommands, and it runs
@@ -26,7 +27,7 @@ public interface CliCommand extends Command {
      * subcommand). When non-null, the dispatcher runs this instead of printing the group help.
      * {@code jk <group> --help} still shows the full subcommand list.
      */
-    default CliCommand defaultSubcommand() {
+    default @Nullable CliCommand defaultSubcommand() {
         return null;
     }
 

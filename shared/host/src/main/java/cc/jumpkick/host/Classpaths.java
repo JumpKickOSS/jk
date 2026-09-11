@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The one place jk turns a list of paths into a {@code -cp} string and back. Lives in the
@@ -70,7 +71,7 @@ public final class Classpaths {
      * asymmetry to {@link #join}'s duplicate-keeping: a trailing or doubled separator is a
      * formatting artefact of whoever built the string, never an entry someone meant.
      */
-    public static List<Path> split(String classpath) {
+    public static List<Path> split(@Nullable String classpath) {
         if (classpath == null || classpath.isBlank()) return List.of();
         List<Path> out = new ArrayList<>();
         for (String entry : classpath.split(Pattern.quote(SEPARATOR), -1)) {

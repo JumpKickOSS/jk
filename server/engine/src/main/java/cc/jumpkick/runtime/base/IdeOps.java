@@ -310,7 +310,7 @@ public final class IdeOps {
         // the pinned level resolves its own, or IntelliJ gets the pinned home under the wrong name.
         boolean pinFits = lockJdk != null && pinMajor != null && pinMajor == level;
         Optional<JdkHit> hit = Optional.empty();
-        if (pinFits) {
+        if (lockJdk != null && pinFits) {
             hit = LockPinMatch.choose(registry.listHits(), lockJdk);
         }
         if (hit.isEmpty()) hit = registry.findHitBySpec(String.valueOf(level));

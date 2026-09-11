@@ -13,6 +13,6 @@ public record ExplainEdgeEvent(String dir, String dependsOnDir) {
     }
 
     public static ExplainEdgeEvent decode(String json) {
-        return new ExplainEdgeEvent(Jsonl.str(json, "dir"), Jsonl.str(json, "dependsOnDir"));
+        return new ExplainEdgeEvent(Jsonl.requiredStr(json, "dir"), Jsonl.requiredStr(json, "dependsOnDir"));
     }
 }

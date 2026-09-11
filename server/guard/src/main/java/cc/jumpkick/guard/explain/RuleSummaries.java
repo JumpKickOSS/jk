@@ -106,6 +106,7 @@ public final class RuleSummaries {
         String outcome = Jsonl.str(line, "outcome");
         if (code == null || lane == null || outcome == null) return null;
         String population = Jsonl.str(line, "population");
+        String note = Jsonl.str(line, "note");
         return new Summary(
                 code,
                 lane,
@@ -115,6 +116,6 @@ public final class RuleSummaries {
                 Jsonl.intValue(line, "baselined", 0),
                 Jsonl.longValue(line, "ts", 0),
                 Jsonl.has(line, "bite") ? Jsonl.bool(line, "bite", false) : null,
-                Jsonl.str(line, "note") == null ? "" : Jsonl.str(line, "note"));
+                note == null ? "" : note);
     }
 }

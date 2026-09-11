@@ -149,7 +149,7 @@ public final class PublishPlans {
             Path spec = writeSpec(projectDir, jar, req);
             try {
                 int[] files = {0};
-                String[] error = {null};
+                @Nullable String[] error = {null};
                 StringBuilder workerDiag = new StringBuilder();
                 int exit = new PluginClient("##JKPU:")
                         .on(PluginProtocol.RESULT, json -> {

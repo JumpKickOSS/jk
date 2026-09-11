@@ -29,7 +29,8 @@ public final class JdkService {
      * @param warn sink for degradation notices (e.g. "feed unreachable, using cached"); {@code null}
      *     discards them
      */
-    public JdkCatalog fetchCatalog(URI feedUrl, Path cacheFile, boolean refresh, Consumer<String> warn)
+    public JdkCatalog fetchCatalog(
+            @Nullable URI feedUrl, @Nullable Path cacheFile, boolean refresh, Consumer<String> warn)
             throws IOException, InterruptedException {
         JdkCatalogClient client = feedUrl != null
                 ? new JdkCatalogClient(
@@ -47,7 +48,7 @@ public final class JdkService {
      * {@link JdkSelector#selectPreferred}'s vendor bias. Returns empty when nothing matches on the
      * given host.
      */
-    public Optional<JdkCatalog.Entry> resolveEntry(JdkCatalog catalog, String spec, String os, String arch) {
+    public Optional<JdkCatalog.Entry> resolveEntry(JdkCatalog catalog, @Nullable String spec, String os, String arch) {
         Objects.requireNonNull(catalog, "catalog");
         String effective = resolveKeyword(spec, catalog, os, arch).orElse(spec);
         if (effective == null || effective.isBlank()) return Optional.empty();
@@ -116,8 +117,8 @@ public final class JdkService {
             String spec,
             JdkRegistry registry,
             boolean refresh,
-            URI feedUrl,
-            Path cacheFile,
+            @Nullable URI feedUrl,
+            @Nullable Path cacheFile,
             String os,
             String arch,
             JdkInstallListener listener)

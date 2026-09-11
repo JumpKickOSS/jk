@@ -3,6 +3,7 @@ package cc.jumpkick.cli.run.jsonl;
 
 import cc.jumpkick.jsonl.Jsonl;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /** An enriched test-failure error: module, engine, class, method, exception, source location and one top-level stack, each riding only when it says something. */
 public record TestFailureErrorLine(
@@ -43,9 +44,9 @@ public record TestFailureErrorLine(
     public static TestFailureErrorLine decode(String json) {
         return new TestFailureErrorLine(
                 Jsonl.longValue(json, "ts", 0),
-                Jsonl.str(json, "task"),
-                Jsonl.str(json, "code"),
-                Jsonl.str(json, "message"),
+                Jsonl.requiredStr(json, "task"),
+                Jsonl.requiredStr(json, "code"),
+                Jsonl.requiredStr(json, "message"),
                 orEmpty(Jsonl.str(json, "module")),
                 orEmpty(Jsonl.str(json, "engine")),
                 orEmpty(Jsonl.str(json, "class")),
@@ -59,7 +60,7 @@ public record TestFailureErrorLine(
                 orEmpty(Jsonl.str(json, "stack")));
     }
 
-    private static String orEmpty(String s) {
+    private static String orEmpty(@Nullable String s) {
         return s == null ? "" : s;
     }
 }

@@ -17,7 +17,7 @@ public record PlanStartLine(long ts, String plan, long denominator, int tasks) {
     public static PlanStartLine decode(String json) {
         return new PlanStartLine(
                 Jsonl.longValue(json, "ts", 0),
-                Jsonl.str(json, "plan"),
+                Jsonl.requiredStr(json, "plan"),
                 Jsonl.longValue(json, "denominator", 0),
                 Jsonl.intValue(json, "tasks", 0));
     }

@@ -49,8 +49,8 @@ public record ModuleFinishEvent(
                         Jsonl.str(json, "imageDaemonExe"))
                 : null;
         return new ModuleFinishEvent(
-                Jsonl.str(json, "dir"),
-                Jsonl.str(json, "coord"),
+                Jsonl.requiredStr(json, "dir"),
+                Jsonl.requiredStr(json, "coord"),
                 Jsonl.bool(json, "success", false),
                 Jsonl.intValue(json, "exitCode", 0),
                 Jsonl.longValue(json, "millis", 0),

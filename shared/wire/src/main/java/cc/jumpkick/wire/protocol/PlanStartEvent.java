@@ -27,8 +27,8 @@ public record PlanStartEvent(
 
     public static PlanStartEvent decode(String json) {
         return new PlanStartEvent(
-                Jsonl.str(json, "dir"),
-                Jsonl.str(json, "planName"),
+                Jsonl.requiredStr(json, "dir"),
+                Jsonl.requiredStr(json, "planName"),
                 Jsonl.longValue(json, "numerator", 0),
                 Jsonl.longValue(json, "denominator", 0),
                 Jsonl.intValue(json, "tasksTotal", 0),

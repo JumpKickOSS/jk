@@ -25,9 +25,9 @@ public record ErrorLine(
     public static ErrorLine decode(String json) {
         return new ErrorLine(
                 Jsonl.longValue(json, "ts", 0),
-                Jsonl.str(json, "task"),
-                Jsonl.str(json, "code"),
-                Jsonl.str(json, "message"),
+                Jsonl.requiredStr(json, "task"),
+                Jsonl.requiredStr(json, "code"),
+                Jsonl.requiredStr(json, "message"),
                 Jsonl.str(json, "test"),
                 Jsonl.str(json, "exceptionClass"));
     }

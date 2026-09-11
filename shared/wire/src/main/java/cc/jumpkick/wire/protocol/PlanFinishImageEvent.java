@@ -39,7 +39,7 @@ public record PlanFinishImageEvent(
     public static PlanFinishImageEvent decode(String json) {
         String tests = Jsonl.nested(json, TestSummary.WIRE_KEY);
         return new PlanFinishImageEvent(
-                Jsonl.str(json, "dir"),
+                Jsonl.requiredStr(json, "dir"),
                 Jsonl.bool(json, "success", false),
                 tests == null ? -1 : Jsonl.longValue(tests, "total", -1),
                 tests == null ? -1 : Jsonl.longValue(tests, "succeeded", -1),

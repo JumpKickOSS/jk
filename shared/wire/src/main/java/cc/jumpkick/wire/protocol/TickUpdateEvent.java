@@ -28,8 +28,8 @@ public record TickUpdateEvent(
 
     public static TickUpdateEvent decode(String json) {
         return new TickUpdateEvent(
-                Jsonl.str(json, "dir"),
-                Jsonl.str(json, "task"),
+                Jsonl.requiredStr(json, "dir"),
+                Jsonl.requiredStr(json, "task"),
                 Jsonl.intValue(json, "delta", 0),
                 Jsonl.longValue(json, "numerator", 0),
                 Jsonl.longValue(json, "denominator", 0),

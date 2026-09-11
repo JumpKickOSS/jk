@@ -8,6 +8,7 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.TreeSet;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Resolves keyword specs ({@code lts}/{@code stable}/{@code latest} → Temurin major;
@@ -21,7 +22,7 @@ public final class JdkKeywords {
     private static final String NATIVE = "native";
 
     /** Recognised keyword spec, or empty when {@code raw} is a normal version spec. */
-    public static boolean isKeyword(String raw) {
+    public static boolean isKeyword(@Nullable String raw) {
         if (raw == null) return false;
         var norm = raw.trim().toLowerCase(Locale.ROOT);
         return norm.equals("lts") || norm.equals("stable") || norm.equals("latest") || norm.equals(NATIVE);
@@ -37,7 +38,8 @@ public final class JdkKeywords {
      *   <li>{@code native} was asked for but the feed has no Oracle GraalVM for this host.
      * </ul>
      */
-    public static Optional<String> resolveToMajorSpec(JdkCatalog catalog, String raw, String os, String arch) {
+    public static Optional<String> resolveToMajorSpec(
+            JdkCatalog catalog, @Nullable String raw, String os, String arch) {
         var norm = raw == null ? "" : raw.trim().toLowerCase(Locale.ROOT);
         if (norm.equals(NATIVE)) return latestOracleGraalVm(catalog, os, arch);
 
@@ -69,7 +71,7 @@ public final class JdkKeywords {
      * met. {@code native} requires a GraalVM; {@code lts} / {@code latest} are vendor-agnostic (any
      * vendor's current release counts), so they return an empty list.
      */
-    public static List<String> satisfactionHints(String raw) {
+    public static List<String> satisfactionHints(@Nullable String raw) {
         return raw != null && raw.trim().equalsIgnoreCase(NATIVE) ? List.of("graalvm") : List.of();
     }
 
@@ -85,7 +87,7 @@ public final class JdkKeywords {
      * Returns empty for the {@code native} keyword (use {@link #resolveToMajorSpec} for that) or when
      * no hits qualify.
      */
-    public static Optional<JdkHit> bestInstalledMatch(String keyword, List<JdkHit> hits) {
+    public static Optional<JdkHit> bestInstalledMatch(@Nullable String keyword, List<JdkHit> hits) {
         if (!isKeyword(keyword) || keyword.trim().equalsIgnoreCase(NATIVE)) return Optional.empty();
         boolean wantLts =
                 keyword.trim().equalsIgnoreCase("lts") || keyword.trim().equalsIgnoreCase("stable");

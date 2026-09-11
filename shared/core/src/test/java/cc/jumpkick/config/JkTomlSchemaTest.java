@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.jsonl.Jsonl;
@@ -28,7 +29,7 @@ class JkTomlSchemaTest {
         Set<String> expected = new HashSet<>(ManifestProject.PROJECT_KEYS);
         expected.addAll(ManifestBuild.CORE_TABLES);
         for (Scope s : Scope.values()) expected.add(s.tomlSection());
-        assertThat(keysOf(Jsonl.nested(schema, "properties")))
+        assertThat(keysOf(table(schema, "properties")))
                 .as(
                         "docs/user/jk.toml.schema.json top-level properties vs ManifestProject.PROJECT_KEYS + CORE_TABLES + scopes")
                 .containsExactlyInAnyOrderElementsOf(expected);
@@ -37,8 +38,8 @@ class JkTomlSchemaTest {
     @Test
     void application_properties_are_exactly_the_parser_s_application_keys() throws Exception {
         String schema = Files.readString(SCHEMA);
-        String application = Jsonl.nested(Jsonl.nested(schema, "properties"), "application");
-        assertThat(keysOf(Jsonl.nested(application, "properties")))
+        String application = table(table(schema, "properties"), "application");
+        assertThat(keysOf(table(application, "properties")))
                 .containsExactlyInAnyOrderElementsOf(ManifestTables.APPLICATION_KEYS);
         assertThat(Jsonl.bool(application, "additionalProperties", true))
                 .as("an unknown key under [application] is what an editor should flag")
@@ -48,11 +49,10 @@ class JkTomlSchemaTest {
     @Test
     void dev_sidecar_properties_are_exactly_the_parser_s_sidecar_keys() throws Exception {
         String schema = Files.readString(SCHEMA);
-        String dev = Jsonl.nested(Jsonl.nested(schema, "properties"), "dev");
-        assertThat(keysOf(Jsonl.nested(dev, "properties"))).containsExactlyInAnyOrderElementsOf(ManifestBuild.DEV_KEYS);
-        String sidecar =
-                Jsonl.nested(Jsonl.nested(Jsonl.nested(dev, "properties"), "sidecars"), "additionalProperties");
-        assertThat(keysOf(Jsonl.nested(sidecar, "properties")))
+        String dev = table(table(schema, "properties"), "dev");
+        assertThat(keysOf(table(dev, "properties"))).containsExactlyInAnyOrderElementsOf(ManifestBuild.DEV_KEYS);
+        String sidecar = table(table(table(dev, "properties"), "sidecars"), "additionalProperties");
+        assertThat(keysOf(table(sidecar, "properties")))
                 .containsExactlyInAnyOrderElementsOf(ManifestBuild.SIDECAR_KEYS);
         // the sidecar's own additionalProperties is its last one; env's nested one comes first
         int last = sidecar.lastIndexOf("\"additionalProperties\"");
@@ -62,16 +62,14 @@ class JkTomlSchemaTest {
     @Test
     void javac_properties_are_exactly_the_parser_s_javac_keys() throws Exception {
         String schema = Files.readString(SCHEMA);
-        String javac = Jsonl.nested(Jsonl.nested(schema, "properties"), "javac");
-        assertThat(keysOf(Jsonl.nested(javac, "properties")))
-                .containsExactlyInAnyOrderElementsOf(ManifestBuild.JAVAC_KEYS);
-        String test = Jsonl.nested(Jsonl.nested(javac, "properties"), "test");
-        assertThat(keysOf(Jsonl.nested(test, "properties")))
+        String javac = table(table(schema, "properties"), "javac");
+        assertThat(keysOf(table(javac, "properties"))).containsExactlyInAnyOrderElementsOf(ManifestBuild.JAVAC_KEYS);
+        String test = table(table(javac, "properties"), "test");
+        assertThat(keysOf(table(test, "properties")))
                 .as("[javac.test] is the same shape one level down, and cannot nest")
                 .containsExactlyInAnyOrderElementsOf(ManifestBuild.JAVAC_TEST_KEYS);
-        String plugin =
-                Jsonl.nested(Jsonl.nested(Jsonl.nested(javac, "properties"), "plugins"), "additionalProperties");
-        assertThat(keysOf(Jsonl.nested(plugin, "properties")))
+        String plugin = table(table(table(javac, "properties"), "plugins"), "additionalProperties");
+        assertThat(keysOf(table(plugin, "properties")))
                 .containsExactlyInAnyOrderElementsOf(ManifestBuild.JAVAC_PLUGIN_KEYS);
         assertThat(Jsonl.bool(plugin, "additionalProperties", true))
                 .as("an unknown key under [javac.plugins.<Name>] is what an editor should flag")
@@ -102,13 +100,18 @@ class JkTomlSchemaTest {
     void the_schema_names_the_dependency_scope_tables_the_parser_reads() throws Exception {
         String schema = Files.readString(SCHEMA);
         for (Scope s : Scope.values()) {
-            assertThat(Jsonl.nested(Jsonl.nested(schema, "properties"), s.tomlSection()))
+            assertThat(table(table(schema, "properties"), s.tomlSection()))
                     .as(s.tomlSection())
                     .isNotNull();
         }
     }
 
     /** Keys of one JSON object: the names at brace depth one, in order. */
+    /** The nested object the schema is expected to carry; its absence fails the test that reads it. */
+    private static String table(String json, String key) {
+        return requireNonNull(Jsonl.nested(json, key), key);
+    }
+
     private static List<String> keysOf(String object) {
         List<String> keys = new ArrayList<>();
         int depth = 0;

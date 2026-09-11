@@ -17,8 +17,8 @@ public record OptimizeAckFrame(boolean ok, String trained, String skipped, Strin
     public static OptimizeAckFrame decode(String json) {
         return new OptimizeAckFrame(
                 Jsonl.bool(json, "ok", false),
-                Jsonl.str(json, "trained"),
-                Jsonl.str(json, "skipped"),
-                Jsonl.str(json, "summary"));
+                Jsonl.requiredStr(json, "trained"),
+                Jsonl.requiredStr(json, "skipped"),
+                Jsonl.requiredStr(json, "summary"));
     }
 }

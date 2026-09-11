@@ -253,7 +253,7 @@ public final class PluginBuild {
             switch (String.valueOf(Jsonl.str(line, "t"))) {
                 case "task", "step" ->
                     steps.add(new TaskDecl(
-                            Jsonl.str(line, "name"),
+                            Jsonl.requiredStr(line, "name"),
                             Jsonl.strArray(line, "requires"),
                             Jsonl.strArray(line, "inputs"),
                             Jsonl.strArray(line, "outputs"),
@@ -263,9 +263,11 @@ public final class PluginBuild {
                             Jsonl.strArray(line, "contributesTestClasspath"),
                             Jsonl.str(line, "transformsClasses"),
                             blankToNull(Jsonl.str(line, "stage"))));
-                case "packager" -> packager = new PackagerDecl(Jsonl.str(line, "name"), Jsonl.strArray(line, "inputs"));
+                case "packager" ->
+                    packager = new PackagerDecl(Jsonl.requiredStr(line, "name"), Jsonl.strArray(line, "inputs"));
                 case "command" ->
-                    commands.add(new CommandDecl(Jsonl.str(line, "name"), Jsonl.str(line, "description")));
+                    commands.add(
+                            new CommandDecl(Jsonl.requiredStr(line, "name"), Jsonl.requiredStr(line, "description")));
                 default -> {
                     // labels etc. — irrelevant to declarations
                 }
@@ -896,7 +898,7 @@ public final class PluginBuild {
         return null;
     }
 
-    private static @Nullable String blankToNull(String s) {
+    private static @Nullable String blankToNull(@Nullable String s) {
         return (s == null || s.isBlank()) ? null : s;
     }
 
@@ -911,7 +913,7 @@ public final class PluginBuild {
         // Non-protocol output (stack traces land here — stderr is merged by PluginProcess).
         // Kept so a worker that dies without reporting a protocol error is still diagnosable.
         ArrayDeque<String> tail = new ArrayDeque<>();
-        String[] error = new String[1];
+        @Nullable String[] error = new String[1];
         PluginClient client = new PluginClient(code(active).protocolPrefix())
                 .on("label", line -> {
                     if (onLabel != null) onLabel.accept(Jsonl.str(line, "text"));

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.guard.api.runtime;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.guard.api.CallSite;
@@ -61,7 +62,7 @@ class ReportTest {
                 .isNull();
         assertThat(MiniJson.get(json, "fixture")).isNull();
         assertThat(MiniJson.get(json, "error")).isNull();
-        List<?> allows = (List<?>) MiniJson.get(json, "allows");
+        List<?> allows = (List<?>) requireNonNull(MiniJson.get(json, "allows"));
         assertThat(allows).hasSize(1);
         assertThat(MiniJson.str(allows.get(0), "in")).isEqualTo("shared/host");
         assertThat(MiniJson.str(allows.get(0), "reason")).isEqualTo("the owner");
@@ -75,19 +76,22 @@ class ReportTest {
         c.add(new ToolSite("Rule 'x' was violated (Foo.java)", "a/Foo.java", 12), "arch");
         c.population(42);
         Object json = MiniJson.parse(line(c).toJson());
-        List<?> v = (List<?>) MiniJson.get(json, "violations");
+        List<?> v = (List<?>) requireNonNull(MiniJson.get(json, "violations"));
         assertThat(v).hasSize(3);
         assertThat(MiniJson.str(v.get(0), "fingerprint"))
                 .isEqualTo("a.Esc#write()V -> java.lang.String#replace(CC)Ljava/lang/String;");
         assertThat(MiniJson.str(v.get(0), "file")).isEqualTo("a/Esc.java");
-        assertThat(((Number) MiniJson.get(v.get(0), "line")).intValue()).isEqualTo(7);
+        assertThat(((Number) requireNonNull(MiniJson.get(v.get(0), "line"))).intValue())
+                .isEqualTo(7);
         assertThat(MiniJson.str(v.get(0), "root")).isEqualTo("source");
         assertThat(MiniJson.str(v.get(0), "detail")).isEqualTo("an escaper");
         assertThat(MiniJson.str(v.get(1), "fingerprint")).isEqualTo("docs/x.md | TODO");
         assertThat(MiniJson.str(v.get(1), "root")).isEqualTo("workspace");
         assertThat(MiniJson.str(v.get(2), "root")).isEqualTo("workspace");
-        assertThat(((Number) MiniJson.get(v.get(2), "line")).intValue()).isEqualTo(12);
-        assertThat(((Number) MiniJson.get(json, "population")).intValue()).isEqualTo(42);
+        assertThat(((Number) requireNonNull(MiniJson.get(v.get(2), "line"))).intValue())
+                .isEqualTo(12);
+        assertThat(((Number) requireNonNull(MiniJson.get(json, "population"))).intValue())
+                .isEqualTo(42);
     }
 
     @Test
@@ -95,7 +99,7 @@ class ReportTest {
         Report.Collector c = new Report.Collector();
         c.add(new ToolSite("Rule 'y' was violated", null, 0), "arch");
         Object json = MiniJson.parse(line(c).toJson());
-        Object site = ((List<?>) MiniJson.get(json, "violations")).get(0);
+        Object site = ((List<?>) requireNonNull(MiniJson.get(json, "violations"))).get(0);
         assertThat(MiniJson.get(site, "file")).isNull();
         assertThat(MiniJson.get(site, "value")).isNull();
     }
@@ -104,10 +108,12 @@ class ReportTest {
     void a_metric_carries_its_value_at_the_workspace_root() {
         Report.Collector c = new Report.Collector();
         c.metric(new MetricSite("shared/host/Big.java", 812.0, "shared/host/Big.java"), "812 code lines (cap 800)");
-        Object site = ((List<?>) MiniJson.get(MiniJson.parse(line(c).toJson()), "violations")).get(0);
+        Object site = ((List<?>) requireNonNull(MiniJson.get(MiniJson.parse(line(c).toJson()), "violations"))).get(0);
         assertThat(MiniJson.str(site, "fingerprint")).isEqualTo("shared/host/Big.java");
-        assertThat(((Number) MiniJson.get(site, "value")).doubleValue()).isEqualTo(812.0);
-        assertThat(((Number) MiniJson.get(site, "line")).intValue()).isZero();
+        assertThat(((Number) requireNonNull(MiniJson.get(site, "value"))).doubleValue())
+                .isEqualTo(812.0);
+        assertThat(((Number) requireNonNull(MiniJson.get(site, "line"))).intValue())
+                .isZero();
         assertThat(MiniJson.str(site, "root")).isEqualTo("workspace");
     }
 
@@ -117,7 +123,7 @@ class ReportTest {
         c.threw(new IllegalStateException("kaboom"));
         Object json = MiniJson.parse(line(c).toJson());
         assertThat(MiniJson.str(json, "outcome")).isEqualTo("threw");
-        String error = MiniJson.str(json, "error");
+        String error = requireNonNull(MiniJson.str(json, "error"));
         assertThat(error).startsWith("java.lang.IllegalStateException: kaboom");
         assertThat(error.split("\n").length).isLessThanOrEqualTo(6);
     }
@@ -140,7 +146,7 @@ class ReportTest {
         assertThat(MiniJson.str(json, "fixture")).isEqualTo("Bad.java");
         assertThat(MiniJson.str(json, "why")).isEqualTo("w \"q\"");
         assertThat(MiniJson.str(json, "scope")).isEqualTo("module");
-        Object site = ((List<?>) MiniJson.get(json, "violations")).get(0);
+        Object site = ((List<?>) requireNonNull(MiniJson.get(json, "violations"))).get(0);
         assertThat(MiniJson.str(site, "detail")).isEqualTo("quoted \"detail\"");
         assertThat(MiniJson.str(site, "fingerprint")).isEqualTo("a/B.java | say \"hi\"");
     }
@@ -155,7 +161,7 @@ class ReportTest {
         List<String> lines = Files.readAllLines(file);
         assertThat(lines).hasSize(2);
         assertThat(MiniJson.get(MiniJson.parse(lines.get(0)), "population")).isNull();
-        assertThat(((Number) MiniJson.get(MiniJson.parse(lines.get(1)), "population")).intValue())
+        assertThat(((Number) requireNonNull(MiniJson.get(MiniJson.parse(lines.get(1)), "population"))).intValue())
                 .isEqualTo(1);
     }
 }

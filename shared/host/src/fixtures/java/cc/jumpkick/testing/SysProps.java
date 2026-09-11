@@ -9,6 +9,7 @@ import java.lang.annotation.Target;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.extension.AfterAllCallback;
 import org.junit.jupiter.api.extension.AfterEachCallback;
 import org.junit.jupiter.api.extension.BeforeAllCallback;
@@ -105,7 +106,7 @@ public final class SysProps implements BeforeAllCallback, AfterAllCallback, Befo
      * Put {@code saved} back exactly: values reset, and anything added since removed. Both halves
      * matter — restoring only the values leaves a brand-new property set for the next class.
      */
-    private static void restore(Properties saved) {
+    private static void restore(@Nullable Properties saved) {
         if (saved == null) return;
         for (String name : System.getProperties().stringPropertyNames()) {
             if (!saved.containsKey(name)) System.clearProperty(name);

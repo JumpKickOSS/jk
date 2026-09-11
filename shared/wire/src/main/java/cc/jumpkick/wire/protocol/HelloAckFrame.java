@@ -24,7 +24,7 @@ public record HelloAckFrame(
 
     public static HelloAckFrame decode(String json) {
         return new HelloAckFrame(
-                Jsonl.str(json, "version"),
+                Jsonl.requiredStr(json, "version"),
                 Jsonl.longValue(json, "pid", 0),
                 Jsonl.longValue(json, "startedAt", 0),
                 Jsonl.bool(json, "draining", false),

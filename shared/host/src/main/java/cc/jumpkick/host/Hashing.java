@@ -11,6 +11,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.Locale;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The one digest surface in the tree: SHA-256 by default, any JDK-mandated algorithm on
@@ -108,7 +109,7 @@ public final class Hashing {
      * a path a previous jk wrote. jk's own hex is always lowercase ({@link #hex}), so a validator
      * that rejected uppercase would only ever reject other people's spelling of the same digest.
      */
-    public static boolean isHex(String s) {
+    public static boolean isHex(@Nullable String s) {
         if (s == null || s.isEmpty()) return false;
         for (int i = 0; i < s.length(); i++) {
             char c = s.charAt(i);
@@ -118,7 +119,7 @@ public final class Hashing {
     }
 
     /** True when {@code s} is exactly {@code length} hex digits — a digest of a known width. */
-    public static boolean isHex(String s, int length) {
+    public static boolean isHex(@Nullable String s, int length) {
         return s != null && s.length() == length && isHex(s);
     }
 
@@ -132,7 +133,7 @@ public final class Hashing {
      * prefix-matches the artifact path — answers a sidecar request with something that is not a
      * digest. Anything that is not {@code hexLength} hex digits is treated as no sidecar at all.
      */
-    public static Optional<String> checksumFromSidecar(String body, int hexLength) {
+    public static Optional<String> checksumFromSidecar(@Nullable String body, int hexLength) {
         if (body == null) return Optional.empty();
         String first = body.strip().split("\\s+", 2)[0];
         return isHex(first, hexLength) ? Optional.of(first.toLowerCase(Locale.ROOT)) : Optional.empty();

@@ -17,7 +17,7 @@ public record PlanFinishSyncEvent(String dir, boolean success, long fetched, lon
 
     public static PlanFinishSyncEvent decode(String json) {
         return new PlanFinishSyncEvent(
-                Jsonl.str(json, "dir"),
+                Jsonl.requiredStr(json, "dir"),
                 Jsonl.bool(json, "success", false),
                 Jsonl.longValue(json, "syncFetched", 0),
                 Jsonl.longValue(json, "syncUpToDate", 0));

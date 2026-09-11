@@ -3,6 +3,7 @@ package cc.jumpkick.model.command;
 
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A command-line option (a {@code --flag} or {@code --name <value>}), declared as data rather than
@@ -33,20 +34,20 @@ import java.util.List;
  */
 public record Opt(
         List<String> names,
-        String paramLabel,
+        @Nullable String paramLabel,
         String description,
         boolean takesValue,
         boolean repeatable,
-        String split,
+        @Nullable String split,
         boolean hidden,
         boolean negatable,
         boolean required,
-        String fallbackValue,
+        @Nullable String fallbackValue,
         List<String> aliases) {
 
     public Opt {
         names = List.copyOf(names);
-        aliases = aliases == null ? List.of() : List.copyOf(aliases);
+        aliases = List.copyOf(aliases);
     }
 
     /** A boolean flag option (no value), e.g. {@code --skip-tests}. */

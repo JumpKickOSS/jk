@@ -31,11 +31,11 @@ public record WorkspaceProgressEvent(
 
     public static WorkspaceProgressEvent decode(String json) {
         return new WorkspaceProgressEvent(
-                Jsonl.str(json, "dir"),
+                Jsonl.requiredStr(json, "dir"),
                 Jsonl.longValue(json, "numerator", 0),
                 Jsonl.longValue(json, "denominator", 0),
                 Jsonl.doubleValue(json, "progress", Double.NaN),
-                Jsonl.str(json, "phase"),
+                Jsonl.requiredStr(json, "phase"),
                 Jsonl.intValue(json, "modulesComplete", 0),
                 Jsonl.intValue(json, "modulesTotal", 0),
                 Jsonl.longValue(json, "remainingMs", -1),

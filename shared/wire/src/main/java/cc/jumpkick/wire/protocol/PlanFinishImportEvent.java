@@ -26,7 +26,7 @@ public record PlanFinishImportEvent(
 
     public static PlanFinishImportEvent decode(String json) {
         return new PlanFinishImportEvent(
-                Jsonl.str(json, "dir"),
+                Jsonl.requiredStr(json, "dir"),
                 Jsonl.bool(json, "success", false),
                 Jsonl.intValue(json, "importExit", 0),
                 Jsonl.intValue(json, "importWarnings", 0),

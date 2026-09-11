@@ -5,6 +5,7 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The one place jk splits and joins an executable search path — {@code PATH}. Same separator
@@ -40,7 +41,7 @@ public final class SearchPath {
      * and the middle one means the current directory on POSIX. A {@code null} or empty value is no
      * entries at all — not one blank entry, because an unset {@code PATH} searches nothing.
      */
-    public static List<String> entries(String path) {
+    public static List<String> entries(@Nullable String path) {
         if (path == null || path.isEmpty()) return List.of();
         return List.of(path.split(Pattern.quote(SEPARATOR), -1));
     }
@@ -50,7 +51,7 @@ public final class SearchPath {
      * the result is {@code binDir} alone — appending a separator to nothing would add a blank
      * entry, i.e. silently put the current directory on the search path.
      */
-    public static String prepend(String binDir, String existing) {
+    public static String prepend(String binDir, @Nullable String existing) {
         if (existing == null || existing.isEmpty()) return binDir;
         return binDir + SEPARATOR + existing;
     }
@@ -60,7 +61,7 @@ public final class SearchPath {
      * blank {@code entry} is a no-op. When every entry is removed the result is {@code ""} (unset
      * search path), never a single blank entry.
      */
-    public static String remove(String entry, String path) {
+    public static String remove(@Nullable String entry, @Nullable String path) {
         if (entry == null || entry.isEmpty()) return path == null ? "" : path;
         var kept = new ArrayList<String>();
         for (String e : entries(path)) {

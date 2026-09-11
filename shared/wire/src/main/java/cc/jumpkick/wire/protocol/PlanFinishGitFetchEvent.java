@@ -22,7 +22,7 @@ public record PlanFinishGitFetchEvent(
 
     public static PlanFinishGitFetchEvent decode(String json) {
         return new PlanFinishGitFetchEvent(
-                Jsonl.str(json, "dir"),
+                Jsonl.requiredStr(json, "dir"),
                 Jsonl.bool(json, "success", false),
                 Jsonl.str(json, "gitCheckout"),
                 Jsonl.str(json, "gitSha"));

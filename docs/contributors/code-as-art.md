@@ -566,13 +566,13 @@ Zero-runtime. Safe on the Graal CLI. Dogfoods `jk init`.
    `@NonNull`.
 3. No JetBrains / JSR-305 / Lombok nullness in engine or shared.
    IntelliJ keeps JetBrains because the platform API uses it.
-4. The null-marked modules — every root `NullMarking.enforcedRoots` names: `shared/jk-api`,
-   `shared/wire`, `shared/plugin-sdk`, `shared/core`, `shared/guard-api`, `server/guard`,
-   `clients/cli` — compile with Error Prone + NullAway in `OnlyNullMarked` JSpecify mode at error
+4. The null-marked modules — every root `NullMarking.enforcedRoots` names, which is every module
+   with Java sources except those `NullMarking.unenforcedModules` lists with what turning it on
+   costs — compile with Error Prone + NullAway in `OnlyNullMarked` JSpecify mode at error
    severity under **both builds**: the Gradle convention `jk.nullmarked-conventions` and the
    module's own `[javac]` table in `jk.toml` pass the same flags. `checkGuardParity` fails when a
-   module is on one list and not the other. Nothing spares a unit suite: `core`'s and `cli`'s
-   compile under the same plugins as their production code (`[javac.test]` exists for a suite that
+   module is on one list and not the other. Nothing spares a unit suite: every enforced module's
+   compiles under the same plugins as its production code (`[javac.test]` exists for a suite that
    needs it; none of jk's does), and production is never spared. Every production package in
    those modules is marked; `checkNullMarkedApiPackages` (G53) prevents unmarked additions.
 5. Three-state `Boolean success` on the accumulator is correct (unset /

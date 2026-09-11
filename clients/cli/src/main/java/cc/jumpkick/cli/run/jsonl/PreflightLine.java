@@ -18,9 +18,9 @@ public record PreflightLine(long ts, String stage, int done, int totalUnits, Str
     public static PreflightLine decode(String json) {
         return new PreflightLine(
                 Jsonl.longValue(json, "ts", 0),
-                Jsonl.str(json, "stage"),
+                Jsonl.requiredStr(json, "stage"),
                 Jsonl.intValue(json, "done", 0),
                 Jsonl.intValue(json, "totalUnits", 0),
-                Jsonl.str(json, "label"));
+                Jsonl.requiredStr(json, "label"));
     }
 }

@@ -9,11 +9,13 @@ import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.extension.AfterEachCallback;
 import org.junit.jupiter.api.extension.BeforeEachCallback;
 import org.junit.jupiter.api.extension.ExtensionContext;
@@ -59,12 +61,12 @@ public class LoopbackHttp implements BeforeEachCallback, AfterEachCallback {
     /** Every request path in arrival order — for "did it re-fetch?" without a bespoke handler. */
     private final List<String> requested = new CopyOnWriteArrayList<>();
 
-    private volatile Consumer<String> beforeServe;
-    private volatile Consumer<String> beforeMiss;
+    private volatile @Nullable Consumer<String> beforeServe;
+    private volatile @Nullable Consumer<String> beforeMiss;
     private boolean concurrent;
-    private HttpServer server;
-    private ExecutorService pool;
-    private URI base;
+    private @Nullable HttpServer server;
+    private @Nullable ExecutorService pool;
+    private @Nullable URI base;
 
     /**
      * Serve handlers on a thread pool instead of the single dispatch thread.
@@ -110,12 +112,12 @@ public class LoopbackHttp implements BeforeEachCallback, AfterEachCallback {
 
     /** Bind an ephemeral loopback port and start serving. Also callable directly (re-startable). */
     public void start() throws IOException {
-        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        HttpServer bound = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         if (concurrent) {
             pool = Executors.newCachedThreadPool();
-            server.setExecutor(pool);
+            bound.setExecutor(pool);
         }
-        server.createContext("/", exchange -> {
+        bound.createContext("/", exchange -> {
             String path = exchange.getRequestURI().getPath();
             requested.add(path);
             byte[] body = served.get(path);
@@ -131,8 +133,9 @@ public class LoopbackHttp implements BeforeEachCallback, AfterEachCallback {
             }
             exchange.close();
         });
-        server.start();
-        base = URI.create("http://127.0.0.1:" + server.getAddress().getPort());
+        bound.start();
+        server = bound;
+        base = URI.create("http://127.0.0.1:" + bound.getAddress().getPort());
     }
 
     /**
@@ -140,19 +143,21 @@ public class LoopbackHttp implements BeforeEachCallback, AfterEachCallback {
      * after-each teardown stays harmless.
      */
     public void stop() {
-        if (server != null) {
-            server.stop(0);
+        HttpServer running = server;
+        if (running != null) {
+            running.stop(0);
             server = null;
         }
-        if (pool != null) {
-            pool.shutdownNow();
+        ExecutorService threads = pool;
+        if (threads != null) {
+            threads.shutdownNow();
             pool = null;
         }
     }
 
     /** {@code http://127.0.0.1:<port>}, no trailing slash. */
     public URI base() {
-        return base;
+        return Objects.requireNonNull(base, "LoopbackHttp.base() before start()");
     }
 
     /** {@link #base} as a string with a trailing slash — the shape a repository URL wants. */
@@ -188,6 +193,6 @@ public class LoopbackHttp implements BeforeEachCallback, AfterEachCallback {
 
     /** The running server, for a suite that must add a bespoke context beside the route table. */
     public HttpServer server() {
-        return server;
+        return Objects.requireNonNull(server, "LoopbackHttp.server() before start()");
     }
 }

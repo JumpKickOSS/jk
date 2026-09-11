@@ -25,7 +25,7 @@ public record PlanFinishToolEvent(
 
     public static PlanFinishToolEvent decode(String json) {
         return new PlanFinishToolEvent(
-                Jsonl.str(json, "dir"),
+                Jsonl.requiredStr(json, "dir"),
                 Jsonl.bool(json, "success", false),
                 Jsonl.str(json, "toolCoord"),
                 Jsonl.str(json, "toolMainClass"),

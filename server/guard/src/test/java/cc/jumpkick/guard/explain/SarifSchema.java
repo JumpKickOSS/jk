@@ -32,7 +32,8 @@ final class SarifSchema {
     static SarifSchema vendored() throws IOException {
         try (InputStream in =
                 Objects.requireNonNull(SarifSchema.class.getResourceAsStream("sarif-2.1.0.json"), "sarif-2.1.0.json")) {
-            return new SarifSchema(MiniJson.parse(new String(in.readAllBytes(), StandardCharsets.UTF_8)));
+            return new SarifSchema(Objects.requireNonNull(
+                    MiniJson.parse(new String(in.readAllBytes(), StandardCharsets.UTF_8)), "sarif-2.1.0.json"));
         }
     }
 

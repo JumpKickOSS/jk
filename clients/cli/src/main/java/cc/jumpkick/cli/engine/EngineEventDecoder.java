@@ -217,7 +217,7 @@ final class EngineEventDecoder {
                         // `millis` duplicates `remainingMs`; the record carries the one value.
                         listener.onEtaEstimate(EtaEvent.decode(line).remainingMs());
                     case EngineProtocol.MODULE_START -> {
-                        ModulePlan plan = buildModulePlan(dir, planByDir.get(dir), cache);
+                        ModulePlan plan = buildModulePlan(dirOf(dir, type), planByDir.get(dir), cache);
                         BuildPlanListener gl = listener.onModuleStart(plan);
                         planListenersByDir.put(dir, gl != null ? gl : NOOP);
                     }
@@ -228,7 +228,7 @@ final class EngineEventDecoder {
                         planListenersByDir
                                 .getOrDefault(dir, NOOP)
                                 .planFinish(new BuildPlanResult(
-                                        meta != null ? meta.planName : dir,
+                                        meta != null ? meta.planName : dirOf(dir, type),
                                         e.success(),
                                         Duration.ZERO,
                                         List.of(),
@@ -238,7 +238,7 @@ final class EngineEventDecoder {
                                         e.cancelled()));
                     }
                     case EngineProtocol.MODULE_FINISH -> {
-                        ModuleOutcome outcome = readOutcome(dir, line);
+                        ModuleOutcome outcome = readOutcome(dirOf(dir, type), line);
                         outcomes.add(outcome);
                         listener.onModuleFinish(outcome);
                     }
@@ -303,8 +303,7 @@ final class EngineEventDecoder {
             }
             case EngineProtocol.PROGRESS -> {
                 ProgressEvent e = ProgressEvent.decode(line);
-                // A progress line names no plan: the view's plan name is whatever the line says,
-                // which is nothing — read as before, so the value the renderers see is unchanged.
+                // A progress line names no plan: the view carries the empty name.
                 listener.progress(
                         e.task(),
                         e.delta(),
@@ -512,6 +511,11 @@ final class EngineEventDecoder {
         return plans;
     }
 
+    /** A per-module event without its {@code dir} is a wire violation, not a case. */
+    private static String dirOf(@Nullable String dir, String type) {
+        return Objects.requireNonNull(dir, () -> type + " without a dir");
+    }
+
     private static ModulePlan buildModulePlan(String dir, @Nullable ModuleMeta meta, Path cache) {
         // A plan-done for a dir that never announced its module is a wire violation, not a case.
         ModuleMeta m = Objects.requireNonNull(meta, () -> "no module meta for " + dir);
@@ -522,8 +526,9 @@ final class EngineEventDecoder {
 
     private static BuildPlanView planView(
             String line, long numerator, long denominator, int tasksTotal, int tasksComplete, boolean cancelled) {
+        String planName = Jsonl.str(line, "planName");
         return new BuildPlanView(
-                Jsonl.str(line, "planName"), numerator, denominator, tasksTotal, tasksComplete, cancelled);
+                planName == null ? "" : planName, numerator, denominator, tasksTotal, tasksComplete, cancelled);
     }
 
     static @Nullable String wireGroup(@Nullable String raw) {

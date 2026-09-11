@@ -11,6 +11,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Matching for lock {@code [jdk]} / {@code [graal]} pins, on the two axes the pin states.
@@ -238,7 +239,7 @@ public final class LockPinMatch {
         return vendor.strip() + "-" + major;
     }
 
-    public static boolean sameHome(Path a, Path b) {
+    public static boolean sameHome(@Nullable Path a, @Nullable Path b) {
         if (a == null || b == null) return false;
         try {
             return Files.isSameFile(a, b);

@@ -204,7 +204,7 @@ public final class ActivityCommand implements CliCommand {
         return Math.min(100, whole);
     }
 
-    static @Nullable String formatCoord(String coord, String dir, Theme t) {
+    static @Nullable String formatCoord(@Nullable String coord, @Nullable String dir, Theme t) {
         String raw = HistoryCommand.label(coord, dir);
         if (!t.isAnsi()) return raw;
         int i = raw.indexOf(':');

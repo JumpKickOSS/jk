@@ -12,6 +12,6 @@ public record ModuleStartEvent(String dir) {
     }
 
     public static ModuleStartEvent decode(String json) {
-        return new ModuleStartEvent(Jsonl.str(json, "dir"));
+        return new ModuleStartEvent(Jsonl.requiredStr(json, "dir"));
     }
 }

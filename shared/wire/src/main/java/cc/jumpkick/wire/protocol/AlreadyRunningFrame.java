@@ -16,6 +16,8 @@ public record AlreadyRunningFrame(long buildNumber, long holderRequestId, String
 
     public static AlreadyRunningFrame decode(String json) {
         return new AlreadyRunningFrame(
-                Jsonl.longValue(json, "buildNumber", 0), Jsonl.longValue(json, "jid", 0), Jsonl.str(json, "message"));
+                Jsonl.longValue(json, "buildNumber", 0),
+                Jsonl.longValue(json, "jid", 0),
+                Jsonl.requiredStr(json, "message"));
     }
 }

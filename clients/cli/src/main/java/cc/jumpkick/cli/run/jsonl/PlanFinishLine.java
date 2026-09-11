@@ -19,7 +19,7 @@ public record PlanFinishLine(long ts, String plan, boolean success, long duratio
     public static PlanFinishLine decode(String json) {
         return new PlanFinishLine(
                 Jsonl.longValue(json, "ts", 0),
-                Jsonl.str(json, "plan"),
+                Jsonl.requiredStr(json, "plan"),
                 Jsonl.bool(json, "success", false),
                 Jsonl.longValue(json, "duration_ms", 0),
                 Jsonl.intValue(json, "warnings", 0),

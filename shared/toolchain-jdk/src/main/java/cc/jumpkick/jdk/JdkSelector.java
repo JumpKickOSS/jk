@@ -40,7 +40,7 @@ public final class JdkSelector {
      * bias and resolve via {@link #selectFlexible}'s vendor-ranked tie-break.
      */
     public static Optional<JdkCatalog.Entry> selectPreferred(
-            JdkCatalog catalog, String rawSpec, String os, String arch) {
+            JdkCatalog catalog, @Nullable String rawSpec, String os, String arch) {
         if (rawSpec == null || rawSpec.isBlank()) return Optional.empty();
         FlexibleQuery q = parseFlexible(rawSpec);
         // Bias only when the user named no vendor AND gave a concrete major/version.
@@ -193,7 +193,7 @@ public final class JdkSelector {
      * {@code "java"} is dropped (it's a noise word in inputs like {@code java-17-openjdk}); {@code
      * "jdk"} gets the same treatment.
      */
-    public static FlexibleQuery parseFlexible(String raw) {
+    public static FlexibleQuery parseFlexible(@Nullable String raw) {
         if (raw == null) return new FlexibleQuery(null, null, List.of());
         var tokens = raw.toLowerCase(Locale.ROOT).split("[-_]");
         Integer major = null;

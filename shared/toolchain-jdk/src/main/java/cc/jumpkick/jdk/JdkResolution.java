@@ -3,6 +3,7 @@ package cc.jumpkick.jdk;
 
 import cc.jumpkick.discovery.ToolHealth;
 import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.Lockfile.JdkPin;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -36,13 +37,13 @@ public final class JdkResolution {
 
     /** Resolution inputs. Nullable fields mean "tier not applicable". */
     public record Request(
-            Path projectDir,
-            String switchSpec,
-            String envSpec,
-            Lockfile.JdkPin lockJdk,
-            String projectJdkSpec,
+            @Nullable Path projectDir,
+            @Nullable String switchSpec,
+            @Nullable String envSpec,
+            @Nullable JdkPin lockJdk,
+            @Nullable String projectJdkSpec,
             int projectJavaRelease,
-            Function<String, String> env) {
+            Function<String, @Nullable String> env) {
         public Request {
             if (env == null) env = k -> null;
         }

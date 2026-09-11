@@ -53,17 +53,19 @@ class GuardModelSnapshotTest {
         GuardModelSnapshot.write(root, List.of(root.resolve("app"), root.resolve("lib")), out);
         Object doc = MiniJson.parse(Files.readString(out));
         assertThat((List<Object>) MiniJson.get(doc, "modules")).containsExactly("", "app", "lib");
-        Map<String, Object> deps = (Map<String, Object>) MiniJson.get(MiniJson.get(doc, "deps"), "app");
+        Map<String, Object> deps =
+                (Map<String, Object>) Objects.requireNonNull(MiniJson.get(MiniJson.get(doc, "deps"), "app"));
         List<Object> main = (List<Object>) Objects.requireNonNull(deps.get("dependencies"));
         assertThat(main).hasSize(2);
         assertThat(MiniJson.str(main.get(0), "coordinate")).isEqualTo("lib");
         assertThat(MiniJson.get(main.get(0), "workspace")).isEqualTo(Boolean.TRUE);
         assertThat(MiniJson.str(main.get(1), "coordinate")).isEqualTo("com.google.guava:guava");
         assertThat(MiniJson.str(main.get(1), "version")).isEqualTo("^33");
-        List<Object> tiers = (List<Object>) MiniJson.get(MiniJson.get(doc, "tiers"), "tiers");
+        List<Object> tiers = (List<Object>) Objects.requireNonNull(MiniJson.get(MiniJson.get(doc, "tiers"), "tiers"));
         assertThat(tiers).hasSize(2);
         assertThat(MiniJson.str(tiers.get(1), "name")).isEqualTo("jk test --profile slow");
-        Map<String, Object> java = (Map<String, Object>) MiniJson.get(MiniJson.get(doc, "toolchain"), "java");
+        Map<String, Object> java =
+                (Map<String, Object>) Objects.requireNonNull(MiniJson.get(MiniJson.get(doc, "toolchain"), "java"));
         assertThat(((Number) Objects.requireNonNull(java.get(""))).intValue()).isEqualTo(21);
         assertThat(((Number) Objects.requireNonNull(java.get("lib"))).intValue())
                 .isEqualTo(17);

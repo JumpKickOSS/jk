@@ -111,7 +111,7 @@ public final class SarifWriter {
         return out;
     }
 
-    private static String str(Object node, String key) {
+    private static String str(@Nullable Object node, String key) {
         Object v = MiniJson.get(node, key);
         return v == null ? "" : String.valueOf(v);
     }

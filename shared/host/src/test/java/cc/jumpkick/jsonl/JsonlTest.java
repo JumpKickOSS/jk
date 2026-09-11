@@ -164,6 +164,7 @@ class JsonlTest {
      * the same mistake was loud in one place and silent in another.
      */
     @Test
+    @SuppressWarnings("NullAway") // the null is deliberate: a null object must be rejected like a malformed one
     void appendRejectsAnythingThatIsNotAnEncodedObject() {
         assertThatThrownBy(() -> Jsonl.append("not-json", "\"b\":2")).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> Jsonl.append(null, "\"b\":2")).isInstanceOf(IllegalArgumentException.class);

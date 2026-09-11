@@ -19,9 +19,9 @@ public record TaskFinishLine(long ts, String task, String stage, String status, 
     public static TaskFinishLine decode(String json) {
         return new TaskFinishLine(
                 Jsonl.longValue(json, "ts", 0),
-                Jsonl.str(json, "task"),
-                Jsonl.str(json, "stage"),
-                Jsonl.str(json, "status"),
+                Jsonl.requiredStr(json, "task"),
+                Jsonl.requiredStr(json, "stage"),
+                Jsonl.requiredStr(json, "status"),
                 Jsonl.longValue(json, "duration_ms", 0),
                 Jsonl.longValue(json, "wait_ms", 0));
     }

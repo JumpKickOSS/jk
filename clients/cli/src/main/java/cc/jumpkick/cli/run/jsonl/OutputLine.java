@@ -14,6 +14,7 @@ public record OutputLine(long ts, String task, String line) {
     }
 
     public static OutputLine decode(String json) {
-        return new OutputLine(Jsonl.longValue(json, "ts", 0), Jsonl.str(json, "task"), Jsonl.str(json, "line"));
+        return new OutputLine(
+                Jsonl.longValue(json, "ts", 0), Jsonl.requiredStr(json, "task"), Jsonl.requiredStr(json, "line"));
     }
 }

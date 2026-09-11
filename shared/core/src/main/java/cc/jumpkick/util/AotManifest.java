@@ -273,7 +273,7 @@ public final class AotManifest {
                     map.put(name, b.build());
                 } else if (AotCacheFiles.isMarker(name) && Files.isRegularFile(p)) {
                     // Sticky refusal marker — engine and worker keys alike.
-                    String primary = AotCacheFiles.cacheOf(name);
+                    String primary = Objects.requireNonNull(AotCacheFiles.cacheOf(name));
                     if (!map.containsKey(primary)
                             || "pending".equals(map.get(primary).status())
                             || !Files.exists(aotDir.resolve(primary))) {

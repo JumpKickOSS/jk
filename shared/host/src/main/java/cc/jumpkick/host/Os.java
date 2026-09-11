@@ -2,6 +2,7 @@
 package cc.jumpkick.host;
 
 import java.util.Locale;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Host OS predicates, read from {@code os.name}. Lives in the {@code :host} leaf so the native
@@ -45,7 +46,7 @@ public final class Os {
     }
 
     /** {@code osName} lowercased contains {@code "windows"} — not {@code "win"}, which matches Darwin. */
-    public static boolean isWindows(String osName) {
+    public static boolean isWindows(@Nullable String osName) {
         return lower(osName).contains("windows");
     }
 
@@ -58,7 +59,7 @@ public final class Os {
      * {@code osName} lowercased contains {@code "mac"} or {@code "darwin"}. Both spellings are
      * needed: HotSpot reports {@code Mac OS X}, and other JVMs report the kernel name {@code Darwin}.
      */
-    public static boolean isDarwin(String osName) {
+    public static boolean isDarwin(@Nullable String osName) {
         String n = lower(osName);
         return n.contains("mac") || n.contains("darwin");
     }
@@ -69,11 +70,11 @@ public final class Os {
     }
 
     /** {@code osName} lowercased contains {@code "linux"}. */
-    public static boolean isLinux(String osName) {
+    public static boolean isLinux(@Nullable String osName) {
         return lower(osName).contains("linux");
     }
 
-    private static String lower(String osName) {
+    private static String lower(@Nullable String osName) {
         return osName == null ? "" : osName.toLowerCase(Locale.ROOT);
     }
 }

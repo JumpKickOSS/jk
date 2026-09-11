@@ -108,6 +108,12 @@ final class OutputEvaluator implements Evaluator {
         }
     }
 
+    /** A POM coordinate's text, {@code ""} when the element is absent — the missing case the messages spell. */
+    private static String text(Element parent, String tagName) {
+        String s = DomXml.childText(parent, tagName);
+        return s == null ? "" : s;
+    }
+
     private static void checkPom(
             TomlTable spec, Path pomFile, String rel, TreeSet<String> published, List<Observation> out) {
         boolean noUnspecified = Boolean.TRUE.equals(spec.getBoolean("no-unspecified"));
@@ -120,9 +126,9 @@ final class OutputEvaluator implements Evaluator {
             return;
         }
         Element project = doc.getDocumentElement();
-        String group = DomXml.childText(project, "groupId");
-        String artifact = DomXml.childText(project, "artifactId");
-        String version = DomXml.childText(project, "version");
+        String group = text(project, "groupId");
+        String artifact = text(project, "artifactId");
+        String version = text(project, "version");
         if (noUnspecified) {
             for (String[] f : new String[][] {{"groupId", group}, {"artifactId", artifact}, {"version", version}}) {
                 if (f[1].isEmpty() || f[1].equals(UNSPECIFIED) || f[1].equals("jk")) {
@@ -146,9 +152,9 @@ final class OutputEvaluator implements Evaluator {
         Element deps = DomXml.childElement(project, "dependencies");
         if (deps == null) return;
         for (Element d : DomXml.childElements(deps, "dependency")) {
-            String dg = DomXml.childText(d, "groupId");
-            String da = DomXml.childText(d, "artifactId");
-            String dv = DomXml.childText(d, "version");
+            String dg = text(d, "groupId");
+            String da = text(d, "artifactId");
+            String dv = text(d, "version");
             if (noUnspecified && (dg.equals(UNSPECIFIED) || da.equals(UNSPECIFIED) || dv.equals(UNSPECIFIED))) {
                 out.add(Observation.site(
                         rel + " | dependency " + dg + ":" + da,

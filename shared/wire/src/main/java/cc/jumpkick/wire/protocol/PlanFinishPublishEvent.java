@@ -16,6 +16,8 @@ public record PlanFinishPublishEvent(String dir, boolean success, int files) {
 
     public static PlanFinishPublishEvent decode(String json) {
         return new PlanFinishPublishEvent(
-                Jsonl.str(json, "dir"), Jsonl.bool(json, "success", false), Jsonl.intValue(json, "publishFiles", 0));
+                Jsonl.requiredStr(json, "dir"),
+                Jsonl.bool(json, "success", false),
+                Jsonl.intValue(json, "publishFiles", 0));
     }
 }

@@ -21,10 +21,10 @@ public record WorkspaceProgressLine(
     public static WorkspaceProgressLine decode(String json) {
         return new WorkspaceProgressLine(
                 Jsonl.longValue(json, "ts", 0),
-                Jsonl.str(json, "dir"),
+                Jsonl.requiredStr(json, "dir"),
                 Jsonl.longValue(json, "numerator", 0),
                 Jsonl.longValue(json, "denominator", 0),
-                Jsonl.str(json, "phase"),
+                Jsonl.requiredStr(json, "phase"),
                 Jsonl.intValue(json, "modulesComplete", 0),
                 Jsonl.intValue(json, "modulesTotal", 0));
     }

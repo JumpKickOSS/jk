@@ -211,6 +211,7 @@ public final class JkEnv {
     }
 
     private JdkVendor matchVendor(@Nullable Path home) {
+        if (home == null) return JdkVendor.UNKNOWN;
         // Look first in the probe-emitted hits (cheap, already parsed); fall
         // back to reading the release file directly. Either way, UNKNOWN if
         // we can't tell — the GraalVM detection just won't fire.

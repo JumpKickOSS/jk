@@ -28,8 +28,8 @@ public record ProgressEvent(
 
     public static ProgressEvent decode(String json) {
         return new ProgressEvent(
-                Jsonl.str(json, "dir"),
-                Jsonl.str(json, "task"),
+                Jsonl.requiredStr(json, "dir"),
+                Jsonl.requiredStr(json, "task"),
                 Jsonl.intValue(json, "delta", 0),
                 Jsonl.longValue(json, "numerator", 0),
                 Jsonl.longValue(json, "denominator", 0),

@@ -14,6 +14,7 @@ public record OutputEvent(String dir, String task, String line) {
     }
 
     public static OutputEvent decode(String json) {
-        return new OutputEvent(Jsonl.str(json, "dir"), Jsonl.str(json, "task"), Jsonl.str(json, "line"));
+        return new OutputEvent(
+                Jsonl.requiredStr(json, "dir"), Jsonl.requiredStr(json, "task"), Jsonl.requiredStr(json, "line"));
     }
 }

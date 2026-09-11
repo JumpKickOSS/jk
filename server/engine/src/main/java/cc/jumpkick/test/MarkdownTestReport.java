@@ -72,7 +72,7 @@ public final class MarkdownTestReport {
     /**
      * Record a skipped test. {@code reason} is the skip reason from the protocol event, may be null.
      */
-    public synchronized void recordSkipped(String uniqueId, String display, String reason) {
+    public synchronized void recordSkipped(String uniqueId, String display, @Nullable String reason) {
         String className = classNameFrom(uniqueId);
         entries.add(new Entry(className, display, 0, null, null, reason != null ? reason : ""));
     }

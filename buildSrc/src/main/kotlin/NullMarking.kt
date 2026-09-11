@@ -15,6 +15,7 @@ object NullMarking {
             "shared/wire/src/main/java",
             "shared/plugin-sdk/src/main/java",
             "shared/core/src/main/java",
+            "shared/host/src/main/java",
             "clients/cli/src/main/java",
             "shared/guard-api/src/main/java",
             "server/guard/src/main/java",
@@ -55,5 +56,19 @@ object NullMarking {
      * never applies the plugin looks the same as one with nothing to fix — so this is where the remaining work is
      * written down rather than inferred.
      */
-    val unenforcedModules: Map<String, String> = emptyMap()
+    val unenforcedModules: Map<String, String> =
+        mapOf(
+            "shared/client-io" to "84 findings in production, 52 in the suite; next in dependency order after host",
+            "shared/toolchain-jdk" to
+                "79 findings in production, 63 in the suite; cc.jumpkick.jdk is already marked through host's " +
+                    "package-info, so its nullable parameters are annotated where the CLI reads them",
+            "server/io" to "56 findings in production, 6 in the suite; waits on client-io",
+            "server/resolver" to "59 findings in production, 51 in the suite; waits on io",
+            "server/toolchain" to "41 findings in production, 19 in the suite; waits on toolchain-jdk and resolver",
+            "shared/dynamic-surface" to "30 findings in production, 1 in the suite",
+            "clients/cli-terminal" to "59 findings in production, none in the suite",
+            "clients/intellij" to
+                "a standalone Gradle build the root build never compiles; unmeasured until it applies the " +
+                    "same plugins itself",
+        )
 }

@@ -14,6 +14,7 @@ public record ImportNoteEvent(String dir, String kind, String text) {
     }
 
     public static ImportNoteEvent decode(String json) {
-        return new ImportNoteEvent(Jsonl.str(json, "dir"), Jsonl.str(json, "kind"), Jsonl.str(json, "text"));
+        return new ImportNoteEvent(
+                Jsonl.requiredStr(json, "dir"), Jsonl.requiredStr(json, "kind"), Jsonl.requiredStr(json, "text"));
     }
 }

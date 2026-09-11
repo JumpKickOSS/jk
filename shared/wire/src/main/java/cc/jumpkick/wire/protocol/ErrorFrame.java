@@ -13,6 +13,6 @@ public record ErrorFrame(String code, String message) {
     }
 
     public static ErrorFrame decode(String json) {
-        return new ErrorFrame(Jsonl.str(json, "code"), Jsonl.str(json, "message"));
+        return new ErrorFrame(Jsonl.requiredStr(json, "code"), Jsonl.requiredStr(json, "message"));
     }
 }

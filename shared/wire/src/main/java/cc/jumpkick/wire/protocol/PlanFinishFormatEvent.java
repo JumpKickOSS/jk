@@ -17,7 +17,7 @@ public record PlanFinishFormatEvent(String dir, boolean success, int total, int 
 
     public static PlanFinishFormatEvent decode(String json) {
         return new PlanFinishFormatEvent(
-                Jsonl.str(json, "dir"),
+                Jsonl.requiredStr(json, "dir"),
                 Jsonl.bool(json, "success", false),
                 Jsonl.intValue(json, "formatTotal", 0),
                 Jsonl.intValue(json, "formatWorkerExit", 0));

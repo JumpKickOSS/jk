@@ -15,6 +15,6 @@ public record DrainStatusFrame(long pid, int plans, String version) {
 
     public static DrainStatusFrame decode(String json) {
         return new DrainStatusFrame(
-                Jsonl.longValue(json, "pid", 0), Jsonl.intValue(json, "plans", 0), Jsonl.str(json, "version"));
+                Jsonl.longValue(json, "pid", 0), Jsonl.intValue(json, "plans", 0), Jsonl.requiredStr(json, "version"));
     }
 }

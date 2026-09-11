@@ -18,10 +18,10 @@ public record TaskFinishEvent(String dir, String task, String stage, String stat
 
     public static TaskFinishEvent decode(String json) {
         return new TaskFinishEvent(
-                Jsonl.str(json, "dir"),
-                Jsonl.str(json, "task"),
-                Jsonl.str(json, "stage"),
-                Jsonl.str(json, "status"),
+                Jsonl.requiredStr(json, "dir"),
+                Jsonl.requiredStr(json, "task"),
+                Jsonl.requiredStr(json, "stage"),
+                Jsonl.requiredStr(json, "status"),
                 Jsonl.longValue(json, "millis", 0),
                 Jsonl.longValue(json, "waitMillis", 0));
     }

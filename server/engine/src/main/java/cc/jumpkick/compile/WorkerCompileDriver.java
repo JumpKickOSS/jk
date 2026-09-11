@@ -19,6 +19,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Drives a secondary-language compile by forking its worker plugin, which runs that language's
@@ -171,7 +172,7 @@ public final class WorkerCompileDriver {
             List<String> cmd = JvmOptions.javaCommand(javaExe.toString(), 1, assembled.subList(1, assembled.size()));
 
             List<CompileResult.Diagnostic> diagnostics = new ArrayList<>();
-            String[] status = {null};
+            @Nullable String[] status = {null};
             // Non-protocol lines (JDK/compiler chatter) are dropped on success, but a plugin
             // that DIES before speaking protocol (a broken classpath, a JVM crash) leaves its
             // whole story there — keep a bounded tail and surface it on failure, or the build

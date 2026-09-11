@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.guard.api.runtime;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.platform.engine.discovery.DiscoverySelectors.selectClass;
 
@@ -131,14 +132,15 @@ class GuardRuntimeTest {
         assertThat(MiniJson.str(fires, "instead")).isEqualTo("Jsonl.quote");
         assertThat(MiniJson.str(fires, "source")).isEqualTo(Suite.class.getName() + "#fires");
         assertThat(MiniJson.str(fires, "scope")).isEqualTo("module");
-        assertThat(((Number) MiniJson.get(fires, "population")).intValue()).isEqualTo(1);
+        assertThat(((Number) requireNonNull(MiniJson.get(fires, "population"))).intValue())
+                .isEqualTo(1);
         @SuppressWarnings("unchecked")
-        List<Object> violations = (List<Object>) MiniJson.get(fires, "violations");
+        List<Object> violations = (List<Object>) requireNonNull(MiniJson.get(fires, "violations"));
         assertThat(violations).hasSize(1);
         assertThat(MiniJson.str(violations.get(0), "fingerprint"))
                 .isEqualTo("a.Esc#write()V -> java.lang.String#replace(CC)Ljava/lang/String;");
         assertThat(MiniJson.str(violations.get(0), "file")).isEqualTo("a/Esc.java");
-        assertThat(((Number) MiniJson.get(violations.get(0), "line")).intValue())
+        assertThat(((Number) requireNonNull(MiniJson.get(violations.get(0), "line"))).intValue())
                 .isEqualTo(7);
         @SuppressWarnings("unchecked")
         List<Object> params = (List<Object>) MiniJson.get(fires, "params");

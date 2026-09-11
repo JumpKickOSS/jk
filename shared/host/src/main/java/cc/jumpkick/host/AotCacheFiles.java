@@ -6,6 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Everything a jk process must agree on about a JEP 514 AOT cache: what its sidecar marker is
@@ -96,12 +97,12 @@ public final class AotCacheFiles {
     }
 
     /** True when {@code name} is a refusal marker rather than a cache or another sidecar. */
-    public static boolean isMarker(String name) {
+    public static boolean isMarker(@Nullable String name) {
         return name != null && name.endsWith(CACHE + MARKER);
     }
 
     /** The cache file name a marker belongs to, or {@code null} when {@code name} is not one. */
-    public static String cacheOf(String markerName) {
+    public static @Nullable String cacheOf(String markerName) {
         return isMarker(markerName) ? markerName.substring(0, markerName.length() - MARKER.length()) : null;
     }
 
@@ -114,7 +115,7 @@ public final class AotCacheFiles {
      * cannot drift apart, and a sweep that never runs cannot resurrect it. An unreadable marker
      * blocks: skipping one train is cheaper than failing a build over a sidecar.
      */
-    public static boolean blocked(Path cache) {
+    public static boolean blocked(@Nullable Path cache) {
         if (cache == null) return false;
         Path marker = marker(cache);
         try {
@@ -134,7 +135,7 @@ public final class AotCacheFiles {
      * (disk-full truncation, an interrupted copy) count as missing everywhere, or the warmup gate
      * and the train paths disagree forever.
      */
-    public static boolean usable(Path cache) {
+    public static boolean usable(@Nullable Path cache) {
         try {
             return cache != null && Files.isRegularFile(cache) && Files.size(cache) > 0;
         } catch (IOException e) {
@@ -143,7 +144,7 @@ public final class AotCacheFiles {
     }
 
     /** Drop a zero-byte leftover so its key can retrain. Best-effort; no-op on anything else. */
-    public static void deleteIfEmpty(Path cache) {
+    public static void deleteIfEmpty(@Nullable Path cache) {
         try {
             if (cache != null && Files.isRegularFile(cache) && Files.size(cache) == 0) {
                 Files.deleteIfExists(cache);
@@ -163,7 +164,7 @@ public final class AotCacheFiles {
      * whatever the JVM wrote — a {@code -Xlog:aot=info} transcript from a verification run, or the
      * first few KiB of an engine start log, where the AOT subsystem speaks only when unhappy.
      */
-    public static String refusal(String jvmLog) {
+    public static @Nullable String refusal(@Nullable String jvmLog) {
         if (jvmLog == null || jvmLog.isEmpty()) return null;
         for (String line : jvmLog.split("\n")) {
             if (refuses(line)) return line.trim();

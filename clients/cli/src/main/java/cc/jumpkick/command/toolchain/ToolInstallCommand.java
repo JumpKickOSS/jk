@@ -535,7 +535,7 @@ public final class ToolInstallCommand implements CliCommand {
     }
 
     private static void copyTree(@Nullable Path from, Path to) throws IOException {
-        PathUtil.copyTree(from, to);
+        if (from != null) PathUtil.copyTree(from, to);
     }
 
     private static @Nullable Integer rejectInvalidLauncherName(String name) {

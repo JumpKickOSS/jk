@@ -17,7 +17,7 @@ public record PlanFinishCacheEvent(String dir, boolean success, long cacheFiles,
 
     public static PlanFinishCacheEvent decode(String json) {
         return new PlanFinishCacheEvent(
-                Jsonl.str(json, "dir"),
+                Jsonl.requiredStr(json, "dir"),
                 Jsonl.bool(json, "success", false),
                 Jsonl.longValue(json, "cacheFiles", 0),
                 Jsonl.longValue(json, "cacheBytes", 0));

@@ -14,6 +14,7 @@ public record LabelEvent(String dir, String task, String label) {
     }
 
     public static LabelEvent decode(String json) {
-        return new LabelEvent(Jsonl.str(json, "dir"), Jsonl.str(json, "task"), Jsonl.str(json, "label"));
+        return new LabelEvent(
+                Jsonl.requiredStr(json, "dir"), Jsonl.requiredStr(json, "task"), Jsonl.requiredStr(json, "label"));
     }
 }

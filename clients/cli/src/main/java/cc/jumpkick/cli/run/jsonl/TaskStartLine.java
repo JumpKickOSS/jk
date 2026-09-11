@@ -17,8 +17,8 @@ public record TaskStartLine(long ts, String task, String stage, int ticks) {
     public static TaskStartLine decode(String json) {
         return new TaskStartLine(
                 Jsonl.longValue(json, "ts", 0),
-                Jsonl.str(json, "task"),
-                Jsonl.str(json, "stage"),
+                Jsonl.requiredStr(json, "task"),
+                Jsonl.requiredStr(json, "stage"),
                 Jsonl.intValue(json, "ticks", 0));
     }
 }

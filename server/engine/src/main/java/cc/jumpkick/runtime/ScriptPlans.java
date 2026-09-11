@@ -203,7 +203,7 @@ public final class ScriptPlans {
                 .outputDir(classesDir)
                 .release(release)
                 .extraOptions(header.javacOptions())
-                .javaHome(JavaHomes.resolveJavaHome(script.toAbsolutePath().getParent()))
+                .javaHome(JavaHomes.resolveJavaHome(scriptDir(script)))
                 .build();
         return new JavacRunner().compile(request);
     }
@@ -366,8 +366,7 @@ public final class ScriptPlans {
                             .jvmTarget(CompileSupport.kotlinJvmTarget(
                                     jvmTarget, Runtime.version().feature()))
                             .workerClasspath(workerCp)
-                            .javaHome(JavaHomes.resolveJavaHome(
-                                    script.toAbsolutePath().getParent()))
+                            .javaHome(JavaHomes.resolveJavaHome(scriptDir(script)))
                             .workingDir(workingDir)
                             .extraArgs(List.of("-no-stdlib"))
                             .build();
@@ -642,5 +641,10 @@ public final class ScriptPlans {
                     .cachePath());
         }
         return jars;
+    }
+
+    /** The directory a script's JDK is resolved from; an absolute script path always has one. */
+    private static Path scriptDir(Path script) {
+        return Objects.requireNonNull(script.toAbsolutePath().getParent(), "script has no parent directory");
     }
 }

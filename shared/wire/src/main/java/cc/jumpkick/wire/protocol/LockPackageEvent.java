@@ -22,7 +22,7 @@ public record LockPackageEvent(
     public static LockPackageEvent decode(String json) {
         return new LockPackageEvent(
                 Jsonl.str(json, "dir"),
-                Jsonl.str(json, "name"),
+                Jsonl.requiredStr(json, "name"),
                 Jsonl.str(json, "version"),
                 Jsonl.intValue(json, "total", -1));
     }

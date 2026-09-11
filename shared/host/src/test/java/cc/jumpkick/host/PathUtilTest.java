@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.host;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -43,6 +44,7 @@ class PathUtilTest {
     }
 
     @Test
+    @SuppressWarnings("NullAway") // the null is deliberate: a null path must be rejected like a blank one
     void resolveUserPath_rejects_blank() {
         assertThatThrownBy(() -> PathUtil.resolveUserPath(""))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -76,7 +78,7 @@ class PathUtilTest {
     @Test
     void deleteRecursively_unlinks_and_leaves_the_target(@TempDir Path tmp) throws Exception {
         Path outside = Files.createDirectories(tmp.resolve("outside/deep"));
-        Path keep = Files.writeString(outside.getParent().resolve("keep.txt"), "precious");
+        Path keep = Files.writeString(requireNonNull(outside.getParent()).resolve("keep.txt"), "precious");
         Path deep = Files.writeString(outside.resolve("d.txt"), "deeper");
 
         Path tree = Files.createDirectories(tmp.resolve("tree"));

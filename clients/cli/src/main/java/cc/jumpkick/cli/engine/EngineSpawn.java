@@ -585,7 +585,8 @@ public final class EngineSpawn {
      */
     static List<String> jarCommand(EnginePaths.Paths paths, EngineTarget target, AotMode mode, JkEngineConfig config) {
         List<String> command = new ArrayList<>();
-        command.add(JdkFingerprint.java(target.javaHome()).toString());
+        Path javaHome = Objects.requireNonNull(target.javaHome(), "a jar engine runs on a host JDK");
+        command.add(JdkFingerprint.java(javaHome).toString());
         // The shared serving/trainer flag list — one list with EngineMain.aotTrainerCommand,
         // because JEP 514 refuses to map an AOT cache whose dump-time and runtime property sets
         // differ. The OOM heap dump lands in the engine directory beside the log, one file per

@@ -21,6 +21,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Predicate;
+import org.jspecify.annotations.Nullable;
 
 /** Shared filesystem helpers. */
 public final class PathUtil {
@@ -414,12 +415,13 @@ public final class PathUtil {
         if (parsed.isEmpty()) {
             parsed = List.of(".com", ".exe", ".bat", ".cmd", ".vbs", ".js", ".ws", ".msc", ".ps1");
         }
-        pathExt = List.copyOf(parsed);
-        return pathExt;
+        List<String> fresh = List.copyOf(parsed);
+        pathExt = fresh;
+        return fresh;
     }
 
     /** Memoized {@code PATHEXT}; see {@link #windowsExecutableExtensions()}. */
-    private static volatile List<String> pathExt;
+    private static volatile @Nullable List<String> pathExt;
 
     /**
      * Best-effort recursive delete. Swallows every I/O failure; a null or absent root is a no-op.
@@ -438,7 +440,7 @@ public final class PathUtil {
      * from any other. Containment checks belong on the caller's side and have to compare real
      * paths, not string prefixes.
      */
-    public static void deleteRecursively(Path root) {
+    public static void deleteRecursively(@Nullable Path root) {
         try {
             deleteTree(root, null, true);
         } catch (IOException quietNeverThrows) {
@@ -474,7 +476,7 @@ public final class PathUtil {
      * came off disk. The caller gets the first failure with any later ones attached as suppressed;
      * finishing the walk is also what makes the tally independent of traversal order.
      */
-    private static void deleteTree(Path root, Removed tally, boolean quiet) throws IOException {
+    private static void deleteTree(@Nullable Path root, @Nullable Removed tally, boolean quiet) throws IOException {
         if (root == null) return;
         BasicFileAttributes rootAttrs;
         try {
@@ -520,7 +522,7 @@ public final class PathUtil {
                 return FileVisitResult.CONTINUE;
             }
 
-            private void record(IOException e) {
+            private void record(@Nullable IOException e) {
                 // A vanished entry is not a failure — another process finished the job for us.
                 if (e == null || quiet || e instanceof NoSuchFileException) return;
                 if (failure[0] == null) failure[0] = e;
@@ -535,7 +537,8 @@ public final class PathUtil {
      * keep walking. {@code attrs} comes from the walk (already NOFOLLOW) so the tally sizes the
      * link and not what it points at; null means a directory, which counts as zero.
      */
-    private static IOException deleteOne(Path p, BasicFileAttributes attrs, Removed tally) {
+    private static @Nullable IOException deleteOne(
+            Path p, @Nullable BasicFileAttributes attrs, @Nullable Removed tally) {
         try {
             boolean gone = Files.deleteIfExists(p);
             if (gone && tally != null && attrs != null && attrs.isRegularFile()) {
@@ -552,8 +555,8 @@ public final class PathUtil {
         }
     }
 
-    private static IOException clearReadOnlyAndRetry(
-            Path p, BasicFileAttributes attrs, Removed tally, AccessDeniedException denied) {
+    private static @Nullable IOException clearReadOnlyAndRetry(
+            Path p, @Nullable BasicFileAttributes attrs, @Nullable Removed tally, AccessDeniedException denied) {
         DosFileAttributeView dos = Files.getFileAttributeView(p, DosFileAttributeView.class, LinkOption.NOFOLLOW_LINKS);
         if (dos == null) return denied;
         try {

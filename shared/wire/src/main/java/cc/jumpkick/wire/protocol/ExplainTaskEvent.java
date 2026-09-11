@@ -23,10 +23,10 @@ public record ExplainTaskEvent(
 
     public static ExplainTaskEvent decode(String json) {
         return new ExplainTaskEvent(
-                Jsonl.str(json, "dir"),
-                Jsonl.str(json, "name"),
-                Jsonl.str(json, "status"),
-                Jsonl.str(json, "text"),
+                Jsonl.requiredStr(json, "dir"),
+                Jsonl.requiredStr(json, "name"),
+                Jsonl.requiredStr(json, "status"),
+                Jsonl.requiredStr(json, "text"),
                 Jsonl.str(json, "key"));
     }
 }

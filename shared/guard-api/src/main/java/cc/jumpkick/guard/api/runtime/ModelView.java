@@ -76,8 +76,8 @@ public final class ModelView implements Model {
                         List<Dependency> ds = new ArrayList<>();
                         for (Object d : list(t.getValue())) {
                             ds.add(new Dependency(
-                                    MiniJson.str(d, "coordinate"),
-                                    MiniJson.str(d, "version"),
+                                    text(d, "coordinate"),
+                                    text(d, "version"),
                                     scope,
                                     Boolean.TRUE.equals(MiniJson.get(d, "workspace"))));
                         }
@@ -91,14 +91,13 @@ public final class ModelView implements Model {
         for (Object a : list(MiniJson.get(root, "lock"))) {
             List<String> scopes = new ArrayList<>();
             for (Object s : list(MiniJson.get(a, "scopes"))) scopes.add(String.valueOf(s));
-            artifacts.add(new Lock.Artifact(
-                    MiniJson.str(a, "coordinate"), MiniJson.str(a, "version"), MiniJson.str(a, "repository"), scopes));
+            artifacts.add(new Lock.Artifact(text(a, "coordinate"), text(a, "version"), text(a, "repository"), scopes));
         }
         List<TierTable.Tier> tiers = new ArrayList<>();
         Object tiersNode = MiniJson.get(root, "tiers");
         for (Object t : list(tiersNode == null ? null : MiniJson.get(tiersNode, "tiers"))) {
             tiers.add(new TierTable.Tier(
-                    MiniJson.str(t, "name"), strings(MiniJson.get(t, "include")), strings(MiniJson.get(t, "exclude"))));
+                    text(t, "name"), strings(MiniJson.get(t, "include")), strings(MiniJson.get(t, "exclude"))));
         }
         Map<String, Integer> java = new LinkedHashMap<>();
         String kotlin = null;
@@ -143,6 +142,12 @@ public final class ModelView implements Model {
 
     private static List<?> list(@Nullable Object node) {
         return node instanceof List<?> l ? l : List.of();
+    }
+
+    /** {@link MiniJson#str} with the snapshot writer's own default: an absent string field is {@code ""}. */
+    private static String text(@Nullable Object node, String key) {
+        String s = MiniJson.str(node, key);
+        return s == null ? "" : s;
     }
 
     private static Set<String> strings(@Nullable Object node) {

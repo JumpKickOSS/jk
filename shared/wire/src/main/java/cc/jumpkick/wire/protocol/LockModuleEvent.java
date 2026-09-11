@@ -13,6 +13,6 @@ public record LockModuleEvent(String dir, String coord) {
     }
 
     public static LockModuleEvent decode(String json) {
-        return new LockModuleEvent(Jsonl.str(json, "dir"), Jsonl.str(json, "coord"));
+        return new LockModuleEvent(Jsonl.requiredStr(json, "dir"), Jsonl.requiredStr(json, "coord"));
     }
 }

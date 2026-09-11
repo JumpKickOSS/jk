@@ -450,8 +450,8 @@ public final class ImagePlans {
             Path spec = ImageCredentials.newSpecFile();
             try {
                 Files.write(spec, sw.lines(), StandardCharsets.UTF_8);
-                String[] ref = {null};
-                String[] workerError = {null};
+                @Nullable String[] ref = {null};
+                @Nullable String[] workerError = {null};
                 StringBuilder diag = new StringBuilder();
                 int exit = new PluginClient("##JKIM:")
                         .on(PluginProtocol.RESULT, json -> ref[0] = Jsonl.str(json, "ref"))
@@ -463,7 +463,8 @@ public final class ImagePlans {
                     String d = diag.length() > 0 ? diag.toString().trim() : null;
                     throw new RuntimeException("image worker failed" + (d != null ? ": " + d : " (exit " + exit + ")"));
                 }
-                return ref[0] != null ? ref[0] : "";
+                String built = ref[0];
+                return built != null ? built : "";
             } finally {
                 Files.deleteIfExists(spec);
             }

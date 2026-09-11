@@ -260,7 +260,7 @@ final class EngineReads {
                 line -> {
                     String error = Jsonl.str(line, "error");
                     if (error != null) throw new IOException(error);
-                    return Jsonl.str(line, "rendered");
+                    return Jsonl.requiredStr(line, "rendered");
                 });
     }
 

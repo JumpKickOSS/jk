@@ -20,6 +20,7 @@ import cc.jumpkick.wire.protocol.EngineProtocol;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk history} — browse and prune the persisted build-history journal
@@ -54,7 +55,7 @@ public final class HistoryCommand extends GroupCommand {
     }
 
     /** Prefer the {@code group:name} coordinate; fall back to the dir's last path segment. */
-    static String label(String coord, String dir) {
+    static String label(@Nullable String coord, @Nullable String dir) {
         if (coord != null && !coord.isBlank()) return coord;
         if (dir == null || dir.isBlank()) return "?";
         String norm = dir.endsWith("/") ? dir.substring(0, dir.length() - 1) : dir;
@@ -272,7 +273,7 @@ public final class HistoryCommand extends GroupCommand {
             for (String r : rows) CliOutput.out(render.apply(r));
         }
 
-        private static void appendIf(StringBuilder b, String value, String suffix) {
+        private static void appendIf(StringBuilder b, @Nullable String value, String suffix) {
             if (value != null && !value.isBlank()) b.append(value).append(suffix);
         }
     }

@@ -15,6 +15,6 @@ public record SessionStartLine(long ts, String command, List<String> argv) {
 
     public static SessionStartLine decode(String json) {
         return new SessionStartLine(
-                Jsonl.longValue(json, "ts", 0), Jsonl.str(json, "command"), Jsonl.strArray(json, "argv"));
+                Jsonl.longValue(json, "ts", 0), Jsonl.requiredStr(json, "command"), Jsonl.strArray(json, "argv"));
     }
 }

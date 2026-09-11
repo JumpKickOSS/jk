@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.jsonl;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -26,7 +27,7 @@ class MiniJsonTest {
                 ]
                 """);
         assertThat(parsed).isInstanceOf(List.class);
-        List<?> entries = (List<?>) parsed;
+        List<?> entries = (List<?>) requireNonNull(parsed);
         assertThat(entries).hasSize(2);
         Map<?, ?> first = (Map<?, ?>) entries.get(0);
         assertThat(first.get("latest")).isEqualTo(Boolean.TRUE);
@@ -126,13 +127,13 @@ class MiniJsonTest {
                   "files.exclude": ["**/.git", "**/.jk"],
                 }
                 """);
-        Map<?, ?> settings = (Map<?, ?>) parsed;
+        Map<?, ?> settings = (Map<?, ?>) requireNonNull(parsed);
         List<Object> keys = List.copyOf(settings.keySet());
         assertThat(keys)
                 .containsExactly("editor.fontFamily", "editor.fontLigatures", "terminal.integrated", "files.exclude");
         assertThat(settings.get("editor.fontFamily")).isEqualTo("JetBrainsMono Nerd Font");
         assertThat(settings.get("editor.fontLigatures")).isEqualTo(Boolean.TRUE);
-        Map<?, ?> terminal = (Map<?, ?>) settings.get("terminal.integrated");
+        Map<?, ?> terminal = (Map<?, ?>) requireNonNull(settings.get("terminal.integrated"));
         assertThat(terminal.get("fontSize")).isEqualTo(13.0);
         assertThat(terminal.get("env.osx")).isEqualTo(Map.of("JK_NERD_FONT", "1"));
         assertThat(settings.get("files.exclude")).isEqualTo(List.of("**/.git", "**/.jk"));

@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Tree-shaped JSON parse/write ({@code Map}/{@code List}/{@code String}/{@code Number}/
@@ -21,14 +22,14 @@ import java.util.Map;
 public final class MiniJson {
 
     /** Serialize {@code value} (Map/List/String/Number/Boolean/null) as compact JSON. */
-    public static String write(Object value) {
+    public static String write(@Nullable Object value) {
         StringBuilder sb = new StringBuilder();
         writeValue(sb, value, -1);
         return sb.toString();
     }
 
     /** As {@link #write(Object)}, pretty-printed with 2-space indentation. */
-    public static String writePretty(Object value) {
+    public static String writePretty(@Nullable Object value) {
         StringBuilder sb = new StringBuilder();
         writeValue(sb, value, 0);
         sb.append('\n');
@@ -36,7 +37,7 @@ public final class MiniJson {
     }
 
     /** {@code indent < 0} = compact; otherwise the current pretty-print depth. */
-    private static void writeValue(StringBuilder sb, Object value, int indent) {
+    private static void writeValue(StringBuilder sb, @Nullable Object value, int indent) {
         if (value == null) {
             sb.append("null");
             return;
@@ -132,12 +133,12 @@ public final class MiniJson {
     // wrong type for any field, and to a reader with a default "wrong type" reads as "absent".
 
     /** The value at {@code key} when {@code node} is an object; {@code null} otherwise. */
-    public static Object get(Object node, String key) {
+    public static @Nullable Object get(@Nullable Object node, String key) {
         return node instanceof Map<?, ?> map ? map.get(key) : null;
     }
 
     /** {@link #get} as a string; {@code null} when absent or another type. */
-    public static String str(Object node, String key) {
+    public static @Nullable String str(@Nullable Object node, String key) {
         return get(node, key) instanceof String s ? s : null;
     }
 
@@ -145,7 +146,7 @@ public final class MiniJson {
      * {@link #get} as an array; empty when absent or another type. A JSON array may hold nulls, so
      * the elements are handed back as they were parsed rather than copied through {@code List.of}.
      */
-    public static List<?> list(Object node, String key) {
+    public static List<?> list(@Nullable Object node, String key) {
         return get(node, key) instanceof List<?> l ? l : List.of();
     }
 
@@ -175,7 +176,7 @@ public final class MiniJson {
      * trailing commas, no byte-order mark. This is the plugin wire-protocol path — anything lenient
      * belongs in {@link #parseRelaxed} instead.
      */
-    public static Object parse(String json) {
+    public static @Nullable Object parse(String json) {
         return parse(json, false);
     }
 
@@ -185,11 +186,11 @@ public final class MiniJson {
      * trailing comma in objects and arrays, and a leading byte-order mark. None of these are
      * recognized inside a string literal, so {@code {"a":"// text"}} keeps its value verbatim.
      */
-    public static Object parseRelaxed(String json) {
+    public static @Nullable Object parseRelaxed(String json) {
         return parse(json, true);
     }
 
-    private static Object parse(String json, boolean relaxed) {
+    private static @Nullable Object parse(String json, boolean relaxed) {
         MiniJson p = new MiniJson(json, relaxed);
         Object value = p.parseValue();
         p.skipWhitespace();
@@ -199,7 +200,7 @@ public final class MiniJson {
         return value;
     }
 
-    private Object parseValue() {
+    private @Nullable Object parseValue() {
         skipWhitespace();
         if (pos >= src.length()) throw new IllegalArgumentException("unexpected end of input");
         char c = src.charAt(pos);
@@ -350,7 +351,7 @@ public final class MiniJson {
         throw new IllegalArgumentException("bad literal at offset " + pos);
     }
 
-    private Object parseNull() {
+    private @Nullable Object parseNull() {
         if (src.startsWith("null", pos)) {
             pos += 4;
             return null;

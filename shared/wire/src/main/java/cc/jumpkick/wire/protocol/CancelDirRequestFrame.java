@@ -12,6 +12,6 @@ public record CancelDirRequestFrame(String dir) {
     }
 
     public static CancelDirRequestFrame decode(String json) {
-        return new CancelDirRequestFrame(Jsonl.str(json, "dir"));
+        return new CancelDirRequestFrame(Jsonl.requiredStr(json, "dir"));
     }
 }

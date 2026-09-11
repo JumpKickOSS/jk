@@ -25,6 +25,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
@@ -298,9 +299,10 @@ public final class GuardSuites {
             return Evaluation.failed(
                     "the guard suite left no report for `" + rule.id() + "`: the run did not reach it");
         String outcome = MiniJson.str(line, "outcome");
-        String error = MiniJson.get(line, "error") == null ? "" : MiniJson.str(line, "error");
-        if (outcome.equals("threw")) return Evaluation.failed("the guard threw: " + error);
-        if (outcome.equals("owner-missing")) return Evaluation.ownerMissing(error);
+        String reportedError = MiniJson.str(line, "error");
+        String error = reportedError == null ? "" : reportedError;
+        if ("threw".equals(outcome)) return Evaluation.failed("the guard threw: " + error);
+        if ("owner-missing".equals(outcome)) return Evaluation.ownerMissing(error);
         Map<Allow, Boolean> allowUsed = new LinkedHashMap<>();
         for (Allow a : rule.allow()) allowUsed.put(a, false);
         List<Observation> sites = new ArrayList<>();
@@ -308,17 +310,18 @@ public final class GuardSuites {
         int found = 0;
         for (Object v : violations instanceof List<?> l ? l : List.<Object>of()) {
             found++;
-            String fingerprint = MiniJson.str(v, "fingerprint");
+            // the report writer names every site's fingerprint and detail; a line without them is not a report
+            String fingerprint = Objects.requireNonNull(MiniJson.str(v, "fingerprint"), "fingerprint");
             String file = null;
-            if (MiniJson.get(v, "file") != null) {
+            String reportedFile = MiniJson.str(v, "file");
+            if (reportedFile != null) {
                 // a bytecode site names its file under the module's source root; every other kind from the workspace
                 // root
-                boolean fromRoot = MiniJson.get(v, "root") != null
-                        && MiniJson.str(v, "root").equals("workspace");
-                file = fromRoot ? MiniJson.str(v, "file") : sourcePath(module, MiniJson.str(v, "file"));
+                boolean fromRoot = "workspace".equals(MiniJson.str(v, "root"));
+                file = fromRoot ? reportedFile : sourcePath(module, reportedFile);
             }
             int at = MiniJson.get(v, "line") instanceof Number n ? n.intValue() : 0;
-            String detail = MiniJson.str(v, "detail");
+            String detail = Objects.requireNonNull(MiniJson.str(v, "detail"), "detail");
             Allow allow = allowing(rule.allow(), fingerprint, file, module);
             if (allow != null) {
                 allowUsed.put(allow, true);

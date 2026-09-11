@@ -67,7 +67,7 @@ public final class EnvValues {
     }
 
     /** Coerce a raw string to a non-blank value; {@code null}/blank → empty. */
-    public static Optional<String> parseString(String raw) {
+    public static Optional<String> parseString(@Nullable String raw) {
         return (raw != null && !raw.isBlank()) ? Optional.of(raw) : Optional.empty();
     }
 

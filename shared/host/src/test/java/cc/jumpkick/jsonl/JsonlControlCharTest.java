@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.jsonl;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.Map;
@@ -31,7 +32,7 @@ class JsonlControlCharTest {
         String ansi = "\u001b[38;2;0;179;104mok\u001b[0m";
         String doc = "{\"msg\":" + Jsonl.quote(ansi) + "}";
         @SuppressWarnings("unchecked")
-        Map<String, Object> parsed = (Map<String, Object>) MiniJson.parse(doc);
+        Map<String, Object> parsed = (Map<String, Object>) requireNonNull(MiniJson.parse(doc));
         assertThat(parsed.get("msg")).isEqualTo(ansi);
     }
 

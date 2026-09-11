@@ -21,19 +21,30 @@ public final class Jsonl {
      * Extract a JSON string field value, handling basic escape sequences ({@code \"}, {@code \\},
      * {@code \n}, {@code \r}, {@code \t}). Returns {@code null} when the key is absent.
      */
-    public static String str(String json, String key) {
+    public static @Nullable String str(@Nullable String json, String key) {
         return strAt(json, indexOfKey(json, key, false));
+    }
+
+    /**
+     * The string field a peer always writes, for a decoder whose record cannot hold its absence. A
+     * line without it is a protocol violation and fails here, naming the key, rather than as a
+     * {@code null} inside a record. The line itself is not echoed: it may carry a credential.
+     */
+    public static String requiredStr(String json, String key) {
+        String value = str(json, key);
+        if (value == null) throw new IllegalArgumentException("missing string field \"" + key + "\"");
+        return value;
     }
 
     /**
      * Like {@link #str} but only the root object's field — not a nested {@code throwable.class}
      * (or any other nested object).
      */
-    public static String topStr(String json, String key) {
+    public static @Nullable String topStr(@Nullable String json, String key) {
         return strAt(json, indexOfKey(json, key, true));
     }
 
-    private static String strAt(String json, int keyAt) {
+    private static @Nullable String strAt(@Nullable String json, int keyAt) {
         if (json == null || keyAt < 0) return null;
         int colon = json.indexOf(':', keyAt);
         if (colon < 0) return null;
@@ -106,7 +117,7 @@ public final class Jsonl {
      * the root object (depth 1), so {@code throwable.class} does not shadow a missing top-level
      * {@code class}.
      */
-    static int indexOfKey(String json, String key, boolean topLevelOnly) {
+    static int indexOfKey(@Nullable String json, @Nullable String key, boolean topLevelOnly) {
         if (json == null || key == null) return -1;
         String needle = "\"" + key + "\"";
         int depth = 0;
@@ -138,7 +149,7 @@ public final class Jsonl {
     }
 
     /** Extract a JSON integer field, returning {@code defaultVal} when absent or non-numeric. */
-    public static int intValue(String json, String key, int defaultVal) {
+    public static int intValue(@Nullable String json, String key, int defaultVal) {
         if (json == null) return defaultVal;
         String needle = "\"" + key + "\":";
         int start = json.indexOf(needle);
@@ -158,7 +169,7 @@ public final class Jsonl {
     }
 
     /** Extract a JSON long field, returning {@code defaultVal} when absent or non-numeric. */
-    public static long longValue(String json, String key, long defaultVal) {
+    public static long longValue(@Nullable String json, String key, long defaultVal) {
         if (json == null) return defaultVal;
         String needle = "\"" + key + "\":";
         int start = json.indexOf(needle);
@@ -178,7 +189,7 @@ public final class Jsonl {
     }
 
     /** Extract a JSON number field (int or decimal), returning {@code defaultVal} when absent. */
-    public static double doubleValue(String json, String key, double defaultVal) {
+    public static double doubleValue(@Nullable String json, String key, double defaultVal) {
         if (json == null) return defaultVal;
         String needle = "\"" + key + "\":";
         int start = json.indexOf(needle);
@@ -209,7 +220,7 @@ public final class Jsonl {
     }
 
     /** Extract a JSON boolean field, returning {@code defaultVal} when absent. */
-    public static boolean bool(String json, String key, boolean defaultVal) {
+    public static boolean bool(@Nullable String json, String key, boolean defaultVal) {
         if (json == null) return defaultVal;
         String needle = "\"" + key + "\":";
         int start = json.indexOf(needle);
@@ -222,7 +233,7 @@ public final class Jsonl {
     }
 
     /** Returns {@code true} when the key is present with any non-null, non-"null" value. */
-    public static boolean has(String json, String key) {
+    public static boolean has(@Nullable String json, String key) {
         if (json == null) return false;
         return json.contains("\"" + key + "\":");
     }
@@ -343,7 +354,7 @@ public final class Jsonl {
      * string (suitable for passing back to other {@code Jsonl} methods), or {@code null} when
      * absent.
      */
-    public static String nested(String json, String key) {
+    public static @Nullable String nested(@Nullable String json, String key) {
         if (json == null) return null;
         String needle = "\"" + key + "\":{";
         int start = json.indexOf(needle);
@@ -467,7 +478,7 @@ public final class Jsonl {
      *
      * @throws IllegalArgumentException when {@code object} is not a single-line {@code {…}}
      */
-    public static String append(String object, String fields) {
+    public static String append(String object, @Nullable String fields) {
         if (object == null
                 || object.length() < 2
                 || object.charAt(0) != '{'

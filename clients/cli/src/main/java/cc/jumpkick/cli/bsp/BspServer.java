@@ -788,7 +788,7 @@ public final class BspServer {
      * {@code buildTarget/run} whose {@code params.data} carried an {@code id} of its own was
      * answered under the wrong one and the IDE waited out its own request forever.
      */
-    private static @Nullable String requestId(Object message) {
+    private static @Nullable String requestId(@Nullable Object message) {
         Object id = MiniJson.get(message, "id");
         return id instanceof String || id instanceof Number ? MiniJson.write(id) : null;
     }

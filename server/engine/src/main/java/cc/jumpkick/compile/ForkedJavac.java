@@ -192,7 +192,7 @@ public final class ForkedJavac {
             List<CompileResult.Diagnostic> diagnostics = new ArrayList<>();
             Map<Path, Set<Path>> generated = new TreeMap<>();
             List<Path> compiledSources = new ArrayList<>();
-            String[] status = {null};
+            @Nullable String[] status = {null};
 
             // Fork the java-compiler plugin on jk's own runtime, like every plugin, with
             // --release carrying the project's target semantics — unless the project's level is

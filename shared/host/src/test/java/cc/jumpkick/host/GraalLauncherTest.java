@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.host;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
@@ -33,7 +34,9 @@ class GraalLauncherTest {
 
         assertThat(GraalLauncher.homeOf(svm)).contains(home);
         // The defect this replaced: two levels up from the launcher is not a GraalVM home.
-        assertThat(GraalLauncher.homeOf(svm)).get().isNotEqualTo(svm.getParent().getParent());
+        assertThat(GraalLauncher.homeOf(svm))
+                .get()
+                .isNotEqualTo(requireNonNull(svm.getParent()).getParent());
         assertThat(GraalLauncher.homeOf(svm)).get().isNotEqualTo(home.resolve("lib"));
     }
 

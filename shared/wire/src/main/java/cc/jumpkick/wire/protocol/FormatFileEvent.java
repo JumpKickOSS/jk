@@ -20,9 +20,9 @@ public record FormatFileEvent(
 
     public static FormatFileEvent decode(String json) {
         return new FormatFileEvent(
-                Jsonl.str(json, "dir"),
-                Jsonl.str(json, "path"),
-                Jsonl.str(json, "status"),
+                Jsonl.requiredStr(json, "dir"),
+                Jsonl.requiredStr(json, "path"),
+                Jsonl.requiredStr(json, "status"),
                 Jsonl.str(json, "message"),
                 Jsonl.intValue(json, "index", 0),
                 Jsonl.intValue(json, "total", 0));

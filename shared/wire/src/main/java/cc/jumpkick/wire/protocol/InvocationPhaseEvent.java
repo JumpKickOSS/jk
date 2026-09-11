@@ -13,6 +13,6 @@ public record InvocationPhaseEvent(String phase, String status) {
     }
 
     public static InvocationPhaseEvent decode(String json) {
-        return new InvocationPhaseEvent(Jsonl.str(json, "phase"), Jsonl.str(json, "status"));
+        return new InvocationPhaseEvent(Jsonl.requiredStr(json, "phase"), Jsonl.requiredStr(json, "status"));
     }
 }

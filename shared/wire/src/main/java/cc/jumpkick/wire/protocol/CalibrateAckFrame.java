@@ -56,6 +56,6 @@ public record CalibrateAckFrame(
                 Jsonl.bool(json, "measured", false),
                 Jsonl.bool(json, "junitPlatformUsed", false),
                 Jsonl.bool(json, "resolveUsed", false),
-                Jsonl.str(json, "summary"));
+                Jsonl.requiredStr(json, "summary"));
     }
 }

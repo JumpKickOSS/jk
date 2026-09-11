@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.host;
 
+import org.jspecify.annotations.Nullable;
+
 /** Error-message hygiene shared by engine verbs and client sync paths. */
 public final class Errors {
 
@@ -11,7 +13,7 @@ public final class Errors {
      * blank — {@code String.valueOf(e.getMessage())} turned a message-less NPE into the literal
      * {@code jk: null} with no class name.
      */
-    public static String text(Throwable t) {
+    public static String text(@Nullable Throwable t) {
         if (t == null) return "unknown error";
         String m = t.getMessage();
         return m == null || m.isBlank() ? t.toString() : m;

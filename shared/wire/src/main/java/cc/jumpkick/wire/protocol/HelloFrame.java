@@ -14,6 +14,6 @@ public record HelloFrame(String version, String purpose) {
     }
 
     public static HelloFrame decode(String json) {
-        return new HelloFrame(Jsonl.str(json, "version"), Jsonl.str(json, "purpose"));
+        return new HelloFrame(Jsonl.requiredStr(json, "version"), Jsonl.requiredStr(json, "purpose"));
     }
 }

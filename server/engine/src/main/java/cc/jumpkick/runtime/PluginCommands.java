@@ -97,7 +97,7 @@ public final class PluginCommands {
             try {
                 Path jar = PluginBuild.workerJarFor(active, cache);
                 List<String> output = new ArrayList<>();
-                String[] error = new String[1];
+                @Nullable String[] error = new String[1];
                 PluginClient client = new PluginClient(PluginBuild.code(active).protocolPrefix())
                         .on(PluginProtocol.COMMAND_OUT, line -> output.add(Jsonl.str(line, "line")))
                         .on("error", line -> error[0] = Jsonl.str(line, "message"))
@@ -106,7 +106,8 @@ public final class PluginCommands {
                         });
                 int exit = client.run(PluginLaunch.javaCommand(
                         jar, spec, PluginBuild.code(active).protocolPrefix()));
-                if (error[0] != null) return PluginCommandReport.error(error[0]);
+                String failure = error[0];
+                if (failure != null) return PluginCommandReport.error(failure);
                 return new PluginCommandReport(null, true, exit, output);
             } finally {
                 Files.deleteIfExists(spec);

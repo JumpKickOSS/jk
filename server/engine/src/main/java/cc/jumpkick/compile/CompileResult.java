@@ -83,7 +83,7 @@ public record CompileResult(boolean success, List<Diagnostic> diagnostics) {
         }
 
         /** Map a {@code javax.tools.Diagnostic.Kind} name (plugin JSONL) to a severity. */
-        public static Severity fromName(String kind) {
+        public static Severity fromName(@Nullable String kind) {
             if (kind == null) return OTHER;
             return switch (kind) {
                 case "ERROR" -> ERROR;

@@ -12,6 +12,7 @@ import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
+import org.jspecify.annotations.Nullable;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
@@ -85,13 +86,13 @@ public final class DomXml {
     }
 
     /** The trimmed text of the first direct child element named {@code tagName}, or {@code null}. */
-    public static String childText(Element parent, String tagName) {
+    public static @Nullable String childText(@Nullable Element parent, String tagName) {
         Element child = childElement(parent, tagName);
         return child == null ? null : child.getTextContent().trim();
     }
 
     /** The first direct child element named {@code tagName}, or {@code null} ({@code null}-safe parent). */
-    public static Element childElement(Element parent, String tagName) {
+    public static @Nullable Element childElement(@Nullable Element parent, String tagName) {
         if (parent == null) return null;
         NodeList children = parent.getChildNodes();
         for (int i = 0; i < children.getLength(); i++) {
@@ -104,7 +105,7 @@ public final class DomXml {
     }
 
     /** All direct child elements named {@code tagName} ({@code null}-safe parent → empty). */
-    public static List<Element> childElements(Element parent, String tagName) {
+    public static List<Element> childElements(@Nullable Element parent, String tagName) {
         List<Element> result = new ArrayList<>();
         if (parent == null) return result;
         NodeList children = parent.getChildNodes();
@@ -118,7 +119,7 @@ public final class DomXml {
     }
 
     /** All direct child elements, regardless of name ({@code null}-safe parent → empty). */
-    public static List<Element> childElements(Element parent) {
+    public static List<Element> childElements(@Nullable Element parent) {
         List<Element> result = new ArrayList<>();
         if (parent == null) return result;
         NodeList children = parent.getChildNodes();

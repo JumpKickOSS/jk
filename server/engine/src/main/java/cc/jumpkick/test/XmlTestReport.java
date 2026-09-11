@@ -57,7 +57,8 @@ public final class XmlTestReport {
      * JSON object from the protocol event's {@code throwable} field — {@code null} for a passing
      * test.
      */
-    public synchronized void recordFinished(String uniqueId, String display, long durationMs, String throwableJson) {
+    public synchronized void recordFinished(
+            String uniqueId, String display, long durationMs, @Nullable String throwableJson) {
         String className = classNameFrom(uniqueId);
         String failureType = null, failureMessage = null, failureStack = null;
         if (throwableJson != null) {
@@ -71,7 +72,7 @@ public final class XmlTestReport {
     /**
      * Record a skipped test. {@code reason} is the skip reason from the protocol event, may be null.
      */
-    public synchronized void recordSkipped(String uniqueId, String display, String reason) {
+    public synchronized void recordSkipped(String uniqueId, String display, @Nullable String reason) {
         String className = classNameFrom(uniqueId);
         entries.add(new Entry(className, display, 0, null, null, null, reason != null ? reason : ""));
     }

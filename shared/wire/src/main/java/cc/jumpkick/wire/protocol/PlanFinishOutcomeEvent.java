@@ -31,7 +31,7 @@ public record PlanFinishOutcomeEvent(
     public static PlanFinishOutcomeEvent decode(String json) {
         String tests = Jsonl.nested(json, TestSummary.WIRE_KEY);
         return new PlanFinishOutcomeEvent(
-                Jsonl.str(json, "dir"),
+                Jsonl.requiredStr(json, "dir"),
                 Jsonl.bool(json, "success", false),
                 Jsonl.str(json, "buildOutcome"),
                 tests == null ? -1 : Jsonl.longValue(tests, "total", -1),

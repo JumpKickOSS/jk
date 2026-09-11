@@ -208,7 +208,7 @@ class CliSessionTranscriptTest {
         assertNotNull(session);
         Path file = bind(session, project);
         String first = Files.readAllLines(file).get(0);
-        Map<String, Object> doc = (Map<String, Object>) MiniJson.parse(first);
+        Map<String, Object> doc = (Map<String, Object>) Objects.requireNonNull(MiniJson.parse(first));
         assertTrue(doc.containsKey("schema"));
         assertEquals(CliSessionTranscript.SCHEMA, ((Number) Objects.requireNonNull(doc.get("schema"))).intValue());
         assertEquals("session-start", doc.get("type"));

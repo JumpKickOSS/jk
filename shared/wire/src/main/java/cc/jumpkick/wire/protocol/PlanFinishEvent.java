@@ -16,6 +16,8 @@ public record PlanFinishEvent(String dir, boolean success, boolean cancelled) {
 
     public static PlanFinishEvent decode(String json) {
         return new PlanFinishEvent(
-                Jsonl.str(json, "dir"), Jsonl.bool(json, "success", false), Jsonl.bool(json, "cancelled", false));
+                Jsonl.requiredStr(json, "dir"),
+                Jsonl.bool(json, "success", false),
+                Jsonl.bool(json, "cancelled", false));
     }
 }

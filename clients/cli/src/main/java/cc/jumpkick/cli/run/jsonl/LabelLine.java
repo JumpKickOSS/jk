@@ -14,6 +14,7 @@ public record LabelLine(long ts, String task, String label) {
     }
 
     public static LabelLine decode(String json) {
-        return new LabelLine(Jsonl.longValue(json, "ts", 0), Jsonl.str(json, "task"), Jsonl.str(json, "label"));
+        return new LabelLine(
+                Jsonl.longValue(json, "ts", 0), Jsonl.requiredStr(json, "task"), Jsonl.requiredStr(json, "label"));
     }
 }

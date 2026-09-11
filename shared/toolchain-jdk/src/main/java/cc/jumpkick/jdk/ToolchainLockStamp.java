@@ -6,6 +6,7 @@ import cc.jumpkick.model.ToolchainSpec;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Stamps lock {@code [jdk]} / {@code [graal]} from the manifest's declaration and the toolchain
@@ -33,7 +34,7 @@ public final class ToolchainLockStamp {
 
     public static Lockfile apply(
             Lockfile lock,
-            Lockfile previous,
+            @Nullable Lockfile previous,
             Path javaHome,
             JdkRegistry registry,
             ToolchainSpec jdkSpec,

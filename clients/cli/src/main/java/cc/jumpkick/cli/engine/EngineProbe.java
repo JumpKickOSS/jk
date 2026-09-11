@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.nio.channels.SocketChannel;
 import java.nio.file.Path;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * One-connection questions about the engine behind a socket: is anything listening, does it speak
@@ -40,12 +41,12 @@ public final class EngineProbe {
             long heapMaxBytes,
             long rssBytes,
             long aotTrainingPid,
-            String httpUrl,
-            String httpError,
+            @Nullable String httpUrl,
+            @Nullable String httpError,
             /** MCP JSON-RPC endpoint when HTTP is up ({@code httpUrl + "/mcp"}), else null. */
-            String mcpUrl,
+            @Nullable String mcpUrl,
             /** Last-job VFS object from {@code status-ack}, or {@code null} when none yet. */
-            String vfsJson,
+            @Nullable String vfsJson,
             int cores,
             long totalMemoryBytes,
             long availableMemoryBytes,
@@ -123,7 +124,7 @@ public final class EngineProbe {
             String httpUrl = Jsonl.str(ack, "httpUrl");
             String mcpUrl = Jsonl.str(ack, "mcpUrl"); // null = MCP disabled
             return Optional.of(new Status(
-                    Jsonl.str(ack, "version"),
+                    Jsonl.requiredStr(ack, "version"),
                     Jsonl.longValue(ack, "pid", -1),
                     Jsonl.longValue(ack, "startedAt", -1),
                     Jsonl.intValue(ack, "activeRequests", -1),
@@ -143,7 +144,7 @@ public final class EngineProbe {
                     Jsonl.longValue(ack, "availableMemoryBytes", -1),
                     Jsonl.doubleValue(ack, "systemCpuLoad", -1),
                     Jsonl.doubleValue(ack, "systemLoadAverage", -1),
-                    Jsonl.str(ack, "engineEpoch"),
+                    Jsonl.requiredStr(ack, "engineEpoch"),
                     Jsonl.longValue(ack, "idleDropped", -1),
                     Jsonl.longValue(ack, "logBytes", -1),
                     Jsonl.longValue(ack, "logRolledAt", -1)));

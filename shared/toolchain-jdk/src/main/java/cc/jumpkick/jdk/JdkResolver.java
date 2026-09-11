@@ -6,6 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Objects;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Reads and resolves the project's {@code .jdk-version} pin — the {@code .jdk-version}
@@ -64,7 +65,8 @@ public final class JdkResolver {
      * --jdks-dir} override. {@code jdksDirOverride} may be {@code null} to use the IntelliJ JDK
      * directory default.
      */
-    public static Optional<InstalledJdk> forProject(Path projectDir, Path jdksDirOverride) throws IOException {
+    public static Optional<InstalledJdk> forProject(Path projectDir, @Nullable Path jdksDirOverride)
+            throws IOException {
         JdkRegistry registry = jdksDirOverride != null ? new JdkRegistry(jdksDirOverride) : new JdkRegistry();
         Optional<InstalledJdk> resolved = new JdkResolver(registry).resolve(projectDir);
         return resolved;

@@ -3,6 +3,7 @@ package cc.jumpkick.wire.protocol;
 
 import cc.jumpkick.jsonl.Jsonl;
 import java.io.IOException;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Typed wire error: preserves the {@code code} from {@code {"type":"error","code":...}} so callers
@@ -12,7 +13,7 @@ import java.io.IOException;
 public final class EngineWireException extends IOException {
     private final String code;
 
-    public EngineWireException(String code, String message) {
+    public EngineWireException(@Nullable String code, @Nullable String message) {
         super(message);
         this.code = code == null || code.isBlank() ? EngineProtocol.ERR_REQUEST_FAILED : code;
     }

@@ -52,6 +52,6 @@ public record UpdateRequest(
                 Jsonl.bool(json, "offline", false),
                 Jsonl.bool(json, "force", false),
                 Jsonl.bool(json, "verbose", false),
-                Jsonl.str(json, "platform"));
+                Jsonl.requiredStr(json, "platform"));
     }
 }

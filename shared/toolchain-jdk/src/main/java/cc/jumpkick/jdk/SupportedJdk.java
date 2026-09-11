@@ -6,6 +6,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Which JDK majors jk surfaces: floor {@link #MIN_MAJOR} (17), every LTS at or above it, plus the
@@ -66,7 +67,8 @@ public final class SupportedJdk {
      * Language-level majors for {@code jk new} (newest-first from the live catalog). {@code
      * nativeOnly} restricts to GraalVM; empty catalog → empty list for offline fallbacks.
      */
-    public static List<Integer> offerableMajors(JdkCatalog catalog, boolean nativeOnly, String os, String arch) {
+    public static List<Integer> offerableMajors(
+            @Nullable JdkCatalog catalog, boolean nativeOnly, String os, String arch) {
         if (catalog == null) return List.of();
         TreeSet<Integer> avail = new TreeSet<>();
         for (JdkCatalog.Entry e : catalog.entries()) {

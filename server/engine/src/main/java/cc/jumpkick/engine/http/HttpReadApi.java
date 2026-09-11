@@ -219,7 +219,7 @@ final class HttpReadApi {
         String kind = Jsonl.str(body, "kind");
         long requestId;
         try {
-            requestId = jobs.trigger(JobSpec.of(kind, dir));
+            requestId = jobs.trigger(JobSpec.of(kind == null ? "build" : kind, dir));
         } catch (JobEnvelope.AlreadyRunning e) {
             HttpResponses.sendJson(
                     exchange,

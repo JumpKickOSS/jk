@@ -275,7 +275,7 @@ public final class JdkRegistry {
      * all Temurin, {@code temurin-25} matches Temurin 25). Used by {@code jk jdk update}, which only
      * ever touches installs jk owns. Returned in probe-chain order.
      */
-    public List<JdkHit> managedHits(String spec) {
+    public List<JdkHit> managedHits(@Nullable String spec) {
         JdkSelector.FlexibleQuery query = (spec == null || spec.isBlank()) ? null : JdkSelector.parseFlexible(spec);
         List<JdkHit> out = new ArrayList<>();
         for (JdkHit hit : listHits()) {
@@ -291,7 +291,7 @@ public final class JdkRegistry {
      * filter. Used by {@code jk jdk uninstall} where the user must qualify which probe's copy of a
      * JDK to remove (e.g. {@code intellij/temurin-26.0.1} vs {@code sdkman/25.0.3-tem}).
      */
-    public Optional<JdkHit> findHitBySpec(String spec, String sourceFilter) {
+    public Optional<JdkHit> findHitBySpec(@Nullable String spec, @Nullable String sourceFilter) {
         if (spec == null || spec.isBlank()) return Optional.empty();
         JdkSelector.FlexibleQuery query = JdkSelector.parseFlexible(spec);
         List<JdkHit> matches = new ArrayList<>();
@@ -374,7 +374,7 @@ public final class JdkRegistry {
      *
      * A {@code null} {@code minVersion} means "any point release of the major" — the bare-major case.
      */
-    public Optional<JdkHit> findHitAtLeast(int major, String minVersion, List<String> hints) {
+    public Optional<JdkHit> findHitAtLeast(int major, @Nullable String minVersion, List<String> hints) {
         String floor = minVersion == null ? null : JdkSelector.versionKey(minVersion);
         for (JdkHit hit : listHits()) {
             Integer m = JdkKeywords.leadingMajor(hit.version());

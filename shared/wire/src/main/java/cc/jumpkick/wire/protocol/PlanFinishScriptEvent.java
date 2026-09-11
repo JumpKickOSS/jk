@@ -29,7 +29,7 @@ public record PlanFinishScriptEvent(
 
     public static PlanFinishScriptEvent decode(String json) {
         return new PlanFinishScriptEvent(
-                Jsonl.str(json, "dir"),
+                Jsonl.requiredStr(json, "dir"),
                 Jsonl.bool(json, "success", false),
                 Jsonl.str(json, "scriptMainClass"),
                 Jsonl.strArray(json, "scriptClasspath"),

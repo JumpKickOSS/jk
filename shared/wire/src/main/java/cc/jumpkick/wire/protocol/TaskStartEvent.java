@@ -16,9 +16,9 @@ public record TaskStartEvent(String dir, String task, String stage, int ticks) {
 
     public static TaskStartEvent decode(String json) {
         return new TaskStartEvent(
-                Jsonl.str(json, "dir"),
-                Jsonl.str(json, "task"),
-                Jsonl.str(json, "stage"),
+                Jsonl.requiredStr(json, "dir"),
+                Jsonl.requiredStr(json, "task"),
+                Jsonl.requiredStr(json, "stage"),
                 Jsonl.intValue(json, "ticks", 0));
     }
 }
