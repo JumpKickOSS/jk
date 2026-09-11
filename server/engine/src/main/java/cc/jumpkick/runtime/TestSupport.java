@@ -44,18 +44,6 @@ import org.jspecify.annotations.Nullable;
 public final class TestSupport {
 
     /**
-     * {@link #testExtraSources} for a forecast: {@code .java} only, and degrading to empty rather
-     * than throwing, because a forecast reports on a build instead of being one.
-     */
-    static List<Path> forecastTestExtraSources(JkBuild project, Path moduleDir) {
-        try {
-            return testExtraSources(project, moduleDir, ".java");
-        } catch (IOException degraded) {
-            return List.of();
-        }
-    }
-
-    /**
      * Sources under {@code [test] extra-src}, by extension. These roots belong to the test tier but
      * to no suite: there is nothing in them to run, so they compile with whichever suites were
      * selected rather than being selectable themselves. Sibling-consumed helpers use

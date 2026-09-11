@@ -736,19 +736,11 @@ public final class PlannerSupport {
         // forecast's source list must cover the same files the live run stamps.
         var resolved = SessionContext.current().testSelection().resolve(discovered);
         List<String> suites = resolved.ok() ? resolved.suites() : List.of(TestSuites.DEFAULT);
-        List<Path> stampSrcs = new ArrayList<>();
-        stampSrcs.addAll(TestSuites.collectJavaSources(dir, compact, suites));
-        stampSrcs.addAll(TestSuites.collectKotlinSources(dir, compact, suites));
-        stampSrcs.addAll(TestSuites.collectGroovySources(dir, compact, suites));
-        // `[test] extra-src` belongs to the test tier but to no suite, so a suite-based collection
-        // cannot see it — and the live stamp keys off TEST_SOURCES, which the compile step filled
-        // with these included. compile-test's forecast already adds them (that is what
-        // forecastTestExtraSources is for); the run-tests stamp did not, so a module declaring
-        // extra-src forecast a phantom suite re-run forever. `clients/cli` declares one, and its
-        // 1,602-test suite was priced on every settled build.
-        for (Path extra : TestSupport.forecastTestExtraSources(project, dir)) {
-            if (!stampSrcs.contains(extra)) stampSrcs.add(extra);
-        }
+        // The same factory the live plan fills TEST_SOURCES from, so the forecast stamps exactly
+        // the files the run stamps: every selected suite's sources in every language, plus the
+        // `[test] extra-src` files that belong to the tier and to no suite.
+        List<Path> stampSrcs =
+                PlannerTest.TestSources.collect(project, dir, compact, suites).all();
         BuildLayout layout = BuildLayout.of(dir, project);
         List<Path> stampRt = PlannerFixtures.withOwnFixtures(project, layout, testRuntimeCp);
         List<String> stampExtras = testStampExtras(dir, project);
