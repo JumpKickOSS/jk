@@ -169,6 +169,7 @@ public final class PlannerCompile {
             Path outputDir,
             int release,
             List<String> javacArgs,
+            JkBuild.JavacConfig javac,
             Path javaHome,
             boolean mixedKotlin,
             boolean mixedGroovy,
@@ -209,7 +210,7 @@ public final class PlannerCompile {
                 .classpath(classpath)
                 .outputDir(in.outputDir())
                 .release(in.release())
-                .extraOptions(options)
+                .extraOptions(javacOptions(options, in.javac()))
                 .javaHome(in.javaHome())
                 .processorPath(in.processorPath());
         return withScala(req, in.scala()).build();
@@ -227,6 +228,7 @@ public final class PlannerCompile {
             Path outputDir,
             int release,
             List<String> javacArgs,
+            JkBuild.JavacConfig javac,
             Path javaHome,
             ScalaCompile.@Nullable Setup scala) {}
 
@@ -244,10 +246,42 @@ public final class PlannerCompile {
                 .classpath(classpath)
                 .outputDir(in.outputDir())
                 .release(in.release())
-                .extraOptions(in.javacArgs())
+                .extraOptions(javacOptions(in.javacArgs(), in.javac()))
                 .javaHome(in.javaHome())
                 .processorPath(in.processorPath());
         return withScala(req, in.scala()).build();
+    }
+
+    /** javac's plugin syntax is one argument: the name and its options, space-separated. */
+    static final String PLUGIN_FLAG = "-Xplugin:";
+
+    /**
+     * The javac argv both compile steps hand the worker: {@code base} (lint, contributed and
+     * profile args), then one {@link #PLUGIN_FLAG} element per {@code [javac] plugins} entry, then
+     * {@code [javac] args} verbatim. One body, so the build's key and the forecast's agree.
+     */
+    static List<String> javacOptions(List<String> base, JkBuild.JavacConfig javac) {
+        if (javac.isEmpty()) return base;
+        List<String> out = new ArrayList<>(base);
+        javac.plugins().forEach((name, options) -> {
+            StringBuilder arg = new StringBuilder(PLUGIN_FLAG).append(name);
+            for (String option : options) arg.append(' ').append(option);
+            out.add(arg.toString());
+        });
+        out.addAll(javac.args());
+        return List.copyOf(out);
+    }
+
+    /** The plugin names a request invokes, in argv order; empty when it invokes none. */
+    public static List<String> pluginNames(CompileRequest request) {
+        List<String> names = new ArrayList<>();
+        for (String option : request.extraOptions()) {
+            if (!option.startsWith(PLUGIN_FLAG)) continue;
+            String rest = option.substring(PLUGIN_FLAG.length());
+            int space = rest.indexOf(' ');
+            names.add(space < 0 ? rest : rest.substring(0, space));
+        }
+        return names;
     }
 
     private static CompileRequest.CompileRequestBuilder withScala(
@@ -375,6 +409,7 @@ public final class PlannerCompile {
                 javaOut,
                 ctx.require(RELEASE),
                 javacArgs,
+                ctx.require(PROJECT).build().javac(),
                 ctx.require(JAVA_HOME),
                 cx.mixed(),
                 cx.mixedGroovy(),

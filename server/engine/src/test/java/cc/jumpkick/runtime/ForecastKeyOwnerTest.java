@@ -69,6 +69,7 @@ class ForecastKeyOwnerTest {
                 layout.classesDir(),
                 25,
                 List.of("-Xlint:all"),
+                JkBuild.JavacConfig.EMPTY,
                 jdk,
                 true,
                 true,
@@ -95,6 +96,7 @@ class ForecastKeyOwnerTest {
                 layout.classesDir(),
                 25,
                 List.of("-Xlint:all"),
+                JkBuild.JavacConfig.EMPTY,
                 jdk,
                 false,
                 false,
@@ -118,7 +120,15 @@ class ForecastKeyOwnerTest {
         var scala = new ScalaCompile.Setup("3.8.4", List.of(compiler), List.of(stdlib), compiler, compiler);
 
         CompileRequest full = PlannerCompile.testCompileRequest(new PlannerCompile.TestCompile(
-                List.of(src), List.of(), List.of(), out, 25, List.of("-Xlint:all"), jdk, scala));
+                List.of(src),
+                List.of(),
+                List.of(),
+                out,
+                25,
+                List.of("-Xlint:all"),
+                JkBuild.JavacConfig.EMPTY,
+                jdk,
+                scala));
 
         assertThat(full.javaHome()).isEqualTo(jdk);
         assertThat(full.scalaVersion()).isEqualTo("3.8.4");
@@ -128,9 +138,92 @@ class ForecastKeyOwnerTest {
                 .contains(stdlib);
 
         CompileRequest bare = PlannerCompile.testCompileRequest(new PlannerCompile.TestCompile(
-                List.of(src), List.of(), List.of(), out, 25, List.of("-Xlint:all"), jdk, null));
+                List.of(src),
+                List.of(),
+                List.of(),
+                out,
+                25,
+                List.of("-Xlint:all"),
+                JkBuild.JavacConfig.EMPTY,
+                jdk,
+                null));
         assertThat(ActionKey.forJavac("compile-test", full, "0.1.0"))
                 .isNotEqualTo(ActionKey.forJavac("compile-test", bare, "0.1.0"));
+    }
+
+    @Test
+    void a_javac_plugin_is_one_argv_element_in_both_requests_and_its_options_move_the_key(@TempDir Path tmp)
+            throws Exception {
+        // [javac] is lowered by the two request owners, so the build and the forecast see the same
+        // argv: the plugin and its options as javac's single -Xplugin: argument, then [javac] args
+        // last. An option change is a key change, or a NullAway severity bump restores stale classes.
+        Path module = Files.createDirectories(tmp.resolve("m"));
+        Files.writeString(module.resolve("jk.toml"), """
+                group = "t"
+                name = "m"
+                version = "0.1.0"
+                java = 25
+
+                [javac]
+                plugins = { ErrorProne = { options = ["-Xep:NullAway:ERROR", "-XepOpt:NullAway:AnnotatedPackages=t"] } }
+                args    = ["-XDcompilePolicy=simple", "--should-stop=ifError=FLOW"]
+                """);
+        JkBuild project = JkBuildParser.parse(module.resolve("jk.toml"));
+        BuildLayout layout = BuildLayout.of(module, project);
+        Path src = Files.writeString(module.resolve("A.java"), "class A {}");
+        Path jdk = Files.createDirectories(tmp.resolve("jdk25"));
+        Files.writeString(jdk.resolve("release"), "JAVA_VERSION=\"25.0.1+9\"\n");
+        String plugin = "-Xplugin:ErrorProne -Xep:NullAway:ERROR -XepOpt:NullAway:AnnotatedPackages=t";
+
+        CompileRequest main = PlannerCompile.mainCompileRequest(new PlannerCompile.MainCompile(
+                List.of(src),
+                List.of(),
+                List.of(),
+                layout,
+                layout.classesDir(),
+                25,
+                List.of("-Xlint:all"),
+                project.build().javac(),
+                jdk,
+                false,
+                false,
+                null,
+                null));
+        assertThat(main.extraOptions())
+                .containsExactly("-Xlint:all", plugin, "-XDcompilePolicy=simple", "--should-stop=ifError=FLOW");
+        assertThat(PlannerCompile.pluginNames(main)).containsExactly("ErrorProne");
+
+        CompileRequest test = PlannerCompile.testCompileRequest(new PlannerCompile.TestCompile(
+                List.of(src),
+                List.of(),
+                List.of(),
+                layout.testClassesDir(),
+                25,
+                List.of("-Xlint:all"),
+                project.build().javac(),
+                jdk,
+                null));
+        assertThat(test.extraOptions()).as("compile-test runs the same plugins").isEqualTo(main.extraOptions());
+
+        JkBuild.JavacConfig warn = new JkBuild.JavacConfig(
+                Map.of("ErrorProne", List.of("-Xep:NullAway:WARN", "-XepOpt:NullAway:AnnotatedPackages=t")),
+                project.build().javac().args());
+        CompileRequest relaxed = PlannerCompile.mainCompileRequest(new PlannerCompile.MainCompile(
+                List.of(src),
+                List.of(),
+                List.of(),
+                layout,
+                layout.classesDir(),
+                25,
+                List.of("-Xlint:all"),
+                warn,
+                jdk,
+                false,
+                false,
+                null,
+                null));
+        assertThat(ActionKey.forJavac("compile-main", main, "0.1.0"))
+                .isNotEqualTo(ActionKey.forJavac("compile-main", relaxed, "0.1.0"));
     }
 
     @Test

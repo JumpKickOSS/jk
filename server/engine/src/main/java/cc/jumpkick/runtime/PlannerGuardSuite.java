@@ -209,7 +209,7 @@ public final class PlannerGuardSuite {
                 state,
                 workerJar,
                 layout.generatedSourcesDir("annotations", "guard"));
-        TaskForecast.Task step = TaskForecaster.compileStep(TaskNames.COMPILE_GUARD, pred, false);
+        TaskForecast.Task step = TaskForecaster.compileStep(TaskNames.COMPILE_GUARD, pred, false, req);
         steps.add(step);
         return !step.cached();
     }

@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.compile.JdkCompilerAccess;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.PluginAot;
 import cc.jumpkick.engine.plugin.PluginJar;
@@ -50,15 +51,7 @@ public final class FormatPlans {
     public static final String SCALAFMT_VERSION = "3.8.1";
 
     // palantir/google-java-format reflectively use the JDK compiler internals.
-    private static final List<String> JAVAC_EXPORTS = List.of(
-            "--add-exports=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED",
-            "--add-exports=jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED",
-            "--add-exports=jdk.compiler/com.sun.tools.javac.parser=ALL-UNNAMED",
-            "--add-exports=jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED",
-            "--add-exports=jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED",
-            "--add-exports=jdk.compiler/com.sun.tools.javac.main=ALL-UNNAMED",
-            "--add-opens=jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED",
-            "--add-opens=jdk.compiler/com.sun.tools.javac.comp=ALL-UNNAMED");
+    private static final List<String> JAVAC_EXPORTS = JdkCompilerAccess.JVM_FLAGS;
 
     /**
      * Build the format plan for {@code projectDir}. Style names arrive already resolved (flags/env/

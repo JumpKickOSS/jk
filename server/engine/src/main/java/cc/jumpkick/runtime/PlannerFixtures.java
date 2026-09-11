@@ -151,7 +151,7 @@ public final class PlannerFixtures {
                 fxState,
                 workerJar,
                 layout.generatedSourcesDir("annotations", "fixtures"));
-        TaskForecast.Task fxStep = TaskForecaster.compileStep(TaskNames.COMPILE_TEST_FIXTURES, fxPred, false);
+        TaskForecast.Task fxStep = TaskForecaster.compileStep(TaskNames.COMPILE_TEST_FIXTURES, fxPred, false, fxReq);
         steps.add(fxStep);
         return !fxStep.cached();
     }

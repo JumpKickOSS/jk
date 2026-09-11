@@ -167,4 +167,22 @@ class PluginSpecTest {
                 .doesNotContain("\"file\"", "\"line\"", "\"col\"");
         assertThat(PluginReply.file("Main.java", "unchanged", null)).doesNotContain("\"msg\"");
     }
+
+    @Test
+    void an_arg_with_spaces_is_one_arg_on_both_sides(@TempDir Path dir) throws Exception {
+        // javac's plugin syntax is one argument carrying the name and its options; a spec that
+        // split it on whitespace would hand javac a plugin with no options and stray files.
+        String plugin = "-Xplugin:ErrorProne -Xep:NullAway:ERROR -XepOpt:NullAway:AnnotatedPackages=com.example";
+        Path spec = dir.resolve("worker.spec");
+        Files.write(
+                spec,
+                new SpecWriter()
+                        .op(PluginProtocol.OP_COMPILE, null, "jk-java-compiler")
+                        .arg(plugin)
+                        .arg("--should-stop=ifError=FLOW")
+                        .lines(),
+                StandardCharsets.UTF_8);
+
+        assertThat(PluginSpec.read(spec).args()).containsExactly(plugin, "--should-stop=ifError=FLOW");
+    }
 }

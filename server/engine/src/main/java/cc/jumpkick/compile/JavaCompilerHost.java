@@ -496,12 +496,11 @@ public final class JavaCompilerHost {
         private void converse(ForkedJavac.Request template, Path hostJavaHome) throws Exception {
             Path javaExe = JdkFingerprint.java(hostJavaHome);
             String workerCp = ForkedJavac.workerClasspath(template);
-            List<String> jvmFlags = new ArrayList<>(PluginAot.javaCompilerFlags(
+            List<String> jvmFlags = ForkedJavac.workerJvmFlags(PluginAot.javaCompilerFlags(
                     hostJavaHome,
                     workerCp,
                     (aotOutput, scratch) ->
                             ForkedJavac.trainerCommand(template, workerCp, hostJavaHome, aotOutput, scratch)));
-            jvmFlags.addAll(JvmOptions.batchFlags(1));
             List<String> command = PluginLoader.command(javaExe, workerCp, jvmFlags, List.of("--pull"));
             int exit = new PluginClient(ForkedJavac.PREFIX)
                     .passthrough(transcript::record)

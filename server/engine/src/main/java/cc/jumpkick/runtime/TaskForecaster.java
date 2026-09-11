@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathResolver;
+import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.JavaCompilerHost;
 import cc.jumpkick.config.ModuleOrder;
 import cc.jumpkick.config.SessionContext;
@@ -435,8 +436,22 @@ public final class TaskForecaster {
         return dirty[0];
     }
 
-    /** Map a {@link JavaCompile.Prediction} to a step, honoring upstream dirtiness. */
-    static TaskForecast.Task compileStep(String name, JavaCompile.Prediction pred, boolean compileDepDirty) {
+    /**
+     * Map a {@link JavaCompile.Prediction} to a step, honoring upstream dirtiness. A request that
+     * invokes javac plugins names them in the step's text, so {@code jk explain --verbose} shows
+     * that input beside the outcome.
+     */
+    static TaskForecast.Task compileStep(
+            String name, JavaCompile.Prediction pred, boolean compileDepDirty, CompileRequest request) {
+        TaskForecast.Task step = compileStep(name, pred, compileDepDirty);
+        List<String> plugins = PlannerCompile.pluginNames(request);
+        if (plugins.isEmpty()) return step;
+        String text = PlannerCompile.PLUGIN_FLAG + String.join(",", plugins);
+        if (!step.text().isEmpty()) text = step.text() + " · " + text;
+        return new TaskForecast.Task(step.name(), step.status(), text, step.key());
+    }
+
+    private static TaskForecast.Task compileStep(String name, JavaCompile.Prediction pred, boolean compileDepDirty) {
         return switch (pred.outcome()) {
             case CACHE_HIT ->
                 // Only force RUN when a *compile-scope* sibling is dirty (action key still sees

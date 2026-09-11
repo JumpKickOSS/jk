@@ -205,11 +205,10 @@ public final class ForkedJavac {
             // Thin worker + Maven runtime closure from its POM.
             String workerCp = workerClasspath(req);
             // AOT for this *java* process (ToolProvider host) — not bare `javac` launcher AOT.
-            List<String> jvmFlags = new ArrayList<>(PluginAot.javaCompilerFlags(
+            List<String> jvmFlags = workerJvmFlags(PluginAot.javaCompilerFlags(
                     hostJavaHome,
                     workerCp,
                     (aotOutput, scratch) -> trainerCommand(req, workerCp, hostJavaHome, aotOutput, scratch)));
-            jvmFlags.addAll(JvmOptions.batchFlags(1));
             List<String> command =
                     PluginLoader.command(javaExe, workerCp, jvmFlags, List.of("@" + spec.toAbsolutePath()));
             int exit = new PluginClient(PREFIX)
@@ -323,13 +322,24 @@ public final class ForkedJavac {
         Path trainSpec = scratch.resolve("train.spec");
         Files.write(trainSpec, sw.lines(), StandardCharsets.UTF_8);
         PluginLoader.sealNetworkPolicy(trainSpec);
-        List<String> jvmFlags = new ArrayList<>();
-        jvmFlags.add("-XX:AOTCacheOutput=" + aotOutput);
-        jvmFlags.addAll(JvmOptions.batchFlags(1));
+        List<String> jvmFlags = workerJvmFlags(List.of("-XX:AOTCacheOutput=" + aotOutput));
         Path javaExe = JdkFingerprint.java(hostJavaHome);
         // Same classpath as the real fork: the classpath is part of the AOT key, and a
         // thin worker jar alone would CNFE on PluginMain, silently never training.
         return PluginLoader.command(javaExe, workerCp, jvmFlags, List.of("@" + trainSpec.toAbsolutePath()));
+    }
+
+    /**
+     * The worker JVM's flags, for the compile fork, the pull-mode host and the AOT trainer alike:
+     * {@code aot} (the cache to use or record), the {@code jdk.compiler} access javac plugins need,
+     * and the batch-sized heap. One body: a trainer that ran with a different module graph than
+     * the compile would record a cache the compile cannot use.
+     */
+    static List<String> workerJvmFlags(List<String> aot) {
+        List<String> flags = new ArrayList<>(aot);
+        flags.addAll(JdkCompilerAccess.JVM_FLAGS);
+        flags.addAll(JvmOptions.batchFlags(1));
+        return flags;
     }
 
     /**

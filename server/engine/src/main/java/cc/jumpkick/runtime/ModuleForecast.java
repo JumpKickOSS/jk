@@ -316,6 +316,7 @@ final class ModuleForecast {
                         out,
                         release,
                         javacArgs,
+                        project.build().javac(),
                         javaHome,
                         mixedKotlin,
                         mixedGroovy,
@@ -335,7 +336,7 @@ final class ModuleForecast {
                         layout.generatedSourcesDir("annotations"));
                 Perf.end("  predict-compile-main", tc);
                 compileMainKey = pred.actionKey();
-                steps.add(TaskForecaster.compileStep(TaskNames.COMPILE_MAIN, pred, compileDepDirty || force));
+                steps.add(TaskForecaster.compileStep(TaskNames.COMPILE_MAIN, pred, compileDepDirty || force, req));
                 if (!steps.get(steps.size() - 1).cached()) compileDirty = true;
             }
         }
@@ -499,7 +500,15 @@ final class ModuleForecast {
                     testSources.scTest().isEmpty() ? null : ScalaCompile.prepare(project, lock, cas);
             List<Path> testSrc = testSources.javacSources();
             CompileRequest req = PlannerCompile.testCompileRequest(new PlannerCompile.TestCompile(
-                    testSrc, baseCp, processorCp, testOut, release, javacArgs, javaHome, testScala));
+                    testSrc,
+                    baseCp,
+                    processorCp,
+                    testOut,
+                    release,
+                    javacArgs,
+                    project.build().javac(),
+                    javaHome,
+                    testScala));
             String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_TEST, testOut);
             Path actions = CacheTree.ACTIONS.under(cache);
             Path stateDir = ActionTree.INCREMENTAL_JAVA.under(actions).resolve(taskId);
@@ -520,7 +529,7 @@ final class ModuleForecast {
                         + " pp=" + processorCp.size() + " release=" + release
                         + " javaHome=" + javaHome + " out=" + testOut);
             }
-            TaskForecast.Task p = TaskForecaster.compileStep(TaskNames.COMPILE_TEST, pred, false);
+            TaskForecast.Task p = TaskForecaster.compileStep(TaskNames.COMPILE_TEST, pred, false, req);
             steps.add(p);
             if (!p.cached()) testDirty = true;
         } else {

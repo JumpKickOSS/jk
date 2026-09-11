@@ -371,6 +371,7 @@ public final class PlannerTest {
                         javaTestOut,
                         ctx.require(RELEASE),
                         javacArgs,
+                        ctx.require(PROJECT).build().javac(),
                         ctx.require(JAVA_HOME),
                         scalaSetup),
                 genDir,
