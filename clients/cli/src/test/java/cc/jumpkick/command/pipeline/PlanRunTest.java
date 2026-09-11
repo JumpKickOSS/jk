@@ -12,16 +12,16 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * Which reader a compile gets is decided from the manifests on disk — the question the engine
  * asks before it forks a workspace — so it needs no engine to answer here. Selection and rendering
- * ({@link CompileRun#resolve}, {@link CompileRun#run}) do talk to the engine and are covered by the
+ * ({@link PlanRun#resolve}, {@link PlanRun#run}) do talk to the engine and are covered by the
  * command's integration tests.
  */
-class CompileRunTest {
+class PlanRunTest {
 
     @Test
     void a_workspace_root_compiles_as_a_workspace(@TempDir Path root) throws IOException {
         workspace(root, "app", "lib");
 
-        CompileRun.Entry entry = CompileRun.Entry.of(root);
+        PlanRun.Entry entry = PlanRun.Entry.of(root);
 
         assertThat(entry.workspace()).isTrue();
         assertThat(entry.member()).isFalse();
@@ -32,7 +32,7 @@ class CompileRunTest {
     void a_member_dir_compiles_as_the_workspace_it_belongs_to(@TempDir Path root) throws IOException {
         workspace(root, "app", "libs/core");
 
-        CompileRun.Entry entry = CompileRun.Entry.of(root.resolve("libs/core"));
+        PlanRun.Entry entry = PlanRun.Entry.of(root.resolve("libs/core"));
 
         assertThat(entry.workspace()).isTrue();
         assertThat(entry.member()).isTrue();
@@ -43,7 +43,7 @@ class CompileRunTest {
     void a_standalone_project_compiles_as_one_plan(@TempDir Path dir) throws IOException {
         Files.writeString(dir.resolve("jk.toml"), manifest("solo"));
 
-        CompileRun.Entry entry = CompileRun.Entry.of(dir);
+        PlanRun.Entry entry = PlanRun.Entry.of(dir);
 
         assertThat(entry.workspace()).isFalse();
         assertThat(entry.member()).isFalse();
@@ -57,7 +57,7 @@ class CompileRunTest {
         Files.createDirectories(stray);
         Files.writeString(stray.resolve("jk.toml"), manifest("bench"));
 
-        CompileRun.Entry entry = CompileRun.Entry.of(stray);
+        PlanRun.Entry entry = PlanRun.Entry.of(stray);
 
         assertThat(entry.workspace()).isFalse();
         assertThat(entry.requestDir()).isEqualTo(stray.toRealPath());

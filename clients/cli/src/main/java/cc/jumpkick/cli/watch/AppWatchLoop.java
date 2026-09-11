@@ -4,18 +4,9 @@ package cc.jumpkick.cli.watch;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
-import cc.jumpkick.cli.engine.EngineRequests;
-import cc.jumpkick.cli.engine.ProjectInfos;
-import cc.jumpkick.cli.run.BuildPlanConsole;
-import cc.jumpkick.cli.run.ConsoleSpec;
-import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.GlobalCancel;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.time.Clock;
-import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Exit;
-import cc.jumpkick.run.BuildPlanResult;
-import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.ExecPlan;
@@ -49,6 +40,8 @@ public final class AppWatchLoop {
     private final String logPrefix;
     private final boolean noSidecars;
     private final Compiler compiler;
+    /** The full rebuild a manifest or resource change triggers; same shape, different plan. */
+    private final Compiler builder;
 
     public int run(Path projectDir, Path cache, List<String> appArgs) throws IOException, InterruptedException {
         if (!build(projectDir, cache)) return 1;
@@ -210,29 +203,7 @@ public final class AppWatchLoop {
     }
 
     private boolean build(Path projectDir, Path cache) throws IOException, InterruptedException {
-        String target = ProjectInfos.buildTarget(projectDir.resolve(ManifestPaths.MANIFEST), projectDir);
-        ConsoleSpec spec = new ConsoleSpec(
-                "Watch", r -> Theme.paint("Built", Theme.active().focused()), r -> "Build failed");
-        BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
-        var session = SessionContext.current();
-        BuildPlanResult result = EngineClient.runSingleBuild(
-                EnginePaths.current(),
-                new EngineRequests.SingleBuildRequest(
-                        projectDir,
-                        cache,
-                        jdksDir,
-                        1,
-                        null,
-                        true,
-                        global.verbose,
-                        session.offline(),
-                        session.force(),
-                        session.variant(),
-                        session.clientEnv()),
-                steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, target),
-                new TestSummary[1],
-                new String[1]);
-        return result.success();
+        return builder.compile(projectDir, cache);
     }
 
     private boolean compile(Path projectDir, Path cache) throws IOException, InterruptedException {

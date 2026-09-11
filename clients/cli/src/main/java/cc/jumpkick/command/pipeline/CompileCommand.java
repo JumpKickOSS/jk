@@ -23,7 +23,7 @@ import java.util.List;
  * (no resources, tests, or packaging). It runs the shared engine plan in compile-only
  * mode, so it auto-locks and syncs on first run, re-locks when {@code jk.toml} changed, and reuses
  * the same incremental compile cache as {@code jk build}/{@code jk test}. A workspace root or
- * member compiles through the workspace orchestrator; see {@link CompileRun}.
+ * member compiles through the workspace orchestrator; see {@link PlanRun}.
  */
 public final class CompileCommand implements CliCommand {
 
@@ -65,7 +65,7 @@ public final class CompileCommand implements CliCommand {
             CommandWedge.printFail("Compile", ModuleSelectors.BOTH_MESSAGE);
             return Exit.CONFIG;
         }
-        return CompileRun.resolve(dir, modulesSpec, affectedSince, affectedWip, profileName)
-                .run(CompileRun.Labels.COMPILE, global, cache);
+        return PlanRun.resolve(dir, modulesSpec, affectedSince, affectedWip, PlanRun.compile(profileName))
+                .run(PlanRun.Labels.COMPILE, global, cache);
     }
 }

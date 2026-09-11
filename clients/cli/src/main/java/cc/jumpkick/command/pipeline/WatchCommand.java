@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Live loops over a verb when sources change:
@@ -119,7 +120,8 @@ public final class WatchCommand implements CliCommand {
                                 jdksDir,
                                 "jk watch run",
                                 in.flag("no-sidecars").orElse(false),
-                                recompiler(global))
+                                recompiler(global),
+                                rebuilder(global, jdksDir))
                         .run(projectDir, AppWatchLoop.cache(cacheOverride), rest);
             case "compile", "test", "build" -> verbLoop(verb, projectDir, global, debounceMs);
             default -> {
@@ -131,9 +133,21 @@ public final class WatchCommand implements CliCommand {
 
     /** The dev loop's recompile: the same single-plan-or-workspace choice as {@code jk compile}. */
     private static AppWatchLoop.Compiler recompiler(GlobalOptions global) {
-        var labels = new CompileRun.Labels("Watch", "Recompiled", "Compile failed");
-        return (projectDir, cache) ->
-                CompileRun.resolve(projectDir, null, null, false, null).run(labels, global, cache) == 0;
+        var labels = new PlanRun.Labels("Watch", "Recompiled", "Compile failed");
+        return (projectDir, cache) -> PlanRun.resolve(projectDir, null, null, false, PlanRun.compile(null))
+                        .run(labels, global, cache)
+                == 0;
+    }
+
+    /**
+     * The dev loop's full rebuild after a manifest or resource change: the same choice, so a
+     * workspace member is packaged with the siblings it runs on rather than as a lone plan.
+     */
+    private static AppWatchLoop.Compiler rebuilder(GlobalOptions global, @Nullable Path jdksDir) {
+        var labels = new PlanRun.Labels("Watch", "Built", "Build failed");
+        return (projectDir, cache) -> PlanRun.resolve(projectDir, null, null, false, PlanRun.devBuild(jdksDir))
+                        .run(labels, global, cache)
+                == 0;
     }
 
     private static int verbLoop(String verb, Path projectDir, GlobalOptions global, long debounceMs) throws Exception {

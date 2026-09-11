@@ -20,13 +20,19 @@ import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.EngineWireException;
+import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
+import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -35,7 +41,7 @@ import org.jspecify.annotations.Nullable;
  * runs one plan and settles {@code plan-finish}. {@code jk compile} and the dev loop both compile
  * through here, so the two never choose differently.
  */
-final class CompileRun {
+final class PlanRun {
 
     /** The words on the chrome: wedge/region name, the success word, the failure phrase. */
     record Labels(String name, String done, String failed) {
@@ -69,22 +75,143 @@ final class CompileRun {
         }
     }
 
+    /**
+     * The engine verb a run drives: one plan for a standalone project, the workspace orchestrator
+     * for a member or a root. {@code jk compile} and the dev loop's recompile are one verb; the dev
+     * loop's full rebuild is another with the same two shapes.
+     */
+    interface Verb {
+        /** The word the module-scope hint uses: "compiling", "building". */
+        String gerund();
+
+        /** What a no-op run says it found nothing for: "compile", "build". */
+        String infinitive();
+
+        BuildPlanResult single(
+                Path dir, Path cache, GlobalOptions global, Function<List<Task>, BuildPlanListener> listeners)
+                throws IOException;
+
+        WorkspaceResult workspace(
+                Path root, Path cache, List<String> selectors, GlobalOptions global, WorkspaceBuildListener listener)
+                throws IOException;
+    }
+
+    /** {@code jk compile}: compile main and test sources, package nothing, run nothing. */
+    static Verb compile(@Nullable String profile) {
+        return new Verb() {
+            @Override
+            public String gerund() {
+                return "compiling";
+            }
+
+            @Override
+            public String infinitive() {
+                return "compile";
+            }
+
+            @Override
+            public BuildPlanResult single(
+                    Path dir, Path cache, GlobalOptions global, Function<List<Task>, BuildPlanListener> listeners)
+                    throws IOException {
+                return EngineClient.runCompile(
+                        EnginePaths.current(), request(dir, cache, global, List.of()), listeners);
+            }
+
+            @Override
+            public WorkspaceResult workspace(
+                    Path root,
+                    Path cache,
+                    List<String> selectors,
+                    GlobalOptions global,
+                    WorkspaceBuildListener listener)
+                    throws IOException {
+                return EngineClient.runCompileWorkspace(
+                        EnginePaths.current(), request(root, cache, global, selectors), listener);
+            }
+
+            private EngineRequests.CompileRequest request(
+                    Path dir, Path cache, GlobalOptions global, List<String> selectors) {
+                var session = SessionContext.current();
+                return new EngineRequests.CompileRequest(
+                        dir, cache, profile, session.offline(), session.force(), global.verbose, selectors);
+            }
+        };
+    }
+
+    /**
+     * The dev loop's full rebuild: package the app so its exec plan is current, tests skipped — the
+     * loop restarts a process, it does not gate on a suite.
+     */
+    static Verb devBuild(@Nullable Path jdksDir) {
+        return new Verb() {
+            @Override
+            public String gerund() {
+                return "building";
+            }
+
+            @Override
+            public String infinitive() {
+                return "build";
+            }
+
+            @Override
+            public BuildPlanResult single(
+                    Path dir, Path cache, GlobalOptions global, Function<List<Task>, BuildPlanListener> listeners)
+                    throws IOException {
+                var session = SessionContext.current();
+                return EngineClient.runSingleBuild(
+                        EnginePaths.current(),
+                        new EngineRequests.SingleBuildRequest(
+                                dir,
+                                cache,
+                                jdksDir,
+                                1,
+                                null,
+                                true,
+                                global.verbose,
+                                session.offline(),
+                                session.force(),
+                                session.variant(),
+                                session.clientEnv()),
+                        listeners,
+                        new TestSummary[1],
+                        new String[1]);
+            }
+
+            @Override
+            public WorkspaceResult workspace(
+                    Path root,
+                    Path cache,
+                    List<String> selectors,
+                    GlobalOptions global,
+                    WorkspaceBuildListener listener)
+                    throws IOException {
+                var session = SessionContext.current();
+                WorkspaceRequest req = new WorkspaceRequest(
+                                root, cache, jdksDir, 1, null, true, global.verbose, 0, null, true, true)
+                        .withVariant(session.variant(), session.clientEnv())
+                        .withModules(selectors);
+                return EngineClient.buildWorkspace(EnginePaths.current(), req, listener);
+            }
+        };
+    }
+
     private final Entry entry;
-    private final @Nullable String profile;
+    private final Verb verb;
     private final List<String> selectors;
     private final List<String> scopeNames;
     private final @Nullable String error;
     private final boolean nothingSelected;
 
-    private CompileRun(
+    private PlanRun(
             Entry entry,
-            @Nullable String profile,
+            Verb verb,
             List<String> selectors,
             List<String> scopeNames,
             @Nullable String error,
             boolean nothingSelected) {
         this.entry = entry;
-        this.profile = profile;
+        this.verb = verb;
         this.selectors = selectors;
         this.scopeNames = scopeNames;
         this.error = error;
@@ -96,12 +223,8 @@ final class CompileRun {
      * member; selectors that match nothing make a no-op run rather than the whole graph, because
      * the wire reads an empty selection as "everything".
      */
-    static CompileRun resolve(
-            Path dir,
-            @Nullable String modulesSpec,
-            @Nullable String affectedSince,
-            boolean affectedWip,
-            @Nullable String profile)
+    static PlanRun resolve(
+            Path dir, @Nullable String modulesSpec, @Nullable String affectedSince, boolean affectedWip, Verb verb)
             throws IOException {
         Entry entry = Entry.of(dir);
         String memberRoot = entry.member() ? String.valueOf(entry.workspaceRoot()) : "";
@@ -110,12 +233,12 @@ final class CompileRun {
         List<String> selectors = ModuleSelectors.tokens(modulesSpec, affectedSince, affectedWip);
         var info = ProjectInfos.orError(entry.requestDir(), modulesSpec, affectedSince, affectedWip);
         if (info.error() != null) {
-            return new CompileRun(entry, profile, selectors, List.of(), info.error(), false);
+            return new PlanRun(entry, verb, selectors, List.of(), info.error(), false);
         }
         boolean nothingSelected = !selectors.isEmpty() && info.moduleDirs().isEmpty();
         List<String> scopeNames =
                 entry.workspace() && !selectors.isEmpty() ? ModuleScopeHint.namesFrom(info) : List.of();
-        return new CompileRun(entry, profile, selectors, scopeNames, null, nothingSelected);
+        return new PlanRun(entry, verb, selectors, scopeNames, null, nothingSelected);
     }
 
     Entry entry() {
@@ -129,28 +252,26 @@ final class CompileRun {
             return Exit.CONFIG;
         }
         if (nothingSelected) {
-            CommandWedge.printOk(labels.name(), "nothing selected to compile");
+            CommandWedge.printOk(labels.name(), "nothing selected to " + verb.infinitive());
             return 0;
         }
-        var session = SessionContext.current();
-        var req = new EngineRequests.CompileRequest(
-                entry.requestDir(), cache, profile, session.offline(), session.force(), global.verbose, selectors);
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
-        if (!entry.workspace()) return runSingle(req, labels, mode);
+        if (!entry.workspace()) return runSingle(cache, labels, global, mode);
         boolean live = mode == BuildPlanConsole.Mode.AUTO || mode == BuildPlanConsole.Mode.QUIET;
-        return live ? runWorkspaceLive(req, labels, mode) : runWorkspaceHeadless(req, labels, global);
+        return live ? runWorkspaceLive(cache, labels, global, mode) : runWorkspaceHeadless(cache, labels, global);
     }
 
     /** One plan; the console listener is chosen when the step list arrives over the socket. */
-    private int runSingle(EngineRequests.CompileRequest req, Labels labels, BuildPlanConsole.Mode mode) {
+    private int runSingle(Path cache, Labels labels, GlobalOptions global, BuildPlanConsole.Mode mode) {
         ConsoleSpec spec = new ConsoleSpec(
                 labels.name(), r -> Theme.paint(labels.done(), Theme.active().focused()), r -> labels.failed());
         String target = ProjectInfos.buildTarget(entry.dir().resolve(ManifestPaths.MANIFEST), entry.dir());
         BuildPlanResult result;
         try {
-            result = EngineClient.runCompile(
-                    EnginePaths.current(),
-                    req,
+            result = verb.single(
+                    entry.dir(),
+                    cache,
+                    global,
                     steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, target));
         } catch (EngineWireException e) {
             CommandWedge.printFail(labels.name(), e.getMessage());
@@ -163,19 +284,19 @@ final class CompileRun {
     }
 
     /** Workspace compile in a live region: the aggregate view build/native/image use. */
-    private int runWorkspaceLive(EngineRequests.CompileRequest req, Labels labels, BuildPlanConsole.Mode mode) {
+    private int runWorkspaceLive(Path cache, Labels labels, GlobalOptions global, BuildPlanConsole.Mode mode) {
         boolean animate = mode == BuildPlanConsole.Mode.AUTO && BuildPlanConsole.isInteractiveTerminal();
         Path entryDir = entry.requestDir();
         JkManager view = JkManager.plan(CliOutput.stdout(), labels.name(), animate);
         view.setPlanCoord(BuildCommand.projectGaLabel(entryDir));
-        ModuleScopeHint.show("compiling", scopeNames, false, view);
+        ModuleScopeHint.show(verb.gerund(), scopeNames, false, view);
         AggregateContext agg = new AggregateContext(view);
         long start = Clock.SYSTEM.nanos();
         // Not buffered: the live region owns every line, so nothing is written above it.
         var run = new WorkspaceRunView(new WorkspaceRunView.Chrome(labels.name(), false), entryDir, null, false);
         WorkspaceResult result;
         try {
-            result = EngineClient.runCompileWorkspace(EnginePaths.current(), req, run.live(view, agg));
+            result = verb.workspace(entryDir, cache, selectors, global, run.live(view, agg));
         } catch (EngineWireException e) {
             run.finishEvent(false, BuildTails.elapsedMsSince(start));
             view.finishBuildPlanFailure(String.valueOf(e.getMessage()));
@@ -208,15 +329,15 @@ final class CompileRun {
      * Workspace compile without a region ({@code --output json} / {@code --verbose}): the same
      * events and per-module block {@code jk build} renders through {@link WorkspaceRunView#headless}.
      */
-    private int runWorkspaceHeadless(EngineRequests.CompileRequest req, Labels labels, GlobalOptions global) {
+    private int runWorkspaceHeadless(Path cache, Labels labels, GlobalOptions global) {
         boolean json = global.outputIsJson();
         Path entryDir = entry.requestDir();
-        ModuleScopeHint.print("compiling", scopeNames, json);
+        ModuleScopeHint.print(verb.gerund(), scopeNames, json);
         var run = new WorkspaceRunView(new WorkspaceRunView.Chrome(labels.name(), false), entryDir, null, json);
         long start = Clock.SYSTEM.nanos();
         WorkspaceResult result;
         try {
-            result = EngineClient.runCompileWorkspace(EnginePaths.current(), req, run.headless());
+            result = verb.workspace(entryDir, cache, selectors, global, run.headless());
         } catch (EngineWireException e) {
             run.finishEvent(false, BuildTails.elapsedMsSince(start));
             if (!json) CommandWedge.printFail(labels.name(), e.getMessage());
@@ -229,7 +350,7 @@ final class CompileRun {
         long elapsed = BuildTails.elapsedMsSince(start);
         if (result.cancelled()) {
             run.finishEvent(false, elapsed);
-            if (!json) CommandWedge.printFail(labels.name(), "Compile job was cancelled");
+            if (!json) CommandWedge.printFail(labels.name(), labels.name() + " job was cancelled");
             return 1;
         }
         if (!result.success()) {
