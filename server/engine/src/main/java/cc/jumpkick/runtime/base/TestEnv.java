@@ -25,10 +25,10 @@ import org.jspecify.annotations.Nullable;
  * build redirects the product layout per module for exactly that reason; the machine seed is the
  * matching answer for tools on {@code PATH}.
  *
- * <p>So {@code JK_HOME}, {@code JK_JDKS_DIR}, {@code JK_M2_LOCAL} and the temp root point at
- * throwaway directories under the module's build output unless the module says otherwise. Anything a
- * suite genuinely needs from the real environment beyond {@link BuildEnv#MACHINE} it can name
- * explicitly — the sandbox is a default, not a wall.
+ * <p>So {@code JK_HOME}, {@code JK_JDKS_DIR} and {@code JK_M2_LOCAL} point at the module's throwaway
+ * sandbox ({@link TestHomes}) and the temp root at the module's build output, unless the module says
+ * otherwise. Anything a suite genuinely needs from the real environment beyond
+ * {@link BuildEnv#MACHINE} it can name explicitly — the sandbox is a default, not a wall.
  *
  * <p>The declared values themselves are resolved by {@link TestEnvValues}, which the run-tests cache
  * key also uses: the two must agree about an unset {@code ${VAR}} or a build's outcome depends on
@@ -76,9 +76,6 @@ public final class TestEnv {
      * <p>Unlike the product home beside it, a local m2 is a content-addressed artifact cache with
      * nothing module-specific in it, so a copy per module buys nothing and costs twice: the same
      * dependency is fetched once per module that needs it, and stored once per module that has it.
-     * Measured on this repo before centralizing — 467 MB across nine copies, the two largest being
-     * near-identical. jk's Gradle build has the same shape for the same reason (464 MB across five
-     * {@code <module>/build/test-m2} directories) and needs a size cap to hold it down.
      *
      * <p>{@code JK_HOME} deliberately stays per module: it holds state, locks, learned rates and a
      * calibration, and concurrent suites writing one copy would race on all four.
@@ -116,9 +113,8 @@ public final class TestEnv {
         Map<String, String> out = new LinkedHashMap<>();
         // Caller's PATH/HOME/… first so a declared [test] env entry can still replace them.
         out.putAll(BuildEnv.machine());
-        // Sandbox next so a declared value replaces it. The home is outside the project — see
-        // TestHomes — while the temp root below stays under the build output, which is a different
-        // argument and still holds.
+        // Sandbox next so a declared value replaces it. The home is outside the project (TestHomes);
+        // the temp root below stays under the build output.
         Path sandboxHome = TestHomes.pathFor(moduleDir);
         out.put(JK_HOME, sandboxHome.toString());
         out.put(JK_JDKS_DIR, sandboxHome.resolve("jdks").toString());

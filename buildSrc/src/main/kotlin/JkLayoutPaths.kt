@@ -140,15 +140,12 @@ object JkLayoutPaths {
     }
 
     /**
-     * Root for the `JK_HOME` a test runs against, **outside the checkout**: `JK_TEST_HOME_ROOT`, else
-     * `$HOME/.jk-test-homes`.
+     * Root for the `JK_HOME` a test runs against, not inside the checkout: `JK_TEST_HOME_ROOT`, else
+     * `$HOME/.jk-test-homes`. Gradle's alone — the product's own sandboxes (`cc.jumpkick.util.TestHomes`) live under
+     * whatever `JK_HOME` names, so under a test they nest inside the home handed out here.
      *
-     * Everything jk writes under `JK_HOME` during a test used to land in `<module>/build/test-jk-home`, inside the
-     * source tree. A git command handed a path under there that has stopped existing resolves to the repository that
-     * encloses it — the developer's own checkout — which is how two of them were reset to their remote and left
-     * shallow. Pinning the freshener's invocations is the fix for that command; moving the root out of the tree is what
-     * stops a test sandbox being a plausible target for the next one. The property to hold is "not inside a git
-     * repository", not "not inside `build/`".
+     * Not inside the checkout because a sandbox carrying jk's whole layout inside a source tree is a plausible target
+     * for a git command whose own repository has vanished: git resolves upward to the enclosing checkout.
      */
     fun testHomeRoot(): File {
         nonBlank(System.getenv("JK_TEST_HOME_ROOT"))?.let {
@@ -169,11 +166,13 @@ object JkLayoutPaths {
         testHomeRoot().resolve(checkoutKey(rootDir)).resolve(moduleKey(projectPath))
 
     /**
-     * `<dir name>-<8 hex of the absolute path>`. The name alone collides between worktrees checked out as `jk` twice;
-     * the hash alone is unreadable in a stack trace or a `du` listing.
+     * `<dir name>-<8 hex of the real path>`. The name alone collides between worktrees checked out as `jk` twice; the
+     * hash alone is unreadable in a stack trace or a `du` listing. The real path, so a checkout reached through a link
+     * keys as the directory itself.
      */
     fun checkoutKey(rootDir: File): String {
-        val abs = rootDir.absoluteFile.normalize()
+        val abs =
+            rootDir.absoluteFile.normalize().let { runCatching { it.toPath().toRealPath().toFile() }.getOrDefault(it) }
         val digest = java.security.MessageDigest.getInstance("SHA-256").digest(abs.path.toByteArray())
         val hex = digest.take(4).joinToString("") { "%02x".format(it) }
         return "${abs.name.ifBlank { "root" }}-$hex"

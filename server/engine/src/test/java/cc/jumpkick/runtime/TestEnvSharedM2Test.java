@@ -22,8 +22,8 @@ import org.junit.jupiter.api.io.TempDir;
  * module fetches and stores the same dependency once per module. A product home is state, locks,
  * learned rates and a calibration, which concurrent suites must not share.
  *
- * <p>Both now live outside the project under test ({@code TestHomes}); the sharing rule is unchanged,
- * which is what these assertions are for — relocating a path is an easy way to lose it.
+ * <p>Both live outside the project under test ({@code TestHomes}); these assertions pin the sharing
+ * rule at that location.
  */
 class TestEnvSharedM2Test {
 

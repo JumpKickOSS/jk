@@ -22,11 +22,9 @@ tasks.withType<Test>().configureEach {
     useJUnitPlatform()
     // Isolate tests from the developer's real product layout. JK_HOME relocates the whole tree.
     //
-    // Outside the checkout, not under build/: a git command handed a path in the source tree that has
-    // stopped existing resolves to the repository enclosing it, and a test sandbox full of jk's own
-    // layout is a plausible thing to hand one. Two checkouts were reset to their remote and left
-    // shallow that way. The require() below is the property, stated where it cannot drift — a home
-    // that moves back inside the tree fails configuration rather than waiting for the next incident.
+    // Not inside the checkout: a git command handed a path in the source tree that has stopped
+    // existing resolves to the repository enclosing it, and a test sandbox full of jk's own layout is
+    // a plausible thing to hand one. The require() states the property where it cannot drift.
     val testHomeDir = JkLayoutPaths.testHomeFor(rootDir, project.path)
     require(!testHomeDir.absoluteFile.normalize().startsWith(rootDir.absoluteFile.normalize())) {
         "test JK_HOME must be outside the checkout, was $testHomeDir under $rootDir"
@@ -43,10 +41,8 @@ tasks.withType<Test>().configureEach {
     val testM2 = File(testHomeDir.parentFile, "${testHomeDir.name}-m2").absolutePath
     environment("JK_M2_LOCAL", testM2)
     // The warm home is a feature (two suites prime the store on purpose) and a liability when it is
-    // unbounded: measured at 744 MB for clients/cli (the CAS 540 MB, the store 117 MB, the state root
-    // 70 MB) and 1,013 MB for server/engine before this sweep existed, every other module under
-    // 2 MB. A week or a gibibyte, whichever comes first, wipes the whole root and re-stamps; the
-    // state goes with it, which every suite already tolerates on a cold first run.
+    // unbounded: clients/cli and server/engine each reach a gibibyte. A week or a gibibyte, whichever
+    // comes first, wipes the whole root and re-stamps; every suite tolerates a cold first run.
     doFirst {
         val home = File(testJkHome)
         val stamp = File(home, ".wiped-at")

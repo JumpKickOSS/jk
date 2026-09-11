@@ -104,6 +104,15 @@ class JkLayoutPathsTest {
         assertThat(JkLayoutPaths.checkoutKey(a)).startsWith("jk-").isNotEqualTo(JkLayoutPaths.checkoutKey(b))
     }
 
+    /** One checkout reached two ways is one checkout, so it gets one home. */
+    @Test
+    fun a_checkout_reached_through_a_link_keys_as_the_directory_itself(@TempDir tmp: Path) {
+        val real = tmp.resolve("real/jk").toFile().apply { mkdirs() }
+        val link = java.nio.file.Files.createSymbolicLink(tmp.resolve("link"), real.parentFile.toPath())
+
+        assertThat(JkLayoutPaths.checkoutKey(link.resolve("jk").toFile())).isEqualTo(JkLayoutPaths.checkoutKey(real))
+    }
+
     /** Warm across runs and across a module's tiers is deliberate; the key is the module, not the task. */
     @Test
     fun one_module_has_one_home_and_the_root_project_is_named() {

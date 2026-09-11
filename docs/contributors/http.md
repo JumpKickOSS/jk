@@ -85,8 +85,8 @@ what actually holds a slot: a stream keeps its permit for the life of the connec
 
 The engine identity is a hash of the state directory **and** the artifact store, so a machine can
 hold several at once — one per `(state dir, store)` pair, plus a draining predecessor that has
-already yielded its listeners. A unique {@code JK_HOME} (test sandboxes under
-{@code target/test-jk-home}) gets its own UDS and, unless the suite opts in, HTTP disabled or
+already yielded its listeners. A unique {@code JK_HOME} (every test sandbox home) gets its own UDS
+and, unless the suite opts in, HTTP disabled or
 bound on port {@code 0} so it cannot steal the host dashboard. `jk engine status` lists every
 resident engine this user owns. `jk engine stop` addresses the one this directory resolves to,
 `--all` stops **this home only** (nested tests must not kill the host engine running

@@ -24,17 +24,17 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * what a forked test JVM sees.
+ * What a forked test JVM sees.
  *
- * <p>The default is the point. A test JVM inherits the engine's environment, so jk's own suite ran
- * against the developer's real {@code JK_HOME} / platform product layout — reading the real library catalog and able to write the
- * real local m2. That is what jk's Gradle build redirects per module, and it should not be something
- * each project has to remember.
+ * <p>The default is the point. A test JVM inherits the engine's environment, so without the sandbox
+ * a suite would read the developer's real {@code JK_HOME} and be able to write the real local m2.
+ * That is what jk's Gradle build redirects per module, and it should not be something each project
+ * has to remember.
  */
 class TestEnvTest {
 
     /** A name no environment sets — asserted, not assumed, so a stray export cannot green this file. */
-    private static final String UNSET = "JK_2384_UNSET_ON_PURPOSE";
+    private static final String UNSET = "JK_UNSET_ON_PURPOSE";
 
     @BeforeAll
     static void the_unset_variable_really_is_unset() {
@@ -44,11 +44,10 @@ class TestEnvTest {
     }
 
     /**
-     * The home is sandboxed and it is <b>outside the project</b>. Inside it, jk's layout — a
-     * {@code store/templates/<key>/} among the rest — sat in the user's source tree, where a {@code
-     * git} command handed a path that has stopped existing resolves to the enclosing repository. Two
-     * checkouts were reset and left shallow that way. {@code TestHomes} owns the location; what this
-     * pins is that the environment points at it and not under {@code tmp}.
+     * The home is sandboxed and it is <b>outside the project</b>: jk's layout inside a source tree is
+     * a plausible target for a stray {@code git} command, which resolves upward to the enclosing
+     * repository. {@code TestHomes} owns the location; what this pins is that the environment points
+     * at it and not under {@code tmp}.
      */
     @Test
     void jk_home_and_m2_are_sandboxed_outside_the_project(@TempDir Path tmp) throws Exception {

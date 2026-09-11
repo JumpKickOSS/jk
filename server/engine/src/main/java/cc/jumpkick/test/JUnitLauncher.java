@@ -135,7 +135,7 @@ public final class JUnitLauncher {
             flags.add("-Djunit.jupiter.tempdir.cleanup.mode.default=always");
             String jkHome = testEnv.get("JK_HOME");
             if (jkHome != null && !jkHome.isBlank()) {
-                // Sibling of test-jk-home: <module>/target/test-shared-cache (SharedTestCache).
+                // Sibling of the sandbox home: <slot>/test-shared-cache (SharedTestCache).
                 Path jkHomeParent = Path.of(jkHome).getParent();
                 if (jkHomeParent != null) {
                     flags.add("-Djk.test.cache.dir=" + jkHomeParent.resolve("test-shared-cache"));

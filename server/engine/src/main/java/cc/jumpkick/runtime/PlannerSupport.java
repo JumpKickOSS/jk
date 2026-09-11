@@ -579,8 +579,8 @@ public final class PlannerSupport {
     }
 
     /**
-     * Isolated {@code JK_HOME} + {@code JK_STATE_DIR} under this module's {@code target/} for
-     * nested-engine CLI tests. Keeps the host engine's socket, cache, and store alone.
+     * Isolated {@code JK_HOME} + {@code JK_STATE_DIR} in this module's sandbox slot ({@link TestHomes})
+     * for nested-engine CLI tests. Keeps the host engine's socket, cache, and store alone.
      *
      * <p>{@code JK_HOME} relocates cache and store together. Nested destructive tests must never
      * receive the host's {@code JK_CACHE_DIR} or {@code JK_STORE_DIR}.

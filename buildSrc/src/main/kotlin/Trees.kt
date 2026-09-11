@@ -12,9 +12,8 @@ import java.nio.file.attribute.BasicFileAttributes
 /**
  * The one way build logic walks a tree to delete it or to size it. Neither walk follows a symbolic link: a link is one
  * entry, unlinked or counted as itself, whatever it points at. Kotlin's `File.deleteRecursively` and `File.walkTopDown`
- * descend through a link to a directory, and the warm test home under `build/test-jk-home` holds links to JDKs the
- * developer installed with other tools — a sweep that follows them empties those installs and leaves the build's own
- * `java` gone.
+ * descend through a link to a directory, and the warm test home holds links to JDKs the developer installed with other
+ * tools — a sweep that follows them empties those installs and leaves the build's own `java` gone.
  */
 object Trees {
 
