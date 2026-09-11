@@ -19,3 +19,11 @@ curl -s -X POST localhost:8080/api/notes -H 'content-type: application/json' -d 
 Versions in `jk.toml` are `"latest"`; first `jk lock` pins the current stable set
 (`jk update` refreshes). JSON uses Jackson content negotiation, so no
 kotlinx-serialization compiler plugin is involved.
+
+## Tiers, guards, image
+
+`jk test` is the fast tier; `jk test --profile integration` (or `network`, `slow`, `bench`) runs the
+tests tagged with that cost. No framework pack fits a plain service, so `jk-guards.toml` is a small
+house baseline: a `file-size` cap, and a `forbid` that proves it bites against
+`guard-fixtures/no-soft-reference/` (`jk guard explain` lists both). `jk image` builds an OCI image
+on a JRE base with an AOT cache trained at build time (`[image]` in `jk.toml`).

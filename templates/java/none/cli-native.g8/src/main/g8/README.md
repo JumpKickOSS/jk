@@ -31,3 +31,10 @@ GraalVM must be available (`GRAALVM_HOME`, a project JDK with `native-image`, or
 client-resolved Graal install used by `jk native` / `jk install`).
 
 [JLine]: https://github.com/jline/jline3
+
+## Tiers and guards
+
+`jk test` is the fast tier; `jk test --profile integration` (or `network`, `slow`, `bench`) runs the
+tests tagged with that cost. No framework pack fits a plain CLI, so `jk-guards.toml` is a small house
+baseline: a `file-size` cap, and a `forbid` that proves it bites against
+`guard-fixtures/no-soft-reference/` (`jk guard explain` lists both).

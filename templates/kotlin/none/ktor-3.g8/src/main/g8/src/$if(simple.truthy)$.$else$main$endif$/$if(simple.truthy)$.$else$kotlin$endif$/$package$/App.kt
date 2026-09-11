@@ -8,9 +8,7 @@ import org.koin.dsl.module
 import org.koin.ktor.ext.getKoin
 import org.koin.ktor.plugin.Koin
 
-val appModule = module {
-    single { NoteRepository() }
-}
+val appModule = module { single { NoteRepository() } }
 
 fun Application.module() {
     install(Koin) { modules(appModule) }

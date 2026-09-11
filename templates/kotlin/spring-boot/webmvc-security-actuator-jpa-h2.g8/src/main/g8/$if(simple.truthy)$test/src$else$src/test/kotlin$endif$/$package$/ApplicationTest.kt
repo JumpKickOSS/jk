@@ -10,8 +10,7 @@ import org.springframework.boot.test.context.SpringBootTest
 @SpringBootTest
 class ApplicationTest {
 
-    @Autowired
-    lateinit var notes: NoteRepository
+    @Autowired lateinit var notes: NoteRepository
 
     @Test
     fun contextLoadsAndPersists() {

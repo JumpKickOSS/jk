@@ -17,8 +17,7 @@ class NoteController(private val notes: NoteRepository) {
 
     data class NewNote(@field:NotBlank val text: String)
 
-    @GetMapping
-    fun all(): List<Note> = notes.findAll()
+    @GetMapping fun all(): List<Note> = notes.findAll()
 
     @GetMapping("/{id}")
     fun one(@PathVariable id: Long): ResponseEntity<Note> =

@@ -9,3 +9,6 @@ jk test          # unit tier
 jk build         # jar + sources under target/
 jk publish       # dry-run by default; see `jk manual`
 ```
+
+`jk test` is the fast tier; `jk test --profile integration` (or `network`, `slow`, `bench`) runs the
+tests tagged with that cost.

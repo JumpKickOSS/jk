@@ -10,12 +10,9 @@ import jakarta.validation.constraints.NotBlank
 @Entity
 open class Note() {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    open var id: Long? = null
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) open var id: Long? = null
 
-    @field:NotBlank
-    open var text: String = ""
+    @field:NotBlank open var text: String = ""
 
     constructor(text: String) : this() {
         this.text = text

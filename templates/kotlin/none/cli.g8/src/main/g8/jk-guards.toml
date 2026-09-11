@@ -1,0 +1,15 @@
+# House rules. No framework pack fits a plain project, so this is a small baseline of its own:
+# `jk guard explain` lists it, and a ban proves it bites against guard-fixtures/<id>.
+[guards.file-size]
+kind     = "metric"
+measure  = "lines"
+cap      = 800
+baseline = true
+why      = "a file that no longer fits a review no longer fits a reviewer"
+
+[guards.no-soft-reference]
+kind       = "forbid"
+signatures = ["java.lang.ref.SoftReference"]
+instead    = "a bounded cache with an explicit eviction policy"
+why        = "a SoftReference is cleared at the collector's discretion, so the hit rate follows heap pressure rather than the program"
+fixture    = "guard-fixtures/no-soft-reference"

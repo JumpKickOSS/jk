@@ -17,10 +17,11 @@ class AppTest {
     @Test
     fun createsAndListsNotes() = testApplication {
         application { module() }
-        val created = client.post("/api/notes") {
-            contentType(ContentType.Application.Json)
-            setBody("{\"text\":\"first\"}")
-        }
+        val created =
+            client.post("/api/notes") {
+                contentType(ContentType.Application.Json)
+                setBody("{\"text\":\"first\"}")
+            }
         assertEquals(HttpStatusCode.Created, created.status)
         val list = client.get("/api/notes")
         assertEquals(HttpStatusCode.OK, list.status)
@@ -30,10 +31,11 @@ class AppTest {
     @Test
     fun rejectsBlankText() = testApplication {
         application { module() }
-        val bad = client.post("/api/notes") {
-            contentType(ContentType.Application.Json)
-            setBody("{\"text\":\"\"}")
-        }
+        val bad =
+            client.post("/api/notes") {
+                contentType(ContentType.Application.Json)
+                setBody("{\"text\":\"\"}")
+            }
         assertEquals(HttpStatusCode.BadRequest, bad.status)
     }
 }
