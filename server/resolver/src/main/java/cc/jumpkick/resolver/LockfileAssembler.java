@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.resolver;
 
+import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
@@ -189,8 +190,9 @@ final class LockfileAssembler {
                     artifactFile = coord.artifact() + "-" + coord.version() + ".aar";
                     hit = repos.tryFetchArtifact(coord, abort).orElse(null);
                 }
-            } catch (Exception ignored) {
+            } catch (Exception e) {
                 // no POM / unparseable — keep the jar coordinate
+                Log.debug("toArtifact: no POM / unparseable", e);
             }
         }
         if (hit != null) {

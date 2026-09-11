@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.host.Log;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.FileStore;
 import java.nio.file.Files;
@@ -187,12 +188,14 @@ public record JkCacheConfig(
             walk.forEach(f -> {
                 try {
                     if (Files.isRegularFile(f)) total[0] += Files.size(f);
-                } catch (Exception ignored) {
+                } catch (Exception e) {
                     // vanished mid-walk
+                    Log.debug("usedBytes: vanished mid-walk", e);
                 }
             });
-        } catch (Exception ignored) {
+        } catch (Exception e) {
             // unreadable tree — treat as empty
+            Log.debug("usedBytes: unreadable tree", e);
         }
         return total[0];
     }

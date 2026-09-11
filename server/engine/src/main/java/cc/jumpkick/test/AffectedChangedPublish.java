@@ -4,6 +4,7 @@ package cc.jumpkick.test;
 import cc.jumpkick.config.AffectedChanged;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.WorkspaceLocator;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.task.ClassAbi;
 import java.nio.file.Path;
@@ -40,6 +41,7 @@ public final class AffectedChangedPublish {
             classifyInto(session.affectedChanged(), root, module, dirty, preCompileAbi, currentAbi);
         } catch (Exception e) {
             // Best-effort: a failed classification degrades a dependent's ranking, never the build.
+            Log.debug("publish: Best-effort", e);
         }
     }
 

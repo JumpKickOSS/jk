@@ -8,6 +8,7 @@ import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.BuildStamps;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkLts;
 import cc.jumpkick.jdk.JdkRegistry;
@@ -787,9 +788,10 @@ public final class EffortWeights {
             boolean jarFresh = !rerun && !compileRun && Files.isRegularFile(layout.mainJar());
             int staticPkg = coldWorkWeight(TaskNames.PACKAGE_JAR, 1);
             pkg = jarFresh ? SKIP : learnedFixedWeight(mod, TaskNames.PACKAGE_JAR, staticPkg);
-        } catch (Exception ignored) {
+        } catch (Exception e) {
             // Unparseable project / layout — parse-build will surface the real
             // error; skip-ish weights + auto-fill keep the bar honest meanwhile.
+            Log.debug("learned: Unparseable project / layout", e);
         }
         // Fresh steps still sit in the plan for a stamp check — reserve a token so the
         // workspace bar never calibrates to a pure-zero execute band.

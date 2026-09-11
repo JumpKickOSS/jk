@@ -2,6 +2,7 @@
 package cc.jumpkick.http;
 
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.net.URI;
@@ -144,6 +145,7 @@ public final class HostCooldown {
             Files.writeString(fileFor(host), expiry.toString());
         } catch (IOException | RuntimeException e) {
             // best-effort
+            Log.debug("noteRateLimited: best-effort", e);
         }
         return expiry;
     }

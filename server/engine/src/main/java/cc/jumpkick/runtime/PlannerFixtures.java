@@ -18,6 +18,7 @@ import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.BuildIdentity;
@@ -217,8 +218,9 @@ public final class PlannerFixtures {
                                     .isPresent();
                             ctx.reweight(
                                     restores ? EffortWeights.RESTORE : EffortWeights.compileWeight(sources.size()));
-                        } catch (Exception ignored) {
+                        } catch (Exception e) {
                             /* keep the up-front estimate */
+                            Log.debug("compileTestFixturesStep: keep the up-front estimate", e);
                         }
                     }
                     Path genDir = ctx.require(LAYOUT).generatedSourcesDir("annotations", "fixtures");

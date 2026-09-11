@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.plugin;
 
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.run.ContextPropagator;
 import cc.jumpkick.run.JkThreads;
 import java.io.IOException;
@@ -265,8 +266,9 @@ public final class JobWorkers {
                     trees.put(p, descendantsOf(p));
                     signalTree(p, !soft);
                 }
-            } catch (RuntimeException ignored) {
+            } catch (RuntimeException e) {
                 // best-effort
+                Log.debug("shutdownForRequest: best-effort", e);
             }
         }
         // Phase 2: one shared grace for the whole set, then force leftovers.
@@ -284,8 +286,9 @@ public final class JobWorkers {
             for (Process p : set) {
                 try {
                     if (p.isAlive() || anyDescendantAlive(p)) signalTree(p, true);
-                } catch (RuntimeException ignored) {
+                } catch (RuntimeException e) {
                     // best-effort
+                    Log.debug("shutdownForRequest: best-effort", e);
                 }
             }
         }
@@ -299,8 +302,9 @@ public final class JobWorkers {
         for (Process p : set) {
             try {
                 if (p.isAlive() || anyDescendantAlive(p)) return true;
-            } catch (RuntimeException ignored) {
+            } catch (RuntimeException e) {
                 // treat as dead
+                Log.debug("anyAlive: treat as dead", e);
             }
         }
         return false;
@@ -367,8 +371,9 @@ public final class JobWorkers {
             try {
                 exits.add(p.onExit());
                 for (ProcessHandle h : trees.getOrDefault(p, List.of())) exits.add(h.onExit());
-            } catch (RuntimeException ignored) {
+            } catch (RuntimeException e) {
                 // A handle we may not observe: nothing to wait on, and not worth failing a kill for.
+                Log.debug("awaitGone: A handle we may not observe", e);
             }
         }
         if (exits.isEmpty()) return;
@@ -376,8 +381,9 @@ public final class JobWorkers {
             CompletableFuture.allOf(exits.toArray(CompletableFuture[]::new)).get(budgetMs, TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-        } catch (ExecutionException | TimeoutException | RuntimeException ignored) {
+        } catch (ExecutionException | TimeoutException | RuntimeException e) {
             // Best-effort: the budget is a bound on our patience, not a promise about the OS.
+            Log.debug("awaitGone: Best-effort", e);
         }
     }
 
@@ -388,8 +394,9 @@ public final class JobWorkers {
                 p.descendants().forEach(h -> {
                     try {
                         h.destroyForcibly();
-                    } catch (RuntimeException ignored) {
+                    } catch (RuntimeException e) {
                         // best-effort
+                        Log.debug("signalTree: best-effort", e);
                     }
                 });
                 if (p.isAlive()) p.destroyForcibly();
@@ -398,13 +405,15 @@ public final class JobWorkers {
                 p.descendants().forEach(h -> {
                     try {
                         h.destroy();
-                    } catch (RuntimeException ignored) {
+                    } catch (RuntimeException e) {
                         // best-effort
+                        Log.debug("signalTree: best-effort", e);
                     }
                 });
             }
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException e) {
             // best-effort
+            Log.debug("signalTree: best-effort", e);
         }
     }
 

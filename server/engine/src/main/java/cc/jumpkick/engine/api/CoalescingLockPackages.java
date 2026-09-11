@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.api;
 
+import cc.jumpkick.host.Log;
 import java.util.Objects;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -122,7 +123,8 @@ public final class CoalescingLockPackages implements AutoCloseable {
     private void flushSafe() {
         try {
             flush();
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException e) {
+            Log.debug("flushSafe: RuntimeException ignored", e);
         }
     }
 

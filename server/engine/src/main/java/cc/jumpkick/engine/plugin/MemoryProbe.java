@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.plugin;
 
+import cc.jumpkick.host.Log;
 import cc.jumpkick.host.Os;
 import com.sun.management.OperatingSystemMXBean;
 import java.io.IOException;
@@ -83,8 +84,9 @@ public final class MemoryProbe {
             if (Files.isReadable(PROC_SELF_STATUS)) {
                 return meminfoValueBytes(Files.readString(PROC_SELF_STATUS), "VmRSS");
             }
-        } catch (IOException | RuntimeException ignored) {
+        } catch (IOException | RuntimeException e) {
             // best-effort: fall through to unknown
+            Log.debug("ownRssBytes: best-effort", e);
         }
         return -1;
     }
@@ -98,8 +100,9 @@ public final class MemoryProbe {
                 hostTotal = meminfoValueBytes(meminfo, "MemTotal");
                 hostAvail = meminfoValueBytes(meminfo, "MemAvailable");
             }
-        } catch (IOException | RuntimeException ignored) {
+        } catch (IOException | RuntimeException e) {
             // fall through to the bean fallback below
+            Log.debug("measure: fall through to the bean fallback below", e);
         }
 
         long cgLimit = readLong(CGROUP2_MAX);

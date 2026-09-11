@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.base;
 
+import cc.jumpkick.host.Log;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.runtime.WorkSchedule;
@@ -136,8 +137,9 @@ public final class ScheduleBias {
             Double prev = m.get(k);
             m.put(k, prev == null ? ratio : prev + ALPHA * (ratio - prev));
             write(f, m);
-        } catch (RuntimeException | IOException ignored) {
+        } catch (RuntimeException | IOException e) {
             // best-effort — an unlearned bias just means the raw schedule is used
+            Log.debug("observe: best-effort", e);
         }
     }
 

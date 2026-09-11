@@ -4,6 +4,7 @@ package cc.jumpkick.task;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
@@ -140,8 +141,9 @@ public final class FileHashMemo {
                             attrs.lastModifiedTime().toMillis(),
                             attrs.lastModifiedTime().to(TimeUnit.NANOSECONDS),
                             sha256Hex));
-        } catch (IOException | RuntimeException ignored) {
+        } catch (IOException | RuntimeException e) {
             // best-effort
+            Log.debug("rememberContent: best-effort", e);
         }
     }
 
@@ -234,8 +236,9 @@ public final class FileHashMemo {
                 for (String line : Files.readAllLines(s.file, StandardCharsets.UTF_8)) {
                     decode(line, s.entries);
                 }
-            } catch (IOException | RuntimeException ignored) {
+            } catch (IOException | RuntimeException e) {
                 // No store yet, or an unreadable one: start empty and refill.
+                Log.debug("load: No store yet, or an unreadable one", e);
             }
             sweepResidue(dir, s.file);
             return s;
@@ -253,8 +256,9 @@ public final class FileHashMemo {
                     if (p.equals(keep)) continue;
                     PathUtil.deleteRecursively(p);
                 }
-            } catch (IOException | RuntimeException ignored) {
+            } catch (IOException | RuntimeException e) {
                 // Housekeeping, never load-bearing.
+                Log.debug("sweepResidue: Housekeeping, never load-bearing", e);
             }
         }
 

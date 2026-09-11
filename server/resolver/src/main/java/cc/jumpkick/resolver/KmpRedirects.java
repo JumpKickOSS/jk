@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.resolver;
 
+import cc.jumpkick.host.Log;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.PackageId;
 import cc.jumpkick.repo.GradleModuleMetadata;
@@ -115,8 +116,9 @@ public final class KmpRedirects {
             if (PackageId.isMavenPackageKey(module)) {
                 return PackageId.parse(module).ga() + "@" + version;
             }
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException e) {
             // fall through
+            Log.debug("gaAt: fall through", e);
         }
         return module + "@" + version;
     }

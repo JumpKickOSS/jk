@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
+import cc.jumpkick.host.Log;
 import cc.jumpkick.runtime.Calibration;
 import cc.jumpkick.templates.OfficialTemplatesFreshen;
 import cc.jumpkick.util.JkDirs;
@@ -81,13 +82,15 @@ public final class EngineMaintenance implements AutoCloseable {
         if (closed.get()) return;
         try {
             maybeReloadConfig();
-        } catch (Throwable ignored) {
+        } catch (Throwable e) {
+            Log.debug("tickQuietly: Throwable ignored", e);
         }
         try {
             if (maintenanceDue()) {
                 runMaintenanceCycle();
             }
-        } catch (Throwable ignored) {
+        } catch (Throwable e) {
+            Log.debug("tickQuietly: Throwable ignored", e);
         }
     }
 
@@ -124,7 +127,8 @@ public final class EngineMaintenance implements AutoCloseable {
         // Invalidate calibration memo so a changed probe policy can re-read host-metrics.
         try {
             Calibration.invalidateMemo();
-        } catch (Throwable ignored) {
+        } catch (Throwable e) {
+            Log.debug("configChanged: Throwable ignored", e);
         }
         log.accept(message);
     }
@@ -150,7 +154,8 @@ public final class EngineMaintenance implements AutoCloseable {
         OfficialTemplatesFreshen.refreshQuiet(log);
         try {
             onMaintenanceDue.run();
-        } catch (Throwable ignored) {
+        } catch (Throwable e) {
+            Log.debug("runMaintenanceCycle: Throwable ignored", e);
         }
         try {
             Files.createDirectories(stampFile.getParent());

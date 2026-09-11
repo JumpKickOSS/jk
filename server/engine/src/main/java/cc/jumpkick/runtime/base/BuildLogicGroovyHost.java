@@ -97,7 +97,9 @@ public final class BuildLogicGroovyHost {
                 binding.setVariable('properties', new java.util.HashMap())
                 try {
                   binding.setVariable('ant', new groovy.ant.AntBuilder())
-                } catch (Throwable ignored) {}
+                } catch (Throwable e) {
+                    Log.debug("wrap: Throwable ignored", e);
+                }
                 new groovy.lang.GroovyShell(binding).evaluate(new File(%s))
                 """.formatted(
                         groovyString(projectDir.toAbsolutePath().normalize().toString()),

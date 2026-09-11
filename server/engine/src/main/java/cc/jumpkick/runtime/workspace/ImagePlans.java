@@ -13,6 +13,7 @@ import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.host.Errors;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.image.ImageConfig;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
@@ -550,7 +551,8 @@ public final class ImagePlans {
                 if (p.waitFor(2, TimeUnit.SECONDS) && p.exitValue() == 0) {
                     return candidate;
                 }
-            } catch (Exception ignored) {
+            } catch (Exception e) {
+                Log.debug("detectDockerExecutable: Exception ignored", e);
             }
         }
         return null;
@@ -652,7 +654,8 @@ public final class ImagePlans {
             }
         } catch (RuntimeException e) {
             throw e;
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            Log.debug("resolveMainClass: Exception ignored", e);
         }
         return null;
     }

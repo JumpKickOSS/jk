@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.builds.MetricsHarvest;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.runtime.base.HostLearnedRates;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
@@ -130,12 +131,14 @@ final class HostMetricsFile {
         try {
             Double d = t.getDouble(key);
             if (d != null) return d;
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException e) {
+            Log.debug("numberOr: RuntimeException ignored", e);
         }
         try {
             Long l = t.getLong(key);
             if (l != null) return l.doubleValue();
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException e) {
+            Log.debug("numberOr: RuntimeException ignored", e);
         }
         return dflt;
     }
@@ -165,7 +168,8 @@ final class HostMetricsFile {
                 TomlTable byLang = mean != null ? mean.getTable("by_language") : null;
                 TomlTable tbl = byLang != null ? byLang.getTable(lang) : null;
                 if (tbl != null) ms = numberOr(tbl, "compile_per_source_ms", 0);
-            } catch (RuntimeException ignored) {
+            } catch (RuntimeException e) {
+                Log.debug("foldLang: RuntimeException ignored", e);
             }
         }
         // Sanity: reject implausible compile_per_source_ms (must be 1–500).

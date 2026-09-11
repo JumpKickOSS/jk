@@ -3,6 +3,7 @@ package cc.jumpkick.runtime.workspace;
 
 import cc.jumpkick.cache.LockTimings;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.LockfileReader;
@@ -69,8 +70,9 @@ public final class WorkspaceLock {
             if (Files.isRegularFile(lockFile)) {
                 packages = LockfileReader.read(lockFile).artifacts().size();
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
             // unknown package count
+            Log.debug("estimateLockMillis: unknown package count", e);
         }
         try {
             if (entryDir != null) {
@@ -85,8 +87,9 @@ public final class WorkspaceLock {
                     }
                 }
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
             // unknown declared count
+            Log.debug("estimateLockMillis: unknown declared count", e);
         }
         long composed = LockTimings.estimateMillis(declared, packages);
         // Soft floor from this project's prior whole-lock walls (same dir) — only when composition
@@ -104,8 +107,9 @@ public final class WorkspaceLock {
                 // take much longer (e.g. cold-ish CAS on this host for this graph).
                 composed = Math.round(0.35 * hist.avgMillis() + 0.65 * composed);
             }
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException e) {
             // ignore
+            Log.debug("estimateLockMillis: ignore", e);
         }
         return Math.max(200, composed);
     }
@@ -119,8 +123,9 @@ public final class WorkspaceLock {
                     BuildMetrics.defaultFile(),
                     new BuildMetrics.Outcome("lock", dir, null, true, false, millis, List.of()),
                     System.currentTimeMillis());
-        } catch (Exception ignored) {
+        } catch (Exception e) {
             // never fail a build over metrics I/O
+            Log.debug("recordLockSuccess: never fail a build over metrics I/O", e);
         }
     }
 

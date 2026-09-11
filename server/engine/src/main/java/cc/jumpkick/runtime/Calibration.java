@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JdkInventory;
@@ -722,8 +723,9 @@ public final class Calibration {
             updated = updated.touch(clock.millis());
             persist(updated);
             MEMO.set(updated);
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException e) {
             // advisory
+            Log.debug("learnFromSuccess: advisory", e);
         }
     }
 
@@ -925,7 +927,8 @@ public final class Calibration {
     private static void persist(Calibration c) {
         try {
             HostMetricsFile.writeTo(HostMetricsFile.file(), c);
-        } catch (IOException | RuntimeException ignored) {
+        } catch (IOException | RuntimeException e) {
+            Log.debug("persist: IOException|RuntimeException ignored", e);
         }
     }
 

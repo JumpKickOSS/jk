@@ -4,6 +4,7 @@ package cc.jumpkick.engine.journal;
 import cc.jumpkick.builds.MetricsHarvest;
 import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.engine.api.BuildHistoryKinds;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.run.TaskNames;
@@ -257,8 +258,9 @@ public final class BuildJournal {
             String c = coord == null || coord.isBlank() ? "unknown:unknown" : coord;
             Path home = ProjectBuilds.projectHome(buildsRoot, c, projectPath);
             if (Files.isDirectory(home)) PathUtil.deleteRecursively(home);
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException e) {
             // best-effort
+            Log.debug("purgeProject: best-effort", e);
         }
     }
 
@@ -862,7 +864,8 @@ public final class BuildJournal {
                     return LocalDateTime.parse(id, ID_TS)
                             .toInstant(ZoneOffset.UTC)
                             .toEpochMilli();
-                } catch (RuntimeException ignored) {
+                } catch (RuntimeException e) {
+                    Log.debug("entryMillis: RuntimeException ignored", e);
                 }
             }
         }

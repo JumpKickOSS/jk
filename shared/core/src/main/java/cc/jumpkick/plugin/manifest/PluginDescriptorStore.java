@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.manifest;
 
+import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
@@ -47,8 +48,9 @@ public final class PluginDescriptorStore {
                     return Optional.of(e);
                 }
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
             // unreadable lock — reads as unlocked, the same soft behavior every reader has
+            Log.debug("lockEntry: unreadable lock", e);
         }
         return Optional.empty();
     }

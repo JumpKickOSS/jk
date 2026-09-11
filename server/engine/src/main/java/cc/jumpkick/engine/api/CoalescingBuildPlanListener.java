@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.api;
 
+import cc.jumpkick.host.Log;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
@@ -333,8 +334,9 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
     private void flushSafe() {
         try {
             flush();
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException e) {
             // never let scheduler die on a bad client write
+            Log.debug("flushSafe: never let scheduler die on a bad client write", e);
         }
     }
 

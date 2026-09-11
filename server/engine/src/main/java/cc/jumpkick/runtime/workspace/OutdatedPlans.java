@@ -7,6 +7,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.git.GitFetcher;
 import cc.jumpkick.host.Errors;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.lock.LockNativePin;
 import cc.jumpkick.lock.LockPaths;
@@ -129,8 +130,9 @@ public final class OutdatedPlans {
             Path lockFile = LockPaths.lockFile(dir);
             if (Files.isRegularFile(lockFile))
                 pin = LockfileReader.read(lockFile).nativeMetadata();
-        } catch (IOException | RuntimeException ignored) {
+        } catch (IOException | RuntimeException e) {
             // No lock, or unreadable: Current is simply empty, exactly as for an unlocked dep.
+            Log.debug("nativeMetadataRow: No lock, or unreadable", e);
         }
         RepoGroup repos = RepoGroupBuilder.buildFor(build, repoUrl, JkStores.storeCas());
         List<String> available;
@@ -314,12 +316,14 @@ public final class OutdatedPlans {
                     if (PackageId.isMavenPackageKey(a.name())) {
                         out.putIfAbsent(PackageId.parse(a.name()).ga(), a.version());
                     }
-                } catch (RuntimeException ignored) {
+                } catch (RuntimeException e) {
                     // non-Maven lock name
+                    Log.debug("lockedVersions: non-Maven lock name", e);
                 }
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
             // unreadable lock — treat as no locked versions
+            Log.debug("lockedVersions: unreadable lock", e);
         }
         return out;
     }

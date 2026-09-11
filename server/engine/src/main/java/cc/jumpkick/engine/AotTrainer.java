@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
+import cc.jumpkick.host.Log;
 import cc.jumpkick.util.AotSettings;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
@@ -66,8 +67,9 @@ public final class AotTrainer {
         try {
             p.destroyForcibly();
             log.accept("jk engine: killed AOT training sidecar (no longer primary, pid " + p.pid() + ")");
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException e) {
             // best-effort
+            Log.debug("stopQuietly: best-effort", e);
         }
     }
 }

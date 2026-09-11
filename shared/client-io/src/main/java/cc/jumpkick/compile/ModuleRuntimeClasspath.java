@@ -6,6 +6,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.config.WorkspaceModules;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.Languages;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
@@ -47,8 +48,9 @@ public final class ModuleRuntimeClasspath {
                 WorkspaceClasspath.Result siblings =
                         WorkspaceClasspath.resolve(moduleDir, project, Set.of(Scope.EXPORT, Scope.MAIN));
                 depJars.addAll(siblings.jars());
-            } catch (Exception ignored) {
+            } catch (Exception e) {
                 /* best-effort */
+                Log.debug("jars: best-effort", e);
             }
             return depJars;
         }

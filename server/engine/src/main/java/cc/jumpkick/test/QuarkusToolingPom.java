@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.test;
 
+import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
@@ -150,8 +151,11 @@ final class QuarkusToolingPom {
             for (var artifact : LockfileReader.read(lockFile).artifacts()) {
                 if (artifact.name().startsWith("io.quarkus:quarkus-core:")) return artifact.version();
             }
-        } catch (RuntimeException | IOException ignored) {
+        } catch (RuntimeException | IOException e) {
             // A malformed/absent lock just means we fall through to the declared version.
+            Log.debug(
+                    "lockedQuarkusVersion: A malformed/absent lock just means we fall through to the declared version",
+                    e);
         }
         return null;
     }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.workspace;
 
+import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.runtime.BuildGraph;
@@ -80,6 +81,9 @@ public final class ModuleInputProvenance {
             } catch (IOException | RuntimeException unwritable) {
                 // A target dir that cannot be written is the build's problem to report, not this
                 // one's: the next preflight simply finds no record and treats the module as clean.
+                Log.debug(
+                        "record: A target dir that cannot be written is the build's problem to report, not this one's",
+                        unwritable);
             }
         }
     }

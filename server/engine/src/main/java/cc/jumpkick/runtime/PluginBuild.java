@@ -10,6 +10,7 @@ import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockPaths;
@@ -690,12 +691,14 @@ public final class PluginBuild {
                             new ClasspathResolver(JkStores.storeCas()).classpathFor(sib, ClasspathResolver.RUNTIME)) {
                         if (!classpath.contains(pth)) classpath.add(pth);
                     }
-                } catch (Exception ignored) {
+                } catch (Exception e) {
                     /* best-effort, mirrors shadow packaging */
+                    Log.debug("sdkPins: best-effort, mirrors shadow packaging", e);
                 }
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
             /* no workspace — fine */
+            Log.debug("sdkPins: no workspace", e);
         }
         return classpath;
     }
@@ -758,8 +761,9 @@ public final class PluginBuild {
                 }
                 out.add(new ProdEntry(name, Files.isRegularFile(jar) ? jar : null, true, container));
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
             /* no workspace — fine */
+            Log.debug("ProdEntry: no workspace", e);
         }
         return out;
     }

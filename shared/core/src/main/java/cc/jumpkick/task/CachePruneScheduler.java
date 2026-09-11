@@ -4,6 +4,7 @@ package cc.jumpkick.task;
 import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Classpaths;
+import cc.jumpkick.host.Log;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -121,15 +122,17 @@ public final class CachePruneScheduler {
         try {
             // Authoritative on Linux, for native images and JVMs alike.
             candidate = Files.readSymbolicLink(Path.of("/proc/self/exe"));
-        } catch (IOException | RuntimeException ignored) {
+        } catch (IOException | RuntimeException e) {
             // not Linux (or /proc unavailable) — fall through
+            Log.debug("resolveJkExe: not Linux (or /proc unavailable)", e);
         }
         if (candidate == null) {
             try {
                 candidate =
                         ProcessHandle.current().info().command().map(Path::of).orElse(null);
-            } catch (RuntimeException ignored) {
+            } catch (RuntimeException e) {
                 // fall through
+                Log.debug("resolveJkExe: fall through", e);
             }
         }
         if (candidate != null && !isJavaLauncher(candidate)) {

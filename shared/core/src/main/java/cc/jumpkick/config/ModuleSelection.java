@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import java.nio.file.Files;
@@ -207,8 +208,9 @@ public final class ModuleSelection {
                     JkBuild unit = JkBuildParser.parse(manifest);
                     String name = unit.project().name();
                     if (name != null && !name.isBlank()) addNameAliases(aliases, name);
-                } catch (Exception ignored) {
+                } catch (Exception e) {
                     // unparseable member — path aliases still select it
+                    Log.debug("candidateFor: unparseable member", e);
                 }
             }
         }

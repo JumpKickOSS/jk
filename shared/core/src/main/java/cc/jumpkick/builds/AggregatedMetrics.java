@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.builds;
 
+import cc.jumpkick.host.Log;
 import cc.jumpkick.util.DirKeys;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -272,7 +273,8 @@ public final class AggregatedMetrics {
                     }
                 }
             }
-        } catch (IOException | RuntimeException ignored) {
+        } catch (IOException | RuntimeException e) {
+            Log.debug("parseProjectFile: IOException|RuntimeException ignored", e);
         }
     }
 
@@ -295,7 +297,8 @@ public final class AggregatedMetrics {
                     hostMean.putIfAbsent(key, v);
                 }
             }
-        } catch (IOException | RuntimeException ignored) {
+        } catch (IOException | RuntimeException e) {
+            Log.debug("parseHostMean: IOException|RuntimeException ignored", e);
         }
     }
 }

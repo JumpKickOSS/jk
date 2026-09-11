@@ -4,6 +4,7 @@ package cc.jumpkick.guard.extract;
 import cc.jumpkick.guard.facts.ClassFacts;
 import cc.jumpkick.guard.facts.FactsFormat;
 import cc.jumpkick.guard.facts.FactsIndex;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.BuildLayout;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -66,6 +67,8 @@ public final class WorkspaceFacts {
                     if (owner.facts() != null) return Optional.of(owner.facts());
                 } catch (IOException | RuntimeException unreadable) {
                     // A module whose index cannot be read holds no answer for this lookup.
+                    Log.debug(
+                            "lookup: A module whose index cannot be read holds no answer for this lookup", unreadable);
                 }
             }
             return Optional.empty();
@@ -107,6 +110,7 @@ public final class WorkspaceFacts {
                     for (String c : names.classNames()) out.putIfAbsent(c, rel);
                 } catch (IOException | RuntimeException unreadable) {
                     // A module whose index cannot be read owns no class here.
+                    Log.debug("classModules: A module whose index cannot be read owns no class here", unreadable);
                 }
             }
         }

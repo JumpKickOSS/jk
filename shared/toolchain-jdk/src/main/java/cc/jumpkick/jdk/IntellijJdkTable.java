@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.jdk;
 
+import cc.jumpkick.host.Log;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.util.MinimalXml;
 import java.io.IOException;
@@ -110,8 +111,9 @@ public final class IntellijJdkTable {
                     out.add(canonicalize(value));
                 }
             }
-        } catch (IOException | RuntimeException ignored) {
+        } catch (IOException | RuntimeException e) {
             // Malformed/partial table — skip it rather than fail discovery.
+            Log.debug("parseHomePaths: Malformed/partial table", e);
         }
     }
 

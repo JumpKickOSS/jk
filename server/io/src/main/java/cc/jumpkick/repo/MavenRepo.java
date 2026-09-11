@@ -556,8 +556,9 @@ public final class MavenRepo {
         if (ms > 0) {
             try {
                 FetchTimings.record(ms);
-            } catch (RuntimeException ignored) {
+            } catch (RuntimeException e) {
                 // advisory
+                Log.debug("downloadAndVerify: advisory", e);
             }
         }
         return stored;

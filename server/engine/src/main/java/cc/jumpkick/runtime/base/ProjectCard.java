@@ -3,6 +3,7 @@ package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.builds.ProjectIdentity;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
@@ -37,8 +38,9 @@ public record ProjectCard(
         try {
             String id = ProjectIdentity.resolve(root).id();
             if (id != null && !id.isBlank()) projectId = id;
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException e) {
             // invalid path — card still carries the dir
+            Log.debug("of: invalid path", e);
         }
         String coord = null;
         String description = null;
@@ -55,8 +57,9 @@ public record ProjectCard(
             javaRelease = p.javaRelease();
             jdk = p.jdk();
             members = membersOf(root, build);
-        } catch (Exception ignored) {
+        } catch (Exception e) {
             // missing/unparseable jk.toml — identity-only card
+            Log.debug("of: missing/unparseable jk.toml", e);
         }
         boolean lockStale;
         try {
@@ -78,8 +81,9 @@ public record ProjectCard(
                 var p = JkBuildParser.parseLocal(moduleDir.resolve(ManifestPaths.MANIFEST))
                         .project();
                 coord = p.group() + ":" + p.name();
-            } catch (Exception ignored) {
+            } catch (Exception e) {
                 // path-only member
+                Log.debug("membersOf: path-only member", e);
             }
             out.add(new Member(moduleDir.toString(), coord));
         }

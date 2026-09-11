@@ -3,6 +3,7 @@ package cc.jumpkick.jdk;
 
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.run.JkThreads;
@@ -97,6 +98,7 @@ public final class JdkInstaller {
                 }
             } catch (IOException | RuntimeException stillOpenOrGone) {
                 // Best-effort by contract; sweepStaleDownloads is the fallback.
+                Log.debug("reapInFlight: Best-effort by contract", stillOpenOrGone);
             }
         }
         return bytes;

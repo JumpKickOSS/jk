@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
+import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.JdkCatalogClient;
@@ -124,11 +125,13 @@ public final class StoreFeedRefresh implements AutoCloseable {
                 refreshLibraries();
             } catch (Throwable t) {
                 // Quiet: never fail the engine for a hygiene refresh. No retries.
+                Log.debug("refreshFeedsQuietly: Quiet: never fail the engine for a hygiene refresh", t);
             }
             try {
                 refreshJdks();
             } catch (Throwable t) {
                 // Quiet — leave on-disk copy.
+                Log.debug("refreshFeedsQuietly: Quiet", t);
             }
         }
     }
@@ -142,6 +145,7 @@ public final class StoreFeedRefresh implements AutoCloseable {
                 afterTick.run();
             } catch (Throwable t) {
                 // Quiet
+                Log.debug("tickQuietly: Quiet", t);
             }
         }
     }

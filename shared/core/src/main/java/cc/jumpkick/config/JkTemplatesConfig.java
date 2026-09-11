@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.host.Log;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -101,8 +102,9 @@ public record JkTemplatesConfig(String officialUrl, List<Source> sources) {
                         if (rev == null || rev.isBlank()) rev = t.getString("branch");
                         sources.add(new Source(name, url, rev));
                     }
-                } catch (RuntimeException ignored) {
+                } catch (RuntimeException e) {
                     // lenient: skip malformed entry
+                    Log.debug("fromTomlRoot: lenient", e);
                 }
             }
         }

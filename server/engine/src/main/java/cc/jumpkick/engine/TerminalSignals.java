@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
+import cc.jumpkick.host.Log;
 import java.lang.reflect.Proxy;
 
 /**
@@ -30,8 +31,9 @@ public final class TerminalSignals {
             Object handler = Proxy.newProxyInstance(
                     handlerClass.getClassLoader(), new Class<?>[] {handlerClass}, (proxy, method, args) -> null);
             signalClass.getMethod("handle", signalClass, handlerClass).invoke(null, signal, handler);
-        } catch (ReflectiveOperationException | RuntimeException ignored) {
+        } catch (ReflectiveOperationException | RuntimeException e) {
             // No-op: PosixDetach + process-group isolation is the primary defense.
+            Log.debug("ignore: No-op", e);
         }
     }
 }

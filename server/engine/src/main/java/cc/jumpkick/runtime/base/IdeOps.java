@@ -9,6 +9,7 @@ import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.host.Errors;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.IntellijJdkDir;
 import cc.jumpkick.jdk.JdkHit;
@@ -406,8 +407,9 @@ public final class IdeOps {
                 new CacheSync(cas, new Http()).sync(lock, CacheSync.ProgressObserver.NOOP);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-            } catch (Exception ignored) {
+            } catch (Exception e) {
                 // best-effort; missing JARs are skipped below
+                Log.debug("collectLibDefs: best-effort", e);
             }
         }
 

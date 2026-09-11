@@ -4,6 +4,7 @@ package cc.jumpkick.builds;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.config.WorkspaceModules;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Dependency;
@@ -70,8 +71,9 @@ public final class DeclaredDeps {
             for (var e : build.dependencies().byScope().entrySet()) {
                 addDeps(e.getValue(), catalog, out);
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
             // best-effort
+            Log.debug("collectFromToml: best-effort", e);
         }
     }
 

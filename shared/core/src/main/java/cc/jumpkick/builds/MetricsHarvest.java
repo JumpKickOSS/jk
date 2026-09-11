@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.builds;
 
+import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.util.AtomicWrites;
@@ -112,8 +113,9 @@ public final class MetricsHarvest {
                 rerun.set(false);
                 try {
                     runOnce(JkDirs.builds());
-                } catch (Exception ignored) {
+                } catch (Exception e) {
                     // never fail the product over harvest
+                    Log.debug("loop: never fail the product over harvest", e);
                 }
             } while (rerun.get());
         } finally {
@@ -196,7 +198,8 @@ public final class MetricsHarvest {
                     hostSamples.computeIfAbsent(key, k -> new ArrayList<>()).add(v);
                 }
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            Log.debug("parseRunMetrics: Exception ignored", e);
         }
     }
 

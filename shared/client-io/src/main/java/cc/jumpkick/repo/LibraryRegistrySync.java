@@ -2,6 +2,7 @@
 package cc.jumpkick.repo;
 
 import cc.jumpkick.host.Errors;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.util.AtomicWrites;
@@ -64,6 +65,7 @@ public final class LibraryRegistrySync {
             // Fail soft: missing → bundled floor; present → keep stale. Lock must not fail solely
             // because the registry is unreachable (except operators may still lack short names only
             // present upstream — then parse reports unknown library).
+            Log.debug("ensurePresent: Fail soft: missing → bundled floor; present → keep stale", e);
         }
     }
 

@@ -6,6 +6,7 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.JdkEnsure;
 import cc.jumpkick.lock.LockPaths;
@@ -89,8 +90,9 @@ public final class SyncPlans {
         if (Files.isRegularFile(lockFile)) {
             try {
                 preScannedTotal += CacheSync.countArtifacts(LockfileReader.read(lockFile));
-            } catch (Exception ignored) {
+            } catch (Exception e) {
                 /* lock unreadable — fall through to dynamic ticks */
+                Log.debug("syncBuildPlan: lock unreadable", e);
             }
         }
         final int preScanDenominator = preScannedTotal;

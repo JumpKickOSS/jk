@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.api;
 
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.jsonl.Jsonl;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -107,8 +108,9 @@ public final class BuildJobFingerprint {
             if (Files.exists(p)) {
                 try {
                     return p.toRealPath().toString();
-                } catch (Exception ignored) {
+                } catch (Exception e) {
                     // fall through to absolute form
+                    Log.debug("canonicalDir: fall through to absolute form", e);
                 }
             }
             return p.toString();

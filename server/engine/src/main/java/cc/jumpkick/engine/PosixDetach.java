@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
+import cc.jumpkick.host.Log;
 import cc.jumpkick.wire.EngineTransport;
 import java.lang.foreign.FunctionDescriptor;
 import java.lang.foreign.Linker;
@@ -39,6 +40,7 @@ public final class PosixDetach {
             int unusedRc = (int) setsid.invokeExact();
         } catch (Throwable t) {
             // Best-effort: stay in the spawner's session, exactly the pre-detach behavior.
+            Log.debug("intoOwnSession: Best-effort", t);
         }
     }
 }

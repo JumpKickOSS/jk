@@ -13,6 +13,7 @@ import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.layout.ModuleLayout;
@@ -410,7 +411,8 @@ final class ModuleForecast {
         try {
             var img = JkBuildParser.imageConfig(dir.resolve(ManifestPaths.MANIFEST));
             producesImage = img.base() != null || img.registry() != null;
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            Log.debug("compileGroovy: Exception ignored", e);
         }
     }
 
@@ -677,8 +679,9 @@ final class ModuleForecast {
             if (project.isApplication()) {
                 try {
                     sbom = PlannerPlugin.applicationSbom(project, lock, cas);
-                } catch (Exception ignored) {
+                } catch (Exception e) {
                     // best-effort: missing SBOM → key still includes empty sbom: like a null sbom
+                    Log.debug("packageJar: best-effort", e);
                 }
             }
             // classesTokenForPackage projects post-copy content when resources drifted so

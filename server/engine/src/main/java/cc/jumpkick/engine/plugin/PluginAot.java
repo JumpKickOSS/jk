@@ -138,6 +138,7 @@ public final class PluginAot {
             }
         } catch (RuntimeException e) {
             // AOT is an accelerator, never a dependency — never fail the build.
+            Log.debug("pluginWorkerFlags: AOT is an accelerator, never a dependency", e);
         }
         return List.of();
     }

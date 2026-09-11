@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.host.Log;
 import cc.jumpkick.host.Os;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
@@ -262,8 +263,9 @@ public final class MacPrefs {
                                         ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT)),
                         linker.downcallHandle(
                                 lookup.findOrThrow("CFRelease"), FunctionDescriptor.ofVoid(ValueLayout.ADDRESS)));
-            } catch (Throwable ignored) {
+            } catch (Throwable e) {
                 // Missing framework, denied native access, renamed symbol — no preferences.
+                Log.debug("coreFoundation: Missing framework, denied native access, renamed symbol", e);
             } finally {
                 cfInitAttempted = true;
             }
@@ -347,8 +349,9 @@ public final class MacPrefs {
     private static void release(Cf cf, MemorySegment ref) {
         try {
             cf.release().invokeExact(ref);
-        } catch (Throwable ignored) {
+        } catch (Throwable e) {
             // best-effort
+            Log.debug("release: best-effort", e);
         }
     }
 

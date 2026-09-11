@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.resolver;
 
+import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.RepositorySpec;
@@ -56,8 +57,9 @@ final class SourcesAttacher {
                             "sha256:" + hit.fetched().sha256()));
                     continue;
                 }
-            } catch (Exception ignored) {
+            } catch (Exception e) {
                 /* sources not available for this package */
+                Log.debug("attach: sources not available for this package", e);
             }
             updated.add(pkg);
         }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cache;
 
+import cc.jumpkick.host.Log;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
@@ -97,8 +98,9 @@ public final class LockTimings {
             Snapshot next = new Snapshot(List.copyOf(graph), List.copyOf(mat), List.copyOf(over));
             writeUnlocked(next);
             memo = next;
-        } catch (IOException | RuntimeException ignored) {
+        } catch (IOException | RuntimeException e) {
             // advisory
+            Log.debug("record: advisory", e);
         } finally {
             LOCK.unlock();
         }

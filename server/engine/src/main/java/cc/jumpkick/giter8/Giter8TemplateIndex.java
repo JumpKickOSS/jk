@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.giter8;
 
+import cc.jumpkick.host.Log;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
@@ -306,8 +307,9 @@ public final class Giter8TemplateIndex {
                 if (Files.isRegularFile(code)) code = code.getParent();
                 if (code != null) collectDogfood(code, extras);
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
             // best-effort
+            Log.debug("searchRoots: best-effort", e);
         }
         return defaultSearchRoots(extras);
     }

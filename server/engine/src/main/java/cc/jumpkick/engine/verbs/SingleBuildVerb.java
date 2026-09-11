@@ -6,6 +6,7 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
@@ -122,8 +123,9 @@ public final class SingleBuildVerb implements HostedVerb {
                         preGraph = g;
                         preFps = PreflightMemo.snapshotFingerprints(g, skipTests);
                     }
-                } catch (Exception ignored) {
+                } catch (Exception e) {
                     // fail-open
+                    Log.debug("run: fail-open", e);
                 }
             }
 

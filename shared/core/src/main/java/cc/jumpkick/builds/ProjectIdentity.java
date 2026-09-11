@@ -4,6 +4,7 @@ package cc.jumpkick.builds;
 import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
@@ -196,7 +197,8 @@ public record ProjectIdentity(
                 boolean pathMatch = false;
                 try {
                     pathMatch = abs.equals(Path.of(f.path()).toAbsolutePath().normalize());
-                } catch (RuntimeException ignored) {
+                } catch (RuntimeException e) {
+                    Log.debug("recoverId: RuntimeException ignored", e);
                 }
                 boolean gitMatch = git.isPresent()
                         && f.gitRemote() != null

@@ -625,8 +625,9 @@ public final class LockPipeline {
                     }
                 }
             }
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException e) {
             // no plugin tables / no contributions — nothing to pin
+            Log.debug("pinSdk: no plugin tables / no contributions", e);
         }
         if (components.isEmpty()) return lock;
         progress.label("pin sdk components");
@@ -699,8 +700,9 @@ public final class LockPipeline {
                 if (PackageId.isMavenPackageKey(pkg.name())) {
                     locked.add(PackageId.parse(pkg.name()).ga());
                 }
-            } catch (RuntimeException ignored) {
+            } catch (RuntimeException e) {
                 // non-Maven lock name
+                Log.debug("requireOfflineSatisfiable: non-Maven lock name", e);
             }
         }
         for (var entry : effective.dependencies().byScope().entrySet()) {

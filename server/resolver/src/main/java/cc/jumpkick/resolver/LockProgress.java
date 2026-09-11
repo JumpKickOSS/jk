@@ -2,6 +2,7 @@
 package cc.jumpkick.resolver;
 
 import cc.jumpkick.cache.LockTimings;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.model.PackageId;
 import java.util.LinkedHashSet;
 import java.util.Set;
@@ -85,8 +86,9 @@ final class LockProgress {
         long totalMs = (System.nanoTime() - lockStartNanos) / 1_000_000L;
         try {
             timings.record(graphMs, Math.max(1, graphSeen.size()), materializeMs, Math.max(1, rows), totalMs);
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException e) {
             // advisory — never fail a lock over metrics I/O
+            Log.debug("finished: advisory", e);
         }
     }
 

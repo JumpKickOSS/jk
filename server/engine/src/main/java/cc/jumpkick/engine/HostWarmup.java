@@ -8,6 +8,7 @@ import cc.jumpkick.engine.plugin.PluginAot;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
 import cc.jumpkick.host.AotCacheFiles;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.model.JkVersion;
@@ -178,8 +179,9 @@ public final class HostWarmup {
             if (StoreWriteGate.wipedSinceStart()) return;
             try {
                 step.run();
-            } catch (Throwable ignored) {
+            } catch (Throwable e) {
                 // Hygiene: one step's failure never costs the rest of the pass.
+                Log.debug("runIdle: Hygiene", e);
             }
         }
     }

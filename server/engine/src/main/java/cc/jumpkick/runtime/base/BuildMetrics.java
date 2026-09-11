@@ -5,6 +5,7 @@ import cc.jumpkick.builds.AggregatedMetrics;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TomlValues;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.run.TaskNames;
@@ -237,8 +238,9 @@ public final class BuildMetrics {
         try {
             Path w = SessionContext.current().workingDir();
             if (w != null && Files.isDirectory(w)) work = w;
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException e) {
             // no session / bad path — global merge below
+            Log.debug("aggregatesForSession: no session / bad path", e);
         }
         // Only a real jk checkout is a project session; engine CWD / random dirs use loadAll.
         boolean projectSession = work != null && Files.isRegularFile(work.resolve(ManifestPaths.MANIFEST));
@@ -615,8 +617,9 @@ public final class BuildMetrics {
                     if (inv.isEmpty() && ph.isEmpty()) Files.deleteIfExists(file);
                     else write(file, inv, ph);
                     MEMO.remove(file);
-                } catch (IOException | RuntimeException ignored) {
+                } catch (IOException | RuntimeException e) {
                     // advisory — leave the file as-is on failure
+                    Log.debug("prune: advisory", e);
                 }
             }
             return new PruneReport(byAge, bySize, inv.size() + ph.size(), renderedBytes(inv, ph));
@@ -661,8 +664,9 @@ public final class BuildMetrics {
                     if (e != null) ph.put(e.dir() + SEP + e.step(), e);
                 }
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
             // unreadable/corrupt store → treat as empty
+            Log.debug("read: unreadable/corrupt store → treat as empty", e);
         }
         // The hermetic store records single-runner runs, so a suite wall is already its own
         // normalized wall — the same shape the harvested `wall1-ms` gives production.

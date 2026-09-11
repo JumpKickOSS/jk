@@ -6,6 +6,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.host.Errors;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
@@ -536,14 +537,16 @@ public final class LockPlans {
         try {
             int n = LockfileReader.read(lockFile).artifacts().size();
             if (n > 0) return Math.max(10, n * 2);
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            Log.debug("scopeEstimate: Exception ignored", e);
         }
         try {
             int declared = effective.dependencies().byScope().values().stream()
                     .mapToInt(List::size)
                     .sum();
             return Math.max(10, declared * 12 * 2);
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            Log.debug("scopeEstimate: Exception ignored", e);
         }
         return 40;
     }

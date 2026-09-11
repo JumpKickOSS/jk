@@ -12,6 +12,7 @@ import cc.jumpkick.compile.JavacLint;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.host.Errors;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JavaHomes;
@@ -80,7 +81,8 @@ public final class PlannerSetup {
                                             .artifacts()
                                             .size()
                                     + 5;
-                        } catch (Exception ignored) {
+                        } catch (Exception e) {
+                            Log.debug("parseBuildStep: Exception ignored", e);
                         }
                     }
                     return 10;
@@ -341,8 +343,9 @@ public final class PlannerSetup {
                 for (Path p : resolver.classpathFor(sl, ClasspathResolver.RUNTIME, true)) {
                     if (!testRuntimeCp.contains(p)) testRuntimeCp.add(p);
                 }
-            } catch (Exception ignored) {
+            } catch (Exception e) {
                 /* best-effort */
+                Log.debug("failed: best-effort", e);
             }
         }
         compileTestCp.addAll(contributedProvided);

@@ -5,6 +5,7 @@ import cc.jumpkick.engine.plugin.PluginAot;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
 import cc.jumpkick.host.AotCacheFiles;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.util.StoreWriteGate;
 import java.nio.file.Files;
@@ -91,7 +92,8 @@ public final class WorkerAotBootstrap {
             if (force && cache != null) {
                 try {
                     Files.deleteIfExists(AotCacheFiles.marker(cache));
-                } catch (Exception ignored) {
+                } catch (Exception e) {
+                    Log.debug("trainJavaCompiler: Exception ignored", e);
                 }
             }
             if (!force && AotCacheFiles.blocked(cache)) {

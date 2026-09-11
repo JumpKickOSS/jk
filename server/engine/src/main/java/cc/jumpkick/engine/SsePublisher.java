@@ -13,6 +13,7 @@ import cc.jumpkick.engine.jobs.JobSession;
 import cc.jumpkick.engine.jobs.JobSessions;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.listen.EventRedaction;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
@@ -350,6 +351,7 @@ public final class SsePublisher implements SseEvents {
             coord = project.group() + ":" + project.name();
         } catch (Exception e) {
             // unparseable/missing jk.toml — the dashboard falls back to showing the dir
+            Log.debug("publishRequestStart: unparseable/missing jk.toml", e);
         }
         var payload = JsonOut.object()
                 .put("schema", 1)

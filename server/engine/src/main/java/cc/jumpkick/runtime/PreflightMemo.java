@@ -7,6 +7,7 @@ import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.layout.ModuleLayout;
@@ -275,8 +276,9 @@ public final class PreflightMemo {
             Files.createDirectories(durable.getParent());
             AtomicWrites.replace(durable, body);
             writeInTree(memoFile(entryDir), entryDir, body);
-        } catch (Exception ignored) {
+        } catch (Exception e) {
             // fail-open
+            Log.debug("storeDirty: fail-open", e);
         }
     }
 
@@ -337,8 +339,9 @@ public final class PreflightMemo {
                 }
             }
             AtomicWrites.replace(file, sb.toString());
-        } catch (Exception ignored) {
+        } catch (Exception e) {
             // fail-open
+            Log.debug("storeGraph: fail-open", e);
         }
     }
 
@@ -637,8 +640,9 @@ public final class PreflightMemo {
                 sb.append("cacheKeyVersion=").append(gotVersion).append('\n');
                 for (String line : byKey.values()) sb.append(line).append('\n');
                 AtomicWrites.replace(file, sb.toString());
-            } catch (Exception ignored) {
+            } catch (Exception e) {
                 // fail-open
+                Log.debug("storeShape: fail-open", e);
             }
         }
     }
@@ -653,8 +657,9 @@ public final class PreflightMemo {
             if (TaskNames.RUN_TESTS.equals(s.name())) {
                 try {
                     testWeight += s.estimateWeight();
-                } catch (Exception ignored) {
+                } catch (Exception e) {
                     // best-effort
+                    Log.debug("shapeOf: best-effort", e);
                 }
             }
         }

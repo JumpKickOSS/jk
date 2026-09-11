@@ -2,6 +2,7 @@
 package cc.jumpkick.util;
 
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.time.Clock;
 import java.io.IOException;
@@ -122,8 +123,9 @@ public final class TestHomes {
         try {
             Files.createDirectories(slot);
             Files.writeString(slot.resolve(STAMP), "jk test sandbox; see cc.jumpkick.util.TestHomes\n");
-        } catch (IOException | RuntimeException ignored) {
+        } catch (IOException | RuntimeException e) {
             // A missing stamp costs this home an early reap, never a failed build.
+            Log.debug("stamp: A missing stamp costs this home an early reap, never a failed build", e);
         }
     }
 
@@ -160,8 +162,9 @@ public final class TestHomes {
             for (Path slot : stale) {
                 if (delete(slot)) removed++;
             }
-        } catch (IOException | RuntimeException ignored) {
+        } catch (IOException | RuntimeException e) {
             // The reap is hygiene, never the reason a build fails.
+            Log.debug("reapStale: The reap is hygiene, never the reason a build fails", e);
         }
         for (Slot slot : fresh) total += slot.bytes();
         // Oldest first: the stamp is rewritten on every use, so it is a real use clock.
@@ -191,8 +194,9 @@ public final class TestHomes {
         long[] total = {0};
         try {
             PathUtil.forEachRegularFile(slot, (file, attrs) -> total[0] += attrs.size());
-        } catch (IOException | RuntimeException ignored) {
+        } catch (IOException | RuntimeException e) {
             // A slot that will not list is sized by what did list.
+            Log.debug("size: A slot that will not list is sized by what did list", e);
         }
         return total[0];
     }

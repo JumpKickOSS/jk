@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.resolver;
 
+import cc.jumpkick.host.Log;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.PlatformPolicy;
@@ -690,8 +691,9 @@ public final class MavenPackageSource implements PackageSource {
             if (e.getValue() == null || e.getValue().isBlank()) continue;
             try {
                 pins.putIfAbsent(PackageId.ofGa(e.getKey()).key(), e.getValue());
-            } catch (RuntimeException ignored) {
+            } catch (RuntimeException badKey) {
                 // skip
+                Log.debug("warmUp: skip", badKey);
             }
         }
         for (var e : lockedVersionPrefs.entrySet()) {
@@ -702,8 +704,9 @@ public final class MavenPackageSource implements PackageSource {
                         ? PackageId.parse(key).key()
                         : PackageId.ofGa(key).key();
                 pins.putIfAbsent(pkg, e.getValue());
-            } catch (RuntimeException ignored) {
+            } catch (RuntimeException badKey) {
                 // skip
+                Log.debug("warmUp: skip", badKey);
             }
         }
         int n = 0;
@@ -766,8 +769,9 @@ public final class MavenPackageSource implements PackageSource {
                     }
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
-                } catch (Exception ignored) {
+                } catch (Exception e) {
                     // best-effort warming; the sync path surfaces real failures
+                    Log.debug("submitPrefetch: best-effort warming", e);
                 } finally {
                     finishPrefetch();
                 }
@@ -822,8 +826,9 @@ public final class MavenPackageSource implements PackageSource {
             if (PackageId.isMavenPackageKey(pkg)) {
                 return PackageId.parse(pkg).ga() + "@" + version;
             }
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException e) {
             // fall through
+            Log.debug("rawEdgesCacheKey: fall through", e);
         }
         return pkg + "@" + version;
     }

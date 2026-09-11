@@ -99,6 +99,7 @@ public final class RunNotices {
         } catch (RuntimeException e) {
             // Unreadable session, unwritable log, throwing sink: say nothing rather than fail
             // the build.
+            Log.debug("warnOnce: Unreadable session, unwritable log, throwing sink", e);
         }
     }
 

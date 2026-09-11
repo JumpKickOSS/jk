@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
@@ -74,8 +75,9 @@ public final class AutoLock {
             if (!isStale(dir, lockFile)) {
                 try {
                     return LockfileReader.read(lockFile);
-                } catch (Exception ignored) {
+                } catch (Exception e) {
                     // unreadable — fall through and re-lock
+                    Log.debug("maybeReLock: unreadable", e);
                 }
             }
             return reLock(dir, existing, cache, repoUrl, features, withDefaults, observer, warn);

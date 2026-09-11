@@ -23,6 +23,7 @@ import cc.jumpkick.groovy.GroovyResolver;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
@@ -132,8 +133,9 @@ public final class PlannerSupport {
                 for (Path p : resolver.classpathFor(sl, ClasspathResolver.COMPILE_MAIN, requirePresent)) {
                     if (!cp.contains(p)) cp.add(p);
                 }
-            } catch (Exception ignored) {
+            } catch (Exception e) {
                 /* best-effort: a sibling's lock may be absent */
+                Log.debug("processorClasspath: best-effort", e);
             }
         }
         return cp;
@@ -190,8 +192,9 @@ public final class PlannerSupport {
                 for (Path p : resolver.classpathFor(sl, ClasspathResolver.COMPILE_MAIN, requirePresent)) {
                     if (!cp.contains(p)) cp.add(p);
                 }
-            } catch (Exception ignored) {
+            } catch (Exception e) {
                 /* best-effort: a sibling's lock may be absent */
+                Log.debug("mainCompileClasspath: best-effort", e);
             }
         }
         return cp;
@@ -556,8 +559,9 @@ public final class PlannerSupport {
                         && sib.project().name().equals(sibling.project().name())) {
                     return dir;
                 }
-            } catch (IOException | RuntimeException ignored) {
+            } catch (IOException | RuntimeException e) {
                 // an unparsable sibling cannot be the one already parsed
+                Log.debug("siblingDir: an unparsable sibling cannot be the one already parsed", e);
             }
         }
         throw new IOException("workspace module for " + sibling.project().group() + ":"
@@ -640,8 +644,9 @@ public final class PlannerSupport {
                     return p.normalize();
                 }
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
             // fall through — exploded test classpath is common under Gradle
+            Log.debug("locateHostEngineJar: fall through", e);
         }
         for (Path p : Classpaths.split(System.getProperty("java.class.path", ""))) {
             String name = p.getFileName() != null ? p.getFileName().toString() : "";
@@ -656,8 +661,11 @@ public final class PlannerSupport {
             if (mat.isPresent() && Files.isRegularFile(mat.get().engineJar())) {
                 return mat.get().engineJar().toAbsolutePath().normalize();
             }
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException e) {
             // Isolated JK_HOME (Gradle :engine:test / nested CLI suite) has no engine jar.
+            Log.debug(
+                    "locateHostEngineJar: Isolated JK_HOME (Gradle :engine:test / nested CLI suite) has no engine jar",
+                    e);
         }
         // Last resort: monorepo product outputs relative to user.dir (and parents). Pure-jk
         // nested isolation runs with user.dir = clients/cli; host run-tests has monorepo root
@@ -790,8 +798,9 @@ public final class PlannerSupport {
             try {
                 Lockfile s = LockfileReader.read(sl);
                 for (Path p : resolver.classpathFor(s, ClasspathResolver.COMPILE_MAIN)) if (!cp.contains(p)) cp.add(p);
-            } catch (Exception ignored) {
+            } catch (Exception e) {
                 /* best-effort */
+                Log.debug("testStampExtras: best-effort", e);
             }
         }
         return cp;
@@ -808,8 +817,9 @@ public final class PlannerSupport {
             try {
                 Lockfile s = LockfileReader.read(sl);
                 for (Path p : resolver.classpathFor(s, ClasspathResolver.RUNTIME)) if (!cp.contains(p)) cp.add(p);
-            } catch (Exception ignored) {
+            } catch (Exception e) {
                 /* best-effort */
+                Log.debug("testStampExtras: best-effort", e);
             }
         }
         return cp;

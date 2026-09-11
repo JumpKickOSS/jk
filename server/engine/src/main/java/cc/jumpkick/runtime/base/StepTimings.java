@@ -4,6 +4,7 @@ package cc.jumpkick.runtime.base;
 import cc.jumpkick.builds.AggregatedMetrics;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.TomlValues;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.MinimalToml;
@@ -239,8 +240,9 @@ public final class StepTimings {
         try {
             write(f, m);
             MEMO.remove(f); // next load in this process sees the update
-        } catch (IOException | RuntimeException ignored) {
+        } catch (IOException | RuntimeException e) {
             // advisory store — never fail the build over it
+            Log.debug("record: advisory store", e);
         }
     }
 
@@ -307,8 +309,9 @@ public final class StepTimings {
                 if (m.isEmpty()) Files.deleteIfExists(file);
                 else write(file, m);
                 MEMO.remove(file);
-            } catch (IOException | RuntimeException ignored) {
+            } catch (IOException | RuntimeException e) {
                 // advisory — leave the file as-is on failure
+                Log.debug("prune: advisory", e);
             }
         }
         return new PruneReport(byAge, bySize, m.size(), renderedBytes(m));
@@ -336,8 +339,9 @@ public final class StepTimings {
                     }
                 }
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
             // unreadable/corrupt ledger → treat as cold
+            Log.debug("readFile: unreadable/corrupt ledger → treat as cold", e);
         }
         return new StepTimings(m);
     }

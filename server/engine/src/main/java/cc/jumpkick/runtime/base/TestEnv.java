@@ -5,6 +5,7 @@ import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.TestEnvValues;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.engine.plugin.WorkerEnv;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.EnvConfig;
 import cc.jumpkick.model.JkBuild;
@@ -95,6 +96,8 @@ public final class TestEnv {
         } catch (RuntimeException e) {
             // A workspace root that will not read is the build's error to report, not this one's:
             // fall back to the module's own slot so a test JVM still gets a sandbox.
+            Log.debug(
+                    "sandboxM2: A workspace root that will not read is the build's error to report, not this one's", e);
         }
         return TestHomes.slotFor(moduleDir).resolve("test-m2");
     }

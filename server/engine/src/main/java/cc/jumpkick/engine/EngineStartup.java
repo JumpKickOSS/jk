@@ -7,6 +7,7 @@ import cc.jumpkick.config.Jobs;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.plugin.HeapPlan;
 import cc.jumpkick.engine.plugin.JvmOptions;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.util.function.Consumer;
@@ -96,8 +97,9 @@ final class EngineStartup {
             if (wiped > 0) {
                 log.accept("jk engine: retired " + wiped + " AOT cache(s) from other versions");
             }
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException e) {
             // best-effort
+            Log.debug("retireOtherVersionsAot: best-effort", e);
         }
     }
 
@@ -107,8 +109,9 @@ final class EngineStartup {
             if (!gc.isEmpty()) {
                 log.accept("jk engine: removed " + gc.size() + " displaced install file(s)");
             }
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException e) {
             // a predecessor may still have the previous jar mapped — retry on the next cycle
+            Log.debug("collectDisplacedInstallFiles: a predecessor may still have the previous jar mapped", e);
         }
     }
 

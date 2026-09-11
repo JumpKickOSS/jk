@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
@@ -146,7 +147,8 @@ public final class NativeEffort {
                 try {
                     List<Path> jars = PlannerSupport.assemblyDependencyJars(moduleDir, project, lock, cache);
                     deps = sumExistingBytes(jars);
-                } catch (IOException | RuntimeException ignored) {
+                } catch (IOException | RuntimeException e) {
+                    Log.debug("splitInputs: IOException|RuntimeException ignored", e);
                 }
             }
             return new InputSplit(app, deps);

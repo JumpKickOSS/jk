@@ -4,6 +4,7 @@ package cc.jumpkick.engine.http;
 import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.engine.api.HttpLive;
 import cc.jumpkick.engine.journal.BuildJournal;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.runtime.base.BuildMetrics;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -342,8 +343,9 @@ public final class HttpEngineServer implements AutoCloseable {
                 log.accept("jk engine: http handler error: " + e);
                 try {
                     HttpResponses.sendText(exchange, 500, "internal error\n");
-                } catch (Exception ignored) {
+                } catch (Exception unsent) {
                     // response already started (IllegalStateException) or client gone
+                    Log.debug("handle: response already started (IllegalStateException) or client gone", unsent);
                 }
             }
         }

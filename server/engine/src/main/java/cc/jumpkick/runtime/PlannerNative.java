@@ -11,6 +11,7 @@ import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Errors;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.layout.BuildLayout;
@@ -419,7 +420,8 @@ public final class PlannerNative {
         int sized = NativeEffort.weight(dir);
         try {
             ctx.reweight(sized);
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException e) {
+            Log.debug("imageKey: RuntimeException ignored", e);
         }
         // Human label: output binary basename + full classpath byte sum.
         // CLI colors filename with Theme.path (periwinkle) and the size as bold white.

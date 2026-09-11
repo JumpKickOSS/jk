@@ -6,6 +6,7 @@ import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.verbs.CacheMaintenanceLocks;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.resolve.ResolveProcessCacheControl;
 import cc.jumpkick.run.BuildPlan;
@@ -91,7 +92,8 @@ public final class IdleHousekeeping {
             pruneHeapDumps();
             try {
                 MetricsHarvest.get().awaitIdle(30_000L);
-            } catch (RuntimeException ignored) {
+            } catch (RuntimeException e) {
+                Log.debug("run: RuntimeException ignored", e);
             }
             if (activeBuildPlans.get() != 0) return;
 
@@ -178,7 +180,8 @@ public final class IdleHousekeeping {
                         drainPendingPrune();
                         try {
                             MetricsHarvest.get().awaitIdle(30_000L);
-                        } catch (RuntimeException ignored) {
+                        } catch (RuntimeException e) {
+                            Log.debug("kickPendingWarmup: RuntimeException ignored", e);
                         }
                         HostWarmup.runIdle(force, log);
                     } catch (RuntimeException e) {
@@ -227,8 +230,9 @@ public final class IdleHousekeeping {
             ResolveProcessCacheControl.clearAll();
             BuildMetrics.clearSessionAggregatesMemo();
             if (historyEnabled) TestClassWalls.takeAll();
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException e) {
             // hygiene, never load-bearing
+            Log.debug("dropHeapResidue: hygiene, never load-bearing", e);
         }
     }
 

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http;
 
+import cc.jumpkick.host.Log;
 import java.util.Objects;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
@@ -113,8 +114,9 @@ public final class LiveVitals implements AutoCloseable {
             // minus the REST-only httpUrl / config knobs it chains on — they do not change on a 2s
             // tick, so they never ride the live stream.
             events.publishDashboard("status", s.toJson());
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException e) {
             // Sampler must never kill the schedule thread
+            Log.debug("publishStatus: Sampler must never kill the schedule thread", e);
         }
     }
 
@@ -136,8 +138,9 @@ public final class LiveVitals implements AutoCloseable {
             }
             lastCache.set(present);
             events.publishDashboard("cache", c.toThinJson());
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException e) {
             // disk walk failures are best-effort
+            Log.debug("publishCache: disk walk failures are best-effort", e);
         }
     }
 
@@ -171,8 +174,9 @@ public final class LiveVitals implements AutoCloseable {
                 lastStatus.set(PresentStatus.of(s));
                 events.deliverTo(sub, "status", s.toJson());
             }
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException e) {
             // status sampling is best-effort on the connect path
+            Log.debug("hydrateFor: status sampling is best-effort on the connect path", e);
         }
         CacheSnapshot last = lastCacheSnapshot.get();
         if (last != null) {

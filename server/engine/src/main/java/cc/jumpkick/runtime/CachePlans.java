@@ -8,6 +8,7 @@ import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
@@ -71,8 +72,9 @@ public final class CachePlans {
                         if (!pruned.isEmpty()) {
                             ctx.warn("prune", "retired " + pruned.size() + " displaced jk install file(s)");
                         }
-                    } catch (RuntimeException ignored) {
+                    } catch (RuntimeException e) {
                         // install-file sweep is best-effort maintenance
+                        Log.debug("pruneBuildPlan: install-file sweep is best-effort maintenance", e);
                     }
 
                     ctx.label("Cleaning cache…");
@@ -325,14 +327,16 @@ public final class CachePlans {
                     Path mod = wsRoot.resolve(module).normalize();
                     try {
                         mod = mod.toRealPath();
-                    } catch (Exception ignored) {
+                    } catch (Exception e) {
                         // module may not exist on disk yet
+                        Log.debug("resolveModuleDirs: module may not exist on disk yet", e);
                     }
                     dirs.add(mod);
                 }
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
             // Standalone project, or an unparseable manifest: just this dir.
+            Log.debug("resolveModuleDirs: Standalone project, or an unparseable manifest", e);
         }
         return new ArrayList<>(dirs);
     }

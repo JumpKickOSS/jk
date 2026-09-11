@@ -8,6 +8,7 @@ import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.runtime.NewProjectOps;
 import cc.jumpkick.giter8.Giter8TemplateIndex;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.lock.ManifestPaths;
@@ -98,8 +99,9 @@ final class HttpProjectApi {
                     historyDirs.add(Path.of(rec.dir()));
                 }
             }
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException e) {
             // journal empty / unreadable — parent guess still works without it
+            Log.debug("handleProjectDefaults: journal empty / unreadable", e);
         }
         Path parent = NewParentDirGuess.guess(
                 Optional.ofNullable(System.getProperty("user.home"))

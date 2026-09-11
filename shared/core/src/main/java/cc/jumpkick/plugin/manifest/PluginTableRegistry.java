@@ -3,6 +3,7 @@ package cc.jumpkick.plugin.manifest;
 
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.WorkspaceScan;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.PluginDeclaration;
@@ -595,8 +596,9 @@ public final class PluginTableRegistry {
             for (int i = 0; i < 10 && loc != null; i++, loc = loc.getParent()) {
                 if (isFirstPartyPluginCheckout(loc)) return loc;
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
             // not a filesystem class location
+            Log.debug("workspaceRootFromCodeSource: not a filesystem class location", e);
         }
         return null;
     }

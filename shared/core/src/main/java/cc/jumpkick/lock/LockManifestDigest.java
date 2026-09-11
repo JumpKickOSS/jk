@@ -4,6 +4,7 @@ package cc.jumpkick.lock;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PathSource;
@@ -77,6 +78,7 @@ public final class LockManifestDigest {
                 }
             } catch (RuntimeException e) {
                 // parse failure: still digest whatever files we found
+                Log.debug("compute: parse failure", e);
             }
         }
         // The workspace catalog layer (jk-libs.toml) changes how short names resolve to

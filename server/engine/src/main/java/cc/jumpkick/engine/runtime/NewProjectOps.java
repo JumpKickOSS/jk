@@ -12,6 +12,7 @@ import cc.jumpkick.giter8.Giter8ShortNames;
 import cc.jumpkick.giter8.Giter8TemplateIndex;
 import cc.jumpkick.giter8.PluginTemplates;
 import cc.jumpkick.giter8.TemplateSpec;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Layout;
@@ -170,6 +171,7 @@ public final class NewProjectOps {
             projectId = identity.id();
         } catch (RuntimeException | IOException e) {
             // best-effort — see javadoc
+            Log.debug("createWithIdentity: best-effort", e);
         }
         int files = 0;
         try (var walk = Files.walk(result.path())) {
@@ -377,8 +379,9 @@ public final class NewProjectOps {
         if (spec.isEmpty()) {
             try {
                 OfficialTemplatesFreshen.refreshQuiet(s -> {});
-            } catch (Throwable ignored) {
+            } catch (Throwable e) {
                 // best-effort
+                Log.debug("resolveIndexed: best-effort", e);
             }
             Giter8TemplateIndex.invalidate();
             spec = resolveIndexed(ref, lang, cwd);

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http;
 
+import cc.jumpkick.host.Log;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.io.InputStream;
@@ -77,8 +78,9 @@ final class StaticContent {
             if (loc != null && "file".equals(loc.getProtocol())) {
                 modified = Files.getLastModifiedTime(Path.of(loc.toURI())).toMillis();
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
             // fall through to the shell resource
+            Log.debug("classpathStamp: fall through to the shell resource", e);
         }
         if (modified == 0) {
             URL resource = StaticContent.class.getResource(CLASSPATH_PREFIX + "index.html");

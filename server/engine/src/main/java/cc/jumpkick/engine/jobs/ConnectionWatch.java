@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.jobs;
 
 import cc.jumpkick.config.JobLimits;
+import cc.jumpkick.host.Log;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.channels.SocketChannel;
@@ -164,8 +165,9 @@ final class ConnectionWatch {
         }
         try {
             connectionThread.interrupt();
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException e) {
             // best-effort wake
+            Log.debug("wakeOffClientRead: best-effort wake", e);
         }
     }
 }

@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceLoader;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
@@ -96,8 +97,9 @@ public final class LockFlow {
                 try {
                     Lockfile current = LockfileReader.read(lockFile);
                     return ok(current, scope);
-                } catch (Exception ignored) {
+                } catch (Exception e) {
                     // unreadable — fall through and re-lock
+                    Log.debug("run: unreadable", e);
                 }
             }
             return resolveAndWrite(scope, cache, features, noDefaultFeatures, repoUrl);
@@ -160,8 +162,9 @@ public final class LockFlow {
                     collectOverlayLines(e.getValue(), e.getValue().project().name(), lines);
                 }
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
             // hint construction must never mask the real resolve error
+            Log.debug("variantUnionHint: hint construction must never mask the real resolve error", e);
         }
         if (lines.isEmpty()) return "";
         StringBuilder b =

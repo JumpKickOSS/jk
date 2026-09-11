@@ -3,6 +3,7 @@ package cc.jumpkick.util;
 
 import cc.jumpkick.host.AotCacheFiles;
 import cc.jumpkick.host.Classpaths;
+import cc.jumpkick.host.Log;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
@@ -248,8 +249,9 @@ public final class AotManifest {
         Map<String, Entry> map = new LinkedHashMap<>();
         try {
             map.putAll(loadMap(aotDir));
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException e) {
             // start from empty
+            Log.debug("list: start from empty", e);
         }
         try (var stream = Files.list(aotDir)) {
             for (Path p : stream.toList()) {

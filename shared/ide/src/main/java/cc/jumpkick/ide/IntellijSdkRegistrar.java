@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.ide;
 
+import cc.jumpkick.host.Log;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.IntellijJdkTable;
@@ -64,8 +65,9 @@ public final class IntellijSdkRegistrar {
             try {
                 upsert(table, sdks);
                 touched.add(table);
-            } catch (Exception ignored) {
+            } catch (Exception e) {
                 // Malformed table / permission issue — skip this IDE.
+                Log.debug("register: Malformed table / permission issue", e);
             }
         }
         return touched;

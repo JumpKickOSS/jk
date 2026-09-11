@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.resolver;
 
+import cc.jumpkick.host.Log;
 import cc.jumpkick.model.PackageId;
 import cc.jumpkick.resolver.DependencyTreeStyle.Styling;
 import org.jspecify.annotations.Nullable;
@@ -30,8 +31,9 @@ final class TreeCoords {
             try {
                 PackageId id = PackageId.parse(module);
                 return new Ga(id.group(), id.artifact());
-            } catch (RuntimeException ignored) {
+            } catch (RuntimeException e) {
                 // shape passed, parse did not — show the raw halves rather than nothing
+                Log.debug("split: shape passed, parse did not", e);
             }
         }
         return onFirstColon(module);

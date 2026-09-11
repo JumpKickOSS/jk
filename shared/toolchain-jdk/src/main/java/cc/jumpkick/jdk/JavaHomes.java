@@ -5,6 +5,7 @@ import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.config.WorkspaceScan;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
@@ -51,8 +52,9 @@ public final class JavaHomes {
             // to the running JVM when nothing resolves.
             JdkResolution.Resolved r = JdkResolution.resolveForHook(req, registry, JdkInventory.current());
             if (r.jdkOpt().isPresent()) return r.jdkOpt().get().home();
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException e) {
             // fall through to the running JVM
+            Log.debug("resolveJavaHome: fall through to the running JVM", e);
         }
         return runningJavaHome();
     }

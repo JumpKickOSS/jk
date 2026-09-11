@@ -5,6 +5,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.ModuleOrder;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceLocator;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
@@ -200,8 +201,9 @@ public final class DependencyGraphModel {
         try {
             Path lf = LockPaths.lockFile(projectDir);
             if (Files.isRegularFile(lf)) return LockfileReader.read(lf);
-        } catch (IOException | RuntimeException ignored) {
+        } catch (IOException | RuntimeException e) {
             // no lock — declared-only graph
+            Log.debug("readLock: no lock", e);
         }
         return null;
     }
@@ -225,8 +227,9 @@ public final class DependencyGraphModel {
                     b.sibling(modDir, e.getValue(), relLabel(dir, modDir));
                 }
             }
-        } catch (IOException | RuntimeException ignored) {
+        } catch (IOException | RuntimeException e) {
             // Sibling enrichment only — the module graph itself must still render.
+            Log.debug("buildStandalone: Sibling enrichment only", e);
         }
         String rootId = b.moduleNode(dir, build, ".");
         b.addDeclaredDeps(rootId, build, scopes);
@@ -280,8 +283,9 @@ public final class DependencyGraphModel {
         if (PackageId.isMavenPackageKey(moduleOrKey)) {
             try {
                 return PackageId.parse(moduleOrKey).key();
-            } catch (RuntimeException ignored) {
+            } catch (RuntimeException e) {
                 // fall through
+                Log.debug("canonicalKey: fall through", e);
             }
         }
         return moduleOrKey;
@@ -293,8 +297,9 @@ public final class DependencyGraphModel {
         if (PackageId.isMavenPackageKey(key)) {
             try {
                 return PackageId.parse(key).display();
-            } catch (RuntimeException ignored) {
+            } catch (RuntimeException e) {
                 // fall through
+                Log.debug("nodeLabel: fall through", e);
             }
         }
         String s = key;

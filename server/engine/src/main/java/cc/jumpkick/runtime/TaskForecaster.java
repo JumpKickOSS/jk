@@ -9,6 +9,7 @@ import cc.jumpkick.config.ModuleOrder;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.host.BuildStamps;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JavaHomes;
@@ -96,8 +97,9 @@ public final class TaskForecaster {
         Path workerJar = null;
         try {
             workerJar = PluginJar.JAVA_COMPILER.locateStored(cas);
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException e) {
             // forecast without a worker still uses action-cache + zinc-file presence
+            Log.debug("of: forecast without a worker still uses action-cache + zinc-file presence", e);
         }
         try (JavaCompilerHost.Scope ignored = JavaCompilerHost.open()) {
             return forecastModules(

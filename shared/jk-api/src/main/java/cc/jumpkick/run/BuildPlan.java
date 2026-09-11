@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.run;
 
+import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -163,8 +164,9 @@ public final class BuildPlan {
         for (CompletableFuture<Integer> f : futures) {
             try {
                 total += f.get();
-            } catch (Exception ignored) {
+            } catch (Exception e) {
                 // best-effort estimate; a failing step just contributes 0
+                Log.debug("estimatedTotalWeight: best-effort estimate", e);
             }
         }
         return total;
@@ -193,8 +195,9 @@ public final class BuildPlan {
             int s = 0;
             try {
                 s = tickFutures.get(i).get();
-            } catch (Exception ignored) {
+            } catch (Exception e) {
                 // best-effort; a failing estimate contributes 0
+                Log.debug("run: best-effort", e);
             }
             initialTicks.put(p.name(), s);
             // Reuse the computed ticks when no weight was set — avoids re-walking
@@ -343,8 +346,9 @@ public final class BuildPlan {
                     for (DefaultTaskContext c : easing) {
                         try {
                             c.tick(now);
-                        } catch (RuntimeException ignored) {
+                        } catch (RuntimeException e) {
                             /* never break the interpTimer */
+                            Log.debug("startInterpolationTimer: never break the interpTimer", e);
                         }
                     }
                 },
@@ -411,9 +415,12 @@ public final class BuildPlan {
                     .get(CANCELLED_BODY_DRAIN.toMillis(), TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-        } catch (ExecutionException | TimeoutException | RuntimeException ignored) {
+        } catch (ExecutionException | TimeoutException | RuntimeException e) {
             // A step that failed, was cancelled (CancellationException is a RuntimeException), or
             // outlasted the budget: nothing more to wait on either way.
+            Log.debug(
+                    "drainBodies: A step that failed, was cancelled (CancellationException is a RuntimeException), or outlasted…",
+                    e);
         }
     }
 
@@ -584,8 +591,9 @@ public final class BuildPlan {
         for (BuildPlanListener l : listeners) {
             try {
                 action.accept(l);
-            } catch (RuntimeException ignored) {
+            } catch (RuntimeException e) {
                 // Listeners must not impact the plan's success/fail decision.
+                Log.debug("emit: Listeners must not impact the plan's success/fail decision", e);
             }
         }
     }

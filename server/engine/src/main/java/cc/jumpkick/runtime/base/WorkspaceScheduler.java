@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.base;
 
+import cc.jumpkick.host.Log;
 import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.run.SessionCancel;
 import java.nio.file.Path;
@@ -319,8 +320,9 @@ public final class WorkspaceScheduler {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 return;
-            } catch (Exception ignored) {
+            } catch (Exception e) {
                 // failed / timed out — best-effort drain
+                Log.debug("drainCancelled: failed / timed out", e);
             }
         }
     }

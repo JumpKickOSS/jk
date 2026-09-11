@@ -11,6 +11,7 @@ import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.kotlin.KotlinResolver;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.Coordinate;
@@ -158,8 +159,9 @@ public final class PlannerLang {
                         .lookup(ActionKey.forKotlinc(taskId, req, BuildIdentity.cacheKeyVersion()))
                         .isPresent();
                 ctx.reweight(restores ? EffortWeights.RESTORE : EffortWeights.compileWeight(sources.size()));
-            } catch (Exception ignored) {
+            } catch (Exception e) {
                 /* keep the up-front estimate */
+                Log.debug("compileKotlinSources: keep the up-front estimate", e);
             }
         }
         return LangCompile.run(
@@ -242,8 +244,9 @@ public final class PlannerLang {
                         .lookup(ActionKey.forGroovyc(taskId, req, BuildIdentity.cacheKeyVersion()))
                         .isPresent();
                 ctx.reweight(restores ? EffortWeights.RESTORE : EffortWeights.compileWeight(sources.size()));
-            } catch (Exception ignored) {
+            } catch (Exception e) {
                 /* keep the up-front estimate */
+                Log.debug("compileGroovySources: keep the up-front estimate", e);
             }
         }
         return LangCompile.run(

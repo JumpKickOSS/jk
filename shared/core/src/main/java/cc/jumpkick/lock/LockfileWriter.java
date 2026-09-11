@@ -5,6 +5,7 @@ import cc.jumpkick.builds.DeclaredDeps;
 import cc.jumpkick.builds.DepFrequency;
 import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.builds.ProjectIdentity;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.MinimalToml;
@@ -52,8 +53,9 @@ public final class LockfileWriter {
             if (Files.isRegularFile(file)) {
                 try {
                     existing = LockfileReader.read(file).projectId();
-                } catch (Exception ignored) {
+                } catch (Exception e) {
                     // torn or unreadable — mint/recover below
+                    Log.debug("write: torn or unreadable", e);
                 }
             }
             if (existing != null && !existing.isBlank()) {
@@ -79,9 +81,11 @@ public final class LockfileWriter {
                 DepFrequency.load().observe(id, deps).save();
             } catch (Exception ignoredFreq) {
                 // never fail the lock write over frequency tracking
+                Log.debug("write: never fail the lock write over frequency tracking", ignoredFreq);
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
             // best-effort; lock is already durable
+            Log.debug("write: best-effort", e);
         }
     }
 

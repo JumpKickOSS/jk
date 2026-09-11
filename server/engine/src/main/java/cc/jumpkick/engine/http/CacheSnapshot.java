@@ -7,6 +7,7 @@ import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.task.CachePruneScheduler;
 import java.nio.file.Path;
@@ -281,6 +282,9 @@ public record CacheSnapshot(
                 bytes += stats.bytes();
             } catch (Exception unreadable) {
                 // a tier that cannot be walked contributes nothing, like an absent one
+                Log.debug(
+                        "derivedStats: a tier that cannot be walked contributes nothing, like an absent one",
+                        unreadable);
             }
         }
         return new DiskUsage.Stats(files, bytes);
@@ -300,6 +304,7 @@ public record CacheSnapshot(
                 bytes += tree.bytes();
             } catch (Exception unreadable) {
                 // absent or mid-delete — counts as empty, same as every other section here
+                Log.debug("incrementalStats: absent or mid-delete", unreadable);
             }
         }
         return new DiskUsage.Stats(files, bytes);

@@ -12,6 +12,7 @@ import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.guard.rules.LoadResult;
 import cc.jumpkick.guard.rules.Rule;
 import cc.jumpkick.guard.schema.Kind;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
@@ -65,6 +66,7 @@ public final class MutationCheck {
             baseline = BaselineFile.read(GuardsPresence.baselineFile(root));
         } catch (IOException | RuntimeException e) {
             // A lock that does not read leaves the manifest arms in force and the lock arms out.
+            Log.debug("check: A lock that does not read leaves the manifest arms in force and the lock arms out", e);
         }
         List<String> refusals = new ArrayList<>();
         for (Rule rule : rules) {

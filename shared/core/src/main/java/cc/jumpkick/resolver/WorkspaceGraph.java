@@ -5,6 +5,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceLocator;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
@@ -97,8 +98,9 @@ record WorkspaceGraph(Map<String, String> byName, Map<String, LoadedModule> byGa
                 byName.put(
                         b.project().name(),
                         b.project().group() + ":" + b.project().name());
-            } catch (Exception ignored) {
+            } catch (Exception e) {
                 // unreadable module jk.toml — sibling refs to it fall back to the raw module
+                Log.debug("modulesByName: unreadable module jk.toml", e);
             }
         }
         return byName;
@@ -125,8 +127,9 @@ record WorkspaceGraph(Map<String, String> byName, Map<String, LoadedModule> byGa
             try {
                 Path rootToml = rootDir.resolve(ManifestPaths.MANIFEST);
                 if (Files.isRegularFile(rootToml)) rootBuild = JkBuildParser.parse(rootToml);
-            } catch (Exception ignored) {
+            } catch (Exception e) {
                 // inheritance best-effort
+                Log.debug("loadModules: inheritance best-effort", e);
             }
         }
         List<LoadedModule> modules = new ArrayList<>();
@@ -146,8 +149,9 @@ record WorkspaceGraph(Map<String, String> byName, Map<String, LoadedModule> byGa
                         lock = lockMemo.get(key);
                     }
                 }
-            } catch (Exception ignored) {
+            } catch (Exception e) {
                 // unreadable module — dropped (can't read its scopes)
+                Log.debug("loadModules: unreadable module", e);
             }
             if (build != null) {
                 if (rootBuild != null) {
@@ -176,8 +180,9 @@ record WorkspaceGraph(Map<String, String> byName, Map<String, LoadedModule> byGa
         if (PackageId.isMavenPackageKey(module)) {
             try {
                 return PackageId.parse(module).ga();
-            } catch (RuntimeException ignored) {
+            } catch (RuntimeException e) {
                 // fall through
+                Log.debug("toGa: fall through", e);
             }
         }
         String[] p = module.split(":", 3);

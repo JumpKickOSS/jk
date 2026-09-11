@@ -6,6 +6,7 @@ import cc.jumpkick.engine.api.BuildJobFingerprint;
 import cc.jumpkick.engine.api.WireWriter;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.plugin.JobWorkers;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.wire.protocol.ProtoEvents;
 import java.io.BufferedWriter;
 import java.nio.channels.SocketChannel;
@@ -175,8 +176,9 @@ public final class LiveJobRegistry {
         if (runnerThread == null) return;
         try {
             runnerThread.interrupt();
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException e) {
             // best-effort
+            Log.debug("interruptRunner: best-effort", e);
         }
     }
 }
