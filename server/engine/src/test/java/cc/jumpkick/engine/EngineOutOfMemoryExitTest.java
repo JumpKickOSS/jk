@@ -40,7 +40,7 @@ class EngineOutOfMemoryExitTest {
         Path home = tempDirs.create();
         EnginePaths.Paths paths = EnginePaths.resolve(home.resolve("state"), home.resolve("store"));
         Files.createDirectories(paths.dir());
-        Path dump = EnginePaths.heapDump(paths);
+        Path dumpDir = EnginePaths.heapDumpDir(paths);
 
         // The deny-check verb reads the project's jk.toml whole; one three times the heap cannot fit.
         Path project = Files.createDirectories(home.resolve("proj"));
@@ -49,7 +49,7 @@ class EngineOutOfMemoryExitTest {
             manifest.setLength(96L << 20);
         }
 
-        Process engine = new ProcessBuilder(engineCommand(home, dump))
+        Process engine = new ProcessBuilder(engineCommand(home, dumpDir))
                 .directory(paths.dir().toFile())
                 .redirectErrorStream(true)
                 .redirectOutput(paths.log().toFile())
@@ -68,7 +68,8 @@ class EngineOutOfMemoryExitTest {
             }
 
             assertThat(engine.exitValue()).isNotZero();
-            assertThat(dump).isRegularFile();
+            Path dump = dumpDir.resolve("java_pid" + engine.pid() + ".hprof");
+            assertThat(dump).as("one dump per exit, named by the JVM that died").isRegularFile();
             assertThat(Files.size(dump)).isPositive();
             assertThat(Files.readString(paths.log())).contains("OutOfMemoryError");
         } finally {
@@ -77,11 +78,11 @@ class EngineOutOfMemoryExitTest {
     }
 
     /** The spawner's JAR line on this test JVM's classpath, with a 32 MiB heap and a private home. */
-    private static List<String> engineCommand(Path home, Path dump) {
+    private static List<String> engineCommand(Path home, Path dumpDir) {
         List<String> cmd = new ArrayList<>();
         cmd.add(Path.of(System.getProperty("java.home"), "bin", "java").toString());
         cmd.addAll(EngineJvmFlags.AOT_SENSITIVE);
-        cmd.add(EngineJvmFlags.heapDumpPath(dump));
+        cmd.add(EngineJvmFlags.heapDumpPath(dumpDir));
         cmd.add("-Xmx32m");
         cmd.add("-Djk.env.JK_HOME=" + home);
         cmd.add("-Djk.env.JK_AUTO_WARMUP=false");

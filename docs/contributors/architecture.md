@@ -90,7 +90,7 @@ How jk is structured today. For day-to-day usage see [user documentation](../use
 | **User cancel / EOF** | Cancel token + **grace→force** worker kill; join bounded by cancel grace + 500 ms. Public cancel handle is **jid**. Entry points: Ctrl-C, `jk cancel` / `jk cancel <jid>`, `POST /api/cancel` (`jid` or `dir`), MCP `jk_cancel`. | `JK_CANCEL_GRACE_MS` (default **500**; max 5000). **Never hangs.** |
 | **Ensure** | Handshake must succeed | Silent peer (connect works, no reply) → hard-kill once + respawn |
 | **Stop** | Process death, not only `bye` | Force-stop waits for pid exit (~1.5s) then escalates |
-| **Out of memory** | The engine JVM runs with `-XX:+ExitOnOutOfMemoryError` and `-XX:+HeapDumpOnOutOfMemoryError`: the first `OutOfMemoryError` writes `<state>/engine/<key>.hprof` and ends the process, however it was caught. The next client spawns a fresh engine and reports the exit once; `jk engine status` and `jk doctor` name the dump while it exists | Dump ≤ `max-heap-mb`; the idle boundary deletes dumps older than 7 days |
+| **Out of memory** | The engine JVM runs with `-XX:+ExitOnOutOfMemoryError` and `-XX:+HeapDumpOnOutOfMemoryError`: the first `OutOfMemoryError` writes `<state>/engine/java_pid<pid>.hprof` and ends the process, however it was caught. The next client spawns a fresh engine and reports the exit once; `jk engine status` and `jk doctor` name the dump while it exists | Dump ≤ `max-heap-mb`; the idle boundary deletes dumps older than 7 days |
 
 If a stream goes idle, the client fails closed with a clear error (tune with `JK_STREAM_IDLE_MS`;
 recover with `jk engine stop --force`). Heartbeats keep long quiet compiles honest against the

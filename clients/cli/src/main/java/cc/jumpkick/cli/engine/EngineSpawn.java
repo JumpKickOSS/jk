@@ -588,9 +588,10 @@ public final class EngineSpawn {
         command.add(JdkFingerprint.java(target.javaHome()).toString());
         // The shared serving/trainer flag list — one list with EngineMain.aotTrainerCommand,
         // because JEP 514 refuses to map an AOT cache whose dump-time and runtime property sets
-        // differ. The OOM heap dump lands beside the engine log, per identity.
+        // differ. The OOM heap dump lands in the engine directory beside the log, one file per
+        // exit (HotSpot names a dump into a directory java_pid<pid>.hprof).
         command.addAll(EngineJvmFlags.AOT_SENSITIVE);
-        command.add(EngineJvmFlags.heapDumpPath(EnginePaths.heapDump(paths)));
+        command.add(EngineJvmFlags.heapDumpPath(EnginePaths.heapDumpDir(paths)));
         // Metaspace/stack mirror what workers already get from JvmOptions.
         command.add("-XX:MaxMetaspaceSize=256m");
         command.add("-Xss512k");
@@ -627,7 +628,7 @@ public final class EngineSpawn {
      * flags land as argv for the wrapper to consume; EngineMain ignores argv, so a wrapper that
      * does not consume them degrades to an unsized engine, never a dead one.
      */
-    private static List<String> exeCommand(EngineArtifact engine, JkEngineConfig config) {
+    private static List<String> exeCommand(EnginePaths.Paths paths, EngineArtifact engine, JkEngineConfig config) {
         List<String> command = new ArrayList<>();
         command.add(engine.path());
         if (config.heapCapped()) {
@@ -639,6 +640,7 @@ public final class EngineSpawn {
         command.add("-XX:-ShrinkHeapInSteps");
         command.add("-XX:+ExitOnOutOfMemoryError");
         command.add("-XX:+HeapDumpOnOutOfMemoryError");
+        command.add(EngineJvmFlags.heapDumpPath(EnginePaths.heapDumpDir(paths)));
         return command;
     }
 
@@ -655,7 +657,7 @@ public final class EngineSpawn {
         List<String> command =
                 switch (engine.kind()) {
                     case JAR -> jarCommand(paths, target, mode, config);
-                    case EXE -> exeCommand(engine, config);
+                    case EXE -> exeCommand(paths, engine, config);
                 };
         ProcessBuilder pb = new ProcessBuilder(command);
         // Forward resolve budgets into the engine process: PubGrubSolver reads them from its own

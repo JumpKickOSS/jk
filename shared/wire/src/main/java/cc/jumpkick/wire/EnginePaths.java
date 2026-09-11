@@ -139,11 +139,19 @@ public final class EnginePaths {
     }
 
     /**
-     * The heap dump the engine JVM writes when it exits on {@code OutOfMemoryError}: {@code
-     * <key>.hprof}, a sibling of the log, so the next client and {@code jk engine status} can name it.
+     * Where the engine JVM writes its heap dump when it exits on {@code OutOfMemoryError}: the
+     * engine directory itself. Given a directory, HotSpot names each dump {@code
+     * java_pid<pid>.hprof}, so a second exit writes a fresh file where a fixed name would have been
+     * refused ({@code O_EXCL}) and lost. The dumps sit beside the log, where the
+     * next client, {@code jk engine status} and {@code jk doctor} look for the newest.
      */
-    public static Path heapDump(Paths paths) {
-        return paths.dir().resolve(paths.key() + ".hprof");
+    public static Path heapDumpDir(Paths paths) {
+        return paths.dir();
+    }
+
+    /** Whether {@code file} is a heap dump the engine directory may hold. */
+    public static boolean isHeapDump(Path file) {
+        return file.getFileName().toString().endsWith(".hprof");
     }
 
     /** Generation {@code n}'s socket/lock/pid files ({@code <key>.gen<n>.sock} …). */

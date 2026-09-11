@@ -2,19 +2,21 @@
 package cc.jumpkick.cli.engine;
 
 import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.wire.EnginePaths;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.util.Optional;
 
 /**
- * The trail an engine leaves when its JVM exits on {@code OutOfMemoryError}: the {@code <key>.hprof}
- * heap dump beside the log, and the JVM's own "OutOfMemoryError" lines at the log's tail. The next
- * spawn reports the exit once; {@code jk engine status} and {@code jk doctor} name the dump while
- * it exists.
+ * The trail an engine leaves when its JVM exits on {@code OutOfMemoryError}: a {@code
+ * java_pid<pid>.hprof} heap dump in the engine directory beside the log, and the JVM's own
+ * "OutOfMemoryError" lines at the log's tail. The next spawn reports the exit once; {@code jk engine
+ * status} and {@code jk doctor} name the newest dump while one exists.
  */
 public final class EngineHeapDump {
 
@@ -26,10 +28,29 @@ public final class EngineHeapDump {
 
     private EngineHeapDump() {}
 
-    /** The heap dump for this engine identity, when one has been written. */
+    /** The newest heap dump in this engine's directory, when one has been written. */
     public static Optional<Path> find(EnginePaths.Paths paths) {
-        Path dump = EnginePaths.heapDump(paths);
-        return Files.isRegularFile(dump) ? Optional.of(dump) : Optional.empty();
+        return newestDump(EnginePaths.heapDumpDir(paths));
+    }
+
+    /** The most recently modified {@code .hprof} directly under {@code dir}; empty when there is none. */
+    static Optional<Path> newestDump(Path dir) {
+        Path[] newest = {null};
+        FileTime[] when = {null};
+        try {
+            PathUtil.forEachChild(dir, (file, attrs) -> {
+                if (attrs.isRegularFile()
+                        && EnginePaths.isHeapDump(file)
+                        && (when[0] == null || attrs.lastModifiedTime().compareTo(when[0]) > 0)) {
+                    newest[0] = file;
+                    when[0] = attrs.lastModifiedTime();
+                }
+                return true;
+            });
+        } catch (IOException e) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(newest[0]);
     }
 
     /** One line naming the dump and the remedy, for a status row or a doctor finding. */
@@ -42,18 +63,19 @@ public final class EngineHeapDump {
      * OutOfMemoryError. Silent when the log's tail carries no such exit.
      */
     static void reportExit(EnginePaths.Paths paths) {
-        exitMessage(paths.log(), EnginePaths.heapDump(paths)).ifPresent(m -> CliOutput.err("jk: " + m));
+        exitMessage(paths.log(), EnginePaths.heapDumpDir(paths)).ifPresent(m -> CliOutput.err("jk: " + m));
     }
 
     /**
      * The message for an OutOfMemoryError exit recorded at the tail of {@code log}, or empty when
-     * the log ends any other way. The dump is named when it exists; otherwise the rotated log is.
+     * the log ends any other way. The newest dump under {@code dumpDir} is named when there is
+     * one; otherwise the rotated log is.
      */
-    static Optional<String> exitMessage(Path log, Path dump) {
+    static Optional<String> exitMessage(Path log, Path dumpDir) {
         if (!exitedOnOutOfMemory(log)) return Optional.empty();
-        String where = Files.isRegularFile(dump)
-                ? "heap dump at " + dump
-                : "no heap dump was written (see " + log.resolveSibling(log.getFileName() + ".1") + ")";
+        String where = newestDump(dumpDir)
+                .map(dump -> "heap dump at " + dump)
+                .orElse("no heap dump was written (see " + log.resolveSibling(log.getFileName() + ".1") + ")");
         return Optional.of("the build engine exited on OutOfMemoryError; " + where + "; " + REMEDY);
     }
 

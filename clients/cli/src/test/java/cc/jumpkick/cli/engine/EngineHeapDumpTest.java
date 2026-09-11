@@ -7,6 +7,7 @@ import cc.jumpkick.wire.EnginePaths;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -38,12 +39,12 @@ class EngineHeapDumpTest {
     }
 
     @Test
-    void the_message_names_the_dump_when_it_exists_and_the_rotated_log_when_it_does_not() throws IOException {
+    void the_message_names_the_newest_dump_when_one_exists_and_the_rotated_log_when_none_does() throws IOException {
         Path log = tmp.resolve("k.log");
-        Path dump = tmp.resolve("k.hprof");
+        Path dump = tmp.resolve("java_pid4242.hprof");
         Files.writeString(log, OOM_TAIL);
 
-        Optional<String> withoutDump = EngineHeapDump.exitMessage(log, dump);
+        Optional<String> withoutDump = EngineHeapDump.exitMessage(log, tmp);
         assertThat(withoutDump).isPresent();
         assertThat(withoutDump.get())
                 .startsWith("the build engine exited on OutOfMemoryError; no heap dump was written (see "
@@ -51,18 +52,24 @@ class EngineHeapDumpTest {
                 .endsWith(EngineHeapDump.REMEDY);
 
         Files.writeString(dump, "HPROF");
-        assertThat(EngineHeapDump.exitMessage(log, dump))
+        assertThat(EngineHeapDump.exitMessage(log, tmp))
                 .contains("the build engine exited on OutOfMemoryError; heap dump at " + dump + "; "
                         + EngineHeapDump.REMEDY);
     }
 
     @Test
-    void find_reports_the_dump_sibling_of_the_log_only_while_it_exists() throws IOException {
+    void find_reports_the_newest_dump_in_the_engine_directory_only_while_one_exists() throws IOException {
         EnginePaths.Paths paths = EnginePaths.resolve(tmp);
         assertThat(EngineHeapDump.find(paths)).isEmpty();
         Files.createDirectories(paths.dir());
-        Files.writeString(EnginePaths.heapDump(paths), "HPROF");
-        assertThat(EngineHeapDump.find(paths)).contains(paths.dir().resolve(paths.key() + ".hprof"));
+        Path older = Files.writeString(paths.dir().resolve("java_pid100.hprof"), "HPROF");
+        Path newer = Files.writeString(paths.dir().resolve("java_pid200.hprof"), "HPROF");
+        Files.setLastModifiedTime(older, FileTime.fromMillis(1_000_000L));
+        Files.setLastModifiedTime(newer, FileTime.fromMillis(2_000_000L));
+        Files.writeString(paths.dir().resolve("notes.hprof.txt"), "not a dump");
+        assertThat(EngineHeapDump.find(paths)).contains(newer);
+        Files.delete(newer);
+        assertThat(EngineHeapDump.find(paths)).contains(older);
     }
 
     @Test

@@ -33,9 +33,10 @@ class EngineSpawnLineTest {
 
         assertThat(cmd).containsAll(EngineJvmFlags.AOT_SENSITIVE);
         assertThat(cmd).contains("-XX:+ExitOnOutOfMemoryError", "-XX:+HeapDumpOnOutOfMemoryError");
-        Path dump = state.resolve("engine").resolve(paths.key() + ".hprof");
-        assertThat(cmd).contains("-XX:HeapDumpPath=" + dump);
-        assertThat(dump.getParent()).isEqualTo(paths.log().getParent());
+        assertThat(cmd)
+                .as("a directory, so every exit writes its own java_pid<pid>.hprof")
+                .contains("-XX:HeapDumpPath=" + state.resolve("engine"));
+        assertThat(state.resolve("engine")).isEqualTo(paths.log().getParent());
         assertThat(cmd).contains("-Xmx64m");
         assertThat(cmd).containsSubsequence("-cp", "/lib/jk-engine-1.jar", "cc.jumpkick.engine.EngineMain");
         assertThat(cmd).noneMatch(a -> a.startsWith("-XX:AOTCache") || a.startsWith("-Djk.aot.train.output="));

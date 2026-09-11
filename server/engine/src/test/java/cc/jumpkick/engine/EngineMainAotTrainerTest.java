@@ -33,7 +33,7 @@ class EngineMainAotTrainerTest {
 
         List<String> serving = new ArrayList<>(EngineJvmFlags.AOT_SENSITIVE);
         serving.addAll(List.of(
-                EngineJvmFlags.heapDumpPath(Path.of("/home/x/.jk/state/engine/0123456789abcdef.hprof")),
+                EngineJvmFlags.heapDumpPath(Path.of("/home/x/.jk/state/engine")),
                 "-XX:MaxMetaspaceSize=256m",
                 "-Xss512k",
                 "-Djk.aot.train.output=" + finalPath,
@@ -52,7 +52,7 @@ class EngineMainAotTrainerTest {
                 .contains(
                         "-XX:+ExitOnOutOfMemoryError",
                         "-XX:+HeapDumpOnOutOfMemoryError",
-                        "-XX:HeapDumpPath=/home/x/.jk/state/engine/0123456789abcdef.hprof");
+                        "-XX:HeapDumpPath=/home/x/.jk/state/engine");
         assertThat(cmd)
                 .contains("-Xms32m", "-Xmx256m", "-XX:MaxMetaspaceSize=256m", "-Xss512k", "-Djk.home=/home/x/.jk");
         assertThat(cmd).noneMatch(a -> a.startsWith("-Djk.aot.train.output="));

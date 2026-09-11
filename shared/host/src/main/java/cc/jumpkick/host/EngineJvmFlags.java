@@ -33,7 +33,11 @@ public final class EngineJvmFlags {
             PreferIpv4.JVM_FLAG,
             "--enable-native-access=ALL-UNNAMED");
 
-    /** Where {@code -XX:+HeapDumpOnOutOfMemoryError} writes; per engine identity, so not in the shared list. */
+    /**
+     * Where {@code -XX:+HeapDumpOnOutOfMemoryError} writes. A directory: HotSpot then names each dump
+     * {@code java_pid<pid>.hprof}, so every exit leaves its own file. Per engine home, so not in
+     * the shared list.
+     */
     public static String heapDumpPath(Path dump) {
         return "-XX:HeapDumpPath=" + dump;
     }
