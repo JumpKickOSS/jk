@@ -7,6 +7,7 @@ import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.util.TestHomes;
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -108,14 +109,17 @@ public final class TestEnv {
      *
      * <p>A module that sets {@code JK_HOME} itself wins — the sandbox is a default, not an override.
      */
-    public static Map<String, String> forModule(JkBuild project, Path moduleDir, BuildLayout layout) {
+    public static Map<String, String> forModule(JkBuild project, Path moduleDir, BuildLayout layout)
+            throws IOException {
         Path target = layout.moduleTargetDir();
         Map<String, String> out = new LinkedHashMap<>();
         // Caller's PATH/HOME/… first so a declared [test] env entry can still replace them.
         out.putAll(BuildEnv.machine());
         // Sandbox next so a declared value replaces it. The home is outside the project (TestHomes);
-        // the temp root below stays under the build output.
-        Path sandboxHome = TestHomes.pathFor(moduleDir);
+        // the temp root below stays under the build output. Prepared here — created and stamped as
+        // in use — so anything the build stages into it before the suite launches survives the
+        // reaper another module's preparation may run meanwhile.
+        Path sandboxHome = TestHomes.prepare(moduleDir);
         out.put(JK_HOME, sandboxHome.toString());
         out.put(JK_JDKS_DIR, sandboxHome.resolve("jdks").toString());
         out.put(JK_M2_LOCAL, sandboxM2(moduleDir).toString());

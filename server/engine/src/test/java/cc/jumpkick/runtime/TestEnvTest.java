@@ -154,11 +154,11 @@ class TestEnvTest {
     void a_declared_path_overrides_the_machine_seed(@TempDir Path tmp) throws Exception {
         // Declared [test] env still wins — the machine seed is a default, like the sandbox.
         JkBuild project = project(tmp, "[test]\nenv = [{ PATH = \"/only/what/i/named\" }]\n");
-        SessionContext.runWhere(
-                Session.defaults().withVariant(null, Map.of("PATH", "/caller/nvm/bin:/usr/bin")), () -> {
-                    var env = TestEnv.forModule(project, tmp, BuildLayout.of(tmp, project));
-                    assertThat(env.get("PATH")).isEqualTo("/only/what/i/named");
-                });
+        SessionContext.where(Session.defaults().withVariant(null, Map.of("PATH", "/caller/nvm/bin:/usr/bin")), () -> {
+            var env = TestEnv.forModule(project, tmp, BuildLayout.of(tmp, project));
+            assertThat(env.get("PATH")).isEqualTo("/only/what/i/named");
+            return null;
+        });
     }
 
     @Test
