@@ -6,6 +6,7 @@ import cc.jumpkick.guard.facts.FactsFormat;
 import cc.jumpkick.guard.facts.FactsIndex;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
@@ -15,7 +16,9 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Keeps one source set's facts index current against its classes directory.
@@ -26,11 +29,21 @@ import java.util.concurrent.TimeUnit;
  * so re-extract; the header's body digest is content-derived, so a lane keyed on it sees the same
  * key for the same classes regardless of how they got there. Enabling guards on an already-built
  * module therefore never forces a recompile: the first lane run builds the index cold.
+ *
+ * <p>One writer per index: the module lane and the workspace lane both bring the same index up to
+ * date from one engine, so {@link #ensure} serialises callers per index file and the one that
+ * waited finds the other's fresh index instead of rewriting it.
  */
 public final class FactsIndexing {
 
     public static final String MAIN_INDEX = "main-guard.idx";
     public static final String TEST_INDEX = "test-guard.idx";
+
+    /**
+     * One lock per index file for the engine's lifetime; the set of index files an engine touches is
+     * bounded by its source sets, so the map never needs sweeping.
+     */
+    private static final ConcurrentHashMap<Path, ReentrantLock> WRITERS = new ConcurrentHashMap<>();
 
     private FactsIndexing() {}
 
@@ -61,6 +74,17 @@ public final class FactsIndexing {
         if (!Files.isDirectory(classesDir)) {
             return new Ensured(indexFile, "", 0, 0, Ensured.Tier.ABSENT);
         }
+        ReentrantLock writer =
+                WRITERS.computeIfAbsent(indexFile.toAbsolutePath().normalize(), k -> new ReentrantLock());
+        writer.lock();
+        try {
+            return ensureLocked(classesDir, indexFile);
+        } finally {
+            writer.unlock();
+        }
+    }
+
+    private static Ensured ensureLocked(Path classesDir, Path indexFile) throws IOException {
         Map<String, String> current = stamps(classesDir);
         Optional<FactsFormat.Header> header = FactsFormat.readHeader(indexFile);
         if (header.isPresent() && header.get().stamps().equals(current)) {
@@ -94,7 +118,7 @@ public final class FactsIndexing {
         FactsIndex built = new FactsIndex(classes, current, "");
         String digest = FactsFormat.digestOf(built);
         FactsIndex stamped = built.withStamps(current, digest);
-        FactsFormat.write(indexFile, stamped);
+        AtomicWrites.replace(indexFile, FactsFormat.toBytes(stamped));
         Ensured.Tier tier = header.isPresent() ? Ensured.Tier.INCREMENTAL : Ensured.Tier.COLD;
         return new Ensured(indexFile, digest, classes.size(), reextracted, tier);
     }

@@ -9,6 +9,7 @@ import cc.jumpkick.guard.extract.FactsIndexing.Ensured;
 import cc.jumpkick.guard.extract.fixture.FixtureBytes;
 import cc.jumpkick.guard.extract.fixture.Sample;
 import cc.jumpkick.guard.facts.FactsIndex;
+import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
@@ -16,6 +17,16 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledOnOs;
 import org.junit.jupiter.api.condition.OS;
@@ -65,6 +76,59 @@ class FactsIndexingTest {
 
         FactsIndex loaded = FactsIndexing.load(removed);
         assertThat(loaded.classes()).containsOnlyKeys("cc/jumpkick/guard/extract/fixture/Sample");
+    }
+
+    /**
+     * The module lane and the workspace lane index the same classes directory from one engine at
+     * the same time. One of them writes; the other waits and reads what was written. Several
+     * rounds, because the collision needs the two writers inside the same few microseconds.
+     */
+    @Test
+    void concurrent_callers_share_one_writer_and_one_index(@TempDir Path dir) throws Exception {
+        Path classes = classes(dir);
+        // More class files widen the window in which two writers overlap.
+        byte[] sample = FixtureBytes.of(Sample.class);
+        for (int i = 0; i < 40; i++) {
+            Path pkg = classes.resolve("copy" + i);
+            Files.createDirectories(pkg);
+            Files.write(pkg.resolve("Sample.class"), sample);
+        }
+        Path idx = FactsIndexing.indexPath(dir.resolve("target"), "main");
+        int callers = 4;
+        try (ExecutorService pool = Executors.newFixedThreadPool(callers)) {
+            for (int round = 0; round < 25; round++) {
+                Files.deleteIfExists(idx);
+                CyclicBarrier start = new CyclicBarrier(callers);
+                List<Future<Ensured>> futures = new ArrayList<>();
+                for (int i = 0; i < callers; i++) {
+                    futures.add(pool.submit(() -> {
+                        start.await();
+                        return FactsIndexing.ensure(classes, idx);
+                    }));
+                }
+                List<Ensured> results = new ArrayList<>();
+                for (Future<Ensured> f : futures) results.add(f.get());
+
+                Set<String> digests = results.stream().map(Ensured::bodyDigest).collect(Collectors.toSet());
+                assertThat(digests)
+                        .as("round " + round + ": every caller sees the same index")
+                        .hasSize(1);
+                List<Ensured.Tier> tiers = results.stream().map(Ensured::tier).toList();
+                assertThat(tiers)
+                        .as("round " + round + ": one writer, the rest read its index")
+                        .containsOnlyOnce(Ensured.Tier.COLD)
+                        .containsOnly(Ensured.Tier.COLD, Ensured.Tier.FRESH);
+                Set<String> left = new TreeSet<>();
+                PathUtil.forEachChild(Objects.requireNonNull(idx.getParent()), (p, attrs) -> {
+                    left.add(p.getFileName().toString());
+                    return true;
+                });
+                assertThat(left)
+                        .as("round " + round + ": no staging file survives")
+                        .containsExactly(idx.getFileName().toString());
+                assertThat(FactsIndexing.load(results.get(0)).stamps()).hasSize(42);
+            }
+        }
     }
 
     @Test

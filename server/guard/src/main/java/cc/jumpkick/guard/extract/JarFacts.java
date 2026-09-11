@@ -5,6 +5,7 @@ import cc.jumpkick.guard.facts.ClassFacts;
 import cc.jumpkick.guard.facts.FactsFormat;
 import cc.jumpkick.guard.facts.FactsIndex;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -47,8 +48,7 @@ public final class JarFacts {
             }
         }
         FactsIndex index = new FactsIndex(classes, Map.of(), sha);
-        Files.createDirectories(cacheDir);
-        FactsFormat.write(cached, index);
+        AtomicWrites.replace(cached, FactsFormat.toBytes(index));
         return index;
     }
 }

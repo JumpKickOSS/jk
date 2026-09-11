@@ -9,6 +9,7 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -68,11 +69,24 @@ public final class FactsFormat {
     }
 
     public static void write(Path file, FactsIndex index) throws IOException {
-        Files.createDirectories(file.getParent());
+        Path dir = file.toAbsolutePath().getParent();
+        Files.createDirectories(dir);
         byte[] bytes = toBytes(index);
-        Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
-        Files.write(tmp, bytes);
-        Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        // A staging name of this writer's own: two writers of one index never share a temp file,
+        // so neither can rename or delete the other's.
+        Path tmp = Files.createTempFile(dir, file.getFileName() + ".", ".tmp");
+        boolean moved = false;
+        try {
+            Files.write(tmp, bytes);
+            try {
+                Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            } catch (AtomicMoveNotSupportedException e) {
+                Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING);
+            }
+            moved = true;
+        } finally {
+            if (!moved) Files.deleteIfExists(tmp);
+        }
     }
 
     /** Serialize; the body digest in the header is recomputed from the class table. */

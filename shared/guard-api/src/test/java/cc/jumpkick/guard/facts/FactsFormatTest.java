@@ -4,6 +4,7 @@ package cc.jumpkick.guard.facts;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.host.PathUtil;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -13,6 +14,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.IntFunction;
 import org.junit.jupiter.api.Test;
@@ -100,9 +102,12 @@ class FactsFormatTest {
         Path file = tmp.resolve("facts/main.idx");
         FactsFormat.write(file, rich());
         assertThat(Files.isRegularFile(file)).isTrue();
-        assertThat(Files.exists(tmp.resolve("facts/main.idx.tmp")))
-                .as("the temp file is moved, not left")
-                .isFalse();
+        List<String> left = new ArrayList<>();
+        PathUtil.forEachChild(Objects.requireNonNull(file.getParent()), (p, attrs) -> {
+            left.add(p.getFileName().toString());
+            return true;
+        });
+        assertThat(left).as("the staging file is moved, not left").containsExactly("main.idx");
         FactsFormat.Header h = FactsFormat.readHeader(file).orElseThrow();
         assertThat(h.version()).isEqualTo(FactsFormat.VERSION);
         assertThat(h.bodyDigest()).isEqualTo(FactsFormat.digestOf(rich()));
