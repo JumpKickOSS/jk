@@ -46,7 +46,21 @@ class JkBuildParserDevTest {
     void a_command_string_splits_like_a_shell_without_running_one() {
         assertThat(ShellWords.split("npm run dev -- --port \"5 173\" 'a b' c\\ d"))
                 .containsExactly("npm", "run", "dev", "--", "--port", "5 173", "a b", "c d");
+        assertThat(ShellWords.split("run \"\" x")).containsExactly("run", "", "x");
+        assertThat(ShellWords.split("x 'a \"b\"' \"c 'd'\"")).containsExactly("x", "a \"b\"", "c 'd'");
+        assertThat(ShellWords.split("echo \"say \\\"hi\\\"\" \\\"bare\\\" don\\'t"))
+                .containsExactly("echo", "say \"hi\"", "\"bare\"", "don't");
         assertThatThrownBy(() -> ShellWords.split("echo \"unterminated")).hasMessageContaining("unbalanced quote");
+    }
+
+    @Test
+    void a_backslash_is_literal_unless_it_escapes_a_quote_a_space_or_itself() {
+        assertThat(ShellWords.split("C:\\tools\\node.exe run dev"))
+                .containsExactly("C:\\tools\\node.exe", "run", "dev");
+        assertThat(ShellWords.split("\"a\\nb\" a\\nb")).containsExactly("a\\nb", "a\\nb");
+        assertThat(ShellWords.split("a\\")).containsExactly("a\\");
+        assertThat(ShellWords.split("a\\\\b \"c\\\\d\"")).containsExactly("a\\b", "c\\d");
+        assertThat(ShellWords.split("\"C:\\dir\\\\\" x")).containsExactly("C:\\dir\\", "x");
     }
 
     @Test

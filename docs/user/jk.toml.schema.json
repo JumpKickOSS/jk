@@ -210,7 +210,7 @@
             "type": "object",
             "properties": {
               "command": {
-                "description": "A string split like a shell would (quotes group; no expansion, no shell) or an argv array.",
+                "description": "A string split like a shell would (quotes group; a backslash is literal unless it precedes a quote, a space, or a backslash; no expansion, no shell) or an argv array.",
                 "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }]
               },
               "cwd": { "type": "string", "description": "Working directory, relative to the manifest that declares the sidecar (default \".\")." },

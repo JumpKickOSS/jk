@@ -49,7 +49,7 @@ docs = { command = ["mkdocs", "serve"], env = { PORT = "8001" }, ready-pattern =
 
 | Key | Meaning |
 |---|---|
-| `command` | A string split like a shell would (quotes group; nothing is expanded, no shell runs) or an argv array |
+| `command` | A string split like a shell would — whitespace separates, quotes group, and a backslash is literal unless it sits right before a quote, a space, or another backslash, so `C:\tools\node.exe run dev` splits as written; nothing is expanded and no shell runs. When the string rules get in the way, write the argv array: `command = ["npm", "run", "dev"]` |
 | `cwd` | Working directory, relative to the manifest that declares the sidecar. Default `.` |
 | `env` | Values laid over the inherited environment. `.env` at the workspace root and the module apply first, the way they do for every process jk spawns |
 | `ready` | An HTTP(S) URL polled every 250 ms (HTTP/1.1) until it answers 2xx/3xx. A `localhost` URL is tried on both `127.0.0.1` and `[::1]` — Node binds only `::1` on many hosts |
