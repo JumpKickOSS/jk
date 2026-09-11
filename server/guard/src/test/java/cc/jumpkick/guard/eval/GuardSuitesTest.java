@@ -2,6 +2,7 @@
 package cc.jumpkick.guard.eval;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.guard.baseline.Baseline;
 import cc.jumpkick.guard.baseline.Observation;
@@ -19,6 +20,7 @@ import cc.jumpkick.guard.schema.Kind;
 import cc.jumpkick.guard.schema.Lane;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.model.GuardsConfig;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
@@ -344,7 +346,30 @@ class GuardSuitesTest {
     }
 
     @Test
-    void ids_declared_in_ignore_suite_annotation_comments_and_strings() {
+    void ids_declared_in_read_the_id_attribute_not_the_first_id_shaped_string() throws IOException {
+        assertThat(GuardSuites.idsDeclaredIn("""
+                class H {
+                  @Guard(why = "a why that says id = \\"decoy\\"", id = "real")
+                  void a() {}
+                }
+                """)).containsExactly("real");
+    }
+
+    @Test
+    void a_guard_id_that_is_not_a_string_literal_is_an_error_not_an_absence() {
+        assertThatThrownBy(() -> GuardSuites.idsDeclaredIn("""
+                class H {
+                  @Guard(id = Ids.NO_PRINTLN, why = "w")
+                  void a() {}
+                }
+                """))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("string literal")
+                .hasMessageContaining("Ids.NO_PRINTLN");
+    }
+
+    @Test
+    void ids_declared_in_ignore_suite_annotation_comments_and_strings() throws IOException {
         assertThat(GuardSuites.idsDeclaredIn("""
                 @GuardSuite(scope = Scope.MODULE)
                 class H {

@@ -48,7 +48,10 @@ public final class GuardSuites {
     static final String FIXTURE = "cc.jumpkick.guard.api.Fixture";
     static final String TEXT_PARAM = "Lcc/jumpkick/guard/api/Text;";
     public static final String REPORT = "report.jsonl";
-    private static final Pattern GUARD_ID = Pattern.compile("\\bid\\s*=\\s*\"([a-z0-9][a-z0-9-]*)\"");
+    /** The {@code id =} attribute in a structure view of the annotation body (strings blanked). */
+    private static final Pattern GUARD_ID_ATTR = Pattern.compile("(?<![\\w.])id\\s*=");
+
+    private static final Pattern STRING_LITERAL = Pattern.compile("\"([a-z0-9][a-z0-9-]*)\"");
 
     private GuardSuites() {}
 
@@ -201,8 +204,13 @@ public final class GuardSuites {
         return live;
     }
 
-    /** {@code @Guard} ids in one Java source; comments and string literals are not declarations. */
-    static Set<String> idsDeclaredIn(String source) {
+    /**
+     * {@code @Guard} ids in one Java source; comments and string literals are not declarations. The
+     * id must be a string literal: the bytecode path would read a constant, but this scan is what
+     * decides whether a baseline entry still has a live rule, so an id it cannot read is an error,
+     * not a silent absence.
+     */
+    static Set<String> idsDeclaredIn(String source) throws IOException {
         String structure = CodeText.blank(source, CodeText.Blank.COMMENTS_AND_STRINGS);
         String keep = CodeText.blank(source, CodeText.Blank.COMMENTS);
         Set<String> ids = new TreeSet<>();
@@ -224,8 +232,23 @@ public final class GuardSuites {
             }
             int close = matchingParen(structure, open);
             if (close < 0) break;
-            Matcher m = GUARD_ID.matcher(keep.substring(open + 1, close));
-            if (m.find()) ids.add(m.group(1));
+            Matcher attr = GUARD_ID_ATTR.matcher(structure);
+            attr.region(open + 1, close);
+            if (attr.find()) {
+                // The structure view blanks the literal itself, so step over whitespace in the
+                // kept view and read the literal there.
+                int from = attr.end();
+                while (from < close && Character.isWhitespace(keep.charAt(from))) from++;
+                Matcher literal = STRING_LITERAL.matcher(keep);
+                literal.region(from, close);
+                if (!literal.lookingAt()) {
+                    int end = keep.indexOf(',', from);
+                    String value = keep.substring(from, end < 0 || end > close ? close : end)
+                            .strip();
+                    throw new IOException("@Guard id must be a string literal, not `" + value + "`");
+                }
+                ids.add(literal.group(1));
+            }
             i = close + 1;
         }
         return ids;
