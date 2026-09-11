@@ -105,12 +105,9 @@ public final class TestCommand implements CliCommand {
                 .splitOn(","));
         opts.add(Opt.value("<tags>", "JUnit tags to exclude (CSV)", "--exclude-tags")
                 .splitOn(","));
-        opts.add(Opt.value("<name>", "Only test classes matching (FQCN, simple name, *; repeatable)", "--class")
+        opts.add(Opt.value("<name>", "Only these test classes (repeatable)", "--class")
                 .repeat());
-        opts.add(Opt.value(
-                        "<[host:]port[,suspend=n]>",
-                        "Debug the test JVM over JDWP (default localhost:5005, suspended; 0 picks a free port)",
-                        "--debug-jvm")
+        opts.add(Opt.value("<port>", "Debug test JVM (JDWP; 5005, 0=free)", "--debug-jvm")
                 .withFallback(""));
         opts.addAll(VariantSelection.options());
         return opts;

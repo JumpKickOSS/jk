@@ -143,6 +143,7 @@ class ConfigShapeTest {
                         "withTestSelection",
                         new Object[] {TestSelection.DEFAULT.withIncludeTags(List.of("integration"))},
                         List.of("testSelection")),
+                new Wither("withDebugJvm", new Object[] {DebugJvm.parse("0")}, List.of("debugJvm")),
                 new Wither("withAffected", new Object[] {false}, List.of("affected")),
                 new Wither("withAffectedChanged", new Object[] {new AffectedChanged()}, List.of("affectedChanged")),
                 new Wither("withIo", new Object[] {new IoLedger()}, List.of("io")),

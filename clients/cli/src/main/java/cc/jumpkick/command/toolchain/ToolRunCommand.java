@@ -78,10 +78,7 @@ public final class ToolRunCommand implements CliCommand {
                 Opt.value("<class>", "Override Main-Class (coordinate targets)", "--main"),
                 Opt.value("<coord>", "Extra dependency on tool classpath", "--with")
                         .repeat(),
-                Opt.value(
-                                "<[host:]port[,suspend=n]>",
-                                "Debug the app JVM over JDWP (default localhost:5005, suspended; 0 picks a free port)",
-                                "--debug-jvm")
+                Opt.value("<port>", "Debug app JVM (JDWP; 5005, 0=free)", "--debug-jvm")
                         .withFallback(""),
                 Opt.value(
                                 "<dir>",
