@@ -93,6 +93,7 @@ final class EngineExplainDecoder {
             Map<String, String> coordByDir = new LinkedHashMap<>();
             Map<String, int[]> countsByDir = new LinkedHashMap<>(); // [sourceCount, testCount]
             Map<String, boolean[]> flagsByDir = new LinkedHashMap<>(); // [producesJar, producesImage]
+            Map<String, String> reasonByDir = new LinkedHashMap<>();
             List<String> order = new ArrayList<>();
             Map<Path, Set<Path>> edges = new LinkedHashMap<>();
             List<String> errors = new ArrayList<>();
@@ -106,6 +107,7 @@ final class EngineExplainDecoder {
                         coordByDir.put(dir, e.coord());
                         countsByDir.put(dir, new int[] {e.sourceCount(), e.testCount()});
                         flagsByDir.put(dir, new boolean[] {e.producesJar(), e.producesImage()});
+                        if (e.reason() != null) reasonByDir.put(dir, e.reason());
                         stepsByDir.put(dir, new ArrayList<>());
                     }
                     case EngineProtocol.EXPLAIN_TASK -> {
@@ -152,7 +154,8 @@ final class EngineExplainDecoder {
                                     counts[0],
                                     counts[1],
                                     flags[0],
-                                    flags[1]));
+                                    flags[1],
+                                    reasonByDir.get(dir)));
                         }
                         // An absent width is one lane here, where the record reads 0.
                         int width = Jsonl.has(line, "maxReadyWidth")

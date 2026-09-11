@@ -93,7 +93,8 @@ public final class ExplainVerb implements HostedVerb {
                                     m.sourceCount(),
                                     m.testCount(),
                                     m.producesJar(),
-                                    m.producesImage()));
+                                    m.producesImage(),
+                                    m.reason()));
                     for (TaskForecast.Task p : m.steps()) {
                         host.sendQuiet(
                                 writer,

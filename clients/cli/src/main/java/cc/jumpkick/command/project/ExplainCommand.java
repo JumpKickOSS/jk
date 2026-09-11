@@ -325,14 +325,17 @@ public final class ExplainCommand implements CliCommand {
 
     /**
      * One rebuild (or verbose cached) module: Rebuild rows use {@code coord-name} (bold
-     * bright-cyan); verbose Fully Cached rows keep the branded name pill. Stage chain or step
-     * children hang below.
+     * bright-cyan); verbose Fully Cached rows keep the branded name pill. The preflight's own
+     * reason for scheduling the module, when it has one, is the first body line; the stage chain
+     * or step children hang below.
      */
     private static Tree.Node moduleNode(TaskForecast.Module m, boolean verbose, Theme t, boolean ansi) {
         String name = shortName(m.coord());
         Tree.Node node = m.dirty()
                 ? Tree.node(RichText.parse("[coord-name]" + RichText.escape(name) + "[/]"))
                 : Tree.node(Pill.branded(name));
+        List<RichText> body = new ArrayList<>();
+        if (m.reason() != null) body.add(RichText.ansi(ansi ? Theme.colorize(m.reason(), t.warning()) : m.reason()));
         if (verbose) {
             List<TaskForecast.Task> ph = m.steps();
             int nameCol = 0;
@@ -348,12 +351,14 @@ public final class ExplainCommand implements CliCommand {
                 String step = formatStepName(p.name(), nameCol, t, ansi) + renderStatus(p, commandCol, t, ansi);
                 node.child(Tree.node(RichText.ansi(step)));
             }
+            if (!body.isEmpty()) node.body(body);
             return node;
         }
         if (m.dirty()) {
             String chain = renderStageChain(m, t, ansi);
-            if (!chain.isEmpty()) node.body(RichText.ansi(chain));
+            if (!chain.isEmpty()) body.add(RichText.ansi(chain));
         }
+        if (!body.isEmpty()) node.body(body);
         return node;
     }
 

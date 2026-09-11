@@ -121,7 +121,8 @@ public final class SingleBuildVerb implements HostedVerb {
                     BuildGraph.Result g = BuildGraph.resolve(entryDir, entry);
                     if (!g.hasErrors()) {
                         preGraph = g;
-                        preFps = PreflightMemo.snapshotFingerprints(g, skipTests);
+                        preFps =
+                                PreflightMemo.snapshotFingerprints(g, skipTests).fingerprints();
                     }
                 } catch (Exception e) {
                     // fail-open

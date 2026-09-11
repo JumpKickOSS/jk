@@ -2,22 +2,30 @@
 package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.Log;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.runtime.workspace.BuildService;
 import cc.jumpkick.task.IoLedger;
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.UnaryOperator;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -135,7 +143,7 @@ class PreflightMemoTest {
         var preBuild = PreflightMemo.snapshotFingerprints(graph, false);
 
         Files.writeString(src, "class App { int editedMidBuild; }\n"); // "mid-build" edit
-        PreflightMemo.storeDirty(tmp, graph, false, Set.of(), preBuild);
+        PreflightMemo.storeDirty(tmp, graph, false, Set.of(), preBuild.fingerprints());
 
         // The stored fingerprint is pre-edit, so the next preflight must miss and re-forecast.
         assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false)).isEmpty();
@@ -387,9 +395,9 @@ class PreflightMemoTest {
         writeSimpleProject(tmp);
         Files.createDirectories(tmp.resolve("resources"));
         Files.writeString(tmp.resolve("resources/a.txt"), "v1");
-        String fp1 = PreflightMemo.fingerprintModule(tmp, false);
+        var fp1 = PreflightMemo.fingerprintModule(tmp, false);
         Files.writeString(tmp.resolve("resources/a.txt"), "v2");
-        String fp2 = PreflightMemo.fingerprintModule(tmp, false);
+        var fp2 = PreflightMemo.fingerprintModule(tmp, false);
         assertThat(fp1).isNotEqualTo(fp2);
     }
 
@@ -398,9 +406,9 @@ class PreflightMemoTest {
         writeSimpleProject(tmp);
         Files.createDirectories(tmp.resolve("integration").resolve("src"));
         Files.writeString(tmp.resolve("integration/src/ITest.java"), "class ITest {}");
-        String fp1 = PreflightMemo.fingerprintModule(tmp, false);
+        var fp1 = PreflightMemo.fingerprintModule(tmp, false);
         Files.writeString(tmp.resolve("integration/src/ITest.java"), "class ITest { int x; }");
-        String fp2 = PreflightMemo.fingerprintModule(tmp, false);
+        var fp2 = PreflightMemo.fingerprintModule(tmp, false);
         assertThat(fp1).isNotEqualTo(fp2);
     }
 
@@ -411,10 +419,76 @@ class PreflightMemoTest {
         Files.writeString(tmp.resolve("integration/src/ITest.java"), "class ITest {}");
         Files.createDirectories(tmp.resolve("integration").resolve("resources"));
         Files.writeString(tmp.resolve("integration/resources/fix.txt"), "a");
-        String fp1 = PreflightMemo.fingerprintModule(tmp, false);
+        var fp1 = PreflightMemo.fingerprintModule(tmp, false);
         Files.writeString(tmp.resolve("integration/resources/fix.txt"), "b");
-        String fp2 = PreflightMemo.fingerprintModule(tmp, false);
+        var fp2 = PreflightMemo.fingerprintModule(tmp, false);
         assertThat(fp1).isNotEqualTo(fp2);
+    }
+
+    /**
+     * An input that will not read is not an input change. The fingerprint says which file, the
+     * snapshot files the module under uncertain, and no memo is written that would later claim
+     * the module clean or dirty on a digest nobody took.
+     */
+    @Test
+    void unreadable_lock_is_an_uncertain_fingerprint_naming_the_file(@TempDir Path tmp) throws Exception {
+        assumeFalse(Os.isWindows());
+        writeProject(tmp);
+        BuildGraph.Result graph =
+                BuildGraph.resolve(tmp, JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml"))));
+        Path lock = tmp.resolve("jk-lock.toml");
+        Set<PosixFilePermission> was = Files.getPosixFilePermissions(lock);
+        Files.setPosixFilePermissions(lock, Set.of());
+        assumeFalse(Files.isReadable(lock), "running as a user the permission bits do not bind");
+        try {
+            PreflightMemo.Fingerprint fp = PreflightMemo.fingerprintModule(tmp, false);
+            assertThat(fp).isInstanceOf(PreflightMemo.Uncertain.class);
+            PreflightMemo.Uncertain uncertain = (PreflightMemo.Uncertain) fp;
+            assertThat(uncertain.input().getFileName().toString()).isEqualTo("jk-lock.toml");
+            assertThat(uncertain.reason())
+                    .startsWith("the preflight could not read ")
+                    .contains("jk-lock.toml")
+                    .contains("AccessDeniedException");
+
+            PreflightMemo.Snapshot snapshot = PreflightMemo.snapshotFingerprints(graph, false);
+            assertThat(snapshot.fingerprints()).isEmpty();
+            assertThat(snapshot.uncertain())
+                    .containsOnlyKeys(tmp.toAbsolutePath().normalize());
+
+            PreflightMemo.storeDirty(tmp, graph, false, Set.of(), snapshot.fingerprints());
+            assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false)).isEmpty();
+            assertThat(PreflightMemo.resolveDirtyMemoFile(tmp)).isNull();
+        } finally {
+            Files.setPosixFilePermissions(lock, was);
+        }
+    }
+
+    /** A memo that will not read is a miss that says so in the log, never an exception or a silent one. */
+    @Test
+    void unreadable_memo_file_is_a_miss_that_names_itself(@TempDir Path tmp) throws Exception {
+        assumeFalse(Os.isWindows());
+        writeProject(tmp);
+        BuildGraph.Result graph =
+                BuildGraph.resolve(tmp, JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml"))));
+        storeDirty(tmp, graph, Set.of());
+        Path memo = PreflightMemo.resolveDirtyMemoFile(tmp);
+        assertThat(memo).isNotNull();
+        Set<PosixFilePermission> was = Files.getPosixFilePermissions(memo);
+        Files.setPosixFilePermissions(memo, Set.of());
+        assumeFalse(Files.isReadable(memo), "running as a user the permission bits do not bind");
+        ByteArrayOutputStream log = new ByteArrayOutputStream();
+        Log.install(
+                new PrintStream(log, true, StandardCharsets.UTF_8), System.Logger.Level.INFO, UnaryOperator.identity());
+        try {
+            assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false)).isEmpty();
+            String written = log.toString(StandardCharsets.UTF_8);
+            assertThat(written).contains("WARN  jk: preflight memo unreadable");
+            assertThat(written).contains("memo=" + memo);
+            assertThat(written).contains("cause=\"AccessDeniedException");
+        } finally {
+            Log.install(System.err, System.Logger.Level.INFO, UnaryOperator.identity());
+            Files.setPosixFilePermissions(memo, was);
+        }
     }
 
     /** SIMPLE Mill-like fixture (layout=simple, no Maven src/main tree). */
@@ -437,7 +511,12 @@ class PreflightMemoTest {
 
     /** Store with fingerprints snapshotted now — what every production call site does at preflight. */
     private static void storeDirty(Path entryDir, BuildGraph.Result graph, Set<Path> dirty) {
-        PreflightMemo.storeDirty(entryDir, graph, false, dirty, PreflightMemo.snapshotFingerprints(graph, false));
+        PreflightMemo.storeDirty(
+                entryDir,
+                graph,
+                false,
+                dirty,
+                PreflightMemo.snapshotFingerprints(graph, false).fingerprints());
     }
 
     private static void deleteRecursively(Path root) throws Exception {
@@ -456,21 +535,21 @@ class PreflightMemoTest {
                 Files.createDirectories(tmp.resolve("src/main/resources")).resolve("app.properties"), "k=v\n");
 
         InputTrees.configureForTest(new JkEngineConfig(256, null, false, 32));
-        String snapshotted = fingerprintInRequest(tmp);
+        PreflightMemo.Fingerprint snapshotted = fingerprintInRequest(tmp);
         InputTrees.resetForTest();
         InputTrees.configureForTest(new JkEngineConfig(256, null, false, 0));
-        String streamed = fingerprintInRequest(tmp);
+        PreflightMemo.Fingerprint streamed = fingerprintInRequest(tmp);
         InputTrees.resetForTest();
 
         // A module crossing the retain boundary between runs must not look edited.
-        assertThat(snapshotted).doesNotStartWith("err-").isEqualTo(streamed);
+        assertThat(snapshotted).isInstanceOf(PreflightMemo.Known.class).isEqualTo(streamed);
     }
 
-    private static String fingerprintInRequest(Path module) {
+    private static PreflightMemo.Fingerprint fingerprintInRequest(Path module) {
         IoLedger ledger = new IoLedger();
         IoLedger.open(ledger);
         try {
-            String[] out = new String[1];
+            PreflightMemo.Fingerprint[] out = new PreflightMemo.Fingerprint[1];
             SessionContext.runWhere(
                     Session.defaults().withIo(ledger), () -> out[0] = PreflightMemo.fingerprintModule(module, false));
             return out[0];

@@ -43,7 +43,11 @@ public final class TaskForecast {
         }
     }
 
-    /** One module's forecast: identity plus ordered steps. */
+    /**
+     * One module's forecast: identity plus ordered steps. {@code reason} is set when the preflight
+     * scheduled the module on its own account — an input it could not read — and reads as a
+     * sentence ({@code rebuilt because …}); such a module is dirty whatever its steps say.
+     */
     public record Module(
             Path dir,
             String coord,
@@ -51,7 +55,25 @@ public final class TaskForecast {
             int sourceCount,
             int testCount,
             boolean producesJar,
-            boolean producesImage) {
+            boolean producesImage,
+            @Nullable String reason) {
+
+        /** A module the preflight had no reason of its own to schedule. */
+        public Module(
+                Path dir,
+                String coord,
+                List<Task> steps,
+                int sourceCount,
+                int testCount,
+                boolean producesJar,
+                boolean producesImage) {
+            this(dir, coord, steps, sourceCount, testCount, producesJar, producesImage, null);
+        }
+
+        /** This module with the preflight's reason for scheduling it. */
+        public Module withReason(String reason) {
+            return new Module(dir, coord, steps, sourceCount, testCount, producesJar, producesImage, reason);
+        }
 
         /** Reconstruct a forecast module client-side from wire-level data. */
         public static Module fromWire(
@@ -61,7 +83,8 @@ public final class TaskForecast {
                 int sourceCount,
                 int testCount,
                 boolean producesJar,
-                boolean producesImage) {
+                boolean producesImage,
+                @Nullable String reason) {
             return new Module(
                     dir,
                     coord == null ? "" : coord,
@@ -69,7 +92,20 @@ public final class TaskForecast {
                     sourceCount,
                     testCount,
                     producesJar,
-                    producesImage);
+                    producesImage,
+                    reason);
+        }
+
+        /** As above for a module the wire carried no reason for. */
+        public static Module fromWire(
+                Path dir,
+                @Nullable String coord,
+                @Nullable List<Task> steps,
+                int sourceCount,
+                int testCount,
+                boolean producesJar,
+                boolean producesImage) {
+            return fromWire(dir, coord, steps, sourceCount, testCount, producesJar, producesImage, null);
         }
 
         /**
@@ -78,7 +114,7 @@ public final class TaskForecast {
          * ({@code parse-build}, {@code resolve-deps}, {@code write-stamp}, …) is not dirty.
          */
         public boolean dirty() {
-            return steps.stream().anyMatch(p -> !p.cached() && isMaterialWork(p.name()));
+            return reason != null || steps.stream().anyMatch(p -> !p.cached() && isMaterialWork(p.name()));
         }
 
         /**

@@ -35,6 +35,28 @@ class ExplainCommandEstimateTest {
         assertThat(ExplainCommand.buildTimeEstimateValue(158_000, false)).isEqualTo("~2m 38s");
     }
 
+    /** The preflight's own reason is the module's first body line, under Rebuild, cached steps or not. */
+    @Test
+    void buildGraph_prints_the_preflight_reason_under_the_module() {
+        var uncertain = TaskForecast.Module.fromWire(
+                        Path.of("/tmp/a"),
+                        "com.example:app",
+                        List.of(new TaskForecast.Task("compile-main", TaskForecast.Status.CACHED, "", "x")),
+                        3,
+                        0,
+                        true,
+                        false)
+                .withReason("rebuilt because the preflight could not read /tmp/a/jk-lock.toml (AccessDeniedException)");
+
+        String joined = String.join(
+                "\n",
+                ExplainCommand.buildGraph("com.example:root", List.of(uncertain), false, Theme.active(), false)
+                        .render(RenderContext.current().withAnsi(false)));
+        assertThat(joined).contains("[Rebuild]").contains("1 module is dirty");
+        assertThat(joined).contains("rebuilt because the preflight could not read /tmp/a/jk-lock.toml");
+        assertThat(joined).doesNotContain("[Fully Cached]");
+    }
+
     @Test
     void buildGraph_uses_bright_cyan_rebuild_names_and_skips_index() {
         var dirty = TaskForecast.Module.fromWire(

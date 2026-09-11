@@ -6,6 +6,7 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.BuildGraph;
@@ -78,29 +79,43 @@ public final class BuildForecasting {
 
     /**
      * A preflight verdict: input-dirty modules, modules needing output restore (inputs clean),
-     * fingerprints for the dirty memo, and optional {@link TaskForecast.Module} list when a full
-     * forecast walk ran (reuse for ETA — do not walk twice).
+     * fingerprints for the dirty memo, optional {@link TaskForecast.Module} list when a full
+     * forecast walk ran (reuse for ETA — do not walk twice), and per-module reasons for the dirty
+     * modules the preflight itself scheduled — those whose inputs it could not read.
      */
     record Preflight(
             Set<Path> dirty,
             Set<Path> restoreNeeded,
             Map<Path, String> fingerprints,
-            List<TaskForecast.Module> modules) {
+            List<TaskForecast.Module> modules,
+            Map<Path, String> reasons) {
         Preflight {
             dirty = dirty == null ? Set.of() : Set.copyOf(dirty);
             restoreNeeded = restoreNeeded == null ? Set.of() : Set.copyOf(restoreNeeded);
             fingerprints = fingerprints == null ? Map.of() : Map.copyOf(fingerprints);
             modules = modules == null ? List.of() : List.copyOf(modules);
+            reasons = reasons == null ? Map.of() : Map.copyOf(reasons);
+        }
+
+        Preflight(
+                Set<Path> dirty,
+                Set<Path> restoreNeeded,
+                Map<Path, String> fingerprints,
+                List<TaskForecast.Module> modules) {
+            this(dirty, restoreNeeded, fingerprints, modules, Map.of());
         }
 
         Preflight(Set<Path> dirty, Map<Path, String> fingerprints, List<TaskForecast.Module> modules) {
-            this(dirty, Set.of(), fingerprints, modules);
+            this(dirty, Set.of(), fingerprints, modules, Map.of());
         }
 
         Preflight(Set<Path> dirty, Map<Path, String> fingerprints) {
-            this(dirty, Set.of(), fingerprints, List.of());
+            this(dirty, Set.of(), fingerprints, List.of(), Map.of());
         }
     }
+
+    /** The explain text for a module the preflight scheduled: the fact, then the input it could not read. */
+    static final String REBUILT_BECAUSE = "rebuilt because ";
 
     /**
      * As {@link #forecastDirtyDirs} but also returning the fingerprint snapshot taken BEFORE the
@@ -162,6 +177,7 @@ public final class BuildForecasting {
             return new Preflight(all, Map.of(), List.of());
         }
         Map<Path, String> fps;
+        Map<Path, PreflightMemo.Uncertain> uncertain = Map.of();
         if (entryDir != null && memoSafe) {
             var memo = PreflightMemo.tryLoadDirty(entryDir, graph, skipTests);
             if (memo.isPresent()) {
@@ -181,7 +197,9 @@ public final class BuildForecasting {
                 return new Preflight(
                         memoDirty, memo.get().restoreNeeded(), memo.get().fingerprints(), List.of());
             }
-            fps = PreflightMemo.snapshotFingerprints(graph, skipTests);
+            PreflightMemo.Snapshot snapshot = PreflightMemo.snapshotFingerprints(graph, skipTests);
+            fps = snapshot.fingerprints();
+            uncertain = snapshot.uncertain();
         } else {
             fps = Map.of();
         }
@@ -211,11 +229,21 @@ public final class BuildForecasting {
             // cached, nothing is missing so nothing restores, and the artifacts are the previous
             // run's. See ModuleInputProvenance.
             withStaleOutputs(graph, entryDir, fps, dirty);
+            // A module the preflight could not fingerprint is scheduled on that fact alone: no
+            // memo can vouch for it, and the walk above may have priced it against inputs it
+            // could not see either. Explain carries the reason; the build log says it once.
+            Map<Path, String> reasons = new LinkedHashMap<>();
+            for (var e : uncertain.entrySet()) {
+                dirty.add(e.getKey());
+                reasons.put(e.getKey(), REBUILT_BECAUSE + e.getValue().reason());
+                Log.warn("jk: " + e.getKey().getFileName() + " " + REBUILT_BECAUSE
+                        + e.getValue().reason());
+            }
             if (entryDir != null && memoSafe && persistMemo) {
                 // Store input-dirty only — restoreNeeded is re-derived from missing outputs on load.
                 PreflightMemo.storeDirty(entryDir, graph, skipTests, dirty, fps);
             }
-            return new Preflight(dirty, restoreNeeded, fps, modules);
+            return new Preflight(dirty, restoreNeeded, fps, modules, reasons);
         } catch (RuntimeException e) {
             return new Preflight(all, Set.of(), fps, List.of());
         }
@@ -334,7 +362,22 @@ public final class BuildForecasting {
             ActionCache actionCache = new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache));
             modules = TaskForecaster.of(graph, cas, actionCache, cache, skipTests);
         }
-        return new ExplainPlan(onlyScheduled(modules, scheduled), graph.edges(), graph.maxReadyWidth(), List.of());
+        return new ExplainPlan(
+                withReasons(onlyScheduled(modules, scheduled), pf.reasons()),
+                graph.edges(),
+                graph.maxReadyWidth(),
+                List.of());
+    }
+
+    /** Attach the preflight's own reasons to the modules it scheduled. */
+    private static List<TaskForecast.Module> withReasons(List<TaskForecast.Module> modules, Map<Path, String> reasons) {
+        if (reasons.isEmpty()) return modules;
+        List<TaskForecast.Module> out = new ArrayList<>(modules.size());
+        for (TaskForecast.Module m : modules) {
+            String reason = reasons.get(m.dir().toAbsolutePath().normalize());
+            out.add(reason == null ? m : m.withReason(reason));
+        }
+        return out;
     }
 
     /**

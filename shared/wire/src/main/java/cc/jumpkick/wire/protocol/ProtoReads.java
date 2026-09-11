@@ -15,8 +15,14 @@ public final class ProtoReads {
     private ProtoReads() {}
 
     public static String explainModule(
-            String dir, String coord, int sourceCount, int testCount, boolean producesJar, boolean producesImage) {
-        return new ExplainModuleEvent(dir, coord, sourceCount, testCount, producesJar, producesImage).encode();
+            String dir,
+            String coord,
+            int sourceCount,
+            int testCount,
+            boolean producesJar,
+            boolean producesImage,
+            @Nullable String reason) {
+        return new ExplainModuleEvent(dir, coord, sourceCount, testCount, producesJar, producesImage, reason).encode();
     }
 
     public static String explainStep(String dir, String name, String status, String text, @Nullable String key) {

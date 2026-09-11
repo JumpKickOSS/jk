@@ -49,7 +49,7 @@ class ModuleInputProvenanceTest {
     void outputs_from_other_inputs_make_the_module_dirty(@TempDir Path tmp) throws Exception {
         BuildGraph.Result graph = project(tmp);
         var fps = PreflightMemo.snapshotFingerprints(graph, false);
-        PreflightMemo.storeDirty(tmp, graph, false, Set.of(), fps);
+        PreflightMemo.storeDirty(tmp, graph, false, Set.of(), fps.fingerprints());
         assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false)).isPresent();
 
         ModuleInputProvenance.record(tmp, graph, Map.of(tmp.toAbsolutePath().normalize(), "adifferentfingerprint"));
@@ -63,8 +63,8 @@ class ModuleInputProvenanceTest {
     void matching_provenance_stays_up_to_date(@TempDir Path tmp) throws Exception {
         BuildGraph.Result graph = project(tmp);
         var fps = PreflightMemo.snapshotFingerprints(graph, false);
-        PreflightMemo.storeDirty(tmp, graph, false, Set.of(), fps);
-        ModuleInputProvenance.record(tmp, graph, fps);
+        PreflightMemo.storeDirty(tmp, graph, false, Set.of(), fps.fingerprints());
+        ModuleInputProvenance.record(tmp, graph, fps.fingerprints());
 
         var forecast = BuildForecasting.forecastWithFingerprints(graph, tmp.resolve("cache"), false, tmp);
         assertThat(forecast.dirty()).isEmpty();
@@ -78,7 +78,7 @@ class ModuleInputProvenanceTest {
     void a_missing_record_is_not_a_rebuild(@TempDir Path tmp) throws Exception {
         BuildGraph.Result graph = project(tmp);
         var fps = PreflightMemo.snapshotFingerprints(graph, false);
-        PreflightMemo.storeDirty(tmp, graph, false, Set.of(), fps);
+        PreflightMemo.storeDirty(tmp, graph, false, Set.of(), fps.fingerprints());
 
         var forecast = BuildForecasting.forecastWithFingerprints(graph, tmp.resolve("cache"), false, tmp);
         assertThat(forecast.dirty()).isEmpty();

@@ -2,10 +2,20 @@
 package cc.jumpkick.wire.protocol;
 
 import cc.jumpkick.jsonl.Jsonl;
+import org.jspecify.annotations.Nullable;
 
-/** One module of a {@code jk explain} burst: its counts and what it produces (see {@link EngineProtocol#EXPLAIN_MODULE}). */
+/**
+ * One module of a {@code jk explain} burst: its counts, what it produces, and the preflight's own
+ * reason for scheduling it when it had one (see {@link EngineProtocol#EXPLAIN_MODULE}).
+ */
 public record ExplainModuleEvent(
-        String dir, String coord, int sourceCount, int testCount, boolean producesJar, boolean producesImage) {
+        String dir,
+        String coord,
+        int sourceCount,
+        int testCount,
+        boolean producesJar,
+        boolean producesImage,
+        @Nullable String reason) {
     public String encode() {
         return RequestJson.request(EngineProtocol.EXPLAIN_MODULE)
                 .string("dir", dir)
@@ -14,6 +24,7 @@ public record ExplainModuleEvent(
                 .number("testCount", testCount)
                 .bool("producesJar", producesJar)
                 .bool("producesImage", producesImage)
+                .string("reason", reason)
                 .finish();
     }
 
@@ -24,6 +35,7 @@ public record ExplainModuleEvent(
                 Jsonl.intValue(json, "sourceCount", 0),
                 Jsonl.intValue(json, "testCount", 0),
                 Jsonl.bool(json, "producesJar", false),
-                Jsonl.bool(json, "producesImage", false));
+                Jsonl.bool(json, "producesImage", false),
+                Jsonl.str(json, "reason"));
     }
 }

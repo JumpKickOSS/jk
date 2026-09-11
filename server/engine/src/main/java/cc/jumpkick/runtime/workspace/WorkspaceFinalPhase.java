@@ -100,7 +100,8 @@ final class WorkspaceFinalPhase {
         medianRate(run.observedRates()).ifPresent(rate -> Calibration.refine(rate, now));
 
         if (shouldStoreCleanMemo(request)) {
-            Map<Path, String> fingerprints = PreflightMemo.snapshotFingerprints(graph, request.skipTests());
+            Map<Path, String> fingerprints = PreflightMemo.snapshotFingerprints(graph, request.skipTests())
+                    .fingerprints();
             if (!fingerprints.isEmpty()) {
                 PreflightMemo.storeDirty(request.entryDir(), graph, request.skipTests(), Set.of(), fingerprints);
                 // One snapshot, two records: the memo says these inputs are clean, and this says

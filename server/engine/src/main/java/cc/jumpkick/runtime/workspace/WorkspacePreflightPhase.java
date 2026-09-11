@@ -233,7 +233,8 @@ public final class WorkspacePreflightPhase {
             Map<Path, String> fingerprints = preflight
                     .filter(value -> !value.fingerprints().isEmpty())
                     .map(BuildForecasting.Preflight::fingerprints)
-                    .orElseGet(() -> PreflightMemo.snapshotFingerprints(graph, request.skipTests()));
+                    .orElseGet(() -> PreflightMemo.snapshotFingerprints(graph, request.skipTests())
+                            .fingerprints());
             if (!fingerprints.isEmpty()) {
                 PreflightMemo.storeDirty(request.entryDir(), graph, request.skipTests(), Set.of(), fingerprints);
             }

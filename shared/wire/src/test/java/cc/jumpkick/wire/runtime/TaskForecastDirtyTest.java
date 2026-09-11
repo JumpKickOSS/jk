@@ -80,6 +80,23 @@ class TaskForecastDirtyTest {
         assertThat(m.dirty()).isTrue();
     }
 
+    /** The preflight scheduled it for a reason of its own; cached steps do not talk it out of that. */
+    @Test
+    void a_preflight_reason_alone_makes_the_module_dirty() {
+        var m = new TaskForecast.Module(
+                Path.of("/m"),
+                "g:a",
+                List.of(new TaskForecast.Task("compile-main", TaskForecast.Status.CACHED, "", "x")),
+                1,
+                0,
+                true,
+                false);
+        assertThat(m.dirty()).isFalse();
+        assertThat(m.withReason("rebuilt because the preflight could not read /m/jk-lock.toml (x)")
+                        .dirty())
+                .isTrue();
+    }
+
     @Test
     void native_image_run_is_dirty() {
         var m = new TaskForecast.Module(

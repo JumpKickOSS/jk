@@ -52,7 +52,7 @@ class BuildForecastingTargetMemoTest {
 
         // A successful jk build stores an all-clean memo.
         var fps = PreflightMemo.snapshotFingerprints(graph, false);
-        PreflightMemo.storeDirty(tmp, graph, false, Set.of(), fps);
+        PreflightMemo.storeDirty(tmp, graph, false, Set.of(), fps.fingerprints());
         assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false)).isPresent();
 
         Path cache = tmp.resolve("cache");

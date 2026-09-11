@@ -43,7 +43,8 @@ import org.jspecify.annotations.Nullable;
  * Machine-local preflight memos: dirty-set, graph structure, and plan shape. Written under
  * {@code <entry>/target/.jk/preflight/} and dual-written to {@code ~/.jk/cache/projects/<id>/preflight/}
  * so {@code jk clean} does not erase input fingerprints. Never git-committed; miss or corrupt →
- * full recompute (fail-open).
+ * full recompute (fail-open); an input that will not read is an {@link Uncertain} fingerprint,
+ * which schedules the module and names the file.
  *
  * <p>Schema 3: module fingerprints cover every file under {@code src}/{@code test}/
  * suite resource dirs (resources included); dirty rows are stored with fingerprints captured at
@@ -69,6 +70,55 @@ public final class PreflightMemo {
     }
 
     private PreflightMemo() {}
+
+    /** A preflight fingerprint: the digest of what was read, or the input that could not be. */
+    public sealed interface Fingerprint permits Known, Uncertain {}
+
+    /** The digest of a module's inputs, or of a structure or shape key. */
+    public record Known(String hex) implements Fingerprint {}
+
+    /**
+     * The preflight could not read {@code input}, so no memo can vouch for what depends on it.
+     * The module is scheduled and {@code jk explain} says why — rather than a random digest that
+     * forced the same rebuild while looking like an input change.
+     */
+    public record Uncertain(Path input, String cause) implements Fingerprint {
+        public String reason() {
+            return "the preflight could not read " + input + " (" + cause + ")";
+        }
+    }
+
+    /** The one file read the fingerprints depend on; carries the path so an Uncertain can name it. */
+    private static final class UnreadableInput extends IOException {
+        private final Path input;
+
+        UnreadableInput(Path input, IOException cause) {
+            super(cause.getMessage(), cause);
+            this.input = input;
+        }
+    }
+
+    private static Uncertain uncertain(Path fallback, Exception e) {
+        if (e instanceof UnreadableInput u) return new Uncertain(u.input, describe(u.getCause()));
+        return new Uncertain(fallback, describe(e));
+    }
+
+    private static String describe(@Nullable Throwable t) {
+        if (t == null) return "unknown";
+        String msg = t.getMessage();
+        return t.getClass().getSimpleName() + (msg == null || msg.isBlank() ? "" : ": " + msg);
+    }
+
+    /**
+     * What the preflight could fingerprint and what it could not, keyed by normalized module dir.
+     * A module in {@link #uncertain} has no entry in {@link #fingerprints}.
+     */
+    public record Snapshot(Map<Path, String> fingerprints, Map<Path, Uncertain> uncertain) {
+        public Snapshot {
+            fingerprints = fingerprints == null ? Map.of() : Map.copyOf(fingerprints);
+            uncertain = uncertain == null ? Map.of() : Map.copyOf(uncertain);
+        }
+    }
 
     public static Path memoFile(Path entryDir) {
         return entryDir.resolve(BuildLayout.TARGET)
@@ -189,7 +239,8 @@ public final class PreflightMemo {
                 String rel = relKey(root, dir);
                 MemoRow row = rows.get(rel);
                 if (row == null) return Optional.empty();
-                if (!row.fp().equals(fingerprintModule(dir, skipTests))) return Optional.empty();
+                Fingerprint now = fingerprintModule(dir, skipTests);
+                if (!(now instanceof Known known) || !row.fp().equals(known.hex())) return Optional.empty();
                 seen.add(rel);
                 fps.put(dir, row.fp());
                 if (row.dirty()) {
@@ -202,26 +253,41 @@ public final class PreflightMemo {
             }
             if (!seen.equals(rows.keySet())) return Optional.empty();
             return Optional.of(new DirtyMemo(dirty, fps, restoreNeeded));
-        } catch (Exception e) {
+        } catch (IOException e) {
+            // The memo itself would not read: not a miss to hide. Every module takes the walk.
+            Log.warn(
+                    "jk: preflight memo unreadable — every module is checked against the action cache instead",
+                    "memo",
+                    file,
+                    "cause",
+                    describe(e));
+            return Optional.empty();
+        } catch (RuntimeException e) {
+            Log.debug("tryLoadDirty: memo miss", e);
             return Optional.empty();
         }
     }
 
     /**
      * Per-module fingerprints captured now. Callers snapshot BEFORE forecasting or building and
-     * hand the snapshot to {@link #storeDirty}: a store must never fingerprint post-build, or a
-     * mid-build edit is recorded as clean and never rebuilt.
+     * hand {@link Snapshot#fingerprints} to {@link #storeDirty}: a store must never fingerprint
+     * post-build, or a mid-build edit is recorded as clean and never rebuilt. A module whose
+     * inputs would not read lands in {@link Snapshot#uncertain} instead.
      */
-    public static Map<Path, String> snapshotFingerprints(BuildGraph.Result graph, boolean skipTests) {
+    public static Snapshot snapshotFingerprints(BuildGraph.Result graph, boolean skipTests) {
         Map<Path, String> fps = new LinkedHashMap<>();
+        Map<Path, Uncertain> uncertain = new LinkedHashMap<>();
         Map<Path, String> saltByRoot = new LinkedHashMap<>();
         for (BuildGraph.BuildUnit u : graph.topoOrder()) {
             Path dir = u.dir().toAbsolutePath().normalize();
             Path root = WorkspaceScan.findRoot(dir).orElse(dir).toAbsolutePath().normalize();
             String salt = saltByRoot.computeIfAbsent(root, PreflightMemo::guardSalt);
-            fps.put(dir, fingerprintModule(dir, skipTests, salt));
+            switch (fingerprintModule(dir, skipTests, salt)) {
+                case Known k -> fps.put(dir, k.hex());
+                case Uncertain u2 -> uncertain.put(dir, u2);
+            }
         }
-        return fps;
+        return new Snapshot(fps, uncertain);
     }
 
     /**
@@ -262,7 +328,12 @@ public final class PreflightMemo {
             for (BuildGraph.BuildUnit u : graph.topoOrder()) {
                 Path dir = u.dir().toAbsolutePath().normalize();
                 String fp = fingerprints.get(dir);
-                if (fp == null) return; // graph drifted from the snapshot — don't write
+                if (fp == null) {
+                    // The graph drifted from the snapshot, or an input the preflight could not
+                    // read left this module without a fingerprint: a memo cannot vouch for it.
+                    Log.debug("storeDirty: not stored, no fingerprint for a unit", "unit", dir);
+                    return;
+                }
                 sb.append(relKey(root, dir))
                         .append('\t')
                         .append(fp)
@@ -318,9 +389,8 @@ public final class PreflightMemo {
             sb.append("cacheKeyVersion=")
                     .append(BuildIdentity.cacheKeyVersion())
                     .append('\n');
-            sb.append("structure=")
-                    .append(structureFingerprint(entryDir, unitDirs))
-                    .append('\n');
+            if (!(structureFingerprint(entryDir, unitDirs) instanceof Known structure)) return;
+            sb.append("structure=").append(structure.hex()).append('\n');
             for (BuildGraph.BuildUnit u : graph.topoOrder()) {
                 Path dir = u.dir().toAbsolutePath().normalize();
                 sb.append("unit\t")
@@ -395,7 +465,8 @@ public final class PreflightMemo {
                 if (!Files.isRegularFile(dir.resolve(ManifestPaths.MANIFEST))) return Optional.empty();
                 unitDirs.add(dir);
             }
-            if (!gotStruct.equals(structureFingerprint(entryDir, unitDirs))) return Optional.empty();
+            if (!(structureFingerprint(entryDir, unitDirs) instanceof Known structure)
+                    || !gotStruct.equals(structure.hex())) return Optional.empty();
 
             // Rebuild units by re-parsing manifests (no WorkspaceLoader membership walk).
             List<BuildGraph.BuildUnit> topo = new ArrayList<>();
@@ -444,7 +515,8 @@ public final class PreflightMemo {
             for (BuildGraph.BuildUnit u : graph.topoOrder()) {
                 unitDirs.add(u.dir().toAbsolutePath().normalize());
             }
-            String want = structureFingerprint(entryDir, unitDirs);
+            if (!(structureFingerprint(entryDir, unitDirs) instanceof Known structure)) return false;
+            String want = structure.hex();
             String gotVersion = null;
             String gotStruct = null;
             for (String line : lines) {
@@ -463,7 +535,7 @@ public final class PreflightMemo {
      * from {@code [workspace].modules} invalidates even when the unit folder still exists. Edges are
      * not hashed (derived from manifests when tomls are unchanged).
      */
-    static String structureFingerprint(Path entryDir, List<Path> unitDirs) {
+    static Fingerprint structureFingerprint(Path entryDir, List<Path> unitDirs) {
         try {
             MessageDigest md = Hashing.newSha256();
             Path root = entryDir.toAbsolutePath().normalize();
@@ -490,14 +562,14 @@ public final class PreflightMemo {
                     feedFile(md, lock);
                 }
             }
-            return Hashing.hex(md.digest());
+            return new Known(Hashing.hex(md.digest()));
         } catch (Exception e) {
-            return "err-" + System.nanoTime();
+            return uncertain(entryDir, e);
         }
     }
 
     /** Convenience: structure fingerprint from a resolved graph. */
-    static String structureFingerprint(Path entryDir, BuildGraph.Result graph) {
+    static Fingerprint structureFingerprint(Path entryDir, BuildGraph.Result graph) {
         List<Path> unitDirs = new ArrayList<>();
         for (BuildGraph.BuildUnit u : graph.topoOrder()) {
             unitDirs.add(u.dir().toAbsolutePath().normalize());
@@ -523,7 +595,7 @@ public final class PreflightMemo {
     /**
      * Shape key: toml + lock + skipTests + engine version — not sources (static plan outline).
      */
-    public static String shapeFingerprint(Path moduleDir, boolean skipTests) {
+    public static Fingerprint shapeFingerprint(Path moduleDir, boolean skipTests) {
         try {
             MessageDigest md = Hashing.newSha256();
             feed(md, "shape");
@@ -531,9 +603,9 @@ public final class PreflightMemo {
             feed(md, BuildIdentity.cacheKeyVersion());
             feedFile(md, moduleDir.resolve(ManifestPaths.MANIFEST));
             feedFile(md, LockPaths.lockFile(moduleDir));
-            return Hashing.hex(md.digest());
+            return new Known(Hashing.hex(md.digest()));
         } catch (Exception e) {
-            return "err-" + System.nanoTime();
+            return uncertain(moduleDir, e);
         }
     }
 
@@ -543,7 +615,8 @@ public final class PreflightMemo {
         try {
             Path root = entryDir.toAbsolutePath().normalize();
             String rel = relKey(root, moduleDir.toAbsolutePath().normalize());
-            String wantFp = shapeFingerprint(moduleDir, skipTests);
+            if (!(shapeFingerprint(moduleDir, skipTests) instanceof Known want)) return Optional.empty();
+            String wantFp = want.hex();
             List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
             if (lines.isEmpty() || !lines.getFirst().startsWith("schema=" + SCHEMA)) return Optional.empty();
             String gotVersion = null;
@@ -600,7 +673,8 @@ public final class PreflightMemo {
                 Path file = shapeMemoFile(entryDir);
                 Files.createDirectories(file.getParent());
                 String rel = relKey(root, moduleDir.toAbsolutePath().normalize());
-                String fp = shapeFingerprint(moduleDir, skipTests);
+                if (!(shapeFingerprint(moduleDir, skipTests) instanceof Known known)) return;
+                String fp = known.hex();
                 StringBuilder steps = new StringBuilder();
                 for (int i = 0; i < shape.steps().size(); i++) {
                     if (i > 0) steps.append(',');
@@ -673,11 +747,11 @@ public final class PreflightMemo {
      * sources, main resources, default + named test suites and suite resources. Derived from
      * {@link cc.jumpkick.layout.ModuleLayout#fingerprintDirs}, not a fixed literal list.
      */
-    static String fingerprintModule(Path moduleDir, boolean skipTests) {
+    static Fingerprint fingerprintModule(Path moduleDir, boolean skipTests) {
         return fingerprintModule(moduleDir, skipTests, "");
     }
 
-    static String fingerprintModule(Path moduleDir, boolean skipTests, String guardSalt) {
+    static Fingerprint fingerprintModule(Path moduleDir, boolean skipTests, String guardSalt) {
         try {
             InputTrees.coverModule(moduleDir);
             MessageDigest md = Hashing.newSha256();
@@ -728,9 +802,9 @@ public final class PreflightMemo {
                     feedFingerprint(md, moduleDir, ref.path(), ref.size(), ref.mtimeMillis(), mtimeMode);
                 }
             }
-            return Hashing.hex(md.digest());
+            return new Known(Hashing.hex(md.digest()));
         } catch (Exception e) {
-            return "err-" + System.nanoTime();
+            return uncertain(moduleDir, e);
         }
     }
 
@@ -785,7 +859,11 @@ public final class PreflightMemo {
             feed(md, "missing");
             return;
         }
-        md.update(Files.readAllBytes(file));
+        try {
+            md.update(Files.readAllBytes(file));
+        } catch (IOException e) {
+            throw new UnreadableInput(file, e);
+        }
         md.update((byte) 0);
     }
 
