@@ -40,7 +40,7 @@ object NullMarking {
                     "exists to pin. Annotating those would put a requireNonNull between the reader and the " +
                     "assertion in fifty places. The rest is the same shape as core's: null fed in on purpose " +
                     "(an absent [http] table, a job with no module selector) to assert the engine handles it. " +
-                    "Production is enforced.",
+                    "Production is enforced."
         )
 
     /**

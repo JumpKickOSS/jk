@@ -76,3 +76,6 @@ firebase-debug.*.log
 
 # jqwik failure-replay databases (per test module; local state, never shared)
 .jqwik-database
+
+# Kotlin compiler session state (buildSrc)
+.kotlin/
