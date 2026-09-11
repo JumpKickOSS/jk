@@ -72,13 +72,14 @@ Third-party monorepos must use `<lang>/<framework>/<name>.g8`.
 
 | Name | Framework | Languages | Intent | Rule pack |
 |------|-----------|-----------|--------|-----------|
-| `cli` | none | java, kotlin | Simple executable | — |
-| `cli-native` | none | java | Interactive Java CLI with JLine | — |
+| `cli` | none | java, kotlin | Simple executable | house rules |
+| `cli-native` | none | java | Interactive Java CLI with JLine | house rules |
 | `library` | none | java | Published library: `@NullMarked` API, unit test | `library` |
-| `ktor-3` | none | kotlin | Ktor + Koin + Exposed | — |
+| `ktor-3` | none | kotlin | Ktor + Koin + Exposed | house rules |
 | `hello` | spring-boot | java, kotlin | Plugin hello app | `spring` |
 | `webmvc` | spring-boot | java, kotlin | Clean-architecture WebMVC workspace | `spring`, `monorepo` |
 | `webmvc-security-actuator-jpa-h2` | spring-boot | java, kotlin | WebMVC + JPA/H2 + Actuator | `spring` |
+| `webapp` | spring-boot | java, kotlin | Boot API + Vite/React SPA in a resource-only `web` module; `jk dev` runs Vite as a sidecar | `spring`, `monorepo` |
 | `mcp` | spring-boot | java | Boot MCP server | `spring` |
 | `hello` | quarkus | java, kotlin | Plugin REST app | `quarkus` |
 | `hello` | micronaut | java, kotlin | Plugin HTTP service | — |
@@ -90,7 +91,13 @@ A template with a rule pack writes `jk-guards.toml` with `[guards] extends =
 first build, `jk lock` pins it, and `jk guard explain` lists its rules with their source. Add your
 own rules below the `[guards]` table; exempt a site with an `allow` entry and a reason. Packs:
 `spring`, `quarkus`, `android`, `library`, `monorepo` — [Guards](../contributors/code-as-art.md)
-describes the vocabulary they are written in.
+describes the vocabulary they are written in. A template without a framework pack ("house rules")
+ships a small `jk-guards.toml` of its own — a file-size ratchet and one ban with a fixture under
+`guard-fixtures/` — so the guard loop is there from the first build.
+
+Every template also declares test tiers (`[test] exclude-tags` with one profile per tag), a
+`[format]` style, and, for a runnable app, an `[image]` table. None ships an `AGENTS.md`: `jk new`
+writes the current one into every project it scaffolds.
 
 MCP `jk_new`: `action=templates` lists `{id,name,language,framework,…}`; `preview=true`
 returns the file set without writing. The web dashboard has a New project modal —
