@@ -17,16 +17,29 @@ import java.net.http.HttpResponse.BodySubscribers;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.zip.GZIPInputStream;
 import org.jspecify.annotations.Nullable;
 
 /**
  * {@link HttpClient} wrapper: exponential backoff with jitter on 5xx and network {@link IOException}s;
  * never retries 4xx; max 5 attempts.
+ *
+ * <p>Redirects are followed here, not by the client, so that the policy is jk's: up to {@link
+ * #MAX_REDIRECTS} hops, never from https to http, and a hop that leaves the request's origin (scheme,
+ * host, port) is re-issued without {@code Authorization} or {@code Cookie}. A private repository
+ * that hands a download to a CDN must not hand the CDN the repository token with it.
  */
 public final class Http {
+
+    /** Most redirect hops followed for one request — the JDK client's own default. */
+    static final int MAX_REDIRECTS = 5;
+
+    /** Headers that authenticate the caller to one origin and must not travel to another. */
+    private static final Set<String> CREDENTIAL_HEADERS = Set.of("authorization", "cookie");
 
     private static final Duration[] BACKOFFS = {
         Duration.ofMillis(100),
@@ -50,13 +63,19 @@ public final class Http {
     private final HostCooldown cooldown;
 
     public Http() {
-        this(
-                HttpClient.newBuilder()
-                        .version(HttpClient.Version.HTTP_2)
-                        .followRedirects(HttpClient.Redirect.NORMAL)
-                        .connectTimeout(Duration.ofSeconds(10))
-                        .build(),
-                BACKOFFS);
+        this(standardClient(), BACKOFFS);
+    }
+
+    /**
+     * The client every production {@code Http} wraps; visible so a test can pair it with a short
+     * backoff. {@link HttpClient.Redirect#NEVER} because {@link #send} follows redirects itself.
+     */
+    static HttpClient standardClient() {
+        return HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_2)
+                .followRedirects(HttpClient.Redirect.NEVER)
+                .connectTimeout(Duration.ofSeconds(10))
+                .build();
     }
 
     /**
@@ -65,13 +84,7 @@ public final class Http {
      * — real callers want the retries.
      */
     public static Http failFast() {
-        return new Http(
-                HttpClient.newBuilder()
-                        .version(HttpClient.Version.HTTP_2)
-                        .followRedirects(HttpClient.Redirect.NORMAL)
-                        .connectTimeout(Duration.ofSeconds(10))
-                        .build(),
-                new Duration[0]);
+        return new Http(standardClient(), new Duration[0]);
     }
 
     /** Visible for tests — lets the caller shrink the backoff schedule. */
@@ -211,27 +224,28 @@ public final class Http {
     }
 
     /**
-     * A callback invoked on a retryable (5xx) response before the next attempt — used by
-     * {@link #getStream} to drain the streamed body so the connection can be reused. May throw
-     * {@link IOException} (unlike {@link java.util.function.Consumer}).
+     * A callback invoked on a response whose body is abandoned before another request goes out — a
+     * retried 5xx, a followed redirect — used by {@link #getStream} to drain the streamed body so the
+     * connection can be reused. May throw {@link IOException} (unlike {@link
+     * java.util.function.Consumer}).
      */
     @FunctionalInterface
-    private interface OnServerError<T> {
+    private interface BodyDrain<T> {
         void handle(HttpResponse<T> response) throws IOException;
     }
 
     /**
      * The one send-with-retry loop shared by {@link #get}, {@link #getStream}, {@link #postForm},
      * and {@link #put}: retry on connect failures and 5xx (never on 4xx), {@code backoffs.length + 1}
-     * attempts with jittered backoff, then throw a verb-tagged {@link IOException}. {@code onServerError}
-     * (nullable) runs on each retried 5xx before the next attempt.
+     * attempts with jittered backoff, then throw a verb-tagged {@link IOException}. {@code drain}
+     * (nullable) runs on each retried 5xx and each followed redirect before the next request.
      */
     private <T> HttpResponse<T> sendWithRetry(
             String verb,
             URI uri,
             HttpRequest request,
             HttpResponse.BodyHandler<T> handler,
-            @Nullable OnServerError<T> onServerError)
+            @Nullable BodyDrain<T> drain)
             throws IOException, InterruptedException {
         IOException lastIo = null;
         int lastStatus = -1;
@@ -247,7 +261,7 @@ public final class Http {
                 throw new RateLimitedException(request.uri().getHost(), cooling.get());
             }
             try {
-                HttpResponse<T> response = client.send(request, handler);
+                HttpResponse<T> response = send(request, handler, drain);
                 int status = response.statusCode();
                 if (status == 429) {
                     // Record before rerouting: the limit is a fact about this host whether or not a
@@ -265,19 +279,18 @@ public final class Http {
                     centralMirror.noteRateLimited();
                     URI mirrored = centralMirror.route(request.uri());
                     if (!mirrored.equals(request.uri())) {
-                        HttpRequest retry = HttpRequest.newBuilder(request, (n, v) -> true)
-                                .uri(mirrored)
-                                .build();
-                        return client.send(retry, handler);
+                        return send(reissue(request, mirrored).build(), handler, drain);
                     }
                 }
                 if (status < 500) {
                     return response;
                 }
-                if (onServerError != null) {
-                    onServerError.handle(response);
+                if (drain != null) {
+                    drain.handle(response);
                 }
                 lastStatus = status;
+            } catch (RedirectRefusedException e) {
+                throw e; // a policy answer, not a network fault: the same chain would refuse again
             } catch (IOException e) {
                 lastIo = e;
             }
@@ -290,6 +303,101 @@ public final class Http {
         }
         throw new IOException(
                 verb + " " + shown + " returned " + lastStatus + " after " + (backoffs.length + 1) + " attempts");
+    }
+
+    /**
+     * One request and the redirect chain it starts. A hop that stays on the request's origin keeps
+     * every header; one that leaves it is re-issued without the caller's credentials. A downgrade
+     * from https to http, or a chain longer than {@link #MAX_REDIRECTS}, is an error rather than a
+     * 3xx handed back as if it were a result — a caller reading {@code status >= 400} as failure
+     * would otherwise take a redirect for a success with an empty body.
+     */
+    private <T> HttpResponse<T> send(
+            HttpRequest request, HttpResponse.BodyHandler<T> handler, @Nullable BodyDrain<T> drain)
+            throws IOException, InterruptedException {
+        HttpResponse<T> response = client.send(request, handler);
+        for (int hops = 0; isRedirect(response.statusCode()); hops++) {
+            URI target = redirectTarget(request.uri(), response);
+            if (target == null) return response;
+            if (hops >= MAX_REDIRECTS) {
+                throw new RedirectRefusedException(
+                        "too many redirects (" + MAX_REDIRECTS + ") fetching " + SafeUri.forMessage(request.uri()));
+            }
+            if (!followable(request.uri(), target)) {
+                throw new RedirectRefusedException("refusing a redirect from " + SafeUri.forMessage(request.uri())
+                        + " to " + SafeUri.forMessage(target) + ": https to http");
+            }
+            if (drain != null) drain.handle(response);
+            request = redirected(request, response.statusCode(), target);
+            response = client.send(request, handler);
+        }
+        return response;
+    }
+
+    /** A redirect chain this client will not follow — too long, or a downgrade to http. Not retried. */
+    static final class RedirectRefusedException extends IOException {
+        RedirectRefusedException(String message) {
+            super(message);
+        }
+    }
+
+    private static boolean isRedirect(int status) {
+        return status == 301 || status == 302 || status == 303 || status == 307 || status == 308;
+    }
+
+    /** {@code Location} resolved against the request, or null when the response carries none usable. */
+    private static @Nullable URI redirectTarget(URI from, HttpResponse<?> response) {
+        Optional<String> location = response.headers().firstValue("Location");
+        if (location.isEmpty() || location.get().isBlank()) return null;
+        try {
+            return from.resolve(location.get().trim());
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    /** A redirect may upgrade to https or stay put; it may never drop from https to http. */
+    static boolean followable(URI from, URI to) {
+        return !("https".equalsIgnoreCase(from.getScheme()) && "http".equalsIgnoreCase(to.getScheme()));
+    }
+
+    /** Same scheme, host and effective port — the boundary a credential is scoped to. */
+    static boolean sameOrigin(URI a, URI b) {
+        return a.getScheme() != null
+                && a.getScheme().equalsIgnoreCase(b.getScheme())
+                && a.getHost() != null
+                && a.getHost().equalsIgnoreCase(b.getHost())
+                && effectivePort(a) == effectivePort(b);
+    }
+
+    private static int effectivePort(URI uri) {
+        if (uri.getPort() != -1) return uri.getPort();
+        return "https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80;
+    }
+
+    /**
+     * The request re-aimed at {@code target}: every header when the origin is unchanged, everything
+     * but {@link #CREDENTIAL_HEADERS} when it is not. Method and body are the caller's to decide.
+     */
+    private static HttpRequest.Builder reissue(HttpRequest request, URI target) {
+        boolean sameOrigin = sameOrigin(request.uri(), target);
+        return HttpRequest.newBuilder(
+                        request,
+                        (name, value) -> sameOrigin || !CREDENTIAL_HEADERS.contains(name.toLowerCase(Locale.ROOT)))
+                .uri(target);
+    }
+
+    /**
+     * The next hop of a redirect chain. A 303, or a 301/302 answering a POST, turns into a GET
+     * without the body — what browsers do and what the servers sending those statuses expect;
+     * 307 and 308 keep the method and body.
+     */
+    private static HttpRequest redirected(HttpRequest request, int status, URI target) {
+        HttpRequest.Builder next = reissue(request, target);
+        if (status == 303 || ((status == 301 || status == 302) && "POST".equals(request.method()))) {
+            next.GET();
+        }
+        return next.build();
     }
 
     private static long jittered(Duration base) {

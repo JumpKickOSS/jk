@@ -10,4 +10,5 @@ description = "jk client I/O: plain-JDK HTTP, forge auth, repository credentials
 
 dependencies {
     api(project(":core"))
+    testImplementation(testFixtures(project(":host")))
 }
