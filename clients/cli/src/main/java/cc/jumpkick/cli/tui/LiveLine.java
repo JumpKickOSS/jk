@@ -18,15 +18,15 @@ import org.jspecify.annotations.Nullable;
  * <p><strong>Why this is a type and not a base class or a copy.</strong> Every one of these steps is
  * easy to get individually right and easy to get collectively wrong, and the failure is invisible
  * until it is on someone's screen: forget the clip and {@code \r} rewinds the wrong physical row so
- * frames stack; forget {@code ERASE_LINE_TO_END} and the previous frame's tail survives
- * under the new one; forget {@link Ansi#SHOW_CURSOR} on the cancel path and the user's terminal is
- * left with no cursor; check {@code silent} before running the caller's teardown and a
- * {@code --no-progress} cancel leaks whatever the operation was mid-way through. {@code
- * JdkDownloadBar} had its own copy of all of it and was wrong about the first two.
+ * frames stack; forget {@code ERASE_LINE_TO_END} and the previous frame's tail survives under the
+ * new one; forget {@link Ansi#SHOW_CURSOR} on the cancel path and the user's terminal is left with
+ * no cursor; check {@code silent} before running the caller's teardown and a {@code --no-progress}
+ * cancel leaks whatever the operation was mid-way through.
  *
- * <p>What stays with the caller is the <em>content</em>: a {@link Frame} for the animating row and a
- * settle line for the cancel. Both are already-composed strings, so geometry and chrome keep their
- * own owners — {@link JkWedge#renderLiveLine} clips, {@link Progress} sizes the bar, {@link
+ * <p>What stays with the caller is the <em>content</em>: a {@link Frame} for the animating row, an
+ * optional plain-mode {@linkplain Builder#heartbeat heartbeat}, and a settle line for the cancel.
+ * The row is an already-composed, already-clipped string, so geometry and chrome keep their own
+ * owners — {@link JkWedge#renderLiveLine} clips, {@link Progress} sizes the bar, {@link
  * JkWedge#cancelled} paints the settle — and this type never decides how anything looks.
  *
  * <p>Three states, decided here rather than by each caller, because they are properties of the
@@ -34,11 +34,14 @@ import org.jspecify.annotations.Nullable;
  *
  * <ul>
  * <li><b>silent</b> — {@code --no-progress} or a machine-consumed stdout. Nothing is written but the
- * command envelope; the same rule already governs {@link Spinner}.
+ *     command envelope.
  * <li><b>plain</b> — {@code --no-ansi}. Says what happened, in ASCII chrome, but paints no moving
  *     row: every mechanism a moving row needs is an escape sequence, and writing those into a stream
- * that declared it cannot read them is the invariant broken.
- * <li><b>animating</b> — a real terminal. The full in-place row.
+ *     that declared it cannot read them is the invariant broken. The animator thread still runs,
+ *     and calls the caller's heartbeat instead of painting; the caller decides what a plain
+ *     "still working" looks like and how often to say it.
+ * <li><b>animating</b> — a real terminal. The full in-place row, one frame every {@link
+ *     Spinner#FRAME_MS}, the taskbar told the region's state on every frame.
  * </ul>
  *
  * <p>A silent or plain region still registers as the active {@link LiveRegion} and still runs the
@@ -51,60 +54,102 @@ final class LiveLine implements AutoCloseable, LiveRegion {
         String render(int frame);
     }
 
+    /** Poll interval of the plain-mode heartbeat; the caller's hook decides whether to say anything. */
+    static final long PLAIN_TICK_MS = Math.min(Spinner.FRAME_MS * 10, 5_000L);
+
+    /** Taskbar state before any progress has been reported. */
+    private static final int INDETERMINATE = -1;
+
     private final PrintStream out;
     private final boolean silent;
     private final boolean animate;
     private final Frame frame;
-    private final Runnable onCancel;
-    private final Supplier<String> settleLine;
+    private final @Nullable Runnable heartbeat;
+    private final @Nullable Runnable onCancel;
+    private final @Nullable Supplier<String> settleLine;
 
     private int tick;
+    private int percent = INDETERMINATE;
     private boolean drawn;
     private boolean closed;
     private @Nullable Thread animator;
 
-    private LiveLine(
-            PrintStream out,
-            boolean silent,
-            boolean animate,
-            Frame frame,
-            Runnable onCancel,
-            Supplier<String> settleLine) {
-        this.out = out;
-        this.silent = silent;
-        this.animate = animate;
-        this.frame = frame;
-        this.onCancel = onCancel;
-        this.settleLine = settleLine;
+    private LiveLine(Builder b) {
+        this.out = b.out;
+        this.frame = b.frame;
+        this.heartbeat = b.heartbeat;
+        this.onCancel = b.onCancel;
+        this.settleLine = b.settleLine;
+        this.silent = SessionContext.current().config().noProgressOr(false) || CliOutput.scriptMode();
+        this.animate = !silent && Theme.active().isAnsi();
     }
 
-    /**
-     * Take over one row of {@code out}, animating it when the stream can carry it.
-     *
-     * @param frame the animating row
-     * @param onCancel teardown the caller needs on Ctrl-C, run whether or not anything was painted;
-     *     may be {@code null}
-     * @param settleLine the line to leave behind on Ctrl-C, or {@code null} to just wipe the row
-     */
-    static LiveLine open(PrintStream out, Frame frame, Runnable onCancel, Supplier<String> settleLine) {
-        boolean silent = SessionContext.current().config().noProgressOr(false) || CliOutput.scriptMode();
-        // Plain is not the same as silent, and neither is the same as animating. --no-ansi still
-        // says what happened; it just may not paint a moving row, because every mechanism a moving
-        // row needs — hide the cursor, erase to end of line, drive the OS taskbar — is an escape
-        // sequence, and writing those into a stream that declared it cannot read them is the
-        // invariant broken. JdkDownloadBar emitted all three under --no-ansi until a test
-        // asked; Spinner had always split the two.
-        boolean animate = !silent && Theme.active().isAnsi();
-        LiveLine line = new LiveLine(out, silent, animate, frame, onCancel, settleLine);
-        // Leading blank of the human chrome envelope (idempotent per command).
-        CommandWedge.envelopeStart(out);
-        LiveRegion.setActive(line);
-        if (animate) {
-            out.print(Ansi.HIDE_CURSOR);
-            out.flush();
-            line.startAnimator();
+    /** Describe a region over one row of {@code out}; {@link Builder#open()} takes the row. */
+    static Builder of(PrintStream out, Frame frame) {
+        return new Builder(out, frame);
+    }
+
+    /** What a caller may add to a region before opening it; every part is optional. */
+    static final class Builder {
+        private final PrintStream out;
+        private final Frame frame;
+        private @Nullable Runnable heartbeat;
+        private @Nullable Runnable onCancel;
+        private @Nullable Supplier<String> settleLine;
+
+        private Builder(PrintStream out, Frame frame) {
+            this.out = out;
+            this.frame = frame;
         }
-        return line;
+
+        /**
+         * Called every {@link #PLAIN_TICK_MS} in plain mode instead of painting a frame; the hook
+         * owns its own cadence. Never called when silent or animating.
+         */
+        Builder heartbeat(Runnable heartbeat) {
+            this.heartbeat = heartbeat;
+            return this;
+        }
+
+        /** Teardown the caller needs on Ctrl-C, run whether or not anything was painted. */
+        Builder onCancel(Runnable onCancel) {
+            this.onCancel = onCancel;
+            return this;
+        }
+
+        /** The line to leave behind on Ctrl-C; without one the row is wiped and nothing replaces it. */
+        Builder settle(Supplier<String> settleLine) {
+            this.settleLine = settleLine;
+            return this;
+        }
+
+        /**
+         * Take over the row: open the envelope, register for Ctrl-C, and — when the stream can carry
+         * it — hide the cursor, tell the taskbar, and start the animator.
+         */
+        LiveLine open() {
+            LiveLine line = new LiveLine(this);
+            // Leading blank of the human chrome envelope (idempotent per command).
+            CommandWedge.envelopeStart(out);
+            LiveRegion.setActive(line);
+            if (line.animate) {
+                out.print(Ansi.HIDE_CURSOR);
+                out.print(line.taskbar());
+                out.flush();
+            }
+            line.startAnimator();
+            return line;
+        }
+
+        /**
+         * The region without the terminal: registered for Ctrl-C, nothing written, no animator. The
+         * owner drives it through {@link #step()} and {@link #finish()}. A test seam.
+         */
+        LiveLine still() {
+            LiveLine line = new LiveLine(this);
+            LiveRegion.setActive(line);
+            return line;
+        }
     }
 
     /** Whether a moving row is being painted; callers skip work they would only paint. */
@@ -112,26 +157,49 @@ final class LiveLine implements AutoCloseable, LiveRegion {
         return animate;
     }
 
+    /** Whether this region says what happened in ASCII lines: not silent, not animating. */
+    boolean plain() {
+        return !silent && !animate;
+    }
+
     /** Drive the OS taskbar to {@code percent} (0–100). No-op unless animating. */
     synchronized void progress(int percent) {
+        this.percent = Math.max(0, Math.min(100, percent));
         if (closed || !animate) return;
-        out.print(Osc.taskbarProgress(Math.max(0, Math.min(100, percent))));
+        out.print(taskbar());
+    }
+
+    /**
+     * One beat of the region, as the animator would take it: paint the next frame when animating,
+     * run the heartbeat when plain, nothing when silent or finished.
+     */
+    synchronized void step() {
+        if (closed) return;
+        if (animate) {
+            repaint();
+            tick = (tick + 1) % Spinner.PULSE_FRAMES;
+        } else if (heartbeat != null && !silent) {
+            heartbeat.run();
+        }
     }
 
     /**
      * Wipe the row and give the cursor back. The caller prints its own result line afterwards, which
      * takes the cleared row's place on screen.
+     *
+     * @return {@code true} when this call closed the region; {@code false} when it was already closed
      */
-    synchronized void finish() {
-        if (closed) return;
+    synchronized boolean finish() {
+        if (closed) return false;
         closed = true;
         stopAnimator();
         LiveRegion.clearActive(this);
-        if (!animate) return;
+        if (!animate) return true;
         if (drawn) out.print(Ansi.CLEAR_LINE);
         out.print(Osc.taskbarClear());
         out.print(Ansi.SHOW_CURSOR);
         out.flush();
+        return true;
     }
 
     @Override
@@ -165,21 +233,19 @@ final class LiveLine implements AutoCloseable, LiveRegion {
         return settle != null;
     }
 
+    /** The animator: frames when animating, heartbeats when plain, no thread at all when silent. */
     private void startAnimator() {
+        if (silent || (!animate && heartbeat == null)) return;
+        long interval = animate ? Spinner.FRAME_MS : PLAIN_TICK_MS;
         animator = new Thread(
                 () -> {
                     while (!closed) {
                         try {
-                            Thread.sleep(Spinner.FRAME_MS);
+                            Thread.sleep(interval);
                         } catch (InterruptedException e) {
                             break;
                         }
-                        synchronized (this) {
-                            if (!closed) {
-                                repaint();
-                                tick = (tick + 1) % Spinner.PULSE_FRAMES;
-                            }
-                        }
+                        step();
                     }
                 },
                 "jk-live-line");
@@ -195,10 +261,16 @@ final class LiveLine implements AutoCloseable, LiveRegion {
     }
 
     private void repaint() {
+        out.print(taskbar());
         out.print("\r");
         out.print(frame.render(tick));
         out.print(Ansi.ERASE_LINE_TO_END);
         out.flush();
         drawn = true;
+    }
+
+    /** The taskbar told what the region knows: a percentage once one was reported, busy until then. */
+    private String taskbar() {
+        return percent == INDETERMINATE ? Osc.taskbarIndeterminate() : Osc.taskbarProgress(percent);
     }
 }

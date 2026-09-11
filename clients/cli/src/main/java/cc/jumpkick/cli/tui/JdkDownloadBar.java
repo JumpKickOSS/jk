@@ -36,7 +36,10 @@ public final class JdkDownloadBar implements AutoCloseable {
         this.displayName = displayName;
         this.nerdFont = GlobalConfig.nerdFont();
         this.installing = installing;
-        this.line = LiveLine.open(out, this::frame, JdkInstaller::reapInFlight, this::cancelledLine);
+        this.line = LiveLine.of(out, this::frame)
+                .onCancel(JdkInstaller::reapInFlight)
+                .settle(this::cancelledLine)
+                .open();
     }
 
     /**

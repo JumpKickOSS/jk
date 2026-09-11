@@ -10,10 +10,12 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.NerdFontCaps;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.terminal.Ansi;
+import cc.jumpkick.testing.FakeClock;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
-import java.util.concurrent.atomic.AtomicLong;
+import java.time.Duration;
 import org.junit.jupiter.api.Test;
 
 class SpinnerTest {
@@ -84,11 +86,10 @@ class SpinnerTest {
     }
 
     @Test
-    void shrinking_message_pads_only_the_removed_tail_in_ansi() throws Exception {
+    void shrinking_message_erases_the_removed_tail_in_ansi() throws Exception {
         NoAnsi.forcedAnsi(() -> {
             String longMsg = "downloading temurin-25.tar.gz";
             String shortMsg = "done";
-            int expectedShrink = longMsg.length() - shortMsg.length();
 
             var buf = new ByteArrayOutputStream();
             var s = new Spinner(stream(buf), longMsg);
@@ -96,14 +97,12 @@ class SpinnerTest {
             s.update(shortMsg);
             buf.reset();
             s.step();
-            String visible = TestAnsi.strip(buf.toString(StandardCharsets.UTF_8));
-            int idx = visible.indexOf(shortMsg);
-            assertThat(idx).isGreaterThanOrEqualTo(0);
-            long spaces = visible.substring(idx + shortMsg.length())
-                    .chars()
-                    .takeWhile(c -> c == ' ')
-                    .count();
-            assertThat(spaces).isEqualTo(expectedShrink);
+            // The frame is rewound with \r and the old tail is erased to the end of the row, so the
+            // shorter message needs no padding of its own.
+            String raw = buf.toString(StandardCharsets.UTF_8);
+            assertThat(raw).startsWith(Ansi.taskbarIndeterminate() + "\r");
+            assertThat(raw).endsWith(shortMsg + Ansi.ERASE_LINE_TO_END);
+            assertThat(TestAnsi.strip(raw)).doesNotContain(shortMsg + " ");
             return null;
         });
     }
@@ -329,17 +328,17 @@ class SpinnerTest {
     void plain_heartbeat_only_after_60s() throws Exception {
         NoAnsi.forced(() -> {
             var buf = new ByteArrayOutputStream();
-            var clock = new AtomicLong(1_000L);
+            var clock = new FakeClock();
             var s = Spinner.wedge(stream(buf), "Format", "Examining");
-            s.clockForTests(clock::get);
+            s.clockForTests(clock);
             s.step(); // start
             assertThat(countOccurrences(buf.toString(StandardCharsets.UTF_8), "working..."))
                     .isEqualTo(1);
-            clock.addAndGet(30_000L);
+            clock.advance(Duration.ofSeconds(30));
             s.step(); // still within 60s — no second line
             assertThat(countOccurrences(buf.toString(StandardCharsets.UTF_8), "working..."))
                     .isEqualTo(1);
-            clock.addAndGet(30_000L); // total +60s
+            clock.advance(Duration.ofSeconds(30)); // total +60s
             s.step();
             assertThat(countOccurrences(buf.toString(StandardCharsets.UTF_8), "working..."))
                     .isEqualTo(2);
