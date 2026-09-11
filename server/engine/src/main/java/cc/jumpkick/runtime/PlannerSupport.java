@@ -38,6 +38,7 @@ import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.plugin.manifest.PluginModule;
+import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.runtime.base.CompileSupport;
@@ -46,14 +47,17 @@ import cc.jumpkick.runtime.base.GroovyPluginSetup;
 import cc.jumpkick.runtime.base.GroovyToolResolver;
 import cc.jumpkick.runtime.base.KotlinPluginSetup;
 import cc.jumpkick.runtime.base.Perf;
+import cc.jumpkick.runtime.base.TestEnv;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.TestStamp;
+import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.TestHomes;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -63,6 +67,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
@@ -437,13 +442,14 @@ public final class PlannerSupport {
         if (modules.isEmpty()) return props;
         Map<String, Path> jarByModule = siblingMainJars(moduleDir);
         for (String module : modules) {
-            // Accept short names (test-runner), artifact ids (jk-test-runner), or either already.
-            var wj = PluginJar.byArtifactId(module);
-            if (wj.isEmpty()) wj = PluginJar.byArtifactId("jk-" + module);
+            // Accept short names (test-runner), artifact ids (jk-test-runner), or a group:artifact
+            // coordinate. A rule pack listed here is not a worker; it is staged by stageSiblingRulePacks.
+            var wj = workerFor(module);
             if (wj.isEmpty()) continue;
-            Path jar = jarByModule.get(module);
-            if (jar == null) jar = jarByModule.get(wj.get().artifactId());
-            if (jar == null && module.startsWith("jk-")) jar = jarByModule.get(module.substring(3));
+            // The worker's own artifact id first: a sibling that merely shares a short name (a rule
+            // pack called quarkus beside the jk-quarkus worker) must not answer for it.
+            Path jar = jarByModule.get(wj.get().artifactId());
+            if (jar == null) jar = jarByModule.get(module);
             if (jar != null && Files.exists(jar)) {
                 props.put(wj.get().jarProperty(), jar.toAbsolutePath().toString());
             } else {
@@ -454,6 +460,106 @@ public final class PlannerSupport {
             }
         }
         return props;
+    }
+
+    /**
+     * Stage into the module's sandbox store every {@code test-plugin-jars} entry that is a workspace
+     * sibling but not a worker — a first-party rule pack the module's tests lock scaffolds against.
+     * A project's lock finds a first-party pack in the store's {@code jk-local} shelf before it asks
+     * any repository, so this is what makes an unpublished pack resolvable under the sandbox home
+     * {@code testEnv} points at. Nothing to do for a module outside a workspace.
+     */
+    static void stageSiblingRulePacks(Path moduleDir, JkBuild project, Map<String, String> testEnv) throws IOException {
+        List<String> entries = project.build().testPluginJars();
+        if (entries.isEmpty() || !testEnv.containsKey(TestEnv.JK_HOME)) return;
+        Map<String, JkBuild> siblings = siblingManifests(moduleDir);
+        if (siblings.isEmpty()) return;
+        Path store = JkDirs.of(testEnv::get, System.getProperty("user.home")).storeDir();
+        for (String entry : entries) {
+            if (workerFor(entry).isPresent()) continue;
+            JkBuild sibling = siblings.get(entry);
+            if (sibling == null) continue;
+            var proj = sibling.project();
+            Path jar = BuildLayout.of(siblingDir(moduleDir, sibling), sibling).mainJar();
+            if (!Files.isRegularFile(jar)) continue;
+            Path shelf = store.resolve("repos")
+                    .resolve(RepoArtifactResolver.JK_LOCAL)
+                    .resolve(proj.group().replace('.', '/'))
+                    .resolve(proj.name())
+                    .resolve(proj.version());
+            Path staged = shelf.resolve(proj.name() + "-" + proj.version() + ".jar");
+            if (Files.isRegularFile(staged)
+                    && Files.size(staged) == Files.size(jar)
+                    && Files.getLastModifiedTime(staged).compareTo(Files.getLastModifiedTime(jar)) >= 0) {
+                continue;
+            }
+            Files.createDirectories(shelf);
+            Files.copy(jar, staged, StandardCopyOption.REPLACE_EXISTING);
+        }
+    }
+
+    /**
+     * The first-party worker a {@code test-plugin-jars} entry names: a short name ({@code
+     * test-runner}), an artifact id ({@code jk-test-runner}) or a coordinate ({@code
+     * cc.jumpkick:jk-test-runner}). Only an unqualified short name is widened with {@code jk-}: a
+     * coordinate in another group ({@code cc.jumpkick.guards:quarkus}) is not the worker that
+     * happens to share its short name.
+     */
+    private static Optional<PluginJar> workerFor(String entry) {
+        int colon = entry.indexOf(':');
+        if (colon >= 0) {
+            String group = entry.substring(0, colon);
+            String artifact = entry.substring(colon + 1);
+            if (!PluginJar.GROUP.equals(group)) return Optional.empty();
+            return PluginJar.byArtifactId(artifact);
+        }
+        var wj = PluginJar.byArtifactId(entry);
+        return wj.isPresent() ? wj : PluginJar.byArtifactId("jk-" + entry);
+    }
+
+    /** Workspace siblings' manifests, keyed by project name and by {@code group:name}. */
+    private static Map<String, JkBuild> siblingManifests(Path moduleDir) throws IOException {
+        Map<String, JkBuild> out = new LinkedHashMap<>();
+        var rootOpt = WorkspaceLocator.findRoot(moduleDir);
+        if (rootOpt.isEmpty()) return out;
+        Path root = rootOpt.get();
+        JkBuild rootManifest = JkBuildParser.parse(root.resolve(ManifestPaths.MANIFEST));
+        if (!rootManifest.isWorkspaceRoot()) return out;
+        for (String module : rootManifest.workspaceModules()) {
+            Path manifest = root.resolve(module).resolve(ManifestPaths.MANIFEST);
+            if (!Files.exists(manifest)) continue;
+            JkBuild sib;
+            try {
+                sib = JkBuildParser.parse(manifest);
+            } catch (IOException | RuntimeException ignored) {
+                continue;
+            }
+            out.put(sib.project().name(), sib);
+            out.put(sib.project().group() + ":" + sib.project().name(), sib);
+        }
+        return out;
+    }
+
+    /** The directory a sibling manifest was parsed from, found again by its declared module path. */
+    private static Path siblingDir(Path moduleDir, JkBuild sibling) throws IOException {
+        Path root = WorkspaceLocator.findRoot(moduleDir).orElseThrow();
+        JkBuild rootManifest = JkBuildParser.parse(root.resolve(ManifestPaths.MANIFEST));
+        for (String module : rootManifest.workspaceModules()) {
+            Path dir = root.resolve(module);
+            Path manifest = dir.resolve(ManifestPaths.MANIFEST);
+            if (!Files.exists(manifest)) continue;
+            try {
+                JkBuild sib = JkBuildParser.parse(manifest);
+                if (sib.project().group().equals(sibling.project().group())
+                        && sib.project().name().equals(sibling.project().name())) {
+                    return dir;
+                }
+            } catch (IOException | RuntimeException ignored) {
+                // an unparsable sibling cannot be the one already parsed
+            }
+        }
+        throw new IOException("workspace module for " + sibling.project().group() + ":"
+                + sibling.project().name() + " is no longer listed at " + root);
     }
 
     /**

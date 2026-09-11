@@ -59,7 +59,10 @@ public enum PluginJar {
         this.installTask = installTask;
     }
 
-    /** Maven artifactId the plugin publishes under (group is always {@code cc.jumpkick}). */
+    /** The group every first-party worker publishes under. */
+    public static final String GROUP = "cc.jumpkick";
+
+    /** Maven artifactId the plugin publishes under (group is always {@link #GROUP}). */
     public String artifactId() {
         return artifactId;
     }

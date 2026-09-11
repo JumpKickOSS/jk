@@ -539,6 +539,7 @@ public final class PlannerTest {
         if (needsNestedEngineIsolation(projectUnderTest)) {
             testEnv.putAll(nestedEngineTestEnv(in.dir()));
         }
+        PlannerSupport.stageSiblingRulePacks(in.dir(), projectUnderTest, testEnv);
         return testEnv;
     }
 

@@ -52,13 +52,18 @@ test-plugin-jars = [
   "kotlin-compiler",
   "auditor",
   "spring-boot",
-  "android",
+  "cc.jumpkick:jk-android",
   "protobuf",
   "minified",
   "grails",
   "groovy-compiler",
-  "quarkus",
+  "cc.jumpkick:jk-quarkus",
   "micronaut",
+  # Rule packs the shipped templates declare: staged into the test sandbox store, where a
+  # scaffolded project's lock looks for a first-party pack.
+  "cc.jumpkick.guards:spring",
+  "cc.jumpkick.guards:quarkus",
+  "cc.jumpkick.guards:android",
 ]
 
 [test]

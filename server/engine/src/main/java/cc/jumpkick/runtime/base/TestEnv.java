@@ -37,7 +37,7 @@ import org.jspecify.annotations.Nullable;
 public final class TestEnv {
 
     /** Product single-tree umbrella (config, cache, store, state, …). */
-    static final String JK_HOME = "JK_HOME";
+    public static final String JK_HOME = "JK_HOME";
 
     /** Managed JDK write root — not relocated by {@code JK_HOME} alone. */
     static final String JK_JDKS_DIR = "JK_JDKS_DIR";
