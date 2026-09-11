@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="acme-app" type="Application" factoryName="Application">
+    <option name="MAIN_CLASS_NAME" value="com.acme.app.Main" />
+    <module name="acme-app" />
+    <method v="2">
+      <option name="Make" enabled="true" />
+    </method>
+  </configuration>
+</component>

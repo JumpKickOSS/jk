@@ -1,0 +1,23 @@
+{
+  "editor.semanticHighlighting.enabled": true,
+  "java.jdt.ls.java.home": "${WS}/jdks/temurin-25",
+  "java.configuration.runtimes": [
+    {
+      "name": "JavaSE-17",
+      "path": "${WS}/jdks/temurin-17"
+    },
+    {
+      "name": "JavaSE-25",
+      "path": "${WS}/jdks/temurin-25",
+      "default": true
+    }
+  ],
+  "java.import.maven.enabled": false,
+  "java.import.gradle.enabled": false,
+  "java.server.launchMode": "Standard",
+  "java.autobuild.enabled": true,
+  "java.completion.guessMethodArguments": "insertBestGuessedArguments",
+  "java.inlayHints.parameterNames.enabled": "all",
+  "java.compile.nullAnalysis.mode": "automatic",
+  "java.jdt.ls.vmargs": "-XX:+UseParallelGC -XX:GCTimeRatio=4 -XX:AdaptiveSizePolicyWeight=90 -Dsun.zip.disableMemoryMapping=true -Xmx2G -Xms100m"
+}

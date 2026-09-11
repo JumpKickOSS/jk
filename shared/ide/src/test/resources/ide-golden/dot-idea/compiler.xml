@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="CompilerConfiguration">
+    <bytecodeTargetLevel>
+      <module name="acme-core" targetLevel="17" />
+      <module name="acme-app" targetLevel="25" />
+    </bytecodeTargetLevel>
+    <annotationProcessing>
+      <profile name="jk-acme-app" enabled="true">
+        <sourceOutputDir name="target/generated-sources/annotations" />
+        <sourceTestOutputDir name="target/generated-sources/annotations-test" />
+        <outputRelativeToContentRoot value="true" />
+        <module name="acme-app" />
+        <processorPath useClasspath="false">
+          <entry name="jar://${WS}/store/org/projectlombok/lombok/1.18.40/lombok-1.18.40.jar!/" />
+        </processorPath>
+      </profile>
+    </annotationProcessing>
+  </component>
+</project>

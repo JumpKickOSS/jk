@@ -1,0 +1,12 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "java",
+      "name": "acme-app",
+      "request": "launch",
+      "mainClass": "com.acme.app.Main",
+      "projectName": "acme-app"
+    }
+  ]
+}
