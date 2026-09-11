@@ -2,7 +2,6 @@
 package cc.jumpkick.runtime;
 
 import static cc.jumpkick.runtime.BuildPlanner.*;
-import static cc.jumpkick.runtime.PlannerSupport.copyResources;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.BuildLogicToml;
@@ -18,6 +17,7 @@ import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.BuildLogicAnchor;
+import cc.jumpkick.runtime.base.ResourceMirror;
 import cc.jumpkick.task.ActionCache;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -80,9 +80,15 @@ public final class PlannerResources {
                         Files.deleteIfExists(classes.resolve(ManifestPaths.PLUGIN_MANIFEST));
                     }
                     boolean copied = false;
+                    // Mirrored through a ledger even when no root is left: the copy of a resource
+                    // deleted since the last build is removed before anything is copied.
+                    Path ledger = ctx.require(LAYOUT)
+                            .buildDir()
+                            .resolve("incremental")
+                            .resolve(ResourceMirror.LEDGER);
                     if (!resDirs.isEmpty() || ownManifest) {
                         ctx.label("copy resources");
-                        for (Path dir : resDirs) copyResources(dir, classes);
+                        ResourceMirror.sync(resDirs, classes, ledger);
                         if (ownManifest) {
                             Files.copy(
                                     pluginManifest,
@@ -91,6 +97,7 @@ public final class PlannerResources {
                         }
                         copied = true;
                     } else {
+                        ResourceMirror.sync(List.of(), classes, ledger);
                         ctx.label("no static resources");
                     }
                     // Test-classpath fixtures must not ride main classes into the jar. Leftover

@@ -325,6 +325,7 @@ public final class PlannerSupport {
      * <p>{@link PathUtil#copyTree} skips byte-identical files so mtimes stay put: {@code
      * mainStampClasspath} feeds those dirs to {@code FreshnessStamp}, which compares by mtime.
      */
+    /** Merge one compiled-output tree ({@code kotlin}, {@code groovy}) into the main classes tree. */
     static void copyResources(Path resourceDir, Path classesDir) throws IOException {
         PathUtil.copyTree(resourceDir, classesDir);
     }
