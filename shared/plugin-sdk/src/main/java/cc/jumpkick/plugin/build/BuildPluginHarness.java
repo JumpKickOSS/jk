@@ -332,16 +332,15 @@ public final class BuildPluginHarness {
 
             for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
                 if (line.isBlank()) continue;
-                switch (String.valueOf(Jsonl.str(line, "t"))) {
+                String t = String.valueOf(Jsonl.str(line, "t"));
+                switch (t) {
                     case "op" -> {
                         op = required(Jsonl.str(line, "op"), "op.op");
                         stepName = Jsonl.str(line, PluginProtocol.NAME);
                         pluginId = required(Jsonl.str(line, "plugin"), "op.plugin");
                     }
-                    case "config" -> {
-                        @Nullable Object value = configValue(line);
-                        if (value != null) configValues.put(required(Jsonl.str(line, "key"), "config.key"), value);
-                    }
+                    case "config" ->
+                        configValues.put(required(Jsonl.str(line, "key"), "config.key"), configValue(line));
                     case "project" -> {
                         group = required(Jsonl.str(line, "group"), "project.group");
                         name = required(Jsonl.str(line, "name"), "project.name");
@@ -381,9 +380,7 @@ public final class BuildPluginHarness {
                                 required(Jsonl.str(line, "key"), "secret.key"),
                                 required(Jsonl.str(line, "value"), "secret.value"));
                     case PluginProtocol.OFFLINE -> offline = Jsonl.bool(line, PluginProtocol.VALUE, true);
-                    default -> {
-                        // unknown line — forward compatibility
-                    }
+                    default -> throw new IOException("spec line kind `" + t + "` is not one this harness reads");
                 }
             }
             PluginConfig config = new PluginConfig(pluginId, configValues);
@@ -408,14 +405,15 @@ public final class BuildPluginHarness {
                     offline);
         }
 
-        /** A {@code config} line's typed value, or null for a kind this harness does not know (forward compatibility). */
-        private static @Nullable Object configValue(String line) {
-            return switch (String.valueOf(Jsonl.str(line, "kind"))) {
+        /** A {@code config} line's typed value. */
+        private static Object configValue(String line) throws IOException {
+            String kind = String.valueOf(Jsonl.str(line, "kind"));
+            return switch (kind) {
                 case "string" -> required(Jsonl.str(line, "value"), "config.value");
                 case "bool" -> Jsonl.bool(line, "value", false);
                 case "int" -> Jsonl.longValue(line, "value", 0);
                 case "list" -> Jsonl.strArray(line, "values");
-                default -> null;
+                default -> throw new IOException("config kind `" + kind + "` is not one this harness reads");
             };
         }
 
