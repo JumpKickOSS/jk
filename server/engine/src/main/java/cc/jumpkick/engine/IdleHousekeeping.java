@@ -6,6 +6,7 @@ import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.verbs.CacheMaintenanceLocks;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.resolve.ResolveProcessCacheControl;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
@@ -20,6 +21,7 @@ import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -32,17 +34,21 @@ import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Idle-boundary chores: cache prune, journal/metrics retention, host warmup, trailing GC.
- * Exactly-once at the build boundary; GC is always last.
+ * Idle-boundary chores: cache prune, journal/metrics/heap-dump retention, host warmup, trailing
+ * GC. Exactly-once at the build boundary; GC is always last.
  */
 @RequiredArgsConstructor
 public final class IdleHousekeeping {
+
+    /** How long an OutOfMemoryError heap dump stays beside the engine log before the boundary deletes it. */
+    static final Duration HEAP_DUMP_RETENTION = Duration.ofDays(7);
 
     private final AtomicInteger activeBuildPlans;
     private final ReentrantReadWriteLock cacheGate;
     private final JkHistoryConfig historyConfig;
     private final BuildJournal journal;
     private final Supplier<Path> metricsFile;
+    private final Path engineDir;
     private final LongSupplier clock;
     private final Consumer<String> log;
     private final BooleanSupplier shuttingDown;
@@ -82,6 +88,7 @@ public final class IdleHousekeeping {
             drainPendingPrune();
             pruneJournal();
             pruneMetrics();
+            pruneHeapDumps();
             try {
                 MetricsHarvest.get().awaitIdle(30_000L);
             } catch (RuntimeException ignored) {
@@ -250,6 +257,33 @@ public final class IdleHousekeeping {
         } catch (RuntimeException e) {
             log.accept("jk engine: build metrics prune failed: " + e.getMessage());
         }
+    }
+
+    private void pruneHeapDumps() {
+        try {
+            int removed = pruneHeapDumps(engineDir, clock.getAsLong());
+            if (removed > 0)
+                log.accept("jk engine: removed " + removed + " heap dump(s) older than " + HEAP_DUMP_RETENTION.toDays()
+                        + " days");
+        } catch (IOException | RuntimeException e) {
+            log.accept("jk engine: heap dump prune failed: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Delete every {@code .hprof} under {@code engineDir} last modified before the retention
+     * window. The dump is the post-mortem the next client points at, so it is kept long enough to
+     * be looked at, and no longer — a dump is as large as the heap cap.
+     */
+    static int pruneHeapDumps(Path engineDir, long nowMillis) throws IOException {
+        long cutoff = nowMillis - HEAP_DUMP_RETENTION.toMillis();
+        int[] removed = {0};
+        // Dumps live flat in the engine dir; nothing below it is walked.
+        PathUtil.forEachRegularFile(engineDir, dir -> !dir.equals(engineDir), (file, attrs) -> {
+            if (!file.getFileName().toString().endsWith(".hprof")) return;
+            if (attrs.lastModifiedTime().toMillis() < cutoff && Files.deleteIfExists(file)) removed[0]++;
+        });
+        return removed[0];
     }
 
     /**

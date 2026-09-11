@@ -72,6 +72,7 @@ class IdleHousekeepingNukedCacheTest {
                 new JkHistoryConfig(false, 30, 512),
                 null,
                 () -> cache.resolveSibling(cache.getFileName() + "-metrics.jsonl"),
+                cache.resolveSibling("engine"),
                 System::currentTimeMillis,
                 log::add,
                 () -> false,

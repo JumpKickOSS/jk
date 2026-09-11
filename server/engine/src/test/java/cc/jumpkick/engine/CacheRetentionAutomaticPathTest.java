@@ -75,6 +75,7 @@ class CacheRetentionAutomaticPathTest {
                 new JkHistoryConfig(false, 30, 512),
                 null,
                 () -> cache.resolve("metrics.jsonl"),
+                cache.resolveSibling("engine"),
                 System::currentTimeMillis,
                 log::add,
                 () -> false,

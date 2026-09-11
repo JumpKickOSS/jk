@@ -332,6 +332,7 @@ public final class EngineServer implements AutoCloseable {
                 historyConfig,
                 journal,
                 () -> metricsFile,
+                paths.dir(),
                 clockMillis,
                 this.log,
                 () -> shuttingDown,

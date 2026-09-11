@@ -70,6 +70,17 @@ existing `.aot` caches). Worker AOT is HotSpot 25+ only. Warmup details:
 [contributor warmup](../contributors/install-optimize.md). Heap vs VFS:
 [per-job VFS](../contributors/vfs.md).
 
+### Out of memory
+
+The engine runs under its `max-heap-mb` cap with `-XX:+ExitOnOutOfMemoryError` and
+`-XX:+HeapDumpOnOutOfMemoryError`. The first `OutOfMemoryError` writes a heap dump to
+`~/.jk/state/engine/<key>.hprof` (beside the engine log) and ends the process; the next
+`jk` command starts a fresh engine and prints one line naming the dump. `jk engine status`
+and `jk doctor` show the dump while it exists; the engine deletes dumps older than seven
+days between builds. Raise `[engine] max-heap-mb` (or `JK_ENGINE_MAX_HEAP_MB`) and run
+`jk engine stop` to apply it, or shrink what the engine holds with `jk cache prune`. Open
+the `.hprof` with any Java heap analyser.
+
 ### Process environment
 
 These are not `[engine]` keys. They configure how the engine process is spawned or how
