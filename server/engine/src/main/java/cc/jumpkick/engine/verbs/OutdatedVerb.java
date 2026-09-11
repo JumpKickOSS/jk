@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.verbs;
 
-import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
@@ -11,6 +10,7 @@ import cc.jumpkick.runtime.workspace.OutdatedPlans;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.OutdatedReport;
 import cc.jumpkick.wire.protocol.OutdatedRequest;
+import cc.jumpkick.wire.protocol.ProtoSession;
 import java.io.BufferedWriter;
 import java.net.URI;
 import java.nio.file.Path;
@@ -53,11 +53,7 @@ public final class OutdatedVerb implements HostedVerb {
                 Path dir = Path.of(req.dir());
                 Path cache = Path.of(req.cache());
                 String repoUrl = req.repoUrl();
-                JkConfig config = JkConfig.empty().withOffline(req.offline()).withForce(req.force());
-                Session session = Session.defaults()
-                        .withConfig(config)
-                        .withWorkingDir(dir)
-                        .withCacheDir(cache);
+                Session session = ProtoSession.sessionOf(requestLine, cancelToken);
                 report = SessionContext.where(
                         session, () -> OutdatedPlans.compute(dir, cache, repoUrl == null ? null : URI.create(repoUrl)));
             } catch (Exception e) {

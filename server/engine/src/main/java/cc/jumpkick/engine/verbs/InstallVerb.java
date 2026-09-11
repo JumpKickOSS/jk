@@ -70,7 +70,7 @@ public final class InstallVerb implements HostedVerb {
         try {
             try {
                 InstallRequest body = InstallRequest.decode(requestLine);
-                Session session = host.resolveSession(requestLine, cancelToken, false);
+                Session session = ProtoSession.sessionOf(requestLine, cancelToken);
                 String dir = EngineProtocol.SINGLE_PLAN_DIR;
                 // Constructed in-session — see runImage's note on ambient-session capture.
                 BuildPlan plan = SessionContext.where(

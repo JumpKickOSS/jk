@@ -104,7 +104,7 @@ public final class FormatVerb implements HostedVerb {
         try {
             try {
                 FormatRequest body = FormatRequest.decode(requestLine);
-                Session session = host.resolveSession(requestLine, cancelToken, false);
+                Session session = ProtoSession.sessionOf(requestLine, cancelToken);
                 String dir = EngineProtocol.SINGLE_PLAN_DIR;
                 BuildPlan plan = FormatPlans.formatBuildPlan(
                         session.workingDir(),

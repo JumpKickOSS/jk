@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.config.SecretRedactor;
-import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.api.WireWriter;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.journal.BuildAccumulator;
@@ -279,11 +278,6 @@ class WorkspaceBuildFinishTest {
         @Override
         public String requestFailedLine(String dir, Throwable e) {
             return "{\"type\":\"request-failed\"}";
-        }
-
-        @Override
-        public Session resolveSession(String requestLine, Session.CancelToken cancel, boolean refresh) {
-            return Session.defaults().withCancel(cancel);
         }
 
         @Override

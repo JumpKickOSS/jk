@@ -103,8 +103,6 @@ public interface VerbHost {
 
     void publishRequestError(long rid, @Nullable String dir, String message);
 
-    Session resolveSession(String requestLine, Session.CancelToken cancel, boolean refresh);
-
     void maybeEnqueuePrune(Path cache);
 
     /**

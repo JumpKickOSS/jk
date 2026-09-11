@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
-import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.JkHistoryConfig;
-import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.api.InFlightBuilds;
 import cc.jumpkick.engine.api.WireWriter;
 import cc.jumpkick.engine.jobs.JobEnvelope;
@@ -13,13 +11,11 @@ import cc.jumpkick.engine.journal.JournalWriter;
 import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.engine.verbs.VerbHost;
 import cc.jumpkick.host.Errors;
-import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
-import cc.jumpkick.wire.protocol.ProtoSession;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -141,11 +137,6 @@ public final class EngineVerbBridge implements VerbHost {
     }
 
     @Override
-    public Session resolveSession(String requestLine, Session.CancelToken cancel, boolean refresh) {
-        return resolve(requestLine, cancel, refresh);
-    }
-
-    @Override
     public void maybeEnqueuePrune(Path cache) {
         idle.maybeEnqueuePrune(cache);
     }
@@ -193,34 +184,5 @@ public final class EngineVerbBridge implements VerbHost {
     @Override
     public @Nullable Double lastProgress(long requestId) {
         return sessions.lastProgress(requestId);
-    }
-
-    /**
-     * Reconstruct the request's {@link Session} from the flat config fields every lock/sync/update
-     * request carries ({@code offline}/{@code force}/{@code verbose}, plus sync's {@code refresh}).
-     */
-    static Session resolve(String requestLine, Session.CancelToken cancelToken, boolean refresh) {
-        Path entryDir = Path.of(Jsonl.str(requestLine, "dir"));
-        // Read-only verbs need no cache path and send none. Absent means "the engine's own",
-        // which is what Session.defaults() already holds — not a null Path.
-        String cacheStr = Jsonl.str(requestLine, "cache");
-        JkConfig config = JkConfig.empty()
-                .withOffline(Jsonl.bool(requestLine, "offline", false))
-                .withRebuild(Jsonl.bool(requestLine, "rebuild", false))
-                .withVerbose(Jsonl.bool(requestLine, "verbose", false))
-                .withForce(Jsonl.bool(requestLine, "force", false) || refresh);
-        Session base = Session.defaults().withConfig(config).withWorkingDir(entryDir);
-        if (cacheStr != null && !cacheStr.isBlank()) base = base.withCacheDir(Path.of(cacheStr));
-        return base.withCancel(cancelToken)
-                .withJvm(ProtoSession.jvmTuning(requestLine))
-                .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine))
-                // The request's toolchain selection, resolved once for every verb that takes a
-                // session from here. Without it the engine's SWITCH tier is permanently empty and a
-                // resident daemon ignores both --jdk and JK_JDK.
-                .withToolchainSpecs(
-                        ProtoSession.jdkSpecOf(requestLine),
-                        ProtoSession.graalSpecOf(requestLine),
-                        ProtoSession.graalHomeOf(requestLine))
-                .withAssemblyOverride(ProtoSession.assemblyOverrideOf(requestLine));
     }
 }

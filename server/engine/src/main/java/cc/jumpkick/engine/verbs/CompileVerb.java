@@ -123,7 +123,7 @@ public final class CompileVerb implements HostedVerb {
         try {
             try {
                 CompileRequest body = CompileRequest.decode(requestLine);
-                Session session = host.resolveSession(requestLine, cancelToken, false);
+                Session session = ProtoSession.sessionOf(requestLine, cancelToken);
                 Path entryDir = session.workingDir();
                 // Workspace (root or member): the one-orchestrator COMPILE path — compile-only
                 // terminal on the selection, prereqs packaged first via the shared cascade.

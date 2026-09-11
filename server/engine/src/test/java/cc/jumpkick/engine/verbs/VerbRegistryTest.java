@@ -3,7 +3,6 @@ package cc.jumpkick.engine.verbs;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.config.Session;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
@@ -105,11 +104,6 @@ class VerbRegistryTest {
 
         @Override
         public void publishRequestError(long rid, String dir, String message) {}
-
-        @Override
-        public Session resolveSession(String requestLine, Session.CancelToken cancel, boolean refresh) {
-            return Session.defaults().withCancel(cancel);
-        }
 
         @Override
         public void maybeEnqueuePrune(Path cache) {}

@@ -2,14 +2,12 @@
 package cc.jumpkick.engine.verbs;
 
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.jobs.JobSpec;
-import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Exit;
@@ -98,24 +96,7 @@ public final class ImageVerb implements HostedVerb {
                 Path cache = Path.of(body.cache());
                 String jdksDirStr = body.jdksDir();
                 Path jdksDir = jdksDirStr != null ? Path.of(jdksDirStr) : null;
-                JkConfig config = JkConfig.empty()
-                        .withOffline(body.offline())
-                        .withRebuild(Jsonl.bool(requestLine, "rebuild", false))
-                        .withVerbose(body.verbose())
-                        .withForce(body.force());
-                Session session = Session.defaults()
-                        .withConfig(config)
-                        .withWorkingDir(entryDir)
-                        .withCacheDir(cache)
-                        .withJdksDir(jdksDir)
-                        .withCancel(cancelToken)
-                        .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine))
-                        // The request's toolchain selection belongs on it too: without this the SWITCH tier is
-                        // empty and a resident engine ignores both --jdk and JK_JDK.
-                        .withToolchainSpecs(
-                                ProtoSession.jdkSpecOf(requestLine),
-                                ProtoSession.graalSpecOf(requestLine),
-                                ProtoSession.graalHomeOf(requestLine));
+                Session session = ProtoSession.sessionOf(requestLine, cancelToken);
                 var wsRoot = WorkspaceLocator.findRoot(entryDir);
                 if (wsRoot.isPresent()) {
                     JkBuild rootBuild = JkBuildParser.parse(wsRoot.get().resolve(ManifestPaths.MANIFEST));

@@ -13,6 +13,7 @@ import cc.jumpkick.run.Task;
 import cc.jumpkick.runtime.workspace.SyncPlans;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoEvents;
+import cc.jumpkick.wire.protocol.ProtoSession;
 import cc.jumpkick.wire.protocol.SyncRequest;
 import java.io.BufferedWriter;
 import java.net.URI;
@@ -57,8 +58,9 @@ public final class SyncVerb implements HostedVerb {
             boolean refresh = body.refresh();
             String jdksDirStr = body.jdksDir();
             Path jdksDir = jdksDirStr != null ? Path.of(jdksDirStr) : null;
-            Session session =
-                    host.resolveSession(requestLine, cancelToken, refresh).withJdksDir(jdksDir);
+            Session base = ProtoSession.sessionOf(requestLine, cancelToken);
+            // --refresh is sync's spelling of force: re-fetch what the cache already holds.
+            Session session = refresh ? base.withConfig(base.config().withForce(true)) : base;
             URI repoUrl = body.repoUrl() == null ? null : URI.create(body.repoUrl());
             return SessionContext.where(session, () -> {
                 Path entryDir = session.workingDir();

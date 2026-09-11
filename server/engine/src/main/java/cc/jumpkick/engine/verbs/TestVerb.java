@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.verbs;
 
-import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
-import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
@@ -63,9 +61,6 @@ public final class TestVerb implements HostedVerb {
             int workers = body.workers();
             String profile = body.profile();
             boolean verbose = body.verbose();
-            // Default parallel, same as every other surface: a serial default here
-            // put concurrent single-module test jobs behind the process-wide TEST_GATE.
-            boolean parallelTests = body.parallelTests();
 
             Path entryDir = Path.of(entryDirStr);
             Path cache = Path.of(cacheStr);
@@ -78,34 +73,7 @@ public final class TestVerb implements HostedVerb {
             int estimatedTestCount =
                     TestSupport.estimateSelectedSuiteTestCount(entryDir, compactTests, body.selection());
 
-            JkConfig config = JkConfig.empty()
-                    .withOffline(body.offline())
-                    .withRebuild(Jsonl.bool(requestLine, "rebuild", false))
-                    .withVerbose(verbose)
-                    .withForce(body.force());
-            Session session = Session.defaults()
-                    .withConfig(config)
-                    .withWorkingDir(entryDir)
-                    .withCacheDir(cache)
-                    .withJdksDir(jdksDir)
-                    .withCancel(cancelToken)
-                    .withJvm(ProtoSession.jvmTuning(requestLine))
-                    .withParallelTests(parallelTests)
-                    .withRequestedTestWorkers(workers)
-                    .withTestSelection(body.selection())
-                    .withAffected(Jsonl.bool(requestLine, "affected", false))
-                    // The request's env belongs on the session too, not only on the request: it is
-                    // what BuildEnv hands every build-path caller, and without it `FOO=x jk build`
-                    // reached variant `env:` indirection (which is passed the request's map
-                    // directly) but nothing that asked BuildEnv — so `[test] env` resolved against
-                    // the daemon's own environment instead of the caller's.
-                    .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine))
-                    // The request's toolchain selection belongs on it too: without this the SWITCH tier is
-                    // empty and a resident engine ignores both --jdk and JK_JDK.
-                    .withToolchainSpecs(
-                            ProtoSession.jdkSpecOf(requestLine),
-                            ProtoSession.graalSpecOf(requestLine),
-                            ProtoSession.graalHomeOf(requestLine));
+            Session session = ProtoSession.sessionOf(requestLine, cancelToken);
 
             BuildPlanner.Inputs inputs = new BuildPlanner.Inputs(
                             entryDir,

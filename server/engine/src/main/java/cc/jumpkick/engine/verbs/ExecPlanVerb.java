@@ -51,13 +51,9 @@ public final class ExecPlanVerb implements HostedVerb {
                 ExecPlanRequest req = ExecPlanRequest.decode(requestLine);
                 String binDir = req.binDir();
                 String libDir = req.libDir();
-                // Under the request's session, not the daemon's. This verb assembles a
-                // BuildPlanner.Inputs rather than a Session, so nothing installed the request's
-                // toolchain selection and `jk run --jdk 21` resolved the JVM that runs the app
-                // without the switch — the client was already sending it, and it was being dropped
-                // here. runWhere is the scoped, self-restoring install, so a third verb
-                // added later inherits this by taking its session from resolveSession too.
-                Session session = host.resolveSession(requestLine, cancelToken, false);
+                // Under the request's session, not the daemon's: the toolchain selection the
+                // app runs on is the caller's, and only an installed session carries it.
+                Session session = ProtoSession.sessionOf(requestLine, cancelToken);
                 plan = SessionContext.where(
                         session,
                         () -> ExecPlans.execPlan(

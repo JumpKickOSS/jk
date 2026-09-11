@@ -13,6 +13,7 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.runtime.workspace.TrainPlans;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoEvents;
+import cc.jumpkick.wire.protocol.ProtoSession;
 import cc.jumpkick.wire.protocol.TrainRequest;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
@@ -53,7 +54,7 @@ public final class TrainVerb implements HostedVerb {
                 TrainRequest body = TrainRequest.decode(requestLine);
                 String graalHomeStr = body.graalHome();
                 String jdksDirStr = body.jdksDir();
-                Session session = host.resolveSession(requestLine, cancelToken, false);
+                Session session = ProtoSession.sessionOf(requestLine, cancelToken);
                 String dir = EngineProtocol.SINGLE_PLAN_DIR;
                 Path graalHome = graalHomeStr != null && !graalHomeStr.isBlank() ? Path.of(graalHomeStr) : null;
                 Path jdksDir = jdksDirStr != null && !jdksDirStr.isBlank() ? Path.of(jdksDirStr) : null;

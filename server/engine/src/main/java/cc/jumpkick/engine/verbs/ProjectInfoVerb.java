@@ -10,6 +10,7 @@ import cc.jumpkick.runtime.base.ProjectInfoPlans;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProjectInfo;
 import cc.jumpkick.wire.protocol.ProjectInfoRequest;
+import cc.jumpkick.wire.protocol.ProtoSession;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 import org.jspecify.annotations.Nullable;
@@ -50,7 +51,7 @@ public final class ProjectInfoVerb implements HostedVerb {
                 // Under the request's session — see ExecPlanVerb. projectInfo resolves this
                 // project's layout, lock freshness and test tags, and every one of those reads the
                 // ambient session; without this they read the daemon's.
-                Session session = host.resolveSession(requestLine, cancelToken, false);
+                Session session = ProtoSession.sessionOf(requestLine, cancelToken);
                 ProjectInfoRequest req = ProjectInfoRequest.decode(requestLine);
                 info = SessionContext.where(
                         session,

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.verbs;
 
-import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.ResolvedSecrets;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.credential.RepoCredential;
@@ -126,11 +125,7 @@ public final class PublishVerb implements HostedVerb {
                         body.slsa(),
                         body.sbom(),
                         credential);
-                Session session = Session.defaults()
-                        .withConfig(JkConfig.empty().withOffline(body.offline()))
-                        .withWorkingDir(entryDir)
-                        .withCacheDir(cache)
-                        .withCancel(cancelToken);
+                Session session = ProtoSession.sessionOf(requestLine, cancelToken);
                 String dir = EngineProtocol.SINGLE_PLAN_DIR;
                 BuildPlan plan = PublishPlans.publishBuildPlan(entryDir, cache, req);
                 return host.streamSinglePlan(

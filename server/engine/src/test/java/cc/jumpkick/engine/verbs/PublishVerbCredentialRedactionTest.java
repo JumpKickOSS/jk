@@ -274,11 +274,6 @@ class PublishVerbCredentialRedactionTest {
         public void publishRequestError(long rid, String dir, String message) {}
 
         @Override
-        public Session resolveSession(String requestLine, Session.CancelToken cancel, boolean refresh) {
-            return Session.defaults();
-        }
-
-        @Override
         public void maybeEnqueuePrune(Path cache) {}
 
         @Override

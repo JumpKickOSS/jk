@@ -83,7 +83,7 @@ public final class LockVerb implements HostedVerb {
     public JobOutcome run(String requestLine, Session.CancelToken cancelToken, @Nullable BufferedWriter writer) {
         try {
             LockRequest body = LockRequest.decode(requestLine);
-            Session session = host.resolveSession(requestLine, cancelToken, false);
+            Session session = ProtoSession.sessionOf(requestLine, cancelToken);
             URI repoUrl = body.repoUrl() == null ? null : URI.create(body.repoUrl());
             return SessionContext.where(
                     session,

@@ -1,21 +1,60 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.wire.protocol;
 
+import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.PluginTuning;
+import cc.jumpkick.config.Session;
 import cc.jumpkick.jsonl.Jsonl;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
 /**
  * The session envelope — variant, client env, worker-JVM tuning, toolchain selection, trigger —
- * spliced onto any encoded request line, with its decoders; plus the hosted long-tail
- * {@code plan-finish} variants (tool, script, cache) and the {@code prune-wait} notice.
+ * spliced onto any encoded request line, with its decoders and {@link #sessionOf the one
+ * request-to-Session constructor}; plus the hosted long-tail {@code plan-finish} variants (tool,
+ * script, cache) and the {@code prune-wait} notice.
  */
 public final class ProtoSession {
 
     private ProtoSession() {}
+
+    /**
+     * The {@link Session} a request runs under: every plan-affecting field the line carries — the
+     * flat config flags, the paths, the test knobs and selection, and the {@link #withSession
+     * session} and {@link #withToolchain toolchain} envelopes. Every verb that plans, builds or
+     * forecasts takes its session from here and nowhere else, so a forecast and the build it
+     * forecasts run under the same session by construction. Absent fields take their wire defaults;
+     * an absent {@code cache} keeps the engine's own.
+     */
+    public static Session sessionOf(String request, Session.CancelToken cancel) {
+        JkConfig config = JkConfig.empty()
+                .withOffline(Jsonl.bool(request, "offline", false))
+                .withRebuild(Jsonl.bool(request, "rebuild", false))
+                .withVerbose(Jsonl.bool(request, "verbose", false))
+                .withForce(Jsonl.bool(request, "force", false));
+        Session session = Session.defaults()
+                .withConfig(config)
+                .withWorkingDir(Path.of(Objects.requireNonNull(Jsonl.str(request, "dir"), "dir")))
+                .withJdksDir(pathOf(Jsonl.str(request, ProtoJobs.JDKS_DIR)))
+                .withCancel(cancel)
+                .withJvm(jvmTuning(request))
+                .withParallelTests(Jsonl.bool(request, "parallelTests", true))
+                .withRequestedTestWorkers(Jsonl.intValue(request, "workers", 0))
+                .withTestSelection(ProtoJobs.testSelectionOf(request))
+                .withAffected(Jsonl.bool(request, "affected", false))
+                .withVariant(variantOf(request), clientEnvOf(request))
+                .withToolchainSpecs(jdkSpecOf(request), graalSpecOf(request), graalHomeOf(request))
+                .withAssemblyOverride(assemblyOverrideOf(request));
+        Path cache = pathOf(Jsonl.str(request, "cache"));
+        return cache == null ? session : session.withCacheDir(cache);
+    }
+
+    private static @Nullable Path pathOf(@Nullable String s) {
+        return s == null || s.isBlank() ? null : Path.of(s);
+    }
 
     /**
      * As {@link ProtoEvents#planFinish(String, boolean)}, additionally carrying a {@link EngineProtocol#TOOL_RESOLVE_REQUEST}

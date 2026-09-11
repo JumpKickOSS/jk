@@ -226,11 +226,6 @@ class VerbVerdictJournalTest {
         }
 
         @Override
-        public Session resolveSession(String requestLine, Session.CancelToken cancel, boolean refresh) {
-            return Session.defaults().withCancel(cancel);
-        }
-
-        @Override
         public void maybeEnqueuePrune(Path cache) {}
     }
 }

@@ -2,7 +2,6 @@
 package cc.jumpkick.engine.verbs;
 
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.Jobs;
 import cc.jumpkick.config.Session;
@@ -164,13 +163,8 @@ public final class WorkspaceBuildVerb implements HostedVerb {
             boolean verbose = body.verbose();
             // One behavior for every client: absent/zero module concurrency resolves
             // to the same effective jobs the CLI sends (streaming scheduler — never the
-            // batch-per-level path), and cross-module tests default parallel. Explicit wire
-            // values (any client, any age) still win.
+            // batch-per-level path). Explicit wire values (any client, any age) still win.
             int maxModuleConcurrency = effectiveModuleConcurrency(body.maxModuleConcurrency());
-            boolean parallelTests = body.parallelTests();
-            boolean offline = body.offline();
-            boolean force = body.force();
-            boolean rerun = Jsonl.bool(requestLine, "rebuild", false);
             boolean freshenLock = body.freshenLock();
             boolean ephemeralActions = body.ephemeralActions();
             boolean testOnly = body.testOnly();
@@ -242,34 +236,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
             }
             WorkspaceRequest workspaceReq = req;
 
-            JkConfig config = JkConfig.empty()
-                    .withOffline(offline)
-                    .withRebuild(rerun)
-                    .withVerbose(verbose)
-                    .withForce(force);
-            Session session = Session.defaults()
-                    .withConfig(config)
-                    .withWorkingDir(entryDir)
-                    .withCacheDir(cache)
-                    .withJdksDir(jdksDir)
-                    .withParallelTests(parallelTests)
-                    .withRequestedTestWorkers(workers)
-                    .withTestSelection(body.selection())
-                    .withAffected(Jsonl.bool(requestLine, "affected", false))
-                    .withCancel(cancelToken)
-                    .withJvm(ProtoSession.jvmTuning(requestLine))
-                    // The request's env belongs on the session too, not only on the request: it is
-                    // what BuildEnv hands every build-path caller, and without it `FOO=x jk build`
-                    // reached variant `env:` indirection (which is passed the request's map
-                    // directly) but nothing that asked BuildEnv — so `[test] env` resolved against
-                    // the daemon's own environment instead of the caller's.
-                    .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine))
-                    // The request's toolchain selection belongs on it too: without this the SWITCH tier is
-                    // empty and a resident engine ignores both --jdk and JK_JDK.
-                    .withToolchainSpecs(
-                            ProtoSession.jdkSpecOf(requestLine),
-                            ProtoSession.graalSpecOf(requestLine),
-                            ProtoSession.graalHomeOf(requestLine));
+            Session session = ProtoSession.sessionOf(requestLine, cancelToken);
 
             long rid = host.eventRequestId();
             if (rid > 0) host.putProgressRoot(rid, entryDirStr);

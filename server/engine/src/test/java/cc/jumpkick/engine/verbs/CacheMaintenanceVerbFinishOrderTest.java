@@ -155,11 +155,6 @@ class CacheMaintenanceVerbFinishOrderTest {
         public void publishRequestError(long rid, String dir, String message) {}
 
         @Override
-        public Session resolveSession(String requestLine, Session.CancelToken cancel, boolean refresh) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
         public void maybeEnqueuePrune(Path cachePath) {}
     }
 }

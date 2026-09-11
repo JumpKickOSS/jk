@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.verbs;
 
-import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
@@ -53,12 +52,7 @@ public final class AuditVerb implements HostedVerb {
                 AuditRequest body = AuditRequest.decode(requestLine);
                 Path entryDir = Path.of(body.dir());
                 Path cache = Path.of(body.cache());
-                Session session = Session.defaults()
-                        .withConfig(JkConfig.empty().withOffline(body.offline()))
-                        .withWorkingDir(entryDir)
-                        .withCacheDir(cache)
-                        .withCancel(cancelToken)
-                        .withJvm(ProtoSession.jvmTuning(requestLine));
+                Session session = ProtoSession.sessionOf(requestLine, cancelToken);
                 String dir = EngineProtocol.SINGLE_PLAN_DIR;
                 BuildPlan plan = AuditPlans.auditBuildPlan(
                         LockPaths.lockFile(entryDir),

@@ -2,7 +2,6 @@
 package cc.jumpkick.engine.verbs;
 
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
@@ -14,6 +13,7 @@ import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ExplainRequest;
 import cc.jumpkick.wire.protocol.ProtoEvents;
 import cc.jumpkick.wire.protocol.ProtoReads;
+import cc.jumpkick.wire.protocol.ProtoSession;
 import cc.jumpkick.wire.runtime.ExplainPlan;
 import cc.jumpkick.wire.runtime.TaskForecast;
 import java.io.BufferedWriter;
@@ -55,25 +55,7 @@ public final class ExplainVerb implements HostedVerb {
                 ExplainRequest req = ExplainRequest.decode(requestLine);
                 Path entryDir = Path.of(req.dir());
                 Path cache = Path.of(req.cache());
-                // --redo rides the same session flag as jk build --redo so forecast
-                // (all steps RUN) and ETA (build:rebuild history) match the live rebuild path.
-                JkConfig config = JkConfig.empty().withRebuild(req.rebuild()).withVerbose(req.verbose());
-                Session session = Session.defaults()
-                        .withConfig(config)
-                        .withWorkingDir(entryDir)
-                        .withCacheDir(cache)
-                        // The client's resolved test selection, exactly as WorkspaceBuildVerb
-                        // applies it. Without it this session carried TestSelection.DEFAULT, whose
-                        // empty exclude-tag list is itself a stamp input — so the forecast computed
-                        // a run-tests key no build had ever stored and called all 30 modules dirty.
-                        .withTestSelection(req.selection())
-                        // WorkspaceBuildVerb puts both of these on its session too. Neither is
-                        // read on the forecast path today — the ETA takes parallelTests as an
-                        // argument, and requestedTestWorkers is a dispatch-time pin — but a session
-                        // that differs from the build's is the shape every explain/build divergence
-                        // has taken, so they do not get to differ.
-                        .withParallelTests(req.parallelTests())
-                        .withRequestedTestWorkers(req.workers());
+                Session session = ProtoSession.sessionOf(requestLine, cancelToken);
                 JkBuild entryBuild = JkBuildParser.parse(entryDir.resolve(ManifestPaths.MANIFEST));
                 String etaJdksDirStr = req.jdksDir();
                 int maxModuleConcurrency = req.maxModuleConcurrency();
@@ -92,14 +74,7 @@ public final class ExplainVerb implements HostedVerb {
                         entryBuild,
                         cache,
                         session,
-                        new ExplainReport.Knobs(
-                                etaJdksDir,
-                                req.profile(),
-                                req.workers(),
-                                maxModuleConcurrency,
-                                req.parallelTests(),
-                                req.skipTests(),
-                                req.verbose()));
+                        new ExplainReport.Knobs(req.profile(), maxModuleConcurrency, req.skipTests()));
                 ExplainPlan plan = report.plan();
                 if (plan.hasErrors()) {
                     for (String err : plan.errors()) {

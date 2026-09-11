@@ -16,18 +16,15 @@ import org.jspecify.annotations.Nullable;
  */
 public record ExplainReport(ExplainPlan plan, long etaMillis, long fullMillis) {
 
-    /** ETA inputs beyond the plan itself; {@link #defaults()} is the bare {@code jk explain} shape. */
-    public record Knobs(
-            @Nullable Path jdksDir,
-            @Nullable String profile,
-            int workers,
-            int maxModuleConcurrency,
-            boolean parallelTests,
-            boolean skipTests,
-            boolean verbose) {
+    /**
+     * ETA inputs the session does not carry; {@link #defaults()} is the bare {@code jk explain}
+     * shape. Everything else the estimate needs (workers, JDK root, verbosity, test parallelism)
+     * is read off the session so it cannot differ from the build's.
+     */
+    public record Knobs(@Nullable String profile, int maxModuleConcurrency, boolean skipTests) {
 
         public static Knobs defaults() {
-            return new Knobs(null, null, 0, 0, false, false, false);
+            return new Knobs(null, 0, false);
         }
     }
 
@@ -48,12 +45,12 @@ public record ExplainReport(ExplainPlan plan, long etaMillis, long fullMillis) {
                         plan,
                         entryDir,
                         cache,
-                        k.workers(),
-                        k.jdksDir(),
+                        session.requestedTestWorkers(),
+                        session.jdksDir(),
                         k.profile(),
                         k.skipTests(),
-                        k.verbose(),
-                        k.parallelTests(),
+                        session.verbose(),
+                        session.parallelTests(),
                         k.maxModuleConcurrency()));
         JkConfig config = session.config();
         boolean alreadyFull = config.rebuildOr(false) || config.forceOr(false);
@@ -68,12 +65,12 @@ public record ExplainReport(ExplainPlan plan, long etaMillis, long fullMillis) {
                             plan,
                             entryDir,
                             cache,
-                            k.workers(),
-                            k.jdksDir(),
+                            session.requestedTestWorkers(),
+                            session.jdksDir(),
                             k.profile(),
                             k.skipTests(),
-                            k.verbose(),
-                            k.parallelTests(),
+                            session.verbose(),
+                            session.parallelTests(),
                             k.maxModuleConcurrency()));
         }
         return new ExplainReport(plan, eta, full);

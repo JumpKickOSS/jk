@@ -4,7 +4,6 @@ package cc.jumpkick.engine.verbs;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.BuildPlan;
@@ -211,11 +210,6 @@ class HostedVerbDecodeJobTest {
 
         @Override
         public void publishRequestError(long rid, String dir, String message) {}
-
-        @Override
-        public Session resolveSession(String requestLine, Session.CancelToken cancel, boolean refresh) {
-            return Session.defaults();
-        }
 
         @Override
         public void maybeEnqueuePrune(Path cache) {}

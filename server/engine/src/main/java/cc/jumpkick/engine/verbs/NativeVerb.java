@@ -202,8 +202,7 @@ public final class NativeVerb implements HostedVerb {
             }
             if (selected.isEmpty()) selected.addAll(graalByDir.keySet());
 
-            Session session =
-                    host.resolveSession(requestLine, cancelToken, false).withJdksDir(jdksDir);
+            Session session = ProtoSession.sessionOf(requestLine, cancelToken);
             WorkspaceRequest req = new WorkspaceRequest(
                             entryDir, cache, jdksDir, 0, null, body.skipTests(), body.verbose(), 0, null, true, true)
                     .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine))

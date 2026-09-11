@@ -2,10 +2,8 @@
 package cc.jumpkick.engine.verbs;
 
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
-import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.host.Errors;
@@ -60,29 +58,7 @@ public final class ForecastVerb implements HostedVerb {
                 Path entryDir = Path.of(req.dir());
                 Path cache = Path.of(req.cache());
                 boolean skipTests = req.skipTests();
-                JkConfig config = JkConfig.empty()
-                        .withOffline(req.offline())
-                        .withRebuild(req.rebuild())
-                        .withForce(req.force());
-                Session session = Session.defaults()
-                        .withConfig(config)
-                        .withWorkingDir(entryDir)
-                        .withCacheDir(cache)
-                        // The guard lanes (tree, fixtures) are planned only under --guard; a forecast
-                        // that did not know the flag called a gate "up to date" without them.
-                        .withTestSelection(TestSelection.of(
-                                List.of(), false, List.of(), List.of(), false, req.guard(), false, false))
-                        // The forecast's run-tests key must equal the one the live build computes,
-                        // and [test] env is part of both. Resolving it here against the daemon's
-                        // environment and there against the caller's would make them disagree —
-                        // "tests up-to-date" for a suite whose environment actually changed.
-                        .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine))
-                        // The request's toolchain selection belongs on it too: without this the SWITCH tier is
-                        // empty and a resident engine ignores both --jdk and JK_JDK.
-                        .withToolchainSpecs(
-                                ProtoSession.jdkSpecOf(requestLine),
-                                ProtoSession.graalSpecOf(requestLine),
-                                ProtoSession.graalHomeOf(requestLine));
+                Session session = ProtoSession.sessionOf(requestLine, cancelToken);
                 JkBuild entryBuild = JkBuildParser.parse(entryDir.resolve(ManifestPaths.MANIFEST));
                 SessionContext.where(session, () -> {
                     BuildService.ResolvedGraph graph;
