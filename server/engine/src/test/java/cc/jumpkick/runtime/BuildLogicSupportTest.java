@@ -6,6 +6,8 @@ import static cc.jumpkick.runtime.BuildLogicFixtures.mergedFiles;
 import static cc.jumpkick.runtime.BuildLogicFixtures.runTwice;
 import static cc.jumpkick.runtime.BuildLogicFixtures.writeLineCountGroovy;
 import static cc.jumpkick.runtime.BuildLogicFixtures.writeStampGroovy;
+import static java.util.Objects.requireNonNull;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -23,6 +25,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -242,7 +245,7 @@ class BuildLogicSupportTest {
         Files.createDirectories(classes);
 
         int before = BuildLogicSupport.PROJECT_INPUT_TOKENS_CALLS_FOR_TESTS.get();
-        var sharedTokens = new AtomicReference<List<String>>();
+        var sharedTokens = new AtomicReference<@Nullable List<String>>();
         assertTrue(BuildLogicSupport.run(
                 project, layout, ac, classes, BuildLogicAnchor.BEFORE_COMPILE, s -> {}, sharedTokens));
         assertTrue(BuildLogicSupport.run(
@@ -347,8 +350,8 @@ class BuildLogicSupportTest {
         IllegalStateException ex = assertThrows(
                 IllegalStateException.class,
                 () -> BuildLogicSupport.run(project, layout, ac, classes, BuildLogicAnchor.AFTER_RESOURCES, s -> {}));
-        assertTrue(ex.getMessage().contains("stem scripts only"), ex.getMessage());
-        assertTrue(ex.getMessage().contains("X.java"), ex.getMessage());
+        assertThat(ex.getMessage()).contains("stem scripts only");
+        assertThat(ex.getMessage()).contains("X.java");
     }
 
     /**
@@ -409,8 +412,8 @@ class BuildLogicSupportTest {
         IllegalStateException ex = assertThrows(
                 IllegalStateException.class,
                 () -> BuildLogicSupport.run(root, layout, ac, null, BuildLogicAnchor.AFTER_BUILD, s -> {}));
-        assertTrue(ex.getMessage().contains("before-compile.groovy"), ex.getMessage());
-        assertTrue(ex.getMessage().contains("after-build"), ex.getMessage());
+        assertThat(ex.getMessage()).contains("before-compile.groovy");
+        assertThat(ex.getMessage()).contains("after-build");
     }
 
     @Test
@@ -427,8 +430,8 @@ class BuildLogicSupportTest {
         IllegalStateException ex = assertThrows(
                 IllegalStateException.class,
                 () -> BuildLogicSupport.run(project, layout, ac, classes, BuildLogicAnchor.AFTER_RESOURCES, s -> {}));
-        assertTrue(ex.getMessage().contains("after-build.groovy"), ex.getMessage());
-        assertTrue(ex.getMessage().contains("before-compile"), ex.getMessage());
+        assertThat(ex.getMessage()).contains("after-build.groovy");
+        assertThat(ex.getMessage()).contains("before-compile");
     }
 
     /**
@@ -605,8 +608,8 @@ class BuildLogicSupportTest {
         IllegalStateException ex = assertThrows(
                 IllegalStateException.class,
                 () -> BuildLogicSupport.run(core, layout, ac, classes, BuildLogicAnchor.AFTER_RESOURCES, s -> {}));
-        assertTrue(ex.getMessage().contains("guard.groovy"), ex.getMessage());
-        assertTrue(ex.getMessage().contains("module"), ex.getMessage());
+        assertThat(ex.getMessage()).contains("guard.groovy");
+        assertThat(ex.getMessage()).contains("module");
     }
 
     @Test
@@ -645,7 +648,7 @@ class BuildLogicSupportTest {
         assertEquals("[build] logic script before-compile.groovy failed:\n" + dump, wrapped.getMessage());
         RuntimeException rendered = BuildLogicSupport.taskFailure("before-compile", wrapped);
         assertEquals(wrapped.getMessage(), rendered.getMessage(), "the task layer adds no second prefix");
-        assertEquals(1, countOccurrences(rendered.getMessage(), "[build] logic"));
+        assertEquals(1, countOccurrences(requireNonNull(rendered.getMessage()), "[build] logic"));
     }
 
     @Test
@@ -656,7 +659,7 @@ class BuildLogicSupportTest {
         IllegalStateException wrapped =
                 BuildLogicSupport.scriptFailure(Path.of(".jk/before-compile.kts"), new IllegalStateException(dump));
 
-        String[] lines = wrapped.getMessage().split("\n", 2);
+        String[] lines = requireNonNull(wrapped.getMessage()).split("\n", 2);
         assertEquals("[build] logic script before-compile.kts failed:", lines[0]);
         assertEquals(dump, lines[1], "compiler output verbatim, location first in the body");
         assertEquals(
@@ -672,7 +675,10 @@ class BuildLogicSupportTest {
         assertEquals(died.getMessage(), wrapped.getMessage());
         assertEquals(
                 1,
-                countOccurrences(BuildLogicSupport.taskFailure("guard", wrapped).getMessage(), "[build] logic"));
+                countOccurrences(
+                        requireNonNull(
+                                BuildLogicSupport.taskFailure("guard", wrapped).getMessage()),
+                        "[build] logic"));
     }
 
     @Test

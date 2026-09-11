@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
@@ -93,7 +94,8 @@ class ShippedTemplateBuildTest {
                 .findFirst()
                 .orElseThrow(() -> new AssertionError("the android plugin jar no longer bundles " + id));
 
-        Path tmpl = PluginTemplates.materialize(spec.pluginId(), spec.language(), spec.framework(), spec.name());
+        Path tmpl = PluginTemplates.materialize(
+                requireNonNull(spec.pluginId()), spec.language(), spec.framework(), spec.name());
         Path dest = tmp.resolve("compose");
         int written = Giter8Apply.apply(tmpl, dest, Map.of(), Giter8Maven.central(false));
 
@@ -183,7 +185,8 @@ class ShippedTemplateBuildTest {
         String reason = UNBUILDABLE.get(spec.id());
         assumeTrue(reason == null, () -> "template " + spec.id() + " is not built in-gate: " + reason);
 
-        Path tmpl = PluginTemplates.materialize(spec.pluginId(), spec.language(), spec.framework(), spec.name());
+        Path tmpl = PluginTemplates.materialize(
+                requireNonNull(spec.pluginId()), spec.language(), spec.framework(), spec.name());
         int written = Giter8Apply.apply(tmpl, dest, Map.of(), Giter8Maven.central(false));
         assertThat(written).as("files scaffolded from %s", spec.id()).isPositive();
         assertThat(dest.resolve("jk.toml"))

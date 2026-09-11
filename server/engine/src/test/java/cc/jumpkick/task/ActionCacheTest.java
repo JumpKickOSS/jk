@@ -17,6 +17,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
@@ -375,7 +376,7 @@ class ActionCacheTest {
         int threads = 8;
         int rounds = 40;
         CountDownLatch start = new CountDownLatch(1);
-        AtomicReference<Throwable> fail = new AtomicReference<>();
+        AtomicReference<@Nullable Throwable> fail = new AtomicReference<>();
         try (ExecutorService pool = Executors.newFixedThreadPool(threads)) {
             List<Future<?>> futures = new ArrayList<>();
             for (int t = 0; t < threads; t++) {

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -46,7 +47,7 @@ class BuildLogicGuardPlanTest {
         Map<String, Task> byName = index(plan(project, dir.resolve("cache"), false, true, gate));
         assertThat(byName).containsKey(TaskNames.BUILD_LOGIC_GUARD);
         assertThat(byName).containsKey(TaskNames.RUN_TESTS);
-        assertThat(byName.get(TaskNames.BUILD_LOGIC_GUARD).requires()).contains(TaskNames.RUN_TESTS);
+        assertThat(task(byName, TaskNames.BUILD_LOGIC_GUARD).requires()).contains(TaskNames.RUN_TESTS);
     }
 
     @Test
@@ -56,7 +57,7 @@ class BuildLogicGuardPlanTest {
         Map<String, Task> byName = index(plan(project, dir.resolve("cache"), false, true, sel));
         assertThat(byName).containsKey(TaskNames.BUILD_LOGIC_GUARD);
         assertThat(byName).doesNotContainKey(TaskNames.RUN_TESTS);
-        assertThat(byName.get(TaskNames.BUILD_LOGIC_GUARD).requires()).contains(TaskNames.COPY_RESOURCES);
+        assertThat(task(byName, TaskNames.BUILD_LOGIC_GUARD).requires()).contains(TaskNames.COPY_RESOURCES);
     }
 
     @Test
@@ -76,7 +77,7 @@ class BuildLogicGuardPlanTest {
         Map<String, Task> byName = index(plan(project, dir.resolve("cache"), true, false, gate));
         assertThat(byName).containsKey(TaskNames.BUILD_LOGIC_GUARD);
         assertThat(byName).doesNotContainKey(TaskNames.RUN_TESTS);
-        assertThat(byName.get(TaskNames.BUILD_LOGIC_GUARD).requires()).contains(TaskNames.PACKAGE_JAR);
+        assertThat(task(byName, TaskNames.BUILD_LOGIC_GUARD).requires()).contains(TaskNames.PACKAGE_JAR);
     }
 
     @Test
@@ -86,6 +87,11 @@ class BuildLogicGuardPlanTest {
         assertThatThrownBy(() -> plan(project, dir.resolve("cache"), false, true, sel))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining(BuildLogicToml.NO_GUARD_SCRIPTS);
+    }
+
+    /** The plan's task named {@code name}; that it is in the plan is part of what the test asserts. */
+    private static Task task(Map<String, Task> byName, String name) {
+        return requireNonNull(byName.get(name), name);
     }
 
     private static Map<String, Task> index(BuildPlan p) {

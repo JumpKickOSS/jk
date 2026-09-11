@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
@@ -57,14 +58,14 @@ class TestEnvSharedM2Test {
 
     private static String m2Of(Path moduleDir) throws Exception {
         JkBuild project = JkBuildParser.parse(moduleDir.resolve("jk.toml"));
-        return TestEnv.forModule(project, moduleDir, BuildLayout.of(moduleDir, project))
-                .get("JK_M2_LOCAL");
+        return requireNonNull(TestEnv.forModule(project, moduleDir, BuildLayout.of(moduleDir, project))
+                .get("JK_M2_LOCAL"));
     }
 
     private static String homeOf(Path moduleDir) throws Exception {
         JkBuild project = JkBuildParser.parse(moduleDir.resolve("jk.toml"));
-        return TestEnv.forModule(project, moduleDir, BuildLayout.of(moduleDir, project))
-                .get("JK_HOME");
+        return requireNonNull(TestEnv.forModule(project, moduleDir, BuildLayout.of(moduleDir, project))
+                .get("JK_HOME"));
     }
 
     @Test

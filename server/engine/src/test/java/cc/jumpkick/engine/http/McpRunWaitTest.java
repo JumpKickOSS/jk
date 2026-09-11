@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http;
 
+import static cc.jumpkick.engine.http.JsonFields.number;
+import static cc.jumpkick.engine.http.JsonFields.object;
+import static cc.jumpkick.engine.http.JsonFields.objects;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.api.HttpLive;
@@ -90,8 +93,8 @@ class McpRunWaitTest {
     @SuppressWarnings("unchecked")
     private static Map<String, Object> structured(String body) {
         Map<String, Object> resp = (Map<String, Object>) MiniJson.parse(body);
-        Map<String, Object> result = (Map<String, Object>) resp.get("result");
-        return (Map<String, Object>) result.get("structuredContent");
+        Map<String, Object> result = object(resp, "result");
+        return object(result, "structuredContent");
     }
 
     private static String runWait(McpHandler mcp) {
@@ -110,11 +113,10 @@ class McpRunWaitTest {
                 jid -> jid == JID ? FINISHED_OK : null);
         Map<String, Object> fields = structured(runWait(mcp));
         assertThat(fields.get("finished")).isEqualTo(true);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> result = (Map<String, Object>) fields.get("result");
+        Map<String, Object> result = object(fields, "result");
         assertThat(result.get("id")).isEqualTo("r9");
         assertThat(result.get("success")).isEqualTo(true);
-        assertThat(((Number) result.get("jid")).longValue()).isEqualTo(JID);
+        assertThat(number(result, "jid").longValue()).isEqualTo(JID);
         assertThat(historyScans).hasValue(0);
     }
 
@@ -136,8 +138,7 @@ class McpRunWaitTest {
                 + ",\"modules\":[],\"diagnostics\":[]}";
         McpHandler mcp = handler(() -> List.of(fresh), jid -> null);
         Map<String, Object> fields = structured(runWait(mcp));
-        @SuppressWarnings("unchecked")
-        Map<String, Object> result = (Map<String, Object>) fields.get("result");
+        Map<String, Object> result = object(fields, "result");
         assertThat(result.get("id")).isEqualTo("new");
     }
 
@@ -153,11 +154,9 @@ class McpRunWaitTest {
         Map<String, Object> fields = structured(mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":2,"
                 + "\"method\":\"tools/call\",\"params\":{\"name\":\"jk_run\",\"arguments\":"
                 + "{\"kind\":\"build\",\"dir\":\"/ws/b\",\"wait\":true,\"timeout_s\":2}}}"));
-        @SuppressWarnings("unchecked")
-        Map<String, Object> result = (Map<String, Object>) fields.get("result");
+        Map<String, Object> result = object(fields, "result");
         assertThat(result.get("success")).isEqualTo(false);
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> diags = (List<Map<String, Object>>) fields.get("diagnostics");
+        List<Map<String, Object>> diags = objects(fields, "diagnostics");
         assertThat(diags).isNotEmpty();
         assertThat(String.valueOf(diags.getFirst().get("file"))).contains("Bad.java");
     }

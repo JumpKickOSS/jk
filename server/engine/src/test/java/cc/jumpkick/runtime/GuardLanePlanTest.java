@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.SessionContext;
@@ -54,9 +55,9 @@ class GuardLanePlanTest {
                 .isTrue();
         Map<String, Task> byName = index(plan(project, dir.resolve("cache"), TestSelection.DEFAULT));
         assertThat(byName).containsKeys(TaskNames.GUARD, TaskNames.GUARD_MODEL);
-        assertThat(byName.get(TaskNames.GUARD).requires())
+        assertThat(task(byName, TaskNames.GUARD).requires())
                 .containsExactly(TaskNames.COMPILE_JAVA, TaskNames.COMPILE_TEST); // the lane indexes test classes too
-        assertThat(byName.get(TaskNames.GUARD_MODEL).requires()).containsExactly(TaskNames.RESOLVE_DEPS);
+        assertThat(task(byName, TaskNames.GUARD_MODEL).requires()).containsExactly(TaskNames.RESOLVE_DEPS);
         assertThat(byName).as("the tree lane is a gate step").doesNotContainKey(TaskNames.GUARD_TREE);
     }
 
@@ -79,7 +80,7 @@ class GuardLanePlanTest {
         Path root = workspace(dir);
         Map<String, Task> byName = index(plan(root, dir.resolve("cache"), TestSelection.DEFAULT));
         assertThat(byName).containsKeys(TaskNames.GUARD_MODEL, TaskNames.GUARD_WORKSPACE);
-        assertThat(byName.get(TaskNames.GUARD_WORKSPACE).requires()).contains(TaskNames.GUARD_MODEL);
+        assertThat(task(byName, TaskNames.GUARD_WORKSPACE).requires()).contains(TaskNames.GUARD_MODEL);
         assertThat(byName).doesNotContainKey(TaskNames.GUARD_TREE);
         // A member's own plan has no workspace lane: a workspace rule needs the workspace.
         Map<String, Task> member = index(plan(root.resolve("core"), dir.resolve("cache"), TestSelection.DEFAULT));
@@ -121,7 +122,7 @@ class GuardLanePlanTest {
         TestSelection gate = TestSelection.of(List.of("test", "integration"), false, List.of(), List.of(), false, true);
         Map<String, Task> byName = index(plan(project, dir.resolve("cache"), gate));
         assertThat(byName).containsKey(TaskNames.GUARD_TREE);
-        assertThat(byName.get(TaskNames.GUARD_TREE).requires()).contains(TaskNames.GUARD_MODEL, TaskNames.GUARD);
+        assertThat(task(byName, TaskNames.GUARD_TREE).requires()).contains(TaskNames.GUARD_MODEL, TaskNames.GUARD);
     }
 
     @Test
@@ -150,7 +151,7 @@ class GuardLanePlanTest {
         Files.writeString(project.resolve("jk-guards.toml"), RULES + OUTPUT_RULES);
         Map<String, Task> with = index(plan(project, dir.resolve("cache"), TestSelection.DEFAULT));
         assertThat(with).containsKey(TaskNames.GUARD_OUTPUT);
-        assertThat(with.get(TaskNames.GUARD_OUTPUT).requires()).containsExactly(TaskNames.PACKAGE_JAR);
+        assertThat(task(with, TaskNames.GUARD_OUTPUT).requires()).containsExactly(TaskNames.PACKAGE_JAR);
         // a test-only plan packages nothing: the lane follows the root lanes instead
         BuildPlanner.Inputs testOnly = inputs(project, dir.resolve("cache"), TestSelection.DEFAULT);
         BuildPlan.Builder b = BuildPlanner.coreBuilder(new BuildPlanner.Inputs(
@@ -171,7 +172,12 @@ class GuardLanePlanTest {
                 testOnly.session()));
         Map<String, Task> gated = index(b.build());
         assertThat(gated).containsKey(TaskNames.GUARD_OUTPUT);
-        assertThat(gated.get(TaskNames.GUARD_OUTPUT).requires()).doesNotContain(TaskNames.PACKAGE_JAR);
+        assertThat(task(gated, TaskNames.GUARD_OUTPUT).requires()).doesNotContain(TaskNames.PACKAGE_JAR);
+    }
+
+    /** The plan's task named {@code name}; that it is in the plan is part of what the test asserts. */
+    private static Task task(Map<String, Task> byName, String name) {
+        return requireNonNull(byName.get(name), name);
     }
 
     private static Map<String, Task> index(BuildPlan plan) {

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.androidsdk.AndroidRepoFeed;
@@ -22,6 +23,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -58,7 +60,7 @@ class NiaScratchTest {
         // alphabetically (data before database) and breaks a clean rebuild.
         List<Path> modules = new ArrayList<>();
         JkBuild root = JkBuildParser.parse(NIA.resolve("jk.toml"));
-        for (String rel : root.workspace().modules()) {
+        for (String rel : requireNonNull(root.workspace()).modules()) {
             Path dir = NIA.resolve(rel);
             if (Files.isRegularFile(dir.resolve("jk.toml"))) modules.add(dir);
         }
@@ -178,7 +180,7 @@ class NiaScratchTest {
     }
 
     /** Null on success, else the first diagnostic. */
-    private static String buildOne(Path module) throws Exception {
+    private static @Nullable String buildOne(Path module) throws Exception {
         Path cache = Path.of(System.getProperty("user.dir"), "build", "android-spike-cache");
         JkBuild build = JkBuildParser.parse(module.resolve("jk.toml"));
         // Workspace context for the lock, exactly LockFlow's module branch: resolve

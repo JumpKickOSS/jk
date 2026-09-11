@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.test;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.TestSelection;
@@ -99,7 +100,7 @@ class AffectedTestRankerTest {
                 Set.of(),
                 List.of()));
         assertThat(r.refused()).isTrue();
-        assertThat(r.refuse().code()).isEqualTo("outside-selection");
+        assertThat(requireNonNull(r.refuse()).code()).isEqualTo("outside-selection");
     }
 
     @Test
@@ -317,7 +318,7 @@ class AffectedTestRankerTest {
                 Set.of(),
                 List.of()));
         assertThat(r.refused()).isTrue();
-        assertThat(r.refuse().code()).isEqualTo("outside-selection");
+        assertThat(requireNonNull(r.refuse()).code()).isEqualTo("outside-selection");
     }
 
     @Test

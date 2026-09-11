@@ -214,7 +214,7 @@ class HttpAdmissionTest extends HttpEngineServerHarness {
                     livePolls.incrementAndGet();
                     return live.get() ? List.of(run) : List.of();
                 },
-                null);
+                s -> {});
         try {
             tiny.start();
             String url = tiny.url();

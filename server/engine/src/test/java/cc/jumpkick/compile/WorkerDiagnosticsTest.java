@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compile;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.diagnostic.CompilerLocus;
@@ -19,7 +20,7 @@ class WorkerDiagnosticsTest {
         assertThat(d.line()).isEqualTo(12);
         assertThat(d.column()).isEqualTo(5);
         assertThat(d.describe()).isEqualTo("src/main/groovy/Foo.groovy:12:5: error: unexpected token: }");
-        CompilerLocus locus = CompilerLocus.parse(d.describe());
+        CompilerLocus locus = requireNonNull(CompilerLocus.parse(d.describe()));
         assertThat(locus.file()).isEqualTo("src/main/groovy/Foo.groovy");
         assertThat(locus.line()).isEqualTo(12);
         assertThat(locus.col()).isEqualTo(5);
@@ -29,7 +30,7 @@ class WorkerDiagnosticsTest {
     void groovy_header_omits_column_zero() {
         CompileResult.Diagnostic d = WorkerDiagnostics.located("WARNING", "A.groovy", 3, 0, "deprecated");
         assertThat(d.describe()).isEqualTo("A.groovy:3: warning: deprecated");
-        assertThat(CompilerLocus.parse(d.describe()).line()).isEqualTo(3);
+        assertThat(requireNonNull(CompilerLocus.parse(d.describe())).line()).isEqualTo(3);
     }
 
     @Test
@@ -46,7 +47,7 @@ class WorkerDiagnosticsTest {
         // file name ("ERROR: src/Baz.kt") — unreadable for resolveSource and the dashboard link.
         CompileResult.Diagnostic d = WorkerDiagnostics.text("ERROR", "src/Baz.kt:2:5: error: unresolved reference: x");
         assertThat(d.describe()).isEqualTo("src/Baz.kt:2:5: error: unresolved reference: x");
-        CompilerLocus locus = CompilerLocus.parse(d.describe());
+        CompilerLocus locus = requireNonNull(CompilerLocus.parse(d.describe()));
         assertThat(locus.file()).isEqualTo("src/Baz.kt");
         assertThat(locus.line()).isEqualTo(2);
         assertThat(locus.col()).isEqualTo(5);

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -8,6 +9,7 @@ import cc.jumpkick.run.BuildStage;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -28,7 +30,7 @@ class PluginTaskStageTest {
             "package-jar", BuildStage.PACKAGE);
 
     private static PluginBuild.TaskDecl decl(
-            String name, List<String> inputs, List<String> sources, List<String> testCp, String stage) {
+            String name, List<String> inputs, List<String> sources, List<String> testCp, @Nullable String stage) {
         return new PluginBuild.TaskDecl(
                 name, List.of(), inputs, List.of(), List.of(), List.of(), sources, testCp, null, stage);
     }
@@ -65,11 +67,8 @@ class PluginTaskStageTest {
             BuildStage from = PlannerPlugin.pluginStage(step);
             for (String req : PlannerPlugin.pluginRequires(step, null)) {
                 BuildStage upstream = req.startsWith("plugin-")
-                        ? PlannerPlugin.pluginStage(decls.get(req.substring("plugin-".length())))
-                        : ENGINE_STAGES.get(req);
-                assertThat(upstream)
-                        .as("stage of %s (required by %s)", req, step.name())
-                        .isNotNull();
+                        ? PlannerPlugin.pluginStage(requireNonNull(decls.get(req.substring("plugin-".length()))))
+                        : requireNonNull(ENGINE_STAGES.get(req), req);
                 assertThat(from.mayRequire(upstream))
                         .as("plugin-%s (%s) requires %s (%s)", step.name(), from.wireName(), req, upstream.wireName())
                         .isTrue();
@@ -83,10 +82,14 @@ class PluginTaskStageTest {
 
         // android-manifest runs in the pre-compile window (no classes input, no contributions),
         // so it is `generate` — not `compile` by name, which is what made android-res illegal.
-        assertThat(PlannerPlugin.pluginStage(decls.get("android-manifest"))).isEqualTo(BuildStage.GENERATE);
-        assertThat(PlannerPlugin.pluginStage(decls.get("android-res"))).isEqualTo(BuildStage.GENERATE);
-        assertThat(PlannerPlugin.pluginStage(decls.get("android-test-config"))).isEqualTo(BuildStage.TEST);
-        assertThat(PlannerPlugin.pluginStage(decls.get("android-dex"))).isEqualTo(BuildStage.COMPILE);
+        assertThat(PlannerPlugin.pluginStage(requireNonNull(decls.get("android-manifest"))))
+                .isEqualTo(BuildStage.GENERATE);
+        assertThat(PlannerPlugin.pluginStage(requireNonNull(decls.get("android-res"))))
+                .isEqualTo(BuildStage.GENERATE);
+        assertThat(PlannerPlugin.pluginStage(requireNonNull(decls.get("android-test-config"))))
+                .isEqualTo(BuildStage.TEST);
+        assertThat(PlannerPlugin.pluginStage(requireNonNull(decls.get("android-dex"))))
+                .isEqualTo(BuildStage.COMPILE);
 
         assertEdgesValidate(decls);
     }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkEngineConfig;
@@ -28,6 +29,7 @@ import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -75,7 +77,7 @@ class EngineTakeoverTest {
         Await.until(timeout, condition, () -> "server failures: " + serverFailures);
     }
 
-    private static String helloVersion(Path socket) {
+    private static @Nullable String helloVersion(Path socket) {
         try (SocketChannel ch = EngineSockets.connect(socket)) {
             BufferedWriter w =
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
@@ -92,7 +94,7 @@ class EngineTakeoverTest {
         }
     }
 
-    private static String send(Path socket, String line) {
+    private static @Nullable String send(Path socket, String line) {
         try (SocketChannel ch = EngineSockets.connect(socket)) {
             BufferedWriter w =
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
@@ -205,7 +207,7 @@ class EngineTakeoverTest {
             Path sock = EnginePaths.activeSocket(p);
             assertThat(server.claimPlanSlotForTests()).isTrue();
 
-            String bye = send(sock, ProtoLifecycle.shutdown(false));
+            String bye = requireNonNull(send(sock, ProtoLifecycle.shutdown(false)));
             assertThat(EngineProtocol.typeOf(bye)).isEqualTo(EngineProtocol.BYE);
             assertThat(Jsonl.bool(bye, "draining", false)).isTrue();
 

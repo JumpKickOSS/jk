@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http;
 
+import static cc.jumpkick.engine.http.JsonFields.number;
+import static cc.jumpkick.engine.http.JsonFields.object;
+import static cc.jumpkick.engine.http.JsonFields.objects;
+import static cc.jumpkick.engine.http.JsonFields.string;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.api.HttpLive;
@@ -67,14 +71,11 @@ class McpHandlerTest {
         Map<String, Object> resp = (Map<String, Object>) MiniJson.parse(body);
         assertThat(resp.get("jsonrpc")).isEqualTo("2.0");
         assertThat(resp.get("id")).isEqualTo(1.0); // MiniJson numbers are doubles
-        @SuppressWarnings("unchecked")
-        Map<String, Object> result = (Map<String, Object>) resp.get("result");
+        Map<String, Object> result = object(resp, "result");
         assertThat(result.get("protocolVersion")).isEqualTo(McpHandler.PROTOCOL_VERSION);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> info = (Map<String, Object>) result.get("serverInfo");
+        Map<String, Object> info = object(result, "serverInfo");
         assertThat(info.get("name")).isEqualTo("jk-engine");
-        @SuppressWarnings("unchecked")
-        Map<String, Object> caps = (Map<String, Object>) result.get("capabilities");
+        Map<String, Object> caps = object(result, "capabilities");
         assertThat(caps).containsKey("experimental");
         assertThat(String.valueOf(result.get("instructions"))).contains("text/event-stream");
         assertThat(String.valueOf(result.get("instructions"))).contains("jk_results");
@@ -88,10 +89,8 @@ class McpHandlerTest {
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}");
         @SuppressWarnings("unchecked")
         Map<String, Object> resp = (Map<String, Object>) MiniJson.parse(body);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> result = (Map<String, Object>) resp.get("result");
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> tools = (List<Map<String, Object>>) result.get("tools");
+        Map<String, Object> result = object(resp, "result");
+        List<Map<String, Object>> tools = objects(result, "tools");
         assertThat(tools.stream().map(t -> t.get("name")).toList())
                 .contains(
                         "jk_status",
@@ -110,16 +109,13 @@ class McpHandlerTest {
                 "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"jk_status\",\"arguments\":{}}}");
         @SuppressWarnings("unchecked")
         Map<String, Object> resp = (Map<String, Object>) MiniJson.parse(body);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> result = (Map<String, Object>) resp.get("result");
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> content = (List<Map<String, Object>>) result.get("content");
-        String text = (String) content.getFirst().get("text");
+        Map<String, Object> result = object(resp, "result");
+        List<Map<String, Object>> content = objects(result, "content");
+        String text = string(content.getFirst(), "text");
         assertThat(text).contains("pid");
-        @SuppressWarnings("unchecked")
-        Map<String, Object> structured = (Map<String, Object>) result.get("structuredContent");
+        Map<String, Object> structured = object(result, "structuredContent");
         assertThat(structured.get("type")).isEqualTo("status");
-        assertThat(((Number) structured.get("pid")).longValue()).isEqualTo(1L);
+        assertThat(number(structured, "pid").longValue()).isEqualTo(1L);
         // Same facts as GET /api/status: the host and epoch vitals ride too.
         assertThat(structured)
                 .containsKeys(
@@ -139,16 +135,12 @@ class McpHandlerTest {
                 + "\"params\":{\"name\":\"jk_build\",\"arguments\":{\"dir\":\"/tmp/demo\"}}}");
         @SuppressWarnings("unchecked")
         Map<String, Object> resp = (Map<String, Object>) MiniJson.parse(body);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> result = (Map<String, Object>) resp.get("result");
-        @SuppressWarnings("unchecked")
-        String text = (String)
-                ((List<Map<String, Object>>) result.get("content")).getFirst().get("text");
+        Map<String, Object> result = object(resp, "result");
+        String text = (String) objects(result, "content").getFirst().get("text");
         assertThat(text).isEqualTo("build accepted"); // summary only; payload is structured
-        @SuppressWarnings("unchecked")
-        Map<String, Object> structured = (Map<String, Object>) result.get("structuredContent");
+        Map<String, Object> structured = object(result, "structuredContent");
         assertThat(structured.get("type")).isEqualTo("build-accepted");
-        assertThat(((Number) structured.get("jid")).longValue()).isEqualTo(42L);
+        assertThat(number(structured, "jid").longValue()).isEqualTo(42L);
     }
 
     @Test
@@ -224,12 +216,9 @@ class McpHandlerTest {
                 "{\"jsonrpc\":\"2.0\",\"id\":12,\"method\":\"tools/call\",\"params\":{\"name\":\"jk_status\",\"arguments\":{}}}");
         @SuppressWarnings("unchecked")
         Map<String, Object> resp = (Map<String, Object>) MiniJson.parse(body);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> result = (Map<String, Object>) resp.get("result");
-        @SuppressWarnings("unchecked")
-        Map<String, Object> structured = (Map<String, Object>) result.get("structuredContent");
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> jobRows = (List<Map<String, Object>>) structured.get("jobs");
+        Map<String, Object> result = object(resp, "result");
+        Map<String, Object> structured = object(result, "structuredContent");
+        List<Map<String, Object>> jobRows = objects(structured, "jobs");
         assertThat(jobRows).hasSize(3);
         assertThat(jobRows.get(0).get("stalled")).isEqualTo(false); // ten minutes old, ticked 1s ago
         assertThat(jobRows.get(1).get("stalled")).isEqualTo(true); // silent past the stall window
@@ -319,10 +308,8 @@ class McpHandlerTest {
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":20,\"method\":\"tools/list\"}");
         @SuppressWarnings("unchecked")
         Map<String, Object> resp = (Map<String, Object>) MiniJson.parse(body);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> result = (Map<String, Object>) resp.get("result");
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> tools = (List<Map<String, Object>>) result.get("tools");
+        Map<String, Object> result = object(resp, "result");
+        List<Map<String, Object>> tools = objects(result, "tools");
         assertThat(tools.stream().map(t -> t.get("name")).toList())
                 .contains(
                         "jk_manual",
@@ -576,8 +563,7 @@ class McpHandlerTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> resp = (Map<String, Object>) MiniJson.parse(body);
         assertThat(resp.get("error")).isNotNull();
-        @SuppressWarnings("unchecked")
-        Map<String, Object> err = (Map<String, Object>) resp.get("error");
+        Map<String, Object> err = object(resp, "error");
         assertThat(err.get("code")).isEqualTo(-32601.0);
     }
 }

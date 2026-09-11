@@ -11,6 +11,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 class CoalescingBuildPlanListenerTest {
@@ -30,7 +31,7 @@ class CoalescingBuildPlanListenerTest {
             }
 
             @Override
-            public void stepStart(String step, String group, int ticks) {
+            public void stepStart(String step, @Nullable String group, int ticks) {
                 events.add("start:" + step);
             }
         };
@@ -95,7 +96,8 @@ class CoalescingBuildPlanListenerTest {
             }
 
             @Override
-            public void stepFinish(String step, String group, TaskStatus status, Duration duration, Duration waited) {
+            public void stepFinish(
+                    String step, @Nullable String group, TaskStatus status, Duration duration, Duration waited) {
                 events.add("finish:" + step);
             }
         };

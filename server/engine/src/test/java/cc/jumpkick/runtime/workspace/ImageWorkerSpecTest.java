@@ -12,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -28,7 +29,7 @@ class ImageWorkerSpecTest {
     private static final String PINNED = TAG + "@sha256:" + "a".repeat(64);
 
     /** The one value in the spec for {@code key}, or null. */
-    private static String config(List<String> spec, String key) {
+    private static @Nullable String config(List<String> spec, String key) {
         for (String line : spec) {
             if (MiniJson.parse(line) instanceof Map<?, ?> m
                     && "config".equals(m.get("t"))

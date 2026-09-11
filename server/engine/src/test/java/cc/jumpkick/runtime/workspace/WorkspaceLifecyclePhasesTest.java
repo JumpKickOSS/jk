@@ -97,6 +97,8 @@ class WorkspaceLifecyclePhasesTest {
                 .containsExactly(app);
     }
 
+    // The nulls are deliberate: a unit's identity is its dir, and the phase under test reads nothing else.
+    @SuppressWarnings("NullAway")
     private static BuildGraph.BuildUnit unit(Path dir) {
         return new BuildGraph.BuildUnit(dir, null, null, null);
     }

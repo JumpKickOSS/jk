@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -149,12 +150,12 @@ class VerbVerdictJournalTest {
         private final ReentrantReadWriteLock gate = new ReentrantReadWriteLock();
 
         @Override
-        public void send(BufferedWriter writer, String line) {
+        public void send(@Nullable BufferedWriter writer, String line) {
             quietSends.add(line);
         }
 
         @Override
-        public void sendQuiet(BufferedWriter writer, String line) {
+        public void sendQuiet(@Nullable BufferedWriter writer, String line) {
             quietSends.add(line);
         }
 
@@ -164,7 +165,7 @@ class VerbVerdictJournalTest {
         }
 
         @Override
-        public void publishRequestError(long rid, String dir, String message) {}
+        public void publishRequestError(long rid, @Nullable String dir, String message) {}
 
         @Override
         public long eventRequestId() {
@@ -175,22 +176,24 @@ class VerbVerdictJournalTest {
         public void putProgressRoot(long rid, String dir) {}
 
         @Override
-        public WorkspaceBuildListener workspaceListener(BufferedWriter writer, String dir) {
+        public WorkspaceBuildListener workspaceListener(@Nullable BufferedWriter writer, String dir) {
             return new WorkspaceBuildListener() {};
         }
 
         @Override
-        public BuildPlanListener planListener(String dir, BufferedWriter writer, BuildPlan plan) {
+        public BuildPlanListener planListener(String dir, @Nullable BufferedWriter writer, BuildPlan plan) {
             return new BuildPlanListener() {};
         }
 
         @Override
         public BuildPlanListener planListener(
-                String dir, BufferedWriter writer, Function<BuildPlanResult, String> finishEncoder) {
+                String dir,
+                @Nullable BufferedWriter writer,
+                @Nullable Function<BuildPlanResult, String> finishEncoder) {
             return new BuildPlanListener() {
                 @Override
                 public void planFinish(BuildPlanResult result) {
-                    quietSends.add(finishEncoder.apply(result));
+                    if (finishEncoder != null) quietSends.add(finishEncoder.apply(result));
                 }
             };
         }
@@ -204,24 +207,24 @@ class VerbVerdictJournalTest {
         }
 
         @Override
-        public void accTests(long rid, TestSummary tests) {}
+        public void accTests(long rid, @Nullable TestSummary tests) {}
 
         @Override
         public void finishProgress(long rid) {}
 
         @Override
-        public void emitWorkspaceProgress(long rid, BufferedWriter writer, boolean force) {}
+        public void emitWorkspaceProgress(long rid, @Nullable BufferedWriter writer, boolean force) {}
 
         @Override
-        public void flushTimeline(long rid, BufferedWriter writer) {}
+        public void flushTimeline(long rid, @Nullable BufferedWriter writer) {}
 
         @Override
-        public String redactEnv(String dir, String text) {
+        public @Nullable String redactEnv(@Nullable String dir, @Nullable String text) {
             return text;
         }
 
         @Override
-        public String requestFailedLine(String dir, Throwable e) {
+        public String requestFailedLine(@Nullable String dir, Throwable e) {
             return "{\"type\":\"" + EngineProtocol.ERROR + "\",\"code\":\"" + EngineProtocol.ERR_REQUEST_FAILED + "\"}";
         }
 

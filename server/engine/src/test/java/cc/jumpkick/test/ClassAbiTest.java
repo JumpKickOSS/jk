@@ -4,6 +4,7 @@ package cc.jumpkick.test;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.task.ClassAbi;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.objectweb.asm.AnnotationVisitor;
 import org.objectweb.asm.ClassWriter;
@@ -151,7 +152,7 @@ class ClassAbiTest {
         return cw.toByteArray();
     }
 
-    private static byte[] classWithSignature(String signature) {
+    private static byte[] classWithSignature(@Nullable String signature) {
         ClassWriter cw = new ClassWriter(0);
         cw.visit(Opcodes.V25, Opcodes.ACC_PUBLIC, "C", signature, "java/lang/Object", null);
         cw.visitEnd();

@@ -18,6 +18,7 @@ import java.nio.file.attribute.PosixFilePermissions;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -41,7 +42,7 @@ class ImageCredentialsTest {
     private static final String PASSWORD = "pa55word-must-not-leak";
 
     /** The one value of a {@code config}/{@code secret} spec line for {@code key}, or null. */
-    private static String line(List<String> spec, String kind, String key) {
+    private static @Nullable String line(List<String> spec, String kind, String key) {
         for (String raw : spec) {
             if (MiniJson.parse(raw) instanceof Map<?, ?> m && kind.equals(m.get("t")) && key.equals(m.get("key"))) {
                 return String.valueOf(m.get("value"));
@@ -169,7 +170,7 @@ class ImageCredentialsTest {
                 "server/engine/src/main/java/cc/jumpkick/runtime/workspace/ImagePlans.java");
     }
 
-    private static ImageConfig imageConfig(String registry) {
+    private static ImageConfig imageConfig(@Nullable String registry) {
         return new ImageConfig(
                 BASE,
                 null,
@@ -187,7 +188,7 @@ class ImageCredentialsTest {
     }
 
     /** The worker spec for {@code module}: tarball mode unless {@code registry} is set. */
-    private static List<String> spec(Path module, Path cache, String registry) throws Exception {
+    private static List<String> spec(Path module, Path cache, @Nullable String registry) throws Exception {
         JkBuild project = JkBuildParser.parse(module.resolve("jk.toml"));
         return ImagePlans.imageWorkerSpec(
                         cache,
@@ -202,7 +203,7 @@ class ImageCredentialsTest {
                 .lines();
     }
 
-    private static Path module(Path tmp, String dotEnv) throws Exception {
+    private static Path module(Path tmp, @Nullable String dotEnv) throws Exception {
         Path module = Files.createDirectories(tmp.resolve("app"));
         Files.writeString(module.resolve("jk.toml"), """
             group = "t"

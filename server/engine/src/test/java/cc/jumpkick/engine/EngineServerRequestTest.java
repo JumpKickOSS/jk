@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.JkEngineConfig;
+import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockfileReader;
@@ -113,7 +115,7 @@ class EngineServerRequestTest extends EngineServerHarness {
                         .encode());
                 String line;
                 while ((line = c.readLine()) != null) {
-                    String type = EngineProtocol.typeOf(line);
+                    String type = requireNonNull(EngineProtocol.typeOf(line), line);
                     types.add(type);
                     switch (type) {
                         case EngineProtocol.LOCK_MODULE -> lockModule = line;
@@ -242,7 +244,7 @@ class EngineServerRequestTest extends EngineServerHarness {
                         .encode());
                 String line;
                 while ((line = c.readLine()) != null) {
-                    String type = EngineProtocol.typeOf(line);
+                    String type = requireNonNull(EngineProtocol.typeOf(line), line);
                     types.add(type);
                     transcript.add(line);
                     switch (type) {
@@ -342,7 +344,17 @@ class EngineServerRequestTest extends EngineServerHarness {
         waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
         try {
             String plain = new SingleBuildRequest(
-                            project.toString(), cache.toString(), null, 1, null, true, false, false, false, null, null)
+                            project.toString(),
+                            cache.toString(),
+                            null,
+                            1,
+                            null,
+                            true,
+                            false,
+                            false,
+                            false,
+                            null,
+                            TestSelection.DEFAULT)
                     .encode();
 
             // First build: real compile, stamps + caches populated.
@@ -402,7 +414,7 @@ class EngineServerRequestTest extends EngineServerHarness {
                     .encode());
             String line;
             while ((line = c.readLine()) != null) {
-                String type = EngineProtocol.typeOf(line);
+                String type = requireNonNull(EngineProtocol.typeOf(line), line);
                 types.add(type);
                 switch (type) {
                     case EngineProtocol.BUILDPLAN_FINISH -> planFinish = line;
@@ -483,7 +495,7 @@ class EngineServerRequestTest extends EngineServerHarness {
                         .encode());
                 String line;
                 while ((line = c.readLine()) != null) {
-                    String type = EngineProtocol.typeOf(line);
+                    String type = requireNonNull(EngineProtocol.typeOf(line), line);
                     types.add(type);
                     switch (type) {
                         case EngineProtocol.BUILDPLAN_FINISH -> planFinish = line;
@@ -557,7 +569,7 @@ class EngineServerRequestTest extends EngineServerHarness {
             c.sendLine(new CachePruneRequest("prune", cache.toString(), null, false, false).encode());
             String line;
             while ((line = c.readLine()) != null) {
-                String type = EngineProtocol.typeOf(line);
+                String type = requireNonNull(EngineProtocol.typeOf(line), line);
                 types.add(type);
                 switch (type) {
                     case EngineProtocol.BUILDPLAN_FINISH -> planFinish = line;
@@ -629,7 +641,7 @@ class EngineServerRequestTest extends EngineServerHarness {
             c.sendLine(new CachePruneRequest("clear", cache.toString(), project.toString(), false, false).encode());
             String line;
             while ((line = c.readLine()) != null) {
-                String type = EngineProtocol.typeOf(line);
+                String type = requireNonNull(EngineProtocol.typeOf(line), line);
                 switch (type) {
                     case EngineProtocol.BUILDPLAN_FINISH -> planFinish = line;
                     case EngineProtocol.ERROR -> buildError = line;

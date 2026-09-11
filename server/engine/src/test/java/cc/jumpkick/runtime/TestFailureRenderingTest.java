@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.run.BuildPlanKey;
@@ -11,6 +12,7 @@ import cc.jumpkick.run.TestSummary;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 /** {@link TestSupport#renderFailures} surfaces each failure's name + stack, not just a count. */
@@ -81,7 +83,7 @@ class TestFailureRenderingTest {
         assertThat(String.join("\n", lines)).doesNotContain("class: cc.jumpkick");
         var diag = new BuildPlanResult.Diagnostic("run-tests", "test-failure", f.message(), f);
         assertThat(diag.worker()).isEqualTo(2);
-        assertThat(diag.testFailure().worker()).isEqualTo(2);
+        assertThat(requireNonNull(diag.testFailure()).worker()).isEqualTo(2);
     }
 
     /**
@@ -115,7 +117,7 @@ class TestFailureRenderingTest {
         assertThat(diag.line()).isEqualTo(7);
         assertThat(diag.snippetStart()).isEqualTo(5);
         assertThat(diag.snippet()).containsExactly("void d() {", "    fail();", "}");
-        assertThat(diag.testFailure().worker()).isEqualTo(3);
+        assertThat(requireNonNull(diag.testFailure()).worker()).isEqualTo(3);
         assertThat(f.label()).isEqualTo("cc.jumpkick:jk-core :: d()  [w3]");
     }
 
@@ -159,7 +161,7 @@ class TestFailureRenderingTest {
 
     @Test
     void bridgeListener_labels_on_test_start() {
-        AtomicReference<String> last = new AtomicReference<>();
+        AtomicReference<@Nullable String> last = new AtomicReference<>();
         var ctx = new LabelCaptureContext(last);
         var listener = TestSupport.bridgeListener(ctx, 1, false, "cc.jumpkick:core");
         listener.onTestStarted(
@@ -168,9 +170,9 @@ class TestFailureRenderingTest {
     }
 
     private static final class LabelCaptureContext implements TaskContext {
-        private final AtomicReference<String> last;
+        private final AtomicReference<@Nullable String> last;
 
-        LabelCaptureContext(AtomicReference<String> last) {
+        LabelCaptureContext(AtomicReference<@Nullable String> last) {
             this.last = last;
         }
 
@@ -181,12 +183,12 @@ class TestFailureRenderingTest {
         public void updateTicks(int additional) {}
 
         @Override
-        public void label(String description) {
+        public void label(@Nullable String description) {
             last.set(description);
         }
 
         @Override
-        public void output(String line) {}
+        public void output(@Nullable String line) {}
 
         @Override
         public void warn(String code, String message) {}

@@ -60,7 +60,7 @@ class InstallPlanArtifactLadderTest {
     @Test
     void cache_install_keeps_the_tail_it_displaces() {
         BuildPlan.Builder b = planWithTail(TaskNames.PACKAGE_ASSEMBLY);
-        InstallPlans.appendCacheInstall(b, library(), Path.of("cache"), null);
+        InstallPlans.appendCacheInstall(b, library(), Path.of("cache"), Path.of("m2"));
 
         assertThat(stepNames(b.build()))
                 .as("the fat jar must exist by the time the ladder picks an artifact")
@@ -91,7 +91,7 @@ class InstallPlanArtifactLadderTest {
                 .execute(ctx -> {})
                 .build());
         b.terminal("deliver-join");
-        InstallPlans.appendCacheInstall(b, library(), Path.of("cache"), null);
+        InstallPlans.appendCacheInstall(b, library(), Path.of("cache"), Path.of("m2"));
 
         assertThat(stepNames(b.build())).contains(TaskNames.RUN_TESTS, TaskNames.PACKAGE_JAR, TaskNames.CACHE_INSTALL);
     }
@@ -105,7 +105,7 @@ class InstallPlanArtifactLadderTest {
                 .execute(ctx -> {})
                 .build());
         b.terminal(TaskNames.PACKAGE_JAR);
-        InstallPlans.appendCacheInstall(b, library(), Path.of("cache"), null);
+        InstallPlans.appendCacheInstall(b, library(), Path.of("cache"), Path.of("m2"));
 
         assertThat(stepNames(b.build())).containsExactlyInAnyOrder(TaskNames.PACKAGE_JAR, TaskNames.CACHE_INSTALL);
     }
@@ -115,7 +115,7 @@ class InstallPlanArtifactLadderTest {
         // Same shape, higher rung: minified beats fat, so pruning it would install the fat jar
         // where the module asked for the minified one.
         BuildPlan.Builder b = planWithTail(TaskNames.PACKAGE_MINIFIED);
-        InstallPlans.appendCacheInstall(b, library(), Path.of("cache"), null);
+        InstallPlans.appendCacheInstall(b, library(), Path.of("cache"), Path.of("m2"));
 
         assertThat(stepNames(b.build())).contains(TaskNames.PACKAGE_MINIFIED, TaskNames.CACHE_INSTALL);
     }

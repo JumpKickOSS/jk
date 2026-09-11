@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -177,7 +178,7 @@ class HardwareProbeStoreTest {
         }
 
         @Override
-        public byte[] get(String url) {
+        public byte @Nullable [] get(String url) {
             urls.add(url);
             return served.get(url);
         }

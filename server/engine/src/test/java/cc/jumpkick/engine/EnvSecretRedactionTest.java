@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.EnvLookup;
@@ -24,6 +25,8 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -53,11 +56,13 @@ class EnvSecretRedactionTest {
 
     /** The real resolver, with every collaborator but the environment pointed at a scratch dir. */
     private static RepoCredentialResolver resolver(Path scratch, String tokenValue) {
+        Function<String, @Nullable String> env = name -> "JK_REPO_NEXUS_TOKEN".equals(name) ? tokenValue : null;
+        Function<String, @Nullable String> noEnv = k -> null;
         return new RepoCredentialResolver(
-                name -> "JK_REPO_NEXUS_TOKEN".equals(name) ? tokenValue : null,
+                env,
                 MavenSettings.empty(),
                 new RepoCredentialStore(scratch.resolve("creds")),
-                new ForgeAuth(new TokenStore(scratch.resolve("tokens")), k -> null, argv -> Optional.empty()),
+                new ForgeAuth(new TokenStore(scratch.resolve("tokens")), noEnv, argv -> Optional.empty()),
                 (endpoint, field, token) -> Optional.empty());
     }
 
@@ -76,7 +81,7 @@ class EnvSecretRedactionTest {
         Path journalRoot = tmp.resolve("journal");
         BuildJournal journal = new BuildJournal(journalRoot);
 
-        String redacted = EventRedaction.redactEnv(tmp.toString(), "signing failed: " + SECRET);
+        String redacted = requireNonNull(EventRedaction.redactEnv(tmp.toString(), "signing failed: " + SECRET));
         BuildRecord record = new BuildRecord(
                 null,
                 1L,
@@ -134,7 +139,7 @@ class EnvSecretRedactionTest {
                 "expected " + SECRET,
                 "org.opentest4j.AssertionFailedError: expected " + SECRET + "\n\tat FooTest.bar(FooTest.java:9)");
 
-        var red = EventRedaction.redactFailure(tmp.toString(), f);
+        var red = requireNonNull(EventRedaction.redactFailure(tmp.toString(), f));
 
         assertThat(red.message()).doesNotContain(SECRET).contains(SecretRedactor.MASK);
         assertThat(red.stack()).doesNotContain(SECRET).contains(SecretRedactor.MASK);
@@ -190,7 +195,7 @@ class EnvSecretRedactionTest {
 
         String worker = "worker failed: PUT https://nexus.example.com/repo/ -> 401 " + "(sent Authorization: Bearer "
                 + REPO_TOKEN + ")";
-        String onTheWire = EventRedaction.redactEnv(project.toString(), worker);
+        String onTheWire = requireNonNull(EventRedaction.redactEnv(project.toString(), worker));
         assertThat(onTheWire).doesNotContain(REPO_TOKEN).contains(SecretRedactor.MASK);
 
         Path journalRoot = tmp.resolve("journal");
@@ -242,8 +247,8 @@ class EnvSecretRedactionTest {
         String tokenA = "session-a-nexus-token";
         String tokenB = "session-b-nexus-token";
 
-        AtomicReference<String> aSawItsOwn = new AtomicReference<>();
-        AtomicReference<String> bSawSessionAs = new AtomicReference<>();
+        AtomicReference<@Nullable String> aSawItsOwn = new AtomicReference<>();
+        AtomicReference<@Nullable String> bSawSessionAs = new AtomicReference<>();
         Runnable inA = () -> {
             resolver(a, tokenA).resolve("nexus", URI.create("https://a.example/repo/"), Optional.empty());
             aSawItsOwn.set(EventRedaction.redactEnv(a.toString(), "401 for " + tokenA));

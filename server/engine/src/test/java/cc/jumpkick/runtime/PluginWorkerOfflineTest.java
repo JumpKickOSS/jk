@@ -68,7 +68,7 @@ class PluginWorkerOfflineTest {
                 List.of(),
                 List.of(),
                 dir.resolve("classes"),
-                null,
+                dir.resolve("generated"),
                 25,
                 List.of(),
                 null);

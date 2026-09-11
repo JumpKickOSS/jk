@@ -30,6 +30,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -130,7 +131,7 @@ class RepoGroupBuilderWireNoticeTest {
                 boolean noTimeline,
                 boolean rebuild,
                 long buildNumber,
-                String journalId) {}
+                @Nullable String journalId) {}
 
         @Override
         public ReentrantReadWriteLock cacheGate() {
@@ -154,7 +155,7 @@ class RepoGroupBuilderWireNoticeTest {
         }
 
         @Override
-        public BuildAccumulator accumulatorOf(long id) {
+        public @Nullable BuildAccumulator accumulatorOf(long id) {
             return null;
         }
 
@@ -183,7 +184,7 @@ class RepoGroupBuilderWireNoticeTest {
         public void clearProgress(long id) {}
 
         @Override
-        public void writeJournal(long id, boolean cancelled, long millis, BufferedWriter writer) {}
+        public void writeJournal(long id, boolean cancelled, long millis, @Nullable BufferedWriter writer) {}
 
         @Override
         public void maybeIdleBoundary() {}

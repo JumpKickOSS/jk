@@ -39,7 +39,7 @@ class WorkerLaunchClasspathTest {
         Files.createDirectories(workspaceJar.getParent());
         // A module output directory, not merely a path containing `target`: the compiled classes
         // beside it are what BuildLayout.isBuildOutput anchors on.
-        Files.createDirectories(workspaceJar.getParent().resolve("classes").resolve("main"));
+        Files.createDirectories(workspaceJar.resolveSibling("classes").resolve("main"));
         Files.writeString(workspaceJar, "workspace-worker");
         put(host, MavenLayout.artifactPath(worker), "store-worker");
         put(host, MavenLayout.pomPath(worker), """

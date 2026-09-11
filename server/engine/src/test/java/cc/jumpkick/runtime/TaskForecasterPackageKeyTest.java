@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.runtime.workspace.BuildService;
@@ -93,7 +94,8 @@ class TaskForecasterPackageKeyTest {
         Path b = Files.writeString(tmp.resolve("b.jar"), "b-bytes");
         List<Path> depJars = List.of(b, a); // declaration order, not sorted: both sides must sort
 
-        assertThat(PackagingKeys.fingerprintDepJars(depJars, null, Map.of()))
+        assertThat(PackagingKeys.fingerprintDepJars(
+                        depJars, new ActionCache(new Cas(tmp.resolve("cas")), tmp.resolve("cache")), Map.of()))
                 .isEqualTo(ClasspathFingerprint.of(depJars));
     }
 }

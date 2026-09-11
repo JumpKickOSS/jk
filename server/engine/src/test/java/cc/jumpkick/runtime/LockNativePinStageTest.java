@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.JkStores;
@@ -28,6 +29,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -64,8 +66,7 @@ class LockNativePinStageTest {
         lock(project, repo, tmp);
 
         Lockfile lock = LockfileReader.read(LockPaths.lockFile(project));
-        Lockfile.NativeMetadata pin = lock.nativeMetadata();
-        assertThat(pin).isNotNull();
+        Lockfile.NativeMetadata pin = requireNonNull(lock.nativeMetadata());
         assertThat(pin.version()).isEqualTo("1.1.4");
         assertThat(pin.checksumHex())
                 .isEqualTo(Hashing.sha256Hex(
@@ -177,7 +178,7 @@ class LockNativePinStageTest {
     }
 
     /** {@code nativeTable} null omits {@code [native]} entirely. */
-    private static Path project(Path tmp, String nativeTable) throws IOException {
+    private static Path project(Path tmp, @Nullable String nativeTable) throws IOException {
         Path project = Files.createDirectories(tmp.resolve(nativeTable == null ? "plain" : "native-proj"));
         Files.writeString(project.resolve("jk.toml"), """
                 group   = "com.example"
@@ -255,8 +256,7 @@ class LockNativePinStageTest {
                   <packaging>jar</packaging>
                 </project>
                 """.formatted(group, artifact, version));
-        Files.writeString(
-                dir.getParent().resolve("maven-metadata.xml"), """
+        Files.writeString(dir.resolveSibling("maven-metadata.xml"), """
                 <?xml version="1.0" encoding="UTF-8"?>
                 <metadata>
                   <groupId>%s</groupId>

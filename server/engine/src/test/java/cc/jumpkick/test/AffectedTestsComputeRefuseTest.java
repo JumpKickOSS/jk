@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.test;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
@@ -51,7 +52,7 @@ class AffectedTestsComputeRefuseTest {
 
         AffectedTests r = AffectedTestsCompute.fromDisk(ws, TestSelection.DEFAULT, null, null);
         assertThat(r.refused()).isTrue();
-        assertThat(r.refuse().code()).isEqualTo("stale");
+        assertThat(requireNonNull(r.refuse()).code()).isEqualTo("stale");
     }
 
     @Test
@@ -83,7 +84,7 @@ class AffectedTestsComputeRefuseTest {
 
         AffectedTests r = AffectedTestsCompute.fromDisk(ws, TestSelection.DEFAULT, null, null);
         assertThat(r.refused()).isTrue();
-        assertThat(r.refuse().code()).isEqualTo("too-many-modules");
+        assertThat(requireNonNull(r.refuse()).code()).isEqualTo("too-many-modules");
     }
 
     private static void git(Path dir, String... args) throws Exception {

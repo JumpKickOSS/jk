@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http.mcp;
 
+import static cc.jumpkick.engine.http.JsonFields.objects;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.testing.RepoRoot;
@@ -56,9 +57,7 @@ class McpDocParityTest {
                 .as("resource rows parsed from docs/user/mcp.md — zero means the parse rotted, not the doc")
                 .isNotEmpty();
         List<String> registry = new ArrayList<>();
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> rows =
-                (List<Map<String, Object>>) McpResources.list().get("resources");
+        List<Map<String, Object>> rows = objects(McpResources.list(), "resources");
         for (Map<String, Object> row : rows) registry.add(String.valueOf(row.get("uri")));
         assertThat(doc)
                 .as("docs/user/mcp.md Resources table vs McpResources.list()")

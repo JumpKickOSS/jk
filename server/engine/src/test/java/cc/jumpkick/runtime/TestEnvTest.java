@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -326,8 +327,7 @@ class TestEnvTest {
         // Give the variable a value, take the key the build would use and store the green marker
         // under it — "this module's tests are cached" is now true on disk.
         Files.writeString(tmp.resolve(".env"), UNSET + "=a-value-long-enough-to-count\n");
-        String key = PlannerSupport.runTestsStampKey(tmp, project, false, classes, lock, List.of());
-        assertThat(key).isNotNull();
+        String key = requireNonNull(PlannerSupport.runTestsStampKey(tmp, project, false, classes, lock, List.of()));
         cache.storeWithOutputs("run-tests", key, Map.of(), Map.of("tests.total", "1"));
         assertThat(cache.lookup(key)).isPresent();
 

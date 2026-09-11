@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import static cc.jumpkick.runtime.BuildLogicFixtures.generated;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -168,7 +169,7 @@ class BuildLogicScriptLanguageTest {
         IllegalStateException ex = assertThrows(
                 IllegalStateException.class,
                 () -> BuildLogicSupport.run(project, layout, ac, classes, BuildLogicAnchor.AFTER_RESOURCES, s -> {}));
-        assertTrue(ex.getMessage().contains("failed") || ex.getMessage().contains("exit"), ex.getMessage());
+        assertThat(ex.getMessage()).containsAnyOf("failed", "exit");
     }
 
     private static Path scaffold(Path dir) throws Exception {

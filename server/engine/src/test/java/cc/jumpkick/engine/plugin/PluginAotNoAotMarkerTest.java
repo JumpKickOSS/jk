@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.plugin;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.host.AotCacheFiles;
@@ -70,9 +71,8 @@ class PluginAotNoAotMarkerTest {
 
     /** Plant a refusal marker for this host's kotlinc key, aged {@code ageMillis}. */
     private Path plantMarker(long ageMillis) throws IOException {
-        Path cache = PluginAot.cachePath(TOOL, jdkHome, WORKER_CP);
-        assertThat(cache).isNotNull();
-        Files.createDirectories(cache.getParent());
+        Path cache = requireNonNull(PluginAot.cachePath(TOOL, jdkHome, WORKER_CP));
+        Files.createDirectories(requireNonNull(cache.getParent()));
         Path marker = Files.createFile(AotCacheFiles.marker(cache));
         Files.setLastModifiedTime(marker, FileTime.fromMillis(System.currentTimeMillis() - ageMillis));
         return marker;

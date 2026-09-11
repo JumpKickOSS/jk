@@ -17,6 +17,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -59,7 +60,7 @@ class StoreFeedRefreshTest {
     private URI jdkUri;
     private final AtomicInteger libHits = new AtomicInteger();
     private final AtomicInteger jdkHits = new AtomicInteger();
-    private volatile String lastIfNoneMatch;
+    private volatile @Nullable String lastIfNoneMatch;
 
     @BeforeEach
     void startServer() throws Exception {

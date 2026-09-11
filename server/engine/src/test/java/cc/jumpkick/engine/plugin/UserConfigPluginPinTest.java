@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.plugin;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -46,7 +47,7 @@ class UserConfigPluginPinTest {
                 [plugins]
                 acme = { path = %s, sha256 = "%s" }
                 """.formatted(MinimalToml.quote(tmp.resolve("gone.jar").toString()), "ab".repeat(32)));
-        System.setProperty("jk.env.JK_HOME", config.getParent().toString());
+        System.setProperty("jk.env.JK_HOME", requireNonNull(config.getParent()).toString());
 
         assertThatThrownBy(BuiltInPluginJars::installUserConfig)
                 .isInstanceOf(IllegalStateException.class)
@@ -64,7 +65,7 @@ class UserConfigPluginPinTest {
                 [plugins]
                 acme = { path = %s, sha256 = "%s" }
                 """.formatted(MinimalToml.quote(jar.toString()), declared));
-        System.setProperty("jk.env.JK_HOME", config.getParent().toString());
+        System.setProperty("jk.env.JK_HOME", requireNonNull(config.getParent()).toString());
 
         assertThatThrownBy(BuiltInPluginJars::installUserConfig)
                 .isInstanceOf(IllegalStateException.class)
@@ -80,7 +81,7 @@ class UserConfigPluginPinTest {
                 [plugins]
                 acme = { path = %s, sha256 = "%s" }
                 """.formatted(MinimalToml.quote(jar.toString()), Hashing.sha256Hex(jar)));
-        System.setProperty("jk.env.JK_HOME", config.getParent().toString());
+        System.setProperty("jk.env.JK_HOME", requireNonNull(config.getParent()).toString());
 
         BuiltInPluginJars.installUserConfig();
 

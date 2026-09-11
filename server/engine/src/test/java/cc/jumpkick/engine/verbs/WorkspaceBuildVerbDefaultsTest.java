@@ -16,7 +16,7 @@ class WorkspaceBuildVerbDefaultsTest {
 
     @Test
     void http_and_mcp_jobs_default_to_parallel_module_tests() {
-        String line = new WorkspaceBuildVerb(null)
+        String line = new WorkspaceBuildVerb(new InertVerbHost())
                 .decodeJob(new JobSpec("build", "/tmp/ws", List.of(), List.of(), List.of(), List.of(), false, false));
         assertThat(Jsonl.bool(line, "parallelTests", false))
                 .as("decodeJob must emit the CLI's default, not a serial one")

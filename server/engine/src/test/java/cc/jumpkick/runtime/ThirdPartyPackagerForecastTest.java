@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
@@ -183,9 +184,9 @@ class ThirdPartyPackagerForecastTest {
                 layout.classesDir(), BuildStamps.GROOVY, "compile-groovy", "", List.of(hello), List.of(), 21);
 
         // The plugin declares a packager and keeps the main artifact, so the build packs with it.
-        var owner = PackagingKeys.pluginFor(project, layout, cache);
+        var owner = requireNonNull(PackagingKeys.pluginFor(project, layout, cache));
         assertThat(PackagingKeys.ownsPackaging(owner)).isTrue();
-        assertThat(owner.decls().packager().name()).isEqualTo(PACKAGER);
+        assertThat(requireNonNull(owner.decls().packager()).name()).isEqualTo(PACKAGER);
 
         BuildGraph.Result graph = BuildGraph.resolve(proj, project);
         assertThat(graph.hasErrors()).isFalse();
@@ -213,10 +214,16 @@ class ThirdPartyPackagerForecastTest {
                         owner.decls(),
                         Map.of()))
                 .keyed();
-        Files.createDirectories(artifact.getParent());
+        Files.createDirectories(requireNonNull(artifact.getParent()));
         Files.writeString(artifact, "packed by " + PACKAGER);
         PlannerSupport.storePackagedForTest(
-                cache, keyed.taskId(), keyed.key(), keyed.tokens(), artifact.getParent(), List.of(artifact), true);
+                cache,
+                keyed.taskId(),
+                keyed.key(),
+                keyed.tokens(),
+                requireNonNull(artifact.getParent()),
+                List.of(artifact),
+                true);
 
         // Warm: the forecast reproduces that key and prices the step against it.
         TaskForecast.Task warm = packageStep(TaskForecaster.of(graph, cas, actionCache, cache, true));

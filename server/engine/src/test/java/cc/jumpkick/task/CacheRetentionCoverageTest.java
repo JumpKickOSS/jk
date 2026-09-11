@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -44,6 +45,7 @@ class CacheRetentionCoverageTest {
     /** How to put one tier in violation of its own bound, and what must survive alongside. */
     private interface Fixture {
         /** Seed the violation; return the path that must be gone afterwards. */
+        @Nullable
         Path seed(Path cacheRoot) throws IOException;
     }
 
@@ -334,8 +336,8 @@ class CacheRetentionCoverageTest {
      * Over the reset budget, so the whole tier goes. Sparse: the instrument sums apparent bytes —
      * the same figure it uses in production — so 132 MB of logical size costs no disk here.
      */
-    private static Path overByteBudget(Path root, CacheTree tier) throws IOException {
-        Path first = null;
+    private static @Nullable Path overByteBudget(Path root, CacheTree tier) throws IOException {
+        @Nullable Path first = null;
         for (int i = 0; i < 33; i++) {
             Path p = tier.under(root).resolve("snap-" + i);
             Files.createDirectories(p.getParent());

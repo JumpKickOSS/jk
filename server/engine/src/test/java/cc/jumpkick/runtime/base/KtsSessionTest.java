@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.base;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -120,7 +120,7 @@ class KtsSessionTest {
 
         IllegalStateException ex =
                 assertThrows(IllegalStateException.class, () -> BuildLogicKtsHost.evaluate(script, project, out));
-        assertTrue(ex.getMessage().contains("broken.kts"), ex.getMessage());
+        assertThat(ex.getMessage()).contains("broken.kts");
     }
 
     /**

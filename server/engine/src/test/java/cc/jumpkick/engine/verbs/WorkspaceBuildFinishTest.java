@@ -25,6 +25,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -210,19 +211,19 @@ class WorkspaceBuildFinishTest {
         private int throwingSends;
 
         @Override
-        public void send(BufferedWriter writer, String line) throws IOException {
+        public void send(@Nullable BufferedWriter writer, String line) throws IOException {
             throwingSends++;
-            WireWriter.send(writer, line);
+            if (writer != null) WireWriter.send(writer, line);
         }
 
         @Override
-        public void sendQuiet(BufferedWriter writer, String line) {
+        public void sendQuiet(@Nullable BufferedWriter writer, String line) {
             quietSends.add(line);
             WireWriter.sendQuiet(writer, line);
         }
 
         @Override
-        public void publishRequestError(long rid, String dir, String message) {
+        public void publishRequestError(long rid, @Nullable String dir, String message) {
             requestErrors.add(message);
         }
 
@@ -235,18 +236,20 @@ class WorkspaceBuildFinishTest {
         public void putProgressRoot(long rid, String dir) {}
 
         @Override
-        public WorkspaceBuildListener workspaceListener(BufferedWriter writer, String dir) {
+        public WorkspaceBuildListener workspaceListener(@Nullable BufferedWriter writer, String dir) {
             return new WorkspaceBuildListener() {};
         }
 
         @Override
-        public BuildPlanListener planListener(String dir, BufferedWriter writer, BuildPlan plan) {
+        public BuildPlanListener planListener(String dir, @Nullable BufferedWriter writer, BuildPlan plan) {
             return new BuildPlanListener() {};
         }
 
         @Override
         public BuildPlanListener planListener(
-                String dir, BufferedWriter writer, Function<BuildPlanResult, String> finishEncoder) {
+                String dir,
+                @Nullable BufferedWriter writer,
+                @Nullable Function<BuildPlanResult, String> finishEncoder) {
             return new BuildPlanListener() {};
         }
 
@@ -259,24 +262,24 @@ class WorkspaceBuildFinishTest {
         }
 
         @Override
-        public void accTests(long rid, TestSummary tests) {}
+        public void accTests(long rid, @Nullable TestSummary tests) {}
 
         @Override
         public void finishProgress(long rid) {}
 
         @Override
-        public void emitWorkspaceProgress(long rid, BufferedWriter writer, boolean force) {}
+        public void emitWorkspaceProgress(long rid, @Nullable BufferedWriter writer, boolean force) {}
 
         @Override
-        public void flushTimeline(long rid, BufferedWriter writer) {}
+        public void flushTimeline(long rid, @Nullable BufferedWriter writer) {}
 
         @Override
-        public String redactEnv(String dir, String text) {
+        public @Nullable String redactEnv(@Nullable String dir, @Nullable String text) {
             return text;
         }
 
         @Override
-        public String requestFailedLine(String dir, Throwable e) {
+        public String requestFailedLine(@Nullable String dir, Throwable e) {
             return "{\"type\":\"request-failed\"}";
         }
 

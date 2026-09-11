@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -123,7 +124,7 @@ class FormatFreshnessIndexTest {
     }
 
     /** jk's shipped formatter configuration, with only the worker jar varying. */
-    private static String key(Path workerJar) {
+    private static String key(@Nullable Path workerJar) {
         return new FormatKey(
                         "palantir",
                         "2.80.0",

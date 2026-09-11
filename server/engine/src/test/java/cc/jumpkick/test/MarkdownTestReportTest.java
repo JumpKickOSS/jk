@@ -13,7 +13,7 @@ class MarkdownTestReportTest {
     @Test
     void publish_then_take_under_project_dir(@TempDir Path ws) {
         Path core = ws.resolve("core");
-        Path other = ws.getParent().resolve("other-project");
+        Path other = ws.resolveSibling("other-project");
         MarkdownTestReport a = new MarkdownTestReport();
         a.recordFinished("[class:com.acme.FooTest]", "bar()", 12, null);
         a.publish(core.toString(), "g:core");

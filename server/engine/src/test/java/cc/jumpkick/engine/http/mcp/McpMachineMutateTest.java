@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http.mcp;
 
+import static cc.jumpkick.engine.http.JsonFields.objects;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.jdk.JdkFingerprint;
@@ -38,7 +39,7 @@ class McpMachineMutateTest {
     void disk_clean_without_confirm_is_preview(@TempDir Path cache) {
         Map<String, Object> preview = McpMachine.diskAction("clean", false, cache, null);
         assertThat(preview.get("preview")).isEqualTo(true);
-        assertThat(preview.get("note").toString()).contains("confirm=true");
+        assertThat(String.valueOf(preview.get("note"))).contains("confirm=true");
     }
 
     @Test
@@ -48,7 +49,7 @@ class McpMachineMutateTest {
         gate.readLock().lock(); // an in-flight plan holds the read side for its whole run
         try {
             Map<String, Object> busy = McpMachine.diskAction("nuke", true, cache, gate);
-            assertThat(busy.get("error").toString()).contains("busy");
+            assertThat(String.valueOf(busy.get("error"))).contains("busy");
             assertThat(busy.get("nuked")).isNull();
             assertThat(key).exists();
         } finally {
@@ -88,8 +89,7 @@ class McpMachineMutateTest {
         JdkRegistry registry = new JdkRegistry(jdks);
         Map<String, Object> preview = McpMachine.jdkAction("uninstall", null, 25, false, registry);
         assertThat(preview.get("preview")).isEqualTo(true);
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> victims = (List<Map<String, Object>>) preview.get("victims");
+        List<Map<String, Object>> victims = objects(preview, "victims");
         assertThat(victims).isNotEmpty();
         assertThat(victims.stream().map(v -> String.valueOf(v.get("identifier"))))
                 .anyMatch(id -> id.contains("21"));
@@ -101,7 +101,7 @@ class McpMachineMutateTest {
     @Test
     void jdk_install_requires_spec() {
         Map<String, Object> m = McpMachine.jdkAction("install", "", null, false);
-        assertThat(m.get("error").toString()).contains("spec");
+        assertThat(String.valueOf(m.get("error"))).contains("spec");
     }
 
     @Test

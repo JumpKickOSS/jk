@@ -24,6 +24,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -59,7 +60,7 @@ class EngineTcpTransportTest {
     }
 
     /** Hello over TCP the way any client must: auth envelope first, then the hello. */
-    private static String tcpHelloVersion(Path socketFile) {
+    private static @Nullable String tcpHelloVersion(Path socketFile) {
         try {
             int port = Integer.parseInt(Files.readString(socketFile).trim());
             String token = Files.readString(EnginePaths.tokenFor(socketFile)).trim();

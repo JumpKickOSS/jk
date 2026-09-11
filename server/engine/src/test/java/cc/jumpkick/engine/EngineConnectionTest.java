@@ -4,6 +4,7 @@ package cc.jumpkick.engine;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkEngineConfig;
+import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.BuildRequest;
@@ -12,6 +13,8 @@ import cc.jumpkick.wire.protocol.ProtoLifecycle;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -98,11 +101,11 @@ class EngineConnectionTest extends EngineServerHarness {
                             false,
                             false,
                             null,
-                            null,
-                            null,
+                            TestSelection.DEFAULT,
+                            List.of(),
                             false,
                             null,
-                            null,
+                            Map.of(),
                             null,
                             null,
                             null)

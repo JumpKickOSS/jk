@@ -7,6 +7,7 @@ import cc.jumpkick.jdk.JavaHomes;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -19,7 +20,7 @@ class ForkedJavacWorkerHomeTest {
         return dir;
     }
 
-    private static ForkedJavac.Request request(Path dir, Path javaHome, int release) {
+    private static ForkedJavac.Request request(Path dir, @Nullable Path javaHome, int release) {
         return new ForkedJavac.Request(
                 javaHome,
                 dir.resolve("worker.jar"),

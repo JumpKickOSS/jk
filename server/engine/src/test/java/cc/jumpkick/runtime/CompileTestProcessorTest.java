@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import javax.tools.ToolProvider;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -175,10 +176,10 @@ class CompileTestProcessorTest {
         public void updateTicks(int additionalScope) {}
 
         @Override
-        public void label(String description) {}
+        public void label(@Nullable String description) {}
 
         @Override
-        public void output(String line) {}
+        public void output(@Nullable String line) {}
 
         @Override
         public void warn(String code, String message) {}

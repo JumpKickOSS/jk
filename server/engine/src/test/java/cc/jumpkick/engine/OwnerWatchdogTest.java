@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Duration;
@@ -67,8 +68,8 @@ class OwnerWatchdogTest {
     @Test
     void a_live_owner_is_watched_on_a_daemon_thread() throws Exception {
         List<String> log = new ArrayList<>();
-        Thread t = OwnerWatchdog.start(Long.toString(ProcessHandle.current().pid()), () -> {}, log::add);
-        assertThat(t).isNotNull();
+        Thread t = requireNonNull(
+                OwnerWatchdog.start(Long.toString(ProcessHandle.current().pid()), () -> {}, log::add));
         assertThat(t.isDaemon()).isTrue();
         assertThat(log).singleElement().asString().contains("stops when owner pid");
         t.interrupt();

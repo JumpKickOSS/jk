@@ -8,6 +8,7 @@ import cc.jumpkick.guard.eval.FixtureCheck;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -59,7 +60,7 @@ class GuardFixturesTest {
                 "class Ok { String f(String s) { return s.trim(); } }");
     }
 
-    private static void fixture(Path root, String id, String bad, String ok) throws IOException {
+    private static void fixture(Path root, String id, String bad, @Nullable String ok) throws IOException {
         Path dir = Files.createDirectories(root.resolve("guard-fixtures").resolve(id));
         String pkg = "package fx." + id.replace('-', '_') + ";\n";
         Files.writeString(dir.resolve("Bad.java"), pkg + bad + "\n");

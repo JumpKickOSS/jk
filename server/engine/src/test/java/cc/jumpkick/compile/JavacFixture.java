@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compile;
 
+import static java.util.Objects.requireNonNull;
+
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -56,6 +58,6 @@ public final class JavacFixture {
 
     /** Convenience: compile one self-contained class and return its bytes. */
     public static byte[] compileOne(Path work, String fqcn, String source) throws IOException {
-        return compile(work, Map.of(fqcn, source)).get(fqcn);
+        return requireNonNull(compile(work, Map.of(fqcn, source)).get(fqcn), fqcn);
     }
 }

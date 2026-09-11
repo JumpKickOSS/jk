@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.listen;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.SecretRedactor;
@@ -17,14 +18,14 @@ import org.junit.jupiter.api.Test;
 class EventRedactionTest {
 
     private static TestFailureInfo failure(String message, String stack) {
-        return new TestFailureInfo("g:a", "junit-jupiter", "C", "m()", "E", message, stack, 1, null, 0, 0, List.of());
+        return new TestFailureInfo("g:a", "junit-jupiter", "C", "m()", "E", message, stack, 1, "", 0, 0, List.of());
     }
 
     @Test
     void a_secret_cut_by_stack_truncation_is_masked_at_the_seam() {
         SecretRedactor r = SecretRedactor.of(List.of("s3cret-token-value"));
         String stack = "E: leak s3cret-tok" + JUnitLauncher.STACK_TRUNCATION_MARKER + "12345 more chars)";
-        TestFailureInfo safe = EventRedaction.redactFailure(r, failure("m", stack));
+        TestFailureInfo safe = requireNonNull(EventRedaction.redactFailure(r, failure("m", stack)));
         assertThat(safe.stack())
                 .isEqualTo(
                         "E: leak " + SecretRedactor.MASK + JUnitLauncher.STACK_TRUNCATION_MARKER + "12345 more chars)");
@@ -34,7 +35,7 @@ class EventRedactionTest {
     void a_secret_cut_by_message_truncation_is_masked_at_the_seam() {
         SecretRedactor r = SecretRedactor.of(List.of("s3cret-token-value"));
         String message = "expected s3cret-tok" + JUnitLauncher.MESSAGE_TRUNCATION_MARKER + "9 more chars)";
-        TestFailureInfo safe = EventRedaction.redactFailure(r, failure(message, ""));
+        TestFailureInfo safe = requireNonNull(EventRedaction.redactFailure(r, failure(message, "")));
         assertThat(safe.message())
                 .isEqualTo(
                         "expected " + SecretRedactor.MASK + JUnitLauncher.MESSAGE_TRUNCATION_MARKER + "9 more chars)");

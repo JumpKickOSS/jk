@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
 
@@ -46,7 +47,7 @@ class CacheBenefitTest {
         ModuleInput m =
                 new ModuleInput("p", List.of(cached("a"), cached("b", "a"), cached("c", "a"), cached("d", "b", "c")));
         Map<String, Long> cold = Map.of("a", 10L, "b", 20L, "c", 5L, "d", 30L);
-        BiFunction<String, String, OptionalLong> baseline = (d, s) -> OptionalLong.of(cold.get(s));
+        BiFunction<String, String, OptionalLong> baseline = (d, s) -> OptionalLong.of(requireNonNull(cold.get(s)));
         Result r = CacheBenefit.compute(List.of(m), Map.of(), 2, baseline);
         assertThat(r.estimatedUncachedMillis()).isEqualTo(60);
         assertThat(r.savedMillis()).isEqualTo(58); // 60 cold − 2 actual

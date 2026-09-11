@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.plugin;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.host.AotCacheFiles;
@@ -64,20 +65,19 @@ class PluginAotTest {
     void jdk_id_parses_the_release_file_and_eligibility_gates_on_feature_and_vendor() throws IOException {
         Path jdk = Files.createDirectories(tmp.resolve("jdk25"));
         Files.writeString(jdk.resolve("release"), "IMPLEMENTOR=\"Eclipse Adoptium\"\nJAVA_VERSION=\"25.0.3\"\n");
-        PluginAot.JdkId id = PluginAot.jdkId(jdk);
-        assertThat(id).isNotNull();
+        PluginAot.JdkId id = requireNonNull(PluginAot.jdkId(jdk));
         assertThat(id.version()).isEqualTo("25.0.3");
         assertThat(PluginAot.eligible(id)).isTrue();
 
         Path old = Files.createDirectories(tmp.resolve("jdk21"));
         Files.writeString(old.resolve("release"), "IMPLEMENTOR=\"Eclipse Adoptium\"\nJAVA_VERSION=\"21.0.2\"\n");
-        assertThat(PluginAot.eligible(PluginAot.jdkId(old))).isFalse();
+        assertThat(PluginAot.eligible(requireNonNull(PluginAot.jdkId(old)))).isFalse();
 
         Path graal = Files.createDirectories(tmp.resolve("graal25"));
         Files.writeString(
                 graal.resolve("release"),
                 "IMPLEMENTOR=\"Oracle Corporation\"\nIMPLEMENTOR_VERSION=\"Oracle GraalVM 25\"\nJAVA_VERSION=\"25\"\n");
-        PluginAot.JdkId graalId = PluginAot.jdkId(graal);
+        PluginAot.JdkId graalId = requireNonNull(PluginAot.jdkId(graal));
         if (graalId.vendor() == JdkVendor.ORACLE_GRAALVM) {
             assertThat(PluginAot.eligible(graalId)).isFalse();
         }

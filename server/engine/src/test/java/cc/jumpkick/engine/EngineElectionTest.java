@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.testing.ShortTempDirs;
@@ -100,7 +101,7 @@ class EngineElectionTest {
                 this.listener = ServerSocketChannel.open();
                 this.listener.bind(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0));
                 int port = ((InetSocketAddress) this.listener.getLocalAddress()).getPort();
-                OwnerOnlyFiles.write(gen.token().getParent(), gen.token(), EngineTransport.newToken());
+                OwnerOnlyFiles.write(requireNonNull(gen.token().getParent()), gen.token(), EngineTransport.newToken());
                 Files.writeString(gen.socket(), Integer.toString(port));
             } else {
                 this.listener = ServerSocketChannel.open(StandardProtocolFamily.UNIX);
@@ -148,9 +149,7 @@ class EngineElectionTest {
         EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
         EngineElection e = election(p, "aaaa", 4242);
 
-        EngineElection.Won won = e.win();
-
-        assertThat(won).isNotNull();
+        EngineElection.Won won = requireNonNull(e.win());
         closeLater(won.listener());
         EnginePaths.Paths gen1 = EnginePaths.generation(p, 1);
         assertThat(won.active().socket()).isEqualTo(gen1.socket());
@@ -210,7 +209,7 @@ class EngineElectionTest {
         EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
         closeLater(new FakeIncumbent(p, 1, VERSION, "aaaa"));
 
-        EngineElection.Won won = election(p, "bbbb", 4242).win();
+        EngineElection.Won won = requireNonNull(election(p, "bbbb", 4242).win());
 
         assertThat(won).isNotNull();
         closeLater(won.listener());
@@ -232,7 +231,7 @@ class EngineElectionTest {
         Files.writeString(gen1.socket(), "stale");
         Files.writeString(gen1.token(), "stale");
 
-        EngineElection.Won won = election(p, "aaaa", 4242).win();
+        EngineElection.Won won = requireNonNull(election(p, "aaaa", 4242).win());
 
         assertThat(won).isNotNull();
         closeLater(won.listener());
@@ -244,7 +243,7 @@ class EngineElectionTest {
     void an_endpoint_naming_another_generation_reads_as_displaced() throws Exception {
         EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
         EngineElection e = election(p, "aaaa", 4242);
-        closeLater(e.win().listener());
+        closeLater(requireNonNull(e.win()).listener());
 
         Files.writeString(EnginePaths.endpoint(p), p.key() + ".gen999.sock");
 
@@ -257,7 +256,7 @@ class EngineElectionTest {
     void a_pid_file_naming_another_process_reads_as_displaced() throws Exception {
         EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
         EngineElection e = election(p, "aaaa", 4242);
-        EngineElection.Won won = e.win();
+        EngineElection.Won won = requireNonNull(e.win());
         closeLater(won.listener());
 
         Files.writeString(won.active().pid(), "1\n");
@@ -269,7 +268,7 @@ class EngineElectionTest {
     void a_missing_endpoint_is_orphaned_not_displaced() throws Exception {
         EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
         EngineElection e = election(p, "aaaa", 4242);
-        closeLater(e.win().listener());
+        closeLater(requireNonNull(e.win()).listener());
 
         Files.delete(EnginePaths.endpoint(p));
 
@@ -283,7 +282,7 @@ class EngineElectionTest {
     void retiring_drops_this_generations_files_and_the_endpoint_it_owns() throws Exception {
         EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
         EngineElection e = election(p, "aaaa", 4242);
-        EngineElection.Won won = e.win();
+        EngineElection.Won won = requireNonNull(e.win());
         won.listener().close();
 
         e.retire();
@@ -300,7 +299,7 @@ class EngineElectionTest {
     void retiring_leaves_a_successors_endpoint_alone() throws Exception {
         EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
         EngineElection e = election(p, "aaaa", 4242);
-        EngineElection.Won won = e.win();
+        EngineElection.Won won = requireNonNull(e.win());
         won.listener().close();
         Files.writeString(EnginePaths.endpoint(p), p.key() + ".gen7.sock");
 
@@ -322,7 +321,7 @@ class EngineElectionTest {
         Files.setPosixFilePermissions(state, PosixFilePermissions.fromString("rwxrwxr-x"));
         EnginePaths.Paths p = EnginePaths.resolve(state);
 
-        EngineElection.Won won = election(p, "aaaa", 4242).win();
+        EngineElection.Won won = requireNonNull(election(p, "aaaa", 4242).win());
 
         assertThat(won).isNotNull();
         closeLater(won.listener());
@@ -339,7 +338,7 @@ class EngineElectionTest {
         Files.createDirectories(p.dir());
         Files.setPosixFilePermissions(p.dir(), PosixFilePermissions.fromString("rwxr-xr-x"));
 
-        EngineElection.Won won = election(p, "aaaa", 4242).win();
+        EngineElection.Won won = requireNonNull(election(p, "aaaa", 4242).win());
 
         assertThat(won).isNotNull();
         closeLater(won.listener());

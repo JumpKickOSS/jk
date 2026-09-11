@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.runtime.base.ChromeTimeline;
@@ -15,8 +16,7 @@ class ChromeTimelineTest {
     void writes_valid_chrome_trace_under_target(@TempDir Path dir) throws Exception {
         Path project = dir.resolve("proj");
         Files.createDirectories(project);
-        ChromeTimeline timeline = ChromeTimeline.open(project);
-        assertThat(timeline).isNotNull();
+        ChromeTimeline timeline = requireNonNull(ChromeTimeline.open(project));
         assertThat(timeline.file().toString().replace('\\', '/')).endsWith("target/jk-profile.json");
 
         timeline.complete("demo", "compile-main", "SUCCESS", 12);

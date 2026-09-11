@@ -10,6 +10,7 @@ import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -116,7 +117,7 @@ class SpringBootWebmvcTemplateTest {
         assertThat(dest.resolve("data/jk.toml")).exists();
     }
 
-    private static Path pluginJar() {
+    private static @Nullable Path pluginJar() {
         // Version derived from the owner: a hand-typed version turned this into a silent
         // assume-skip on every version bump.
         String jarName = "jk-spring-boot-" + JkVersion.VERSION + ".jar";
@@ -129,7 +130,7 @@ class SpringBootWebmvcTemplateTest {
         return null;
     }
 
-    private static Path repoTemplate(String lang) {
+    private static @Nullable Path repoTemplate(String lang) {
         Path p = Path.of("").toAbsolutePath().normalize();
         for (int i = 0; i < 8 && p != null; i++) {
             Path t = p.resolve("plugins/spring-boot/src/main/resources/templates")

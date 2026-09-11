@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http.mcp;
 
+import static cc.jumpkick.engine.http.JsonFields.number;
+import static cc.jumpkick.engine.http.JsonFields.object;
+import static cc.jumpkick.engine.http.JsonFields.objects;
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.http.EngineHttpJobs;
@@ -10,6 +14,7 @@ import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.jsonl.MiniJson;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 /** Envelope, bind, and summary history — no HTTP bind. */
@@ -42,7 +47,7 @@ class McpContractTest {
                     + "\"success\":true,\"exitCode\":0,\"millis\":5,\"coord\":\"g:b\","
                     + "\"modules\":[],\"diagnostics\":[]}";
 
-    private JobSpec lastSpec;
+    private @Nullable JobSpec lastSpec;
 
     private final EngineHttpJobs jobs = new EngineHttpJobs() {
         @Override
@@ -88,8 +93,7 @@ class McpContractTest {
     void history_default_is_summaries_without_blobs() {
         Map<String, Object> structured = call("jk_history", "{}");
         assertThat(structured.get("type")).isEqualTo("history");
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> records = (List<Map<String, Object>>) structured.get("records");
+        List<Map<String, Object>> records = objects(structured, "records");
         assertThat(records).hasSize(7);
         assertThat(records.getFirst()).containsKeys("id", "success", "diagnosticCount", "failedModules");
         assertThat(records.getFirst()).doesNotContainKey("diagnostics");
@@ -102,12 +106,11 @@ class McpContractTest {
     void history_limit_and_next_page() {
         Map<String, Object> page = call("jk_history", "{\"limit\":2}");
         assertThat(page.get("truncated")).isEqualTo(true);
-        assertThat(((Number) page.get("next")).intValue()).isEqualTo(2);
-        assertThat(((Number) page.get("count")).intValue()).isEqualTo(2);
+        assertThat(number(page, "next").intValue()).isEqualTo(2);
+        assertThat(number(page, "count").intValue()).isEqualTo(2);
         Map<String, Object> page2 = call("jk_history", "{\"limit\":2,\"next\":2}");
-        assertThat(((Number) page2.get("next")).intValue()).isEqualTo(4);
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> rows = (List<Map<String, Object>>) page2.get("records");
+        assertThat(number(page2, "next").intValue()).isEqualTo(4);
+        List<Map<String, Object>> rows = objects(page2, "records");
         assertThat(rows.getFirst().get("id")).isEqualTo("r2");
     }
 
@@ -115,9 +118,8 @@ class McpContractTest {
     void bind_filters_history_without_dir() {
         call("jk_bind", "{\"dir\":\"/ws\"}");
         Map<String, Object> hist = call("jk_history", "{}");
-        assertThat(((Number) hist.get("totalMatched")).intValue()).isEqualTo(6);
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> records = (List<Map<String, Object>>) hist.get("records");
+        assertThat(number(hist, "totalMatched").intValue()).isEqualTo(6);
+        List<Map<String, Object>> records = objects(hist, "records");
         assertThat(records).allMatch(r -> "/ws".equals(r.get("dir")));
     }
 
@@ -125,10 +127,9 @@ class McpContractTest {
     void diagnostics_unique_last_fail() {
         Map<String, Object> d = call("jk_diagnostics", "{}");
         assertThat(d.get("type")).isEqualTo("diagnostics");
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> rows = (List<Map<String, Object>>) d.get("diagnostics");
+        List<Map<String, Object>> rows = objects(d, "diagnostics");
         assertThat(rows).hasSize(2);
-        assertThat(((Number) rows.getFirst().get("count")).intValue()).isEqualTo(2);
+        assertThat(number(rows.getFirst(), "count").intValue()).isEqualTo(2);
         assertThat(rows.getFirst().get("file")).isEqualTo("/ws/A.java");
         assertThat(MiniJson.write(d).length()).isLessThan(4_096);
     }
@@ -144,15 +145,15 @@ class McpContractTest {
     void run_hosts_format_and_applies_tags() {
         Map<String, Object> r = call("jk_run", "{\"kind\":\"format\",\"dir\":\"/tmp\",\"wait\":false}");
         assertThat(r.get("type")).isEqualTo("job-accepted");
-        assertThat(((Number) r.get("jid")).longValue()).isEqualTo(45L);
-        assertThat(lastSpec.kind()).isEqualTo("format");
+        assertThat(number(r, "jid").longValue()).isEqualTo(45L);
+        assertThat(requireNonNull(lastSpec).kind()).isEqualTo("format");
 
         call(
                 "jk_run",
                 "{\"kind\":\"test\",\"dir\":\"/tmp\",\"wait\":false,\"include_tags\":[\"network\"],\"modules\":[\"api\"]}");
-        assertThat(lastSpec.kind()).isEqualTo("test");
-        assertThat(lastSpec.includeTags()).containsExactly("network");
-        assertThat(lastSpec.modules()).containsExactly("api");
+        assertThat(requireNonNull(lastSpec).kind()).isEqualTo("test");
+        assertThat(requireNonNull(lastSpec).includeTags()).containsExactly("network");
+        assertThat(requireNonNull(lastSpec).modules()).containsExactly("api");
     }
 
     @Test
@@ -184,17 +185,13 @@ class McpContractTest {
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}");
         @SuppressWarnings("unchecked")
         Map<String, Object> resp = (Map<String, Object>) MiniJson.parse(body);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> result = (Map<String, Object>) resp.get("result");
-        @SuppressWarnings("unchecked")
-        Map<String, Object> caps = (Map<String, Object>) result.get("capabilities");
+        Map<String, Object> result = object(resp, "result");
+        Map<String, Object> caps = object(result, "capabilities");
         assertThat(caps).containsKeys("tools", "resources", "prompts", "logging");
-        @SuppressWarnings("unchecked")
-        Map<String, Object> resources = (Map<String, Object>) caps.get("resources");
+        Map<String, Object> resources = object(caps, "resources");
         assertThat(resources.get("subscribe")).isEqualTo(false);
         assertThat(resources.get("listChanged")).isEqualTo(false);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> prompts = (Map<String, Object>) caps.get("prompts");
+        Map<String, Object> prompts = object(caps, "prompts");
         assertThat(prompts.get("listChanged")).isEqualTo(false);
     }
 
@@ -249,8 +246,7 @@ class McpContractTest {
         String body = mcp.handleBody("[]");
         @SuppressWarnings("unchecked")
         Map<String, Object> resp = (Map<String, Object>) MiniJson.parse(body);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> err = (Map<String, Object>) resp.get("error");
+        Map<String, Object> err = object(resp, "error");
         assertThat(err.get("code")).isEqualTo(-32600.0);
         assertThat(resp.get("id")).isNull();
     }
@@ -272,8 +268,7 @@ class McpContractTest {
         assertThat(rows).hasSize(2);
         for (Map<String, Object> row : rows) {
             assertThat(row.get("id")).isNull();
-            @SuppressWarnings("unchecked")
-            Map<String, Object> err = (Map<String, Object>) row.get("error");
+            Map<String, Object> err = object(row, "error");
             assertThat(err.get("code")).isEqualTo(-32600.0);
         }
     }
@@ -300,8 +295,7 @@ class McpContractTest {
                 + "\"params\":{\"name\":\"jk_jdk\",\"arguments\":{\"action\":\"install\",\"spec\":\"\"}}}");
         @SuppressWarnings("unchecked")
         Map<String, Object> resp = (Map<String, Object>) MiniJson.parse(failing);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> result = (Map<String, Object>) resp.get("result");
+        Map<String, Object> result = object(resp, "result");
         assertThat(result.get("isError")).isEqualTo(true);
         String okBody = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\","
                 + "\"params\":{\"name\":\"jk_status\",\"arguments\":{}}}");
@@ -323,7 +317,6 @@ class McpContractTest {
         assertThat(c).doesNotContainKey("heap"); // the apply_preset result shape never appears
     }
 
-    @SuppressWarnings("unchecked")
     private Map<String, Object> call(String name, String argsJson) {
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\","
                 + "\"params\":{\"name\":\""
@@ -332,7 +325,7 @@ class McpContractTest {
                 + argsJson
                 + "}}");
         Map<String, Object> resp = (Map<String, Object>) MiniJson.parse(body);
-        Map<String, Object> result = (Map<String, Object>) resp.get("result");
-        return (Map<String, Object>) result.get("structuredContent");
+        Map<String, Object> result = object(resp, "result");
+        return object(result, "structuredContent");
     }
 }

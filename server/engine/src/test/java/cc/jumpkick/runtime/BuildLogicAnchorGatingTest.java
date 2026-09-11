@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.SessionContext;
@@ -36,13 +37,13 @@ class BuildLogicAnchorGatingTest {
                         TaskNames.RUN_TESTS,
                         TaskNames.COMPILE_JAVA);
 
-        Task preCompile = byName.get(TaskNames.BUILD_LOGIC_BEFORE_COMPILE);
-        Task after = byName.get(TaskNames.BUILD_LOGIC_AFTER_COMPILE);
-        Task before = byName.get(TaskNames.BUILD_LOGIC_BEFORE_PACKAGE);
-        Task resources = byName.get(TaskNames.COPY_RESOURCES);
-        Task packageJar = byName.get(TaskNames.PACKAGE_JAR);
-        Task compileTest = byName.get(TaskNames.COMPILE_TEST);
-        Task compileJava = byName.get(TaskNames.COMPILE_JAVA);
+        Task preCompile = task(byName, TaskNames.BUILD_LOGIC_BEFORE_COMPILE);
+        Task after = task(byName, TaskNames.BUILD_LOGIC_AFTER_COMPILE);
+        Task before = task(byName, TaskNames.BUILD_LOGIC_BEFORE_PACKAGE);
+        Task resources = task(byName, TaskNames.COPY_RESOURCES);
+        Task packageJar = task(byName, TaskNames.PACKAGE_JAR);
+        Task compileTest = task(byName, TaskNames.COMPILE_TEST);
+        Task compileJava = task(byName, TaskNames.COMPILE_JAVA);
 
         // BEFORE_COMPILE sits after setup and before language compile.
         assertThat(preCompile.requires()).contains(TaskNames.PARSE_BUILD, TaskNames.RESOLVE_DEPS, TaskNames.ENSURE_JDK);
@@ -73,10 +74,15 @@ class BuildLogicAnchorGatingTest {
 
         assertThat(byName).containsKey(TaskNames.BUILD_LOGIC_BEFORE_PACKAGE);
         assertThat(byName).doesNotContainKey(TaskNames.RUN_TESTS);
-        assertThat(byName.get(TaskNames.BUILD_LOGIC_BEFORE_PACKAGE).requires())
+        assertThat(task(byName, TaskNames.BUILD_LOGIC_BEFORE_PACKAGE).requires())
                 .contains(TaskNames.COPY_RESOURCES)
                 .doesNotContain(TaskNames.RUN_TESTS);
-        assertThat(byName.get(TaskNames.PACKAGE_JAR).requires()).contains(TaskNames.BUILD_LOGIC_BEFORE_PACKAGE);
+        assertThat(task(byName, TaskNames.PACKAGE_JAR).requires()).contains(TaskNames.BUILD_LOGIC_BEFORE_PACKAGE);
+    }
+
+    /** The plan's task named {@code name}; that it is in the plan is part of what the test asserts. */
+    private static Task task(Map<String, Task> byName, String name) {
+        return requireNonNull(byName.get(name), name);
     }
 
     private static Map<String, Task> index(BuildPlan p) {

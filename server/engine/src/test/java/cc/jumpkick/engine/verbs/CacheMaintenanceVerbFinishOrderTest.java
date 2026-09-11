@@ -25,6 +25,7 @@ import java.nio.file.StandardOpenOption;
 import java.util.List;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -67,7 +68,7 @@ class CacheMaintenanceVerbFinishOrderTest {
         }
 
         @Override
-        public void sendQuiet(BufferedWriter writer, String wireLine) {
+        public void sendQuiet(@Nullable BufferedWriter writer, String wireLine) {
             if (!EngineProtocol.BUILDPLAN_FINISH.equals(EngineProtocol.typeOf(wireLine))) return;
             sawFinish = true;
             try (FileChannel ch = FileChannel.open(
@@ -98,18 +99,20 @@ class CacheMaintenanceVerbFinishOrderTest {
         public void putProgressRoot(long rid, String dir) {}
 
         @Override
-        public WorkspaceBuildListener workspaceListener(BufferedWriter writer, String dir) {
+        public WorkspaceBuildListener workspaceListener(@Nullable BufferedWriter writer, String dir) {
             throw new UnsupportedOperationException();
         }
 
         @Override
-        public BuildPlanListener planListener(String dir, BufferedWriter writer, BuildPlan plan) {
+        public BuildPlanListener planListener(String dir, @Nullable BufferedWriter writer, BuildPlan plan) {
             return new BuildPlanListener() {};
         }
 
         @Override
         public BuildPlanListener planListener(
-                String dir, BufferedWriter writer, Function<BuildPlanResult, String> finishEncoder) {
+                String dir,
+                @Nullable BufferedWriter writer,
+                @Nullable Function<BuildPlanResult, String> finishEncoder) {
             return new BuildPlanListener() {};
         }
 
@@ -122,37 +125,37 @@ class CacheMaintenanceVerbFinishOrderTest {
         }
 
         @Override
-        public void accTests(long rid, TestSummary tests) {}
+        public void accTests(long rid, @Nullable TestSummary tests) {}
 
         @Override
         public void finishProgress(long rid) {}
 
         @Override
-        public void emitWorkspaceProgress(long rid, BufferedWriter writer, boolean force) {}
+        public void emitWorkspaceProgress(long rid, @Nullable BufferedWriter writer, boolean force) {}
 
         @Override
-        public void flushTimeline(long rid, BufferedWriter writer) {}
+        public void flushTimeline(long rid, @Nullable BufferedWriter writer) {}
 
         @Override
-        public void send(BufferedWriter writer, String wireLine) {}
+        public void send(@Nullable BufferedWriter writer, String wireLine) {}
 
         @Override
-        public String redactEnv(String dir, String text) {
+        public @Nullable String redactEnv(@Nullable String dir, @Nullable String text) {
             return text;
         }
 
         @Override
-        public List<Redacted> redactErrors(String dir, List<String> errors) {
+        public List<Redacted> redactErrors(@Nullable String dir, List<String> errors) {
             return List.of();
         }
 
         @Override
-        public String requestFailedLine(String dir, Throwable e) {
+        public String requestFailedLine(@Nullable String dir, Throwable e) {
             return "request-failed:" + e;
         }
 
         @Override
-        public void publishRequestError(long rid, String dir, String message) {}
+        public void publishRequestError(long rid, @Nullable String dir, String message) {}
 
         @Override
         public void maybeEnqueuePrune(Path cachePath) {}

@@ -13,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -306,7 +307,7 @@ class ActionKeyTest {
         return home;
     }
 
-    private static CompileRequest javac(Path src, Path tempDir, Path javaHome) {
+    private static CompileRequest javac(Path src, Path tempDir, @Nullable Path javaHome) {
         return CompileRequest.builder()
                 .sources(List.of(src))
                 .outputDir(tempDir.resolve("out"))

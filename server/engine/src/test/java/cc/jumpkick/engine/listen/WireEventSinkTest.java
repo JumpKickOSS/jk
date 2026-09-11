@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.listen;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.wire.protocol.EngineProtocol;
@@ -19,7 +20,7 @@ class WireEventSinkTest {
 
     @Test
     void plan_start_encodes_existing_wire_token() {
-        String line = WireEventSink.encode(new EngineEvent.PlanStart("d", "build", 1, 2, 3, 0, false));
+        String line = requireNonNull(WireEventSink.encode(new EngineEvent.PlanStart("d", "build", 1, 2, 3, 0, false)));
         assertThat(EngineProtocol.typeOf(line)).isEqualTo(EngineProtocol.BUILDPLAN_START);
         assertThat(line).contains("\"dir\":\"d\"");
     }
@@ -35,13 +36,14 @@ class WireEventSinkTest {
 
     @Test
     void workspace_events_keep_existing_wire_tokens() {
-        assertThat(EngineProtocol.typeOf(WireEventSink.encode(new EngineEvent.Preflight("lock", 0, 1, "locking"))))
+        assertThat(EngineProtocol.typeOf(
+                        requireNonNull(WireEventSink.encode(new EngineEvent.Preflight("lock", 0, 1, "locking")))))
                 .isEqualTo(EngineProtocol.PREFLIGHT);
-        assertThat(EngineProtocol.typeOf(WireEventSink.encode(new EngineEvent.PlanDone(3))))
+        assertThat(EngineProtocol.typeOf(requireNonNull(WireEventSink.encode(new EngineEvent.PlanDone(3)))))
                 .isEqualTo(EngineProtocol.PLAN_DONE);
-        assertThat(EngineProtocol.typeOf(WireEventSink.encode(new EngineEvent.ModuleStart("d", "g:a"))))
+        assertThat(EngineProtocol.typeOf(requireNonNull(WireEventSink.encode(new EngineEvent.ModuleStart("d", "g:a")))))
                 .isEqualTo(EngineProtocol.MODULE_START);
-        assertThat(EngineProtocol.typeOf(WireEventSink.encode(new EngineEvent.Eta(9))))
+        assertThat(EngineProtocol.typeOf(requireNonNull(WireEventSink.encode(new EngineEvent.Eta(9)))))
                 .isEqualTo(EngineProtocol.ETA);
     }
 

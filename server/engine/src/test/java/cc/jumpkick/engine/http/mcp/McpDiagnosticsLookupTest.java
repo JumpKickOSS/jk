@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http.mcp;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
@@ -24,13 +25,14 @@ class McpDiagnosticsLookupTest {
 
     @Test
     void last_fail_skips_running_stubs() {
-        Map<String, Object> rec = McpDiagnostics.findRun(List.of(RUNNING, FAIL), "last-fail", "/ws");
+        Map<String, Object> rec = requireNonNull(McpDiagnostics.findRun(List.of(RUNNING, FAIL), "last-fail", "/ws"));
         assertThat(rec.get("id")).isEqualTo("old");
     }
 
     @Test
     void find_by_request_id_prefers_finished_row() {
-        assertThat(McpDiagnostics.findByRequestId(List.of(RUNNING, FORMAT), 9).get("id"))
+        assertThat(requireNonNull(McpDiagnostics.findByRequestId(List.of(RUNNING, FORMAT), 9))
+                        .get("id"))
                 .isEqualTo("fmt");
         assertThat(McpDiagnostics.findByRequestId(List.of(RUNNING), 9)).isNull();
     }
@@ -56,14 +58,14 @@ class McpDiagnosticsLookupTest {
 
     @Test
     void explicit_run_id_bypasses_the_dir_filter() {
-        Map<String, Object> rec = McpDiagnostics.findRun(List.of(FAIL, OTHER), "x", "/ws");
+        Map<String, Object> rec = requireNonNull(McpDiagnostics.findRun(List.of(FAIL, OTHER), "x", "/ws"));
         assertThat(rec.get("id")).isEqualTo("x");
         assertThat(rec.get("dir")).isEqualTo("/other");
     }
 
     @Test
     void newest_finished_is_not_last_fail() {
-        Map<String, Object> rec = McpDiagnostics.findNewest(List.of(FORMAT, FAIL, OTHER), "/ws");
+        Map<String, Object> rec = requireNonNull(McpDiagnostics.findNewest(List.of(FORMAT, FAIL, OTHER), "/ws"));
         assertThat(rec.get("id")).isEqualTo("fmt");
         assertThat(rec.get("success")).isEqualTo(true);
     }

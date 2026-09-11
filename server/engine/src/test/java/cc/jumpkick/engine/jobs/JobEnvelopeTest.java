@@ -45,6 +45,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.LongSupplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -679,7 +680,7 @@ class JobEnvelopeTest {
         boolean tryStart = true;
         volatile int abandoned;
         volatile int finished;
-        volatile BuildAccumulator accumulator;
+        volatile BuildAccumulator accumulator = new BuildAccumulator("build", "/p", null, "cli");
         final List<String> events = Collections.synchronizedList(new ArrayList<>());
         final List<Long> cleared = Collections.synchronizedList(new ArrayList<>());
         final List<String> teardownOrder = Collections.synchronizedList(new ArrayList<>());
@@ -736,6 +737,7 @@ class JobEnvelopeTest {
             sequence.add("request-start");
         }
 
+        @Nullable
         Boolean lastNoTimeline;
 
         @Override
@@ -747,7 +749,7 @@ class JobEnvelopeTest {
                 boolean noTimeline,
                 boolean rebuild,
                 long buildNumber,
-                String journalId) {
+                @Nullable String journalId) {
             lastNoTimeline = noTimeline;
         }
 
@@ -819,7 +821,7 @@ class JobEnvelopeTest {
         volatile boolean journalThrows;
 
         @Override
-        public void writeJournal(long id, boolean cancelled, long millis, BufferedWriter writer) {
+        public void writeJournal(long id, boolean cancelled, long millis, @Nullable BufferedWriter writer) {
             teardownOrder.add("writeJournal");
             sequence.add("writeJournal");
             journalCancelled = cancelled;

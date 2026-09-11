@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.journal;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.test.AffectedTests;
@@ -26,8 +27,7 @@ class BuildAccumulatorAffectedTest {
         BuildAccumulator a = new BuildAccumulator("test", "/ws", "g:ws", "cli");
         a.addAffected(slice("api", "com.acme.FooTest"));
         a.addAffected(slice("app", "com.acme.BarTest"));
-        AffectedTests merged = a.affected();
-        assertThat(merged).isNotNull();
+        AffectedTests merged = requireNonNull(a.affected());
         assertThat(merged.classNames()).containsExactly("com.acme.FooTest", "com.acme.BarTest");
         assertThat(merged.modules()).hasSize(2);
         assertThat(merged.candidateCount()).isEqualTo(2);
@@ -38,13 +38,13 @@ class BuildAccumulatorAffectedTest {
         BuildAccumulator first = new BuildAccumulator("test", "/ws", "g:ws", "cli");
         first.addAffected(
                 AffectedTests.refused(new AffectedTests.Refuse("manifest", "jk.toml changed"), List.of(), List.of()));
-        assertThat(first.affected().refused()).isTrue();
+        assertThat(requireNonNull(first.affected()).refused()).isTrue();
 
         BuildAccumulator second = new BuildAccumulator("test", "/ws", "g:ws", "cli");
         assertThat(second.affected()).isNull();
         second.addAffected(slice("api", "com.acme.FooTest"));
-        assertThat(second.affected().refused()).isFalse();
-        assertThat(second.affected().classNames()).containsExactly("com.acme.FooTest");
+        assertThat(requireNonNull(second.affected()).refused()).isFalse();
+        assertThat(requireNonNull(second.affected()).classNames()).containsExactly("com.acme.FooTest");
     }
 
     @Test
@@ -53,7 +53,8 @@ class BuildAccumulatorAffectedTest {
         a.addAffected(AffectedTests.refused(
                 new AffectedTests.Refuse("outside-selection", "dirty e2e test"), List.of(), List.of()));
         a.addAffected(slice("api", "com.acme.FooTest"));
-        assertThat(a.affected().refused()).isTrue();
-        assertThat(a.affected().refuse().code()).isEqualTo("outside-selection");
+        AffectedTests affected = requireNonNull(a.affected());
+        assertThat(affected.refused()).isTrue();
+        assertThat(requireNonNull(affected.refuse()).code()).isEqualTo("outside-selection");
     }
 }

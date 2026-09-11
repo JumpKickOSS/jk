@@ -38,7 +38,7 @@ class ForkedJavacAotBenchTest {
         Path javaHome = Path.of(System.getProperty("java.home"));
         // ToolProvider home is often jre; prefer parent if javac missing
         if (!Files.isRegularFile(javaHome.resolve("bin/javac"))
-                && Files.isRegularFile(javaHome.getParent().resolve("bin/javac"))) {
+                && Files.isRegularFile(javaHome.resolveSibling("bin/javac"))) {
             javaHome = javaHome.getParent();
         }
 

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.lock.LockPaths;
@@ -118,7 +119,7 @@ class AutoLockWorkspaceTest {
                 """);
 
         Lockfile existing = LockfileReader.read(rootLock);
-        Lockfile updated = AutoLock.maybeReLock(
+        Lockfile updated = requireNonNull(AutoLock.maybeReLock(
                 ws.resolve("app"),
                 existing,
                 rootLock,
@@ -127,7 +128,7 @@ class AutoLockWorkspaceTest {
                 List.of(),
                 true,
                 ResolveObserver.NOOP,
-                null);
+                null));
 
         assertThat(updated).as("stale member relock produced a lock").isNotNull();
         // The committed header carries the PRODUCT version. This path once stamped
@@ -175,7 +176,7 @@ class AutoLockWorkspaceTest {
                 java = 25
                 """);
 
-        Lockfile updated = AutoLock.maybeReLock(
+        Lockfile updated = requireNonNull(AutoLock.maybeReLock(
                 proj,
                 LockfileReader.read(lockFile),
                 lockFile,
@@ -184,7 +185,7 @@ class AutoLockWorkspaceTest {
                 List.of(),
                 true,
                 ResolveObserver.NOOP,
-                null);
+                null));
 
         assertThat(updated).isNotNull();
         assertThat(updated.modules())

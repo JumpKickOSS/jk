@@ -4,6 +4,7 @@ package cc.jumpkick.engine;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkHistoryConfig;
+import cc.jumpkick.engine.journal.BuildJournal;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -70,7 +71,7 @@ class IdleHousekeepingNukedCacheTest {
                 new AtomicInteger(0),
                 new ReentrantReadWriteLock(),
                 new JkHistoryConfig(false, 30, 512),
-                null,
+                new BuildJournal(cache.resolveSibling("builds")),
                 () -> cache.resolveSibling(cache.getFileName() + "-metrics.jsonl"),
                 cache.resolveSibling("engine"),
                 System::currentTimeMillis,

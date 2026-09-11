@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compile;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.compile.JavaCompilerHost.Lanes;
@@ -19,6 +20,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -113,7 +115,8 @@ class JavaCompilerHostPoolTest {
         Path badRoot = dir.resolve("bad");
         SpecFile specs = req -> {
             if (req.classOutput().startsWith(badRoot)) throw new IOException("no room for a spec");
-            return Files.writeString(dir.resolve(req.classOutput().getParent().getFileName() + ".spec"), "spec");
+            return Files.writeString(
+                    dir.resolve(requireNonNull(req.classOutput().getParent()).getFileName() + ".spec"), "spec");
         };
         CountDownLatch release = new CountDownLatch(1);
         AtomicReference<Session> lane = new AtomicReference<>();
@@ -151,7 +154,7 @@ class JavaCompilerHostPoolTest {
         // as a permit takes. A lane parked there holds an item; growth must not count it as
         // capacity, or the next module queues behind a wait a fresh lane would have skipped.
         CountDownLatch release = new CountDownLatch(1);
-        AtomicReference<Session> first = new AtomicReference<>();
+        AtomicReference<@Nullable Session> first = new AtomicReference<>();
         Lanes pool = new Lanes(
                 2,
                 (owner, index) -> {
@@ -164,7 +167,9 @@ class JavaCompilerHostPoolTest {
                 },
                 ForkedJavac::writeSpec);
         pool.enqueue(Work.compile(request(dir, "a")));
-        awaitTrue(() -> pool.queued() == 0 && first.get().working(), "the first lane takes the item and is busy");
+        awaitTrue(
+                () -> pool.queued() == 0 && requireNonNull(first.get()).working(),
+                "the first lane takes the item and is busy");
 
         pool.enqueue(Work.compile(request(dir, "b")));
         assertThat(pool.liveLanes())
@@ -180,7 +185,7 @@ class JavaCompilerHostPoolTest {
         // go back to the pool, or its caller waits on a worker that no longer exists.
         CountDownLatch firstDies = new CountDownLatch(1);
         CountDownLatch secondDies = new CountDownLatch(1);
-        AtomicReference<Session> first = new AtomicReference<>();
+        AtomicReference<@Nullable Session> first = new AtomicReference<>();
         Lanes pool = new Lanes(
                 1,
                 (owner, index) -> {
@@ -199,7 +204,7 @@ class JavaCompilerHostPoolTest {
         awaitTrue(() -> pool.queued() == 0, "the first lane's body took the item");
 
         List<String> sent = new ArrayList<>();
-        Thread pump = Thread.ofVirtual().start(() -> first.get()
+        Thread pump = Thread.ofVirtual().start(() -> requireNonNull(first.get())
                 .onLine("{\"" + PluginProtocol.T + "\":\"" + PluginProtocol.READY + "\"}", recording(sent)));
         awaitTrue(
                 () -> pump.getState() == Thread.State.WAITING || pump.getState() == Thread.State.TIMED_WAITING,
@@ -239,7 +244,7 @@ class JavaCompilerHostPoolTest {
             }
             return Files.writeString(dir.resolve("a.spec"), "spec");
         };
-        AtomicReference<Session> first = new AtomicReference<>();
+        AtomicReference<@Nullable Session> first = new AtomicReference<>();
         Lanes pool = new Lanes(
                 1,
                 (owner, index) -> {
@@ -255,9 +260,11 @@ class JavaCompilerHostPoolTest {
         pool.enqueue(a);
 
         List<String> sent = new ArrayList<>();
-        Thread pump = Thread.ofVirtual().start(() -> first.get()
+        Thread pump = Thread.ofVirtual().start(() -> requireNonNull(first.get())
                 .onLine("{\"" + PluginProtocol.T + "\":\"" + PluginProtocol.READY + "\"}", recording(sent)));
-        awaitTrue(() -> pool.queued() == 0 && first.get().working(), "the pump took the item and is in the spec write");
+        awaitTrue(
+                () -> pool.queued() == 0 && requireNonNull(first.get()).working(),
+                "the pump took the item and is in the spec write");
 
         firstDies.countDown();
         awaitTrue(() -> pool.liveLanes() == 0, "the first lane is gone while the pump still holds the item");

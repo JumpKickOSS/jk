@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http.mcp;
 
+import static cc.jumpkick.engine.http.JsonFields.object;
+import static cc.jumpkick.engine.http.JsonFields.objects;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -45,9 +47,7 @@ class McpToolRegistryTest {
         McpTools tools = new McpTools(List.of(new QuuxTool()));
         assertThat(tools.names()).containsExactly("jk_quux");
 
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> rows =
-                (List<Map<String, Object>>) tools.listing().get("tools");
+        List<Map<String, Object>> rows = objects(tools.listing(), "tools");
         assertThat(rows).hasSize(1);
         assertThat(rows.getFirst().get("name")).isEqualTo("jk_quux");
         assertThat(rows.getFirst().get("description")).isEqualTo("A tool that exists only in this test.");
@@ -56,8 +56,7 @@ class McpToolRegistryTest {
         // Same registry answers tools/call — the name is not typed a second time anywhere.
         Map<String, Object> result =
                 tools.call(context(), Map.of("name", "jk_quux", "arguments", Map.of("dir", "/ws")));
-        @SuppressWarnings("unchecked")
-        Map<String, Object> structured = (Map<String, Object>) result.get("structuredContent");
+        Map<String, Object> structured = object(result, "structuredContent");
         assertThat(structured.get("type")).isEqualTo("quux");
         assertThat(structured.get("dir")).isEqualTo("/ws");
     }
@@ -81,9 +80,7 @@ class McpToolRegistryTest {
     @Test
     void tools_list_advertises_exactly_the_registry_and_nothing_twice() {
         McpTools tools = McpTools.standard();
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> rows =
-                (List<Map<String, Object>>) tools.listing().get("tools");
+        List<Map<String, Object>> rows = objects(tools.listing(), "tools");
         List<String> listed =
                 rows.stream().map(r -> String.valueOf(r.get("name"))).toList();
         assertThat(listed).isEqualTo(tools.names());

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.base;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
@@ -28,9 +29,7 @@ class ToolClosureTest {
         Path cacheFile = dir.resolve("closure.shas");
 
         ToolClosure.writeCachedClosure(cacheFile, shas);
-        List<Path> jars = ToolClosure.readCachedClosure(cacheFile, cas);
-
-        assertThat(jars).isNotNull();
+        List<Path> jars = requireNonNull(ToolClosure.readCachedClosure(cacheFile, cas));
         assertThat(jars).hasSize(3);
         // Each recorded hash maps back to its CAS path, in order.
         for (int i = 0; i < shas.size(); i++) {

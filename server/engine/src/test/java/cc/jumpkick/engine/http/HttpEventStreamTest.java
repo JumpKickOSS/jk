@@ -168,7 +168,7 @@ class HttpEventStreamTest extends HttpEngineServerHarness {
         // a stale running record with a real buildNumber that fails the strict match is a
         // DIFFERENT run (crashed-engine stub) — it must not rebind to the current run's stream.
         var run = new HttpLive.Run(42, 6, "build", "/w", "g:w", 0, Double.NaN, "j6");
-        server.setLiveRunSupport(() -> List.of(run), null);
+        server.setLiveRunSupport(() -> List.of(run), s -> {});
 
         assertThat(server.matchLiveRun(Map.of("dir", "/w", "buildNumber", 6L)))
                 .isEqualTo(run); // strict (dir, buildNumber)

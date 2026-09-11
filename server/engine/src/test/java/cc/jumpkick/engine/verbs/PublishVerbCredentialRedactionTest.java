@@ -24,6 +24,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -203,7 +204,7 @@ class PublishVerbCredentialRedactionTest {
         public JobOutcome streamSinglePlan(
                 BuildPlan plan,
                 Session session,
-                BufferedWriter writer,
+                @Nullable BufferedWriter writer,
                 Function<BuildPlanResult, String> finishEncoder) {
             for (Redacted row : redactErrors(session.workingDir().toString(), List.of(workerError))) {
                 masked.add(row.text());
@@ -220,17 +221,18 @@ class PublishVerbCredentialRedactionTest {
         public void putProgressRoot(long rid, String dir) {}
 
         @Override
-        public WorkspaceBuildListener workspaceListener(BufferedWriter w, String dir) {
+        public WorkspaceBuildListener workspaceListener(@Nullable BufferedWriter w, String dir) {
             throw new UnsupportedOperationException();
         }
 
         @Override
-        public BuildPlanListener planListener(String dir, BufferedWriter w, BuildPlan plan) {
+        public BuildPlanListener planListener(String dir, @Nullable BufferedWriter w, BuildPlan plan) {
             throw new UnsupportedOperationException();
         }
 
         @Override
-        public BuildPlanListener planListener(String dir, BufferedWriter w, Function<BuildPlanResult, String> enc) {
+        public BuildPlanListener planListener(
+                String dir, @Nullable BufferedWriter w, @Nullable Function<BuildPlanResult, String> enc) {
             throw new UnsupportedOperationException();
         }
 
@@ -243,35 +245,35 @@ class PublishVerbCredentialRedactionTest {
         }
 
         @Override
-        public void accTests(long rid, TestSummary tests) {}
+        public void accTests(long rid, @Nullable TestSummary tests) {}
 
         @Override
         public void finishProgress(long rid) {}
 
         @Override
-        public void emitWorkspaceProgress(long rid, BufferedWriter w, boolean force) {}
+        public void emitWorkspaceProgress(long rid, @Nullable BufferedWriter w, boolean force) {}
 
         @Override
-        public void flushTimeline(long rid, BufferedWriter w) {}
+        public void flushTimeline(long rid, @Nullable BufferedWriter w) {}
 
         @Override
-        public void send(BufferedWriter w, String line) {}
+        public void send(@Nullable BufferedWriter w, String line) {}
 
         @Override
-        public void sendQuiet(BufferedWriter w, String line) {}
+        public void sendQuiet(@Nullable BufferedWriter w, String line) {}
 
         @Override
-        public String redactEnv(String dir, String text) {
+        public @Nullable String redactEnv(@Nullable String dir, @Nullable String text) {
             return text;
         }
 
         @Override
-        public String requestFailedLine(String dir, Throwable e) {
+        public String requestFailedLine(@Nullable String dir, Throwable e) {
             return String.valueOf(e);
         }
 
         @Override
-        public void publishRequestError(long rid, String dir, String message) {}
+        public void publishRequestError(long rid, @Nullable String dir, String message) {}
 
         @Override
         public void maybeEnqueuePrune(Path cache) {}

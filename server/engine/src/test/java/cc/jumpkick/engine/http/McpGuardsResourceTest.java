@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http;
 
+import static cc.jumpkick.engine.http.JsonFields.number;
+import static cc.jumpkick.engine.http.JsonFields.object;
+import static cc.jumpkick.engine.http.JsonFields.objects;
+import static cc.jumpkick.engine.http.JsonFields.string;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.jobs.JobSpec;
@@ -69,12 +73,11 @@ class McpGuardsResourceTest {
         return (Map<String, Object>) MiniJson.parse(body);
     }
 
-    @SuppressWarnings("unchecked")
     private static String text(String body) {
-        Map<String, Object> result = (Map<String, Object>) resp(body).get("result");
-        List<Map<String, Object>> contents = (List<Map<String, Object>>) result.get("contents");
+        Map<String, Object> result = object(resp(body), "result");
+        List<Map<String, Object>> contents = objects(result, "contents");
         assertThat(contents.get(0).get("mimeType")).isEqualTo("application/json");
-        return (String) contents.get(0).get("text");
+        return string(contents.get(0), "text");
     }
 
     private static String read(McpHandler mcp, int id, String uri) {
@@ -97,8 +100,7 @@ class McpGuardsResourceTest {
 
         @SuppressWarnings("unchecked")
         Map<String, Object> catalog = (Map<String, Object>) MiniJson.parse(text(read(mcp, 4, "jk://guards")));
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> rules = (List<Map<String, Object>>) catalog.get("rules");
+        List<Map<String, Object>> rules = objects(catalog, "rules");
         assertThat(rules).singleElement().satisfies(r -> {
             assertThat(r.get("id")).isEqualTo("no-todo");
             assertThat(r.get("kind")).isEqualTo("text");
@@ -110,15 +112,13 @@ class McpGuardsResourceTest {
 
         @SuppressWarnings("unchecked")
         Map<String, Object> card = (Map<String, Object>) MiniJson.parse(text(read(mcp, 5, "jk://guards/no-todo")));
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> one = (List<Map<String, Object>>) card.get("rules");
+        List<Map<String, Object>> one = objects(card, "rules");
         assertThat(one).singleElement().satisfies(r -> assertThat(r.get("id")).isEqualTo("no-todo"));
 
         Map<String, Object> unknown = resp(read(mcp, 6, "jk://guards/no-tod"));
-        @SuppressWarnings("unchecked")
-        Map<String, Object> error = (Map<String, Object>) unknown.get("error");
+        Map<String, Object> error = object(unknown, "error");
         assertThat(error).isNotNull();
-        assertThat(((Number) error.get("code")).intValue()).isEqualTo(-32602);
+        assertThat(number(error, "code").intValue()).isEqualTo(-32602);
         assertThat(String.valueOf(error.get("message")))
                 .contains("unknown guard: no-tod")
                 .contains("no-todo");

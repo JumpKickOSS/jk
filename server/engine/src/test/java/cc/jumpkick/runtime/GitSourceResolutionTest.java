@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -106,9 +107,9 @@ class GitSourceResolutionTest {
                 .orElseThrow();
         assertThat(widgets.version()).isEqualTo("1.0.0");
         // Git provenance is stamped onto the locked package.
-        assertThat(widgets.git()).isNotNull();
-        assertThat(widgets.git().rev()).hasSize(40);
-        assertThat(widgets.git().ref()).isEqualTo("tag=v1.0.0");
+        var git = requireNonNull(widgets.git());
+        assertThat(git.rev()).hasSize(40);
+        assertThat(git.ref()).isEqualTo("tag=v1.0.0");
         assertThat(widgets.git().url()).isEqualTo(lib.canonicalUrl());
     }
 
@@ -136,7 +137,7 @@ class GitSourceResolutionTest {
                     .setAuthor("t", "t@e")
                     .setCommitter("t", "t@e")
                     .call();
-            branch = git.getRepository().getBranch();
+            branch = requireNonNull(git.getRepository().getBranch());
         }
         String url = repoDir.toUri().toString();
         GitSource branchLib = GitSource.of(url, url, new GitRefSpec.Branch(branch));

@@ -6,18 +6,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.jsonl.Jsonl;
-import cc.jumpkick.run.BuildPlan;
-import cc.jumpkick.run.BuildPlanListener;
-import cc.jumpkick.run.BuildPlanResult;
-import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoJobs;
-import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
-import java.io.BufferedWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.function.Function;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -36,7 +29,7 @@ class HostedVerbDecodeJobTest {
     @Test
     void build_test_and_assemble_decode_to_build_requests(@TempDir Path dir) throws Exception {
         project(dir);
-        WorkspaceBuildVerb verb = new WorkspaceBuildVerb(null);
+        WorkspaceBuildVerb verb = new WorkspaceBuildVerb(new InertVerbHost());
         assertThat(verb.jobKinds()).containsExactly("build", "assemble", "test", "guard");
 
         String build = verb.decodeJob(JobSpec.of("build", dir.toString()));
@@ -60,7 +53,7 @@ class HostedVerbDecodeJobTest {
     @Test
     void test_selection_rides_the_decoded_line(@TempDir Path dir) throws Exception {
         project(dir);
-        WorkspaceBuildVerb verb = new WorkspaceBuildVerb(null);
+        WorkspaceBuildVerb verb = new WorkspaceBuildVerb(new InertVerbHost());
         String line = verb.decodeJob(new JobSpec(
                 "test", dir.toString(), List.of(), List.of("fast"), List.of("slow"), List.of(), false, false));
         var sel = ProtoJobs.testSelectionOf(line);
@@ -72,19 +65,19 @@ class HostedVerbDecodeJobTest {
     @Test
     void lock_and_update_decode_to_their_wire_requests(@TempDir Path dir) throws Exception {
         project(dir);
-        String lock = new LockVerb(null).decodeJob(JobSpec.of("lock", dir.toString()));
+        String lock = new LockVerb(new InertVerbHost()).decodeJob(JobSpec.of("lock", dir.toString()));
         assertThat(EngineProtocol.typeOf(lock)).isEqualTo(EngineProtocol.LOCK_REQUEST);
         assertThat(Jsonl.str(lock, "trigger")).isEqualTo("web");
         assertThat(Jsonl.bool(lock, "freshen", true)).isFalse();
 
-        String update = new UpdateVerb(null).decodeJob(JobSpec.of("update", dir.toString()));
+        String update = new UpdateVerb(new InertVerbHost()).decodeJob(JobSpec.of("update", dir.toString()));
         assertThat(EngineProtocol.typeOf(update)).isEqualTo(EngineProtocol.UPDATE_REQUEST);
     }
 
     @Test
     void clean_decodes_to_the_registered_cache_clear_request(@TempDir Path dir) throws Exception {
         project(dir);
-        String clean = new CacheMaintenanceVerb(null).decodeJob(JobSpec.of("clean", dir.toString()));
+        String clean = new CacheMaintenanceVerb(new InertVerbHost()).decodeJob(JobSpec.of("clean", dir.toString()));
         assertThat(EngineProtocol.typeOf(clean)).isEqualTo(EngineProtocol.CACHE_PRUNE_REQUEST);
         assertThat(Jsonl.str(clean, "op")).isEqualTo("clear");
         assertThat(Jsonl.str(clean, "dir")).isEqualTo(dir.toString());
@@ -94,17 +87,17 @@ class HostedVerbDecodeJobTest {
     void publish_install_and_import_decode_to_their_wire_requests(@TempDir Path dir) throws Exception {
         project(dir);
         // Detached publish is always a dry run — credential resolution never enters the engine.
-        String publish = new PublishVerb(null).decodeJob(JobSpec.of("publish", dir.toString()));
+        String publish = new PublishVerb(new InertVerbHost()).decodeJob(JobSpec.of("publish", dir.toString()));
         assertThat(EngineProtocol.typeOf(publish)).isEqualTo(EngineProtocol.PUBLISH_REQUEST);
         assertThat(Jsonl.bool(publish, "dryRun", false)).isTrue();
         assertThat(Jsonl.str(publish, "authType")).isEqualTo("anonymous");
 
-        String install = new InstallVerb(null).decodeJob(JobSpec.of("install", dir.toString()));
+        String install = new InstallVerb(new InertVerbHost()).decodeJob(JobSpec.of("install", dir.toString()));
         assertThat(EngineProtocol.typeOf(install)).isEqualTo(EngineProtocol.INSTALL_REQUEST);
         assertThat(Jsonl.str(install, "m2Dir")).endsWith("repository");
 
         Files.writeString(dir.resolve("pom.xml"), "<project/>");
-        String imp = new ImportVerb(null).decodeJob(JobSpec.of("import", dir.toString()));
+        String imp = new ImportVerb(new InertVerbHost()).decodeJob(JobSpec.of("import", dir.toString()));
         assertThat(EngineProtocol.typeOf(imp)).isEqualTo(EngineProtocol.IMPORT_REQUEST);
         assertThat(Jsonl.str(imp, "source")).endsWith("pom.xml");
         assertThat(Jsonl.str(imp, "out")).endsWith("jk.toml");
@@ -113,14 +106,14 @@ class HostedVerbDecodeJobTest {
     @Test
     void import_without_a_build_file_refuses_decode(@TempDir Path dir) throws Exception {
         project(dir);
-        assertThatThrownBy(() -> new ImportVerb(null).decodeJob(JobSpec.of("import", dir.toString())))
+        assertThatThrownBy(() -> new ImportVerb(new InertVerbHost()).decodeJob(JobSpec.of("import", dir.toString())))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("no build file");
     }
 
     @Test
     void every_exposed_kind_resolves_through_the_registry() {
-        VerbRegistry registry = VerbRegistry.standard(new EngineVerbBridgeStub());
+        VerbRegistry registry = VerbRegistry.standard(new InertVerbHost());
         for (String kind : List.of(
                 "build",
                 "assemble",
@@ -142,76 +135,8 @@ class HostedVerbDecodeJobTest {
 
     @Test
     void an_unexposed_verb_refuses_decode() {
-        assertThatThrownBy(() -> new SyncVerb(null).decodeJob(JobSpec.of("sync", "/p")))
+        assertThatThrownBy(() -> new SyncVerb(new InertVerbHost()).decodeJob(JobSpec.of("sync", "/p")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("not hosted");
-    }
-
-    /** decodeJob never touches the host; registry construction needs one non-null reference. */
-    private static final class EngineVerbBridgeStub implements VerbHost {
-        @Override
-        public long eventRequestId() {
-            return -1;
-        }
-
-        @Override
-        public void putProgressRoot(long rid, String dir) {}
-
-        @Override
-        public WorkspaceBuildListener workspaceListener(BufferedWriter w, String dir) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public BuildPlanListener planListener(String dir, BufferedWriter w, BuildPlan plan) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public BuildPlanListener planListener(String dir, BufferedWriter w, Function<BuildPlanResult, String> enc) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public void releaseExclusiveSlot() {}
-
-        @Override
-        public boolean effectiveCancelled(long rid, boolean tokenCancelled) {
-            return false;
-        }
-
-        @Override
-        public void accTests(long rid, TestSummary tests) {}
-
-        @Override
-        public void finishProgress(long rid) {}
-
-        @Override
-        public void emitWorkspaceProgress(long rid, BufferedWriter w, boolean force) {}
-
-        @Override
-        public void flushTimeline(long rid, BufferedWriter w) {}
-
-        @Override
-        public void send(BufferedWriter w, String line) {}
-
-        @Override
-        public void sendQuiet(BufferedWriter w, String line) {}
-
-        @Override
-        public String redactEnv(String dir, String text) {
-            return text;
-        }
-
-        @Override
-        public String requestFailedLine(String dir, Throwable e) {
-            return "";
-        }
-
-        @Override
-        public void publishRequestError(long rid, String dir, String message) {}
-
-        @Override
-        public void maybeEnqueuePrune(Path cache) {}
     }
 }

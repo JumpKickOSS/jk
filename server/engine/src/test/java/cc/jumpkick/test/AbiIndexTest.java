@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.test;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.task.ClassAbi;
@@ -63,7 +64,8 @@ class AbiIndexTest {
         var after = AbiIndex.scanClasses(classes);
 
         assertThat(before).containsOnlyKeys("com.acme.Foo");
-        assertThat(ClassAbi.classify(before.get("com.acme.Foo"), after.get("com.acme.Foo")))
+        assertThat(ClassAbi.classify(
+                        requireNonNull(before.get("com.acme.Foo")), requireNonNull(after.get("com.acme.Foo"))))
                 .isEqualTo(ClassAbi.Kind.ABI);
     }
 

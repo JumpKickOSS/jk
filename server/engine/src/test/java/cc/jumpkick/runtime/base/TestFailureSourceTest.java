@@ -269,7 +269,7 @@ class TestFailureSourceTest {
 
     @Test
     void path_escape_file_name_is_rejected(@TempDir Path mod) throws Exception {
-        Path outside = mod.getParent().resolve("secret.txt");
+        Path outside = mod.resolveSibling("secret.txt");
         Files.writeString(outside, "do not read\n");
         String stack = "err\n\tat cc.jumpkick.FooTest.t(../secret.txt:1)\n";
         assertThat(new TestFailureSource.Cache().resolve(mod, "cc.jumpkick.FooTest", stack))

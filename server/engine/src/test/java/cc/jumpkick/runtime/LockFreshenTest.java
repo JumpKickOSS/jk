@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.JkStores;
@@ -79,7 +80,7 @@ class LockFreshenTest {
 
         LockFlow.Result first = LockFlow.run(tmp, tmp.resolve("cache1"), List.of(), false, http.base());
         assertThat(first.status()).isZero();
-        assertThat(libVersion(first.lockfile())).isEqualTo("1.0");
+        assertThat(libVersion(requireNonNull(first.lockfile()))).isEqualTo("1.0");
 
         serveLib("1.0", "1.1");
         restartServer();
@@ -93,7 +94,7 @@ class LockFreshenTest {
 
         LockFlow.Result freshened = LockFlow.run(tmp, tmp.resolve("cache2"), List.of(), false, http.base());
         assertThat(freshened.status()).isZero();
-        assertThat(libVersion(freshened.lockfile())).isEqualTo("1.0");
+        assertThat(libVersion(requireNonNull(freshened.lockfile()))).isEqualTo("1.0");
 
         restartServer();
         serveLib("1.0", "1.1");
@@ -118,7 +119,7 @@ class LockFreshenTest {
         LockFlow.Result skipped =
                 LockFlow.run(tmp, tmp.resolve("cache2"), List.of(), false, URI.create("http://127.0.0.1:9/"));
         assertThat(skipped.status()).isZero();
-        assertThat(libVersion(skipped.lockfile())).isEqualTo("1.0");
+        assertThat(libVersion(requireNonNull(skipped.lockfile()))).isEqualTo("1.0");
     }
 
     @Test
@@ -144,7 +145,7 @@ class LockFreshenTest {
 
         LockFlow.Result freshened = LockFlow.run(tmp, tmp.resolve("cache2"), List.of(), false, http.base());
         assertThat(freshened.status()).isZero();
-        assertThat(libVersion(freshened.lockfile())).isEqualTo("1.0");
+        assertThat(libVersion(requireNonNull(freshened.lockfile()))).isEqualTo("1.0");
         assertThat(LockFreshness.isStale(tmp, lockFile)).isFalse();
     }
 
@@ -196,7 +197,8 @@ class LockFreshenTest {
 
         LockFlow.Result first = LockFlow.run(tmp, tmp.resolve("cache1"), List.of(), false, http.base());
         assertThat(first.status()).isZero();
-        assertThat(hasArtifact(first.lockfile(), "com.foo:extra")).isTrue();
+        assertThat(hasArtifact(requireNonNull(first.lockfile()), "com.foo:extra"))
+                .isTrue();
 
         touchManifest(tmp);
         restartServer();
@@ -204,8 +206,9 @@ class LockFreshenTest {
         // noDefaultFeatures=false): the feature-gated dep must survive.
         LockFlow.Result freshened = LockFlow.run(tmp, tmp.resolve("cache2"), List.of(), false, http.base());
         assertThat(freshened.status()).isZero();
-        assertThat(hasArtifact(freshened.lockfile(), "com.foo:extra")).isTrue();
-        assertThat(libVersion(freshened.lockfile())).isEqualTo("1.0");
+        assertThat(hasArtifact(requireNonNull(freshened.lockfile()), "com.foo:extra"))
+                .isTrue();
+        assertThat(libVersion(requireNonNull(freshened.lockfile()))).isEqualTo("1.0");
     }
 
     @Test
@@ -228,7 +231,7 @@ class LockFreshenTest {
 
         LockFlow.Result first = LockFlow.run(tmp, tmp.resolve("cache1"), List.of(), false, http.base());
         assertThat(first.status()).isZero();
-        assertThat(first.lockfile().kotlin()).isEqualTo("2.1.0");
+        assertThat(requireNonNull(first.lockfile()).kotlin()).isEqualTo("2.1.0");
     }
 
     /** Run the lock plan for {@code tmp} under {@code mode} and return the lockfile it wrote. */

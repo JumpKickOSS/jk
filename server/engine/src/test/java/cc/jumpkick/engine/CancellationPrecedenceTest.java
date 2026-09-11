@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkEngineConfig;
@@ -30,6 +31,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -48,14 +50,14 @@ class CancellationPrecedenceTest extends EngineServerHarness {
     private static final String BY_DISCONNECT = "the client disconnected before the job finished";
     private static final String HELD_PATH = "/com/foo/leaf/maven-metadata.xml";
 
-    private String previousM2;
+    private @Nullable String previousM2;
     private HttpServer repo;
     private final CountDownLatch held = new CountDownLatch(1);
     private final CountDownLatch release = new CountDownLatch(1);
     private volatile boolean holdLeaf = true;
-    private EngineServer server;
+    private @Nullable EngineServer server;
     private Path project;
-    private EnginePaths.Paths paths;
+    private EnginePaths.@Nullable Paths paths;
     private final List<String> engineLog = Collections.synchronizedList(new ArrayList<>());
 
     @BeforeEach
@@ -114,8 +116,8 @@ class CancellationPrecedenceTest extends EngineServerHarness {
     void cancel_by_jid_over_a_second_connection_acks_at_once_and_the_job_finishes_cancelled_by_the_user()
             throws Exception {
         Iterator<String> sse = startEngine(JkEngineConfig.DEFAULTS);
-        try (Client building = new Client(EnginePaths.activeSocket(paths));
-                Client canceller = new Client(EnginePaths.activeSocket(paths))) {
+        try (Client building = new Client(EnginePaths.activeSocket(paths()));
+                Client canceller = new Client(EnginePaths.activeSocket(paths()))) {
             long jid = startLock(building);
             assertThat(held.await(10, TimeUnit.SECONDS)).isTrue();
 
@@ -142,7 +144,7 @@ class CancellationPrecedenceTest extends EngineServerHarness {
     @Test
     void cancel_by_unknown_jid_is_a_soft_miss_with_the_note() throws Exception {
         startEngine(JkEngineConfig.DEFAULTS);
-        try (Client c = new Client(EnginePaths.activeSocket(paths))) {
+        try (Client c = new Client(EnginePaths.activeSocket(paths()))) {
             String ack = c.send(ProtoLifecycle.cancelRequest(4242));
             assertThat(Jsonl.longValue(ack, "jid", -1)).isEqualTo(4242);
             assertThat(Jsonl.bool(ack, "cancelled", true)).isFalse();
@@ -153,8 +155,8 @@ class CancellationPrecedenceTest extends EngineServerHarness {
     @Test
     void cancel_by_dir_cancels_every_live_job_under_it_and_then_finds_none() throws Exception {
         startEngine(JkEngineConfig.DEFAULTS);
-        try (Client building = new Client(EnginePaths.activeSocket(paths));
-                Client canceller = new Client(EnginePaths.activeSocket(paths))) {
+        try (Client building = new Client(EnginePaths.activeSocket(paths()));
+                Client canceller = new Client(EnginePaths.activeSocket(paths()))) {
             startLock(building);
             assertThat(held.await(10, TimeUnit.SECONDS)).isTrue();
 
@@ -174,7 +176,7 @@ class CancellationPrecedenceTest extends EngineServerHarness {
     @Test
     void cancel_with_neither_jid_nor_dir_is_refused() throws Exception {
         startEngine(JkEngineConfig.DEFAULTS);
-        try (Client c = new Client(EnginePaths.activeSocket(paths))) {
+        try (Client c = new Client(EnginePaths.activeSocket(paths()))) {
             String ack = c.send(ProtoLifecycle.cancelRequestForDir(""));
             assertThat(Jsonl.longValue(ack, "jid", 0)).isEqualTo(-1);
             assertThat(Jsonl.bool(ack, "cancelled", true)).isFalse();
@@ -185,7 +187,7 @@ class CancellationPrecedenceTest extends EngineServerHarness {
     @Test
     void a_client_that_disconnects_mid_job_is_cancelled_by_disconnect_not_by_the_user() throws Exception {
         Iterator<String> sse = startEngine(JkEngineConfig.DEFAULTS);
-        try (Client building = new Client(EnginePaths.activeSocket(paths))) {
+        try (Client building = new Client(EnginePaths.activeSocket(paths()))) {
             startLock(building);
             assertThat(held.await(10, TimeUnit.SECONDS)).isTrue();
         }
@@ -202,7 +204,7 @@ class CancellationPrecedenceTest extends EngineServerHarness {
         // kill lands where the test says it does rather than in an earlier metadata fetch.
         Iterator<String> sse =
                 startEngine(JkEngineConfig.DEFAULTS.withJobLimits(new JobLimits(0L, 3_000L, 200L, 500L)));
-        try (Client building = new Client(EnginePaths.activeSocket(paths))) {
+        try (Client building = new Client(EnginePaths.activeSocket(paths()))) {
             startLock(building);
             assertThat(held.await(10, TimeUnit.SECONDS)).isTrue();
             // The deadline's error line and the cancelled terminal race each other onto the wire:
@@ -239,7 +241,7 @@ class CancellationPrecedenceTest extends EngineServerHarness {
     void a_job_that_finished_is_not_relabelled_cancelled_by_the_end_of_request_eof() throws Exception {
         holdLeaf = false;
         Iterator<String> sse = startEngine(JkEngineConfig.DEFAULTS);
-        try (Client building = new Client(EnginePaths.activeSocket(paths))) {
+        try (Client building = new Client(EnginePaths.activeSocket(paths()))) {
             startLock(building);
             String terminal = readUntil(building, EngineProtocol.BUILDPLAN_FINISH);
             assertThat(Jsonl.bool(terminal, "cancelled", false)).isFalse();
@@ -251,11 +253,18 @@ class CancellationPrecedenceTest extends EngineServerHarness {
         assertThat(Jsonl.has(finish, "cancelReason")).isFalse();
     }
 
+    private EnginePaths.Paths paths() {
+        return requireNonNull(paths, "startEngine first");
+    }
+
     /** Start an engine with HTTP on and return the dashboard SSE stream, subscribed before any job. */
     private Iterator<String> startEngine(JkEngineConfig config) throws Exception {
         Path stateDir = shortTempDir();
-        paths = paths(stateDir);
-        server = new EngineServer(paths, config, httpOnEphemeralPort(stateDir.resolve("web")), "1.0", engineLog::add);
+        EnginePaths.Paths paths = paths(stateDir);
+        this.paths = paths;
+        EngineServer server =
+                new EngineServer(paths, config, httpOnEphemeralPort(stateDir.resolve("web")), "1.0", engineLog::add);
+        this.server = server;
         runInBackground(server);
         waitUntil(
                 Duration.ofSeconds(10),

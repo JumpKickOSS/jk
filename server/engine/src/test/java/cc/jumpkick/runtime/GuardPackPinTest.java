@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.groups.Tuple.tuple;
 
@@ -120,7 +121,7 @@ class GuardPackPinTest {
 
     private static void packArtifact(Path repo, String group, String artifact, String version) throws Exception {
         Path vDir = Files.createDirectories(repo.resolve(group.replace('.', '/') + "/" + artifact + "/" + version));
-        metadata(vDir.getParent(), group, artifact, version);
+        metadata(requireNonNull(vDir.getParent()), group, artifact, version);
         Path jar = vDir.resolve(artifact + "-" + version + ".jar");
         try (OutputStream out = Files.newOutputStream(jar);
                 JarOutputStream jos = new JarOutputStream(out)) {
@@ -150,7 +151,7 @@ class GuardPackPinTest {
     private static void stubArtifact(Path repo, String group, String artifact, String version) throws Exception {
         Path vDir = Files.createDirectories(repo.resolve(group.replace('.', '/') + "/" + artifact + "/" + version));
         Files.write(vDir.resolve(artifact + "-" + version + ".jar"), EMPTY_ZIP);
-        metadata(vDir.getParent(), group, artifact, version);
+        metadata(requireNonNull(vDir.getParent()), group, artifact, version);
         Files.writeString(vDir.resolve(artifact + "-" + version + ".pom"), """
                 <?xml version="1.0" encoding="UTF-8"?>
                 <project xmlns="http://maven.apache.org/POM/4.0.0">

@@ -18,6 +18,7 @@ object NullMarking {
             "clients/cli/src/main/java",
             "shared/guard-api/src/main/java",
             "server/guard/src/main/java",
+            "server/engine/src/main/java",
             "plugins/auditor/src/main/java",
             "plugins/grails/src/main/java",
             "plugins/groovy-compiler/src/main/java",
@@ -46,17 +47,7 @@ object NullMarking {
      * `RequireExplicitNullMarking` are switched off for exactly these; everything else the convention plugin touches is
      * enforced at error severity.
      */
-    val unmarkedCompileTasks: Map<String, String> =
-        mapOf(
-            "engine:compileTestJava" to
-                "TODO: 101 findings, and roughly half of them are one idiom: the MCP and HTTP suites read a " +
-                    "decoded JSON response as Map<String, Object> and assert on its contents, so every " +
-                    "result.get(\"x\") is nullable by Map's contract and non-null by the protocol the test " +
-                    "exists to pin. Annotating those would put a requireNonNull between the reader and the " +
-                    "assertion in fifty places. The rest is the same shape as core's: null fed in on purpose " +
-                    "(an absent [http] table, a job with no module selector) to assert the engine handles it. " +
-                    "Production is enforced."
-        )
+    val unmarkedCompileTasks: Map<String, String> = emptyMap()
 
     /**
      * Modules the convention plugin does not apply to yet, and what turning it on costs. Measured by marking every

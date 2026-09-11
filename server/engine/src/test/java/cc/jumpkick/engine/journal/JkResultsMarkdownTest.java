@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -256,7 +257,7 @@ class JkResultsMarkdownTest {
             List<BuildRecord.Module> modules,
             List<BuildRecord.Diag> diags,
             List<BuildRecord.Task> steps,
-            BuildRecord.Tests tests) {
+            BuildRecord.@Nullable Tests tests) {
         return new BuildRecord(
                 "id",
                 3,

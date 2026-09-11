@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.journal;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.builds.ProjectBuilds;
@@ -105,7 +106,7 @@ class BuildJournalTest {
     void format_job_is_journaled_without_a_build_number() {
         BuildJournal j = new BuildJournal(dir);
         BuildRecord run = BuildRecord.running(0, "format", "/proj", "g:a", null, 1_700_000_000_000L, "9.9", "web", 9L);
-        String locator = j.begin(run);
+        String locator = requireNonNull(j.begin(run));
         assertThat(locator).startsWith("j-");
         assertThat(locator).contains("9");
         assertThat(j.get(locator)).isPresent();
@@ -150,7 +151,7 @@ class BuildJournalTest {
     void raw_finished_record_by_request_id_skips_running_stub_then_returns_finished_json() {
         BuildJournal j = new BuildJournal(dir);
         BuildRecord run = BuildRecord.running(0, "format", "/proj", "g:a", null, 1_700_000_000_000L, "9.9", "web", 9L);
-        String locator = j.begin(run);
+        String locator = requireNonNull(j.begin(run));
         assertThat(j.rawFinishedRecordByRequestId(9L)).isEmpty(); // running stub is not a result
         assertThat(j.rawFinishedRecordByRequestId(7L)).isEmpty(); // unknown jid
         BuildRecord done = new BuildRecord(
@@ -192,7 +193,7 @@ class BuildJournalTest {
     void begin_then_complete_keeps_id_and_clears_running() {
         BuildJournal j = new BuildJournal(dir);
         BuildRecord run = BuildRecord.running(27, "build", "/proj", "g:a", null, 1_700_000_000_000L, "9.9", "cli");
-        String locator = j.begin(run);
+        String locator = requireNonNull(j.begin(run));
         assertThat(locator).isEqualTo("27"); // directory name = build number
         assertThat(j.get(locator)).isPresent();
         assertThat(j.get(locator).orElseThrow().running()).isTrue();
@@ -219,8 +220,8 @@ class BuildJournalTest {
     @Test
     void an_abandoned_run_is_a_software_failure_not_a_user_cancel() {
         BuildJournal j = new BuildJournal(dir);
-        String locator =
-                j.begin(BuildRecord.running(31, "build", "/proj", "g:a", null, 1_700_000_000_000L, "9.9", "cli"));
+        String locator = requireNonNull(
+                j.begin(BuildRecord.running(31, "build", "/proj", "g:a", null, 1_700_000_000_000L, "9.9", "cli")));
         assertThat(j.get(locator).orElseThrow().running()).isTrue();
 
         assertThat(j.abandonStaleRunning("9.9")).isEqualTo(1);
@@ -248,8 +249,8 @@ class BuildJournalTest {
                 new BuildRecord.Task("plugin-android-res", "generate", "SUCCESS", 700, 0L),
                 // ofTaskName has no case for this name at all and would bucket it `other`.
                 new BuildRecord.Task("resolve-kotlinc", "resolve", "SUCCESS", 300, 0L));
-        String locator =
-                j.append(withTasks(record(1_700_000_000_000L, true, "g:a"), tasks), BuildJournal.Snapshot.NONE);
+        String locator = requireNonNull(
+                j.append(withTasks(record(1_700_000_000_000L, true, "g:a"), tasks), BuildJournal.Snapshot.NONE));
         String toml = Files.readString(j.runDir(locator).orElseThrow().resolve("metrics.toml"));
 
         assertThat(toml).contains("phase.generate.wall-ms = 700");
@@ -269,8 +270,8 @@ class BuildJournalTest {
                 new BuildRecord.Task("copy-resources", "compile", "SUCCESS", 1000, 0L),
                 new BuildRecord.Task("write-stamp", "compile", "SUCCESS", 500, 0L),
                 new BuildRecord.Task("run-tests", "test", "SUCCESS", 4000, 0L));
-        String locator =
-                j.append(withTasks(record(1_700_000_000_000L, true, "g:a"), tasks), BuildJournal.Snapshot.NONE);
+        String locator = requireNonNull(
+                j.append(withTasks(record(1_700_000_000_000L, true, "g:a"), tasks), BuildJournal.Snapshot.NONE));
         Path metrics = j.runDir(locator).orElseThrow().resolve("metrics.toml");
         String toml = Files.readString(metrics);
         // One key per phase, summed: compile-java + copy-resources + write-stamp.
@@ -294,8 +295,8 @@ class BuildJournalTest {
         var tasks = List.of(
                 new BuildRecord.Task("compile-java", "compile", "SUCCESS", 2000, 1700L),
                 new BuildRecord.Task("run-tests", "test", "SUCCESS", 4000, 0L));
-        String locator =
-                j.append(withTasks(record(1_700_000_000_000L, true, "g:a"), tasks), BuildJournal.Snapshot.NONE);
+        String locator = requireNonNull(
+                j.append(withTasks(record(1_700_000_000_000L, true, "g:a"), tasks), BuildJournal.Snapshot.NONE));
         String toml = Files.readString(j.runDir(locator).orElseThrow().resolve("metrics.toml"));
         assertThat(toml).contains("task.compile-java.wall-ms = 2000");
         assertThat(toml).contains("task.compile-java.wait-ms = 1700");
@@ -306,7 +307,7 @@ class BuildJournalTest {
     @Test
     void append_then_get_and_list_roundtrip() {
         BuildJournal j = new BuildJournal(dir);
-        String locator = j.append(record(1_700_000_000_000L, true, "g:a"), BuildJournal.Snapshot.NONE);
+        String locator = requireNonNull(j.append(record(1_700_000_000_000L, true, "g:a"), BuildJournal.Snapshot.NONE));
         assertThat(locator).isNotNull();
         assertThat(j.get(locator)).isPresent();
         assertThat(j.get(locator).get().success()).isTrue();
@@ -314,7 +315,7 @@ class BuildJournalTest {
         assertThat(j.list()).hasSize(1);
         // list entry id is timestamp; locator is build-number dir
         assertThat(j.list().get(0).buildNumber()).isGreaterThan(0);
-        assertThat(j.get(j.list().get(0).id())).isPresent(); // lookup by timestamp id
+        assertThat(j.get(requireNonNull(j.list().get(0).id()))).isPresent(); // lookup by timestamp id
     }
 
     @Test
@@ -336,7 +337,8 @@ class BuildJournalTest {
         Path lock = dir.resolve("src-jk-lock.toml");
         Files.writeString(lock, "version = 1");
         BuildJournal j = new BuildJournal(dir);
-        String id = j.append(record(1_700_000_000_000L, true, "g:a"), new BuildJournal.Snapshot(md, lock, "boom\n"));
+        String id = requireNonNull(
+                j.append(record(1_700_000_000_000L, true, "g:a"), new BuildJournal.Snapshot(md, lock, "boom\n")));
         assertThat(j.artifact(id, BuildJournal.RESULTS_MD)).isPresent();
         assertThat(j.artifact(id, "jk-lock.toml")).isPresent();
         assertThat(j.artifact(id, BuildJournal.DIAGNOSTICS_TXT)).isPresent();
@@ -350,7 +352,7 @@ class BuildJournalTest {
     @Test
     void delete_removes_the_entry() {
         BuildJournal j = new BuildJournal(dir);
-        String id = j.append(record(1_700_000_000_000L, true, "g:a"), BuildJournal.Snapshot.NONE);
+        String id = requireNonNull(j.append(record(1_700_000_000_000L, true, "g:a"), BuildJournal.Snapshot.NONE));
         assertThat(j.delete(id)).isTrue();
         assertThat(j.get(id)).isEmpty();
         assertThat(j.list()).isEmpty();
@@ -381,7 +383,8 @@ class BuildJournalTest {
                         failures.add(new AssertionError("start latch never opened"));
                         return;
                     }
-                    String id = j.append(record(1_700_000_000_000L, true, "g:a"), BuildJournal.Snapshot.NONE);
+                    String id = requireNonNull(
+                            j.append(record(1_700_000_000_000L, true, "g:a"), BuildJournal.Snapshot.NONE));
                     if (id != null) ids.add(id);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
@@ -439,7 +442,7 @@ class BuildJournalTest {
     void prune_never_reaps_a_running_entry() {
         BuildJournal j = new BuildJournal(dir);
         // Old enough that any age budget would sweep it, but still running.
-        String live = j.begin(BuildRecord.running(1, "build", "/proj", "g:a", null, 1L, "9.9", "cli"));
+        String live = requireNonNull(j.begin(BuildRecord.running(1, "build", "/proj", "g:a", null, 1L, "9.9", "cli")));
         assertThat(live).isNotNull();
         BuildJournal.PruneResult r = j.prune(1, 1, 1_700_000_000_000L);
         assertThat(r.removedEntries()).isZero();
@@ -623,8 +626,8 @@ class BuildJournalTest {
                 0,
                 20_000,
                 List.of(new BuildRecord.Task(TaskNames.RUN_TESTS, "test", "SUCCESS", 17_384, 0L))));
-        String locator =
-                j.append(withModules(record(1_700_000_000_000L, true, "g:a"), modules), BuildJournal.Snapshot.NONE);
+        String locator = requireNonNull(
+                j.append(withModules(record(1_700_000_000_000L, true, "g:a"), modules), BuildJournal.Snapshot.NONE));
         String toml = Files.readString(j.runDir(locator).orElseThrow().resolve("metrics.toml"));
 
         assertThat(toml).contains(".task.run-tests.wall-ms = 17384");
@@ -647,8 +650,8 @@ class BuildJournalTest {
                 0,
                 2_000,
                 List.of(new BuildRecord.Task(TaskNames.RUN_TESTS, "test", "SUCCESS", 1_500, 0L))));
-        String locator =
-                j.append(withModules(record(1_700_000_000_000L, true, "g:a"), modules), BuildJournal.Snapshot.NONE);
+        String locator = requireNonNull(
+                j.append(withModules(record(1_700_000_000_000L, true, "g:a"), modules), BuildJournal.Snapshot.NONE));
         String toml = Files.readString(j.runDir(locator).orElseThrow().resolve("metrics.toml"));
 
         assertThat(toml).contains(".task.run-tests.wall-ms = 1500");

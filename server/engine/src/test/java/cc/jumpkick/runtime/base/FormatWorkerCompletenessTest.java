@@ -13,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -40,7 +41,7 @@ class FormatWorkerCompletenessTest {
             int preClean,
             int total,
             boolean check,
-            FormatFreshnessIndex freshness,
+            @Nullable FormatFreshnessIndex freshness,
             int exit,
             List<String> statuses,
             List<Path> files) {

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.jobs;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.concurrent.atomic.AtomicLong;
@@ -25,8 +26,7 @@ class JobSessionsTest {
     @Test
     void tracker_after_retire_is_detached() {
         JobSessions sessions = new JobSessions(() -> 1L);
-        JobSession s = sessions.open(1);
-        assertThat(s).isNotNull();
+        JobSession s = requireNonNull(sessions.open(1));
         var first = s.tracker();
         sessions.retire(1);
         var late = s.tracker();

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.journal;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 
@@ -66,8 +67,8 @@ class JsonTest {
         assertThat(back.finishedAt()).isEqualTo(4000);
         assertThat(back.success()).isFalse();
         assertThat(back.exitCode()).isEqualTo(1);
-        assertThat(back.tests().total()).isEqualTo(42);
-        assertThat(back.tests().failed()).isEqualTo(1);
+        assertThat(requireNonNull(back.tests()).total()).isEqualTo(42);
+        assertThat(requireNonNull(back.tests()).failed()).isEqualTo(1);
         assertThat(back.modules()).hasSize(1);
         assertThat(back.modules().get(0).coord()).isEqualTo("com.example:app");
         assertThat(back.modules().get(0).steps())
@@ -81,15 +82,15 @@ class JsonTest {
         assertThat(back.diagnostics().get(0).exceptionClass()).isEqualTo("org.opentest4j.AssertionFailedError");
         assertThat(back.diagnostics().get(0).col()).isZero();
         assertThat(back.benefit()).isNotNull();
-        assertThat(back.benefit().estimatedUncachedMillis()).isEqualTo(9000);
-        assertThat(back.benefit().savedMillis()).isEqualTo(6000);
-        assertThat(back.benefit().coveredSkips()).isEqualTo(3);
-        assertThat(back.benefit().totalSkips()).isEqualTo(4);
+        assertThat(requireNonNull(back.benefit()).estimatedUncachedMillis()).isEqualTo(9000);
+        assertThat(requireNonNull(back.benefit()).savedMillis()).isEqualTo(6000);
+        assertThat(requireNonNull(back.benefit()).coveredSkips()).isEqualTo(3);
+        assertThat(requireNonNull(back.benefit()).totalSkips()).isEqualTo(4);
         assertThat(back.io()).isNotNull();
-        assertThat(back.io().remoteUp()).isEqualTo(1_024);
-        assertThat(back.io().remoteDown()).isEqualTo(8_388_608);
-        assertThat(back.io().localUp()).isEqualTo(2_048);
-        assertThat(back.io().localDown()).isEqualTo(4_096);
+        assertThat(requireNonNull(back.io()).remoteUp()).isEqualTo(1_024);
+        assertThat(requireNonNull(back.io()).remoteDown()).isEqualTo(8_388_608);
+        assertThat(requireNonNull(back.io()).localUp()).isEqualTo(2_048);
+        assertThat(requireNonNull(back.io()).localDown()).isEqualTo(4_096);
         assertThat(back.requestId()).isEqualTo(42L);
     }
 
