@@ -33,6 +33,7 @@ import java.util.function.Function;
 import java.util.function.IntSupplier;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Runs against a per-test {@code JK_HOME}/{@code JK_STATE_DIR} overlay ({@code jk.env.*} seam,
@@ -514,8 +515,7 @@ class SelfNukeCommandTest {
 
     /** Config is two paths under the home root, and the home root is not one of them. */
     @Test
-    void config_targets_the_config_file_and_the_per_app_tree_never_the_home_root() throws Exception {
-        Path root = Files.createTempDirectory("jk-purge-cfg");
+    void config_targets_the_config_file_and_the_per_app_tree_never_the_home_root(@TempDir Path root) throws Exception {
         Path home = root.resolve("home");
         Files.createDirectories(home.resolve("lib"));
         Files.createDirectories(home.resolve("config"));
@@ -529,8 +529,7 @@ class SelfNukeCommandTest {
     }
 
     @Test
-    void guard_refuses_rows_that_contain_the_product_lib() throws Exception {
-        Path root = Files.createTempDirectory("jk-purge-anc");
+    void guard_refuses_rows_that_contain_the_product_lib(@TempDir Path root) throws Exception {
         Path home = root.resolve("home");
         Files.createDirectories(home.resolve("lib"));
         // JK_STATE_DIR mis-pointed at the home root: state nuke must not take the whole tree.
@@ -545,8 +544,7 @@ class SelfNukeCommandTest {
     }
 
     @Test
-    void guard_refuses_a_store_root_that_contains_the_product_lib() throws Exception {
-        Path root = Files.createTempDirectory("jk-purge-store");
+    void guard_refuses_a_store_root_that_contains_the_product_lib(@TempDir Path root) throws Exception {
         Path home = root.resolve("home");
         Files.createDirectories(home.resolve("lib"));
         // JK_STORE_DIR mis-pointed at the home root: the store row is delegated whole-tree to the
@@ -643,8 +641,7 @@ class SelfNukeCommandTest {
     }
 
     @Test
-    void store_wipe_root_is_exactly_the_store_for_injected_dirs() throws Exception {
-        Path root = Files.createTempDirectory("jk-purge-seam");
+    void store_wipe_root_is_exactly_the_store_for_injected_dirs(@TempDir Path root) throws Exception {
         Path home = root.resolve("home");
         Files.createDirectories(home.resolve("store/repos"));
         Files.createDirectories(home.resolve("store/completions"));
@@ -664,8 +661,7 @@ class SelfNukeCommandTest {
      * product lib must be refused, not followed.
      */
     @Test
-    void a_symlinked_root_that_resolves_onto_a_guarded_tree_is_refused() throws Exception {
-        Path root = Files.createTempDirectory("jk-purge-link");
+    void a_symlinked_root_that_resolves_onto_a_guarded_tree_is_refused(@TempDir Path root) throws Exception {
         Path home = root.resolve("home");
         Path realLib = home.resolve("lib");
         Path link = root.resolve("linked-store");
@@ -690,8 +686,7 @@ class SelfNukeCommandTest {
      * deleted before {@code --store} could log a user out.
      */
     @Test
-    void store_nuke_can_never_reach_creds_or_the_engine_jar() throws Exception {
-        Path root = Files.createTempDirectory("jk-purge-cred");
+    void store_nuke_can_never_reach_creds_or_the_engine_jar(@TempDir Path root) throws Exception {
         JkDirs dirs = JkDirs.of(env(), root.resolve("userhome").toString());
         Files.createDirectories(dirs.credsDir().resolve("forge"));
         Files.createDirectories(dirs.credsDir().resolve("repo"));

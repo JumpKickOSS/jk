@@ -113,8 +113,7 @@ class JavaApIncrementalCompileTest {
      * rebuild), not silently classified isolating.
      */
     @Test
-    void zero_origin_generated_file_forces_full_rebuild() throws Exception {
-        Path dir = Files.createTempDirectory("jk-zero-origin");
+    void zero_origin_generated_file_forces_full_rebuild(@TempDir Path dir) throws Exception {
         Path worker = workerJar();
         Path procDir = zeroOriginProcessor(dir);
         Project p = new Project(dir, worker, procDir);

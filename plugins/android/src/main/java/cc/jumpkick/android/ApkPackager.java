@@ -2,6 +2,7 @@
 package cc.jumpkick.android;
 
 import cc.jumpkick.host.DeterministicZip;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.plugin.build.PackageIo;
 import java.io.IOException;
 import java.io.InputStream;
@@ -31,18 +32,24 @@ final class ApkPackager {
         Path dexDir = dexOutput(io);
 
         Path out = io.artifactPath();
+        // The unsigned APK is an intermediate: it exists only to be signed into the artifact,
+        // so its directory does not outlive this call.
         Path work = Files.createTempDirectory("jk-apk-");
-        Path unsigned = work.resolve("unsigned.apk");
+        try {
+            Path unsigned = work.resolve("unsigned.apk");
 
-        io.label("assemble " + out.getFileName());
-        assemble(io, resPackage, dexDir, unsigned);
+            io.label("assemble " + out.getFileName());
+            assemble(io, resPackage, dexDir, unsigned);
 
-        if (Signing.hasReleaseConfig(io)) {
-            io.label("sign (release)");
-            Signing.sign(Signing.release(io), unsigned, out);
-        } else {
-            io.label("sign (debug)");
-            Signing.sign(Signing.debug(io), unsigned, out);
+            if (Signing.hasReleaseConfig(io)) {
+                io.label("sign (release)");
+                Signing.sign(Signing.release(io), unsigned, out);
+            } else {
+                io.label("sign (debug)");
+                Signing.sign(Signing.debug(io), unsigned, out);
+            }
+        } finally {
+            PathUtil.deleteRecursively(work);
         }
         AndroidDeps.copyRetraceArtifacts(io);
     }

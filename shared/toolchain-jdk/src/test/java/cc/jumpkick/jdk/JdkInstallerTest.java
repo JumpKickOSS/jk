@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.http.Http;
 import com.sun.net.httpserver.HttpServer;
 import java.io.ByteArrayOutputStream;
@@ -60,6 +61,7 @@ class JdkInstallerTest {
         server.stop(0);
         if (prevStateDir == null) System.clearProperty("jk.env.JK_STATE_DIR");
         else System.setProperty("jk.env.JK_STATE_DIR", prevStateDir);
+        PathUtil.deleteRecursively(isolatedState);
     }
 
     @Test

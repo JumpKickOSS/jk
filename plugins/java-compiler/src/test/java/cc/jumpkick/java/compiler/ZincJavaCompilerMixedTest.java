@@ -3,6 +3,7 @@ package cc.jumpkick.java.compiler;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.PathUtil;
 import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -222,9 +223,12 @@ class ZincJavaCompilerMixedTest {
             return JUNIT;
         }
 
+        /** Zinc keeps these jars open for the JVM's life, so the directory goes when the JVM does. */
         private static Path toolDir() {
             try {
-                return Files.createTempDirectory("jk-scala-tools-");
+                Path dir = Files.createTempDirectory("jk-scala-tools-");
+                Runtime.getRuntime().addShutdownHook(new Thread(() -> PathUtil.deleteRecursively(dir)));
+                return dir;
             } catch (IOException e) {
                 throw new UncheckedIOException(e);
             }

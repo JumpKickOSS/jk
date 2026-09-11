@@ -4,9 +4,11 @@ package cc.jumpkick.config;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class JobsTest {
 
@@ -38,8 +40,7 @@ class JobsTest {
     }
 
     @Test
-    void from_toml_jobs() throws Exception {
-        var dir = Files.createTempDirectory("jk-jobs");
+    void from_toml_jobs(@TempDir Path dir) throws Exception {
         var toml = dir.resolve("config.toml");
         Files.writeString(toml, "[engine]\nmax-heap-mb = 256\njobs = 2\n");
         JkEngineConfig c = JkEngineConfig.fromToml(toml);
