@@ -41,7 +41,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -587,9 +586,7 @@ public final class PlannerPlugin {
             if (Files.isRegularFile(p)) {
                 produced.add(p);
             } else if (Files.isDirectory(p)) {
-                try (Stream<Path> walk = Files.walk(p)) {
-                    walk.filter(Files::isRegularFile).forEach(produced::add);
-                }
+                PathUtil.forEachRegularFile(p, (file, attrs) -> produced.add(file));
             }
         }
         storePackaged(

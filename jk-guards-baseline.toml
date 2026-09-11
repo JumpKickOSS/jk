@@ -8,7 +8,7 @@ population = { constants = 1, files = 3152, literals = 94506 }
 [archive-instant-owner.populations]
 "clients/cli" = { classes = 656, sites = 40517 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
-"server/engine" = { classes = 884, sites = 57383 }
+"server/engine" = { classes = 890, sites = 57696 }
 "shared/client-io" = { classes = 73, sites = 4059 }
 
 [archive-stream-owner]
@@ -27,7 +27,7 @@ population = { files = 1768 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "plugins/spring-boot" = { classes = 5, sites = 462 }
 "plugins/test-runner" = { classes = 9, sites = 556 }
-"server/engine" = { classes = 884, sites = 57383 }
+"server/engine" = { classes = 890, sites = 57696 }
 "server/toolchain" = { classes = 20, sites = 1776 }
 "shared/client-io" = { classes = 73, sites = 4059 }
 "shared/core" = { classes = 326, sites = 17593 }
@@ -382,10 +382,6 @@ reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk
 [[blind-tree-walks.entries]]
 in     = "server/engine"
 at     = "cc.jumpkick.runtime.PlannerNative#frameworkBinary(Ljava/nio/file/Path;)Ljava/nio/file/Path; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
-reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
-[[blind-tree-walks.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.runtime.PlannerPlugin#packagePlugin(Lcc/jumpkick/run/TaskContext;Lcc/jumpkick/runtime/BuildPlanner$Inputs;Lcc/jumpkick/cache/Cas;Lcc/jumpkick/model/JkBuild;Ljava/nio/file/Path;Ljava/nio/file/Path;Lcc/jumpkick/runtime/PluginBuild$Active;Lcc/jumpkick/runtime/PluginBuild$Declarations;Ljava/util/Map;)V -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
 in     = "server/engine"
@@ -770,7 +766,7 @@ population = { constants = 29, files = 1851, literals = 34028 }
 [case-conversion-locale.populations]
 "clients/cli" = { classes = 656, sites = 40517 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
-"server/engine" = { classes = 884, sites = 57383 }
+"server/engine" = { classes = 890, sites = 57696 }
 "shared/client-io" = { classes = 73, sites = 4059 }
 
 [catalog-is-the-version-source]
@@ -803,7 +799,7 @@ population = { files = 1856 }
 "plugins/java-compiler" = { classes = 25, sites = 1420 }
 "plugins/publisher" = { classes = 15, sites = 710 }
 "plugins/test-runner" = { classes = 9, sites = 556 }
-"server/engine" = { classes = 884, sites = 57383 }
+"server/engine" = { classes = 890, sites = 57696 }
 "server/guard" = { classes = 170, sites = 10374 }
 "server/io" = { classes = 31, sites = 1934 }
 "server/resolver" = { classes = 80, sites = 3938 }
@@ -1673,7 +1669,7 @@ population = { units = 3114 }
 
 [forecast-key-parity]
 [forecast-key-parity.populations]
-"server/engine" = { examined = 450 }
+"server/engine" = { examined = 455 }
 
 [git-writes-are-pinned]
 population = { files = 1790 }
@@ -1701,7 +1697,7 @@ population = { files = 1301 }
 [jdk-removal-confined.populations]
 "clients/cli" = { classes = 656, sites = 40517 }
 "plugins/quarkus" = { classes = 11, sites = 0 }
-"server/engine" = { classes = 884, sites = 57383 }
+"server/engine" = { classes = 890, sites = 57696 }
 "shared/client-io" = { classes = 73, sites = 0 }
 
 [json-concat]
@@ -2052,21 +2048,21 @@ population = { files = 3826 }
 [one-digest-surface.populations]
 "clients/cli" = { classes = 656, sites = 40517 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
-"server/engine" = { classes = 884, sites = 57383 }
+"server/engine" = { classes = 890, sites = 57696 }
 "shared/client-io" = { classes = 73, sites = 4059 }
 
 [one-hex-spelling]
 [one-hex-spelling.populations]
 "clients/cli" = { classes = 656, sites = 40517 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
-"server/engine" = { classes = 884, sites = 57383 }
+"server/engine" = { classes = 890, sites = 57696 }
 "shared/client-io" = { classes = 73, sites = 4059 }
 
 [one-host-surface]
 [one-host-surface.populations]
 "clients/cli" = { classes = 656, sites = 30453 }
 "plugins/quarkus" = { classes = 11, sites = 640 }
-"server/engine" = { classes = 884, sites = 42542 }
+"server/engine" = { classes = 890, sites = 42737 }
 "shared/client-io" = { classes = 73, sites = 3010 }
 
 [one-json-splicer]
@@ -2079,7 +2075,7 @@ population = { files = 1768 }
 [own-algorithm-by-name.populations]
 "clients/cli" = { classes = 656, sites = 30453 }
 "plugins/quarkus" = { classes = 11, sites = 640 }
-"server/engine" = { classes = 884, sites = 42542 }
+"server/engine" = { classes = 890, sites = 42737 }
 "shared/client-io" = { classes = 73, sites = 3010 }
 
 [package-cycles]
@@ -2087,7 +2083,7 @@ population = { files = 1768 }
 "clients/cli" = { edges = 73, slices = 18 }
 "clients/cli-terminal" = { edges = 4, slices = 3 }
 "plugins/quarkus" = { edges = 0, slices = 1 }
-"server/engine" = { edges = 89, slices = 19 }
+"server/engine" = { edges = 90, slices = 19 }
 "server/resolver" = { edges = 5, slices = 3 }
 "server/toolchain" = { edges = 4, slices = 4 }
 "shared/client-io" = { edges = 8, slices = 6 }
@@ -2163,7 +2159,7 @@ reason = "banked from cycle-baseline.txt on 2026-09-06 — the facts edges found
 [properties-render-owner.populations]
 "clients/cli" = { classes = 656, sites = 40517 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
-"server/engine" = { classes = 884, sites = 57383 }
+"server/engine" = { classes = 890, sites = 57696 }
 "shared/client-io" = { classes = 73, sites = 4059 }
 
 [published-installer-ps1]
@@ -2182,7 +2178,7 @@ population = { files = 1882 }
 [runnable-owner.populations]
 "clients/cli" = { classes = 656, sites = 40517 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
-"server/engine" = { classes = 884, sites = 57383 }
+"server/engine" = { classes = 890, sites = 57696 }
 "shared/client-io" = { classes = 73, sites = 4059 }
 
 [schema-compared-to-its-constant]
@@ -2261,7 +2257,7 @@ population = { files = 1321 }
 [toolchain-env-from-request]
 [toolchain-env-from-request.populations]
 "plugins/quarkus" = { classes = 11, sites = 640 }
-"server/engine" = { classes = 884, sites = 42542 }
+"server/engine" = { classes = 890, sites = 42737 }
 "shared/client-io" = { classes = 73, sites = 3010 }
 
 [tree-copy-owner]
@@ -2286,5 +2282,5 @@ population = { files = 1 }
 [xml-parser-owner.populations]
 "clients/cli" = { classes = 656, sites = 40517 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
-"server/engine" = { classes = 884, sites = 57383 }
+"server/engine" = { classes = 890, sites = 57696 }
 "shared/client-io" = { classes = 73, sites = 4059 }
