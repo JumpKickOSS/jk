@@ -56,7 +56,13 @@ class JkManualTest {
         assertThat(body).contains("unit");
         assertThat(body).contains("--all");
         assertThat(body).contains("jk guard explain <id>");
-        assertThat(body).contains("never edit\n`jk-guards-baseline.toml`");
+        assertThat(body).contains("jk-guards-baseline.toml");
+        assertThat(body).contains("mcpUrl");
+        assertThat(body).contains("`130` interrupted");
+        assertThat(body).contains("jk web --no-open");
+        assertThat(body.length() / 4)
+                .as("the agents guide is read every session: a bootstrap, not a manual")
+                .isLessThan(1000);
 
         Files.writeString(file, "# custom\n");
         assertThat(JkManual.ensureAgentsGuide(dir)).isFalse();
