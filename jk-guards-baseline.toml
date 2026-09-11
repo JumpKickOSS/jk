@@ -2,21 +2,21 @@
 # Never edit by hand: an entry without a reason is a suppression, and there is no suppression syntax.
 
 [aot-marker]
-population = { constants = 1, files = 3081, literals = 92175 }
+population = { constants = 1, files = 3123, literals = 93628 }
 
 [archive-instant-owner]
 [archive-instant-owner.populations]
-"clients/cli" = { classes = 639, sites = 39488 }
+"clients/cli" = { classes = 649, sites = 40038 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "server/engine" = { classes = 884, sites = 57383 }
 "shared/client-io" = { classes = 73, sites = 4059 }
 
 [archive-stream-owner]
-population = { files = 1752 }
+population = { files = 1764 }
 
 [blind-tree-walks]
 [blind-tree-walks.populations]
-"clients/cli" = { classes = 639, sites = 39488 }
+"clients/cli" = { classes = 649, sites = 40038 }
 "plugins/android" = { classes = 29, sites = 1906 }
 "plugins/formatter" = { classes = 14, sites = 856 }
 "plugins/image-builder" = { classes = 13, sites = 1201 }
@@ -764,11 +764,11 @@ reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk
 population = { left = 37, right = 37 }
 
 [cache-tiers]
-population = { constants = 29, files = 1835, literals = 33638 }
+population = { constants = 29, files = 1847, literals = 33859 }
 
 [case-conversion-locale]
 [case-conversion-locale.populations]
-"clients/cli" = { classes = 639, sites = 39488 }
+"clients/cli" = { classes = 649, sites = 40038 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "server/engine" = { classes = 884, sites = 57383 }
 "shared/client-io" = { classes = 73, sites = 4059 }
@@ -777,7 +777,7 @@ population = { constants = 29, files = 1835, literals = 33638 }
 population = { files = 50 }
 
 [central-address]
-population = { files = 1828 }
+population = { files = 1840 }
 
 [cli-engine-package-cycle]
 [cli-engine-package-cycle.populations]
@@ -785,19 +785,19 @@ population = { files = 1828 }
 
 [cli-no-parse-types]
 [cli-no-parse-types.populations]
-"clients/cli" = { examined = 347 }
+"clients/cli" = { examined = 351 }
 
 [cli-stdio-handoff-owner]
 [cli-stdio-handoff-owner.populations]
-"clients/cli" = { examined = 347 }
+"clients/cli" = { examined = 351 }
 
 [cli-test-isolated-state]
 [cli-test-isolated-state.populations]
-"clients/cli" = { examined = 278 }
+"clients/cli" = { examined = 283 }
 
 [clock-owner]
 [clock-owner.populations]
-"clients/cli" = { classes = 639, sites = 39488 }
+"clients/cli" = { classes = 649, sites = 40038 }
 "clients/cli-terminal" = { classes = 48, sites = 1630 }
 "plugins/image-builder" = { classes = 13, sites = 1201 }
 "plugins/java-compiler" = { classes = 25, sites = 1420 }
@@ -959,14 +959,6 @@ reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as caller
 in     = "clients/cli"
 at     = "cc.jumpkick.command.pipeline.BuildTails#elapsedMsSince(J)J -> java.lang.System#nanoTime()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.command.pipeline.CompileCommand#runWorkspaceCompile(Ljava/nio/file/Path;Ljava/lang/String;Lcc/jumpkick/cli/api/GlobalOptions;Ljava/nio/file/Path;Ljava/util/List;Ljava/util/List;)I -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; keys re-banked after the cli.api and engine.api moves changed descriptors (pure move); the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.command.pipeline.CompileCommand#runWorkspaceHeadless(Lcc/jumpkick/cli/engine/EngineRequests$CompileRequest;Lcc/jumpkick/cli/api/GlobalOptions;Ljava/nio/file/Path;Ljava/util/List;)I -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; keys re-banked after the cli.api and engine.api moves changed descriptors (pure move); the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "clients/cli"
 at     = "cc.jumpkick.command.pipeline.FormatCommand#run(Lcc/jumpkick/model/command/Invocation;)I -> java.lang.System#currentTimeMillis()J"
@@ -1681,20 +1673,23 @@ at     = "cc.jumpkick.jdk.JdkRegistry#listHits()Ljava/util/List; -> java.lang.Sy
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 
 [file-size]
-population = { units = 3043 }
+population = { units = 3085 }
 
 [forecast-key-parity]
 [forecast-key-parity.populations]
 "server/engine" = { examined = 450 }
 
+[git-writes-are-pinned]
+population = { files = 1783 }
+
 [guard-kinds-doc]
 population = { rows = 18 }
 
 [guard-registry-doc]
-population = { rows = 67 }
+population = { rows = 69 }
 
 [guard-rules-registered]
-population = { left = 67, right = 67 }
+population = { left = 69, right = 69 }
 
 [guard-schemas-doc]
 population = { rows = 83 }
@@ -1704,20 +1699,20 @@ population = { rows = 83 }
 "clients/cli" = { examined = 134 }
 
 [install-tests-redirect-m2]
-population = { files = 1245 }
+population = { files = 1275 }
 
 [jdk-removal-confined]
 [jdk-removal-confined.populations]
-"clients/cli" = { classes = 639, sites = 39488 }
+"clients/cli" = { classes = 649, sites = 40038 }
 "plugins/quarkus" = { classes = 11, sites = 0 }
 "server/engine" = { classes = 884, sites = 57383 }
 "shared/client-io" = { classes = 73, sites = 0 }
 
 [json-concat]
-population = { files = 1771 }
+population = { files = 1783 }
 
 [json-concat-ratchet]
-population = { units = 1771 }
+population = { units = 1783 }
 [[json-concat-ratchet.entries]]
 unit   = "clients/intellij/src/main/java/cc/jumpkick/idea/JkWireModel.java"
 value  = 1
@@ -1763,16 +1758,16 @@ reason = "hand-built JSON fragments on 2026-09-07 after the wire and CLI moved t
 population = { files = 6 }
 
 [manifest-names]
-population = { constants = 6, files = 1835, literals = 33650 }
+population = { constants = 6, files = 1847, literals = 33871 }
 
 [method-size]
-population = { units = 24736 }
+population = { units = 25246 }
 
 [named-exit-codes]
-population = { files = 1752 }
+population = { files = 1764 }
 
 [no-fqcn]
-population = { units = 2990 }
+population = { units = 3032 }
 [[no-fqcn.entries]]
 unit   = "clients/cli-terminal/src/main/java/cc/jumpkick/terminal/package-info.java"
 value  = 1
@@ -1815,7 +1810,7 @@ value  = 1
 reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
 [[no-fqcn.entries]]
 unit   = "plugins/java-compiler/src/main/java/cc/jumpkick/java/compiler/ZincJavaCompiler.java"
-value  = 2
+value  = 1
 reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
 [[no-fqcn.entries]]
 unit   = "plugins/kotlin-compiler/src/main/java/cc/jumpkick/kotlin/compiler/KotlinCompiler.java"
@@ -2043,61 +2038,61 @@ value  = 1
 reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
 
 [no-glued-inline-tag]
-population = { files = 3108 }
+population = { files = 3150 }
 
 [no-historical-narration]
-population = { files = 3355 }
+population = { files = 3396 }
 
 [no-link-following-delete]
-population = { files = 72 }
+population = { files = 71 }
 
 [no-retired-code-markers]
-population = { files = 1828 }
+population = { files = 1840 }
 
 [no-ticket-ids]
-population = { files = 3717 }
+population = { files = 3752 }
 
 [null-marked-packages]
 [null-marked-packages.populations]
-"clients/cli" = { classes = 639, elements = 18 }
+"clients/cli" = { classes = 649, elements = 18 }
 
 [one-digest-surface]
 [one-digest-surface.populations]
-"clients/cli" = { classes = 639, sites = 39488 }
+"clients/cli" = { classes = 649, sites = 40038 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "server/engine" = { classes = 884, sites = 57383 }
 "shared/client-io" = { classes = 73, sites = 4059 }
 
 [one-hex-spelling]
 [one-hex-spelling.populations]
-"clients/cli" = { classes = 639, sites = 39488 }
+"clients/cli" = { classes = 649, sites = 40038 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "server/engine" = { classes = 884, sites = 57383 }
 "shared/client-io" = { classes = 73, sites = 4059 }
 
 [one-host-surface]
 [one-host-surface.populations]
-"clients/cli" = { classes = 639, sites = 29728 }
+"clients/cli" = { classes = 649, sites = 30113 }
 "plugins/quarkus" = { classes = 11, sites = 640 }
 "server/engine" = { classes = 884, sites = 42542 }
 "shared/client-io" = { classes = 73, sites = 3010 }
 
 [one-json-splicer]
-population = { files = 1771 }
+population = { files = 1783 }
 
 [one-recursive-delete]
-population = { files = 1752 }
+population = { files = 1764 }
 
 [own-algorithm-by-name]
 [own-algorithm-by-name.populations]
-"clients/cli" = { classes = 639, sites = 29728 }
+"clients/cli" = { classes = 649, sites = 30113 }
 "plugins/quarkus" = { classes = 11, sites = 640 }
 "server/engine" = { classes = 884, sites = 42542 }
 "shared/client-io" = { classes = 73, sites = 3010 }
 
 [package-cycles]
 [package-cycles.populations]
-"clients/cli" = { edges = 73, slices = 18 }
+"clients/cli" = { edges = 74, slices = 18 }
 "clients/cli-terminal" = { edges = 4, slices = 3 }
 "plugins/quarkus" = { edges = 0, slices = 1 }
 "server/engine" = { edges = 89, slices = 19 }
@@ -2174,7 +2169,7 @@ reason = "banked from cycle-baseline.txt on 2026-09-06 — the facts edges found
 
 [properties-render-owner]
 [properties-render-owner.populations]
-"clients/cli" = { classes = 639, sites = 39488 }
+"clients/cli" = { classes = 649, sites = 40038 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "server/engine" = { classes = 884, sites = 57383 }
 "shared/client-io" = { classes = 73, sites = 4059 }
@@ -2186,20 +2181,23 @@ population = { left = 735, right = 735 }
 population = { left = 448, right = 448 }
 
 [repository-names]
-population = { constants = 5, files = 1835, literals = 33623 }
+population = { constants = 5, files = 1847, literals = 33844 }
 
 [retired-wire-keys]
-population = { files = 1854 }
+population = { files = 1866 }
 
 [runnable-owner]
 [runnable-owner.populations]
-"clients/cli" = { classes = 639, sites = 39488 }
+"clients/cli" = { classes = 649, sites = 40038 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "server/engine" = { classes = 884, sites = 57383 }
 "shared/client-io" = { classes = 73, sites = 4059 }
 
+[schema-compared-to-its-constant]
+population = { files = 3150 }
+
 [schema-freeze]
-population = { files = 12 }
+population = { files = 11 }
 
 [ship-layout-installer-gradle]
 population = { left = 1, right = 1 }
@@ -2208,7 +2206,7 @@ population = { left = 1, right = 1 }
 population = { left = 1, right = 1 }
 
 [single-home-root]
-population = { files = 3424 }
+population = { files = 3465 }
 
 [single-truth-set]
 population = { examined = 1707 }
@@ -2257,16 +2255,16 @@ population = { files = 26 }
 "server/engine" = { examined = 18 }
 
 [target-dir]
-population = { constants = 1, files = 1835, literals = 33592 }
+population = { constants = 1, files = 1847, literals = 33813 }
 
 [task-names]
-population = { constants = 64, files = 1835, literals = 33583 }
+population = { constants = 64, files = 1847, literals = 33804 }
 
 [test-fixtures-stay-out-of-production]
 population = { files = 47 }
 
 [test-paths-from-checkout-root]
-population = { files = 1265 }
+population = { files = 1295 }
 
 [toolchain-env-from-request]
 [toolchain-env-from-request.populations]
@@ -2275,16 +2273,16 @@ population = { files = 1265 }
 "shared/client-io" = { classes = 73, sites = 3010 }
 
 [tree-copy-owner]
-population = { files = 1752 }
+population = { files = 1764 }
 
 [wire-prefix-pairs]
-population = { files = 1778 }
+population = { files = 1790 }
 
 [wire-types]
-population = { constants = 119, files = 1835, literals = 33514 }
+population = { constants = 119, files = 1847, literals = 33735 }
 
 [worker-offline-from-spec]
-population = { files = 130 }
+population = { files = 135 }
 
 [wrapper-version-parity]
 population = { left = 1, right = 1 }
@@ -2294,7 +2292,7 @@ population = { files = 1 }
 
 [xml-parser-owner]
 [xml-parser-owner.populations]
-"clients/cli" = { classes = 639, sites = 39488 }
+"clients/cli" = { classes = 649, sites = 40038 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "server/engine" = { classes = 884, sites = 57383 }
 "shared/client-io" = { classes = 73, sites = 4059 }
