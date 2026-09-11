@@ -23,12 +23,13 @@ import java.util.concurrent.atomic.AtomicLong;
 public final class Cas {
 
     /**
-     * Staging-name discriminator. A blob is staged as {@code .put-<hex>-<pid>-<n>.tmp}: unique by
-     * construction, so the create needs none of the random-name generation and collision retry
-     * {@link Files#createTempFile} does, which is measurable when one build deposits thousands of
-     * outputs. The {@code .put-} prefix and {@code .tmp} suffix are the shape the cache GC and
-     * {@code CasSweep} recognise as a leaked temp; the pid keeps two engines staging the same blob
-     * off each other's file.
+     * Staging-name discriminator. Every writer stages under {@code sha256/} as {@code
+     * .put-<hex>-<pid>-<n>.tmp} beside its target — {@link #putStream}, which learns its hash last,
+     * as {@code .put-stream-<pid>-<n>.tmp} at the top of the tree. Unique by construction, so the
+     * create needs none of the random-name generation and collision retry {@link Files#createTempFile}
+     * does, which is measurable when one build deposits thousands of outputs. The {@code .put-} prefix
+     * is the one shape the cache GC and {@code CasSweep} recognise as a leaked temp; the pid keeps two
+     * engines staging the same blob off each other's file.
      */
     private static final AtomicLong STAGING_SEQ = new AtomicLong();
 
@@ -113,7 +114,17 @@ public final class Cas {
         if (Files.exists(target)) {
             return target;
         }
-        AtomicWrites.replace(target, data);
+        Path shard = target.getParent();
+        ensureShard(shard);
+        Path tmp = staging(shard, hex);
+        boolean moved = false;
+        try {
+            Files.write(tmp, data);
+            AtomicWrites.moveInto(tmp, target);
+            moved = true;
+        } finally {
+            if (!moved) Files.deleteIfExists(tmp);
+        }
         return target;
     }
 
@@ -128,11 +139,11 @@ public final class Cas {
      * and the existing entry returned.
      */
     public Stored putStream(InputStream in) throws IOException {
-        // Temp lives under a shard dir, not the CAS root: a crash must not litter the root
-        // (nothing sweeps it), and the final move stays within one directory tree.
-        Path shard = root.resolve("sha256");
-        Files.createDirectories(shard);
-        Path tmp = Files.createTempFile(shard, ".put-", ".tmp");
+        // Staged under sha256/, not the CAS root: that is the tree the temp sweep reads, and the
+        // final move stays within one directory tree.
+        Path shaRoot = root.resolve("sha256");
+        Files.createDirectories(shaRoot);
+        Path tmp = staging(shaRoot, "stream");
         MessageDigest digest = Hashing.newSha256();
         long size = 0;
         try {
@@ -163,9 +174,9 @@ public final class Cas {
     /** A blob stored in the CAS: its on-disk path, hex hash, and byte size. */
     public record Stored(Path path, String sha256, long size) {}
 
-    /** A staging sibling for {@code hex}: unique by construction, no random-name retry. */
-    private static Path staging(Path shard, String hex) {
-        return shard.resolve(".put-" + hex + "-" + PID + "-" + STAGING_SEQ.getAndIncrement() + ".tmp");
+    /** The staging path for {@code hex} in {@code dir}: unique by construction, not yet created. */
+    private static Path staging(Path dir, String hex) {
+        return dir.resolve(".put-" + hex + "-" + PID + "-" + STAGING_SEQ.getAndIncrement() + ".tmp");
     }
 
     /**

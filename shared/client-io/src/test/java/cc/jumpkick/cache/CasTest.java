@@ -55,10 +55,33 @@ class CasTest {
         Cas.Stored a = cas.putStream(new ByteArrayInputStream(payload));
         Cas.Stored b = cas.putStream(new ByteArrayInputStream(payload));
         assertThat(a.path()).isEqualTo(b.path());
-        // No leftover temp files from the second (discarded) write.
-        try (var entries = Files.list(tempDir)) {
-            assertThat(entries.filter(p -> p.getFileName().toString().startsWith(".put-")))
-                    .isEmpty();
+        assertThat(stagingFiles(tempDir))
+                .as("the discarded second write leaves no temp")
+                .isEmpty();
+    }
+
+    /** Every writer stages under {@code sha256/}, the one tree the temp sweep reads, and none leaves a temp behind. */
+    @Test
+    void every_writer_stages_under_the_sha256_tree_and_leaves_nothing(@TempDir Path tempDir) throws IOException {
+        Cas cas = new Cas(tempDir.resolve("cas"));
+        Path src = Files.write(
+                Files.createDirectories(tempDir.resolve("in")).resolve("f"), "file".getBytes(StandardCharsets.UTF_8));
+
+        cas.put("bytes".getBytes(StandardCharsets.UTF_8));
+        cas.putStream(new ByteArrayInputStream("stream".getBytes(StandardCharsets.UTF_8)));
+        cas.putFile(src, Hashing.sha256Hex(src));
+
+        assertThat(stagingFiles(cas.root())).isEmpty();
+        try (Stream<Path> top = Files.list(cas.root())) {
+            assertThat(top.map(p -> p.getFileName().toString())).containsExactly("sha256");
+        }
+    }
+
+    /** Every {@code .put-} name anywhere under {@code root}'s {@code sha256/} tree. */
+    private static List<Path> stagingFiles(Path root) throws IOException {
+        try (Stream<Path> all = Files.walk(root.resolve("sha256"))) {
+            return all.filter(p -> p.getFileName().toString().startsWith(".put-"))
+                    .toList();
         }
     }
 
