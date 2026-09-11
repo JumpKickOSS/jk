@@ -535,8 +535,7 @@ public final class Calibration {
      * deciding for themselves.
      */
     static boolean needsProbe() {
-        Calibration c = load();
-        if (c.present() && c.measured) return false;
+        if (load().settled(clock.millis())) return false;
         return !failedRecently();
     }
 
@@ -628,17 +627,14 @@ public final class Calibration {
      */
     public static Calibration ensure(@Nullable Path jdksDir, boolean force, boolean allowNetwork) {
         Calibration current = load();
-        // Skip when we already have a measured result, unless forced. The schema equality gate
-        // and the version/age staleness gate both live in HostMetricsFile.readFrom, so anything
-        // that loaded is already current: re-testing schema here only re-probes every build.
-        if (!force && current.present() && current.measured) return current;
+        if (!force && current.settled(clock.millis())) return current;
         if (!force && failedRecently()) return current;
         // One probe at a time in this engine: two jobs admitted together on a cold host would
         // otherwise time each other and both write the file.
         PROBE.lock();
         try {
             current = load();
-            if (!force && current.present() && current.measured) return current;
+            if (!force && current.settled(clock.millis())) return current;
             Calibration probed = probe(jdksDir, allowNetwork);
             if (probed != null && probed.present()) {
                 // Preserve engine cold-start + continuous learned rates across re-probe.
@@ -909,6 +905,15 @@ public final class Calibration {
     public static boolean stale(@Nullable String version, long updated, long nowMillis) {
         if (!JkVersion.VERSION.equals(version)) return true;
         return updated > 0 && nowMillis - updated > MAX_AGE_MILLIS;
+    }
+
+    /**
+     * Whether this calibration ends the bootstrap probe: measured, by this jk, within {@link
+     * #MAX_AGE_MILLIS}. A file another jk wrote, or one older than the window, is re-probed the
+     * next time a build asks; its learned rates ride along into the new one.
+     */
+    boolean settled(long nowMillis) {
+        return present() && measured && !stale(jkVersion, updated, nowMillis);
     }
 
     // --- IO (format owner: HostMetricsFile) ----------------------------------

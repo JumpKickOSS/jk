@@ -159,6 +159,44 @@ class CalibrationTest {
      * Relocate the whole jk layout for the body. {@code jk.env.<NAME>} is {@link JkDirs}'s
      * documented in-process seam — env vars are fixed at JVM start, system properties are not.
      */
+    @Test
+    void a_calibration_another_jk_measured_is_probed_again_but_keeps_its_learned_rates(@TempDir Path home)
+            throws Exception {
+        withJkHome(home, () -> {
+            Calibration.invalidateMemo();
+            Path file = JkDirs.builds().resolve("host-metrics.toml");
+            Files.createDirectories(file.getParent());
+            Files.writeString(file, "[mean]\nnative-image-ms-per-mib = 111\n");
+            HostMetricsFile.writeTo(file, Calibration.testInstance(12345.0, true, "0.0.1", System.currentTimeMillis()));
+            Calibration.invalidateMemo();
+
+            Calibration loaded = Calibration.load();
+            assertThat(loaded.present())
+                    .as("the learned rates keep the file readable")
+                    .isTrue();
+            assertThat(loaded.settled(System.currentTimeMillis()))
+                    .as("a measurement by another jk does not end the probe")
+                    .isFalse();
+            assertThat(Calibration.needsProbe()).isTrue();
+        });
+    }
+
+    @Test
+    void a_measurement_is_settled_only_by_this_jk_and_inside_the_age_window() {
+        long now = 1_800_000_000_000L;
+        long day = 86_400_000L;
+        assertThat(Calibration.testInstance(1.0, true, JkVersion.VERSION, now - 59 * day)
+                        .settled(now))
+                .isTrue();
+        assertThat(Calibration.testInstance(1.0, true, JkVersion.VERSION, now - 61 * day)
+                        .settled(now))
+                .isFalse();
+        assertThat(Calibration.testInstance(1.0, true, "0.0.1", now).settled(now))
+                .isFalse();
+        assertThat(Calibration.testInstance(1.0, false, JkVersion.VERSION, now).settled(now))
+                .isFalse();
+    }
+
     private static void withJkHome(Path home, ThrowingRunnable body) throws Exception {
         String key = "jk.env.JK_HOME";
         String previous = System.getProperty(key);
