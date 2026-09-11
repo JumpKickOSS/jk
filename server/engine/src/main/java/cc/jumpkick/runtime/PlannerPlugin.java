@@ -8,6 +8,7 @@ import static cc.jumpkick.runtime.PlannerSupport.storePackaged;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CycloneDxSbom;
+import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
@@ -430,7 +431,7 @@ public final class PlannerPlugin {
                     }
                     Path spec = specWriter.writeTempSpec();
                     try {
-                        PluginBuild.runWorker(active, in.cache(), spec, ctx::label);
+                        PluginBuild.runWorker(active, in.cache(), spec, workerEnv(ctx, in), ctx::label);
                     } catch (IOException e) {
                         ctx.error(step.name(), Errors.text(e));
                         throw e;
@@ -542,7 +543,7 @@ public final class PlannerPlugin {
         }
         List<String> workerLines;
         try {
-            workerLines = PluginBuild.runWorker(active, in.cache(), specFile, ctx::label);
+            workerLines = PluginBuild.runWorker(active, in.cache(), specFile, workerEnv(ctx, in), ctx::label);
         } catch (IOException e) {
             ctx.error("package", Errors.text(e));
             throw e;
@@ -633,4 +634,12 @@ public final class PlannerPlugin {
 
     /** SBOM path inside plain/assembly application jars (jar root = classpath root). */
     static final String SBOM_JAR_ENTRY = "META-INF/sbom/application.cdx.json";
+
+    /** The module's {@code [env]} policy for a plugin step's worker, {@code ${target}} being its output root. */
+    private static WorkerEnv workerEnv(TaskContext ctx, BuildPlanner.Inputs in) {
+        return WorkerEnv.forModule(
+                ctx.require(PROJECT).build().env(),
+                in.dir(),
+                ctx.require(LAYOUT).moduleTargetDir());
+    }
 }

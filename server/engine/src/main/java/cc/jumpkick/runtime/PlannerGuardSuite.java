@@ -17,6 +17,7 @@ import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.CompileResult;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.engine.plugin.PluginJar;
+import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.layout.BuildLayout;
@@ -208,7 +209,8 @@ public final class PlannerGuardSuite {
                 actionCache,
                 state,
                 workerJar,
-                layout.generatedSourcesDir("annotations", "guard"));
+                layout.generatedSourcesDir("annotations", "guard"),
+                WorkerEnv.forModule(project.build().env(), layout.moduleRoot(), layout.moduleTargetDir()));
         TaskForecast.Task step = TaskForecaster.compileStep(TaskNames.COMPILE_GUARD, pred, false, req);
         steps.add(step);
         return !step.cached();
@@ -282,7 +284,11 @@ public final class PlannerGuardSuite {
                             actionCache,
                             stateDir,
                             workerJar,
-                            genDir);
+                            genDir,
+                            WorkerEnv.forModule(
+                                    ctx.require(PROJECT).build().env(),
+                                    in.dir(),
+                                    ctx.require(LAYOUT).moduleTargetDir()));
                     ctx.waited(Duration.ofMillis(r.waitMillis()));
                     boolean errored = false;
                     for (CompileResult.Diagnostic d : r.diagnostics()) {

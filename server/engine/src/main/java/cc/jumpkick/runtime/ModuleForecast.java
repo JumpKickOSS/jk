@@ -8,6 +8,7 @@ import cc.jumpkick.compile.JavacLint;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceClasspath;
+import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.CacheTree;
@@ -333,7 +334,8 @@ final class ModuleForecast {
                         actionCache,
                         stateDir,
                         workerJar,
-                        layout.generatedSourcesDir("annotations"));
+                        layout.generatedSourcesDir("annotations"),
+                        WorkerEnv.forModule(project.build().env(), layout.moduleRoot(), layout.moduleTargetDir()));
                 Perf.end("  predict-compile-main", tc);
                 compileMainKey = pred.actionKey();
                 steps.add(TaskForecaster.compileStep(TaskNames.COMPILE_MAIN, pred, compileDepDirty || force, req));
@@ -520,7 +522,8 @@ final class ModuleForecast {
                     actionCache,
                     stateDir,
                     workerJar,
-                    layout.generatedSourcesDir("annotations", "test"));
+                    layout.generatedSourcesDir("annotations", "test"),
+                    WorkerEnv.forModule(project.build().env(), layout.moduleRoot(), layout.moduleTargetDir()));
             Perf.end("  predict-compile-test", tt);
             if (Perf.ENABLED) {
                 System.err.println("[jk-perf] forecast-compile-test " + dir

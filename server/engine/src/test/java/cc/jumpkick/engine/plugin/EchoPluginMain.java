@@ -16,6 +16,8 @@ import java.nio.charset.StandardCharsets;
  * <ul>
  *   <li>{@code oneshot} — emit a passthrough line and two protocol events, then exit. Drives {@link
  *       PluginProcess#run}.
+ *   <li>{@code env NAME…} — emit one {@code env} event carrying each named variable as this process
+ *       sees it ({@code <unset>} when absent), then exit. What {@link WorkerEnv} let through.
  *   <li>(default) <b>pull</b> — emit a passthrough line and an initial {@code ready}, then loop on
  *       stdin: {@code RUN <x>} echoes a {@code ran} event for {@code x} followed by another {@code
  *       ready}; {@code DONE} or EOF exits. Drives {@link PluginProcess#converse}.
@@ -31,6 +33,22 @@ public final class EchoPluginMain {
         PrintStream out =
                 new PrintStream(new FileOutputStream(FileDescriptor.out), /* autoFlush */ true, StandardCharsets.UTF_8);
 
+        if (args.length > 0 && args[0].equals("env")) {
+            StringBuilder json = new StringBuilder("##T:{\"e\":\"env\"");
+            for (int i = 1; i < args.length; i++) {
+                String value = System.getenv(args[i]);
+                json.append(",\"")
+                        .append(args[i])
+                        .append("\":\"")
+                        .append(
+                                value == null
+                                        ? "<unset>"
+                                        : value.replace("\\", "/").replace("\"", "'"))
+                        .append('"');
+            }
+            out.println(json.append('}'));
+            return;
+        }
         if (args.length > 0 && args[0].equals("oneshot")) {
             out.println("plain chatter");
             out.println("##T:{\"e\":\"a\"}");

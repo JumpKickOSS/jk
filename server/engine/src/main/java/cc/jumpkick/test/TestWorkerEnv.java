@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.test;
 
+import cc.jumpkick.engine.plugin.WorkerEnv;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -18,8 +19,8 @@ final class TestWorkerEnv {
      * and the JDK stops binding past 102 characters (the budget is
      * {@code UnixSocketPaths.MAX_PATH_LENGTH}, proven there by binding).
      */
-    static Map<String, String> forWorker(Map<String, String> base, int workerId, Path tmp) {
-        Map<String, String> env = new LinkedHashMap<>(base);
+    static WorkerEnv forWorker(WorkerEnv base, int workerId, Path tmp) {
+        Map<String, String> env = new LinkedHashMap<>();
         env.put("TMPDIR", tmp.toString());
         env.put("TMP", tmp.toString());
         env.put("TEMP", tmp.toString());
@@ -28,9 +29,10 @@ final class TestWorkerEnv {
         // deleting `<base>` recursively never reached them and they accumulated under /tmp
         // forever. TestTmpDir.forWorker already splits the temp root this way; one idea deserves
         // one spelling, and this is the one that cannot leak.
-        env.computeIfPresent(
-                "JK_STATE_DIR", (k, dir) -> Path.of(dir).resolve("w" + workerId).toString());
-        return env;
+        String stateDir = base.extras().get("JK_STATE_DIR");
+        if (stateDir != null)
+            env.put("JK_STATE_DIR", Path.of(stateDir).resolve("w" + workerId).toString());
+        return base.with(env);
     }
 
     /**

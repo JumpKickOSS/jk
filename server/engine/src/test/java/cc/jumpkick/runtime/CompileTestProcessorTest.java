@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.TaskContext;
@@ -56,7 +57,8 @@ class CompileTestProcessorTest {
                         null),
                 dir.resolve("gen"),
                 new Cas(dir.resolve("cas")),
-                dir.resolve("cache"));
+                dir.resolve("cache"),
+                WorkerEnv.strict());
 
         assertThat(ok).isTrue();
         assertThat(out.resolve("app/WidgetTestGen.class")).isRegularFile(); // processor ran
@@ -91,7 +93,8 @@ class CompileTestProcessorTest {
                         null),
                 dir.resolve("gen"),
                 new Cas(dir.resolve("cas")),
-                dir.resolve("cache"));
+                dir.resolve("cache"),
+                WorkerEnv.strict());
 
         assertThat(ok).isFalse();
         assertThat(out.resolve("app/WidgetTestGen.class")).doesNotExist();

@@ -19,6 +19,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.CompileResult;
 import cc.jumpkick.engine.plugin.PluginJar;
+import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.CacheTree;
@@ -437,7 +438,11 @@ public final class PlannerCompile {
                 cx.actionCache(),
                 javaStateDir,
                 workerJar,
-                genDir);
+                genDir,
+                WorkerEnv.forModule(
+                        ctx.require(PROJECT).build().env(),
+                        in.dir(),
+                        ctx.require(LAYOUT).moduleTargetDir()));
         ctx.put(ACTION_KEY, r.actionKey());
         ctx.waited(Duration.ofMillis(r.waitMillis()));
         reportJavacResult(ctx, r);

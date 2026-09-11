@@ -7,6 +7,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.JavaCompilerHost;
 import cc.jumpkick.compile.JavacFixture;
+import cc.jumpkick.engine.plugin.WorkerEnv;
 import java.io.IOException;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -314,7 +315,16 @@ class JavaIncrementalCompileTest {
         Run build(List<Path> classpath, boolean requireSuccess) throws IOException {
             CompileRequest req = request(classpath, 21);
             JavaCompile.Result result = JavaCompile.run(
-                    "compile-main", req, "jk-test", true, cas, actionCache, stateDir, workerJar, root.resolve("gen"));
+                    "compile-main",
+                    req,
+                    "jk-test",
+                    true,
+                    cas,
+                    actionCache,
+                    stateDir,
+                    workerJar,
+                    root.resolve("gen"),
+                    WorkerEnv.strict());
             if (requireSuccess) {
                 assertThat(result.success()).as("compile succeeded").isTrue();
             }
@@ -334,7 +344,8 @@ class JavaIncrementalCompileTest {
                     actionCache,
                     stateDir,
                     workerJar,
-                    root.resolve("gen"));
+                    root.resolve("gen"),
+                    WorkerEnv.strict());
             assertThat(result.success()).as("compile succeeded").isTrue();
             return new Run(result.outcome(), relSources(result.compiledSources()));
         }
@@ -356,7 +367,8 @@ class JavaIncrementalCompileTest {
                         actionCache,
                         stateDir,
                         workerJar,
-                        root.resolve("gen"));
+                        root.resolve("gen"),
+                        WorkerEnv.strict());
             }
         }
 

@@ -8,6 +8,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.GroovycRequest;
 import cc.jumpkick.compile.KotlincRequest;
 import cc.jumpkick.engine.plugin.JvmOptions;
+import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.kotlin.KotlinResolver;
@@ -168,7 +169,8 @@ public final class PlannerLang {
                 !rerun,
                 !in.ephemeralActions(), // verify-scratch: no persistent residue
                 actionCache.cas(),
-                actionCache);
+                actionCache,
+                WorkerEnv.forModule(ctx.require(PROJECT).build().env(), in.dir(), null));
     }
 
     /**
@@ -251,6 +253,7 @@ public final class PlannerLang {
                 !rerun,
                 !in.ephemeralActions(), // verify-scratch: no persistent residue
                 actionCache.cas(),
-                actionCache);
+                actionCache,
+                WorkerEnv.forModule(ctx.require(PROJECT).build().env(), in.dir(), null));
     }
 }

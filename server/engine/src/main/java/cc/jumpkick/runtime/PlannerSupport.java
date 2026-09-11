@@ -33,7 +33,6 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.model.JkBuild.EnvDecl;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.plugin.manifest.PluginContributions;
@@ -776,7 +775,7 @@ public final class PlannerSupport {
         return testStampExtras(
                 testStampWorkerJars(dir, project),
                 effectiveSelection(SessionContext.current().testSelection(), dir),
-                project.build().testEnv(),
+                project.build(),
                 dir);
     }
 
@@ -882,19 +881,19 @@ public final class PlannerSupport {
      * produce a key that disagrees with this one.
      */
     static List<String> testStampExtras(
-            Map<String, String> workerJars, TestSelection selection, List<EnvDecl> testEnv, Path moduleDir) {
+            Map<String, String> workerJars, TestSelection selection, JkBuild.Build build, Path moduleDir) {
         EnvLookup lookup = BuildEnv.lookupFor(Objects.requireNonNull(moduleDir, "moduleDir"));
-        return testStampExtras(workerJars, selection, testEnv, SecretRedactor.from(lookup), lookup);
+        return testStampExtras(workerJars, selection, build, SecretRedactor.from(lookup), lookup);
     }
 
     /**
-     * Stamp extras. Declared {@code [test] env} values only (sandbox defaults stay out — they are
-     * absolute paths that would defeat cache sharing).
+     * Stamp extras. Declared {@code [env] vars} and {@code [test] env} values only (sandbox defaults
+     * stay out — they are absolute paths that would defeat cache sharing).
      */
     static List<String> testStampExtras(
             Map<String, String> workerJars,
             TestSelection selection,
-            List<EnvDecl> testEnv,
+            JkBuild.Build build,
             SecretRedactor redactor,
             EnvLookup lookup) {
         List<String> extras = new ArrayList<>();
@@ -907,8 +906,10 @@ public final class PlannerSupport {
         // launch — a manifest jk cannot fork must never forecast as "tests cached".
         // The launch-side directories are not passed: the mode, not the caller, decides what the
         // two path tokens mean, and this mode keeps them literal.
-        var resolved = TestEnvValues.resolve(
-                "[test].env", testEnv, null, null, new TestEnvValues.Mode.CacheKey(lookup, redactor));
+        var mode = new TestEnvValues.Mode.CacheKey(lookup, redactor);
+        var resolved = new LinkedHashMap<>(
+                TestEnvValues.resolve("[env].vars", build.env().vars(), null, null, mode));
+        resolved.putAll(TestEnvValues.resolve("[test].env", build.testEnv(), null, null, mode));
         for (Map.Entry<String, String> e : resolved.entrySet()) {
             extras.add("test-env:" + e.getKey() + "=" + e.getValue());
         }

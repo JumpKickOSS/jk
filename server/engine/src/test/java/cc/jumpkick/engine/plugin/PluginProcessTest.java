@@ -89,6 +89,7 @@ class PluginProcessTest {
             org.junit.jupiter.api.Assertions.assertTimeoutPreemptively(Duration.ofSeconds(30), () -> {
                 int exit = PluginProcess.converseNoSlot(
                         cmd(),
+                        WorkerEnv.strict(),
                         "##T:",
                         (json, convo) -> {
                             String e = Jsonl.str(json, "e");

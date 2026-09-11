@@ -8,6 +8,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileWriter;
@@ -169,7 +170,7 @@ class ThirdPartyPluginTest {
         // 4. Untrusted: the engine refuses to fork the worker, naming the remedy.
         var active = PluginBuild.activeCodePlugin(build, project).orElseThrow();
         Path spec = Files.writeString(tmp.resolve("noop.spec"), "{\"t\":\"op\",\"op\":\"describe\"}\n");
-        assertThatThrownBy(() -> PluginBuild.runWorker(active, cache, spec, null))
+        assertThatThrownBy(() -> PluginBuild.runWorker(active, cache, spec, WorkerEnv.strict(), null))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("not trusted")
                 .hasMessageContaining("jk trust plugin com.example:hello-jk-plugin");

@@ -59,12 +59,14 @@ class TestEnvSharedM2Test {
     private static String m2Of(Path moduleDir) throws Exception {
         JkBuild project = JkBuildParser.parse(moduleDir.resolve("jk.toml"));
         return requireNonNull(TestEnv.forModule(project, moduleDir, BuildLayout.of(moduleDir, project))
+                .extras()
                 .get("JK_M2_LOCAL"));
     }
 
     private static String homeOf(Path moduleDir) throws Exception {
         JkBuild project = JkBuildParser.parse(moduleDir.resolve("jk.toml"));
         return requireNonNull(TestEnv.forModule(project, moduleDir, BuildLayout.of(moduleDir, project))
+                .extras()
                 .get("JK_HOME"));
     }
 

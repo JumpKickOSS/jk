@@ -9,6 +9,7 @@ import cc.jumpkick.compile.JavacRunner;
 import cc.jumpkick.compile.KotlincRequest;
 import cc.jumpkick.compile.WorkerCompileDriver;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Errors;
@@ -370,7 +371,7 @@ public final class ScriptPlans {
                             .workingDir(workingDir)
                             .extraArgs(List.of("-no-stdlib"))
                             .build();
-                    CompileResult result = WorkerCompileDriver.compile(req);
+                    CompileResult result = WorkerCompileDriver.compile(req, WorkerEnv.strict());
                     if (!result.success()) {
                         ctx.error("kotlinc", result.output());
                         throw new RuntimeException("kotlinc failed");

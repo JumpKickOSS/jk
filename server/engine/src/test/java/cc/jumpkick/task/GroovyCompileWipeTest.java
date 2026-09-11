@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.GroovycRequest;
+import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.Hashing;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -53,7 +54,8 @@ class GroovyCompileWipeTest {
         Files.writeString(out.resolve("B.class"), "STALE");
         Files.writeString(stubs.resolve("B.java"), "stub class B {}");
 
-        LangCompile.Result result = LangCompile.run("compile-groovy@x", req, "test-jk", true, cas, cache);
+        LangCompile.Result result =
+                LangCompile.run("compile-groovy@x", req, "test-jk", true, cas, cache, WorkerEnv.strict());
 
         assertThat(result.cacheHit()).isTrue();
         assertThat(out.resolve("A.class")).exists();

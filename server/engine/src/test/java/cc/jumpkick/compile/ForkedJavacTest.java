@@ -5,10 +5,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.engine.plugin.JobWorkers;
+import cc.jumpkick.engine.plugin.WorkerEnv;
+import cc.jumpkick.model.JkBuild;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -141,6 +144,87 @@ class ForkedJavacTest {
             JobWorkers.shutdownForRequest(job, 0L);
             JobWorkers.close();
         }
+    }
+
+    /**
+     * The compiler worker's own {@code System.getenv}, observed from inside it: an annotation
+     * processor runs in the worker JVM and writes what it sees into a generated source.
+     */
+    @Test
+    void the_worker_sees_the_allow_list_not_the_engine_s_environment(@TempDir Path dir) throws Exception {
+        String workerProp = System.getProperty("jk.java.plugin.jar");
+        assumeTrue(
+                workerProp != null && Files.isRegularFile(Path.of(workerProp)),
+                "jk.java.plugin.jar must point at the built worker jar");
+        Path procDir = dir.resolve("proc");
+        compile(
+                procDir,
+                Map.of(
+                        "peek.Peek", """
+                        package peek;
+                        import java.lang.annotation.*;
+                        @Retention(RetentionPolicy.SOURCE) @Target(ElementType.TYPE)
+                        public @interface Peek {}
+                        """,
+                        "peek.PeekProc", """
+                        package peek;
+                        import javax.annotation.processing.*;
+                        import javax.lang.model.SourceVersion;
+                        import javax.lang.model.element.*;
+                        import javax.tools.JavaFileObject;
+                        import java.io.*;
+                        import java.util.Set;
+                        @SupportedAnnotationTypes("peek.Peek")
+                        public class PeekProc extends AbstractProcessor {
+                            public SourceVersion getSupportedSourceVersion() { return SourceVersion.latestSupported(); }
+                            public boolean process(Set<? extends TypeElement> a, RoundEnvironment r) {
+                                for (Element e : r.getElementsAnnotatedWith(Peek.class)) {
+                                    try {
+                                        JavaFileObject f = processingEnv.getFiler().createSourceFile("app.Seen", e);
+                                        try (Writer w = f.openWriter()) {
+                                            w.write("package app; class Seen { static final String FAKE_SECRET = \\""
+                                                    + System.getenv("FAKE_SECRET") + "\\"; }");
+                                        }
+                                    } catch (IOException ex) { throw new UncheckedIOException(ex); }
+                                }
+                                return true;
+                            }
+                        }
+                        """));
+        Files.writeString(
+                Files.createDirectories(procDir.resolve("META-INF/services"))
+                        .resolve("javax.annotation.processing.Processor"),
+                "peek.PeekProc\n");
+        Path src = dir.resolve("src/app/Widget.java");
+        Files.createDirectories(src.getParent());
+        Files.writeString(src, "package app; @peek.Peek public class Widget {}");
+        Map<String, String> engine = new LinkedHashMap<>(System.getenv());
+        engine.put("FAKE_SECRET", "x");
+        ForkedJavac.Request request = new ForkedJavac.Request(
+                Path.of(System.getProperty("java.home")),
+                Path.of(workerProp),
+                List.of(src),
+                List.of(procDir),
+                List.of(procDir),
+                dir.resolve("classes"),
+                dir.resolve("gen-src"),
+                21,
+                List.of());
+
+        String strict = WorkerEnv.withEngineEnvironment(engine, () -> seenBy(request, dir));
+        assertThat(strict).contains("FAKE_SECRET = \"null\"");
+
+        WorkerEnv inherit = WorkerEnv.policy(new JkBuild.EnvConfig(true, List.of()));
+        String inherited = WorkerEnv.withEngineEnvironment(engine, () -> seenBy(request.withEnv(inherit), dir));
+        assertThat(inherited).contains("FAKE_SECRET = \"x\"");
+    }
+
+    private static String seenBy(ForkedJavac.Request request, Path dir) throws IOException {
+        ForkedJavac.Result r = ForkedJavac.compile(request);
+        assertThat(r.success())
+                .as("worker compile succeeded: %s", r.diagnostics())
+                .isTrue();
+        return Files.readString(dir.resolve("gen-src/app/Seen.java"));
     }
 
     private static void compile(Path outDir, Map<String, String> sources) throws IOException {

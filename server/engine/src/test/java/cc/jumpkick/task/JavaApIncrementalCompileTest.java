@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.CompileRequest;
+import cc.jumpkick.engine.plugin.WorkerEnv;
 import java.io.IOException;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -192,7 +193,16 @@ class JavaApIncrementalCompileTest {
                     .javaHome(Path.of(System.getProperty("java.home")))
                     .build();
             JavaCompile.Result r = JavaCompile.run(
-                    "compile-main", req, "jk-test", true, cas, actionCache, stateDir, workerJar, genSrc);
+                    "compile-main",
+                    req,
+                    "jk-test",
+                    true,
+                    cas,
+                    actionCache,
+                    stateDir,
+                    workerJar,
+                    genSrc,
+                    WorkerEnv.strict());
             assertThat(r.success()).as("compile succeeded: %s", r.diagnostics()).isTrue();
             return r;
         }

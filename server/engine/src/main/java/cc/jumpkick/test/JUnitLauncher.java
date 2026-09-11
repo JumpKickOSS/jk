@@ -7,6 +7,7 @@ import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.engine.plugin.PluginProcess;
+import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.jdk.JdkFingerprint;
@@ -123,13 +124,10 @@ public final class JUnitLauncher {
     }
 
     /**
-     * Extra environment for the test JVM. Used to isolate nested-engine suites ({@code jk-cli}) so
-     * {@code EngineTestExtension} cannot force-stop the host engine that is running {@code jk test}, and
-     * to hand a suite a sandboxed {@code JK_HOME}without one a forked test JVM inherits the
-     * engine's environment and runs against the developer's real {@code JK_HOME} / platform product layout, reading the real library
-     * catalog and able to write the real local m2.
+     * The test JVM's environment: the module's {@link WorkerEnv} policy plus the sandbox the planner
+     * hands over ({@code JK_HOME}, {@code JK_STATE_DIR} for nested-engine suites, the temp root).
      */
-    private Map<String, String> testEnv = Map.of();
+    private WorkerEnv testEnv = WorkerEnv.strict();
 
     /** Module coord for failure lines (e.g. {@code cc.jumpkick:jk-core}); empty when unknown. */
     private String moduleLabel = "";
@@ -154,7 +152,7 @@ public final class JUnitLauncher {
         flags.add("-Djk.aot.train=off");
         // CLI integration tests use FFM (EngineClient / MemoryProbe) and JUnit autodetection of
         // EngineTestExtension — match Gradle's:cli:test jvmArgs / systemProperty setup.
-        if (!testEnv.isEmpty()) {
+        if (!testEnv.extras().isEmpty()) {
             flags.add("--enable-native-access=ALL-UNNAMED");
             flags.add("-Djunit.jupiter.extensions.autodetection.enabled=true");
             // Match Gradle :cli:test — short /tmp factory + soft-fail delete. Nested engines
@@ -172,7 +170,7 @@ public final class JUnitLauncher {
                 flags.add("-Djunit.jupiter.tempdir.factory.default=cc.jumpkick.cli.engine.JkTempDirFactory");
             }
             flags.add("-Djunit.jupiter.tempdir.cleanup.mode.default=always");
-            String jkHome = testEnv.get("JK_HOME");
+            String jkHome = testEnv.extras().get("JK_HOME");
             if (jkHome != null && !jkHome.isBlank()) {
                 // Sibling of the sandbox home: <slot>/test-shared-cache (SharedTestCache).
                 Path jkHomeParent = Path.of(jkHome).getParent();
@@ -311,7 +309,7 @@ public final class JUnitLauncher {
                 cacheRoot,
                 workers,
                 workerJarProps,
-                Map.of(),
+                WorkerEnv.strict(),
                 listener,
                 null);
     }
@@ -338,7 +336,7 @@ public final class JUnitLauncher {
                 cacheRoot,
                 workers,
                 workerJarProps,
-                Map.of(),
+                WorkerEnv.strict(),
                 listener,
                 testResultsDir);
     }
@@ -355,7 +353,7 @@ public final class JUnitLauncher {
             Path cacheRoot,
             int workers,
             Map<String, String> workerJarProps,
-            Map<String, String> testEnv,
+            WorkerEnv testEnv,
             TestProgressListener listener,
             @Nullable Path testResultsDir)
             throws IOException, InterruptedException {
@@ -371,16 +369,15 @@ public final class JUnitLauncher {
         this.workerJarProps = workerJarProps == null ? Map.of() : Map.copyOf(workerJarProps);
         // Quarkus PathTestHelper only recognizes Maven/Gradle/IDE test-dir fragments. JK uses
         // target/classes/test + target/classes/main — register via TEST_TO_MAIN_MAPPINGS (BootstrapConstants).
-        Map<String, String> env = new LinkedHashMap<>();
-        if (testEnv != null) env.putAll(testEnv);
-        env.putIfAbsent(
+        Map<String, String> defaults = new LinkedHashMap<>();
+        defaults.put(
                 "TEST_TO_MAIN_MAPPINGS", "classes" + File.separator + "test" + ":classes" + File.separator + "main");
         // Suite JVMs must never prompt on the developer's controlling TTY (Confirm/Wizard via JLine
         // system terminal) or hang waiting for a keystroke during `jk build` / `jk test`.
-        env.putIfAbsent("JK_NONINTERACTIVE", "1");
-        this.testEnv = Map.copyOf(env);
+        defaults.put("JK_NONINTERACTIVE", "1");
+        this.testEnv = Objects.requireNonNull(testEnv, "testEnv").withDefaults(defaults);
         this.inferredModuleDir = inferModuleDir(testClassesDir);
-        this.testTmpDir = TestTmpDir.ensure(this.testEnv.get("TMPDIR"));
+        this.testTmpDir = TestTmpDir.ensure(this.testEnv.extras().get("TMPDIR"));
         QuarkusToolingPom.ensure(this.inferredModuleDir);
 
         Path runnerJar = locateRunner(cacheRoot);
@@ -726,8 +723,7 @@ public final class JUnitLauncher {
 
         try {
             Path tmp = TestTmpDir.forWorker(testTmpDir, workerId, totalWorkers);
-            Map<String, String> env =
-                    totalWorkers > 1 && tmp != null ? TestWorkerEnv.forWorker(testEnv, workerId, tmp) : testEnv;
+            WorkerEnv env = totalWorkers > 1 && tmp != null ? TestWorkerEnv.forWorker(testEnv, workerId, tmp) : testEnv;
             List<String> flags = jvmFlags(JvmRole.PULL_WORKER, totalWorkers, tmp);
             return PluginLoader.converse(
                     javaBinary,

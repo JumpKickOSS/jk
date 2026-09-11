@@ -15,6 +15,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.CompileResult;
 import cc.jumpkick.engine.plugin.PluginJar;
+import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.layout.BuildLayout;
@@ -159,7 +160,8 @@ public final class PlannerFixtures {
                 actionCache,
                 fxState,
                 workerJar,
-                layout.generatedSourcesDir("annotations", "fixtures"));
+                layout.generatedSourcesDir("annotations", "fixtures"),
+                WorkerEnv.forModule(project.build().env(), layout.moduleRoot(), layout.moduleTargetDir()));
         TaskForecast.Task fxStep = TaskForecaster.compileStep(TaskNames.COMPILE_TEST_FIXTURES, fxPred, false, fxReq);
         steps.add(fxStep);
         return !fxStep.cached();
@@ -232,7 +234,11 @@ public final class PlannerFixtures {
                             actionCache,
                             stateDir,
                             workerJar,
-                            genDir);
+                            genDir,
+                            WorkerEnv.forModule(
+                                    ctx.require(PROJECT).build().env(),
+                                    in.dir(),
+                                    ctx.require(LAYOUT).moduleTargetDir()));
                     ctx.waited(Duration.ofMillis(r.waitMillis()));
                     boolean errored = false;
                     for (CompileResult.Diagnostic d : r.diagnostics()) {

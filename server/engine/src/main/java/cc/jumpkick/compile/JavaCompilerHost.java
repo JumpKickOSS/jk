@@ -47,7 +47,11 @@ import org.jspecify.annotations.Nullable;
  */
 public final class JavaCompilerHost {
 
-    /** Pools keyed by job and by the JDK their workers run on: one job may compile modules at two levels. */
+    /**
+     * Pools keyed by job, by the JDK their workers run on, and by the environment the workers start
+     * with: one job may compile modules at two levels, and a module that opted into {@code [env]
+     * inherit} must not share a resident worker with one that did not.
+     */
     private static final ConcurrentHashMap<String, Lanes> POOLS = new ConcurrentHashMap<>();
 
     private static final AtomicLong EPHEMERAL = new AtomicLong(-1L);
@@ -104,7 +108,7 @@ public final class JavaCompilerHost {
 
     private static Lanes pool(long id, ForkedJavac.Request req) {
         Path home = ForkedJavac.workerJavaHome(req);
-        return POOLS.computeIfAbsent(id + "|" + home, k -> new Lanes(id, req, home));
+        return POOLS.computeIfAbsent(id + "|" + home + "|" + req.env().fingerprint(), k -> new Lanes(id, req, home));
     }
 
     /** Test seam: live lanes for {@code requestId} across its pools, or 0 when the job has none. */
@@ -504,7 +508,7 @@ public final class JavaCompilerHost {
             List<String> command = PluginLoader.command(javaExe, workerCp, jvmFlags, List.of("--pull"));
             int exit = new PluginClient(ForkedJavac.PREFIX)
                     .passthrough(transcript::record)
-                    .converseNoSlot(command, (json, convo) -> onLine(json, convo));
+                    .converseNoSlot(command, template.env(), (json, convo) -> onLine(json, convo));
             if (exit != 0) throw new IOException("zinc worker exited with status " + exit);
         }
 

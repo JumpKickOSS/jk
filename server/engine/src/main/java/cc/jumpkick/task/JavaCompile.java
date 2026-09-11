@@ -5,6 +5,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.CompileResult;
 import cc.jumpkick.compile.ForkedJavac;
+import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -72,10 +73,21 @@ public final class JavaCompile {
             ActionCache actionCache,
             Path stateDir,
             @Nullable Path workerJar,
-            @Nullable Path generatedSourceDir)
+            @Nullable Path generatedSourceDir,
+            WorkerEnv env)
             throws IOException {
         return run(
-                taskId, request, jkVersion, useCache, true, cas, actionCache, stateDir, workerJar, generatedSourceDir);
+                taskId,
+                request,
+                jkVersion,
+                useCache,
+                true,
+                cas,
+                actionCache,
+                stateDir,
+                workerJar,
+                generatedSourceDir,
+                env);
     }
 
     public static Result run(
@@ -88,7 +100,8 @@ public final class JavaCompile {
             ActionCache actionCache,
             Path stateDir,
             @Nullable Path workerJar,
-            @Nullable Path generatedSourceDir)
+            @Nullable Path generatedSourceDir,
+            WorkerEnv env)
             throws IOException {
         Path out = Objects.requireNonNull(request.outputDir(), "outputDir");
         Files.createDirectories(out);
@@ -134,7 +147,8 @@ public final class JavaCompile {
                     request.compilerClasspath(),
                     request.scalaLibraryJar(),
                     request.scalaCompilerJar(),
-                    request.scalaBridgeJar()));
+                    request.scalaBridgeJar(),
+                    env));
         } finally {
             outputs = prewriter.finish();
         }
@@ -156,18 +170,8 @@ public final class JavaCompile {
     public static Prediction predict(
             String taskId, CompileRequest request, String jkVersion, ActionCache actionCache, Path stateDir)
             throws IOException {
-        return predict(taskId, request, jkVersion, actionCache, stateDir, null, null);
-    }
-
-    public static Prediction predict(
-            String taskId,
-            CompileRequest request,
-            String jkVersion,
-            ActionCache actionCache,
-            Path stateDir,
-            @Nullable Path workerJar)
-            throws IOException {
-        return predict(taskId, request, jkVersion, actionCache, stateDir, workerJar, null);
+        // No worker jar, so no plan worker is forked; the env is never consulted.
+        return predict(taskId, request, jkVersion, actionCache, stateDir, null, null, WorkerEnv.strict());
     }
 
     public static Prediction predict(
@@ -177,7 +181,21 @@ public final class JavaCompile {
             ActionCache actionCache,
             Path stateDir,
             @Nullable Path workerJar,
-            @Nullable Path generatedSourceDir)
+            WorkerEnv env)
+            throws IOException {
+        return predict(taskId, request, jkVersion, actionCache, stateDir, workerJar, null, env);
+    }
+
+    /** {@code env} mirrors the build's so the plan worker shares its pool rather than starting a second one. */
+    public static Prediction predict(
+            String taskId,
+            CompileRequest request,
+            String jkVersion,
+            ActionCache actionCache,
+            Path stateDir,
+            @Nullable Path workerJar,
+            @Nullable Path generatedSourceDir,
+            WorkerEnv env)
             throws IOException {
         String key = ActionKey.forJavac(taskId, request, jkVersion);
         if (request.sources().isEmpty() || actionCache.lookup(key).isPresent()) {
@@ -204,7 +222,8 @@ public final class JavaCompile {
                     request.compilerClasspath(),
                     request.scalaLibraryJar(),
                     request.scalaCompilerJar(),
-                    request.scalaBridgeJar()));
+                    request.scalaBridgeJar(),
+                    env));
             List<Path> files = plan.sources();
             if (plan.full()) {
                 return new Prediction(

@@ -8,6 +8,7 @@ import cc.jumpkick.compile.CompileResult;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.engine.plugin.PluginJar;
+import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.layout.InputTrees;
@@ -631,7 +632,8 @@ public final class TestSupport {
             PlannerCompile.TestCompile compile,
             Path generatedSourceDir,
             Cas cas,
-            Path cacheRoot)
+            Path cacheRoot,
+            WorkerEnv env)
             throws IOException {
         List<Path> sources = compile.sources();
         Path outputDir = compile.outputDir();
@@ -684,7 +686,8 @@ public final class TestSupport {
                 actionCache,
                 stateDir,
                 workerJar,
-                gen);
+                gen,
+                env);
         ctx.waited(Duration.ofMillis(r.waitMillis()));
         // Surface javac diagnostics by severity — errors fail, warnings (e.g.
         // deprecation/unchecked) are shown but don't. Mirrors the main-compile

@@ -51,21 +51,18 @@ public final class PluginProcess {
     public static int run(
             List<String> command, String prefix, Consumer<String> onProtocol, @Nullable Consumer<String> onPassthrough)
             throws IOException, InterruptedException {
-        return run(command, Map.of(), prefix, onProtocol, onPassthrough);
+        return run(command, WorkerEnv.strict(), prefix, onProtocol, onPassthrough);
     }
 
-    /**
-     * As {@link #run(List, String, Consumer, Consumer)}, adding {@code extraEnv} to the child's
-     * environment.
-     */
+    /** As {@link #run(List, String, Consumer, Consumer)} with the child's {@link WorkerEnv}. */
     public static int run(
             List<String> command,
-            Map<String, String> extraEnv,
+            WorkerEnv env,
             String prefix,
             Consumer<String> onProtocol,
             @Nullable Consumer<String> onPassthrough)
             throws IOException, InterruptedException {
-        return run(command, extraEnv, null, prefix, onProtocol, onPassthrough);
+        return run(command, env, null, prefix, onProtocol, onPassthrough);
     }
 
     /**
@@ -77,7 +74,7 @@ public final class PluginProcess {
      */
     public static int run(
             List<String> command,
-            Map<String, String> extraEnv,
+            WorkerEnv env,
             @Nullable Path workDir,
             String prefix,
             Consumer<String> onProtocol,
@@ -85,7 +82,7 @@ public final class PluginProcess {
             throws IOException, InterruptedException {
         return converse(
                 command,
-                extraEnv,
+                env,
                 workDir,
                 prefix,
                 (json, convo) -> onProtocol.accept(json),
@@ -111,48 +108,45 @@ public final class PluginProcess {
             BiConsumer<String, Conversation> onProtocol,
             @Nullable Consumer<String> onPassthrough)
             throws IOException, InterruptedException {
-        return converse(command, Map.of(), prefix, onProtocol, onPassthrough);
+        return converse(command, WorkerEnv.strict(), prefix, onProtocol, onPassthrough);
     }
 
-    /**
-     * As {@link #converse(List, String, BiConsumer, Consumer)}, adding {@code extraEnv} to the
-     * child's environment.
-     */
+    /** As {@link #converse(List, String, BiConsumer, Consumer)} with the child's {@link WorkerEnv}. */
     public static int converse(
             List<String> command,
-            Map<String, String> extraEnv,
+            WorkerEnv env,
             String prefix,
             BiConsumer<String, Conversation> onProtocol,
             @Nullable Consumer<String> onPassthrough)
             throws IOException, InterruptedException {
-        return converse(command, extraEnv, null, prefix, onProtocol, onPassthrough);
+        return converse(command, env, null, prefix, onProtocol, onPassthrough);
     }
 
     /**
-     * As {@link #converse(List, Map, String, BiConsumer, Consumer)} with an optional working
+     * As {@link #converse(List, WorkerEnv, String, BiConsumer, Consumer)} with an optional working
      * directory (Quarkus {@code @QuarkusTest} resolves the project from the process cwd).
      */
     public static int converse(
             List<String> command,
-            Map<String, String> extraEnv,
+            WorkerEnv env,
             @Nullable Path workDir,
             String prefix,
             BiConsumer<String, Conversation> onProtocol,
             @Nullable Consumer<String> onPassthrough)
             throws IOException, InterruptedException {
-        return converse(command, extraEnv, workDir, prefix, onProtocol, onPassthrough, false);
+        return converse(command, env, workDir, prefix, onProtocol, onPassthrough, false);
     }
 
     private static int converse(
             List<String> command,
-            Map<String, String> extraEnv,
+            WorkerEnv env,
             @Nullable Path workDir,
             String prefix,
             BiConsumer<String, Conversation> onProtocol,
             @Nullable Consumer<String> onPassthrough,
             boolean closeStdinImmediately)
             throws IOException, InterruptedException {
-        return converse(command, extraEnv, workDir, prefix, onProtocol, onPassthrough, closeStdinImmediately, 0L);
+        return converse(command, env, workDir, prefix, onProtocol, onPassthrough, closeStdinImmediately, 0L);
     }
 
     /**
@@ -163,16 +157,16 @@ public final class PluginProcess {
      */
     public static int converseNoSlot(
             List<String> command,
+            WorkerEnv env,
             String prefix,
             BiConsumer<String, Conversation> onProtocol,
             @Nullable Consumer<String> onPassthrough)
             throws IOException, InterruptedException {
-        ProcessBuilder pb = new ProcessBuilder(command).redirectErrorStream(true);
-        return converse(pb, prefix, onProtocol, onPassthrough, false, 0L);
+        return converse(builder(command, env), prefix, onProtocol, onPassthrough, false, 0L);
     }
 
     /**
-     * As {@link #converse(List, Map, Path, String, BiConsumer, Consumer)} with an inactivity
+     * As {@link #converse(List, WorkerEnv, Path, String, BiConsumer, Consumer)} with an inactivity
      * watchdog: when the child emits no output line for {@code idleTimeoutMs}, it is
      * force-killed (process tree) and the conversation ends with its (non-zero) exit code.
      * {@code 0} = no watchdog — compiler workers are legitimately silent for long stretches;
@@ -181,7 +175,7 @@ public final class PluginProcess {
      */
     public static int converse(
             List<String> command,
-            Map<String, String> extraEnv,
+            WorkerEnv env,
             @Nullable Path workDir,
             String prefix,
             BiConsumer<String, Conversation> onProtocol,
@@ -189,14 +183,25 @@ public final class PluginProcess {
             boolean closeStdinImmediately,
             long idleTimeoutMs)
             throws IOException, InterruptedException {
-        ProcessBuilder pb = new ProcessBuilder(command).redirectErrorStream(true);
-        if (extraEnv != null && !extraEnv.isEmpty()) pb.environment().putAll(extraEnv);
+        ProcessBuilder pb = builder(command, env);
         if (workDir != null && Files.isDirectory(workDir)) pb.directory(workDir.toFile());
         // Hold a worker slot for the child's whole lifetime so no more than the
         // memory plan's parallelism run at once (open gate when unconfigured).
         try (PluginSlots.Lease lease = PluginSlots.acquire()) {
             return converse(pb, prefix, onProtocol, onPassthrough, closeStdinImmediately, idleTimeoutMs);
         }
+    }
+
+    /**
+     * The one {@code ProcessBuilder} a worker is forked from: stderr merged, and the environment
+     * replaced wholesale by what {@code env} composes — never the engine's own plus extras.
+     */
+    private static ProcessBuilder builder(List<String> command, WorkerEnv env) {
+        ProcessBuilder pb = new ProcessBuilder(command).redirectErrorStream(true);
+        Map<String, String> environment = pb.environment();
+        environment.clear();
+        environment.putAll(env.environment());
+        return pb;
     }
 
     private static int converse(

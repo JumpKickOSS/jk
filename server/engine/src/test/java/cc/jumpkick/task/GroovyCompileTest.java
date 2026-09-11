@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.GroovycRequest;
+import cc.jumpkick.engine.plugin.WorkerEnv;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -39,7 +40,8 @@ class GroovyCompileTest {
         String sha = cas.hashFromPath(blob).orElseThrow();
         cache.storeWithOutputs("compile-groovy", key, Map.of(), Map.of("A.class", sha));
 
-        LangCompile.Result r = LangCompile.run("compile-groovy", req, "jk-test", /* useCache= */ true, cas, cache);
+        LangCompile.Result r =
+                LangCompile.run("compile-groovy", req, "jk-test", /* useCache= */ true, cas, cache, WorkerEnv.strict());
 
         assertThat(r.success()).isTrue();
         assertThat(r.cacheHit()).isTrue();

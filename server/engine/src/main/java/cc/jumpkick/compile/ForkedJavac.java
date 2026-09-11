@@ -6,6 +6,7 @@ import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.PluginAot;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginLoader;
+import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
@@ -107,7 +108,31 @@ public final class ForkedJavac {
             List<Path> compilerClasspath,
             @Nullable Path scalaLibraryJar,
             @Nullable Path scalaCompilerJar,
-            @Nullable Path scalaBridgeJar) {
+            @Nullable Path scalaBridgeJar,
+            /** What the worker JVM starts with; the pool keys lanes on it. */
+            WorkerEnv env) {
+
+        /** The same request for a worker started under {@code env}. */
+        public Request withEnv(WorkerEnv env) {
+            return new Request(
+                    javaHome,
+                    workerJar,
+                    sources,
+                    classpath,
+                    processorPath,
+                    classOutput,
+                    sourceOutput,
+                    release,
+                    extraArgs,
+                    workdir,
+                    scalaVersion,
+                    compilerClasspath,
+                    scalaLibraryJar,
+                    scalaCompilerJar,
+                    scalaBridgeJar,
+                    env);
+        }
+
         public Request(
                 @Nullable Path javaHome,
                 Path workerJar,
@@ -134,7 +159,8 @@ public final class ForkedJavac {
                     List.of(),
                     null,
                     null,
-                    null);
+                    null,
+                    WorkerEnv.strict());
         }
 
         public Request(
@@ -236,7 +262,7 @@ public final class ForkedJavac {
                             compiledSources.add(Path.of(s));
                         }
                     })
-                    .run(command);
+                    .run(command, req.env());
             boolean success = exit == 0 && "OK".equals(status[0]);
             return new Result(success, diagnostics, generated, compiledSources, 0L);
         } finally {

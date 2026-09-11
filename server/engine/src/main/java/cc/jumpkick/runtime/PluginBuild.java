@@ -8,6 +8,7 @@ import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginJar;
+import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
@@ -233,7 +234,7 @@ public final class PluginBuild {
                     .project(facts(project, project.mainClass()))
                     .writeTempSpec();
             try {
-                lines = runWorker(active, cache, spec, null);
+                lines = runWorker(active, cache, spec, WorkerEnv.strict(), null);
             } finally {
                 Files.deleteIfExists(spec);
             }
@@ -906,7 +907,8 @@ public final class PluginBuild {
      * Fork the plugin on the spec and collect its protocol lines. Throws with the
      * plugin's own error message when it reports one (or exits non-zero without reporting).
      */
-    public static List<String> runWorker(Active active, Path cache, Path spec, @Nullable Consumer<String> onLabel)
+    public static List<String> runWorker(
+            Active active, Path cache, Path spec, WorkerEnv env, @Nullable Consumer<String> onLabel)
             throws IOException, InterruptedException {
         Path jar = workerJarFor(active, cache);
         List<String> collected = new ArrayList<>();
@@ -924,7 +926,7 @@ public final class PluginBuild {
                     if (tail.size() >= 20) tail.removeFirst();
                     tail.addLast(line);
                 });
-        int exit = client.run(PluginLaunch.javaCommand(jar, spec, code(active).protocolPrefix()));
+        int exit = client.run(PluginLaunch.javaCommand(jar, spec, code(active).protocolPrefix()), env);
         if (error[0] != null) {
             throw new IOException(error[0]);
         }

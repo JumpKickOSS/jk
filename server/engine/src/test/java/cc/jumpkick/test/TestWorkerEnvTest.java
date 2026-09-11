@@ -3,6 +3,7 @@ package cc.jumpkick.test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.engine.plugin.WorkerEnv;
 import java.nio.file.Path;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -16,10 +17,13 @@ class TestWorkerEnvTest {
 
     @Test
     void each_worker_gets_its_own_state_dir_under_the_run_s_own() {
-        Map<String, String> base = Map.of("JK_STATE_DIR", "/tmp/jk-cli-abc", "JK_HOME", "/x/test-jk-home");
+        WorkerEnv base =
+                WorkerEnv.strict().with(Map.of("JK_STATE_DIR", "/tmp/jk-cli-abc", "JK_HOME", "/x/test-jk-home"));
 
-        Map<String, String> w0 = TestWorkerEnv.forWorker(base, 0, Path.of("/tmp/t0"));
-        Map<String, String> w1 = TestWorkerEnv.forWorker(base, 1, Path.of("/tmp/t1"));
+        Map<String, String> w0 =
+                TestWorkerEnv.forWorker(base, 0, Path.of("/tmp/t0")).extras();
+        Map<String, String> w1 =
+                TestWorkerEnv.forWorker(base, 1, Path.of("/tmp/t1")).extras();
 
         // Children, not siblings. `<base>-w0` sat outside the directory the run deletes, so every
         // worker's state survived cleanup and piled up under /tmp.
@@ -29,7 +33,7 @@ class TestWorkerEnvTest {
                 .isEqualTo(Path.of("/tmp/jk-cli-abc/w1").toString());
         assertThat(Path.of(w0.get("JK_STATE_DIR")))
                 .as("deleting the run's state dir must reach every worker's")
-                .startsWithRaw(Path.of(base.get("JK_STATE_DIR")));
+                .startsWithRaw(Path.of(base.extras().get("JK_STATE_DIR")));
         // Shared store/home stays shared — only engine identity splits.
         assertThat(w0.get("JK_HOME")).isEqualTo("/x/test-jk-home");
         // TMPDIR is a real OS path — compare via Path so Windows separators match.
@@ -39,8 +43,11 @@ class TestWorkerEnvTest {
 
     @Test
     void suites_without_a_state_dir_are_untouched() {
-        Map<String, String> env = TestWorkerEnv.forWorker(Map.of("FOO", "bar"), 3, Path.of("/tmp/t3"));
-        assertThat(env).doesNotContainKey("JK_STATE_DIR");
-        assertThat(env.get("FOO")).isEqualTo("bar");
+        WorkerEnv env = TestWorkerEnv.forWorker(WorkerEnv.strict().with(Map.of("FOO", "bar")), 3, Path.of("/tmp/t3"));
+        assertThat(env.extras()).doesNotContainKey("JK_STATE_DIR");
+        assertThat(env.extras().get("FOO")).isEqualTo("bar");
+        assertThat(env.inherit())
+                .as("the module's policy rides along unchanged")
+                .isFalse();
     }
 }

@@ -10,7 +10,6 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
@@ -70,11 +69,11 @@ public final class PluginLoader {
             Consumer<String> onProtocol,
             @Nullable Consumer<String> onPassthrough)
             throws IOException, InterruptedException {
-        return run(javaExe, classpath, jvmFlags, prefix, args, Map.of(), onProtocol, onPassthrough);
+        return run(javaExe, classpath, jvmFlags, prefix, args, WorkerEnv.strict(), onProtocol, onPassthrough);
     }
 
     /**
-     * As {@link #run(Path, String, List, String, List, Consumer, Consumer)}, adding {@code extraEnv}
+     * As {@link #run(Path, String, List, String, List, Consumer, Consumer)}, adding {@code env}
      * to the child process environment (e.g. isolated {@code JK_STATE_DIR} for nested-engine tests).
      *
      * <p>The test runner also uses it to hand a suite a sandboxed {@code JK_HOME}without
@@ -87,11 +86,11 @@ public final class PluginLoader {
             List<String> jvmFlags,
             String prefix,
             List<String> args,
-            Map<String, String> extraEnv,
+            WorkerEnv env,
             Consumer<String> onProtocol,
             @Nullable Consumer<String> onPassthrough)
             throws IOException, InterruptedException {
-        return run(javaExe, classpath, jvmFlags, prefix, args, extraEnv, null, onProtocol, onPassthrough);
+        return run(javaExe, classpath, jvmFlags, prefix, args, env, null, onProtocol, onPassthrough);
     }
 
     /** As {@link #run} with an optional working directory for the child process. */
@@ -101,7 +100,7 @@ public final class PluginLoader {
             List<String> jvmFlags,
             String prefix,
             List<String> args,
-            Map<String, String> extraEnv,
+            WorkerEnv env,
             @Nullable Path workDir,
             Consumer<String> onProtocol,
             @Nullable Consumer<String> onPassthrough)
@@ -109,7 +108,7 @@ public final class PluginLoader {
         // One-shot: close the child's stdin immediately so suite tests that hit Confirm /
         // System.in.readLine() see EOF instead of hanging on an open protocol pipe.
         return PluginProcess.run(
-                command(javaExe, classpath, jvmFlags, args), extraEnv, workDir, prefix, onProtocol, onPassthrough);
+                command(javaExe, classpath, jvmFlags, args), env, workDir, prefix, onProtocol, onPassthrough);
     }
 
     /**
@@ -126,24 +125,21 @@ public final class PluginLoader {
             BiConsumer<String, PluginProcess.Conversation> onProtocol,
             @Nullable Consumer<String> onPassthrough)
             throws IOException, InterruptedException {
-        return converse(javaExe, classpath, jvmFlags, prefix, args, Map.of(), onProtocol, onPassthrough);
+        return converse(javaExe, classpath, jvmFlags, prefix, args, WorkerEnv.strict(), onProtocol, onPassthrough);
     }
 
-    /**
-     * As {@link #converse(Path, String, List, String, List, BiConsumer, Consumer)}, adding {@code
-     * extraEnv} to the child process environment.
-     */
+    /** As {@link #converse(Path, String, List, String, List, BiConsumer, Consumer)} with the child's {@link WorkerEnv}. */
     public static int converse(
             Path javaExe,
             String classpath,
             List<String> jvmFlags,
             String prefix,
             List<String> args,
-            Map<String, String> extraEnv,
+            WorkerEnv env,
             BiConsumer<String, PluginProcess.Conversation> onProtocol,
             @Nullable Consumer<String> onPassthrough)
             throws IOException, InterruptedException {
-        return converse(javaExe, classpath, jvmFlags, prefix, args, extraEnv, null, onProtocol, onPassthrough);
+        return converse(javaExe, classpath, jvmFlags, prefix, args, env, null, onProtocol, onPassthrough);
     }
 
     /** As {@link #converse} with optional working directory. */
@@ -153,13 +149,13 @@ public final class PluginLoader {
             List<String> jvmFlags,
             String prefix,
             List<String> args,
-            Map<String, String> extraEnv,
+            WorkerEnv env,
             @Nullable Path workDir,
             BiConsumer<String, PluginProcess.Conversation> onProtocol,
             @Nullable Consumer<String> onPassthrough)
             throws IOException, InterruptedException {
         return PluginProcess.converse(
-                command(javaExe, classpath, jvmFlags, args), extraEnv, workDir, prefix, onProtocol, onPassthrough);
+                command(javaExe, classpath, jvmFlags, args), env, workDir, prefix, onProtocol, onPassthrough);
     }
 
     /** As {@link #converse} with an inactivity watchdog — see {@link PluginProcess#converse}. */
@@ -169,7 +165,7 @@ public final class PluginLoader {
             List<String> jvmFlags,
             String prefix,
             List<String> args,
-            Map<String, String> extraEnv,
+            WorkerEnv env,
             @Nullable Path workDir,
             BiConsumer<String, PluginProcess.Conversation> onProtocol,
             @Nullable Consumer<String> onPassthrough,
@@ -177,7 +173,7 @@ public final class PluginLoader {
             throws IOException, InterruptedException {
         return PluginProcess.converse(
                 command(javaExe, classpath, jvmFlags, args),
-                extraEnv,
+                env,
                 workDir,
                 prefix,
                 onProtocol,

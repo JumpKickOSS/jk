@@ -52,9 +52,9 @@ public final class PluginClient {
         return PluginProcess.run(command, prefix, this::dispatch, passthrough);
     }
 
-    /** As {@link #run(List)}, adding {@code extraEnv} to the child's environment. */
-    public int run(List<String> command, Map<String, String> extraEnv) throws IOException, InterruptedException {
-        return PluginProcess.run(command, extraEnv, prefix, this::dispatch, passthrough);
+    /** As {@link #run(List)} with the child's {@link WorkerEnv}. */
+    public int run(List<String> command, WorkerEnv env) throws IOException, InterruptedException {
+        return PluginProcess.run(command, env, prefix, this::dispatch, passthrough);
     }
 
     /**
@@ -72,9 +72,10 @@ public final class PluginClient {
      * slot for its lifetime; the caller meters slots per exchange (see {@link
      * PluginProcess#converseNoSlot}).
      */
-    public int converseNoSlot(List<String> command, BiConsumer<String, PluginProcess.Conversation> onMessage)
+    public int converseNoSlot(
+            List<String> command, WorkerEnv env, BiConsumer<String, PluginProcess.Conversation> onMessage)
             throws IOException, InterruptedException {
-        return PluginProcess.converseNoSlot(command, prefix, onMessage, passthrough);
+        return PluginProcess.converseNoSlot(command, env, prefix, onMessage, passthrough);
     }
 
     private void dispatch(String json) {

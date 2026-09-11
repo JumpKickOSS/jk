@@ -6,6 +6,7 @@ import cc.jumpkick.engine.plugin.PluginAot;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.engine.plugin.PluginProcess;
+import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
@@ -53,13 +54,13 @@ public final class WorkerCompileDriver {
     private WorkerCompileDriver() {}
 
     /** Compile Kotlin by forking {@code jk-kotlin-compiler} (the Kotlin Build Tools API). */
-    public static CompileResult compile(KotlincRequest request) {
-        return compile(new Job.Kotlin(request));
+    public static CompileResult compile(KotlincRequest request, WorkerEnv env) {
+        return compile(new Job.Kotlin(request, env));
     }
 
     /** Compile Groovy by forking {@code jk-groovy-compiler} (the Groovy 5 compiler). */
-    public static CompileResult compile(GroovycRequest request) {
-        return compile(new Job.Groovy(request));
+    public static CompileResult compile(GroovycRequest request, WorkerEnv env) {
+        return compile(new Job.Groovy(request, env));
     }
 
     /** One worker compile. Sealed so {@link #plan} is exhaustive and a new language cannot forget an arm. */
@@ -68,14 +69,17 @@ public final class WorkerCompileDriver {
         /** The tool named in failure text ({@code kotlinc}, {@code groovyc}). */
         String tool();
 
-        record Kotlin(KotlincRequest request) implements Job {
+        /** What the worker JVM starts with. */
+        WorkerEnv env();
+
+        record Kotlin(KotlincRequest request, WorkerEnv env) implements Job {
             @Override
             public String tool() {
                 return "kotlinc";
             }
         }
 
-        record Groovy(GroovycRequest request) implements Job {
+        record Groovy(GroovycRequest request, WorkerEnv env) implements Job {
             @Override
             public String tool() {
                 return "groovyc";
@@ -120,7 +124,7 @@ public final class WorkerCompileDriver {
 
     private static Fork plan(Job job, Path hostJavaHome) throws IOException {
         return switch (job) {
-            case Job.Kotlin(KotlincRequest request) -> {
+            case Job.Kotlin(KotlincRequest request, WorkerEnv env) -> {
                 String classpath = Classpaths.join(request.workerClasspath());
                 // The Kotlin compiler IS this classpath, so an AOT cache tames its multi-second JIT
                 // warmup. Mapped when one exists for (host JDK, GC, classpath); else a background
@@ -139,7 +143,7 @@ public final class WorkerCompileDriver {
             }
             // groovyc is not AOT-cached: its worker classpath is version-matched per project, so a
             // dedicated cache key would either fail to map or retrain forever.
-            case Job.Groovy(GroovycRequest request) ->
+            case Job.Groovy(GroovycRequest request, WorkerEnv env) ->
                 new Fork(
                         GROOVY_PREFIX,
                         GroovycSpec.write(request),
@@ -187,7 +191,7 @@ public final class WorkerCompileDriver {
                         if (chatter.size() >= CHATTER_TAIL) chatter.removeFirst();
                         chatter.addLast(line);
                     })
-                    .run(cmd);
+                    .run(cmd, job.env());
             boolean success = exit == 0 && "COMPILATION_SUCCESS".equals(status[0]);
             if (!success && diagnostics.isEmpty() && !chatter.isEmpty()) {
                 StringBuilder tail =

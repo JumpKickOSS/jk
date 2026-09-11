@@ -18,6 +18,7 @@ import static cc.jumpkick.runtime.PlannerSupport.testStampWorkerJars;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Errors;
@@ -52,7 +53,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -376,7 +376,11 @@ public final class PlannerTest {
                         scalaSetup),
                 genDir,
                 cas,
-                in.cache());
+                in.cache(),
+                WorkerEnv.forModule(
+                        ctx.require(PROJECT).build().env(),
+                        in.dir(),
+                        ctx.require(LAYOUT).moduleTargetDir()));
         if (!ok) throw new RuntimeException("test compile failed");
     }
 
@@ -452,7 +456,7 @@ public final class PlannerTest {
                     // nested-engine CLI modules enrich with engine + every PluginJar so the stamp
                     // matches what the suite actually loads — same set forecast uses.
                     Map<String, String> workerJars = testStampWorkerJars(in.dir(), projectUnderTest);
-                    Map<String, String> testEnv = testEnvironment(ctx, in, projectUnderTest);
+                    WorkerEnv testEnv = testEnvironment(ctx, in, projectUnderTest);
                     List<Path> testResDirs = ctx.get(TEST_RESOURCE_DIRS).orElse(List.of());
                     // [test] exclude-tags for jk build / BSP: CLI resolves tags for `jk test`;
                     // when the session selection carries no tags at all, apply this module's
@@ -462,8 +466,8 @@ public final class PlannerTest {
                     if (affected != null && affected.classNames().isEmpty()) {
                         return; // nothing affected — no stamp store
                     }
-                    List<String> extras = new ArrayList<>(testStampExtras(
-                            workerJars, effectiveSel, projectUnderTest.build().testEnv(), in.dir()));
+                    List<String> extras = new ArrayList<>(
+                            testStampExtras(workerJars, effectiveSel, projectUnderTest.build(), in.dir()));
                     if (affected != null && !affected.stampToken().isBlank()) {
                         extras.add("affected:" + affected.stampToken());
                     }
@@ -540,14 +544,13 @@ public final class PlannerTest {
      * Nested-engine suites (jk-cli) isolate JK_STATE_DIR so EngineTestExtension cannot kill the
      * host engine running this test step; that isolation layers on top and wins on any key both set.
      */
-    private static Map<String, String> testEnvironment(
-            TaskContext ctx, BuildPlanner.Inputs in, JkBuild projectUnderTest) throws Exception {
-        Map<String, String> testEnv =
-                new LinkedHashMap<>(TestEnv.forModule(projectUnderTest, in.dir(), ctx.require(LAYOUT)));
+    private static WorkerEnv testEnvironment(TaskContext ctx, BuildPlanner.Inputs in, JkBuild projectUnderTest)
+            throws Exception {
+        WorkerEnv testEnv = TestEnv.forModule(projectUnderTest, in.dir(), ctx.require(LAYOUT));
         if (needsNestedEngineIsolation(projectUnderTest)) {
-            testEnv.putAll(nestedEngineTestEnv(in.dir()));
+            testEnv = testEnv.with(nestedEngineTestEnv(in.dir()));
         }
-        PlannerSupport.stageSiblingRulePacks(in.dir(), projectUnderTest, testEnv);
+        PlannerSupport.stageSiblingRulePacks(in.dir(), projectUnderTest, testEnv.extras());
         return testEnv;
     }
 
@@ -690,7 +693,7 @@ public final class PlannerTest {
             List<Path> runtimeCp,
             int testWorkers,
             Map<String, String> workerJars,
-            Map<String, String> testEnv,
+            WorkerEnv testEnv,
             TestProgressListener listener)
             throws Exception {
         try {

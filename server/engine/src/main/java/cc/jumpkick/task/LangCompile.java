@@ -6,6 +6,7 @@ import cc.jumpkick.compile.CompileResult;
 import cc.jumpkick.compile.GroovycRequest;
 import cc.jumpkick.compile.KotlincRequest;
 import cc.jumpkick.compile.WorkerCompileDriver;
+import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -53,9 +54,15 @@ public final class LangCompile {
      * CACHE_HIT.
      */
     public static Result run(
-            String taskId, KotlincRequest request, String jkVersion, boolean useCache, Cas cas, ActionCache actionCache)
+            String taskId,
+            KotlincRequest request,
+            String jkVersion,
+            boolean useCache,
+            Cas cas,
+            ActionCache actionCache,
+            WorkerEnv env)
             throws IOException {
-        return run(taskId, request, jkVersion, useCache, true, cas, actionCache);
+        return run(taskId, request, jkVersion, useCache, true, cas, actionCache, env);
     }
 
     /**
@@ -70,7 +77,8 @@ public final class LangCompile {
             boolean useCache,
             boolean persist,
             Cas cas,
-            ActionCache actionCache)
+            ActionCache actionCache,
+            WorkerEnv env)
             throws IOException {
         String key = ActionKey.forKotlinc(taskId, request, jkVersion);
 
@@ -102,7 +110,7 @@ public final class LangCompile {
                 persist,
                 cas,
                 actionCache,
-                () -> WorkerCompileDriver.compile(request));
+                () -> WorkerCompileDriver.compile(request, env));
     }
 
     /**
@@ -111,9 +119,15 @@ public final class LangCompile {
      * CACHE_HIT.
      */
     public static Result run(
-            String taskId, GroovycRequest request, String jkVersion, boolean useCache, Cas cas, ActionCache actionCache)
+            String taskId,
+            GroovycRequest request,
+            String jkVersion,
+            boolean useCache,
+            Cas cas,
+            ActionCache actionCache,
+            WorkerEnv env)
             throws IOException {
-        return run(taskId, request, jkVersion, useCache, true, cas, actionCache);
+        return run(taskId, request, jkVersion, useCache, true, cas, actionCache, env);
     }
 
     /**
@@ -128,7 +142,8 @@ public final class LangCompile {
             boolean useCache,
             boolean persist,
             Cas cas,
-            ActionCache actionCache)
+            ActionCache actionCache,
+            WorkerEnv env)
             throws IOException {
         String key = ActionKey.forGroovyc(taskId, request, jkVersion);
 
@@ -154,7 +169,7 @@ public final class LangCompile {
                 persist,
                 cas,
                 actionCache,
-                () -> WorkerCompileDriver.compile(request));
+                () -> WorkerCompileDriver.compile(request, env));
     }
 
     /** The shared post-hygiene fold: prewrite the CAS while the worker runs, then judge and store. */

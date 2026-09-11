@@ -4,6 +4,7 @@ package cc.jumpkick.runtime.base;
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.TestEnvValues;
 import cc.jumpkick.config.WorkspaceScan;
+import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.util.TestHomes;
@@ -16,15 +17,15 @@ import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The environment handed to a forked test JVM: the caller's machine env ({@link BuildEnv#MACHINE}),
- * a sandbox jk supplies by default, plus whatever the module declares in {@code [test] env}.
+ * The environment handed to a forked test JVM: the module's {@link WorkerEnv} policy, the caller's
+ * machine env ({@link BuildEnv#MACHINE}), a sandbox jk supplies by default, the module's {@code [env]
+ * vars}, then whatever it declares in {@code [test] env}.
  *
- * <p>The default matters more than the knob. A forked test JVM inherits the engine's environment, so
- * without sandboxing it would read the developer's real product layout and write the real local m2.
- * Without the machine-env seed it would also search the daemon's {@code PATH} — whichever shell
- * started the engine, possibly days ago — instead of the shell that ran {@code jk}. jk's Gradle
- * build redirects the product layout per module for exactly that reason; the machine seed is the
- * matching answer for tools on {@code PATH}.
+ * <p>The default matters more than the knob. Without sandboxing a test JVM would read the
+ * developer's real product layout and write the real local m2. Without the machine-env seed it
+ * would search the daemon's {@code PATH} — whichever shell started the engine, possibly days ago —
+ * instead of the shell that ran {@code jk}. jk's Gradle build redirects the product layout per
+ * module for exactly that reason; the machine seed is the matching answer for tools on {@code PATH}.
  *
  * <p>So {@code JK_HOME}, {@code JK_JDKS_DIR} and {@code JK_M2_LOCAL} point at the module's throwaway
  * sandbox ({@link TestHomes}) and the temp root at the module's build output, unless the module says
@@ -99,8 +100,9 @@ public final class TestEnv {
 
     /**
      * The child environment for {@code project}'s test JVMs: the caller's machine env ({@link
-     * BuildEnv#MACHINE}), then the sandbox defaults, then the module's {@code [test] env}, with
-     * {@code ${target}} / {@code ${module}} / {@code ${VAR}} expanded.
+     * BuildEnv#MACHINE}), then the sandbox defaults, then the module's {@code [env] vars} and {@code
+     * [test] env}, with {@code ${target}} / {@code ${module}} / {@code ${VAR}} expanded — all on top
+     * of what the module's {@code [env]} policy lets through from the engine.
      *
      * <p>Machine env overlays the daemon's inherited {@code PATH} with the shell that ran {@code
      * jk} — without it a suite that execs {@code node} searches whichever shell started the
@@ -109,8 +111,7 @@ public final class TestEnv {
      *
      * <p>A module that sets {@code JK_HOME} itself wins — the sandbox is a default, not an override.
      */
-    public static Map<String, String> forModule(JkBuild project, Path moduleDir, BuildLayout layout)
-            throws IOException {
+    public static WorkerEnv forModule(JkBuild project, Path moduleDir, BuildLayout layout) throws IOException {
         Path target = layout.moduleTargetDir();
         Map<String, String> out = new LinkedHashMap<>();
         // Caller's PATH/HOME/… first so a declared [test] env entry can still replace them.
@@ -134,6 +135,8 @@ public final class TestEnv {
         // opts in — Gradle does the same.
         out.put("JK_HTTP_ENABLED", "false");
         out.put("JK_HTTP_PORT", "0");
+        JkBuild.EnvConfig policy = project.build().env();
+        out.putAll(WorkerEnv.declared(policy, moduleDir, target));
         Function<String, @Nullable String> buildEnv = BuildEnv.forModule(moduleDir);
         out.putAll(TestEnvValues.resolve(
                 "[test].env",
@@ -141,6 +144,6 @@ public final class TestEnv {
                 moduleDir,
                 target,
                 new TestEnvValues.Mode.Launch(buildEnv::apply)));
-        return Map.copyOf(out);
+        return WorkerEnv.policy(policy).with(out);
     }
 }

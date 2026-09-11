@@ -9,7 +9,6 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -29,7 +28,7 @@ class PluginProcessWatchdogTest {
         // readLine blocked until sleep exits — the watchdog must tear down the whole tree.
         int exit = PluginProcess.converse(
                 List.of(sh.toString(), "-c", "echo '##JKT:{\"event\":\"hello\"}'; sleep 30"),
-                Map.of(),
+                WorkerEnv.strict(),
                 null,
                 "##JKT:",
                 (json, convo) -> {},
@@ -58,7 +57,7 @@ class PluginProcessWatchdogTest {
         Instant start = Instant.now();
         int exit = PluginProcess.converse(
                 List.of(sh.toString(), "-c", "echo '##JKT:{\"event\":\"hello\"}'; sleep 30 & exit 0"),
-                Map.of(),
+                WorkerEnv.strict(),
                 null,
                 "##JKT:",
                 (json, convo) -> {},
@@ -81,7 +80,7 @@ class PluginProcessWatchdogTest {
 
         int exit = PluginProcess.converse(
                 List.of(sh.toString(), "-c", "for i in 1 2 3 4; do echo '##JKT:{\"event\":\"tick\"}'; sleep 0.2; done"),
-                Map.of(),
+                WorkerEnv.strict(),
                 null,
                 "##JKT:",
                 (json, convo) -> {},

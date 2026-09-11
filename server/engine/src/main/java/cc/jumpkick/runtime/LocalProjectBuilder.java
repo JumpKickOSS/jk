@@ -11,6 +11,7 @@ import cc.jumpkick.compile.KotlincRequest;
 import cc.jumpkick.compile.WorkerCompileDriver;
 import cc.jumpkick.config.WorkspaceResolve;
 import cc.jumpkick.engine.plugin.JvmOptions;
+import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.Languages;
@@ -130,7 +131,7 @@ public final class LocalProjectBuilder {
                         .workingDir(layout.buildDir().resolve("kotlin-work"))
                         .extraArgs(ktArgs)
                         .build();
-                CompileResult r = WorkerCompileDriver.compile(req);
+                CompileResult r = WorkerCompileDriver.compile(req, WorkerEnv.strict());
                 if (!r.success()) {
                     throw new IOException("kotlin build failed for " + group + ":" + artifact + ": " + r.output());
                 }
