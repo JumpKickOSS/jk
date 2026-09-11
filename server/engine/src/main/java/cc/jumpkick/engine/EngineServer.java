@@ -92,6 +92,9 @@ public final class EngineServer implements AutoCloseable {
     /** High-water marks for concurrent load (UDS + SSE combined). */
     private final AtomicInteger peakActiveConnections = new AtomicInteger();
 
+    /** Connections closed by the reader's idle timer since start (never spoke, or went quiet). */
+    private final AtomicLong idleDropped = new AtomicLong();
+
     /**
      * Sidecar AOT trainer spawner/process. Spawned only after winning election; reaped on exit.
      * Clients never talk to it.
@@ -419,7 +422,8 @@ public final class EngineServer implements AutoCloseable {
                 activeConnections,
                 activeBuildPlans,
                 this::httpServer,
-                aot::pid);
+                aot::pid,
+                idleDropped::get);
     }
 
     /**
@@ -447,7 +451,8 @@ public final class EngineServer implements AutoCloseable {
                 http,
                 () -> draining,
                 drain,
-                this::handleShutdown));
+                this::handleShutdown,
+                this::noteIdleDropped));
 
         connectionExecutor = Executors.newThreadPerTaskExecutor(
                 Thread.ofVirtual().name("jk-engine-conn-", 0).factory());
@@ -514,6 +519,11 @@ public final class EngineServer implements AutoCloseable {
 
     private void onConnectionFinished() {
         activeConnections.decrementAndGet();
+    }
+
+    private void noteIdleDropped() {
+        idleDropped.incrementAndGet();
+        log.accept("jk engine: closed an idle connection (no request within the idle bound)");
     }
 
     private @Nullable HttpEngineServer httpServer() {

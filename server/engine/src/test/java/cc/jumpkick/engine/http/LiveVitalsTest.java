@@ -41,7 +41,8 @@ class LiveVitalsTest {
                 base.systemLoadAverage(),
                 base.engineEpoch(),
                 base.peakActiveRequests(),
-                base.peakActiveBuildPlans());
+                base.peakActiveBuildPlans(),
+                base.idleDropped());
         StatusSnapshot hotter = snap(5L * 1024 * 1024 * 1024, 0.50);
         assertThat(LiveVitals.PresentStatus.of(base)).isNotEqualTo(LiveVitals.PresentStatus.of(moreJobs));
         assertThat(LiveVitals.PresentStatus.of(base)).isNotEqualTo(LiveVitals.PresentStatus.of(hotter));
@@ -95,7 +96,8 @@ class LiveVitalsTest {
                     s.systemLoadAverage(),
                     s.engineEpoch(),
                     s.peakActiveRequests(),
-                    s.peakActiveBuildPlans()));
+                    s.peakActiveBuildPlans(),
+                    s.idleDropped()));
             live.publishStatus(false);
             String second = sub.next(200);
             assertThat(second).contains("event: status").contains("\"activeBuildPlans\":3");
@@ -319,6 +321,7 @@ class LiveVitalsTest {
                 0.5,
                 "0.12.0-test@1",
                 0,
-                0);
+                0,
+                0L);
     }
 }

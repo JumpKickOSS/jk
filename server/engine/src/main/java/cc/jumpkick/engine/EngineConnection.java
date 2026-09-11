@@ -14,9 +14,9 @@ import cc.jumpkick.engine.verbs.VerbShape;
 import cc.jumpkick.jsonl.BoundedLineReader;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.InputTrees;
+import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
-import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -36,8 +36,16 @@ import org.jspecify.annotations.Nullable;
  * a silently dropped request wedges a streaming client waiting for a terminal event. A client
  * speaking a newer protocol is refused and closed; an unparseable line or an unknown type is refused
  * and the loop continues; a guarded verb is checked against the lock's floor before it is looked up.
+ *
+ * <p>A connection that never speaks is closed after {@link #HELLO_IDLE_MS}; one that has sent a
+ * request is held to the same stream-idle bound the client applies to the engine. While a job owns
+ * the connection the timer is off — a quiet client mid-build is the normal case, and the job's own
+ * watchdogs bound its life. Every such close is counted for {@code /api/status}.
  */
 final class EngineConnection {
+
+    /** Grace for a fresh connection to send its first line before it is closed as idle. */
+    static final long HELLO_IDLE_MS = 10_000;
 
     /** The {@code shutdown} arm belongs to the lifecycle owner; the connection hands it the line and the writer. */
     interface ShutdownHandler {
@@ -60,18 +68,28 @@ final class EngineConnection {
             EngineHttpFront http,
             BooleanSupplier draining,
             DrainReporter drain,
-            ShutdownHandler shutdown) {}
+            ShutdownHandler shutdown,
+            Runnable idleDropped) {}
 
     private final Context ctx;
 
+    /** Idle bound once the peer has sent a request; {@code 0} = unbounded. */
+    private final long streamIdleMillis;
+
     EngineConnection(Context ctx) {
+        this(ctx, BoundedLineReader.streamIdleMillis(JkDirs::env));
+    }
+
+    EngineConnection(Context ctx, long streamIdleMillis) {
         this.ctx = ctx;
+        this.streamIdleMillis = streamIdleMillis;
     }
 
     void serve(SocketChannel ch) {
+        BoundedLineReader reader = new BoundedLineReader(
+                new InputStreamReader(Channels.newInputStream(ch), StandardCharsets.UTF_8), ch, HELLO_IDLE_MS);
         try (ch;
-                BufferedReader reader = new BoundedLineReader(
-                        new InputStreamReader(Channels.newInputStream(ch), StandardCharsets.UTF_8));
+                reader;
                 BufferedWriter writer = new BufferedWriter(
                         new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8))) {
             String expected = ctx.expectedToken();
@@ -84,10 +102,11 @@ final class EngineConnection {
         } catch (IOException ignored) {
             // client disconnected / socket error mid-exchange — nothing to do
         }
+        if (reader.timedOut()) ctx.idleDropped().run();
     }
 
     /** Loopback-TCP transport only: the connection's first line must be a matching {@link EngineProtocol#AUTH}. */
-    private boolean authenticate(BufferedReader reader, String expected) throws IOException {
+    private boolean authenticate(BoundedLineReader reader, String expected) throws IOException {
         String line = reader.readLine();
         if (line == null || !EngineProtocol.AUTH.equals(EngineProtocol.typeOf(line))) return false;
         String presented = Jsonl.str(line, "token");
@@ -96,9 +115,11 @@ final class EngineConnection {
                 expected.getBytes(StandardCharsets.UTF_8), presented.getBytes(StandardCharsets.UTF_8));
     }
 
-    private void serveConnection(BufferedReader reader, BufferedWriter writer, SocketChannel ch) throws IOException {
+    private void serveConnection(BoundedLineReader reader, BufferedWriter writer, SocketChannel ch) throws IOException {
         String line;
         while ((line = reader.readLine()) != null) {
+            // The peer has spoken: from here the gap between requests is the stream-idle bound.
+            reader.idleTimeout(streamIdleMillis);
             String type = EngineProtocol.typeOf(line);
             if (type == null) {
                 // A garbled REQUEST gets a typed refusal, never silence — a silently-dropped
@@ -182,14 +203,18 @@ final class EngineConnection {
      * (async plan / cache maint).
      */
     private boolean dispatchVerb(
-            HostedVerb verb, String line, BufferedReader reader, BufferedWriter writer, SocketChannel ch)
+            HostedVerb verb, String line, BoundedLineReader reader, BufferedWriter writer, SocketChannel ch)
             throws IOException {
         return switch (verb.shape()) {
             case VerbShape.AsyncPlan() -> {
+                // The job owns the connection now and watches it for EOF; a silent client is
+                // the normal case for the whole build, so the idle timer must not read it as dead.
+                reader.idleTimeout(0);
                 ctx.jobs().submit(line, verb.toJobRequest(line), new JobTransport.SocketWatch(reader, writer, ch));
                 yield true;
             }
             case VerbShape.CacheMaint() -> {
+                reader.idleTimeout(0);
                 ctx.jobs().submit(line, verb.toJobRequest(line), new JobTransport.SocketWatch(reader, writer, ch));
                 yield true;
             }

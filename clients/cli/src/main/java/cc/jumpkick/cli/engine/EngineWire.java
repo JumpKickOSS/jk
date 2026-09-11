@@ -112,31 +112,14 @@ public final class EngineWire {
 
     /**
      * The client-side protocol reader: line-capped, and idle-timed so a dead engine surfaces as
-     * an error instead of a forever-blocked {@code readLine}. Default 60 minutes between
-     * events. Tune with {@code JK_STREAM_IDLE_MS} (milliseconds, preferred) or {@code
-     * JK_STREAM_IDLE_MINUTES} (0 disables).
+     * an error instead of a forever-blocked {@code readLine}. The bound is {@link
+     * BoundedLineReader#streamIdleMillis} — the same one the engine holds its clients to.
      */
     static BufferedReader protocolReader(SocketChannel ch) {
-        long idleMs = 60L * 60_000L;
-        String envMs = System.getenv("JK_STREAM_IDLE_MS");
-        if (envMs != null && !envMs.isBlank()) {
-            try {
-                idleMs = Long.parseLong(envMs.trim());
-            } catch (NumberFormatException ignored) {
-                // keep the default
-            }
-        } else {
-            String env = System.getenv("JK_STREAM_IDLE_MINUTES");
-            if (env != null && !env.isBlank()) {
-                try {
-                    idleMs = Long.parseLong(env.trim()) * 60_000L;
-                } catch (NumberFormatException ignored) {
-                    // keep the default
-                }
-            }
-        }
         return new BoundedLineReader(
-                new InputStreamReader(Channels.newInputStream(ch), StandardCharsets.UTF_8), ch, idleMs);
+                new InputStreamReader(Channels.newInputStream(ch), StandardCharsets.UTF_8),
+                ch,
+                BoundedLineReader.streamIdleMillis(System::getenv));
     }
 
     /**

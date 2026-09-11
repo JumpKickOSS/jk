@@ -9,15 +9,21 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@link BufferedReader} with a max line length ({@link #DEFAULT_MAX_LINE}) and optional idle
- * timeout that closes the socket on stall.
+ * timeout that closes the socket on stall. The timeout can be changed between reads, so one
+ * connection may start strict and relax once its peer has spoken.
  */
 public final class BoundedLineReader extends BufferedReader {
 
     /** Generous for real traffic (large dep graphs, long diagnostics); fatal for runaway peers. */
     public static final int DEFAULT_MAX_LINE = 64 * 1024 * 1024;
+
+    /** Default gap between protocol lines before a stream is declared dead: 60 minutes. */
+    public static final long DEFAULT_STREAM_IDLE_MS = 60L * 60_000L;
 
     private static final ScheduledExecutorService WATCHDOG = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "jk-protocol-idle-watchdog");
@@ -26,20 +32,58 @@ public final class BoundedLineReader extends BufferedReader {
     });
 
     private final int maxLine;
-    private final Closeable onTimeout;
-    private final long idleTimeoutMillis;
+    private final @Nullable Closeable onTimeout;
+    private volatile long idleTimeoutMillis;
     private volatile boolean timedOut;
 
     public BoundedLineReader(Reader in) {
         this(in, null, 0);
     }
 
-    /** With an idle timeout: {@code onTimeout} (the socket/channel) is closed when a read stalls. */
-    public BoundedLineReader(Reader in, Closeable onTimeout, long idleTimeoutMillis) {
+    /**
+     * With an idle timeout: {@code onTimeout} (the socket/channel) is closed when a read stalls
+     * for {@code idleTimeoutMillis}; {@code 0} (or a null {@code onTimeout}) disables the timer.
+     */
+    public BoundedLineReader(Reader in, @Nullable Closeable onTimeout, long idleTimeoutMillis) {
         super(in);
         this.maxLine = DEFAULT_MAX_LINE;
         this.onTimeout = onTimeout;
         this.idleTimeoutMillis = idleTimeoutMillis;
+    }
+
+    /** Change the idle bound for the reads that follow; {@code 0} disables it. */
+    public void idleTimeout(long millis) {
+        this.idleTimeoutMillis = millis;
+    }
+
+    /** {@code true} once the idle timer has closed the peer; the failed read threw the idle error. */
+    public boolean timedOut() {
+        return timedOut;
+    }
+
+    /**
+     * The stream-idle bound both ends of the wire use: {@code JK_STREAM_IDLE_MS} (milliseconds,
+     * preferred) or {@code JK_STREAM_IDLE_MINUTES}; unset or malformed falls back to {@link
+     * #DEFAULT_STREAM_IDLE_MS}. {@code 0} disables the bound.
+     */
+    public static long streamIdleMillis(Function<String, @Nullable String> env) {
+        String ms = env.apply("JK_STREAM_IDLE_MS");
+        if (ms != null && !ms.isBlank()) {
+            try {
+                return Long.parseLong(ms.trim());
+            } catch (NumberFormatException malformed) {
+                return DEFAULT_STREAM_IDLE_MS;
+            }
+        }
+        String minutes = env.apply("JK_STREAM_IDLE_MINUTES");
+        if (minutes != null && !minutes.isBlank()) {
+            try {
+                return Long.parseLong(minutes.trim()) * 60_000L;
+            } catch (NumberFormatException malformed) {
+                return DEFAULT_STREAM_IDLE_MS;
+            }
+        }
+        return DEFAULT_STREAM_IDLE_MS;
     }
 
     /** Human duration for idle-timeout errors (seconds under a minute, else minutes). */
@@ -52,18 +96,20 @@ public final class BoundedLineReader extends BufferedReader {
     }
 
     @Override
-    public String readLine() throws IOException {
+    public @Nullable String readLine() throws IOException {
         ScheduledFuture<?> guard = null;
-        if (onTimeout != null && idleTimeoutMillis > 0) {
+        Closeable peer = onTimeout;
+        long idle = idleTimeoutMillis;
+        if (peer != null && idle > 0) {
             guard = WATCHDOG.schedule(
                     () -> {
                         timedOut = true;
                         try {
-                            onTimeout.close();
+                            peer.close();
                         } catch (IOException ignored) {
                         }
                     },
-                    idleTimeoutMillis,
+                    idle,
                     TimeUnit.MILLISECONDS);
         }
         try {
@@ -92,7 +138,7 @@ public final class BoundedLineReader extends BufferedReader {
             if (timedOut) {
                 throw new IOException(
                         "no protocol traffic for "
-                                + formatIdle(idleTimeoutMillis)
+                                + formatIdle(idle)
                                 + " — the engine looks dead (set JK_STREAM_IDLE_MS to tune;"
                                 + " try `jk engine stop --force`)",
                         e);

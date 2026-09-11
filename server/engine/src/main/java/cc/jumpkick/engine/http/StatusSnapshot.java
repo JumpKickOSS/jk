@@ -52,7 +52,12 @@ public record StatusSnapshot(
          */
         int peakActiveRequests,
         /** High-water mark of concurrent in-flight plans since engine start. */
-        int peakActiveBuildPlans) {
+        int peakActiveBuildPlans,
+        /**
+         * Connections the engine closed because they went idle since start: a peer that never sent
+         * a request inside the hello window, or one that stayed quiet past the stream-idle bound.
+         */
+        long idleDropped) {
 
     /** Compact constructor for tests that omit memory headroom / load / epoch / peaks. */
     public StatusSnapshot(
@@ -86,7 +91,8 @@ public record StatusSnapshot(
                 /* systemLoadAverage */ -1d,
                 /* engineEpoch */ version + "@" + startedAtMillis,
                 activeRequests,
-                activeBuildPlans);
+                activeBuildPlans,
+                /* idleDropped */ 0L);
     }
 
     /**
@@ -119,6 +125,7 @@ public record StatusSnapshot(
         m.put("activeBuildPlans", activeBuildPlans);
         m.put("peakActiveRequests", peakActiveRequests);
         m.put("peakActiveBuildPlans", peakActiveBuildPlans);
+        m.put("idleDropped", idleDropped);
         m.put("heapUsedBytes", heapUsedBytes);
         m.put("heapCommittedBytes", heapCommittedBytes);
         m.put("heapMaxBytes", heapMaxBytes);

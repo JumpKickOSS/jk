@@ -97,6 +97,9 @@ public final class EngineStatusCommand implements CliCommand {
         detail("Version", s.version());
         detail("Uptime", formatUptime(uptimeSeconds));
         detail("Live Jobs", String.valueOf(s.activeBuildPlans()));
+        if (s.idleDropped() >= 0) {
+            detail("Dropped", s.idleDropped() + (s.idleDropped() == 1 ? " idle connection" : " idle connections"));
+        }
         heapDumpRow(paths);
         // Transient by design: the sidecar trainer lives ~15s after a fresh install/upgrade, then
         // this line disappears — steady state stays four/five detail rows (+ memory bar).
@@ -179,6 +182,7 @@ public final class EngineStatusCommand implements CliCommand {
                 .number("startedAt", s.startedAtMillis())
                 .number("uptimeSeconds", uptimeSeconds)
                 .number("activeRequests", s.activeRequests())
+                .number("idleDropped", s.idleDropped())
                 .number("heapUsedBytes", s.heapUsedBytes())
                 .number("heapCommittedBytes", s.heapCommittedBytes())
                 .number("heapMaxBytes", s.heapMaxBytes())

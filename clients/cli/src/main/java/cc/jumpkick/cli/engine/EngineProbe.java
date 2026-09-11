@@ -51,7 +51,9 @@ public final class EngineProbe {
             long availableMemoryBytes,
             double systemCpuLoad,
             double systemLoadAverage,
-            String engineEpoch) {}
+            String engineEpoch,
+            /** Connections the engine closed as idle since it started; {@code -1} when not reported. */
+            long idleDropped) {}
 
     /**
      * Connect, ping, and get {@code pong} back — the engine-existence check per {@code docs/architecture.md}
@@ -137,7 +139,8 @@ public final class EngineProbe {
                     Jsonl.longValue(ack, "availableMemoryBytes", -1),
                     Jsonl.doubleValue(ack, "systemCpuLoad", -1),
                     Jsonl.doubleValue(ack, "systemLoadAverage", -1),
-                    Jsonl.str(ack, "engineEpoch")));
+                    Jsonl.str(ack, "engineEpoch"),
+                    Jsonl.longValue(ack, "idleDropped", -1)));
         } catch (IOException e) {
             return Optional.empty();
         }
