@@ -1,6 +1,9 @@
-# cc.jumpkick.guards:monorepo — the workspace starter pack. Extend it from the root jk-guards.toml:
+# cc.jumpkick.guards:monorepo — the workspace starter pack. Extend it from the root jk-guards.toml,
+# alone or beside a framework pack:
 #   [guards]
-#   extends = ["cc.jumpkick.guards:monorepo:<jk version>"]
+#   extends = ["cc.jumpkick.guards:monorepo:<jk version>", "cc.jumpkick.guards:spring:<jk version>"]
+# It carries workspace-shaped rules only. Per-file rules such as file-size belong to the framework
+# packs, so extending both never declares a rule twice.
 
 [guards.one-module-per-package]
 kind = "split-package"
@@ -22,10 +25,3 @@ why         = "a snapshot in one module is a build no other module can reproduce
 kind = "toolchain"
 java = ">=17"
 why  = "one language level across the workspace; a module below it cannot read its siblings' records"
-
-[guards.file-size]
-kind     = "metric"
-measure  = "lines"
-cap      = 800
-baseline = true
-why      = "a file that no longer fits a review no longer fits a reviewer"

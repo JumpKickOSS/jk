@@ -2,7 +2,7 @@ version = 1
 generated-by = "jk 0.13.2"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "4ae79d753cc6156776d25097bb17f36808ab20ebb329b73edd7f05d77ca042a1"
+manifests-sha256 = "424e4d7c7f7af8ce18ba55a57ff9c28fb8df97fa81b8123c73f48a577dd44b44"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [jdk]

@@ -100,10 +100,10 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         // Engine resolves core + maven-resolver under quarkus-bootstrap-bom — no dual freestyle
         // trees, no hand-pinned smallrye modules.
         List<Path> cp = new ArrayList<>();
-        cp.add(jarOf(QuarkusPlugin.class, "jk-quarkus worker"));
+        cp.add(codeSourceOf(QuarkusPlugin.class, "jk-quarkus worker"));
         // The augment main parses its offline flag with the engine's host helpers; the host jar
         // is on the plugin's loader, never on a bare fork's classpath.
-        cp.add(jarOf(EnvValues.class, "engine host"));
+        cp.add(codeSourceOf(EnvValues.class, "engine host"));
         Path tools = exec.requireExtra(BOOTSTRAP_EXTRA);
         if (Files.isDirectory(tools)) {
             cp.addAll(jarsIn(tools));
@@ -282,16 +282,18 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         return Optional.empty();
     }
 
-    private static Path jarOf(Class<?> type, String what) throws IOException {
+    /**
+     * Where {@code type} was loaded from — a jar, or a classes directory when the worker runs from
+     * a workspace build's own output. Either is a classpath entry for the augment fork.
+     */
+    private static Path codeSourceOf(Class<?> type, String what) throws IOException {
         try {
             URI uri = type.getProtectionDomain().getCodeSource().getLocation().toURI();
             Path p = Path.of(uri);
-            if (!Files.isRegularFile(p)) {
-                throw new IOException(what + " code source is not a jar: " + p);
-            }
+            if (!Files.exists(p)) throw new IOException(what + " code source is missing: " + p);
             return p;
         } catch (Exception e) {
-            throw new IOException("cannot locate " + what + " jar", e);
+            throw new IOException("cannot locate " + what + " code source", e);
         }
     }
 
