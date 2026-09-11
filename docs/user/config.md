@@ -43,6 +43,13 @@ direction to honor.
 Under `--no-ansi`, chrome lines start with `jk: ` so they stay distinct from compiler/test
 output. Agents should use [machine output](machine-output.md), not scrape prose.
 
+Interactive wizards (`jk new`, `jk jdk install`, `jk activate`) still work under `--no-ansi` on a
+terminal: instead of arrow keys and live highlighting they ask one question per line. Text
+questions show their default in brackets and take it on an empty line; choices print as a
+numbered list and take a number, an id, or an empty line for the default; multi-picks take
+several numbers (`1 3` or `1,3`), `all`, or `none`. Answers can be piped on stdin. Without a
+terminal at all the wizard is skipped and the command's flags apply, as before.
+
 ## Nerd Font glyphs
 
 Detected per launch — `nerd-font` defaults to `"auto"`. Pin only to override:

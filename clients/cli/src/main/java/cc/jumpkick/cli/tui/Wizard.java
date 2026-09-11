@@ -25,7 +25,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Interactive wizard: {@link InputMode#PROMPT}, incremental redraw of the active step only, no
- * alt-screen (keeps the transcript). Cancels restore cursor/SGR for a clean shell prompt.
+ * alt-screen (keeps the transcript). Cancels restore cursor/SGR for a clean shell prompt. When the
+ * theme is not ANSI the same steps run through {@link CookedWizard} as line prompts instead.
  */
 public final class Wizard {
 
@@ -90,6 +91,9 @@ public final class Wizard {
         if (!tty.isLive()) {
             return Optional.empty();
         }
+        if (!Prompt.rawEligible(tty.isLive(), Theme.active().isAnsi())) {
+            return new CookedWizard(this).run(preset);
+        }
         try (ModeGuard raw = tty.enter(InputMode.PROMPT)) {
             tty.drain(Duration.ofMillis(40));
             var writer = tty.ttyOut();
@@ -124,10 +128,16 @@ public final class Wizard {
      *
      * <p>Assumes the wizard has just returned {@link Optional#empty()} and that the in-loop cancel
      * path called {@link #moveBelowCloser} — so {@link #run}'s trailing {@code \r\n} places the
-     * cursor two lines below the active closer.
+     * cursor two lines below the active closer. Under a plain theme there is no rail to climb, so
+     * the marker is one appended line.
      */
     public static void printCancellation(TerminalSession tty, String message) {
         var writer = tty.ttyOut();
+        if (!Theme.active().isAnsi()) {
+            writer.println(JkWedge.PLAIN_LINE_PREFIX + Glyphs.CROSS_PLAIN + " " + message);
+            writer.flush();
+            return;
+        }
         writer.print(Ansi.cursorPrevLine(2)); // up 2 lines, col 1 — lands at the active ╰
         writer.print(Ansi.cursorForward(INDENT_COLS + RAIL_PREFIX_WIDTH)); // skip past "╰──"
         writer.print(Ansi.ERASE_DISPLAY_TO_END); // erase residue beyond
@@ -309,23 +319,10 @@ public final class Wizard {
     }
 
     /**
-     * Build the wizard header as a three-line rounded box:
-     *
-     * <pre>
-     *   ╭──────────────────────────────────────────╮
-     *   │ ≡ Command ▶ [gray-band] Subtitle [/band]   │
-     *   ├──────────────────────────────────────────╯
-     * </pre>
-     *
-     * <p>The middle line is exactly the original chip+subtitle content (Nerd Font cap, gray
-     * background band, etc.) — unchanged. The box borders are in {@code darkGray} and
-     * auto-size to the content's visible (print-column) width.
-     */
-    /**
      * Header line: menu wedge chip followed by the subtitle in bold-white (focused). The
      * {@code ╭──} opener is printed separately in {@link #loop} to match this line's visual width.
      */
-    private String headerLine() {
+    String headerLine() {
         String sub = subtitle == null ? "" : subtitle;
         RichText tail = sub.isEmpty()
                 ? RichText.empty()
@@ -341,35 +338,42 @@ public final class Wizard {
     }
 
     private static List<Styled> summarize(WizardStep step, Map<String, Object> answers) {
+        var texts = settledTexts(step, answers);
+        if (step instanceof WizardStep.OutputStep) {
+            return texts.stream().map(s -> plain(s, Theme.active().darkGray())).toList();
+        }
         var answerStyle = Theme.active().settled().italic();
+        return texts.stream().map(t -> answerLine(t, answerStyle)).toList();
+    }
+
+    /**
+     * What a settled step shows, one entry per line, without prefix or style: the typed value, the
+     * chosen label, every selected label (or {@code (none selected)}), or an output step's lines.
+     */
+    static List<String> settledTexts(WizardStep step, Map<String, Object> answers) {
         return switch (step) {
             case WizardStep.InputStep is ->
-                List.of(answerLine(answers.getOrDefault(is.key(), "").toString(), answerStyle));
-            case WizardStep.RadioStep rs -> List.of(answerLine(labelFor(rs, answers), answerStyle));
+                List.of(answers.getOrDefault(is.key(), "").toString());
+            case WizardStep.RadioStep rs -> List.of(labelFor(rs, answers));
             case WizardStep.MultiSelectStep ms -> {
                 @SuppressWarnings("unchecked")
                 var selected = (List<String>) answers.getOrDefault(ms.key(), List.<String>of());
                 if (selected.isEmpty()) {
-                    yield List.of(answerLine("(none selected)", answerStyle));
+                    yield List.of("(none selected)");
                 }
-                // Map known choice ids to their labels; entries with no match
-                // (a free-form custom value) render verbatim. Iterate the
-                // stored list so selection order — including the appended
-                // custom value — is preserved.
+                // Known ids map to labels; a free-form custom value renders verbatim. The stored
+                // order is kept, so an appended custom value stays last.
                 var byId = new HashMap<String, String>();
                 for (var c : ms.choicesFor(Answers.of(answers))) {
                     byId.put(c.id(), c.label());
                 }
-                var labels = new ArrayList<Styled>();
+                var labels = new ArrayList<String>();
                 for (var v : selected) {
-                    labels.add(answerLine(byId.getOrDefault(v, v), answerStyle));
+                    labels.add(byId.getOrDefault(v, v));
                 }
                 yield labels;
             }
-            case WizardStep.OutputStep os ->
-                os.render().apply(Answers.of(answers)).stream()
-                        .map(s -> plain(s, Theme.active().darkGray()))
-                        .toList();
+            case WizardStep.OutputStep os -> os.render().apply(Answers.of(answers));
         };
     }
 

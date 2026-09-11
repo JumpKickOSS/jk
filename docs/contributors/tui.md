@@ -251,6 +251,20 @@ Rules:
   and re-introduces the tofu bug for wedge-only fonts.
 - Plain mode: no CSI color, no spinner animation frames, no OSC taskbar required for correctness.
 
+### Wizards under plain mode
+
+A `Wizard` on a live tty whose theme is not ANSI (`--no-ansi`, `TERM=dumb`, `CI`) never enters
+`InputMode.PROMPT` and paints no cursor or erase sequence. `CookedWizard` drives the same steps as
+line prompts on stderr, read as whole lines from stdin in the terminal's own cooked mode: an
+`InputStep` is `Prompt [default]: ` (empty takes the default, the validator re-asks); a `RadioStep`
+prints a numbered menu built from `RadioButton.renderInline` and accepts a position, an id, or empty
+for the default (free text where the step has a custom row); a `MultiSelectStep` prints a numbered
+checklist from `Checkbox.render` and accepts `1 3`, `1,3`, `all`, `none`, or empty for the defaults
+(unknown tokens are custom entries where the step allows them); an `OutputStep` prints once. Settled
+answers re-print as `-> answer` where the ANSI path paints `➜ ` in italic green. Keys, defaults and
+validators are shared, so callers do not know which driver ran. Non-interactive (no live tty) still
+returns an empty result and the command falls back to flags.
+
 ## One-shot vs plan
 
 | Kind | Example | Pattern |
@@ -282,7 +296,7 @@ Under `--output json` / `jsonl`, suppress human chrome (no envelope, no wedge). 
 | Coord | `cli/tui/Coord.java` + `theme/Coords` RichText factories |
 | Code | `SourceCode.java` / `JavaCode` / `KotlinCode` / `GroovyCode` |
 | Prompt | `Prompt.java`, `Confirmation.java` (`Confirm` façade) |
-| Wizard parts | `WizardSection`, `TextInput`, `Checkbox`, `RadioButton`, `RadioButtonGroup` |
+| Wizard parts | `Wizard` (ANSI key loop), `CookedWizard` (plain line prompts), `WizardSection`, `TextInput`, `Checkbox`, `RadioButton`, `RadioButtonGroup` |
 | Progress | `cli/tui/Progress.java` + `ProgressBar.java` + `PlainPhase.java` (plain live cadence: stage changes, 30s heartbeat, `built`/`done`, `jk: ` prefix). Bar width is a parameter: `Progress.DEFAULT_SEGMENTS` 40, `NARROW_SEGMENTS` 32 where the caller does not control the trailing text |
 | Live one-row region | `cli/tui/LiveLine.java` — animator, cursor, OSC taskbar, in-place repaint, Ctrl-C settle. Takes an already-clipped row per frame (`JkWedge.renderLiveLine`), so it never decides how anything looks. Splits silent (`--no-progress`, script mode) from plain (`--no-ansi`, says what happened, paints no moving row) from animating |
 | Tables | `cli/tui/Table.java`. Append snaps child rails to parent edges |

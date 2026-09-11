@@ -3,6 +3,7 @@ package cc.jumpkick.cli.tui;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.testing.NoAnsi;
 import cc.jumpkick.terminal.InputMode;
 import cc.jumpkick.terminal.MemoryTerminal;
 import cc.jumpkick.terminal.Terminals;
@@ -24,7 +25,8 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Drives the wizard against {@link MemoryTerminal}. The terminal is fed bytes through a
- * {@link PipedOutputStream}; the wizard reads via {@code readKey}.
+ * {@link PipedOutputStream}; the wizard reads via {@code readKey}. Every run pins ANSI mode: under a
+ * plain theme the wizard reads whole lines from stdin instead (see {@link CookedWizardTest}).
  */
 class WizardTest {
 
@@ -96,7 +98,7 @@ class WizardTest {
 
         var exec = Executors.newSingleThreadExecutor();
         try {
-            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.tty()));
+            Future<Optional<Answers>> result = exec.submit(() -> NoAnsi.forcedAnsi(() -> wizard.run(h.tty())));
             waitReady(h, "Project name");
             write(h, (byte) 'f', (byte) 'o', (byte) 'o', (byte) 0x0A);
             var answers = await(result).orElseThrow();
@@ -121,7 +123,7 @@ class WizardTest {
 
         var exec = Executors.newSingleThreadExecutor();
         try {
-            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.tty()));
+            Future<Optional<Answers>> result = exec.submit(() -> NoAnsi.forcedAnsi(() -> wizard.run(h.tty())));
             waitReady(h, "Language");
             write(h, (byte) 0x0A);
             var answers = await(result).orElseThrow();
@@ -146,7 +148,7 @@ class WizardTest {
 
         var exec = Executors.newSingleThreadExecutor();
         try {
-            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.tty()));
+            Future<Optional<Answers>> result = exec.submit(() -> NoAnsi.forcedAnsi(() -> wizard.run(h.tty())));
             waitReady(h, "Language");
             write(h, (byte) 0x1B, (byte) '[', (byte) 'C');
             settle(h);
@@ -173,7 +175,7 @@ class WizardTest {
 
         var exec = Executors.newSingleThreadExecutor();
         try {
-            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.tty()));
+            Future<Optional<Answers>> result = exec.submit(() -> NoAnsi.forcedAnsi(() -> wizard.run(h.tty())));
             waitReady(h, "Dependencies");
             // Select first (lombok), move down twice, select third (commons-io), enter.
             write(h, (byte) 0x20);
@@ -206,7 +208,7 @@ class WizardTest {
 
         var exec = Executors.newSingleThreadExecutor();
         try {
-            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.tty()));
+            Future<Optional<Answers>> result = exec.submit(() -> NoAnsi.forcedAnsi(() -> wizard.run(h.tty())));
             waitReady(h, "Dependencies");
             write(h, (byte) 'a');
             settle(h);
@@ -231,7 +233,7 @@ class WizardTest {
 
         var exec = Executors.newSingleThreadExecutor();
         try {
-            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.tty()));
+            Future<Optional<Answers>> result = exec.submit(() -> NoAnsi.forcedAnsi(() -> wizard.run(h.tty())));
             waitReady(h, "Name");
             write(h, (byte) 'b', (byte) 'a', (byte) 'r', (byte) 0x0A);
             waitReady(h, "Hello"); // OutputStep preview line (ANSI may wrap)
@@ -254,7 +256,7 @@ class WizardTest {
 
         var exec = Executors.newSingleThreadExecutor();
         try {
-            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.tty()));
+            Future<Optional<Answers>> result = exec.submit(() -> NoAnsi.forcedAnsi(() -> wizard.run(h.tty())));
             waitReady(h, "Name");
             write(h, (byte) 0x03);
             var answers = await(result);
@@ -284,7 +286,7 @@ class WizardTest {
 
         var exec = Executors.newSingleThreadExecutor();
         try {
-            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.tty()));
+            Future<Optional<Answers>> result = exec.submit(() -> NoAnsi.forcedAnsi(() -> wizard.run(h.tty())));
             waitReady(h, "Mode");
             // Accept default ("lib") and let the wizard skip the conditional step.
             write(h, (byte) 0x0A);
@@ -307,7 +309,7 @@ class WizardTest {
 
         var exec = Executors.newSingleThreadExecutor();
         try {
-            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.tty()));
+            Future<Optional<Answers>> result = exec.submit(() -> NoAnsi.forcedAnsi(() -> wizard.run(h.tty())));
             waitReady(h, "Name");
             write(h, (byte) 'a', (byte) 'b', (byte) 'c', (byte) 0x7F, (byte) 0x0A);
             var answers = await(result).orElseThrow();
@@ -330,7 +332,7 @@ class WizardTest {
 
         var exec = Executors.newSingleThreadExecutor();
         try {
-            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.tty()));
+            Future<Optional<Answers>> result = exec.submit(() -> NoAnsi.forcedAnsi(() -> wizard.run(h.tty())));
             waitReady(h, "Name");
             // Right-arrow then Enter → placeholder becomes the answer.
             write(h, (byte) 0x1B, (byte) '[', (byte) 'C');
@@ -356,7 +358,7 @@ class WizardTest {
 
         var exec = Executors.newSingleThreadExecutor();
         try {
-            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.tty()));
+            Future<Optional<Answers>> result = exec.submit(() -> NoAnsi.forcedAnsi(() -> wizard.run(h.tty())));
             waitReady(h, "Name");
             // Realize "widget", then append "-2" → final = "widget-2".
             write(h, (byte) 0x1B, (byte) '[', (byte) 'C');
@@ -384,7 +386,7 @@ class WizardTest {
 
         var exec = Executors.newSingleThreadExecutor();
         try {
-            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.tty()));
+            Future<Optional<Answers>> result = exec.submit(() -> NoAnsi.forcedAnsi(() -> wizard.run(h.tty())));
             waitReady(h, "Name");
             // Step 1: type "widget", Enter → name = "widget".
             write(h, (byte) 'w', (byte) 'i', (byte) 'd', (byte) 'g', (byte) 'e', (byte) 't', (byte) 0x0A);
@@ -412,7 +414,7 @@ class WizardTest {
 
         var exec = Executors.newSingleThreadExecutor();
         try {
-            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.tty()));
+            Future<Optional<Answers>> result = exec.submit(() -> NoAnsi.forcedAnsi(() -> wizard.run(h.tty())));
             waitReady(h, "Name");
             // Tab then Enter → placeholder becomes the answer.
             write(h, (byte) 0x09);
@@ -441,7 +443,7 @@ class WizardTest {
 
         var exec = Executors.newSingleThreadExecutor();
         try {
-            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.tty()));
+            Future<Optional<Answers>> result = exec.submit(() -> NoAnsi.forcedAnsi(() -> wizard.run(h.tty())));
             waitReady(h, "Pick a fruit");
             // Down 3× from apple(0) → custom row (index 3), type "mango", Enter.
             for (int i = 0; i < 3; i++) {
@@ -474,7 +476,7 @@ class WizardTest {
 
         var exec = Executors.newSingleThreadExecutor();
         try {
-            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.tty()));
+            Future<Optional<Answers>> result = exec.submit(() -> NoAnsi.forcedAnsi(() -> wizard.run(h.tty())));
             waitReady(h, "Pick a fruit");
             // Down once → banana, Enter → the choice id, not custom text.
             write(h, (byte) 0x1B, (byte) '[', (byte) 'B');
@@ -501,7 +503,7 @@ class WizardTest {
 
         var exec = Executors.newSingleThreadExecutor();
         try {
-            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.tty()));
+            Future<Optional<Answers>> result = exec.submit(() -> NoAnsi.forcedAnsi(() -> wizard.run(h.tty())));
             waitReady(h, "Pick a fruit");
             // Move to the (empty) custom row and press Enter — must NOT advance.
             write(h, (byte) 0x1B, (byte) '[', (byte) 'B');
@@ -538,7 +540,7 @@ class WizardTest {
 
         var exec = Executors.newSingleThreadExecutor();
         try {
-            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.tty()));
+            Future<Optional<Answers>> result = exec.submit(() -> NoAnsi.forcedAnsi(() -> wizard.run(h.tty())));
             waitReady(h, "Pick fruits");
             // Space → check apple(0); Down 3× → custom row; type "kiwi"; Enter.
             write(h, (byte) 0x20);
@@ -570,7 +572,7 @@ class WizardTest {
 
         var exec = Executors.newSingleThreadExecutor();
         try {
-            Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.tty()));
+            Future<Optional<Answers>> result = exec.submit(() -> NoAnsi.forcedAnsi(() -> wizard.run(h.tty())));
             waitReady(h, "Name");
             write(h, (byte) 0x1B, (byte) '[', (byte) 'C');
             settle(h);
