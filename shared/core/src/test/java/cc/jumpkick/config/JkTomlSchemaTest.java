@@ -82,11 +82,10 @@ class JkTomlSchemaTest {
     @Test
     void audit_properties_are_exactly_the_parser_s_audit_keys() throws Exception {
         String schema = Files.readString(SCHEMA);
-        String audit = Jsonl.nested(Jsonl.nested(schema, "properties"), "audit");
-        assertThat(keysOf(Jsonl.nested(audit, "properties")))
-                .containsExactlyInAnyOrderElementsOf(ManifestBuild.AUDIT_KEYS);
-        String entry = Jsonl.nested(Jsonl.nested(Jsonl.nested(audit, "properties"), "ignore"), "items");
-        assertThat(keysOf(Jsonl.nested(entry, "properties")))
+        String audit = table(table(schema, "properties"), "audit");
+        assertThat(keysOf(table(audit, "properties"))).containsExactlyInAnyOrderElementsOf(ManifestBuild.AUDIT_KEYS);
+        String entry = table(table(table(audit, "properties"), "ignore"), "items");
+        assertThat(keysOf(table(entry, "properties")))
                 .containsExactlyInAnyOrderElementsOf(ManifestBuild.AUDIT_IGNORE_KEYS);
         assertThat(Jsonl.bool(entry, "additionalProperties", true))
                 .as("an unknown key on an ignore entry is what an editor should flag")
