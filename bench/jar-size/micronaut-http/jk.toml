@@ -1,0 +1,20 @@
+group = "com.example"
+name = "micronaut-http"
+version = "0.1.0"
+java = 25
+
+[application]
+main     = "demo.Application"
+assembly = true
+
+[micronaut]
+version = "=5.1.5"
+
+[dependencies]
+micronaut-http-server-netty = { group = "io.micronaut", name = "micronaut-http-server-netty" }
+micronaut-jackson-databind  = { group = "io.micronaut", name = "micronaut-jackson-databind" }
+logback-classic             = { group = "ch.qos.logback", name = "logback-classic" }
+
+
+[processor-dependencies]
+micronaut-inject-java = { group = "io.micronaut", name = "micronaut-inject-java" }

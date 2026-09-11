@@ -57,6 +57,80 @@ Fat and minified never share an action-cache key.
 **Dropped:** signature files (`META-INF/*.SF` / `*.RSA` / `*.DSA` / `*.EC` / `SIG-*`) and
 dependency `module-info.class` (JPMS descriptors break a single classpath jar).
 
+## Fat jar size against Shadow and Shade
+
+`assembly = true` replaces Gradle Shadow and Maven Shade, so its output is measured against both.
+The bench (`JarSizeBenchTest`, tier `bench`; fixtures in [`bench/jar-size/`](../../bench/jar-size/README.md))
+packages four fixture apps with the installed `jk`, with Shadow and with Shade over the same pinned
+dependencies and attributes every byte of difference. Banked sizes live in
+[`jar-size-baseline.toml`](../../jar-size-baseline.toml); a jk jar more than 0.5 % above its line,
+or more than 1 % above Shadow's, fails the bench.
+
+<!-- jar-size-table:start -->
+Measured 2026-09-11 with jk 0.13.2, Gradle 9.7.0 + Shadow 9.6.1, Maven 3.9.16 + Shade 3.6.2,
+Spring Boot 4.1.1, Kotlin 2.4.20, Micronaut platform 5.1.5, on Temurin JDK 25.0.4.1. Every jar is
+DEFLATE-only except the Boot layout, whose nested jars are STORED by design.
+
+| Fixture | Tool | jar bytes | entries (files + dirs) | classes | compressed payload | extra-field bytes | only in jk / only in tool | jk − tool |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| plain-cli | jk assembly | 6,932,980 | 4,216 (4,053 + 163) | 4,011 | 6,064,104 | 8 | | |
+| | Gradle Shadow | 6,931,707 | 4,214 (4,052 + 162) | 4,011 | 6,063,119 | 0 | 2 / 0 | +1,273 (+0.018 %) |
+| | Maven Shade | 6,933,436 | 4,220 (4,055 + 165) | 4,012 | 6,063,856 | 8 | 2 / 6 | −456 (−0.007 %) |
+| kotlin-cli | jk assembly | 7,737,235 | 4,663 (4,496 + 167) | 4,449 | 6,714,805 | 8 | | |
+| | Gradle Shadow | 7,734,515 | 4,657 (4,491 + 166) | 4,446 | 6,713,077 | 0 | 7 / 1 | +2,720 (+0.035 %) |
+| | Maven Shade | 7,725,279 | 4,642 (4,471 + 171) | 4,422 | 6,706,953 | 8 | 31 / 10 | +11,956 (+0.155 %) |
+| micronaut-http | jk assembly | 14,470,688 | 9,169 (8,589 + 580) | 8,133 | 12,540,570 | 8 | | |
+| | Gradle Shadow | 14,469,639 | 9,169 (8,590 + 579) | 8,135 | 12,539,407 | 0 | 2 / 2 | +1,049 (+0.007 %) |
+| | Maven Shade | 14,472,299 | 9,175 (8,594 + 581) | 8,137 | 12,541,009 | 8 | 2 / 8 | −1,611 (−0.011 %) |
+| spring-boot-web | jk assembly | 19,542,089 | 11,768 (11,016 + 752) | 10,746 | 16,981,283 | 8 | | |
+| | Gradle Shadow | 19,540,024 | 11,766 (11,015 + 751) | 10,746 | 16,979,506 | 0 | 2 / 0 | +2,065 (+0.011 %) |
+| | Maven Shade | 19,546,121 | 11,771 (11,018 + 753) | 10,747 | 16,984,707 | 8 | 2 / 5 | −4,032 (−0.021 %) |
+| spring-boot-web (Boot layout) | jk Boot jar | 19,935,456 | 169 (146 + 23) | 101 | 19,902,130 | 8 | | |
+| | Gradle `bootJar` | 19,902,721 | 163 (140 + 23) | 101 | 19,870,495 | 0 | 10 / 4 | +32,735 (+0.164 %) |
+| | Maven `repackage` | 19,904,803 | 168 (142 + 26) | 101 | 19,871,429 | 368 | 10 / 9 | +30,653 (+0.154 %) |
+
+jk's flat jar is within 0.04 % of Shadow's on every fixture and smaller than Shade's on three of four;
+the Kotlin exception is Maven's nearest-wins keeping `org.jetbrains:annotations` at 13.0.
+<!-- jar-size-table:end -->
+
+**Where the remaining bytes are.** On every fixture the compressed bytes of byte-identical entries
+are equal across all three tools, so there is no compression gap left. What differs:
+
+- **The SBOM** (`META-INF/sbom/application.cdx.json`, 0.6–2.9 KB plus its directory entry) is jk-only
+  content, and is the whole of jk's lead over Shadow once the rest nets out.
+- **The manifest** carries two extra `Sbom-*` attributes (about 40 bytes).
+- **Merged `META-INF` files** (`services/*`, Spring's `spring.factories`, `spring.handlers`,
+  `spring.schemas`, `AutoConfiguration.imports`) differ by a few bytes of separator and order.
+- **Project classes** are smaller under jk: javac's default debug attributes (`-g:source,lines`)
+  against the `-g` Gradle and Maven pass; a compiler setting, not packaging.
+- **First-wins picks** (`META-INF/LICENSE`, `NOTICE`, `io.netty.versions.properties`) come from a
+  different jar depending on each tool's traversal order, a few hundred bytes either way.
+- **Resolution divergence** shows up where the tools disagree about a transitive version:
+  under the Micronaut platform jk keeps `jackson-annotations 2.21` from the declaring POM where the
+  BOM manages `2.22`, and on the Kotlin fixture jk resolves `org.jetbrains:annotations 26.1.0` where
+  Gradle takes 23.0.0 and Maven 13.0. Neither is a packaging cost; both are reported as their own
+  line so they cannot hide inside "overhead".
+- **The Boot jar** is 32.7 KB (0.16 %) above Gradle's `bootJar`: jk nests the six
+  `spring-boot-starter-*` jars (about 29 KB of `META-INF`-only archives that Boot's own plugins skip
+  by their `Spring-Boot-Jar-Type: dependencies-starter` manifest attribute), relocates the 3 KB SBOM
+  under `BOOT-INF/classes`, and writes longer `classpath.idx` / `layers.idx` files. It also lacks the
+  loader's `META-INF/services/java.nio.file.spi.FileSystemProvider` entry that both Boot plugins keep.
+- **Headers.** Every tool writes the same local header, central record and 16-byte data descriptor
+  per entry. jk's only extra field is the 8-byte JAR-magic marker on the first entry, which Shade
+  also writes and Shadow does not. Entries are all DEFLATE; there is no STORED waste.
+
+**Deflate level.** jk, Shadow and Shade all deflate at zlib's default level 6 (`Deflater.DEFAULT_COMPRESSION`
+in jk's `DeterministicZip`, in Ant's `ZipOutputStream` that Shadow writes through, and in Shade's
+`JarOutputStream`). Re-deflating the fixture jars at level 9 saves 0.18–0.24 % of the jar (16 KB of 6.9 MB,
+34 KB of 14.5 MB, 44 KB of 19.5 MB) for 17–58 % more deflate CPU on the packaging step of every
+build. jk stays at level 6: byte parity with both tools on identical entries is worth more than a
+quarter of a percent, and anyone who needs a smaller jar has `minified = true`.
+
+**What both tools carry.** `META-INF/maven/**` (each dependency's `pom.xml` and `pom.properties`) and
+licence and notice files ship in the jk, Shadow and Shade jars alike; the bench prints their size
+per fixture. jk does not drop them: the licence files are a redistribution obligation for most of
+the bundled libraries, and the Maven metadata question is left open rather than decided by omission.
+
 ## Minified jar (R8)
 
 ```toml

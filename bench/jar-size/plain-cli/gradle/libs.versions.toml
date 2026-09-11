@@ -1,0 +1,6 @@
+[libraries]
+picocli          = "info.picocli:picocli:4.7.7"
+jackson-databind = "com.fasterxml.jackson.core:jackson-databind:2.22.2"
+commons-text     = "org.apache.commons:commons-text:1.15.0"
+guava            = "com.google.guava:guava:33.7.1-jre"
+slf4j-simple     = "org.slf4j:slf4j-simple:2.0.19"

@@ -13,5 +13,7 @@ object ExternalTestRuntimes {
             ":web:test" to listOf("node" to null),
             ":engine:test" to listOf("git" to "JK_GIT"),
             ":engine:integrationTest" to listOf("git" to "JK_GIT"),
+            // The jar-size bench packages its fixtures with the installed product.
+            ":engine:benchTest" to listOf("jk" to null),
         )
 }

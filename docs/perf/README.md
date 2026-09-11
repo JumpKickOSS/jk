@@ -52,3 +52,18 @@ The nightly `benchTest` tier (`@Tag("bench")`) reports each bench's median throu
 when its median exceeds the banked `median-ms` by the same 15 % band; one without prints its number
 as `unbaselined` so it can be banked from the job log. `./scripts/wall-band.py --selftest` and the
 `BenchBand` unit test cover the arithmetic without a runner.
+
+### Fat-jar size
+
+`JarSizeBenchTest` (`server/engine`, tier `bench`) packages the four fixtures in
+[`bench/jar-size/`](../../bench/jar-size/README.md) with the installed `jk`, with Gradle Shadow and
+with Maven Shade over the same pinned dependencies, prints the per-tool table and attributes every
+byte of the jk-minus-tool delta to a named cause. Unlike the microbenches it asserts: a jk jar more
+than 0.5 % above its line in [`jar-size-baseline.toml`](../../jar-size-baseline.toml), or more than
+1 % above Shadow's, fails. Sizes are a pure function of the pinned inputs, so the band is for a jk
+version string changing length inside the SBOM, not for noise. The current table and the deflate
+decision are in [docs/user/packaging.md](../user/packaging.md#fat-jar-size-against-shadow-and-shade).
+
+```bash
+./gradlew :engine:benchTest --tests cc.jumpkick.compile.JarSizeBenchTest
+```

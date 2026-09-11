@@ -1,0 +1,39 @@
+# jar-size-baseline.toml — the banked fat-jar sizes the jar-size bench compares against
+# (server/engine/src/test/java/cc/jumpkick/compile/JarSizeBenchTest.java, fixtures in bench/jar-size/).
+#
+# One table per fixture. `jk-bytes` is jk's `-all.jar`; `jk-boot-bytes` its Boot jar where the
+# fixture has one. The `shadow-`, `shade-` and `*-boot-` lines are the comparison tools' outputs on
+# the same inputs and never fail the bench. A jk line more than 0.5 % ABOVE its banked bytes fails the
+# run; one more than 0.5 % below prints the new number to bank. The bench also refuses a jk fat jar
+# more than 1 % above Shadow's, whatever this file says.
+#
+# Inputs are pinned: each fixture commits its jk-lock.toml and names exact Shadow, Shade, Kotlin and
+# Spring Boot versions, so a moved number is a packaging change, not noise. Re-bank after an
+# intentional change by editing the line and saying why in the commit.
+
+[fixture.plain-cli]
+date         = "2026-09-11"
+jk-bytes     = 6932980
+shadow-bytes = 6931707
+shade-bytes  = 6933436
+
+[fixture.kotlin-cli]
+date         = "2026-09-11"
+jk-bytes     = 7737235
+shadow-bytes = 7734515
+shade-bytes  = 7725279
+
+[fixture.micronaut-http]
+date         = "2026-09-11"
+jk-bytes     = 14470688
+shadow-bytes = 14469639
+shade-bytes  = 14472299
+
+[fixture.spring-boot-web]
+date              = "2026-09-11"
+jk-bytes          = 19542089
+shadow-bytes      = 19540024
+shade-bytes       = 19546121
+jk-boot-bytes     = 19935456
+gradle-boot-bytes = 19902721
+maven-boot-bytes  = 19904803

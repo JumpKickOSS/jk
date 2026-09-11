@@ -1,0 +1,2 @@
+[libraries]
+micronaut-platform = "io.micronaut.platform:micronaut-platform:5.1.5"

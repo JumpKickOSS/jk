@@ -89,7 +89,10 @@ gate that needs a remote fails for reasons the change did not cause. `networkTes
 `ci-nightly.yml`, where a transient failure costs a re-run instead of a blocked merge.
 
 `bench` is off the gate for the opposite reason: a microbench prints medians and asserts nothing
-about deltas, so gating on it would gate on CI noise.
+about deltas, so gating on it would gate on CI noise. The one bench that does assert — the fat-jar
+size comparison (`JarSizeBenchTest`, fixtures in `bench/jar-size/`, banked sizes in
+`jar-size-baseline.toml`) — needs the installed `jk`, Gradle and Maven and Maven Central, which is
+why it lives in this tier rather than the gate; see [docs/perf](../perf/README.md#fat-jar-size).
 
 ## Property tests (unit tier)
 

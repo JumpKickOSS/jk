@@ -65,6 +65,11 @@ tasks.processTestResources {
     pluginManifestResources(rootProject)
 }
 
+// The jar-size bench packages the fixture apps under bench/jar-size; a fixture edit re-runs it.
+tasks.named<Test>("benchTest") {
+    inputs.dir(rootProject.layout.projectDirectory.dir("bench/jar-size")).withPathSensitivity(PathSensitivity.RELATIVE)
+}
+
 tasks.named<Jar>("jar") {
     doLast { assertJarHasNoFlattenedPluginCatalog(archiveFile.get().asFile) }
 }
