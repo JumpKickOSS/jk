@@ -2,7 +2,7 @@
 # Never edit by hand: an entry without a reason is a suppression, and there is no suppression syntax.
 
 [aot-marker]
-population = { constants = 1, files = 3146, literals = 94209 }
+population = { constants = 1, files = 3152, literals = 94506 }
 
 [archive-instant-owner]
 [archive-instant-owner.populations]
@@ -12,7 +12,7 @@ population = { constants = 1, files = 3146, literals = 94209 }
 "shared/client-io" = { classes = 73, sites = 4059 }
 
 [archive-stream-owner]
-population = { files = 1767 }
+population = { files = 1768 }
 
 [blind-tree-walks]
 [blind-tree-walks.populations]
@@ -764,7 +764,7 @@ reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk
 population = { left = 37, right = 37 }
 
 [cache-tiers]
-population = { constants = 29, files = 1850, literals = 33957 }
+population = { constants = 29, files = 1851, literals = 34028 }
 
 [case-conversion-locale]
 [case-conversion-locale.populations]
@@ -777,7 +777,7 @@ population = { constants = 29, files = 1850, literals = 33957 }
 population = { files = 50 }
 
 [central-address]
-population = { files = 1855 }
+population = { files = 1856 }
 
 [cli-engine-package-cycle]
 [cli-engine-package-cycle.populations]
@@ -1673,14 +1673,14 @@ at     = "cc.jumpkick.jdk.JdkRegistry#listHits()Ljava/util/List; -> java.lang.Sy
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 
 [file-size]
-population = { units = 3108 }
+population = { units = 3114 }
 
 [forecast-key-parity]
 [forecast-key-parity.populations]
 "server/engine" = { examined = 450 }
 
 [git-writes-are-pinned]
-population = { files = 1789 }
+population = { files = 1790 }
 
 [guard-kinds-doc]
 population = { rows = 18 }
@@ -1699,7 +1699,7 @@ population = { rows = 83 }
 "clients/cli" = { examined = 134 }
 
 [install-tests-redirect-m2]
-population = { files = 1296 }
+population = { files = 1301 }
 
 [jdk-removal-confined]
 [jdk-removal-confined.populations]
@@ -1709,10 +1709,10 @@ population = { files = 1296 }
 "shared/client-io" = { classes = 73, sites = 0 }
 
 [json-concat]
-population = { files = 1789 }
+population = { files = 1790 }
 
 [json-concat-ratchet]
-population = { units = 1789 }
+population = { units = 1790 }
 [[json-concat-ratchet.entries]]
 unit   = "clients/intellij/src/main/java/cc/jumpkick/idea/JkWireModel.java"
 value  = 1
@@ -1747,7 +1747,7 @@ value  = 16
 reason = "hand-built JSON fragments on 2026-09-07 after the wire and CLI moved to JsonFields; the ratchet lowers each file's count to zero"
 [[json-concat-ratchet.entries]]
 unit   = "shared/plugin-sdk/src/main/java/cc/jumpkick/plugin/protocol/PluginReply.java"
-value  = 16
+value  = 12
 reason = "hand-built JSON fragments on 2026-09-07 after the wire and CLI moved to JsonFields; the ratchet lowers each file's count to zero"
 [[json-concat-ratchet.entries]]
 unit   = "shared/plugin-sdk/src/main/java/cc/jumpkick/plugin/protocol/SpecWriter.java"
@@ -1758,16 +1758,16 @@ reason = "hand-built JSON fragments on 2026-09-07 after the wire and CLI moved t
 population = { files = 6 }
 
 [manifest-names]
-population = { constants = 6, files = 1850, literals = 33969 }
+population = { constants = 6, files = 1851, literals = 34040 }
 
 [method-size]
-population = { units = 25386 }
+population = { units = 25447 }
 
 [named-exit-codes]
-population = { files = 1767 }
+population = { files = 1768 }
 
 [no-fqcn]
-population = { units = 3055 }
+population = { units = 3061 }
 [[no-fqcn.entries]]
 unit   = "clients/cli-terminal/src/main/java/cc/jumpkick/terminal/package-info.java"
 value  = 1
@@ -2034,16 +2034,16 @@ value  = 1
 reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
 
 [no-glued-inline-tag]
-population = { files = 3185 }
+population = { files = 3191 }
 
 [no-historical-narration]
-population = { files = 3430 }
+population = { files = 3436 }
 
 [no-link-following-delete]
 population = { files = 71 }
 
 [no-retired-code-markers]
-population = { files = 1855 }
+population = { files = 1856 }
 
 [no-ticket-ids]
 population = { files = 3826 }
@@ -2074,10 +2074,10 @@ population = { files = 3826 }
 "shared/client-io" = { classes = 73, sites = 3010 }
 
 [one-json-splicer]
-population = { files = 1789 }
+population = { files = 1790 }
 
 [one-recursive-delete]
-population = { files = 1767 }
+population = { files = 1768 }
 
 [own-algorithm-by-name]
 [own-algorithm-by-name.populations]
@@ -2177,10 +2177,10 @@ population = { left = 735, right = 735 }
 population = { left = 448, right = 448 }
 
 [repository-names]
-population = { constants = 5, files = 1850, literals = 33942 }
+population = { constants = 5, files = 1851, literals = 34013 }
 
 [retired-wire-keys]
-population = { files = 1881 }
+population = { files = 1882 }
 
 [runnable-owner]
 [runnable-owner.populations]
@@ -2190,7 +2190,7 @@ population = { files = 1881 }
 "shared/client-io" = { classes = 73, sites = 4059 }
 
 [schema-compared-to-its-constant]
-population = { files = 3185 }
+population = { files = 3191 }
 
 [schema-freeze]
 population = { files = 11 }
@@ -2202,7 +2202,7 @@ population = { left = 1, right = 1 }
 population = { left = 1, right = 1 }
 
 [single-home-root]
-population = { files = 3501 }
+population = { files = 3507 }
 
 [single-truth-set]
 population = { examined = 1707 }
@@ -2251,16 +2251,16 @@ population = { files = 26 }
 "server/engine" = { examined = 18 }
 
 [target-dir]
-population = { constants = 1, files = 1850, literals = 33911 }
+population = { constants = 1, files = 1851, literals = 33982 }
 
 [task-names]
-population = { constants = 64, files = 1850, literals = 33902 }
+population = { constants = 64, files = 1851, literals = 33973 }
 
 [test-fixtures-stay-out-of-production]
 population = { files = 47 }
 
 [test-paths-from-checkout-root]
-population = { files = 1316 }
+population = { files = 1321 }
 
 [toolchain-env-from-request]
 [toolchain-env-from-request.populations]
@@ -2269,13 +2269,13 @@ population = { files = 1316 }
 "shared/client-io" = { classes = 73, sites = 3010 }
 
 [tree-copy-owner]
-population = { files = 1767 }
+population = { files = 1768 }
 
 [wire-prefix-pairs]
-population = { files = 1796 }
+population = { files = 1797 }
 
 [wire-types]
-population = { constants = 119, files = 1850, literals = 33833 }
+population = { constants = 119, files = 1851, literals = 33904 }
 
 [worker-offline-from-spec]
 population = { files = 135 }
