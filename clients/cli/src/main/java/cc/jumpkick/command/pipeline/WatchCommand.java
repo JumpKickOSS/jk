@@ -29,8 +29,7 @@ import java.util.Set;
  *   jk dev   → alias for {@code watch run} (app + hot-reload)
  * </pre>
  *
- * Verb-only modes re-dispatch the normal commands. {@code run} uses {@link AppWatchLoop} (former
- * {@code DevCommand} body).
+ * Verb-only modes re-dispatch the normal commands. {@code run} uses {@link AppWatchLoop}.
  */
 public final class WatchCommand implements CliCommand {
 

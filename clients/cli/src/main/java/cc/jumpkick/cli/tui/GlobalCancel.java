@@ -25,13 +25,15 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * <li>Cooperative session cancel + engine {@code cancel-request} (jid / project dir) — same
  * kill path as the web UI and {@code jk cancel}
  * <li>Settle the active plan region ("Build job was cancelled by user took …")
+ * <li>Run the verb's interrupt hooks — the children a {@code jk dev} owns — within
+ * {@link #HOOKS_BOUND_MILLIS}
  * <li>{@code halt(}{@link Exit#INTERRUPTED}{@code )} — guaranteed process death if anything
  * above is stuck. 130 is {@code 128 + SIGINT}, what every shell already means by it; this
  * handler must not halt with Exit.USAGE (2); use the cancel exit code.
  * </ol>
  *
  * <p>The halt is a backup, not the normal route: a verb that notices the cancel unwinds and exits
- * on its own thread long before step 3. {@link #exitCodeFor} is what makes both routes end at
+ * on its own thread long before step 4. {@link #exitCodeFor} is what makes both routes end at
  * {@link Exit#INTERRUPTED}.
  *
  * <p>Wizards run in {@code PROMPT} (ISIG off) so Ctrl-C arrives as {@code Key.CtrlC} instead of
@@ -58,7 +60,7 @@ public final class GlobalCancel {
     private static final List<Runnable> INTERRUPT_HOOKS = new CopyOnWriteArrayList<>();
 
     /** How long the hooks may take together; a wedged child must not defeat the halt. */
-    static final long HOOKS_BOUND_MILLIS = 6_000;
+    public static final long HOOKS_BOUND_MILLIS = 6_000;
 
     private GlobalCancel() {}
 
@@ -84,7 +86,7 @@ public final class GlobalCancel {
             for (Runnable hook : INTERRUPT_HOOKS) {
                 try {
                     hook.run();
-                } catch (RuntimeException ignored) {
+                } catch (Throwable ignored) {
                     // the next hook still runs; halt follows regardless
                 }
             }
@@ -131,10 +133,6 @@ public final class GlobalCancel {
                     .daemon(true)
                     .name("jk-sigint-cancel")
                     .start(() -> EngineCancel.cancelBestEffortForInterrupt(dir));
-            // 1b) The verb's own children — an app under `jk dev`, its sidecars — stop here, before
-            // the halt below skips every finally block that would have stopped them.
-            runInterruptHooks(HOOKS_BOUND_MILLIS);
-
             // 2) Settle the live region (plan → cancelled job line) or a one-line notice.
             LiveRegion active = LiveRegion.active();
             boolean handled = false;
@@ -156,7 +154,11 @@ public final class GlobalCancel {
             // silently lost on Ctrl-C into a pipe.
             System.out.flush();
 
-            // 3) Restore the tty (cooked attrs + stdin wake) on a bounded daemon thread —
+            // 3) The verb's own children — an app under `jk dev`, its sidecars — stop here, before
+            // the halt below skips every finally block that would have stopped them.
+            runInterruptHooks(HOOKS_BOUND_MILLIS);
+
+            // 4) Restore the tty (cooked attrs + stdin wake) on a bounded daemon thread —
             // halt() skips shutdown hooks, so nothing else puts the terminal back. Bounded so
             // a wedged JLine close can never break the Ctrl-C-never-hangs guarantee.
             Thread tty = Thread.ofPlatform()
@@ -169,7 +171,7 @@ public final class GlobalCancel {
                 // halt follows regardless
             }
 
-            // 4) Give the cancel RPCs a short, bounded window (they also self-limit), then hard
+            // 5) Give the cancel RPCs a short, bounded window (they also self-limit), then hard
             // kill this CLI process — guaranteed death even if everything above is wedged.
             try {
                 rpc.join(3_000L);

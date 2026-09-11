@@ -39,6 +39,18 @@ class GlobalCancelHooksTest {
     }
 
     @Test
+    void a_hook_that_throws_an_error_does_not_stop_the_next_either() {
+        List<String> ran = new CopyOnWriteArrayList<>();
+        try (var a = GlobalCancel.onInterrupt(() -> {
+                    throw new AssertionError("boom");
+                });
+                var b = GlobalCancel.onInterrupt(() -> ran.add("b"))) {
+            GlobalCancel.runInterruptHooks(2_000);
+        }
+        assertThat(ran).containsExactly("b");
+    }
+
+    @Test
     void a_hook_that_hangs_is_abandoned_at_the_bound() {
         CountDownLatch release = new CountDownLatch(1);
         try (var hang = GlobalCancel.onInterrupt(() -> {

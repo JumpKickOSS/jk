@@ -15,6 +15,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
@@ -26,37 +27,52 @@ import org.jspecify.annotations.Nullable;
 /**
  * The processes {@code jk dev} runs beside the application. Each sidecar is spawned once per
  * session with its output pumped line by line to {@code report}, prefixed with its name; it
- * survives the app's restarts and is torn down — descendants first, so a package manager's child
- * server does not outlive it — when the session ends. A sidecar that exits on its own is reported
- * once, or restarted with backoff when its manifest says {@code restart = "on-exit"}, five failures
- * in a row being the limit. {@link #awaitReady} runs the probes: an HTTP URL polled for 2xx/3xx, a
- * regex over the output, or a second of staying alive; a probe that times out is a failure of the
- * session, not a warning.
+ * survives the app's restarts and is torn down with the session — together with the app and with
+ * everything it spawned, in one pass. A sidecar that exits on its own is reported once, or
+ * restarted with backoff when its manifest says {@code restart = "on-exit"}; five failures in a
+ * row is the limit, and a run that passed its probe or stayed up {@link #STABLE_RUN_MILLIS} starts
+ * the count over. {@link #awaitReady} runs the probes: an HTTP URL polled for 2xx/3xx, a regex over
+ * the output, or a second of staying alive; a probe that times out is a failure of the session, not
+ * a warning.
  */
 public final class Sidecars implements AutoCloseable {
 
-    static final Duration TEARDOWN_GRACE = Duration.ofSeconds(5);
     static final long NO_PROBE_ALIVE_MILLIS = 1_000;
     static final int MAX_RESTARTS = 5;
-    /** {@code " \u2502 "} — the light vertical bar between a sidecar's name and its line, as a code point so no encoding can bend it. */
+    /** A run that lasted this long was a working sidecar; its exit is the first failure, not the next. */
+    static final long STABLE_RUN_MILLIS = 30_000;
+    /** {@code " │ "} — the light vertical bar between a sidecar's name and its line, as a code point so no encoding can bend it. */
     static final String PREFIX_SEPARATOR = " \u2502 ";
 
+    /** How the restart path waits out its backoff; {@link #REAL} is the wall clock, a test's returns at once. */
+    public interface Sleeper {
+        Sleeper REAL = Thread::sleep;
+
+        void sleep(long millis) throws InterruptedException;
+    }
+
+    /** Guarded by {@code this}, as is {@code closing}: a restart may not launch across a close. */
     private final List<Running> running = new ArrayList<>();
+
     private final Consumer<String> report;
     private final Clock clock;
+    private final Sleeper sleeper;
     private volatile boolean closing;
 
-    private Sidecars(Consumer<String> report, Clock clock) {
+    private Sidecars(Consumer<String> report, Clock clock, Sleeper sleeper) {
         this.report = report;
         this.clock = clock;
+        this.sleeper = sleeper;
     }
 
     /** Start every sidecar; {@code report} receives each output line, prefixed, and lifecycle notes. */
-    public static Sidecars start(List<ExecPlan.Sidecar> specs, Consumer<String> report, Clock clock)
+    public static Sidecars start(List<ExecPlan.Sidecar> specs, Consumer<String> report, Clock clock, Sleeper sleeper)
             throws IOException {
-        Sidecars sidecars = new Sidecars(report, clock);
+        Sidecars sidecars = new Sidecars(report, clock, sleeper);
         try {
-            for (ExecPlan.Sidecar spec : specs) sidecars.running.add(sidecars.launch(spec, 0));
+            synchronized (sidecars) {
+                for (ExecPlan.Sidecar spec : specs) sidecars.running.add(sidecars.launch(spec, 0));
+            }
         } catch (IOException | RuntimeException e) {
             sidecars.close();
             throw e;
@@ -65,7 +81,7 @@ public final class Sidecars implements AutoCloseable {
     }
 
     public boolean isEmpty() {
-        return running.isEmpty();
+        return snapshot().isEmpty();
     }
 
     /**
@@ -73,7 +89,7 @@ public final class Sidecars implements AutoCloseable {
      * readiness — as a printable sentence, or empty when all are ready.
      */
     public Optional<String> awaitReady() throws InterruptedException {
-        for (Running r : running) {
+        for (Running r : snapshot()) {
             String failure = r.awaitReady();
             if (failure != null) return Optional.of(failure);
         }
@@ -82,7 +98,7 @@ public final class Sidecars implements AutoCloseable {
 
     /** The URL the session prints once everything is ready: the sidecar marked {@code front-door}, if any. */
     public Optional<String> frontDoor() {
-        return running.stream()
+        return snapshot().stream()
                 .map(r -> r.spec)
                 .filter(ExecPlan.Sidecar::frontDoor)
                 .map(ExecPlan.Sidecar::ready)
@@ -92,11 +108,30 @@ public final class Sidecars implements AutoCloseable {
 
     @Override
     public void close() {
-        closing = true;
-        for (Running r : running) r.stop();
+        stopAlongside(List.of());
     }
 
-    private Running launch(ExecPlan.Sidecar spec, int attempt) throws IOException {
+    /**
+     * Stop every sidecar and {@code companions} — the app — in one pass: one signal, one shared
+     * grace, one force-kill, so the session goes down inside the SIGINT hook's bound however many
+     * processes it owns. No restart launches once this has begun.
+     */
+    public void stopAlongside(Collection<Process> companions) {
+        List<ProcessHandle> roots = new ArrayList<>();
+        synchronized (this) {
+            closing = true;
+            for (Running r : running) roots.add(r.process.toHandle());
+        }
+        for (Process p : companions) roots.add(p.toHandle());
+        ProcessTrees.stop(roots, clock);
+    }
+
+    private synchronized List<Running> snapshot() {
+        return List.copyOf(running);
+    }
+
+    /** {@code failures} is how many times in a row the sidecar has exited before this launch. */
+    private Running launch(ExecPlan.Sidecar spec, int failures) throws IOException {
         ProcessBuilder pb = new ProcessBuilder(spec.command())
                 .directory(Path.of(spec.cwd()).toFile())
                 .redirectErrorStream(true);
@@ -104,13 +139,15 @@ public final class Sidecars implements AutoCloseable {
         Process process;
         try {
             process = pb.start();
+            // A child that reads stdin sees EOF at once instead of waiting on a pipe nobody writes.
+            process.getOutputStream().close();
         } catch (IOException e) {
             throw new IOException(
                     "sidecar `" + spec.name() + "`: cannot start "
                             + spec.command().getFirst() + " in " + spec.cwd() + ": " + e.getMessage(),
                     e);
         }
-        Running r = new Running(spec, process, attempt, clock);
+        Running r = new Running(spec, process, failures, clock);
         Thread.ofVirtual().name("sidecar-" + spec.name()).start(() -> pump(r));
         return r;
     }
@@ -133,45 +170,51 @@ public final class Sidecars implements AutoCloseable {
             Thread.currentThread().interrupt();
             return;
         }
-        r.exited(exit);
+        boolean stable = r.exited(exit);
         if (closing) return;
-        if ("on-exit".equals(r.spec.restart()) && r.attempt + 1 <= MAX_RESTARTS) {
-            long backoff = Math.min(30_000, 500L * (1L << r.attempt));
-            report.accept(r.spec.name() + " exited with " + exit + " — restarting in " + backoff + " ms");
+        if (!"on-exit".equals(r.spec.restart())) {
+            report.accept(r.spec.name() + " exited with " + exit);
+            return;
+        }
+        int failures = stable ? 1 : r.failures + 1;
+        if (failures > MAX_RESTARTS) {
+            report.accept(r.spec.name() + " exited with " + exit + " — gave up after " + MAX_RESTARTS + " restarts");
+            return;
+        }
+        long backoff = Math.min(30_000, 500L << (failures - 1));
+        report.accept(r.spec.name() + " exited with " + exit + " — restarting in " + backoff + " ms");
+        try {
+            sleeper.sleep(backoff);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return;
+        }
+        synchronized (this) {
+            if (closing) return;
             try {
-                Thread.sleep(backoff);
-                if (closing) return;
-                Running next = launch(r.spec, r.attempt + 1);
-                synchronized (running) {
-                    running.set(running.indexOf(r), next);
-                }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
+                running.set(running.indexOf(r), launch(r.spec, failures));
             } catch (IOException e) {
                 report.accept(e.getMessage());
             }
-        } else if ("on-exit".equals(r.spec.restart())) {
-            report.accept(r.spec.name() + " exited with " + exit + " — gave up after " + MAX_RESTARTS + " restarts");
-        } else {
-            report.accept(r.spec.name() + " exited with " + exit);
         }
     }
 
-    /** One spawned sidecar: the process, its readiness state, and the teardown that takes its children with it. */
+    /** One spawned sidecar: the process, its readiness state, and how many exits in a row preceded it. */
     private static final class Running {
         final ExecPlan.Sidecar spec;
         final Process process;
-        final int attempt;
+        final int failures;
         final Clock clock;
         final long startedAt;
         private final CountDownLatch patternSeen = new CountDownLatch(1);
         private final @Nullable Pattern pattern;
         private volatile int exit = Integer.MIN_VALUE;
+        private volatile boolean ready;
 
-        Running(ExecPlan.Sidecar spec, Process process, int attempt, Clock clock) {
+        Running(ExecPlan.Sidecar spec, Process process, int failures, Clock clock) {
             this.spec = spec;
             this.process = process;
-            this.attempt = attempt;
+            this.failures = failures;
             this.clock = clock;
             this.startedAt = clock.nanos();
             this.pattern = spec.readyPattern().isEmpty() ? null : Pattern.compile(spec.readyPattern());
@@ -181,12 +224,21 @@ public final class Sidecars implements AutoCloseable {
             if (pattern != null && pattern.matcher(line).find()) patternSeen.countDown();
         }
 
-        void exited(int code) {
+        /** Record the exit; true when this run had proven itself — probe passed or a stable stretch alive. */
+        boolean exited(int code) {
             exit = code;
+            return ready || clock.nanos() - startedAt >= TimeUnit.MILLISECONDS.toNanos(STABLE_RUN_MILLIS);
         }
 
         @Nullable
         String awaitReady() throws InterruptedException {
+            String failure = probe();
+            if (failure == null) ready = true;
+            return failure;
+        }
+
+        @Nullable
+        private String probe() throws InterruptedException {
             long deadline = startedAt + TimeUnit.MILLISECONDS.toNanos(spec.readyTimeoutMillis());
             if (pattern != null) {
                 while (clock.nanos() < deadline) {
@@ -198,30 +250,31 @@ public final class Sidecars implements AutoCloseable {
             if (!spec.ready().isEmpty()) {
                 // HTTP/1.1 only: a dev server that ignores the h2c upgrade would otherwise hang the
                 // probe until its timeout, and none of them speak HTTP/2 on plain TCP anyway.
-                HttpClient client = HttpClient.newBuilder()
+                try (HttpClient client = HttpClient.newBuilder()
                         .version(HttpClient.Version.HTTP_1_1)
                         .connectTimeout(Duration.ofSeconds(2))
                         .followRedirects(HttpClient.Redirect.NEVER)
-                        .build();
-                List<HttpRequest> requests = new ArrayList<>();
-                for (URI candidate : readyCandidates(URI.create(spec.ready()))) {
-                    requests.add(HttpRequest.newBuilder(candidate)
-                            .timeout(Duration.ofSeconds(2))
-                            .GET()
-                            .build());
-                }
-                while (clock.nanos() < deadline) {
-                    if (exit != Integer.MIN_VALUE) return exitedEarly();
-                    for (HttpRequest request : requests) {
-                        try {
-                            int status = client.send(request, HttpResponse.BodyHandlers.discarding())
-                                    .statusCode();
-                            if (status >= 200 && status < 400) return null;
-                        } catch (IOException | RuntimeException notYet) {
-                            // not listening on this address yet
-                        }
+                        .build()) {
+                    List<HttpRequest> requests = new ArrayList<>();
+                    for (URI candidate : readyCandidates(URI.create(spec.ready()))) {
+                        requests.add(HttpRequest.newBuilder(candidate)
+                                .timeout(Duration.ofSeconds(2))
+                                .GET()
+                                .build());
                     }
-                    Thread.sleep(250);
+                    while (clock.nanos() < deadline) {
+                        if (exit != Integer.MIN_VALUE) return exitedEarly();
+                        for (HttpRequest request : requests) {
+                            try {
+                                int status = client.send(request, HttpResponse.BodyHandlers.discarding())
+                                        .statusCode();
+                                if (status >= 200 && status < 400) return null;
+                            } catch (IOException | RuntimeException notYet) {
+                                // not listening on this address yet
+                            }
+                        }
+                        Thread.sleep(250);
+                    }
                 }
                 return timedOut(spec.ready() + " never answered 2xx/3xx");
             }
@@ -240,25 +293,6 @@ public final class Sidecars implements AutoCloseable {
         private String timedOut(String what) {
             return "sidecar `" + spec.name() + "` was not ready after " + spec.readyTimeoutMillis() / 1000 + " s: "
                     + what;
-        }
-
-        /** Descendants first: a `npm run dev` that execs nothing still has the real server as a child. */
-        void stop() {
-            List<ProcessHandle> family = new ArrayList<>(process.descendants().toList());
-            family.add(process.toHandle());
-            family.forEach(ProcessHandle::destroy);
-            long deadline = clock.nanos() + TEARDOWN_GRACE.toNanos();
-            for (ProcessHandle h : family) {
-                while (h.isAlive() && clock.nanos() < deadline) {
-                    try {
-                        Thread.sleep(20);
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        break;
-                    }
-                }
-                if (h.isAlive()) h.destroyForcibly();
-            }
         }
     }
 
@@ -281,24 +315,5 @@ public final class Sidecars implements AutoCloseable {
         } catch (URISyntaxException e) {
             throw new IllegalArgumentException(e);
         }
-    }
-
-    /** For tests: the live process handles of every sidecar, so a teardown can be checked for orphans. */
-    List<ProcessHandle> handles() {
-        List<ProcessHandle> out = new ArrayList<>();
-        for (Running r : running) out.add(r.process.toHandle());
-        return out;
-    }
-
-    /** For tests: everything the sidecars have spawned beneath them, at this instant. */
-    List<ProcessHandle> descendants() {
-        List<ProcessHandle> out = new ArrayList<>();
-        for (Running r : running) out.addAll(r.process.descendants().toList());
-        return out;
-    }
-
-    /** True while at least one sidecar process is alive. */
-    public boolean anyAlive() {
-        return running.stream().anyMatch(r -> r.process.isAlive());
     }
 }

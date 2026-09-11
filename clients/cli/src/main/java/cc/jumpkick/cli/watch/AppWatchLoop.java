@@ -63,8 +63,10 @@ public final class AppWatchLoop {
         List<Path> watchRoots = rootsFromPlan(plan);
         logWatching(projectDir, watchRoots, devtools ? "DevTools hot-restart" : "process restart on change");
 
-        // Sidecars start once and outlive every app restart below; they are torn down with the session.
-        Sidecars sidecars = Sidecars.start(noSidecars ? List.of() : plan.sidecars(), CliOutput::err, Clock.SYSTEM);
+        // Sidecars start once and outlive every app restart below; they go down with the session.
+        List<ExecPlan.Sidecar> sidecarSpecs = plan.sidecars();
+        Sidecars sidecars = Sidecars.start(
+                noSidecars ? List.of() : sidecarSpecs, CliOutput::err, Clock.SYSTEM, Sidecars.Sleeper.REAL);
         Process app;
         try {
             app = startApp(plan, appArgs);
@@ -75,11 +77,8 @@ public final class AppWatchLoop {
         // Ctrl-C halts this process without unwinding, so the children are stopped from the
         // signal handler; the finally below does the same on every other way out.
         AtomicReference<Process> running = new AtomicReference<>(app);
-        try (GlobalCancel.Registration onInterrupt = GlobalCancel.onInterrupt(() -> {
-                    stop(running.get());
-                    sidecars.close();
-                });
-                sidecars;
+        try (GlobalCancel.Registration onInterrupt =
+                        GlobalCancel.onInterrupt(() -> sidecars.stopAlongside(List.of(running.get())));
                 SourceWatch watch = SourceWatch.open(projectDir, watchRoots)) {
             if (!sidecars.isEmpty()) {
                 Optional<String> notReady = sidecars.awaitReady();
@@ -111,6 +110,9 @@ public final class AppWatchLoop {
                             return Exit.SOFTWARE;
                         }
                         devtools = plan.hotReload();
+                        if (!noSidecars && !plan.sidecars().equals(sidecarSpecs)) {
+                            CliOutput.err(logPrefix + ": sidecars changed — restart jk dev to apply");
+                        }
                         app = restartApp(app, plan, appArgs);
                         running.set(app);
                     }
@@ -129,7 +131,7 @@ public final class AppWatchLoop {
                 }
             }
         } finally {
-            stop(app);
+            sidecars.stopAlongside(List.of(app));
         }
     }
 
@@ -260,16 +262,8 @@ public final class AppWatchLoop {
         return startApp(plan, appArgs);
     }
 
-    /** SIGTERM, five seconds, SIGKILL; a process that is already gone is nothing to do. */
-    private static void stop(@Nullable Process app) {
-        if (app == null || !app.isAlive()) return;
-        app.destroy();
-        try {
-            if (!app.waitFor(5, TimeUnit.SECONDS)) app.destroyForcibly();
-        } catch (InterruptedException e) {
-            app.destroyForcibly();
-            Thread.currentThread().interrupt();
-        }
+    private static void stop(Process app) {
+        ProcessTrees.stop(List.of(app.toHandle()), Clock.SYSTEM);
     }
 
     /** Resolve cache dir from override or defaults. */

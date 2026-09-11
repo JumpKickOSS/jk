@@ -56,11 +56,12 @@ docs = { command = ["mkdocs", "serve"], env = { PORT = "8001" }, ready-pattern =
 | `ready-pattern` | A regex matched against the sidecar's output lines — the other probe; a sidecar has one or the other. With neither, one second alive is ready |
 | `ready-timeout` | `"60s"` (default), `"2m"`, `"500ms"`, or seconds. A probe that times out **fails the session** — a broken dev server is not a warning |
 | `front-door` | Print this sidecar's `ready` URL once everything is up: `jk watch run: ready · http://localhost:5173 (java -cp … com.example.App)` |
-| `restart` | `never` (default: the exit is reported once, the session continues) or `on-exit` (restart with backoff, up to five failures in a row) |
+| `restart` | `never` (default: the exit is reported once, the session continues) or `on-exit` (restart with backoff, up to five failures in a row; a run that passed its probe or stayed up 30 s starts the count over) |
 
 Sidecars start once per session and survive the app's restarts — Vite watches its own tree. Their
-output is interleaved with the app's, each line prefixed `web │ `. Ctrl-C stops the app, then every
-sidecar and everything a sidecar spawned. `jk dev --no-sidecars` runs the app alone.
+output is interleaved with the app's, each line prefixed `web │ `. Ctrl-C stops the app and every
+sidecar together, along with everything they spawned. Editing `[dev.sidecars]` mid-session is
+reported, not applied — restart `jk dev`. `jk dev --no-sidecars` runs the app alone.
 
 The workspace root may declare `[dev.sidecars]` too; `jk dev` in a module unions root and module
 entries, the module winning a name clash. `jk run`, `jk build`, and `jk test` never read the table,
