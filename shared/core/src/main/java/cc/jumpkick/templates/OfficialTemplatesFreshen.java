@@ -7,6 +7,7 @@ import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.StoreWriteGate;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -56,12 +57,7 @@ public final class OfficialTemplatesFreshen {
             if (!markAttempt(parse(officialRef(cfg)).cacheKey(), System.nanoTime())) return;
             refresh(cfg, log);
         } catch (Throwable t) {
-            // Quiet: one short line only when something unexpected is worth a breadcrumb.
-            String m = t.getMessage();
-            if (m != null && !m.isBlank() && m.length() < 120) {
-                log.accept(
-                        "jk engine: templates freshen skipped (" + t.getClass().getSimpleName() + ")");
-            }
+            log.accept(skipped(t));
         }
     }
 
@@ -76,12 +72,22 @@ public final class OfficialTemplatesFreshen {
         try {
             refresh(JkTemplatesConfig.resolve(), log);
         } catch (Throwable t) {
-            String m = t.getMessage();
-            if (m != null && !m.isBlank() && m.length() < 120) {
-                log.accept(
-                        "jk engine: templates freshen skipped (" + t.getClass().getSimpleName() + ")");
-            }
+            log.accept(skipped(t));
         }
+    }
+
+    /** Widest a quiet-path breadcrumb gets; the failing argv plus git's last words fit, a stack dump does not. */
+    static final int SKIPPED_WIDTH = 320;
+
+    /** The one line a quiet freshen leaves behind: the exception's class and its message, cut to {@link #SKIPPED_WIDTH}. */
+    static String skipped(Throwable t) {
+        String m = t.getMessage();
+        String why = m == null || m.isBlank() ? "" : ": " + clip(m.strip().replaceAll("\\s+", " "), SKIPPED_WIDTH);
+        return "jk engine: templates freshen skipped (" + t.getClass().getSimpleName() + why + ")";
+    }
+
+    private static String clip(String text, int width) {
+        return text.length() <= width ? text : text.substring(0, width - 1) + "…";
     }
 
     /** True when the caller won the attempt slot (none in the last TTL); atomically records it. */
@@ -138,10 +144,8 @@ public final class OfficialTemplatesFreshen {
         Path dest = cacheRoot.resolve(p.cacheKey());
         // Incomplete clones (e.g. only a .git dir left from a failed private-repo attempt) must be
         // wiped and re-cloned — fetch/reset cannot recover them. So must a catalog-shaped directory
-        // that is not a repository of its own: `git -C dest` on such a directory acts on whatever
-        // repository encloses it, and "fetch --depth 1; reset --hard FETCH_HEAD" against a user's
-        // checkout is a wiped working copy. This has happened, to jk's own checkout, from a test
-        // sandbox seeded under the source tree.
+        // that is not a repository of its own: a fetch and reset there would act on whatever
+        // repository encloses it.
         if (!Files.isDirectory(dest)
                 || isEmptyDir(dest)
                 || !isRepositoryRoot(dest)
@@ -248,8 +252,8 @@ public final class OfficialTemplatesFreshen {
      * holds between them: a clone that passes the check and is then removed by a sandbox teardown or a
      * sibling test JVM leaves the calls pointing at the enclosing repository. Pinning is the property
      * that does not depend on timing — {@code --git-dir} names the repository outright, so a missing one
-     * fails the command instead of choosing another. A {@code .git} that is a worktree file rather than
-     * a directory fails here too, and falls to the re-clone below, which is the safe direction.
+     * fails the command instead of choosing another. It accepts a {@code .git} gitfile as well as a
+     * directory, so a linked worktree is pinned the same way.
      */
     private static List<String> pinnedGit(Path dest, String... args) {
         List<String> out = new ArrayList<>();
@@ -272,40 +276,72 @@ public final class OfficialTemplatesFreshen {
     }
 
     static void runGit(List<String> args, int timeoutSec) throws IOException {
-        // Discard output at the OS level; reading the pipe inline would block past the
-        // timeout on a stalled fetch (the single maintenance thread must never hang).
+        // Both streams are handled at the OS level — stdout discarded, stderr into a file — because
+        // reading a pipe inline would block past the timeout on a stalled fetch, and the single
+        // maintenance thread must never hang. The file is what lets a failure say why.
+        Path stderr = Files.createTempFile("jk-git-", ".err");
         ProcessBuilder pb = new ProcessBuilder(args)
                 .redirectOutput(ProcessBuilder.Redirect.DISCARD)
-                .redirectError(ProcessBuilder.Redirect.DISCARD);
+                .redirectError(stderr.toFile());
         pb.environment().put("GIT_TERMINAL_PROMPT", "0");
-        Process proc;
         try {
-            proc = pb.start();
-        } catch (IOException e) {
-            throw new IOException(failure("git not on PATH", args), e);
-        }
-        try {
-            if (!proc.waitFor(timeoutSec, TimeUnit.SECONDS)) {
-                proc.destroyForcibly();
-                throw new IOException(failure("git timed out after " + timeoutSec + "s", args));
+            Process proc;
+            try {
+                proc = pb.start();
+            } catch (IOException e) {
+                throw new IOException(failure("git not on PATH", args, stderr), e);
             }
-            if (proc.exitValue() != 0) throw new IOException(failure("git exit " + proc.exitValue(), args));
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            proc.destroyForcibly();
-            throw new IOException(failure("git interrupted", args), e);
+            try {
+                if (!proc.waitFor(timeoutSec, TimeUnit.SECONDS)) {
+                    kill(proc);
+                    throw new IOException(failure("git timed out after " + timeoutSec + "s", args, stderr));
+                }
+                if (proc.exitValue() != 0) {
+                    throw new IOException(failure("git exit " + proc.exitValue(), args, stderr));
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                kill(proc);
+                throw new IOException(failure("git interrupted", args, stderr), e);
+            }
+        } finally {
+            Files.deleteIfExists(stderr);
         }
     }
 
     /**
-     * Every way {@link #runGit} can fail, said the same way: what went wrong, then which invocation
-     * it went wrong on. Output is discarded at the OS level here, so this message is the only thing
-     * a caller ever sees — a bare "git exit 128" from a MAX_PATH clone named nothing anyone could
-     * act on, and a bare "git timed out" from the maintenance thread did not say which repository
-     * stalled. Wording matches {@code GitCliExtension}, the other place jk shells out to git.
+     * Force-kill {@code proc} and everything it spawned. Descendants first: {@code git} runs its
+     * transport as a child ({@code git-remote-https}, {@code ssh}), and killing the parent alone
+     * reparents that child to live on with the connection that stalled.
      */
-    private static String failure(String what, List<String> args) {
-        return what + ": " + String.join(" ", args);
+    private static void kill(Process proc) {
+        proc.descendants().forEach(ProcessHandle::destroyForcibly);
+        proc.destroyForcibly();
+    }
+
+    /** Bytes of stderr a failure carries; git's last words, not its whole progress log. */
+    private static final int STDERR_TAIL = 400;
+
+    /**
+     * Every way {@link #runGit} can fail, said the same way: what went wrong, which invocation, and
+     * then the tail of what git wrote to stderr when it wrote anything. Wording matches {@code
+     * GitCliExtension}, the other place jk shells out to git.
+     */
+    private static String failure(String what, List<String> args, Path stderr) {
+        String tail = stderrTail(stderr);
+        return what + ": " + String.join(" ", args) + (tail.isEmpty() ? "" : " — " + tail);
+    }
+
+    private static String stderrTail(Path stderr) {
+        try {
+            byte[] all = Files.readAllBytes(stderr);
+            int from = Math.max(0, all.length - STDERR_TAIL);
+            return new String(all, from, all.length - from, StandardCharsets.UTF_8)
+                    .strip()
+                    .replaceAll("\\s+", " ");
+        } catch (IOException | RuntimeException unreadable) {
+            return "";
+        }
     }
 
     static Parsed parse(String ref) {

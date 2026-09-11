@@ -15,6 +15,7 @@ import java.nio.file.attribute.PosixFilePermission;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledOnOs;
@@ -30,15 +31,14 @@ class OfficialTemplatesFreshenTest {
     @Test
     @DisabledOnOs(OS.WINDOWS)
     void runGitKillsHungSubprocessWithinTimeout() throws Exception {
-        // Holds stdout open and sleeps forever — the old readAllBytes() path would block here.
+        // Holds stdout open and sleeps forever.
         Path script = script("#!/bin/sh\nsleep 600\n");
         long start = System.nanoTime();
         IOException e =
                 assertThrows(IOException.class, () -> OfficialTemplatesFreshen.runGit(List.of(script.toString()), 2));
         long elapsedMs = (System.nanoTime() - start) / 1_000_000;
         // Prefix plus containment, not equality — same contract as the exit-code message: what
-        // went wrong, then which invocation. A stalled fetch that does not name the repository is
-        // the whole reason this message carries the command.
+        // went wrong, then which invocation.
         assertTrue(
                 e.getMessage().startsWith("git timed out after 2s"),
                 () -> "expected the timeout and its budget up front, got: " + e.getMessage());
@@ -110,15 +110,13 @@ class OfficialTemplatesFreshenTest {
     }
 
     /**
-     * The exit code, and which invocation produced it. {@code 3d05952e3} added the command to this
-     * message because a bare "git exit 128" from a MAX_PATH clone failure named nothing you could
-     * act on — so the command is part of the contract, not incidental text. Asserted as a prefix
-     * plus a containment rather than the whole string, so adding more context cannot break it again.
+     * The exit code, which invocation produced it, and what git said on stderr. Asserted as a prefix
+     * plus containments rather than the whole string, so more context cannot break it.
      */
     @Test
     @DisabledOnOs(OS.WINDOWS)
-    void runGitSurfacesNonZeroExitAndTheCommandThatFailed() throws Exception {
-        Path script = script("#!/bin/sh\nexit 3\n");
+    void runGitSurfacesNonZeroExitTheCommandAndGitsStderr() throws Exception {
+        Path script = script("#!/bin/sh\necho 'progress noise' >&2\necho 'fatal: repository not found' >&2\nexit 3\n");
         IOException e =
                 assertThrows(IOException.class, () -> OfficialTemplatesFreshen.runGit(List.of(script.toString()), 10));
         assertTrue(
@@ -127,6 +125,48 @@ class OfficialTemplatesFreshenTest {
         assertTrue(
                 e.getMessage().contains(script.toString()),
                 () -> "expected the failing command to be named, got: " + e.getMessage());
+        assertTrue(
+                e.getMessage().endsWith("fatal: repository not found"),
+                () -> "expected git's stderr to end the message, got: " + e.getMessage());
+    }
+
+    /** A hung transport child must die with the git it belongs to, or the stalled connection lives on. */
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void runGitKillsTheDescendantsOfATimedOutGit() throws Exception {
+        // 599, not 600: a marker no other test's sleeper carries.
+        Path script = script("#!/bin/sh\nsleep 599 &\nwait\n");
+        assertThrows(IOException.class, () -> OfficialTemplatesFreshen.runGit(List.of(script.toString()), 1));
+
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (sleeper599Alive() && System.nanoTime() < deadline) {
+            Thread.sleep(50);
+        }
+        assertTrue(!sleeper599Alive(), "the sleeper git spawned outlived the kill");
+    }
+
+    private static boolean sleeper599Alive() {
+        return ProcessHandle.allProcesses().anyMatch(h -> {
+            ProcessHandle.Info info = h.info();
+            return info.command().map(c -> c.endsWith("sleep")).orElse(false)
+                    && info.arguments()
+                            .map(a -> a.length == 1 && a[0].equals("599"))
+                            .orElse(false);
+        });
+    }
+
+    /** The quiet paths log every failure, cut to a width a log line can carry. */
+    @Test
+    void aQuietFailureIsLoggedOnOneLineHoweverLongItsMessage() {
+        String argv = "git exit 128: git clone --depth 1 https://example.invalid/x.git " + "/very/long/".repeat(60)
+                + " — fatal: unable to access";
+        String line = OfficialTemplatesFreshen.skipped(new IOException(argv));
+
+        assertTrue(line.startsWith("jk engine: templates freshen skipped (IOException: git exit 128: git clone"), line);
+        assertTrue(line.length() <= OfficialTemplatesFreshen.SKIPPED_WIDTH + 64, () -> "too wide: " + line.length());
+        assertEquals(
+                "jk engine: templates freshen skipped (IllegalStateException)",
+                OfficialTemplatesFreshen.skipped(new IllegalStateException()));
     }
 
     /** One git attempt per cache key per TTL — success or failure — so a missing
@@ -219,8 +259,8 @@ class OfficialTemplatesFreshenTest {
     /**
      * The state the check cannot cover: {@code dest} is not a repository at the moment the fetch and
      * reset run. {@link OfficialTemplatesFreshen#isRepositoryRoot} passing and then the directory going
-     * away — a sandbox teardown, a sibling test JVM, a {@code clean} — is the window that has reset two
-     * developers' checkouts and left both shallow, once before the root check existed and once after.
+     * away — a sandbox teardown, a sibling test JVM, a {@code clean} — is the window the check cannot
+     * close.
      *
      * <p>Calling the refresh directly is the point: through {@code refreshRef} the check would route
      * this to a clone and the invocations would never run. What has to hold is that they are pinned to a
@@ -228,8 +268,7 @@ class OfficialTemplatesFreshenTest {
      *
      * <p>The enclosing repository is a full stand-in for a developer's checkout — an {@code origin} it
      * is behind, and an uncommitted edit. Without the remote the fetch fails for the wrong reason and
-     * the test passes whether the invocations are pinned or not, which is worth stating because that is
-     * how it was first written.
+     * the test passes whether the invocations are pinned or not.
      */
     @Test
     void a_refresh_of_a_vanished_cache_fails_instead_of_resetting_the_enclosing_repository() throws Exception {
@@ -285,9 +324,8 @@ class OfficialTemplatesFreshenTest {
     }
 
     @Test
-    void a_real_source_key_is_unchanged_and_stays_readable() {
-        // The official catalog and anything like it must keep the name it already has on disk, or
-        // every existing cache directory is orphaned and re-cloned on upgrade.
+    void a_real_source_key_is_its_host_and_path() {
+        // The bound only fires past MAX_CACHE_KEY; a real source keys as its readable host and path.
         assertEquals(
                 "github.com_jumpkickoss_jk-templates",
                 OfficialTemplatesFreshen.parse("https://github.com/JumpKickOSS/jk-templates.git")
