@@ -14,6 +14,7 @@ import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.plugin.JobWorkers;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.task.IoLedger;
@@ -43,6 +44,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.LongSupplier;
+import java.util.function.UnaryOperator;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
@@ -402,14 +404,16 @@ class JobEnvelopeTest {
      * leaked sink would attribute a later run's notices to this request's stream.
      */
     @Test
-    void run_notices_ride_the_wire_during_the_run_and_stderr_after_it() {
+    void run_notices_ride_the_wire_during_the_run_and_the_log_after_it() {
         RunNotices.clear();
         FakeHost host = new FakeHost();
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
         StringWriter out = new StringWriter();
         var errDuring = new ByteArrayOutputStream();
-        var originalErr = System.err;
-        System.setErr(new PrintStream(errDuring, true, StandardCharsets.UTF_8));
+        Log.install(
+                new PrintStream(errDuring, true, StandardCharsets.UTF_8),
+                System.Logger.Level.INFO,
+                UnaryOperator.identity());
         try {
             env.submit(
                     "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
@@ -423,20 +427,23 @@ class JobEnvelopeTest {
                     }),
                     new JobTransport.SocketWatch(new BufferedReader(new StringReader("")), new BufferedWriter(out)));
         } finally {
-            System.setErr(originalErr);
+            Log.install(System.err, System.Logger.Level.INFO, UnaryOperator.identity());
         }
         assertThat(out.toString()).contains("\"code\":\"notice\"").contains("a run-scoped notice");
         assertThat(errDuring.toString(StandardCharsets.UTF_8)).doesNotContain("a run-scoped notice");
 
-        // After the finally the sink is gone: the same ledger's next note is stderr-only.
+        // After the finally the sink is gone: the same ledger's next note is log-only.
         var errAfter = new ByteArrayOutputStream();
-        System.setErr(new PrintStream(errAfter, true, StandardCharsets.UTF_8));
+        Log.install(
+                new PrintStream(errAfter, true, StandardCharsets.UTF_8),
+                System.Logger.Level.INFO,
+                UnaryOperator.identity());
         try {
             SessionContext.runWhere(
                     Session.defaults().withIo(host.io),
                     () -> RunNotices.warnOnce("late-notice", () -> "a note after the run"));
         } finally {
-            System.setErr(originalErr);
+            Log.install(System.err, System.Logger.Level.INFO, UnaryOperator.identity());
         }
         assertThat(errAfter.toString(StandardCharsets.UTF_8)).contains("a note after the run");
         assertThat(out.toString()).doesNotContain("a note after the run");

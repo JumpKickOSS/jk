@@ -5,6 +5,7 @@ import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.SecretRedactor;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.test.JUnitLauncher;
@@ -12,6 +13,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.function.UnaryOperator;
 import org.junit.jupiter.api.Test;
 
 /** Truncation-seam masking on failure fields. */
@@ -44,16 +46,16 @@ class EventRedactionTest {
     @Test
     void fail_open_warns_exactly_once_per_run() {
         // redaction failing must never break a build, but a silently-disabled security
-        // control has to announce itself — once, on stderr (merged into the engine log).
+        // control has to announce itself — once, in the engine log.
         var err = new ByteArrayOutputStream();
-        var original = System.err;
         RunNotices.clear();
-        System.setErr(new PrintStream(err, true, StandardCharsets.UTF_8));
+        Log.install(
+                new PrintStream(err, true, StandardCharsets.UTF_8), System.Logger.Level.INFO, UnaryOperator.identity());
         try {
             EventRedaction.warnFailOpen(new IllegalStateException("corrupt .env"));
             EventRedaction.warnFailOpen(new IllegalStateException("corrupt .env"));
         } finally {
-            System.setErr(original);
+            Log.install(System.err, System.Logger.Level.INFO, UnaryOperator.identity());
         }
         String out = err.toString(StandardCharsets.UTF_8);
         assertThat(out).contains("secret redaction failed open").contains("corrupt .env");

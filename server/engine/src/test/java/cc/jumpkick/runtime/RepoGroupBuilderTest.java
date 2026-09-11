@@ -10,6 +10,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.http.SafeUri;
 import cc.jumpkick.model.ObjectStoreConfig;
 import cc.jumpkick.model.RepositorySpec;
@@ -25,6 +26,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.UnaryOperator;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -44,12 +46,12 @@ class RepoGroupBuilderTest {
      */
     private static String inOneRun(Runnable body) {
         var err = new ByteArrayOutputStream();
-        var original = System.err;
-        System.setErr(new PrintStream(err, true, StandardCharsets.UTF_8));
+        Log.install(
+                new PrintStream(err, true, StandardCharsets.UTF_8), System.Logger.Level.INFO, UnaryOperator.identity());
         try {
             SessionContext.runWhere(Session.defaults(), body);
         } finally {
-            System.setErr(original);
+            Log.install(System.err, System.Logger.Level.INFO, UnaryOperator.identity());
         }
         return err.toString(StandardCharsets.UTF_8);
     }
