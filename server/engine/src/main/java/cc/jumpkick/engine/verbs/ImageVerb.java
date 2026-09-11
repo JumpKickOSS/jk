@@ -9,7 +9,6 @@ import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.jobs.JobSpec;
-import cc.jumpkick.image.ImageConfig;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
@@ -25,12 +24,14 @@ import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ImageRequest;
 import cc.jumpkick.wire.protocol.ProtoEvents;
 import cc.jumpkick.wire.protocol.ProtoSession;
+import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
 import cc.jumpkick.wire.runtime.WorkspaceSpec;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
@@ -170,19 +171,12 @@ public final class ImageVerb implements HostedVerb {
                                 body.registry(),
                                 body.tag(),
                                 body.tarball(),
-                                body.dockerExecutable()));
+                                body.dockerExecutable(),
+                                null));
                 return host.streamSinglePlan(plan, session, writer, result -> {
                     TestSummary testResult = plan.get(BuildPlanner.TEST_RESULT).orElse(null);
-                    ImageConfig cfg = plan.get(ImagePlans.CONFIG).orElse(null);
-                    Path tarball = plan.get(ImagePlans.TARBALL_PATH).orElse(null);
-                    JkBuild project = plan.get(BuildPlanner.PROJECT).orElse(null);
-                    boolean daemonMode = tarball == null
-                            && (cfg == null
-                                    || cfg.registry() == null
-                                    || cfg.registry().isBlank());
-                    String daemonExe = !daemonMode
-                            ? null
-                            : cfg != null && cfg.dockerExecutable() != null ? cfg.dockerExecutable() : "docker";
+                    ModuleOutcome.Image image = Objects.requireNonNullElse(
+                            ImagePlans.outcomeOf(plan), new ModuleOutcome.Image(null, null, null, null, null));
                     return ProtoEvents.planFinishImage(
                             dir,
                             result.success(),
@@ -190,19 +184,11 @@ public final class ImageVerb implements HostedVerb {
                             testResult != null ? testResult.succeeded() : -1,
                             testResult != null ? testResult.failed() : -1,
                             testResult != null ? testResult.skipped() : -1,
-                            plan.get(ImagePlans.IMAGE_REF).orElse(null),
-                            tarball != null ? tarball.toString() : null,
-                            project == null
-                                    ? null
-                                    : cfg == null
-                                            ? project.project().name()
-                                            : cfg.repository(project.project().name()),
-                            project == null
-                                    ? null
-                                    : cfg == null
-                                            ? project.project().version()
-                                            : cfg.tagOr(project.project().version()),
-                            daemonExe);
+                            image.ref(),
+                            image.tarball(),
+                            image.name(),
+                            image.version(),
+                            image.daemonExe());
                 });
             } catch (Exception e) {
                 host.sendQuiet(writer, host.requestFailedLine(null, e));

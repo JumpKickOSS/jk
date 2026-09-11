@@ -41,6 +41,7 @@ import cc.jumpkick.runtime.TestSupport;
 import cc.jumpkick.runtime.base.ImageCredentials;
 import cc.jumpkick.runtime.base.PluginLaunch;
 import cc.jumpkick.task.ClasspathFingerprint;
+import cc.jumpkick.wire.runtime.ModuleOutcome;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -89,37 +90,9 @@ public final class ImagePlans {
      * Build the image plan for {@code projectDir}: the core plan (via {@link
      * BuildPlanner#coreBuilder}) plus the image-plan/write-image tail. {@code tarballArg} is
      * tri-state exactly like {@code --tarball}'s optional value: {@code null} (no tarball), {@code
-     * ""} (default layout path), or an explicit path.
-     */
-    public static BuildPlan imageBuildPlan(
-            Path projectDir,
-            Path cache,
-            @Nullable Path jdksDir,
-            boolean skipTests,
-            boolean verbose,
-            @Nullable String mainClass,
-            @Nullable String registry,
-            @Nullable String tag,
-            @Nullable String tarballArg,
-            @Nullable String dockerExecutableArg) {
-        return imageBuildPlan(
-                projectDir,
-                cache,
-                jdksDir,
-                skipTests,
-                verbose,
-                mainClass,
-                registry,
-                tag,
-                tarballArg,
-                dockerExecutableArg,
-                null);
-    }
-
-    /**
-     * As above with {@code decorate}: request-level Inputs decoration applied by the one
-     * orchestrator so the IMAGE branch honors the same knobs as PACKAGE. {@code null} =
-     * none.
+     * ""} (default layout path), or an explicit path. {@code decorate} is the request-level Inputs
+     * decoration the workspace orchestrator applies so the IMAGE branch honors the same knobs as
+     * PACKAGE; {@code null} = none.
      */
     public static BuildPlan imageBuildPlan(
             Path projectDir,
@@ -277,6 +250,33 @@ public final class ImagePlans {
                                     tarballPath));
                 })
                 .build();
+    }
+
+    /**
+     * What the image tail of {@code plan} did — the reference it pushed or loaded, the tarball it
+     * wrote, and the repository:tag it resolved — or {@code null} when the plan never reached its
+     * image step. Daemon mode is the default when there is neither a tarball nor a registry.
+     */
+    public static ModuleOutcome.@Nullable Image outcomeOf(BuildPlan plan) {
+        ImageConfig config = plan.get(CONFIG).orElse(null);
+        Path tarball = plan.get(TARBALL_PATH).orElse(null);
+        String reference = plan.get(IMAGE_REF).orElse(null);
+        if (config == null && tarball == null && reference == null) return null;
+        JkBuild project = plan.get(BuildPlanner.PROJECT).orElse(null);
+        boolean daemonMode = tarball == null
+                && (config == null
+                        || config.registry() == null
+                        || config.registry().isBlank());
+        String daemon = !daemonMode
+                ? null
+                : config != null && config.dockerExecutable() != null ? config.dockerExecutable() : "docker";
+        String name = project == null ? null : project.project().name();
+        String version = project == null ? null : project.project().version();
+        if (config != null && name != null && version != null) {
+            name = config.repository(name);
+            version = config.tagOr(version);
+        }
+        return new ModuleOutcome.Image(reference, tarball != null ? tarball.toString() : null, name, version, daemon);
     }
 
     private static @Nullable Path resolveTarballPath(@Nullable String tarballArg, BuildLayout layout) {

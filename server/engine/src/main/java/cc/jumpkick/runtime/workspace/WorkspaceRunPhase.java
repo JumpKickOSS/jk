@@ -12,7 +12,6 @@ import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.runtime.BuildGraph;
-import cc.jumpkick.runtime.BuildPlanner;
 import cc.jumpkick.runtime.EffortWeights;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.runtime.base.WorkspaceArtifacts;
@@ -155,7 +154,7 @@ final class WorkspaceRunPhase {
             boolean didWork = !result.success() || cancelled || BuildService.moduleDidWork(result);
             ModuleOutcome outcome = new ModuleOutcome(
                     module.coord(), module.dir(), result.success() && !cancelled, exit, millis, didWork, cancelled);
-            ModuleOutcome.Image image = imageOutcomeOf(module.plan());
+            ModuleOutcome.Image image = ImagePlans.outcomeOf(module.plan());
             if (image != null) outcome = outcome.withImage(image);
             listener.onModuleFinish(outcome);
             return outcome;
@@ -194,7 +193,6 @@ final class WorkspaceRunPhase {
             for (String ref : WorkspaceClasspath.directTestsKindRefs(unit.manifest())) {
                 String name = Dependency.workspaceName(ref);
                 Path producer = name != null ? dirByName.get(name) : dirByCoord.get(ref);
-                if (producer == null && name == null) producer = dirByName.get(ref);
                 if (producer != null) consumed.add(producer);
             }
         }
@@ -242,28 +240,5 @@ final class WorkspaceRunPhase {
                 if (remaining.decrementAndGet() == 0) artifactsReady.run();
             }
         });
-    }
-
-    private static ModuleOutcome.@Nullable Image imageOutcomeOf(BuildPlan plan) {
-        var config = plan.get(ImagePlans.CONFIG).orElse(null);
-        Path tarball = plan.get(ImagePlans.TARBALL_PATH).orElse(null);
-        String reference = plan.get(ImagePlans.IMAGE_REF).orElse(null);
-        if (config == null && tarball == null && reference == null) return null;
-        var project = plan.get(BuildPlanner.PROJECT).orElse(null);
-        boolean daemonMode = tarball == null
-                && (config == null
-                        || config.registry() == null
-                        || config.registry().isBlank());
-        String daemon = !daemonMode
-                ? null
-                : config != null && config.dockerExecutable() != null ? config.dockerExecutable() : "docker";
-        // What the daemon now holds, resolved the way the worker tagged it.
-        String name = project == null ? null : project.project().name();
-        String version = project == null ? null : project.project().version();
-        if (config != null && name != null && version != null) {
-            name = config.repository(name);
-            version = config.tagOr(version);
-        }
-        return new ModuleOutcome.Image(reference, tarball != null ? tarball.toString() : null, name, version, daemon);
     }
 }

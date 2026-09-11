@@ -161,6 +161,33 @@ class WorkspacePublishGateTest {
                 .containsExactly(TaskNames.PACKAGE_JAR, "PUBLISH", TaskNames.COMPILE_TEST, TaskNames.RUN_TESTS);
     }
 
+    /**
+     * A failed test compile leaves {@code classes/test} half-written. The consumer must then fail
+     * on its sibling not being built, which it can only do if the publish never fires.
+     */
+    @Test
+    void aConsumedModuleNeverPublishesWhenItsTestCompileFails() {
+        List<String> log = new ArrayList<>();
+        BuildPlan.Builder b = BuildPlan.builder("module");
+        b.addTask(recording(TaskNames.PACKAGE_JAR, log));
+        b.addTask(Task.builder(TaskNames.COMPILE_TEST)
+                .stage(BuildStage.PACKAGE)
+                .requires(TaskNames.PACKAGE_JAR)
+                .ticks(1)
+                .execute(ctx -> {
+                    throw new RuntimeException("test compile failed");
+                })
+                .build());
+        BuildPlan plan = b.build();
+
+        WorkspaceRunPhase.watchArtifactSteps(plan, true, () -> log.add("PUBLISH"));
+        assertThat(plan.run().success()).isFalse();
+
+        assertThat(log)
+                .as("a half-written classes/test is never published to a sibling that selects it")
+                .containsExactly(TaskNames.PACKAGE_JAR);
+    }
+
     /** package-jar → compile-test → run-tests, each recording itself as it executes. */
     private static BuildPlan orderedPlan(List<String> log) {
         BuildPlan.Builder b = BuildPlan.builder("module");
