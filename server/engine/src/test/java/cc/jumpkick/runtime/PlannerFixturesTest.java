@@ -107,6 +107,7 @@ class PlannerFixturesTest {
                 layout.testFixturesClassesDir(),
                 25,
                 List.of("-Xlint:all"),
+                project.build().javac(),
                 jdk);
         assertThat(req.javaHome()).isEqualTo(jdk);
         assertThat(req.sources()).containsExactly(helper);
@@ -123,6 +124,7 @@ class PlannerFixturesTest {
                 layout.testFixturesClassesDir(),
                 25,
                 List.of("-Xlint:all"),
+                project.build().javac(),
                 jdk);
         assertThat(ActionKey.forJavac(
                         ActionKey.qualifiedTaskId(TaskNames.COMPILE_TEST_FIXTURES, again.outputDir()),
@@ -141,5 +143,42 @@ class PlannerFixturesTest {
                 .release(25)
                 .build();
         return ActionKey.forJavac("compile-test", req, "test");
+    }
+
+    @Test
+    void fixtures_run_the_main_javac_plugins_not_the_test_view(@TempDir Path tmp) throws Exception {
+        Path module = Files.createDirectories(tmp.resolve("m"));
+        Files.writeString(module.resolve("jk.toml"), """
+                group = "t"
+                name = "m"
+                version = "0.1.0"
+                java = 25
+
+                [test]
+                fixtures = true
+
+                [javac]
+                plugins = { ErrorProne = { options = ["-Xep:NullAway:ERROR"] } }
+
+                [javac.test]
+                plugins = {}
+                """);
+        JkBuild project = JkBuildParser.parse(module.resolve("jk.toml"));
+        BuildLayout layout = BuildLayout.of(module, project);
+        Path jdk = Files.createDirectories(tmp.resolve("jdk"));
+        Files.writeString(jdk.resolve("release"), "JAVA_VERSION=\"25\"\n");
+        CompileRequest req = PlannerFixtures.fixturesCompileRequest(
+                List.of(),
+                List.of(layout.classesDir()),
+                List.of(),
+                layout.testFixturesClassesDir(),
+                25,
+                List.of("-Xlint:all"),
+                project.build().javac(),
+                jdk);
+        assertThat(req.extraOptions())
+                .as("fixtures are production code for the suites that take them")
+                .containsExactly("-Xlint:all", "-Xplugin:ErrorProne -Xep:NullAway:ERROR");
+        assertThat(project.build().javac().forTests().isEmpty()).isTrue();
     }
 }

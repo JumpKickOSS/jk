@@ -82,7 +82,8 @@ public final class PlannerFixtures {
 
     /**
      * compile-test-fixtures' request — the build's javac invocation and the forecast's key, from
-     * one body.
+     * one body. Fixtures are production code for the suites that take them, so they run the
+     * {@code [javac]} plugins compile-main runs, not the {@code [javac.test]} view.
      */
     public static CompileRequest fixturesCompileRequest(
             List<Path> sources,
@@ -91,13 +92,14 @@ public final class PlannerFixtures {
             Path outputDir,
             int release,
             List<String> javacArgs,
+            JkBuild.JavacConfig javac,
             Path javaHome) {
         return CompileRequest.builder()
                 .sources(sources)
                 .classpath(classpath)
                 .outputDir(outputDir)
                 .release(release)
-                .extraOptions(javacArgs)
+                .extraOptions(PlannerCompile.javacOptions(javacArgs, javac))
                 .javaHome(javaHome)
                 .processorPath(processorPath)
                 .build();
@@ -138,7 +140,14 @@ public final class PlannerFixtures {
         fxCp.add(layout.classesDir());
         fxCp.addAll(testCompileCp);
         CompileRequest fxReq = fixturesCompileRequest(
-                fixtureSrc, fxCp, processorCp, layout.testFixturesClassesDir(), release, javacArgs, javaHome);
+                fixtureSrc,
+                fxCp,
+                processorCp,
+                layout.testFixturesClassesDir(),
+                release,
+                javacArgs,
+                project.build().javac(),
+                javaHome);
         String fxTaskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_TEST_FIXTURES, layout.testFixturesClassesDir());
         Path fxState = ActionTree.INCREMENTAL_JAVA
                 .under(CacheTree.ACTIONS.under(cache))
@@ -192,6 +201,7 @@ public final class PlannerFixtures {
                             out,
                             ctx.require(RELEASE),
                             javacArgs,
+                            project.build().javac(),
                             ctx.require(JAVA_HOME));
                     String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_TEST_FIXTURES, out);
                     Path stateDir = ActionTree.INCREMENTAL_JAVA
