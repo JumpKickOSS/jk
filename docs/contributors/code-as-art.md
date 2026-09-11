@@ -571,9 +571,9 @@ Zero-runtime. Safe on the Graal CLI. Dogfoods `jk init`.
    `clients/cli` — compile with Error Prone + NullAway in `OnlyNullMarked` JSpecify mode at error
    severity under **both builds**: the Gradle convention `jk.nullmarked-conventions` and the
    module's own `[javac]` table in `jk.toml` pass the same flags. `checkGuardParity` fails when a
-   module is on one list and not the other. `core` and `cli` spare their unit suites through
-   `[javac.test]` for the reasons `NullMarking.unmarkedCompileTasks` records; production is never
-   spared. Every production package in those modules is marked; `checkNullMarkedApiPackages`
+   module is on one list and not the other. `cli` spares its unit suite through `[javac.test]`
+   for the reason `NullMarking.unmarkedCompileTasks` records; `core`'s unit suite is enforced like
+   its production code, and production is never spared. Every production package in those modules is marked; `checkNullMarkedApiPackages`
    (G53) prevents unmarked additions.
 5. Three-state `Boolean success` on the accumulator is correct (unset /
    ok / fail). Mark `@Nullable`; do not “fix” it to `boolean`.

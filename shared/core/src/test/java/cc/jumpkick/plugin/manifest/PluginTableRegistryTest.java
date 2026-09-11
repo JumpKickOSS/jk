@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.Objects;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
 import org.junit.jupiter.api.Assumptions;
@@ -45,8 +46,10 @@ class PluginTableRegistryTest {
         var manifest = PluginTableRegistry.byTable("spring-boot").orElseThrow();
         assertThat(manifest.id()).isEqualTo("spring-boot");
         assertThat(manifest.schema()).containsKeys("version", "aot", "build-info", "include-tools", "aot-args");
-        assertThat(manifest.schema().get("version").required()).isTrue();
-        assertThat(manifest.schema().get("aot").defaultValue()).isNull(); // tri-state
+        assertThat(Objects.requireNonNull(manifest.schema().get("version")).required())
+                .isTrue();
+        assertThat(Objects.requireNonNull(manifest.schema().get("aot")).defaultValue())
+                .isNull(); // tri-state
         // A table nobody owns stays unowned. The name is fictional so a later built-in cannot
         // occupy it and turn this assertion red.
         assertThat(PluginTableRegistry.byTable("not-a-plugin-table")).isEmpty();
@@ -69,7 +72,7 @@ class PluginTableRegistryTest {
         var manifest = PluginTableRegistry.byTable("spring-boot").orElseThrow();
         // Assert against the schema's own example/hint, not copies of them: the invariant is
         // "the error surfaces what the manifest says".
-        var version = manifest.schema().get("version");
+        var version = Objects.requireNonNull(manifest.schema().get("version"), "version field");
         assertThat(version.example()).isNotBlank();
         assertThat(version.hint()).isNotBlank();
         assertThatThrownBy(() -> PluginTableRegistry.validate(manifest, Toml.parse("build-info = true")))
@@ -128,7 +131,8 @@ class PluginTableRegistryTest {
         Path root = PluginTableRegistry.discoverTestWorkspaceRoot();
         Assumptions.assumeTrue(root != null && Files.isRegularFile(root.resolve("plugins/spring-boot/jk-plugin.toml")));
         var loaded = PluginTableRegistry.loadFromWorkspacePluginSources(root);
-        assertThat(loaded.get("spring-boot").gradleImports())
+        assertThat(loaded).containsKey("spring-boot");
+        assertThat(Objects.requireNonNull(loaded.get("spring-boot")).gradleImports())
                 .anyMatch(r -> r.id().equals("org.springframework.boot")
                         && "version".equals(r.versionTo())
                         && r.missingVersionWarning() != null)
@@ -189,11 +193,14 @@ class PluginTableRegistryTest {
         var grails = PluginTableRegistry.byTable("grails").orElseThrow();
         assertThat(grails.id()).isEqualTo("grails");
         assertThat(grails.schema()).containsKeys("version", "boot-version");
-        assertThat(grails.schema().get("version").required()).isTrue();
-        assertThat(grails.schema().get("boot-version").defaultValue()).isEqualTo("4");
-        assertThat(grails.code().worker()).isEqualTo("jk-grails");
+        assertThat(Objects.requireNonNull(grails.schema().get("version")).required())
+                .isTrue();
+        assertThat(Objects.requireNonNull(grails.schema().get("boot-version")).defaultValue())
+                .isEqualTo("4");
+        assertThat(Objects.requireNonNull(grails.code(), "grails code").worker())
+                .isEqualTo("jk-grails");
 
-        var packaging = grails.packaging();
+        var packaging = Objects.requireNonNull(grails.packaging(), "grails packaging");
         assertThat(packaging.packager()).isEqualTo("grails-jar");
         assertThat(packaging.execMode()).isEqualTo("jar");
         assertThat(packaging.selfContained()).isTrue();

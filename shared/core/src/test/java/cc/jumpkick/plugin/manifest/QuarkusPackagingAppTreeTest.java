@@ -3,6 +3,7 @@ package cc.jumpkick.plugin.manifest;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.Objects;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -27,16 +28,17 @@ class QuarkusPackagingAppTreeTest {
                 self-contained = true
                 """;
         PluginDescriptor d = PluginDescriptors.parse(toml, "test-quarkus.toml");
-        assertThat(d.packaging()).isNotNull();
-        assertThat(d.packaging().appDir()).isEqualTo("quarkus-app");
-        assertThat(d.packaging().appJar()).isEqualTo("quarkus-run.jar");
+        var packaging = Objects.requireNonNull(d.packaging(), "quarkus packaging");
+        assertThat(packaging.appDir()).isEqualTo("quarkus-app");
+        assertThat(packaging.appJar()).isEqualTo("quarkus-run.jar");
         assertThat(d.packaging().selfContained()).isTrue();
     }
 
     @Test
     void built_in_quarkus_manifest_declares_the_same_tree() {
         PluginDescriptor d = PluginTableRegistry.byTable("quarkus").orElseThrow();
-        assertThat(d.packaging().appDir()).isEqualTo("quarkus-app");
-        assertThat(d.packaging().appJar()).isEqualTo("quarkus-run.jar");
+        var packaging = Objects.requireNonNull(d.packaging(), "quarkus packaging");
+        assertThat(packaging.appDir()).isEqualTo("quarkus-app");
+        assertThat(packaging.appJar()).isEqualTo("quarkus-run.jar");
     }
 }

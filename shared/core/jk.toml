@@ -33,11 +33,6 @@ options = [
   "-XepOpt:NullAway:KnownInitializers=cc.jumpkick.model.command.CliCommand.run",
 ]
 
-[javac.test]
-# TODO: core's unit suite feeds null through parsers on purpose to assert they reject it, so
-# the suite compiles without the nullness plugins; production stays enforced above.
-plugins = {}
-
 [test-dependencies]
 jk-host = { workspace = true, fixtures = true }
 assertj-core = "latest"

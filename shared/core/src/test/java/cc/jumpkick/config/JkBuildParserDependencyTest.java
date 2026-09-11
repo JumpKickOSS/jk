@@ -2,6 +2,8 @@
 package cc.jumpkick.config;
 
 import static cc.jumpkick.config.JkBuildParserFixtures.PROJECT;
+import static cc.jumpkick.config.JkBuildParserFixtures.gitSourceOf;
+import static cc.jumpkick.config.JkBuildParserFixtures.pathSourceOf;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -9,6 +11,7 @@ import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
+import java.util.Objects;
 import org.junit.jupiter.api.Test;
 
 class JkBuildParserDependencyTest {
@@ -128,7 +131,7 @@ class JkBuildParserDependencyTest {
                 """);
         var dep = parsed.dependencies().of(Scope.MAIN).getFirst();
         assertThat(dep.isPath()).isTrue();
-        assertThat(dep.pathSource().rawPath()).isEqualTo("../shared-utils");
+        assertThat(pathSourceOf(dep).rawPath()).isEqualTo("../shared-utils");
         assertThat(dep.module()).isEqualTo("path:shared-utils");
         assertThat(dep.pinned()).isTrue();
     }
@@ -153,8 +156,8 @@ class JkBuildParserDependencyTest {
                 """);
         var dep = parsed.dependencies().of(Scope.MAIN).getFirst();
         assertThat(dep.isGit()).isTrue();
-        assertThat(dep.gitSource().originalUrl()).isEqualTo("https://github.com/acme/codec");
-        assertThat(dep.gitSource().ref()).isInstanceOf(GitRefSpec.Tag.class);
+        assertThat(gitSourceOf(dep).originalUrl()).isEqualTo("https://github.com/acme/codec");
+        assertThat(gitSourceOf(dep).ref()).isInstanceOf(GitRefSpec.Tag.class);
         assertThat(dep.module()).isEqualTo("git:codec");
         assertThat(dep.pinned()).isTrue();
     }
@@ -180,7 +183,7 @@ class JkBuildParserDependencyTest {
         // Discovery: a placeholder module the resolver rewrites once the repo's
         // project coordinate is known.
         assertThat(dep.module()).isEqualTo("git:mylib");
-        assertThat(dep.gitSource().ref()).isEqualTo(new GitRefSpec.Tag("v1.4.0"));
+        assertThat(gitSourceOf(dep).ref()).isEqualTo(new GitRefSpec.Tag("v1.4.0"));
     }
 
     @Test
@@ -241,7 +244,7 @@ class JkBuildParserDependencyTest {
                 [dependencies]
                 mylib = { git = "https://github.com/jin-tonic/jin@main" }
                 """);
-        var src = parsed.dependencies().of(Scope.MAIN).getFirst().gitSource();
+        var src = gitSourceOf(parsed.dependencies().of(Scope.MAIN).getFirst());
         assertThat(src.originalUrl()).isEqualTo("https://github.com/jin-tonic/jin");
         assertThat(src.ref()).isEqualTo(new GitRefSpec.Branch("main"));
         assertThat(src.shallow()).isFalse();
@@ -253,7 +256,7 @@ class JkBuildParserDependencyTest {
                 [dependencies]
                 requests = { git = "https://github.com/psf/requests.git@v1.2.3" }
                 """);
-        var src = parsed.dependencies().of(Scope.MAIN).getFirst().gitSource();
+        var src = gitSourceOf(parsed.dependencies().of(Scope.MAIN).getFirst());
         assertThat(src.ref()).isEqualTo(new GitRefSpec.Tag("v1.2.3"));
         assertThat(src.shallow()).isFalse(); // URL-embedded → always deep
     }
@@ -264,7 +267,7 @@ class JkBuildParserDependencyTest {
                 [dependencies]
                 mylib = { git = "https://github.com/acme/widgets", tag = "v1.4.0" }
                 """);
-        var src = parsed.dependencies().of(Scope.MAIN).getFirst().gitSource();
+        var src = gitSourceOf(parsed.dependencies().of(Scope.MAIN).getFirst());
         assertThat(src.ref()).isEqualTo(new GitRefSpec.Tag("v1.4.0"));
         assertThat(src.shallow()).isTrue(); // explicit tag = → shallow
     }
@@ -275,7 +278,7 @@ class JkBuildParserDependencyTest {
                 [dependencies]
                 mylib = { git = "https://github.com/user/repo#8f3a1b2c4d5e6f" }
                 """);
-        var src = parsed.dependencies().of(Scope.MAIN).getFirst().gitSource();
+        var src = gitSourceOf(parsed.dependencies().of(Scope.MAIN).getFirst());
         assertThat(src.ref()).isEqualTo(new GitRefSpec.Rev("8f3a1b2c4d5e6f"));
         assertThat(src.shallow()).isFalse();
     }
@@ -297,7 +300,7 @@ class JkBuildParserDependencyTest {
                 [dependencies]
                 auth = { git = "https://github.com/user/repo!components/auth@v1.2.3" }
                 """);
-        var src = parsed.dependencies().of(Scope.MAIN).getFirst().gitSource();
+        var src = gitSourceOf(parsed.dependencies().of(Scope.MAIN).getFirst());
         assertThat(src.originalUrl()).isEqualTo("https://github.com/user/repo");
         assertThat(src.path()).isEqualTo("components/auth");
         assertThat(src.ref()).isEqualTo(new GitRefSpec.Tag("v1.2.3"));
@@ -311,7 +314,7 @@ class JkBuildParserDependencyTest {
                 [dependencies]
                 auth = { git = "git://github.com/user/repo@v1.2.3!components/auth" }
                 """);
-        var src = parsed.dependencies().of(Scope.MAIN).getFirst().gitSource();
+        var src = gitSourceOf(parsed.dependencies().of(Scope.MAIN).getFirst());
         assertThat(src.originalUrl()).isEqualTo("git://github.com/user/repo");
         assertThat(src.path()).isEqualTo("components/auth");
         assertThat(src.ref()).isEqualTo(new GitRefSpec.Tag("v1.2.3"));
@@ -325,7 +328,7 @@ class JkBuildParserDependencyTest {
                 [dependencies]
                 auth = { git = "https://github.com/user/repo#8f3a1b2c4d5e6f!components/auth" }
                 """);
-        var src = parsed.dependencies().of(Scope.MAIN).getFirst().gitSource();
+        var src = gitSourceOf(parsed.dependencies().of(Scope.MAIN).getFirst());
         assertThat(src.path()).isEqualTo("components/auth");
         assertThat(src.ref()).isEqualTo(new GitRefSpec.Rev("8f3a1b2c4d5e6f"));
         assertThat(src.shallow()).isFalse();
@@ -416,7 +419,10 @@ class JkBuildParserDependencyTest {
                 deps = ["postgres-jdbc", "hikari"]
                 """);
         assertThat(parsed.features().defaults()).containsExactly("postgres");
-        assertThat(parsed.features().byName().get("postgres").deps()).containsExactly("postgres-jdbc", "hikari");
+        assertThat(parsed.features().byName()).containsKey("postgres");
+        assertThat(Objects.requireNonNull(parsed.features().byName().get("postgres"))
+                        .deps())
+                .containsExactly("postgres-jdbc", "hikari");
     }
 
     // ── splitEmbeddedUrl unit tests ──────────────────────────────────────────

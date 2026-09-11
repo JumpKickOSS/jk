@@ -14,6 +14,7 @@ import net.jqwik.api.Combinators;
 import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
 import net.jqwik.api.Provide;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The lockfile writer and reader are inverses on every lock the writer can produce, and the reader
@@ -37,9 +38,9 @@ class LockfilePropertyTest {
         Arbitrary<Set<Scope>> scopes =
                 Arbitraries.of(Scope.class).set().ofMinSize(1).ofMaxSize(3);
         Arbitrary<List<String>> deps = ga.list().ofMaxSize(3);
-        Arbitrary<String> pinnedBy =
+        Arbitrary<@Nullable String> pinnedBy =
                 Arbitraries.of("platform:org.acme:bom", "lock", "manifest").injectNull(0.5);
-        Arbitrary<String> path =
+        Arbitrary<@Nullable String> path =
                 Arbitraries.of("libs/a.jar", "../sibling/target/x.jar").injectNull(0.7);
         // Combinators keeps the source shallow: nested flatMap lambdas make palantir-java-format's
         // break search explode (minutes of CPU on this one file during `jk format`).
@@ -56,10 +57,10 @@ class LockfilePropertyTest {
                 new Lockfile.JdkPin("temurin", "25.0.4", "", ""),
                 new Lockfile.JdkPin("", "", "corretto", "21.0.5"),
                 new Lockfile.JdkPin("temurin", "25", "temurin", ""));
-        Arbitrary<String> kotlin = Arbitraries.of("2.4.10", "2.3.0").injectNull(0.6);
-        Arbitrary<String> jkMin = Arbitraries.of("0.12.0", "0.13.0").injectNull(0.5);
-        Arbitrary<String> digest = hex(64).injectNull(0.5);
-        Arbitrary<String> projectId = hex(32).injectNull(0.5);
+        Arbitrary<@Nullable String> kotlin = Arbitraries.of("2.4.10", "2.3.0").injectNull(0.6);
+        Arbitrary<@Nullable String> jkMin = Arbitraries.of("0.12.0", "0.13.0").injectNull(0.5);
+        Arbitrary<@Nullable String> digest = hex(64).injectNull(0.5);
+        Arbitrary<@Nullable String> projectId = hex(32).injectNull(0.5);
         return Combinators.combine(arts, jdk.injectNull(0.3), kotlin, jkMin, digest, projectId)
                 .as((a, j, k, m, d, p) -> new Lockfile(
                         Lockfile.CURRENT_VERSION,

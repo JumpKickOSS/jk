@@ -3,6 +3,7 @@ package cc.jumpkick.config;
 
 import static cc.jumpkick.config.JkBuildParserFixtures.PROJECT;
 import static cc.jumpkick.config.JkBuildParserFixtures.TEST_CATALOG;
+import static cc.jumpkick.config.JkBuildParserFixtures.workspaceOf;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -13,6 +14,7 @@ import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Objects;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -146,8 +148,8 @@ class JkBuildParserWorkspaceTest {
                 junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter", version = "6.1.0" }
                 assertj-core  = { group = "org.assertj",       name = "assertj-core",  version = "3.27.7" }
                 """);
-        assertThat(parsed.workspace().dependencies()).hasSize(2);
-        var jj = parsed.workspace().dependencies().get("junit-jupiter");
+        assertThat(workspaceOf(parsed).dependencies()).hasSize(2).containsKey("junit-jupiter");
+        var jj = Objects.requireNonNull(workspaceOf(parsed).dependencies().get("junit-jupiter"));
         assertThat(jj.group()).isEqualTo("org.junit.jupiter");
         assertThat(jj.artifact()).isEqualTo("junit-jupiter");
         assertThat(jj.module()).isEqualTo("org.junit.jupiter:junit-jupiter");
@@ -163,7 +165,7 @@ class JkBuildParserWorkspaceTest {
                 [workspace.dependencies]
                 picocli = { group = "info.picocli", version = "4.7.7" }
                 """);
-        var pico = parsed.workspace().dependencies().get("picocli");
+        var pico = Objects.requireNonNull(workspaceOf(parsed).dependencies().get("picocli"));
         assertThat(pico.artifact()).isEqualTo("picocli");
     }
 
@@ -176,7 +178,7 @@ class JkBuildParserWorkspaceTest {
                 [workspace.dependencies]
                 jackson-databind = "2.18.2"
                 """, TEST_CATALOG);
-        var jd = parsed.workspace().dependencies().get("jackson-databind");
+        var jd = Objects.requireNonNull(workspaceOf(parsed).dependencies().get("jackson-databind"));
         assertThat(jd.module()).isEqualTo("tools.jackson.core:jackson-databind");
         assertThat(jd.version()).isInstanceOf(VersionSelector.Caret.class);
     }
@@ -190,7 +192,7 @@ class JkBuildParserWorkspaceTest {
                 [workspace.dependencies]
                 picocli = { version = "4.7.7" }
                 """, TEST_CATALOG);
-        var pico = parsed.workspace().dependencies().get("picocli");
+        var pico = Objects.requireNonNull(workspaceOf(parsed).dependencies().get("picocli"));
         assertThat(pico.module()).isEqualTo("info.picocli:picocli");
     }
 
@@ -305,8 +307,8 @@ class JkBuildParserWorkspaceTest {
                 modules = ["core", "io"]
                 """);
         assertThat(parsed.isWorkspaceRoot()).isTrue();
-        assertThat(parsed.workspace().modules()).containsExactly("core", "io");
-        assertThat(parsed.workspace().dependencies()).isEmpty();
+        assertThat(workspaceOf(parsed).modules()).containsExactly("core", "io");
+        assertThat(workspaceOf(parsed).dependencies()).isEmpty();
     }
 
     @Test
@@ -320,8 +322,11 @@ class JkBuildParserWorkspaceTest {
                 inherits = "dev"
                 javac = ["-Werror"]
                 """);
-        assertThat(parsed.profiles().byName().get("dev").javacArgs()).contains("-g");
-        assertThat(parsed.profiles().byName().get("ci").inherits()).isEqualTo("dev");
+        assertThat(parsed.profiles().byName()).containsKeys("dev", "ci");
+        assertThat(Objects.requireNonNull(parsed.profiles().byName().get("dev")).javacArgs())
+                .contains("-g");
+        assertThat(Objects.requireNonNull(parsed.profiles().byName().get("ci")).inherits())
+                .isEqualTo("dev");
     }
 
     @Test
@@ -334,12 +339,13 @@ class JkBuildParserWorkspaceTest {
                 exclude-tags = []
                 include-tags = ["smoke"]
                 """);
-        var local = parsed.profiles().byName().get("local");
+        assertThat(parsed.profiles().byName()).containsKeys("local", "ci");
+        var local = Objects.requireNonNull(parsed.profiles().byName().get("local"));
         assertThat(local.excludeTagsSet()).isTrue();
         assertThat(local.includeTagsSet()).isFalse();
         assertThat(local.excludeTags()).containsExactly("slow", "bench");
 
-        var ci = parsed.profiles().byName().get("ci");
+        var ci = Objects.requireNonNull(parsed.profiles().byName().get("ci"));
         assertThat(ci.excludeTagsSet()).isTrue();
         assertThat(ci.excludeTags()).isEmpty();
         assertThat(ci.includeTagsSet()).isTrue();

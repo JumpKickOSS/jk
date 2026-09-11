@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
@@ -92,7 +93,7 @@ class NerdFontDetectTest {
     @Test
     void ssh_beats_a_local_config_file() {
         // The local iTerm2 prefs describe this host, not the client that is actually drawing.
-        var r = detect(env("SSH_TTY", "/dev/ttys001", "TERM_PROGRAM", "iTerm.app"), fonts -> "MesloLGS NF");
+        var r = detect(env("SSH_TTY", "/dev/ttys001", "TERM_PROGRAM", "iTerm.app"), () -> "MesloLGS NF");
         assertThat(r.caps()).isEqualTo(NerdFontCaps.NONE);
         assertThat(r.source()).isEqualTo("remote-session");
     }
@@ -215,12 +216,12 @@ class NerdFontDetectTest {
     }
 
     /** Convenience for the single-source cases: one font answered for every terminal. */
-    private static NerdFontDetect.Result detect(Map<String, String> env, Function<Void, String> anyFont) {
-        String f = anyFont.apply(null);
+    private static NerdFontDetect.Result detect(Map<String, String> env, Supplier<String> anyFont) {
+        String f = anyFont.get();
         return detect(env, new Fonts().iterm(f).alacritty(f).vscode(f).zed(f));
     }
 
-    private static Function<String, @Nullable String> lookup(@Nullable Map<String, String> env) {
+    private static Function<String, @Nullable String> lookup(Map<String, String> env) {
         return env::get;
     }
 
@@ -232,27 +233,27 @@ class NerdFontDetectTest {
 
     /** Injectable font sources — one setter per terminal, unset reads as absent. */
     private static final class Fonts implements TerminalFonts {
-        private String iterm;
-        private String alacritty;
-        private String vscode;
-        private String zed;
+        private @Nullable String iterm;
+        private @Nullable String alacritty;
+        private @Nullable String vscode;
+        private @Nullable String zed;
 
-        Fonts iterm(String f) {
+        Fonts iterm(@Nullable String f) {
             this.iterm = f;
             return this;
         }
 
-        Fonts alacritty(String f) {
+        Fonts alacritty(@Nullable String f) {
             this.alacritty = f;
             return this;
         }
 
-        Fonts vscode(String f) {
+        Fonts vscode(@Nullable String f) {
             this.vscode = f;
             return this;
         }
 
-        Fonts zed(String f) {
+        Fonts zed(@Nullable String f) {
             this.zed = f;
             return this;
         }

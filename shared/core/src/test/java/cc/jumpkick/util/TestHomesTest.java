@@ -116,12 +116,13 @@ class TestHomesTest {
     @Test
     void an_unstamped_leftover_is_reaped(@TempDir Path tmp) throws Exception {
         Path root = Files.createDirectories(tmp.resolve("homes"));
-        Path orphan = Files.createDirectories(root.resolve("eeeeeeeeeeee/store"));
-        age(orphan.getParent(), Duration.ofDays(TestHomes.KEEP_DAYS + 1));
+        Path orphan = Files.createDirectories(root.resolve("eeeeeeeeeeee"));
+        Files.createDirectories(orphan.resolve("store"));
+        age(orphan, Duration.ofDays(TestHomes.KEEP_DAYS + 1));
 
         assertThat(TestHomes.reapStale(root, System.currentTimeMillis(), NO_CAP))
                 .isEqualTo(1);
-        assertThat(orphan.getParent()).doesNotExist();
+        assertThat(orphan).doesNotExist();
     }
 
     /** Past the byte cap, the least recently used slots go first and the reap stops once the rest fit. */

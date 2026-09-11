@@ -10,6 +10,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -242,8 +243,7 @@ class AotManifestTest {
                 """);
 
         var byFile = AotManifest.load(dir).stream().collect(Collectors.toMap(AotManifest.Entry::file, e -> e));
-        AotManifest.Entry e = byFile.get("javac-1.aot");
-        assertThat(e).isNotNull();
+        AotManifest.Entry e = Objects.requireNonNull(byFile.get("javac-1.aot"), "javac-1.aot entry");
         assertThat(e.status()).isEqualTo("ready");
         assertThat(e.classpath()).containsExactly("/a.jar", "/b.jar");
     }

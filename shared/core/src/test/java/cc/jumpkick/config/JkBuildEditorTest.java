@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import static cc.jumpkick.config.JkBuildParserFixtures.workspaceOf;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -317,7 +318,7 @@ class JkBuildEditorTest {
     void add_module_appends_to_inline_array() {
         String result = JkBuildEditor.addWorkspaceModule(WS, "cli");
         assertThat(result).contains("modules = [\"core\", \"io\", \"cli\"]");
-        assertThat(JkBuildParser.parse(result).workspace().modules()).containsExactly("core", "io", "cli");
+        assertThat(workspaceOf(JkBuildParser.parse(result)).modules()).containsExactly("core", "io", "cli");
     }
 
     @Test
@@ -354,7 +355,7 @@ class JkBuildEditorTest {
                 """;
         String result = JkBuildEditor.addWorkspaceModule(start, "core");
         assertThat(result).contains("modules = [\"core\"]");
-        assertThat(JkBuildParser.parse(result).workspace().modules()).containsExactly("core");
+        assertThat(workspaceOf(JkBuildParser.parse(result)).modules()).containsExactly("core");
     }
 
     @Test
@@ -374,7 +375,7 @@ class JkBuildEditorTest {
         String result = JkBuildEditor.addWorkspaceModule(start, "cli");
         assertThat(result).contains("# the workspace");
         assertThat(result).contains("    \"cli\",");
-        assertThat(JkBuildParser.parse(result).workspace().modules()).containsExactly("core", "io", "cli");
+        assertThat(workspaceOf(JkBuildParser.parse(result)).modules()).containsExactly("core", "io", "cli");
     }
 
     @Test
@@ -391,7 +392,7 @@ class JkBuildEditorTest {
                 ]
                 """;
         String result = JkBuildEditor.addWorkspaceModule(start, "cli");
-        assertThat(JkBuildParser.parse(result).workspace().modules()).containsExactly("core", "io", "cli");
+        assertThat(workspaceOf(JkBuildParser.parse(result)).modules()).containsExactly("core", "io", "cli");
     }
 
     @Test
@@ -405,7 +406,7 @@ class JkBuildEditorTest {
                 """;
         String result = JkBuildEditor.addWorkspaceModule(start, "core");
         assertThat(result).contains("modules = [\"core\"]");
-        assertThat(JkBuildParser.parse(result).workspace().modules()).containsExactly("core");
+        assertThat(workspaceOf(JkBuildParser.parse(result)).modules()).containsExactly("core");
     }
 
     @Test
@@ -417,12 +418,10 @@ class JkBuildEditorTest {
 
     @Test
     void remove_module_from_inline_array() {
-        assertThat(JkBuildParser.parse(JkBuildEditor.removeWorkspaceModule(WS, "core"))
-                        .workspace()
+        assertThat(workspaceOf(JkBuildParser.parse(JkBuildEditor.removeWorkspaceModule(WS, "core")))
                         .modules())
                 .containsExactly("io");
-        assertThat(JkBuildParser.parse(JkBuildEditor.removeWorkspaceModule(WS, "io"))
-                        .workspace()
+        assertThat(workspaceOf(JkBuildParser.parse(JkBuildEditor.removeWorkspaceModule(WS, "io")))
                         .modules())
                 .containsExactly("core");
     }
@@ -443,7 +442,7 @@ class JkBuildEditorTest {
                 """;
         String result = JkBuildEditor.removeWorkspaceModule(start, "core");
         assertThat(result).contains("# the workspace").doesNotContain("\"core\"");
-        assertThat(JkBuildParser.parse(result).workspace().modules()).containsExactly("io");
+        assertThat(workspaceOf(JkBuildParser.parse(result)).modules()).containsExactly("io");
     }
 
     @Test
@@ -456,7 +455,7 @@ class JkBuildEditorTest {
     void remove_last_module_leaves_an_empty_array() {
         String one = JkBuildEditor.removeWorkspaceModule(WS, "core");
         String none = JkBuildEditor.removeWorkspaceModule(one, "io");
-        assertThat(JkBuildParser.parse(none).workspace().modules()).isEmpty();
+        assertThat(workspaceOf(JkBuildParser.parse(none)).modules()).isEmpty();
     }
 
     @Test
@@ -468,14 +467,14 @@ class JkBuildEditorTest {
         assertThat(result).contains("name     = \"widget\"");
         JkBuild parsed = JkBuildParser.parse(result);
         assertThat(parsed.isWorkspaceRoot()).isTrue();
-        assertThat(parsed.workspace().modules()).containsExactly("core");
+        assertThat(workspaceOf(parsed).modules()).containsExactly("core");
     }
 
     @Test
     void register_module_appends_to_an_existing_workspace_table() {
         String once = JkBuildEditor.registerWorkspaceModule(BASE, "core");
         String twice = JkBuildEditor.registerWorkspaceModule(once, "cli");
-        assertThat(JkBuildParser.parse(twice).workspace().modules()).containsExactly("core", "cli");
+        assertThat(workspaceOf(JkBuildParser.parse(twice)).modules()).containsExactly("core", "cli");
         // Idempotent — re-registering an existing module is a no-op.
         assertThat(JkBuildEditor.registerWorkspaceModule(twice, "core")).isEqualTo(twice);
     }
@@ -571,7 +570,7 @@ class JkBuildEditorTest {
     void a_metacharacter_bearing_module_path_round_trips() {
         String weird = "mods/a\"b";
         String edited = JkBuildEditor.registerWorkspaceModule(BASE, weird);
-        assertThat(JkBuildParser.parse(edited).workspace().modules()).containsExactly(weird);
+        assertThat(workspaceOf(JkBuildParser.parse(edited)).modules()).containsExactly(weird);
         // …and removing it finds the same element it wrote.
         assertThat(JkBuildEditor.removeWorkspaceModule(edited, weird)).doesNotContain("a\\\"b");
     }

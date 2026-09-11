@@ -3,6 +3,8 @@ package cc.jumpkick.config;
 
 import static cc.jumpkick.config.JkBuildParserFixtures.PROJECT;
 import static cc.jumpkick.config.JkBuildParserFixtures.TEST_CATALOG;
+import static cc.jumpkick.config.JkBuildParserFixtures.gitSourceOf;
+import static cc.jumpkick.config.JkBuildParserFixtures.pathSourceOf;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -44,7 +46,7 @@ class JkBuildParserCatalogTest {
                 """);
         var dep = parsed.dependencies().of(Scope.MAIN).getFirst();
         assertThat(dep.isPath()).isTrue();
-        assertThat(dep.pathSource().rawPath()).isEqualTo("./some/local/path");
+        assertThat(pathSourceOf(dep).rawPath()).isEqualTo("./some/local/path");
         assertThat(dep.module()).isEqualTo("path:my-lib");
     }
 
@@ -56,7 +58,7 @@ class JkBuildParserCatalogTest {
                 """);
         var dep = parsed.dependencies().of(Scope.MAIN).getFirst();
         assertThat(dep.isPath()).isTrue();
-        assertThat(dep.pathSource().rawPath()).isEqualTo("../shared-utils");
+        assertThat(pathSourceOf(dep).rawPath()).isEqualTo("../shared-utils");
     }
 
     @Test
@@ -67,7 +69,7 @@ class JkBuildParserCatalogTest {
                 """);
         var dep = parsed.dependencies().of(Scope.MAIN).getFirst();
         assertThat(dep.isPath()).isTrue();
-        assertThat(dep.pathSource().rawPath()).isEqualTo("/opt/libs/shared");
+        assertThat(pathSourceOf(dep).rawPath()).isEqualTo("/opt/libs/shared");
     }
 
     @Test
@@ -78,8 +80,8 @@ class JkBuildParserCatalogTest {
                 """);
         var dep = parsed.dependencies().of(Scope.MAIN).getFirst();
         assertThat(dep.isGit()).isTrue();
-        assertThat(dep.gitSource().ref()).isEqualTo(new GitRefSpec.Branch("main"));
-        assertThat(dep.gitSource().shallow()).isFalse();
+        assertThat(gitSourceOf(dep).ref()).isEqualTo(new GitRefSpec.Branch("main"));
+        assertThat(gitSourceOf(dep).shallow()).isFalse();
         assertThat(dep.module()).isEqualTo("git:requests");
     }
 
@@ -91,8 +93,8 @@ class JkBuildParserCatalogTest {
                 """);
         var dep = parsed.dependencies().of(Scope.MAIN).getFirst();
         assertThat(dep.isGit()).isTrue();
-        assertThat(dep.gitSource().ref()).isEqualTo(new GitRefSpec.Branch("mybranch"));
-        assertThat(dep.gitSource().shallow()).isFalse();
+        assertThat(gitSourceOf(dep).ref()).isEqualTo(new GitRefSpec.Branch("mybranch"));
+        assertThat(gitSourceOf(dep).shallow()).isFalse();
     }
 
     @Test
@@ -103,8 +105,8 @@ class JkBuildParserCatalogTest {
                 """);
         var dep = parsed.dependencies().of(Scope.MAIN).getFirst();
         assertThat(dep.isGit()).isTrue();
-        assertThat(dep.gitSource().ref()).isEqualTo(new GitRefSpec.Tag("v1.2.3"));
-        assertThat(dep.gitSource().shallow()).isFalse(); // URL-embedded → always deep
+        assertThat(gitSourceOf(dep).ref()).isEqualTo(new GitRefSpec.Tag("v1.2.3"));
+        assertThat(gitSourceOf(dep).shallow()).isFalse(); // URL-embedded → always deep
     }
 
     @Test
@@ -115,7 +117,7 @@ class JkBuildParserCatalogTest {
                 """);
         var dep = parsed.dependencies().of(Scope.MAIN).getFirst();
         assertThat(dep.isGit()).isTrue();
-        assertThat(dep.gitSource().ref()).isEqualTo(new GitRefSpec.Rev("8f3a1b2c4d5e6f"));
+        assertThat(gitSourceOf(dep).ref()).isEqualTo(new GitRefSpec.Rev("8f3a1b2c4d5e6f"));
     }
 
     @Test
@@ -126,8 +128,8 @@ class JkBuildParserCatalogTest {
                 """);
         var dep = parsed.dependencies().of(Scope.MAIN).getFirst();
         assertThat(dep.isGit()).isTrue();
-        assertThat(dep.gitSource().path()).isEqualTo("components/auth");
-        assertThat(dep.gitSource().ref()).isEqualTo(new GitRefSpec.Branch("main"));
+        assertThat(gitSourceOf(dep).path()).isEqualTo("components/auth");
+        assertThat(gitSourceOf(dep).ref()).isEqualTo(new GitRefSpec.Branch("main"));
     }
 
     @Test

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import static cc.jumpkick.config.JkBuildParserFixtures.workspaceOf;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.layout.SourceLayout;
@@ -53,7 +54,7 @@ class SelfHostingTomlTest {
         // host is the S1/S7 codec + host-primitive leaf; plugin-sdk sits above it. jk-api is a
         // zero-dep model (PluginConfig lives there —).
         // Phase 2 adds thin workers (test-runner, java-compiler) as workspace modules.
-        assertThat(root.workspace().modules())
+        assertThat(workspaceOf(root).modules())
                 .containsExactly(
                         "shared/host",
                         "shared/plugin-sdk",
@@ -206,7 +207,7 @@ class SelfHostingTomlTest {
         // Language level is on the workspace root (java = 25); modules inherit — do not require
         // per-module jdk = pins (AGENTS.md: prefer java = N, rare jdk =).
         assertThat(root.project().java()).isEqualTo(25);
-        for (String module : root.workspace().modules()) {
+        for (String module : workspaceOf(root).modules()) {
             Path moduleManifest = REPO.resolve(module).resolve("jk.toml");
             assertThat(moduleManifest).as("missing " + moduleManifest).exists();
             JkBuild parsed = JkBuildParser.parse(moduleManifest);
@@ -255,7 +256,7 @@ class SelfHostingTomlTest {
     @Test
     void all_first_party_plugin_modules_are_thin_plugin_main_workers() throws Exception {
         JkBuild root = JkBuildParser.parse(REPO.resolve("jk.toml"));
-        for (String module : root.workspace().modules()) {
+        for (String module : workspaceOf(root).modules()) {
             if (!module.startsWith("plugins/")) continue;
             JkBuild p = JkBuildParser.parse(REPO.resolve(module).resolve("jk.toml"));
             assertThat(p.isApplication())

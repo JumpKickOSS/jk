@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.JkBuild;
+import java.util.Objects;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
@@ -31,8 +32,8 @@ class AndroidContributionsTest {
     @Test
     void library_variant_swaps_the_packaging_descriptor() {
         var manifest = PluginTableRegistry.byTable("android").orElseThrow();
-        var app =
-                manifest.packaging().resolve(android("").pluginConfig("android").orElseThrow());
+        var app = Objects.requireNonNull(manifest.packaging(), "android packaging")
+                .resolve(android("").pluginConfig("android").orElseThrow());
         assertThat(app.execMode()).isEqualTo("device");
         assertThat(app.artifactExtension()).isEqualTo("apk");
         assertThat(app.deployCommand()).isEqualTo("deploy");

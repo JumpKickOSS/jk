@@ -33,9 +33,6 @@ object NullMarking {
      */
     val unmarkedCompileTasks: Map<String, String> =
         mapOf(
-            "core:compileTestJava" to
-                "TODO: core's unit suite feeds null through parsers on purpose to assert they reject it; " +
-                    "its production and test-fixture sources are enforced.",
             "engine:compileTestJava" to
                 "TODO: 101 findings, and roughly half of them are one idiom: the MCP and HTTP suites read a " +
                     "decoded JSON response as Map<String, Object> and assert on its contents, so every " +

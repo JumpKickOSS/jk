@@ -41,7 +41,7 @@ public final class ForgeAuthConfig {
      * default. {@code providerId} is the {@code ForgeKind.id()} string (github / gitlab / gitea /
      * bitbucket); {@code host} may be null when only the provider default is wanted.
      */
-    public Optional<String> oauthClientId(String providerId, String host) {
+    public Optional<String> oauthClientId(@Nullable String providerId, @Nullable String host) {
         if (host != null) {
             String byHostId = byHost.get(host.toLowerCase(Locale.ROOT).strip());
             if (byHostId != null) return Optional.of(byHostId);

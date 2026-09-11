@@ -2,6 +2,7 @@
 package cc.jumpkick.config;
 
 import java.util.Locale;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Maps a configured font name to the glyph families it can be trusted to render.
@@ -35,7 +36,7 @@ public final class NerdFontNames {
      * across entries: a stack naming {@code Symbols Nerd Font} as a fallback is nerd-capable even
      * when its first entry is a plain font, because the terminal will find the glyph there.
      */
-    public static NerdFontCaps caps(String fontSetting) {
+    public static NerdFontCaps caps(@Nullable String fontSetting) {
         if (fontSetting == null || fontSetting.isBlank()) return NerdFontCaps.NONE;
         NerdFontCaps caps = NerdFontCaps.NONE;
         for (String entry : fontSetting.split(",")) {

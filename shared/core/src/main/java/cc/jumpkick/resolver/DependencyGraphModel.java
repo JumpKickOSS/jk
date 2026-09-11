@@ -176,7 +176,8 @@ public final class DependencyGraphModel {
      * <p>Default scopes (null/empty {@code scopes}) are {@link #defaultScopes()} — the same
      * {@code export, main, runtime} set {@code jk tree} uses, from the same definition.
      */
-    public static Graph forProjectDir(Path projectDir, List<Scope> scopes, boolean transitive) throws IOException {
+    public static Graph forProjectDir(Path projectDir, @Nullable List<Scope> scopes, boolean transitive)
+            throws IOException {
         Objects.requireNonNull(projectDir, "projectDir");
         List<Scope> scopeList = scopes == null || scopes.isEmpty() ? defaultScopes() : List.copyOf(scopes);
         List<String> scopeNames = scopeList.stream().map(Scope::canonical).toList();

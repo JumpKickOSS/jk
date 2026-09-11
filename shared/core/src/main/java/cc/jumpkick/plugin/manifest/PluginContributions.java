@@ -60,17 +60,17 @@ public final class PluginContributions {
     }
 
     /** The javac args every present plugin contributes, conditions evaluated against {@code classpathModules}. */
-    public static List<String> javacArgs(JkBuild build, Path moduleDir, Set<String> classpathModules) {
+    public static List<String> javacArgs(JkBuild build, @Nullable Path moduleDir, Set<String> classpathModules) {
         return compilerArgs(build, moduleDir, classpathModules, PluginDescriptor.CompilerArgs::javac);
     }
 
     /** The kotlinc args every present plugin contributes. */
-    public static List<String> kotlinArgs(JkBuild build, Path moduleDir, Set<String> classpathModules) {
+    public static List<String> kotlinArgs(JkBuild build, @Nullable Path moduleDir, Set<String> classpathModules) {
         return compilerArgs(build, moduleDir, classpathModules, PluginDescriptor.CompilerArgs::kotlin);
     }
 
     /** The groovyc args every present plugin contributes (e.g. grails' {@code --parameters}). */
-    public static List<String> groovyArgs(JkBuild build, Path moduleDir, Set<String> classpathModules) {
+    public static List<String> groovyArgs(JkBuild build, @Nullable Path moduleDir, Set<String> classpathModules) {
         return compilerArgs(build, moduleDir, classpathModules, PluginDescriptor.CompilerArgs::groovy);
     }
 
@@ -83,7 +83,7 @@ public final class PluginContributions {
      * fingerprints) exactly like the conventional layout dirs. Evaluated before resolution
      * (classpath-has was rejected at manifest load).
      */
-    public static List<SourceRoot> sourceRoots(JkBuild build, Path moduleDir) {
+    public static List<SourceRoot> sourceRoots(JkBuild build, @Nullable Path moduleDir) {
         List<SourceRoot> out = new ArrayList<>();
         for (PluginDescriptor manifest : PluginTableRegistry.manifestsFor(moduleDir, build.plugins())) {
             PluginConfig config = build.pluginConfig(manifest.id()).orElse(null);
@@ -108,7 +108,7 @@ public final class PluginContributions {
      * The KSP processor options ({@code key=value}) every present plugin contributes — handed to
      * the KSP round as {@code -processor-options} (Hilt's superclass-validation toggle et al.).
      */
-    public static List<String> kspOptions(JkBuild build, Path moduleDir, Set<String> classpathModules) {
+    public static List<String> kspOptions(JkBuild build, @Nullable Path moduleDir, Set<String> classpathModules) {
         return compilerArgs(build, moduleDir, classpathModules, PluginDescriptor.CompilerArgs::ksp);
     }
 
@@ -117,7 +117,7 @@ public final class PluginContributions {
      * {@code ${kotlin.version}} so plugin jars stay lockstep with the compiler actually used.
      */
     public static List<KotlinPluginUse> kotlinPlugins(
-            JkBuild build, Path moduleDir, String kotlinVersion, Set<String> classpathModules) {
+            JkBuild build, @Nullable Path moduleDir, String kotlinVersion, Set<String> classpathModules) {
         List<KotlinPluginUse> out = new ArrayList<>();
         for (PluginDescriptor manifest : PluginTableRegistry.manifestsFor(moduleDir, build.plugins())) {
             PluginConfig config = build.pluginConfigs().get(manifest.id());
@@ -152,7 +152,7 @@ public final class PluginContributions {
 
     private static List<String> compilerArgs(
             JkBuild build,
-            Path moduleDir,
+            @Nullable Path moduleDir,
             Set<String> classpathModules,
             Function<PluginDescriptor.CompilerArgs, List<String>> lane) {
         List<String> out = new ArrayList<>();
@@ -254,7 +254,7 @@ public final class PluginContributions {
      * project's dependency graph) and hands them to the step worker by name. This lane, and only
      * this lane, is rendered into step and packager action keys.
      */
-    public static List<StepDep> stepDependencies(JkBuild build, Path moduleDir) {
+    public static List<StepDep> stepDependencies(JkBuild build, @Nullable Path moduleDir) {
         return toolDependencies(build, moduleDir, "step-dependency", PluginDescriptor.Contributions::stepDependencies);
     }
 
@@ -264,14 +264,14 @@ public final class PluginContributions {
      * these when a command runs; they join no step's or packager's action key and are never
      * provisioned by a build.
      */
-    public static List<StepDep> commandDependencies(JkBuild build, Path moduleDir) {
+    public static List<StepDep> commandDependencies(JkBuild build, @Nullable Path moduleDir) {
         return toolDependencies(
                 build, moduleDir, "command-dependency", PluginDescriptor.Contributions::commandDependencies);
     }
 
     private static List<StepDep> toolDependencies(
             JkBuild build,
-            Path moduleDir,
+            @Nullable Path moduleDir,
             String kind,
             Function<PluginDescriptor.Contributions, List<PluginDescriptor.StepDependency>> lane) {
         List<StepDep> out = new ArrayList<>();

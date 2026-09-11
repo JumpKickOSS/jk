@@ -31,7 +31,7 @@ public record CompilerLocus(String file, int line, int col) {
      * First header in {@code raw} (whole block or first line), with caret column when the header
      * omitted it. Null when no compiler header is present.
      */
-    public static @Nullable CompilerLocus parse(String raw) {
+    public static @Nullable CompilerLocus parse(@Nullable String raw) {
         if (raw == null || raw.isBlank()) return null;
         String[] lines = raw.split("\n", -1);
         CompilerLocus header = null;

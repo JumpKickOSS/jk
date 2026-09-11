@@ -8,6 +8,7 @@ import java.nio.file.DirectoryNotEmptyException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import org.jspecify.annotations.Nullable;
 
 /**
  * "Did jk create this?" — the question a delete has to answer before it recurses into a directory
@@ -49,7 +50,7 @@ public final class JkOwnership {
      * Write the ownership marker under {@code dir}. Best-effort and never throws: a missing marker
      * costs a later refusal to clean up, which is the safe direction to fail in.
      */
-    public static void mark(Path dir) {
+    public static void mark(@Nullable Path dir) {
         if (dir == null) return;
         try {
             Files.createDirectories(dir);
@@ -61,7 +62,7 @@ public final class JkOwnership {
     }
 
     /** Whether jk created the tree at {@code dir}. */
-    public static boolean isOwned(Path dir) {
+    public static boolean isOwned(@Nullable Path dir) {
         return dir != null && Files.isRegularFile(dir.resolve(MARKER));
     }
 
@@ -80,7 +81,7 @@ public final class JkOwnership {
      * the install behind it is already complete — so the operation still finishes; the difference is
      * that the reason lands somewhere a human reads instead of a JDK going missing.
      */
-    public static void removeIfOwned(Path path) throws IOException {
+    public static void removeIfOwned(@Nullable Path path) throws IOException {
         if (path == null) return;
         try {
             Files.delete(path);

@@ -7,7 +7,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -89,8 +88,9 @@ class NerdFontDetectCostTest {
             }
 
             @Override
-            public @Nullable Optional<String> vscodeFont() {
-                return null; // a contract violation, not just a failure
+            @SuppressWarnings("NullAway") // the null is deliberate: a contract violation, not just a failure
+            public Optional<String> vscodeFont() {
+                return null;
             }
 
             @Override

@@ -13,6 +13,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
@@ -255,7 +256,7 @@ class ConfigShapeTest {
             assertThat(target)
                     .describedAs("%s.%s exists", type.getSimpleName(), w.method())
                     .isNotNull();
-            Object copy = target.invoke(base, w.args());
+            Object copy = Objects.requireNonNull(target).invoke(base, w.args());
 
             for (RecordComponent rc : components) {
                 Object before = rc.getAccessor().invoke(base);
@@ -275,6 +276,7 @@ class ConfigShapeTest {
 
     /** A generated wither runs the canonical constructor, so its normalisation still applies. */
     @Test
+    @SuppressWarnings("NullAway") // the nulls are deliberate: the constructor must normalise them
     void a_generated_wither_still_normalises_through_the_canonical_constructor() {
         Session s = Session.defaults();
         assertThat(s.withAssemblyOverride("  fat  ").assemblyOverride()).isEqualTo("fat");

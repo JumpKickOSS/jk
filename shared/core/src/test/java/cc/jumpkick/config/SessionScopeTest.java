@@ -114,6 +114,7 @@ class SessionScopeTest {
     }
 
     @Test
+    @SuppressWarnings("NullAway") // the null is deliberate: the constructor must normalise it
     void null_cancel_normalizes_to_none() {
         Session s = Session.defaults().withCancel(null);
 

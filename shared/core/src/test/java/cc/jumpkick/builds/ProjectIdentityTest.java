@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
+import java.util.Objects;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -67,12 +68,13 @@ class ProjectIdentityTest {
                 version = "0.1.0"
                 """);
         Lockfile first = ProjectIdentity.ensureProjectId(Lockfile.empty("test"), dir);
-        assertThat(first.projectId()).isNotBlank();
+        String minted = Objects.requireNonNull(first.projectId(), "ensure mints an id");
+        assertThat(minted).isNotBlank();
         LockfileWriter.write(first, dir.resolve("jk-lock.toml"));
         Lockfile second = ProjectIdentity.ensureProjectId(Lockfile.empty("test"), dir);
         // ensure without reading disk still mints; write path preserves — simulate preserve:
-        Lockfile preserved = Lockfile.empty("test").withProjectId(first.projectId());
-        assertThat(preserved.projectId()).isEqualTo(first.projectId());
+        Lockfile preserved = Lockfile.empty("test").withProjectId(minted);
+        assertThat(preserved.projectId()).isEqualTo(minted);
     }
 
     @Test

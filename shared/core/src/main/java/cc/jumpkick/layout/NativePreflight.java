@@ -55,7 +55,7 @@ public final class NativePreflight {
         record Ambiguous() implements Main {}
     }
 
-    public static Graal graal(String graalHomeEnv) {
+    public static Graal graal(@Nullable String graalHomeEnv) {
         if (graalHomeEnv == null || graalHomeEnv.isBlank()) return new Graal.Fail(GRAAL_UNSET);
         Path home = Path.of(graalHomeEnv);
         return GraalLauncher.in(home).isPresent() ? new Graal.Ok(home) : new Graal.Fail(NATIVE_IMAGE_MISSING);

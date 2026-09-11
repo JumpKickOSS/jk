@@ -12,6 +12,7 @@ import cc.jumpkick.model.VersionSelector;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import org.junit.jupiter.api.Test;
 
 /** The shared substrate contract: one adjacency, aliased lookups, both walk directions agree. */
@@ -35,8 +36,7 @@ class LockGraphTest {
         Lockfile lock = lockOf(pkg("com.foo:lib", "2.0", List.of()));
         LockGraph g = LockGraph.forLock(lock);
 
-        var byName = g.artifact("com.foo:lib");
-        assertThat(byName).isNotNull();
+        var byName = Objects.requireNonNull(g.artifact("com.foo:lib"), "artifact by name");
         assertThat(g.artifact(byName.packageKey())).isSameAs(byName);
         assertThat(g.artifact(LockGraph.ga(byName.packageKey()))).isSameAs(byName);
     }

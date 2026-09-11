@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import static cc.jumpkick.config.JkBuildParserFixtures.workspaceOf;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -10,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -33,7 +35,7 @@ class JkBuildWorkspaceTest {
                 """);
 
         assertThat(parsed.isWorkspaceRoot()).isTrue();
-        assertThat(parsed.workspace().modules()).containsExactly("libs/core", "services/api");
+        assertThat(workspaceOf(parsed).modules()).containsExactly("libs/core", "services/api");
     }
 
     @Test
@@ -48,7 +50,7 @@ class JkBuildWorkspaceTest {
                 members = ["libs/core", "services/api"]
                 """);
 
-        assertThat(parsed.workspace().modules()).isEmpty();
+        assertThat(workspaceOf(parsed).modules()).isEmpty();
     }
 
     @Test
@@ -64,7 +66,7 @@ class JkBuildWorkspaceTest {
                 [workspace]
                 """);
         assertThat(parsed.isWorkspaceRoot()).isFalse();
-        assertThat(parsed.workspace().modules()).isEmpty();
+        assertThat(workspaceOf(parsed).modules()).isEmpty();
     }
 
     @Test
@@ -222,8 +224,10 @@ class JkBuildWorkspaceTest {
 
         JkBuild root = JkBuildParser.parse(tempDir.resolve("jk.toml"));
         Map<Path, JkBuild> modules = WorkspaceLoader.loadModules(tempDir, root);
-        assertThat(modules.get(lib).project().version()).isEqualTo("2.5.0");
-        assertThat(modules.get(lib).project().inheritsVersionFromWorkspace()).isFalse();
+        assertThat(modules).containsKey(lib);
+        var p = Objects.requireNonNull(modules.get(lib)).project();
+        assertThat(p.version()).isEqualTo("2.5.0");
+        assertThat(p.inheritsVersionFromWorkspace()).isFalse();
     }
 
     @Test
@@ -252,7 +256,8 @@ class JkBuildWorkspaceTest {
 
         JkBuild root = JkBuildParser.parse(tempDir.resolve("jk.toml"));
         Map<Path, JkBuild> modules = WorkspaceLoader.loadModules(tempDir, root);
-        var p = modules.get(lib).project();
+        assertThat(modules).containsKey(lib);
+        var p = Objects.requireNonNull(modules.get(lib)).project();
         assertThat(p.group()).isEqualTo("com.acme");
         assertThat(p.name()).isEqualTo("lib");
         assertThat(p.version()).isEqualTo("3.0.0");
@@ -283,7 +288,8 @@ class JkBuildWorkspaceTest {
 
         JkBuild root = JkBuildParser.parse(tempDir.resolve("jk.toml"));
         Map<Path, JkBuild> modules = WorkspaceLoader.loadModules(tempDir, root);
-        var p = modules.get(foo).project();
+        assertThat(modules).containsKey(foo);
+        var p = Objects.requireNonNull(modules.get(foo)).project();
         assertThat(p.name()).isEqualTo("foo");
         assertThat(p.group()).isEqualTo("com.acme");
         assertThat(p.version()).isEqualTo("1.0.0");
@@ -340,7 +346,7 @@ class JkBuildWorkspaceTest {
         Files.writeString(tempDir.resolve("libs/.hidden/jk.toml"), "name = \"hidden\"\n");
 
         JkBuild root = JkBuildParser.parse(tempDir.resolve("jk.toml"));
-        assertThat(WorkspaceModules.expand(tempDir, root.workspace().modules()))
+        assertThat(WorkspaceModules.expand(tempDir, workspaceOf(root).modules()))
                 .as("declared order for literals, sorted within a glob, duplicate collapsed")
                 .containsExactly("apps/web", "libs/beta", "libs/core");
         Map<Path, JkBuild> modules = WorkspaceLoader.loadModules(tempDir, root);

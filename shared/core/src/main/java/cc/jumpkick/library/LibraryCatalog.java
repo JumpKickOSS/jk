@@ -185,7 +185,7 @@ public final class LibraryCatalog {
     }
 
     /** View with project {@code jk-libs.toml} entries as the top layer. */
-    public LibraryCatalog withProjectOverrides(Map<String, Module> projectLibraries) {
+    public LibraryCatalog withProjectOverrides(@Nullable Map<String, Module> projectLibraries) {
         if (projectLibraries == null || projectLibraries.isEmpty()) return this;
         List<Layer> chain = new ArrayList<>(layers.size() + 1);
         chain.add(new Layer("project", Map.copyOf(projectLibraries)));
@@ -197,7 +197,7 @@ public final class LibraryCatalog {
      * Look up a short name. Walks layers in order; the first hit wins. Returns empty when no layer
      * carries the name.
      */
-    public Optional<Module> lookup(String name) {
+    public Optional<Module> lookup(@Nullable String name) {
         if (name == null) return Optional.empty();
         for (Layer layer : layers) {
             Module hit = layer.libraries.get(name);
@@ -210,7 +210,7 @@ public final class LibraryCatalog {
      * Reverse lookup: first short name whose module key equals {@code moduleKey} (layers in lookup
      * order). Empty when blank or unmapped.
      */
-    public Optional<String> nameForModule(String moduleKey) {
+    public Optional<String> nameForModule(@Nullable String moduleKey) {
         if (moduleKey == null || moduleKey.isBlank()) return Optional.empty();
         for (Layer layer : layers) {
             for (var e : layer.libraries.entrySet()) {
@@ -260,7 +260,7 @@ public final class LibraryCatalog {
      * <p>Walks the layered chain in lookup-priority order, so a project-level override shadows a
      * same-named bundled entry in the suggestion list too.
      */
-    public List<String> suggestionsFor(String unknownName, int maxResults) {
+    public List<String> suggestionsFor(@Nullable String unknownName, int maxResults) {
         if (unknownName == null || unknownName.isBlank() || maxResults <= 0) {
             return List.of();
         }

@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.model.Scope;
 import java.util.List;
+import java.util.Objects;
 import org.junit.jupiter.api.Test;
 
 class LockfileRoundTripTest {
@@ -284,7 +285,8 @@ class LockfileRoundTripTest {
         Lockfile parsed = LockfileReader.parse(rendered);
         assertThat(parsed.artifacts()).hasSize(1);
         assertThat(parsed.nativeMetadata()).isEqualTo(original.nativeMetadata());
-        assertThat(parsed.nativeMetadata().checksumHex()).isEqualTo("ab".repeat(32));
+        assertThat(Objects.requireNonNull(parsed.nativeMetadata()).checksumHex())
+                .isEqualTo("ab".repeat(32));
     }
 
     /** Locks written before the pin existed read as "no pin", not as a version to guess at. */

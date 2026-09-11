@@ -15,6 +15,7 @@ import java.nio.file.attribute.PosixFilePermission;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
@@ -39,12 +40,12 @@ class OfficialTemplatesFreshenTest {
         long elapsedMs = (System.nanoTime() - start) / 1_000_000;
         // Prefix plus containment, not equality — same contract as the exit-code message: what
         // went wrong, then which invocation.
+        String message = String.valueOf(e.getMessage());
         assertTrue(
-                e.getMessage().startsWith("git timed out after 2s"),
-                () -> "expected the timeout and its budget up front, got: " + e.getMessage());
+                message.startsWith("git timed out after 2s"),
+                () -> "expected the timeout and its budget up front, got: " + message);
         assertTrue(
-                e.getMessage().contains(script.toString()),
-                () -> "expected the stalled command to be named, got: " + e.getMessage());
+                message.contains(script.toString()), () -> "expected the stalled command to be named, got: " + message);
         // LIVENESS, not performance: the script sleeps 600s and runGit was given a 2s timeout, so
         // anything under 30s proves the timeout fired rather than the read blocking to EOF.
         assertTrue(
@@ -73,12 +74,11 @@ class OfficialTemplatesFreshenTest {
         Path missing = tmp.resolve("no-such-git-binary");
         IOException e =
                 assertThrows(IOException.class, () -> OfficialTemplatesFreshen.runGit(List.of(missing.toString()), 10));
+        String message = String.valueOf(e.getMessage());
         assertTrue(
-                e.getMessage().startsWith("git not on PATH"),
-                () -> "expected the not-on-PATH reason up front, got: " + e.getMessage());
-        assertTrue(
-                e.getMessage().contains(missing.toString()),
-                () -> "expected the command to be named, got: " + e.getMessage());
+                message.startsWith("git not on PATH"),
+                () -> "expected the not-on-PATH reason up front, got: " + message);
+        assertTrue(message.contains(missing.toString()), () -> "expected the command to be named, got: " + message);
     }
 
     @Test
@@ -99,14 +99,12 @@ class OfficialTemplatesFreshenTest {
         waiter.join(30_000);
         assertTrue(!waiter.isAlive(), "runGit did not settle after the interrupt");
 
-        IOException e = caught.get();
-        assertTrue(e != null, "expected runGit to surface the interrupt as an IOException");
+        IOException e =
+                Objects.requireNonNull(caught.get(), "expected runGit to surface the interrupt as an IOException");
+        String message = String.valueOf(e.getMessage());
         assertTrue(
-                e.getMessage().startsWith("git interrupted"),
-                () -> "expected the interrupt reason up front, got: " + e.getMessage());
-        assertTrue(
-                e.getMessage().contains(script.toString()),
-                () -> "expected the command to be named, got: " + e.getMessage());
+                message.startsWith("git interrupted"), () -> "expected the interrupt reason up front, got: " + message);
+        assertTrue(message.contains(script.toString()), () -> "expected the command to be named, got: " + message);
     }
 
     /**
@@ -119,15 +117,13 @@ class OfficialTemplatesFreshenTest {
         Path script = script("#!/bin/sh\necho 'progress noise' >&2\necho 'fatal: repository not found' >&2\nexit 3\n");
         IOException e =
                 assertThrows(IOException.class, () -> OfficialTemplatesFreshen.runGit(List.of(script.toString()), 10));
+        String message = String.valueOf(e.getMessage());
+        assertTrue(message.startsWith("git exit 3"), () -> "expected the exit code up front, got: " + message);
         assertTrue(
-                e.getMessage().startsWith("git exit 3"),
-                () -> "expected the exit code up front, got: " + e.getMessage());
+                message.contains(script.toString()), () -> "expected the failing command to be named, got: " + message);
         assertTrue(
-                e.getMessage().contains(script.toString()),
-                () -> "expected the failing command to be named, got: " + e.getMessage());
-        assertTrue(
-                e.getMessage().endsWith("fatal: repository not found"),
-                () -> "expected git's stderr to end the message, got: " + e.getMessage());
+                message.endsWith("fatal: repository not found"),
+                () -> "expected git's stderr to end the message, got: " + message);
     }
 
     /** A hung transport child must die with the git it belongs to, or the stalled connection lives on. */

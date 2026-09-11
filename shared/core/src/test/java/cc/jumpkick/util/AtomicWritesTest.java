@@ -37,7 +37,7 @@ class AtomicWritesTest {
     }
 
     /** Set by {@link #countBackOffs}; puts the production sleeper back after the test. */
-    private Runnable restoreBackOff;
+    private @Nullable Runnable restoreBackOff;
 
     @AfterEach
     void putTheBackOffBack() {

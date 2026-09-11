@@ -130,7 +130,7 @@ public final class PluginTableRegistry {
      * Register or replace a built-in manifest loaded from a self-describing plugin jar.
      * {@code archive} is the zip {@link #resourceText} reads plugin resources from.
      */
-    public static void putBuiltIn(PluginDescriptor manifest, Path archive) {
+    public static void putBuiltIn(PluginDescriptor manifest, @Nullable Path archive) {
         Objects.requireNonNull(manifest, "manifest");
         synchronized (PluginTableRegistry.class) {
             Map<String, PluginDescriptor> next = new LinkedHashMap<>(BY_TABLE);
@@ -155,7 +155,7 @@ public final class PluginTableRegistry {
      */
     private static volatile @Nullable Function<String, @Nullable String> MISSING_BUILT_IN_FETCHER;
 
-    public static void missingBuiltInFetcher(Function<String, @Nullable String> fetcher) {
+    public static void missingBuiltInFetcher(@Nullable Function<String, @Nullable String> fetcher) {
         MISSING_BUILT_IN_FETCHER = fetcher;
     }
 

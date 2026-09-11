@@ -96,9 +96,9 @@ class JkBuildParserProjectTest {
                 """);
         assertThat(parsed.project().isGroovy()).isTrue();
         assertThat(parsed.project().languageName()).isEqualTo("groovy");
-        assertThat(parsed.project().groovy()).isInstanceOf(VersionSelector.Exact.class);
-        assertThat(((VersionSelector.Exact) parsed.project().groovy()).version())
-                .isEqualTo("5.0.4");
+        assertThat(parsed.project().groovy())
+                .isInstanceOfSatisfying(VersionSelector.Exact.class, exact -> assertThat(exact.version())
+                        .isEqualTo("5.0.4"));
     }
 
     @Test
@@ -127,8 +127,9 @@ class JkBuildParserProjectTest {
                 """);
         assertThat(parsed.project().isScala()).isTrue();
         assertThat(parsed.project().languageName()).isEqualTo("scala");
-        assertThat(parsed.project().scala()).isInstanceOf(VersionSelector.Exact.class);
-        assertThat(((VersionSelector.Exact) parsed.project().scala()).version()).isEqualTo("3.8.4");
+        assertThat(parsed.project().scala())
+                .isInstanceOfSatisfying(VersionSelector.Exact.class, exact -> assertThat(exact.version())
+                        .isEqualTo("3.8.4"));
     }
 
     @Test

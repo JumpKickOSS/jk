@@ -104,7 +104,7 @@ public final class GlobalConfig {
     }
 
     /** As {@link #nerdFont(Path)} but with explicit env values — bypasses the color gate for tests. */
-    static NerdFontCaps nerdFont(Path configFile, String jkEnv, String hostEnv) {
+    static NerdFontCaps nerdFont(Path configFile, @Nullable String jkEnv, @Nullable String hostEnv) {
         return nerdFont(configFile, jkEnv, hostEnv, true);
     }
 
@@ -113,7 +113,8 @@ public final class GlobalConfig {
      * {@code auto} against the real environment; {@link #nerdFontMode} is the seam for tests that
      * need to pin detection.
      */
-    static NerdFontCaps nerdFont(Path configFile, String jkEnv, String hostEnv, boolean colorEnabled) {
+    static NerdFontCaps nerdFont(
+            Path configFile, @Nullable String jkEnv, @Nullable String hostEnv, boolean colorEnabled) {
         if (!colorEnabled) return NerdFontCaps.NONE;
         NerdFontMode mode = nerdFontMode(configFile, jkEnv, hostEnv);
         return mode == NerdFontMode.AUTO ? NerdFontDetect.detect().caps() : mode.fixedCaps();

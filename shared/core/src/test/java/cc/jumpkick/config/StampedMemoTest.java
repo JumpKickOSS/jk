@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -59,8 +60,7 @@ class StampedMemoTest {
     void a_file_stamp_moves_with_size_or_mtime(@TempDir Path dir) throws Exception {
         Path f = dir.resolve("x.toml");
         Files.writeString(f, "aaa");
-        StampedMemo.FileStamp first = StampedMemo.FileStamp.of(f);
-        assertThat(first).isNotNull();
+        StampedMemo.FileStamp first = Objects.requireNonNull(StampedMemo.FileStamp.of(f), "stamp of an existing file");
 
         Files.writeString(f, "bbb");
         Files.setLastModifiedTime(f, first.modified());
@@ -134,7 +134,8 @@ class StampedMemoTest {
                         "config.toml",
                         Stamp.FILE,
                         m -> "[plugins]\nspring-boot = { path = \"/tmp/" + m + ".jar\", sha256 = \"" + SHA + "\" }\n",
-                        f -> lastSegment(UserPlugins.fromConfig(f).getFirst().path())
+                        f -> lastSegment(Objects.requireNonNull(
+                                        UserPlugins.fromConfig(f).getFirst().path()))
                                 .replace(".jar", "")),
                 new Memo(
                         "JkBuildParser PARSE_CACHE",

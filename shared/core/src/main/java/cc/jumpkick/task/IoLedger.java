@@ -129,7 +129,7 @@ public final class IoLedger {
     }
 
     /** As {@link #localDown(long)}, taking the size of a file already on disk. */
-    public void localDown(Path file) {
+    public void localDown(@Nullable Path file) {
         localDown(sizeOf(file));
     }
 
@@ -139,7 +139,7 @@ public final class IoLedger {
     }
 
     /** A file's size on disk, or {@code 0} when it can't be stat'ed (vanished, unreadable, null). */
-    public static long sizeOf(Path file) {
+    public static long sizeOf(@Nullable Path file) {
         if (file == null) return 0L;
         try {
             return Files.size(file);
