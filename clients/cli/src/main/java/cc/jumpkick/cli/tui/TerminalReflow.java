@@ -36,7 +36,7 @@ final class TerminalReflow {
     }
 
     /** Injectable for tests. */
-    static boolean detect(Function<String, String> env) {
+    static boolean detect(Function<String, @Nullable String> env) {
         // VTE family (gnome-terminal, xfce4-terminal, tilix, …) rewraps on resize.
         if (notBlank(env.apply("VTE_VERSION"))) return true;
         // Windows Terminal rewraps.
@@ -84,7 +84,7 @@ final class TerminalReflow {
     }
 
     /** Test hook: pin the answer ({@code null} re-detects from the real environment). */
-    static void force(Boolean value) {
+    static void force(@Nullable Boolean value) {
         cached = value;
     }
 
@@ -93,11 +93,11 @@ final class TerminalReflow {
         cached = null;
     }
 
-    private static String lower(String s) {
+    private static String lower(@Nullable String s) {
         return s == null ? "" : s.toLowerCase(Locale.ROOT);
     }
 
-    private static boolean notBlank(String s) {
+    private static boolean notBlank(@Nullable String s) {
         return s != null && !s.isBlank();
     }
 }

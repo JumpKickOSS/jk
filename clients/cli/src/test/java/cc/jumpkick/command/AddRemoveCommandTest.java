@@ -7,11 +7,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.model.Workspace;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Objects;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -220,7 +222,7 @@ class AddRemoveCommandTest {
 
         JkBuild parsed = JkBuildParser.parse(tempDir.resolve("jk.toml"));
         assertThat(parsed.isWorkspaceRoot()).isTrue();
-        assertThat(parsed.workspace().modules()).containsExactly("libb");
+        assertThat(workspaceOf(parsed).modules()).containsExactly("libb");
         assertThat(parsed.dependencies().of(Scope.MAIN)).isNotEmpty();
     }
 
@@ -236,13 +238,13 @@ class AddRemoveCommandTest {
                 version = "0.2.0"
                 """);
         assertThat(run("add", "./libb", "-C", tempDir.toString())).isEqualTo(0);
-        assertThat(JkBuildParser.parse(tempDir.resolve("jk.toml")).workspace().modules())
+        assertThat(workspaceOf(JkBuildParser.parse(tempDir.resolve("jk.toml"))).modules())
                 .contains("libb");
 
         assertThat(run("remove", "./libb", "-C", tempDir.toString())).isEqualTo(0);
         JkBuild parsed = JkBuildParser.parse(tempDir.resolve("jk.toml"));
         assertThat(parsed.dependencies().of(Scope.MAIN)).isEmpty();
-        assertThat(parsed.workspace().modules()).doesNotContain("libb");
+        assertThat(workspaceOf(parsed).modules()).doesNotContain("libb");
     }
 
     @Test
@@ -275,5 +277,10 @@ class AddRemoveCommandTest {
         Files.createDirectories(tempDir.resolve("mod"));
         int exit = run("add", "./mod", "--ver", "1.0", "-C", tempDir.toString());
         assertThat(exit).isEqualTo(64);
+    }
+
+    private static Workspace workspaceOf(JkBuild build) {
+        assertThat(build.workspace()).as("[workspace] table").isNotNull();
+        return Objects.requireNonNull(build.workspace());
     }
 }

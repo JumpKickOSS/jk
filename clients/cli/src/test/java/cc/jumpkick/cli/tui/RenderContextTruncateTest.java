@@ -30,7 +30,7 @@ class RenderContextTruncateTest {
 
     @Test
     void truncate_visible_cuts_at_column_keeping_escapes() {
-        String colored = Theme.colorize("abcdef", Theme.active().success());
+        String colored = Theme.paint("abcdef", Theme.active().success());
         // Hard-truncate: reserve one column for … so the line never wraps.
         String cut = RenderContext.truncateVisible(colored, 3);
         assertThat(TestAnsi.strip(cut)).isEqualTo("ab…");
@@ -39,7 +39,7 @@ class RenderContextTruncateTest {
 
     @Test
     void truncate_visible_returns_verbatim_when_it_fits() {
-        String colored = Theme.colorize("abcdef", Theme.active().success());
+        String colored = Theme.paint("abcdef", Theme.active().success());
         // Fits in 6 columns → original bytes preserved exactly (jk's SGR byte order).
         assertThat(RenderContext.truncateVisible(colored, 6)).isEqualTo(colored);
         assertThat(RenderContext.truncateVisible("plain", 10)).isEqualTo("plain");

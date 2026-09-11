@@ -34,6 +34,8 @@ class SiblingTestsKindGeneratorTest {
     }
 
     @Test
+    // The null SDKs are deliberate: modules that declare none.
+    @SuppressWarnings("NullAway")
     void intellij_main_plus_tests_kind_sibling_gets_one_module_entry(@TempDir Path ws) {
         Path appDir = ws.resolve("app");
         Path coreDir = ws.resolve("widget-core");
@@ -64,6 +66,8 @@ class SiblingTestsKindGeneratorTest {
     }
 
     @Test
+    // The null SDKs are deliberate: modules that declare none.
+    @SuppressWarnings("NullAway")
     void intellij_pure_tests_kind_sibling_is_test_scoped_with_attachment(@TempDir Path ws) {
         Path appDir = ws.resolve("app");
         Path coreDir = ws.resolve("widget-core");
@@ -89,6 +93,8 @@ class SiblingTestsKindGeneratorTest {
     }
 
     @Test
+    // The null default SDK is deliberate: a workspace that declares none.
+    @SuppressWarnings("NullAway")
     void vscode_main_plus_tests_kind_sibling_gets_one_src_entry(@TempDir Path ws) {
         Path appDir = ws.resolve("app");
         Path coreDir = ws.resolve("widget-core");

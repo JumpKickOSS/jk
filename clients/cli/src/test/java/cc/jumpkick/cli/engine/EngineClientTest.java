@@ -281,6 +281,8 @@ class EngineClientTest {
      * paired with this client version. No client-binary FALLBACK.
      */
     @Test
+    // The null override is deliberate: no JK_ENGINE_EXE in the environment.
+    @SuppressWarnings("NullAway")
     void engine_artifact_resolution_prefers_override_then_product_lib() throws IOException {
         Path dir = tempDirs.create();
         // Pointer lives beside the jars under this isolated product lib — no ambient JK_HOME involved.

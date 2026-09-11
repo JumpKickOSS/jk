@@ -15,6 +15,7 @@ import java.time.Duration;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -120,6 +121,8 @@ class CliSessionTranscriptTest {
     }
 
     @Test
+    // The null project is deliberate: it proves open() declines rather than throws.
+    @SuppressWarnings("NullAway")
     void open_null_project_is_noop() {
         assertEquals(null, CliSessionTranscript.open(null, "build"));
         assertEquals(null, CliSessionTranscript.open(Path.of("."), "  "));
@@ -206,7 +209,8 @@ class CliSessionTranscriptTest {
         Path file = bind(session, project);
         String first = Files.readAllLines(file).get(0);
         Map<String, Object> doc = (Map<String, Object>) MiniJson.parse(first);
-        assertEquals(CliSessionTranscript.SCHEMA, ((Number) doc.get("schema")).intValue());
+        assertTrue(doc.containsKey("schema"));
+        assertEquals(CliSessionTranscript.SCHEMA, ((Number) Objects.requireNonNull(doc.get("schema"))).intValue());
         assertEquals("session-start", doc.get("type"));
         session.finish(0);
     }

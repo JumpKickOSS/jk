@@ -11,6 +11,7 @@ import cc.jumpkick.testing.Await;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.time.Duration;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -99,8 +100,7 @@ class PeekKeysTest {
     void close_twice_restores_the_mode_exactly_once() {
         MemoryTerminal t = Terminals.memory(new FeedStream(), new ByteArrayOutputStream());
         try (ModeGuard outer = t.enter(InputMode.PROMPT)) {
-            PeekKeys keys = PeekKeys.attach(t, () -> {}, () -> false);
-            assertThat(keys).isNotNull();
+            PeekKeys keys = Objects.requireNonNull(PeekKeys.attach(t, () -> {}, () -> false));
             assertThat(t.mode()).isEqualTo(InputMode.PLAN_KEYS);
             keys.close();
             assertThat(t.mode()).isEqualTo(InputMode.PROMPT);

@@ -149,7 +149,7 @@ public final class AuthLoginCommand implements CliCommand {
     }
 
     static Optional<String> oauthClientId(
-            ForgeKind kind, String host, Function<String, String> env, ForgeAuthConfig config) {
+            ForgeKind kind, String host, Function<String, @Nullable String> env, ForgeAuthConfig config) {
         String fromEnv = env.apply(kind.oauthClientIdEnvVar());
         if (fromEnv != null && !fromEnv.isBlank()) return Optional.of(fromEnv.strip());
         Optional<String> fromConfig = config.oauthClientId(kind.id(), host);

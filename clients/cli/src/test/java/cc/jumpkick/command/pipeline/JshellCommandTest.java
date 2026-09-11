@@ -11,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -47,8 +48,9 @@ class JshellCommandTest {
         Path classes = tempDir.resolve("target/classes/main");
         assertThat(Files.isDirectory(classes)).isTrue();
         Path jshell = JshellCommand.findJshell();
+        assertThat(jshell).as("jshell beside the test JVM").isNotNull();
         List<String> cmd = new ArrayList<>();
-        cmd.add(jshell.toString());
+        cmd.add(Objects.requireNonNull(jshell).toString());
         cmd.add("--class-path");
         cmd.add(classes.toString());
         cmd.add("-q");

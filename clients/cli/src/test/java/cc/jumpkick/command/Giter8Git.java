@@ -12,6 +12,7 @@ import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Fetch remote Giter8 templates via {@code git clone} into {@link JkDirs#templates()}.
@@ -167,7 +168,7 @@ public final class Giter8Git {
         return new Parsed(url, rev, cacheKeyForUrl(url, rev));
     }
 
-    private static String cacheKeyForUrl(String url, String rev) {
+    private static String cacheKeyForUrl(String url, @Nullable String rev) {
         String base = url.toLowerCase(Locale.ROOT)
                 .replaceAll("^https?://", "")
                 .replaceAll("^git@", "")
@@ -218,7 +219,7 @@ public final class Giter8Git {
         }
     }
 
-    record Parsed(String url, String rev, String cacheKey) {
+    record Parsed(String url, @Nullable String rev, String cacheKey) {
         List<String> cloneArgs(Path dest) {
             List<String> args = new ArrayList<>();
             args.add("git");

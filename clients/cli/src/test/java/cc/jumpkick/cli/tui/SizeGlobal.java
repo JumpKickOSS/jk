@@ -5,6 +5,7 @@ import cc.jumpkick.config.testing.BoundedGlobal;
 import cc.jumpkick.terminal.Size;
 import java.util.Optional;
 import java.util.function.Supplier;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code Size.probe} plus the window it memoizes.
@@ -29,7 +30,7 @@ public final class SizeGlobal implements BoundedGlobal {
 
     @Override
     @SuppressWarnings("unchecked")
-    public void restore(Object captured) {
+    public void restore(@Nullable Object captured) {
         if (captured instanceof Supplier<?> s) Size.probe = (Supplier<Size.Window>) s;
         Size.reset();
     }

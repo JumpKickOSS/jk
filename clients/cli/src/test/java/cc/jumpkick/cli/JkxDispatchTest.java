@@ -33,6 +33,8 @@ class JkxDispatchTest {
     }
 
     @Test
+    // A null argv[0] is deliberate: the launcher name may be unknown.
+    @SuppressWarnings("NullAway")
     void basename_strips_directories_case_and_exe() {
         assertThat(Argv0.baseName("/home/user/.jk/bin/jkx")).isEqualTo("jkx");
         assertThat(Argv0.baseName("jkx")).isEqualTo("jkx");

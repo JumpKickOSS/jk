@@ -8,6 +8,7 @@ import cc.jumpkick.cli.theme.Theme;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
+import java.util.Objects;
 import org.junit.jupiter.api.Test;
 
 /** Unicode chrome → ASCII under plain / --no-ansi. */
@@ -63,7 +64,8 @@ class PlainAsciiTest {
     void wrap_stream_rewrites_println() throws Exception {
         NoAnsi.forced(() -> {
             var buf = new ByteArrayOutputStream();
-            PrintStream wrapped = PlainAscii.wrap(new PrintStream(buf, true, StandardCharsets.UTF_8));
+            PrintStream wrapped =
+                    Objects.requireNonNull(PlainAscii.wrap(new PrintStream(buf, true, StandardCharsets.UTF_8)));
             wrapped.println("Waiting for authorization…");
             assertThat(buf.toString(StandardCharsets.UTF_8).trim()).isEqualTo("Waiting for authorization...");
             return null;

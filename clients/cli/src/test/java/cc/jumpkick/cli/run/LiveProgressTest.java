@@ -4,6 +4,7 @@ package cc.jumpkick.cli.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
+import java.util.Objects;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -33,8 +34,10 @@ class LiveProgressTest {
         p.update(10, 0);
         assertThat(p.percent()).isNull();
         p.update(1, 3);
-        assertThat(p.percent()).isEqualTo(33.3);
-        assertThat(WorkspaceProgressTracker.progressToken(p.percent())).isEqualTo("33.3");
+        Double percent = p.percent();
+        assertThat(percent).isEqualTo(33.3);
+        assertThat(WorkspaceProgressTracker.progressToken(Objects.requireNonNull(percent)))
+                .isEqualTo("33.3");
     }
 
     @Test

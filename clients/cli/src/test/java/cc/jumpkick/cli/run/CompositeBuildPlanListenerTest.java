@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import cc.jumpkick.run.BuildPlanListener;
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -20,12 +21,14 @@ class CompositeBuildPlanListenerTest {
         final List<String> events = new ArrayList<>();
 
         @Override
-        public void stepStart(String step, String group, int ticks) {
+        public void stepStart(String step, @Nullable String group, int ticks) {
             events.add("start:" + step);
         }
     }
 
     @Test
+    // The null listener is deliberate: of() must tolerate an absent side.
+    @SuppressWarnings("NullAway")
     void null_first_returns_second() {
         Recording second = new Recording();
         BuildPlanListener l = CompositeBuildPlanListener.of(null, second);
@@ -34,6 +37,8 @@ class CompositeBuildPlanListenerTest {
     }
 
     @Test
+    // The null listener is deliberate: of() must tolerate an absent side.
+    @SuppressWarnings("NullAway")
     void null_second_returns_first() {
         Recording first = new Recording();
         BuildPlanListener l = CompositeBuildPlanListener.of(first, null);
@@ -42,6 +47,8 @@ class CompositeBuildPlanListenerTest {
     }
 
     @Test
+    // The null listeners are deliberate: of() must tolerate both sides absent.
+    @SuppressWarnings("NullAway")
     void both_null_is_a_safe_noop() {
         BuildPlanListener l = CompositeBuildPlanListener.of(null, null);
         assertThatCode(() -> l.stepStart("compile-java", null, 1)).doesNotThrowAnyException();

@@ -7,12 +7,14 @@ import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Workspace;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Objects;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -408,7 +410,7 @@ class NewCommandTest {
 
         // Registered in the root [workspace].modules.
         JkBuild root = JkBuildParser.parse(tempDir.resolve("jk.toml"));
-        assertThat(root.workspace().modules()).containsExactly("core", "app");
+        assertThat(workspaceOf(root).modules()).containsExactly("core", "app");
     }
 
     @Test
@@ -428,5 +430,10 @@ class NewCommandTest {
         var output = captured.toString(StandardCharsets.UTF_8);
         assertThat(output).doesNotContain("\u001b[?1049h"); // alt-screen toggle
         assertThat(output).doesNotContain("\u001b[6n"); // device status report (raw mode cursor query)
+    }
+
+    private static Workspace workspaceOf(JkBuild build) {
+        assertThat(build.workspace()).as("[workspace] table").isNotNull();
+        return Objects.requireNonNull(build.workspace());
     }
 }

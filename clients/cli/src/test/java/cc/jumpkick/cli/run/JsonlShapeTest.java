@@ -9,6 +9,7 @@ import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
 import java.time.Duration;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -165,7 +166,7 @@ class JsonlShapeTest {
         assertThat(done).contains("\"type\":\"workspace-finish\"");
     }
 
-    private static GlobalOptions optsWithOutput(String output) {
+    private static GlobalOptions optsWithOutput(@Nullable String output) {
         // Minimal Invocation stand-in: GlobalOptions.from needs a real Invocation.
         // Set field directly for unit isolation.
         GlobalOptions g = new GlobalOptions();

@@ -6,10 +6,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Workspace;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Objects;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -53,7 +55,7 @@ class AddCommandTest {
 
         // libb is now registered in the workspace root.
         JkBuild root = JkBuildParser.parse(tmp.resolve("jk.toml"));
-        assertThat(root.workspace().modules()).containsExactly("app", "libb");
+        assertThat(workspaceOf(root).modules()).containsExactly("app", "libb");
     }
 
     @Test
@@ -73,7 +75,7 @@ class AddCommandTest {
         assertThat(exit).isEqualTo(0);
         assertThat(Files.readString(tmp.resolve("jk.toml")))
                 .contains("jackson = { group = \"cc.jumpkick\", version = \"=1.0.0\" }");
-        assertThat(JkBuildParser.parse(tmp.resolve("jk.toml")).workspace().modules())
+        assertThat(workspaceOf(JkBuildParser.parse(tmp.resolve("jk.toml"))).modules())
                 .containsExactly("core", "jackson");
     }
 
@@ -91,7 +93,7 @@ class AddCommandTest {
 
         int exit = Jk.execute("add", "jackson/", "-C", tmp.toString());
         assertThat(exit).isEqualTo(0);
-        assertThat(JkBuildParser.parse(tmp.resolve("jk.toml")).workspace().modules())
+        assertThat(workspaceOf(JkBuildParser.parse(tmp.resolve("jk.toml"))).modules())
                 .containsExactly("core", "jackson");
     }
 
@@ -113,7 +115,7 @@ class AddCommandTest {
         assertThat(exit).isEqualTo(0);
         assertThat(Files.readString(tmp.resolve("app/jk.toml")))
                 .contains("libb = { group = \"cc.jumpkick\", version = \"=0.2.0\" }");
-        assertThat(JkBuildParser.parse(tmp.resolve("jk.toml")).workspace().modules())
+        assertThat(workspaceOf(JkBuildParser.parse(tmp.resolve("jk.toml"))).modules())
                 .containsExactly("app", "libb");
     }
 
@@ -134,7 +136,7 @@ class AddCommandTest {
         assertThat(exit).isEqualTo(0);
         assertThat(Files.readString(tmp.resolve("jk.toml")))
                 .contains("jackson = { group = \"cc.jumpkick\", version = \"=1.0.0\" }");
-        assertThat(JkBuildParser.parse(tmp.resolve("jk.toml")).workspace().modules())
+        assertThat(workspaceOf(JkBuildParser.parse(tmp.resolve("jk.toml"))).modules())
                 .containsExactly("core", "jackson");
     }
 
@@ -152,7 +154,7 @@ class AddCommandTest {
 
         int exit = Jk.execute("add", "not-a-catalog-lib-xyz", "-C", tmp.toString());
         assertThat(exit).isEqualTo(64);
-        assertThat(JkBuildParser.parse(tmp.resolve("jk.toml")).workspace().modules())
+        assertThat(workspaceOf(JkBuildParser.parse(tmp.resolve("jk.toml"))).modules())
                 .isEmpty();
     }
 
@@ -173,7 +175,7 @@ class AddCommandTest {
         assertThat(exit).isEqualTo(0);
         // Catalog library, not the local module's version.
         assertThat(Files.readString(tmp.resolve("jk.toml"))).contains("jackson3-core = \"3.1.0\"");
-        assertThat(JkBuildParser.parse(tmp.resolve("jk.toml")).workspace().modules())
+        assertThat(workspaceOf(JkBuildParser.parse(tmp.resolve("jk.toml"))).modules())
                 .isEmpty();
     }
 
@@ -280,6 +282,11 @@ class AddCommandTest {
         assertThat(toml).contains("bar = { group = \"com.foo.add\", version = \"=1.2.3\" }");
         // Coord add must not touch the modules list.
         JkBuild root = JkBuildParser.parse(tmp.resolve("jk.toml"));
-        assertThat(root.workspace().modules()).containsExactly("app");
+        assertThat(workspaceOf(root).modules()).containsExactly("app");
+    }
+
+    private static Workspace workspaceOf(JkBuild build) {
+        assertThat(build.workspace()).as("[workspace] table").isNotNull();
+        return Objects.requireNonNull(build.workspace());
     }
 }

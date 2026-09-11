@@ -14,6 +14,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
@@ -43,7 +44,7 @@ class CommandDispatchTest {
                 .isFalse();
         var wh = CommandDispatch.resolveName("wh");
         assertThat(wh.resolved()).as("jk wh → why, not ambiguous").isTrue();
-        assertThat(wh.value().name()).isEqualTo("why");
+        assertThat(Objects.requireNonNull(wh.value()).name()).isEqualTo("why");
         assertThat(CommandDispatch.resolveName("why-rebuilt").resolved())
                 .as("why-rebuilt is a rewrite, not a dispatcher name")
                 .isFalse();
@@ -118,9 +119,9 @@ class CommandDispatchTest {
         // Hidden aliases stay out of help names.
         var byCanonical = new HashMap<String, Opt>();
         for (var g : GlobalOptions.globalOpts()) byCanonical.put(g.canonicalName(), g);
-        assertThat(byCanonical.get("redo").aliases()).containsExactly("--rebuild");
-        assertThat(byCanonical.get("dir").aliases()).containsExactly("--directory");
-        assertThat(byCanonical.get("ram-percent").aliases()).containsExactly("--max-ram-percent");
+        assertThat(global(byCanonical, "redo").aliases()).containsExactly("--rebuild");
+        assertThat(global(byCanonical, "dir").aliases()).containsExactly("--directory");
+        assertThat(global(byCanonical, "ram-percent").aliases()).containsExactly("--max-ram-percent");
     }
 
     @Test
@@ -149,10 +150,15 @@ class CommandDispatchTest {
             byCanonical.put(g.canonicalName(), g);
         }
         // -F/--force; -r/--redo with --rebuild as a hidden alias (not in help names).
-        assertThat(byCanonical.get("force").names()).containsExactly("-F", "--force");
-        assertThat(byCanonical.get("force").aliases()).isEmpty();
-        assertThat(byCanonical.get("redo").names()).containsExactly("-r", "--redo");
-        assertThat(byCanonical.get("redo").aliases()).containsExactly("--rebuild");
+        assertThat(global(byCanonical, "force").names()).containsExactly("-F", "--force");
+        assertThat(global(byCanonical, "force").aliases()).isEmpty();
+        assertThat(global(byCanonical, "redo").names()).containsExactly("-r", "--redo");
+        assertThat(global(byCanonical, "redo").aliases()).containsExactly("--rebuild");
+    }
+
+    private static Opt global(Map<String, Opt> byCanonical, String canonicalName) {
+        assertThat(byCanonical).containsKey(canonicalName);
+        return Objects.requireNonNull(byCanonical.get(canonicalName));
     }
 
     private static void assertNoGlobalCollision(CliCommand cmd, String qualified, Set<String> globals) {

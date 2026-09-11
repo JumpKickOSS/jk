@@ -51,6 +51,8 @@ class StatusCommandTest {
     }
 
     @Test
+    // The nulls are deliberate: the status fields the engine leaves absent.
+    @SuppressWarnings("NullAway")
     void engineStatusMessage_shapes_running_and_down() {
         String down = TestAnsi.strip(StatusCommand.engineStatusMessage(Optional.empty()));
         assertThat(down).isEqualTo("JumpKick Engine v" + JkVersion.VERSION + " is not running");

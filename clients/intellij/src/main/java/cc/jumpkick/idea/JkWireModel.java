@@ -27,9 +27,9 @@ public final class JkWireModel {
     public final @NotNull List<String> libSources;
 
     private JkWireModel(
-            String error,
-            String wsRoot,
-            String rootName,
+            @Nullable String error,
+            @Nullable String wsRoot,
+            @Nullable String rootName,
             boolean workspace,
             List<String> moduleDirs,
             List<String> names,

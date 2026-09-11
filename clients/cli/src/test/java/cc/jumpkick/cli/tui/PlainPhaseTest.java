@@ -30,6 +30,8 @@ class PlainPhaseTest {
     }
 
     @Test
+    // The null step is deliberate: an unknown step maps to the prepare phase.
+    @SuppressWarnings("NullAway")
     void unknown_is_prepare() {
         assertThat(PlainPhase.status((String) null)).isEqualTo(PlainPhase.PREPARE);
         assertThat(PlainPhase.status("")).isEqualTo(PlainPhase.PREPARE);

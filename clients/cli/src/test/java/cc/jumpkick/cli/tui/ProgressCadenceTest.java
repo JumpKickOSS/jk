@@ -15,6 +15,8 @@ class ProgressCadenceTest {
     }
 
     @Test
+    // The nulls are deliberate: the canonical constructor normalizes them.
+    @SuppressWarnings("NullAway")
     void canonical_constructor_normalizes_every_component() {
         // The canonical constructor is public by record rule, so it is API: null/non-positive
         // components must land normalized, exactly as the two-arg convenience and withers do.

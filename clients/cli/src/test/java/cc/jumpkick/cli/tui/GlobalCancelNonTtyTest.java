@@ -30,6 +30,7 @@ import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -71,7 +72,7 @@ class GlobalCancelNonTtyTest {
      * {@code UnixSocketPaths.MAX_PATH_LENGTH} characters — the module's {@code build/tmp} JUnit
      * root is well past that once the socket name is appended.
      */
-    private Path home;
+    private @Nullable Path home;
 
     @AfterEach
     void removeHome() throws IOException {
@@ -256,7 +257,7 @@ class GlobalCancelNonTtyTest {
         private final OnCancel onCancel;
         private final ConcurrentLinkedQueue<String> cancels = new ConcurrentLinkedQueue<>();
         private final ConcurrentLinkedQueue<String> unexpected = new ConcurrentLinkedQueue<>();
-        private volatile SocketChannel jobConnection;
+        private volatile @Nullable SocketChannel jobConnection;
         final CountDownLatch jobStarted = new CountDownLatch(1);
         final long jid = 42L;
 
@@ -351,7 +352,7 @@ class GlobalCancelNonTtyTest {
             w.flush();
         }
 
-        private static void closeQuietly(SocketChannel ch) {
+        private static void closeQuietly(@Nullable SocketChannel ch) {
             if (ch == null) return;
             try {
                 ch.close();

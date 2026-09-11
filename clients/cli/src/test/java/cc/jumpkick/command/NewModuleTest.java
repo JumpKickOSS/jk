@@ -9,10 +9,12 @@ import cc.jumpkick.command.project.NewCommand;
 import cc.jumpkick.command.project.NewWizard;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Workspace;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
+import java.util.Objects;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -55,7 +57,7 @@ class NewModuleTest {
         // The plain parent was promoted to a workspace root with the module.
         JkBuild root = JkBuildParser.parse(tempDir.resolve("jk.toml"));
         assertThat(root.isWorkspaceRoot()).isTrue();
-        assertThat(root.workspace().modules()).containsExactly("widget");
+        assertThat(workspaceOf(root).modules()).containsExactly("widget");
     }
 
     @Test
@@ -185,5 +187,10 @@ class NewModuleTest {
         var map = new HashMap<String, Object>();
         for (int i = 0; i < kv.length; i += 2) map.put(kv[i], kv[i + 1]);
         return Answers.of(map);
+    }
+
+    private static Workspace workspaceOf(JkBuild build) {
+        assertThat(build.workspace()).as("[workspace] table").isNotNull();
+        return Objects.requireNonNull(build.workspace());
     }
 }

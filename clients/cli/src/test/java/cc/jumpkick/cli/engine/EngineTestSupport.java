@@ -16,6 +16,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Suite fixture for wire-only CLI tests: materialize {@code jk-engine} into the test {@code JK_HOME}
@@ -83,7 +84,7 @@ public final class EngineTestSupport {
      * {@code -Djk.engine.jar}, workspace assembly (module-local or Mill-style {@code
      * target/<rel>/}), or the installed engine under {@link EngineInstall}.
      */
-    static Path resolveEngineJar() {
+    static @Nullable Path resolveEngineJar() {
         String jarProp = System.getProperty("jk.engine.jar");
         if (jarProp != null && !jarProp.isBlank()) {
             Path p = Path.of(jarProp);

@@ -5,6 +5,7 @@ import cc.jumpkick.host.Os;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Path;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 
 /** Identifies the platform-default engine location superseded by the single JumpKick home. */
 final class RetiredEngineLayouts {
@@ -17,7 +18,7 @@ final class RetiredEngineLayouts {
         return platformDefault(JkDirs::env, Path.of(System.getProperty("user.home")), Os.isWindows());
     }
 
-    static Layout platformDefault(Function<String, String> env, Path userHome, boolean windows) {
+    static Layout platformDefault(Function<String, @Nullable String> env, Path userHome, boolean windows) {
         if (windows) {
             Path local = pathOrDefault(
                     env.apply("LOCALAPPDATA"), userHome.resolve("AppData").resolve("Local"));
@@ -31,7 +32,7 @@ final class RetiredEngineLayouts {
         return new Layout(data.resolve("jk"), state.resolve("jk"));
     }
 
-    private static Path pathOrDefault(String value, Path fallback) {
+    private static Path pathOrDefault(@Nullable String value, Path fallback) {
         return value == null || value.isBlank() ? fallback : Path.of(value);
     }
 }

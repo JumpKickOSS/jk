@@ -30,6 +30,8 @@ class OutputWindowTest {
     }
 
     @Test
+    // The null line is deliberate: append() must ignore it.
+    @SuppressWarnings("NullAway")
     void append_reports_acceptance_even_when_ring_is_full() {
         // Once full, every accepted append still returns true and evicts one line; size alone is not rejection.
         OutputWindow w = new OutputWindow();
@@ -340,6 +342,8 @@ class OutputWindowTest {
     }
 
     @Test
+    // The null step is deliberate: an unnamed failure still opens the pane.
+    @SuppressWarnings("NullAway")
     void force_show_on_step_failure_excludes_run_tests() {
         assertThat(OutputPane.forceShowOnStepFailure("native-image")).isTrue();
         // compile-test is group Test too and must force-open — step identity decides, not group.

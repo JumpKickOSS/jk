@@ -31,6 +31,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.function.IntSupplier;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -161,6 +162,8 @@ class SelfNukeCommandTest {
 
         var hosted = new SelfNukeCommand.Hosted() {
             boolean storageAsked;
+
+            @Nullable
             Boolean cacheDryRun;
 
             @Override
@@ -700,7 +703,7 @@ class SelfNukeCommandTest {
         assertThat(roots).noneMatch(p -> lib.equals(p) || lib.startsWith(p));
     }
 
-    private static Function<String, String> env(String... kv) {
+    private static Function<String, @Nullable String> env(String... kv) {
         Map<String, String> map = new HashMap<>();
         for (int i = 0; i < kv.length; i += 2) map.put(kv[i], kv[i + 1]);
         return map::get;

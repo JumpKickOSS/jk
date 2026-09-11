@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cli.testing.Capture;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -135,7 +136,8 @@ class WorkspaceCompileTest {
         return root;
     }
 
-    private static void module(Path root, String rel, String name, String dependsOn, String type, String source)
+    private static void module(
+            Path root, String rel, String name, @Nullable String dependsOn, String type, String source)
             throws Exception {
         Path dir = root.resolve(rel);
         Path src = dir.resolve("src/main/java/com/example/" + name);

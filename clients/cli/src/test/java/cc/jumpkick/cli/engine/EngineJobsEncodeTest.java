@@ -39,6 +39,8 @@ class EngineJobsEncodeTest {
     }
 
     @Test
+    // The null selection is deliberate: the request normalizes it to the default.
+    @SuppressWarnings("NullAway")
     void the_single_build_request_carries_a_selection_too() {
         TestSelection widened = TestSelection.of(List.of(), true, List.of(), List.of(), true);
 
@@ -54,6 +56,8 @@ class EngineJobsEncodeTest {
 
     /** A package build ships the client-resolved GraalVM home of every always-native module. */
     @Test
+    // The null selection is deliberate: the request normalizes it to the default.
+    @SuppressWarnings("NullAway")
     void graal_homes_ride_the_package_build_request() {
         // The wire carries each path as the platform renders it, so the expectation is the same
         // rendering rather than one platform's spelling of it.

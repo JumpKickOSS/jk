@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Best-effort "open this URL in a browser". Prefer {@code $BROWSER} when set; else platform default
@@ -25,7 +26,7 @@ public final class OpenBrowser {
     }
 
     /** Testable variant: {@code env} supplies {@code BROWSER} (and any future vars). */
-    static boolean open(String url, Function<String, String> env) {
+    static boolean open(String url, Function<String, @Nullable String> env) {
         if (url == null || url.isBlank()) return false;
         List<String> cmd = command(url, env, Os.name());
         if (cmd.isEmpty()) return false;
@@ -44,7 +45,7 @@ public final class OpenBrowser {
      * Argv used to open {@code url}. Empty when nothing sensible can be built. Package-visible for
      * unit tests.
      */
-    static List<String> command(String url, Function<String, String> env, String osName) {
+    static List<String> command(String url, Function<String, @Nullable String> env, String osName) {
         if (url == null || url.isBlank()) return List.of();
         String browser = env != null ? env.apply("BROWSER") : null;
         if (browser != null && !browser.isBlank()) {

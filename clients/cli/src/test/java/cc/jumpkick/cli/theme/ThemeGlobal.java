@@ -3,6 +3,7 @@ package cc.jumpkick.cli.theme;
 
 import cc.jumpkick.config.testing.BoundedGlobal;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code Theme.Holder.active}, the process-wide active theme.
@@ -24,7 +25,7 @@ public final class ThemeGlobal implements BoundedGlobal {
     }
 
     @Override
-    public void restore(Object captured) {
+    public void restore(@Nullable Object captured) {
         if (captured instanceof Theme t) Theme.setActive(t);
     }
 }

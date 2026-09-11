@@ -8,6 +8,7 @@ import cc.jumpkick.cli.tui.Pill;
 import cc.jumpkick.cli.tui.RenderContext;
 import cc.jumpkick.cli.tui.Tree;
 import java.util.List;
+import java.util.Objects;
 import org.junit.jupiter.api.Test;
 
 class ActivityCommandTest {
@@ -57,7 +58,7 @@ class ActivityCommandTest {
         assertThat(plain).contains("Cancel");
         assertThat(plain).contains("12 modules");
         var node = ActivityCommand.jobNode(cancelled, 10_000L, Theme.active(), 3);
-        assertThat(node.pill().look()).isEqualTo(Pill.Look.CANCELLED);
+        assertThat(Objects.requireNonNull(node.pill()).look()).isEqualTo(Pill.Look.CANCELLED);
     }
 
     @Test
@@ -157,6 +158,7 @@ class ActivityCommandTest {
     private static String formatLine(String entry, long now, Theme t, int buildNumberWidth) {
         var node = ActivityCommand.jobNode(entry, now, t, buildNumberWidth);
         var ctx = RenderContext.current();
-        return node.pill().renderInline(ctx) + node.label().render(ctx);
+        return Objects.requireNonNull(node.pill()).renderInline(ctx)
+                + node.label().render(ctx);
     }
 }

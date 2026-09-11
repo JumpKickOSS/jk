@@ -11,13 +11,14 @@ import cc.jumpkick.host.EngineJvmFlags;
 import cc.jumpkick.wire.EnginePaths;
 import java.nio.file.Path;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /** The installed engine's JVM spawn line: the shared flag list, the heap cap, and the OOM heap dump. */
 class EngineSpawnLineTest {
 
-    private static EngineTarget jarTarget(Path aot) {
+    private static EngineTarget jarTarget(@Nullable Path aot) {
         return new EngineTarget(
                 new EngineArtifact(EngineArtifact.Kind.JAR, "/lib/jk-engine-1.jar", "lib"),
                 Path.of("/opt/jdk"),

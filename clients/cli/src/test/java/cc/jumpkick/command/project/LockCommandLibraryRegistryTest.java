@@ -23,6 +23,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Instant;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -47,7 +48,7 @@ class LockCommandLibraryRegistryTest {
     private HttpServer registryServer;
     private URI registryUrl;
     private final AtomicInteger registryHits = new AtomicInteger();
-    private volatile String lastIfNoneMatch;
+    private volatile @Nullable String lastIfNoneMatch;
     private volatile int registryStatus; // 0 = decide from If-None-Match; else force this status
 
     @BeforeEach

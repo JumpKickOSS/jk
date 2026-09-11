@@ -110,6 +110,8 @@ class CompilerDiagnosticTest {
     }
 
     @Test
+    // The nulls are deliberate: a diagnostic with no key-values and no extra lines.
+    @SuppressWarnings("NullAway")
     void formatNote_joins_keys_and_extras() {
         String note = CompilerDiagnostic.formatNote(
                 List.of(

@@ -47,6 +47,8 @@ class IdeSuiteRunConfigTest {
     }
 
     @Test
+    // The null default SDK is deliberate: a workspace that declares none.
+    @SuppressWarnings("NullAway")
     void vscode_tasks_json_lists_default_all_and_suite(@TempDir Path tmp) throws Exception {
         Path mod = tmp.resolve("m");
         Files.createDirectories(mod.resolve("test").resolve("src"));

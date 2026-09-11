@@ -10,6 +10,7 @@ import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -17,7 +18,7 @@ import org.junit.jupiter.api.io.TempDir;
 @Tag("integration")
 class RepoCommandTest {
 
-    private static int run(String stdin, String... args) {
+    private static int run(@Nullable String stdin, String... args) {
         InputStream prev = System.in;
         try {
             System.setIn(new ByteArrayInputStream((stdin == null ? "" : stdin).getBytes(StandardCharsets.UTF_8)));

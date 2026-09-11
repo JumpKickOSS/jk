@@ -3,6 +3,7 @@ package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.config.testing.BoundedGlobal;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code TerminalReflow.cached} — whether the terminal rewraps on resize, memoized from ambient env.
@@ -25,7 +26,7 @@ public final class TerminalReflowGlobal implements BoundedGlobal {
     }
 
     @Override
-    public void restore(Object captured) {
+    public void restore(@Nullable Object captured) {
         TerminalReflow.reset();
     }
 }

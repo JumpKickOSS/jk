@@ -14,6 +14,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -28,7 +29,7 @@ class LibraryUpdateCommandTest {
     private final AtomicReference<String> body = new AtomicReference<>();
     private final AtomicInteger status = new AtomicInteger(200);
     private final AtomicReference<String> etag = new AtomicReference<>();
-    private volatile String lastIfNoneMatch;
+    private volatile @Nullable String lastIfNoneMatch;
 
     @BeforeEach
     void start() throws IOException {

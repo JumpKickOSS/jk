@@ -25,6 +25,8 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class CommandJsonFrozenBytesTest {
     @Test
+    // The nulls are deliberate: the status fields the engine leaves absent.
+    @SuppressWarnings("NullAway")
     void engine_status_running_and_not_running() {
         EngineProbe.Status s = new EngineProbe.Status(
                 "0.13.0",

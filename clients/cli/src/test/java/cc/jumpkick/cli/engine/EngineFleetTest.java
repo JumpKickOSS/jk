@@ -112,6 +112,8 @@ class EngineFleetTest {
     }
 
     @Test
+    // The null command line is deliberate: a process whose command line could not be read.
+    @SuppressWarnings("NullAway")
     void a_resident_engine_is_recognized_without_this_jk_home_on_the_command_line() {
         String production = "/home/u/.jdks/temurin-25/bin/java -cp /home/u/.jk/lib/jk-engine/jk-engine-0.12.0.jar"
                 + " cc.jumpkick.engine.EngineMain";

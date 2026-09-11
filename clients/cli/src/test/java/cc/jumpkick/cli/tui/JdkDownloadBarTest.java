@@ -10,6 +10,7 @@ import cc.jumpkick.terminal.Ansi;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
+import java.util.Objects;
 import org.junit.jupiter.api.Test;
 
 class JdkDownloadBarTest {
@@ -88,7 +89,7 @@ class JdkDownloadBarTest {
                     .as("a silent region still registers, so cancel reaches it")
                     .isNotNull();
 
-            assertThat(active.renderCanceled()).isFalse();
+            assertThat(Objects.requireNonNull(active).renderCanceled()).isFalse();
 
             assertThat(Capture.lf(buf.toString(StandardCharsets.UTF_8))).isEqualTo("\n");
             return null;
@@ -103,7 +104,9 @@ class JdkDownloadBarTest {
             var buf = new ByteArrayOutputStream();
             var ps = new PrintStream(buf, true, StandardCharsets.UTF_8);
             JdkDownloadBar.show(ps, "Temurin 26");
-            LiveRegion.active().renderCanceled();
+            LiveRegion active = LiveRegion.active();
+            assertThat(active).isNotNull();
+            Objects.requireNonNull(active).renderCanceled();
             String out = Capture.lf(buf.toString(StandardCharsets.UTF_8));
             assertThat(out).contains("JDK download was cancelled by user");
             assertThat(out).doesNotContain("\u001b["); // no CSI at all in plain mode

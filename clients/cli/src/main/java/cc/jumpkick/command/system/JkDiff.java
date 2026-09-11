@@ -100,6 +100,7 @@ public final class JkDiff {
     /** Restore-source the live environment, used to seed {@link #next}. */
     @FunctionalInterface
     public interface EnvSnapshot {
+        @Nullable
         String get(String key);
 
         static EnvSnapshot fromSystem() {

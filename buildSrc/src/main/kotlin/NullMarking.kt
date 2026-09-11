@@ -41,10 +41,6 @@ object NullMarking {
                     "assertion in fifty places. The rest is the same shape as core's: null fed in on purpose " +
                     "(an absent [http] table, a job with no module selector) to assert the engine handles it. " +
                     "Production is enforced.",
-            "cli:compileTestJava" to
-                "TODO: the CLI's unit suite hands null to detection helpers on purpose (a missing \$SHELL, an " +
-                    "absent flag) and mocks listeners with null captures; 174 NullAway findings and 10 unmarked " +
-                    "test packages when compiled under the convention. Production sources are enforced.",
         )
 
     /**

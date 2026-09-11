@@ -24,6 +24,8 @@ class ShellTest {
     }
 
     @Test
+    // The null name is deliberate: no shell was named.
+    @SuppressWarnings("NullAway")
     void unknown_shell_is_empty() {
         assertThat(Shell.byName("xonsh")).isEmpty();
         assertThat(Shell.byName(null)).isEmpty();
@@ -229,6 +231,8 @@ class ShellTest {
     }
 
     @Test
+    // The null is deliberate: $SHELL is unset.
+    @SuppressWarnings("NullAway")
     void detect_chain_uses_passwd_when_shell_env_is_unset(@TempDir Path home) {
         assertThat(Shell.detect(null, "/usr/bin/fish", home, "Linux")).get().isInstanceOf(FishShell.class);
     }
@@ -242,6 +246,8 @@ class ShellTest {
     }
 
     @Test
+    // The nulls are deliberate: neither $SHELL nor a passwd shell is set.
+    @SuppressWarnings("NullAway")
     void detect_chain_ignores_rc_when_more_than_one_exists(@TempDir Path home) throws Exception {
         Files.writeString(home.resolve(".bashrc"), "# bash\n");
         Files.writeString(home.resolve(".zshrc"), "# zsh\n");
@@ -251,6 +257,8 @@ class ShellTest {
     }
 
     @Test
+    // The nulls are deliberate: neither $SHELL nor a passwd shell is set.
+    @SuppressWarnings("NullAway")
     void detect_chain_os_default_when_home_is_empty(@TempDir Path home) {
         assertThat(Shell.detect(null, null, home, "Linux")).get().isInstanceOf(BashShell.class);
         assertThat(Shell.detect("", "", home, "Darwin")).get().isInstanceOf(ZshShell.class);

@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 class SpinnerProgressBarTest {
@@ -189,7 +190,7 @@ class SpinnerProgressBarTest {
     }
 
     /** SGR of the right-most filled glyph (the frontier) at {@code percent}. */
-    private static String frontierColor(int percent) {
+    private static @Nullable String frontierColor(int percent) {
         var buf = new ByteArrayOutputStream();
         try (var pb = SpinnerProgressBar.show(stream(buf))) {
             pb.update(percent, "x");

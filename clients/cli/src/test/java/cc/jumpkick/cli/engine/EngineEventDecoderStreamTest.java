@@ -27,6 +27,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -193,7 +195,7 @@ class EngineEventDecoderStreamTest {
             assertThat(d.method()).isEqualTo("bar()");
             assertThat(d.exceptionClass()).isEqualTo("java.lang.AssertionError");
             assertThat(d.testFailure()).isNotNull();
-            assertThat(d.testFailure().className()).isEmpty();
+            assertThat(Objects.requireNonNull(d.testFailure()).className()).isEmpty();
         });
     }
 
@@ -272,13 +274,14 @@ class EngineEventDecoderStreamTest {
         List<BuildPlanResult.Diagnostic> diagnostics = new ArrayList<>();
         BuildPlanListener listener = new BuildPlanListener() {
             @Override
-            public void stepFinish(String step, String group, TaskStatus status, Duration duration, Duration waited) {
+            public void stepFinish(
+                    String step, @Nullable String group, TaskStatus status, Duration duration, Duration waited) {
                 durations.add(duration);
             }
 
             @Override
-            public void error(String step, String code, String message, TestFailureInfo failure) {
-                failures.add(failure);
+            public void error(String step, String code, String message, @Nullable TestFailureInfo failure) {
+                if (failure != null) failures.add(failure);
             }
         };
         var info = new TestFailureInfo(
@@ -321,7 +324,7 @@ class EngineEventDecoderStreamTest {
             return new BuildPlanListener() {
                 @Override
                 public void stepFinish(
-                        String step, String group, TaskStatus status, Duration duration, Duration waited) {
+                        String step, @Nullable String group, TaskStatus status, Duration duration, Duration waited) {
                     stepDurations.add(duration);
                     stepWaits.add(waited);
                 }

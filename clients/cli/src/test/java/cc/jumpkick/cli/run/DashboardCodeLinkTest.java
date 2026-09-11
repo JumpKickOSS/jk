@@ -4,6 +4,7 @@ package cc.jumpkick.cli.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Path;
+import java.util.Objects;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -58,8 +59,11 @@ class DashboardCodeLinkTest {
         // force project resolution only when key works; assert path+line encoding via fileUrl.
         try (var scope = DashboardCodeLink.open(Path.of("/ws"), Path.of("/ws/lib"))) {
             // Path.of("/ws") is drive-qualified on Windows (C:\ws).
-            assertThat(scope.checkoutDir().getFileName().toString()).isEqualTo("ws");
-            assertThat(DashboardCodeLink.codePath(scope.checkoutDir(), scope.moduleDir(), "src/Foo.java"))
+            Path checkoutDir = scope.checkoutDir();
+            assertThat(checkoutDir).isNotNull();
+            assertThat(Objects.requireNonNull(checkoutDir).getFileName().toString())
+                    .isEqualTo("ws");
+            assertThat(DashboardCodeLink.codePath(checkoutDir, scope.moduleDir(), "src/Foo.java"))
                     .isEqualTo("lib/src/Foo.java");
         }
     }

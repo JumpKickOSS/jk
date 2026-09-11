@@ -19,6 +19,7 @@ import java.util.jar.Manifest;
 import java.util.zip.ZipEntry;
 import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledOnOs;
@@ -507,7 +508,8 @@ class InstallExecCommandTest {
         maven.served().put("/" + group.replace('.', '/') + "/" + artifact + "/maven-metadata.xml", xml.getBytes());
     }
 
-    private void serveJar(String group, String artifact, String version, String mainClass) throws IOException {
+    private void serveJar(String group, String artifact, String version, @Nullable String mainClass)
+            throws IOException {
         Manifest mf = new Manifest();
         mf.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
         if (mainClass != null) {

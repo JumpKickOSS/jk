@@ -42,6 +42,8 @@ class WindowsCommandLinesTest {
     }
 
     @Test
+    // The null output is deliberate: a snapshot command that produced nothing.
+    @SuppressWarnings("NullAway")
     void empty_and_null_output_are_an_empty_snapshot() {
         assertThat(WindowsCommandLines.parse(null)).isEmpty();
         assertThat(WindowsCommandLines.parse("")).isEmpty();
@@ -49,6 +51,8 @@ class WindowsCommandLinesTest {
     }
 
     @Test
+    // The null command is deliberate: a process with no readable executable.
+    @SuppressWarnings("NullAway")
     void jvm_executables_are_recognized_by_name_on_either_separator() {
         assertThat(WindowsCommandLines.isJvmExecutable("C:\\Program Files\\jdk\\bin\\java.exe"))
                 .isTrue();

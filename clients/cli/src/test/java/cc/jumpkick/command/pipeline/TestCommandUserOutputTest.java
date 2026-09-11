@@ -17,6 +17,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -217,8 +218,8 @@ class TestCommandUserOutputTest {
     private static final class RecordingContext implements TaskContext {
         int scopeAdded = 0;
         final List<Integer> progressTicks = new ArrayList<>();
-        final List<String> labels = new ArrayList<>();
-        final List<String> outputs = new ArrayList<>();
+        final List<@Nullable String> labels = new ArrayList<>();
+        final List<@Nullable String> outputs = new ArrayList<>();
         final List<Diag> errors = new ArrayList<>();
 
         record Diag(
@@ -241,12 +242,12 @@ class TestCommandUserOutputTest {
         }
 
         @Override
-        public void label(String description) {
+        public void label(@Nullable String description) {
             labels.add(description);
         }
 
         @Override
-        public void output(String line) {
+        public void output(@Nullable String line) {
             outputs.add(line);
         }
 
@@ -264,7 +265,11 @@ class TestCommandUserOutputTest {
         }
 
         @Override
-        public void error(String code, String message, TestFailureInfo failure) {
+        public void error(String code, String message, @Nullable TestFailureInfo failure) {
+            if (failure == null) {
+                error(code, message, "", "");
+                return;
+            }
             errors.add(new Diag(
                     code,
                     message,

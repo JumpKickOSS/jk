@@ -41,12 +41,6 @@ options = [
   "-XepOpt:NullAway:KnownInitializers=cc.jumpkick.model.command.CliCommand.run",
 ]
 
-[javac.test]
-# TODO: the CLI's unit suite hands null to detection helpers on purpose (a missing $SHELL, an
-# absent flag) and mocks listeners with null captures; the suite compiles without the nullness
-# plugins until those are annotated. Production stays enforced above.
-plugins = {}
-
 [test-dependencies]
 jk-host = { workspace = true, fixtures = true }
 jk-core = { workspace = true, fixtures = true }

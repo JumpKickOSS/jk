@@ -45,6 +45,8 @@ class JkDiffTest {
     }
 
     @Test
+    // The null payload is deliberate: an absent __JK_DIFF variable.
+    @SuppressWarnings("NullAway")
     void malformed_payload_yields_empty_diff() {
         assertThat(JkDiff.parse("not-base64").keys()).isEmpty();
         assertThat(JkDiff.parse("").keys()).isEmpty();

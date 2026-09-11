@@ -19,12 +19,12 @@ class GraalResolverTest {
     @Test
     void svm_launcher_yields_the_home_not_the_lib_dir(@TempDir Path dir) {
         Path home = dir.resolve("graalvm-25");
-        Path launcher = home.resolve("lib").resolve("svm").resolve("bin").resolve(GraalLauncher.EXE);
+        Path svmBin = home.resolve("lib").resolve("svm").resolve("bin");
+        Path launcher = svmBin.resolve(GraalLauncher.EXE);
         Path fallback = dir.resolve("temurin-25");
 
         assertThat(GraalResolver.graalHomeOf(launcher, fallback)).isEqualTo(home);
-        assertThat(GraalResolver.graalHomeOf(launcher, fallback))
-                .isNotEqualTo(launcher.getParent().getParent());
+        assertThat(GraalResolver.graalHomeOf(launcher, fallback)).isNotEqualTo(svmBin.getParent());
     }
 
     @Test

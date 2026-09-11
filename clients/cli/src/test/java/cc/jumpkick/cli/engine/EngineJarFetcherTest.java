@@ -19,6 +19,8 @@ import java.security.KeyPairGenerator;
 import java.security.Signature;
 import java.util.Base64;
 import java.util.List;
+import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -41,7 +43,7 @@ class EngineJarFetcherTest {
     private HttpServer server;
     private URI base;
     private volatile byte[] sumsBody;
-    private volatile byte[] signatureBody;
+    private volatile byte @Nullable [] signatureBody;
     private volatile byte[] jarBody;
     private volatile int sumsStatus = 200;
     private volatile int signatureStatus = 200;
@@ -70,8 +72,9 @@ class EngineJarFetcherTest {
             exchange.close();
         });
         server.createContext("/releases/" + VERSION + "/SHA256SUMS.sig", exchange -> {
-            exchange.sendResponseHeaders(signatureStatus, signatureStatus == 200 ? signatureBody.length : -1);
-            if (signatureStatus == 200) exchange.getResponseBody().write(signatureBody);
+            byte[] body = Objects.requireNonNull(signatureBody, "signSums() runs before the server starts");
+            exchange.sendResponseHeaders(signatureStatus, signatureStatus == 200 ? body.length : -1);
+            if (signatureStatus == 200) exchange.getResponseBody().write(body);
             exchange.close();
         });
         server.createContext("/releases/" + VERSION + "/jk-engine-" + VERSION + ".jar", exchange -> {

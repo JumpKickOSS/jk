@@ -38,6 +38,8 @@ class AggregateProgressTest {
     }
 
     @Test
+    // The null console spec is deliberate: the listener renders without one.
+    @SuppressWarnings("NullAway")
     void workspace_member_console_listener_keeps_engine_rider() {
         LiveProgress.get().setPercent(70.0); // engine snapshot already applied
         var lis = new CommandManagerListener(

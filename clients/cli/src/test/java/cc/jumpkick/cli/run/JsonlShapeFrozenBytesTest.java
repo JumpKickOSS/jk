@@ -64,6 +64,8 @@ class JsonlShapeFrozenBytesTest {
     }
 
     @Test
+    // The nulls are deliberate: the line normalizes absent fields to empty.
+    @SuppressWarnings("NullAway")
     void preflight_and_eta_clamp_at_zero_and_spell_a_missing_string_empty() {
         assertThat(new PreflightLine(TS, "modules", 3, 9, "7 module(s) dirty").encode())
                 .isEqualTo(
@@ -137,6 +139,8 @@ class JsonlShapeFrozenBytesTest {
     }
 
     @Test
+    // The nulls are deliberate: the line normalizes absent fields to empty.
+    @SuppressWarnings("NullAway")
     void workspace_and_module_lines() {
         assertThat(new WorkspaceProgressLine(TS, "a/b", 3, 4, "execute", 1, 2).encode())
                 .isEqualTo(

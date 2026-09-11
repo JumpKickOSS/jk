@@ -17,6 +17,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -53,6 +54,8 @@ class EngineAotCacheTest {
     }
 
     @Test
+    // The null JDK is deliberate: an engine spawned without a resolved JDK still keys its cache.
+    @SuppressWarnings("NullAway")
     void key_changes_on_jar_jdk_version_and_vendor(@TempDir Path dir) throws IOException {
         EnginePaths.Paths paths = EnginePaths.resolve(dir);
         Files.createDirectories(paths.dir());
@@ -248,7 +251,7 @@ class EngineAotCacheTest {
         }
     }
 
-    private static String statusOf(Path aotDir, Path cache) {
+    private static @Nullable String statusOf(Path aotDir, Path cache) {
         return AotManifest.load(aotDir).stream()
                 .filter(e -> e.file().equals(cache.getFileName().toString()))
                 .findFirst()

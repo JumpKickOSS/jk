@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import org.junit.jupiter.api.Test;
 
 /** The plan state machine driven directly: no terminal, no JkManager, no threads. */
@@ -62,10 +63,10 @@ class PlanModelTest {
         model.stepRunning("g:a", "compile-java", "compile");
         model.stepRunning("g:b", "compile-java", "compile");
         assertThat(model.phaseOrder()).containsExactly("compile");
-        assertThat(model.phases().get("compile").runningCount).isEqualTo(2);
+        assertThat(phase(model, "compile").runningCount).isEqualTo(2);
 
         model.stepDone("g:a", "compile-java", true, "compile");
-        assertThat(model.phases().get("compile").state).isEqualTo(PlanModel.PhaseState.RUNNING);
+        assertThat(phase(model, "compile").state).isEqualTo(PlanModel.PhaseState.RUNNING);
         model.stepDone("g:b", "compile-java", true, "compile");
         assertThat(model.phases())
                 .as("all clean: the phase is gone from the live chain")
@@ -74,8 +75,7 @@ class PlanModelTest {
 
         model.stepRunning("g:c", "run-tests", "test");
         model.stepDone("g:c", "run-tests", false, "test");
-        PlanModel.PhaseNode test = model.phases().get("test");
-        assertThat(test).isNotNull();
+        PlanModel.PhaseNode test = phase(model, "test");
         assertThat(test.state).isEqualTo(PlanModel.PhaseState.FAILED);
         assertThat(test.briefError).isEqualTo("Failed");
         assertThat(model.phaseOrder()).containsExactly("test");
@@ -89,13 +89,13 @@ class PlanModelTest {
 
         String plain = "x".repeat(200);
         model.attachPhaseError("g:a", "run-tests", "test", plain);
-        String cut = model.phases().get("test").briefError;
+        String cut = phase(model, "test").briefError;
         assertThat(cut).hasSize(93 + 1).endsWith("…");
 
         // 92 chars then an emoji whose high surrogate sits at index 92: the cut steps back one.
         String emoji = "y".repeat(92) + "😀" + "z".repeat(50);
         model.attachPhaseError("g:a", "run-tests", "test", emoji);
-        String safe = model.phases().get("test").briefError;
+        String safe = phase(model, "test").briefError;
         assertThat(safe).endsWith("…");
         assertThat(Character.isHighSurrogate(safe.charAt(safe.length() - 2)))
                 .as("never a lone high surrogate before the ellipsis")
@@ -104,6 +104,8 @@ class PlanModelTest {
     }
 
     @Test
+    // The null label is deliberate: a preflight stage with no header text.
+    @SuppressWarnings("NullAway")
     void the_region_hears_each_change_inside_the_same_critical_section() {
         Recording events = new Recording();
         PlanModel model = new PlanModel(new Object(), events);
@@ -113,5 +115,10 @@ class PlanModelTest {
         model.preflight("checking", 1, 4, null);
         assertThat(events.log)
                 .containsExactly("started g:a", "message 12 sources", "built g:a", "preflight Checking 1/4");
+    }
+
+    private static PlanModel.PhaseNode phase(PlanModel model, String name) {
+        assertThat(model.phases()).containsKey(name);
+        return Objects.requireNonNull(model.phases().get(name));
     }
 }

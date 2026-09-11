@@ -22,7 +22,7 @@ public final class ToolchainPath {
      * toGraalHome/bin}. Pass null {@code to*} homes to strip only (session leave / deactivate).
      */
     public static String swap(
-            String currentPath,
+            @Nullable String currentPath,
             @Nullable String fromJavaHome,
             @Nullable String fromGraalHome,
             @Nullable String toJavaHome,
