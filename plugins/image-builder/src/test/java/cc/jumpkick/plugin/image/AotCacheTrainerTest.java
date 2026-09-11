@@ -13,6 +13,7 @@ import java.security.MessageDigest;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -24,7 +25,7 @@ class AotCacheTrainerTest {
                 base, null, null, List.of(), Map.of(), Map.of(), null, null, List.of(), null, null, null, true);
     }
 
-    private static ImageBuilder.Plan plan(Path classesDir) {
+    private static ImageBuilder.Plan plan(@Nullable Path classesDir) {
         return new ImageBuilder.Plan(
                 config("bellsoft/liberica-runtime-container:jre-25-slim-glibc"),
                 "svc",

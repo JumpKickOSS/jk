@@ -2,6 +2,7 @@
 
 plugins {
     id("jk.plugin-conventions")
+    id("jk.nullmarked-conventions")
 }
 
 description = "jk-formatter: child-JVM worker that formats Java, Kotlin, Groovy, and Scala " +

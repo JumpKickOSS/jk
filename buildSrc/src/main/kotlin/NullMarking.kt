@@ -27,6 +27,8 @@ object NullMarking {
             "plugins/spring-boot/src/main/java",
             "plugins/test-runner/src/main/java",
             "plugins/android/src/main/java",
+            "plugins/formatter/src/main/java",
+            "plugins/image-builder/src/main/java",
             "plugins/java-compiler/src/main/java",
             "plugins/kotlin-compiler/src/main/java",
             "plugins/publisher/src/main/java",
@@ -62,13 +64,5 @@ object NullMarking {
      * never applies the plugin looks the same as one with nothing to fix — so this is where the remaining work is
      * written down rather than inferred.
      */
-    val unenforcedModules: Map<String, String> =
-        mapOf(
-            "plugins/formatter" to
-                "27 production findings: the stamp cache and type index are optional per run, and a file's " +
-                    "verdict carries bytes and a stamp only when there is something to write.",
-            "plugins/image-builder" to
-                "38 production findings: the container runtime, the local base JRE and the packager's app " +
-                    "tree are each optional, and the spec's base image is declared nullable.",
-        )
+    val unenforcedModules: Map<String, String> = emptyMap()
 }

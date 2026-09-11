@@ -24,6 +24,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -78,7 +79,7 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
             out.emit(PluginReply.result(fields));
             return 0;
         } catch (Exception e) {
-            out.emit(PluginReply.error("image", e.getMessage()));
+            out.emit(PluginReply.error("image", String.valueOf(e.getMessage())));
             return 1;
         }
     }
@@ -141,7 +142,7 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
                 labels,
                 registry,
                 tag,
-                platforms.isEmpty() ? null : platforms,
+                platforms,
                 mainClass,
                 dockerExecutable,
                 null,
@@ -166,8 +167,8 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
         // Every mode pulls the base image, so every mode needs the pull credential; only a push
         // needs the second one. Handing `ref` over in tarball/daemon mode would claim a registry
         // is contacted when none is.
-        RegistryAuth auth =
-                RegistryAuth.of(credential(ctx, "base"), credential(ctx, "push"), base, pushing ? ref : null);
+        RegistryAuth auth = RegistryAuth.of(
+                credential(ctx, "base"), credential(ctx, "push"), ImageBuilder.baseOf(config), pushing ? ref : null);
 
         if (tarball.isPresent()) {
             Path tarballPath = Path.of(tarball.get());
@@ -233,7 +234,7 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
 
         @Override
         public Path moduleDir() {
-            return spec.moduleDir();
+            return Objects.requireNonNull(spec.moduleDir(), "spec missing layout.moduleDir");
         }
 
         @Override
@@ -253,7 +254,7 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
 
         @Override
         public Path javaHome() {
-            return spec.javaHome();
+            return Objects.requireNonNull(spec.javaHome(), "spec missing java-home.path");
         }
 
         @Override

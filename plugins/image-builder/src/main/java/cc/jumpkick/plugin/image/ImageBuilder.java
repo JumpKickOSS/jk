@@ -31,6 +31,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Jib-core OCI image builder: base image, layered jars under {@code /app/}, {@link ImageConfig}
@@ -51,7 +52,7 @@ public final class ImageBuilder {
             Path mainJar,
             List<Path> dependencyJars,
             List<Path> snapshotJars,
-            Path classesDir,
+            @Nullable Path classesDir,
             /**
              * Coordinate-derived file name per dependency jar. jk serves the runtime classpath from
              * the content-addressed store, so a jar's own path is its digest — shipping that into
@@ -63,9 +64,9 @@ public final class ImageBuilder {
              * or null. When set it is the whole application: shipped as-is and launched with
              * {@code java -jar appJar} from its own directory.
              */
-            Path appDir,
+            @Nullable Path appDir,
             /** The jar to run inside {@link #appDir}. */
-            String appJar) {
+            @Nullable String appJar) {
 
         /** Without coordinate names: jars keep their on-disk file name. */
         public Plan(
@@ -76,7 +77,7 @@ public final class ImageBuilder {
                 Path mainJar,
                 List<Path> dependencyJars,
                 List<Path> snapshotJars,
-                Path classesDir) {
+                @Nullable Path classesDir) {
             this(
                     config,
                     artifact,
@@ -127,6 +128,16 @@ public final class ImageBuilder {
             return appDir != null && appJar != null && !appJar.isBlank();
         }
 
+        /** The packager's runnable tree; only when {@link #hasAppTree()}. */
+        public Path appTree() {
+            return Objects.requireNonNull(appDir, "plan has no app tree");
+        }
+
+        /** The jar to run inside {@link #appTree()}; only when {@link #hasAppTree()}. */
+        public String appTreeJar() {
+            return Objects.requireNonNull(appJar, "plan has no app tree");
+        }
+
         public Plan {
             Objects.requireNonNull(config, "config");
             jarNames = jarNames == null ? Map.of() : Map.copyOf(jarNames);
@@ -175,7 +186,8 @@ public final class ImageBuilder {
      * resolved CLI path (e.g. {@code "docker"} or {@code "podman"}, or an absolute path); pass
      * {@code null} to let Jib auto-detect via {@code PATH}.
      */
-    public static Result loadToLocalDaemon(Plan plan, Path dockerExecutable, Path cacheRoot, RegistryAuth auth)
+    public static Result loadToLocalDaemon(
+            Plan plan, @Nullable Path dockerExecutable, Path cacheRoot, RegistryAuth auth)
             throws IOException, InterruptedException {
         try {
             DockerDaemonImage target =
@@ -214,7 +226,7 @@ public final class ImageBuilder {
      * bytes that ship have to agree on both.
      */
     /** Ship {@code src} under {@code /app}: a directory verbatim, or a single file at {@code as}. */
-    private static FileEntriesLayer treeLayer(Path src, String as) throws IOException {
+    private static FileEntriesLayer treeLayer(Path src, @Nullable String as) throws IOException {
         FileEntriesLayer.Builder layer = FileEntriesLayer.builder();
         if (Files.isRegularFile(src)) {
             layer.addEntry(
@@ -264,7 +276,7 @@ public final class ImageBuilder {
         entry.add("java");
         if (aotCache) entry.add("-XX:AOTCache=" + AotCacheTrainer.CACHE_FILE);
         entry.add("-jar");
-        entry.add(plan.appJar());
+        entry.add(plan.appTreeJar());
         return entry;
     }
 
@@ -285,26 +297,41 @@ public final class ImageBuilder {
         return layer.build();
     }
 
+    /** The base image the plan builds on; the engine resolves it, so its absence is a broken spec. */
+    static String baseOf(ImageConfig cfg) throws IOException {
+        String base = cfg.base();
+        if (base == null || base.isBlank()) throw new IOException("[image] the spec names no base image");
+        return base;
+    }
+
+    /** The directory holding {@code jar} — where the AOT trainer stages its work. */
+    private static Path dirOf(Path jar) throws IOException {
+        Path dir = jar.getParent();
+        if (dir == null) throw new IOException("main artifact has no parent directory: " + jar);
+        return dir;
+    }
+
     private static JibContainer run(Plan plan, Containerizer containerizer, Path cacheRoot, RegistryAuth auth)
             throws IOException, InterruptedException, InvalidImageReferenceException {
         ImageConfig cfg = plan.config();
+        String base = baseOf(cfg);
         JibContainerBuilder builder;
         try {
-            builder = Jib.from(auth.base(cfg.base()));
+            builder = Jib.from(auth.base(base));
         } catch (InvalidImageReferenceException e) {
-            throw new IOException("invalid base image: " + cfg.base(), e);
+            throw new IOException("invalid base image: " + base, e);
         }
 
         // A packager-produced tree is the entire application. Shipping it verbatim is the only
         // layout that runs — Quarkus enters through its own bootstrap and loads lib/main with its
         // own class loader, so a lock-derived classpath describes a different program.
         if (plan.hasAppTree()) {
-            builder = builder.addFileEntriesLayer(treeLayer(plan.appDir(), null));
+            builder = builder.addFileEntriesLayer(treeLayer(plan.appTree(), null));
             builder = builder.setWorkingDirectory(AbsoluteUnixPath.get(AotCacheTrainer.APP_DIR));
             boolean aot = cfg.aotCache();
             if (aot) {
                 AotCacheTrainer.Result trained = AotCacheTrainer.train(
-                        plan, plan.mainJar().getParent(), cacheRoot, auth, msg -> System.err.println("jk: " + msg));
+                        plan, dirOf(plan.mainJar()), cacheRoot, auth, msg -> System.err.println("jk: " + msg));
                 builder = builder.addFileEntriesLayer(treeLayer(trained.cache(), AotCacheTrainer.CACHE_FILE));
             }
             builder = builder.setEntrypoint(appTreeEntrypoint(plan, aot));
@@ -323,7 +350,7 @@ public final class ImageBuilder {
                 throw new IOException("[image] aot-cache = true, but " + blocked);
             }
             aot = AotCacheTrainer.train(
-                    plan, plan.mainJar().getParent(), cacheRoot, auth, msg -> System.err.println("jk: " + msg));
+                    plan, dirOf(plan.mainJar()), cacheRoot, auth, msg -> System.err.println("jk: " + msg));
             builder = builder.addFileEntriesLayer(stagedTreeLayer(aot));
             builder = builder.addFileEntriesLayer(treeLayer(aot.cache(), AotCacheTrainer.CACHE_FILE));
             builder = builder.setWorkingDirectory(AbsoluteUnixPath.get(AotCacheTrainer.APP_DIR));

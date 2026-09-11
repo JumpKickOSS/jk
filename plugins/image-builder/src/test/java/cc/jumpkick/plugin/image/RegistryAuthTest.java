@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -233,7 +234,7 @@ class RegistryAuthTest {
 
         @Override
         public ProjectFacts project() {
-            return null;
+            return new ProjectFacts("com.example", "app", "1.0.0", 25, null, false, false, Map.of());
         }
 
         @Override
@@ -277,7 +278,7 @@ class RegistryAuthTest {
         assertThat(RegistryAuth.loopback("not a reference")).isFalse();
     }
 
-    private static String catchMessage(ThrowingRun body) {
+    private static @Nullable String catchMessage(ThrowingRun body) {
         try {
             body.run();
             return null;
@@ -295,12 +296,12 @@ class RegistryAuthTest {
     }
 
     /** jk's resolved credential for the base pull, and for {@code pushRef} when there is one. */
-    private RegistryAuth basic(String pushRef) {
+    private RegistryAuth basic(@Nullable String pushRef) {
         RepoCredential credential = new RepoCredential.Basic(USER, PASSWORD);
         return RegistryAuth.of(credential, credential, baseRef, pushRef);
     }
 
-    private ImageConfig config(String base, String targetRegistry) {
+    private ImageConfig config(String base, @Nullable String targetRegistry) {
         return new ImageConfig(
                 base,
                 null,

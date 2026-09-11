@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Known types for FQCN shortening: top-level names from project sources plus (lazily) public JDK
@@ -23,7 +24,7 @@ import java.util.regex.Matcher;
  */
 final class TypeIndex {
 
-    private static volatile TypeIndex jdk;
+    private static volatile @Nullable TypeIndex jdk;
 
     private final Set<String> known;
     private final Map<String, List<String>> bySimple;
@@ -128,9 +129,11 @@ final class TypeIndex {
         TypeIndex cached = jdk;
         if (cached != null) return cached;
         synchronized (TypeIndex.class) {
-            if (jdk != null) return jdk;
-            jdk = loadJdk();
-            return jdk;
+            TypeIndex again = jdk;
+            if (again != null) return again;
+            TypeIndex loaded = loadJdk();
+            jdk = loaded;
+            return loaded;
         }
     }
 

@@ -22,6 +22,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A registry that answers {@code 401} to anyone who does not authenticate.
@@ -50,7 +51,7 @@ final class FakeRegistry implements AutoCloseable {
 
     private final HttpServer server;
     private final ServerSocket door;
-    private final String expectedAuthorization;
+    private final @Nullable String expectedAuthorization;
     private final Map<String, byte[]> blobs = new ConcurrentHashMap<>();
     private final Map<String, byte[]> uploads = new ConcurrentHashMap<>();
     private final Map<String, String> manifests = new ConcurrentHashMap<>();
@@ -58,7 +59,7 @@ final class FakeRegistry implements AutoCloseable {
     private final List<String> served = new CopyOnWriteArrayList<>();
     private final AtomicInteger uploadIds = new AtomicInteger();
 
-    private FakeRegistry(HttpServer server, ServerSocket door, String expectedAuthorization) {
+    private FakeRegistry(HttpServer server, ServerSocket door, @Nullable String expectedAuthorization) {
         this.server = server;
         this.door = door;
         this.expectedAuthorization = expectedAuthorization;
@@ -78,7 +79,7 @@ final class FakeRegistry implements AutoCloseable {
         return start(null);
     }
 
-    private static FakeRegistry start(String expectedAuthorization) throws IOException {
+    private static FakeRegistry start(@Nullable String expectedAuthorization) throws IOException {
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         ServerSocket door = new ServerSocket(0, 0, InetAddress.getLoopbackAddress());
         FakeRegistry registry = new FakeRegistry(server, door, expectedAuthorization);
@@ -308,7 +309,7 @@ final class FakeRegistry implements AutoCloseable {
         respond(exchange, 201, "");
     }
 
-    private static String param(String query, String name) {
+    private static @Nullable String param(@Nullable String query, String name) {
         if (query == null) return null;
         for (String pair : query.split("&")) {
             int eq = pair.indexOf('=');

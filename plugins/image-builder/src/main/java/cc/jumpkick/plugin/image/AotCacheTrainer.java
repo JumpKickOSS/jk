@@ -25,6 +25,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Trains a JVM AOT cache (JEP 514) for an image by running the application inside the image's own
@@ -82,7 +83,7 @@ final class AotCacheTrainer {
     private AotCacheTrainer() {}
 
     /** Why an AOT cache cannot be trained for this image, or null when it can. */
-    static String unsupportedReason(ImageBuilder.Plan plan) {
+    static @Nullable String unsupportedReason(ImageBuilder.Plan plan) {
         // Layout refusals first — they are intrinsic and more actionable than "no docker".
         if (!plan.hasAppTree() && plan.classesDir() != null && !BootLayout.isBootJar(plan.mainJar())) {
             return "this module's image is an exploded-classes layout and its main artifact is not a"
@@ -125,7 +126,7 @@ final class AotCacheTrainer {
         String blocked = unsupportedReason(plan);
         if (blocked != null) throw new IOException(blocked);
 
-        String base = qualify(plan.config().base());
+        String base = qualify(ImageBuilder.baseOf(plan.config()));
         Path localJre = localBaseJre(plan, base, cacheRoot, auth, log);
         Path staging = workDir.resolve("aot-train");
 
@@ -137,9 +138,9 @@ final class AotCacheTrainer {
             // The packager already produced the runnable tree; train against a copy of exactly what
             // ships. Quarkus's fast-jar also keeps lib/main off the JVM classpath — its own loader
             // reads those — so the archive only has to agree about quarkus-run.jar and lib/boot.
-            copyTree(plan.appDir(), staging);
-            runArgs = List.of("-jar", plan.appJar());
-            log.accept("training against the packager's " + plan.appDir().getFileName() + " tree");
+            copyTree(plan.appTree(), staging);
+            runArgs = List.of("-jar", plan.appTreeJar());
+            log.accept("training against the packager's " + plan.appTree().getFileName() + " tree");
         } else if (BootLayout.isBootJar(plan.mainJar())) {
             Path extractTool = localJre != null ? localJre : hostJava();
             BootLayout.Extracted boot = BootLayout.extract(plan.mainJar(), staging, extractTool);
@@ -159,12 +160,22 @@ final class AotCacheTrainer {
         // directly. Each run gets its own name so the training and verifying containers cannot
         // collide.
         String runtime = localJre == null ? containerRuntime(plan.config().dockerExecutable()) : null;
-        Function<String, List<String>> prefixFor = name -> {
-            if (localJre != null) return new ArrayList<>(List.of(localJre.toString()));
-            List<String> cmd = new ArrayList<>(containerPrefix(runtime, staging, base, name));
-            cmd.add("java");
-            return cmd;
-        };
+        Function<String, List<String>> prefixFor;
+        if (localJre != null) {
+            String java = localJre.toString();
+            prefixFor = name -> new ArrayList<>(List.of(java));
+        } else {
+            if (runtime == null) {
+                throw new IOException("no container runtime (docker, podman, nerdctl) to train in, and " + base
+                        + "'s JVM does not run on this host");
+            }
+            String containerRuntime = runtime;
+            prefixFor = name -> {
+                List<String> cmd = new ArrayList<>(containerPrefix(containerRuntime, staging, base, name));
+                cmd.add("java");
+                return cmd;
+            };
+        }
         log.accept(
                 localJre != null
                         ? "training the AOT cache with " + base + "'s JVM, on this host"
@@ -272,7 +283,7 @@ final class AotCacheTrainer {
      * container path produces the same cache, so a base image jk cannot unpack is a slower build
      * rather than a failed one.
      */
-    static Path localBaseJre(
+    static @Nullable Path localBaseJre(
             ImageBuilder.Plan plan, String base, Path cacheRoot, RegistryAuth auth, Consumer<String> log) {
         if (!BaseJre.hostCanExecute(plan.config().platforms())) return null;
         try {
@@ -331,7 +342,7 @@ final class AotCacheTrainer {
      * Hub by convention; podman refuses to guess and, with no TTY to prompt on, simply fails.
      */
     static String qualify(String image) {
-        if (image == null || image.isBlank()) return image;
+        if (image.isBlank()) return image;
         int slash = image.indexOf('/');
         if (slash < 0) return "docker.io/library/" + image;
         String first = image.substring(0, slash);
@@ -379,7 +390,7 @@ final class AotCacheTrainer {
     }
 
     /** {@code uid:gid} of the invoking user (owner of {@code probe}), or null off POSIX. */
-    private static String unixUserGroup(Path probe) {
+    private static @Nullable String unixUserGroup(Path probe) {
         try {
             Object uid = Files.getAttribute(probe, "unix:uid");
             Object gid = Files.getAttribute(probe, "unix:gid");
@@ -405,7 +416,7 @@ final class AotCacheTrainer {
     }
 
     /** docker, podman or nerdctl — the configured one when set, else the first on PATH. */
-    static String containerRuntime(String configured) {
+    static @Nullable String containerRuntime(@Nullable String configured) {
         if (configured != null && !configured.isBlank()) return configured;
         for (String candidate : List.of("docker", "podman", "nerdctl")) {
             if (onPath(candidate)) return candidate;
@@ -456,7 +467,11 @@ final class AotCacheTrainer {
      * @param containerName the container to stop; ignored when {@code runtime} is null
      */
     private static Output runUntilSettled(
-            List<String> command, Path cwd, String runtime, String containerName, Consumer<String> log)
+            List<String> command,
+            @Nullable Path cwd,
+            @Nullable String runtime,
+            String containerName,
+            Consumer<String> log)
             throws IOException, InterruptedException {
         ProcessBuilder pb = new ProcessBuilder(command).redirectErrorStream(true);
         if (cwd != null) pb.directory(cwd.toFile());
@@ -515,7 +530,7 @@ final class AotCacheTrainer {
      * runtime asked, because signalling the client that is streaming its output does not reliably
      * reach PID 1 inside.
      */
-    private static void requestStop(Process process, String runtime, String containerName) {
+    private static void requestStop(Process process, @Nullable String runtime, String containerName) {
         if (runtime == null) {
             process.destroy();
             return;

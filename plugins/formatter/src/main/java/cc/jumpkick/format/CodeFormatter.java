@@ -45,6 +45,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicIntegerArray;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk-formatter} plugin: optional FQCN-shorten pass, then Spotless. Host forks with a
@@ -112,9 +113,14 @@ public final class CodeFormatter implements Plugin {
      * to the file and a {@code stamp} to record, both null when there is nothing to do. The run
      * {@linkplain #commit applies} them only after the verdict is confirmed to be the file's own.
      */
-    record FileResult(File file, String status, String msg, byte[] bytes, String stamp) {
+    record FileResult(
+            File file,
+            String status,
+            @Nullable String msg,
+            byte @Nullable [] bytes,
+            @Nullable String stamp) {
 
-        FileResult(File file, String status, String msg) {
+        FileResult(File file, String status, @Nullable String msg) {
             this(file, status, msg, null, null);
         }
     }
@@ -149,7 +155,7 @@ public final class CodeFormatter implements Plugin {
      * verdict is known to be the file's own. A file the run gave up on is therefore never written
      * or stamped, however late its formatter comes back.
      */
-    static Tally formatAll(Spec spec, ProtocolWriter out, FormatStampCache memo, FileWork work) {
+    static Tally formatAll(Spec spec, ProtocolWriter out, @Nullable FormatStampCache memo, FileWork work) {
         int slots = concurrency(spec);
         ThreadPoolExecutor pool = new ThreadPoolExecutor(
                 slots, slots, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>(), CodeFormatter::formatThread);
@@ -237,7 +243,7 @@ public final class CodeFormatter implements Plugin {
             AtomicInteger abandoned,
             int slots,
             long limitMs,
-            FormatStampCache memo,
+            @Nullable FormatStampCache memo,
             AtomicIntegerArray claims) {
 
         /** The task's claim on its file. False when the run already forfeited it. */
@@ -260,7 +266,7 @@ public final class CodeFormatter implements Plugin {
      * writes on a file's behalf carry nothing to do, so a file it gave up on is never written or
      * stamped. A write that fails is that file's error.
      */
-    static FileResult commit(FileResult r, FormatStampCache memo) {
+    static FileResult commit(FileResult r, @Nullable FormatStampCache memo) {
         if (r.bytes() != null) {
             try {
                 Files.write(r.file().toPath(), r.bytes());
@@ -328,7 +334,7 @@ public final class CodeFormatter implements Plugin {
                 + " since, so it was not retried" + SourceShape.postMortem(text(source));
     }
 
-    private static byte[] readOrNull(File file) {
+    private static byte @Nullable [] readOrNull(File file) {
         try {
             return Files.readAllBytes(file.toPath());
         } catch (IOException | RuntimeException e) {
@@ -435,13 +441,14 @@ public final class CodeFormatter implements Plugin {
 
         static final class Holder implements AutoCloseable {
             private final Spec spec;
-            private final EnumMap<Kind, Formatter> byKind = new EnumMap<>(Kind.class);
+            private final EnumMap<Kind, @Nullable Formatter> byKind = new EnumMap<>(Kind.class);
 
             Holder(Spec spec) {
                 this.spec = spec;
             }
 
             /** The formatter for {@code kind} on this thread, or null when the run has no jars for it. */
+            @Nullable
             Formatter formatter(Kind kind) {
                 if (byKind.containsKey(kind)) return byKind.get(kind);
                 Formatter f = build(kind);
@@ -449,7 +456,7 @@ public final class CodeFormatter implements Plugin {
                 return f;
             }
 
-            private Formatter build(Kind kind) {
+            private @Nullable Formatter build(Kind kind) {
                 List<FormatterStep> steps =
                         switch (kind) {
                             case JAVA -> spec.javaJars.isEmpty() ? null : javaSteps(spec);
@@ -526,15 +533,16 @@ public final class CodeFormatter implements Plugin {
      * the verdict, the bytes and the key come back in the result for {@link #formatAll} to emit in
      * spec order and {@linkplain #commit apply}.
      */
-    static FileResult formatOne(FileRef ref, Formatter fmt, Spec spec, FormatStampCache stampCache, TypeIndex index) {
+    static FileResult formatOne(
+            FileRef ref, Formatter fmt, Spec spec, @Nullable FormatStampCache stampCache, @Nullable TypeIndex index) {
         try {
             byte[] original = Files.readAllBytes(ref.file().toPath());
             String stampKey = stampCache != null ? stampCache.keyFor(original) : null;
-            if (stampKey != null && stampCache.contains(stampKey)) {
+            if (stampCache != null && stampKey != null && stampCache.contains(stampKey)) {
                 return new FileResult(ref.file(), "clean", null);
             }
 
-            long timedOutAt = stampKey != null ? stampCache.timedOutAt(stampKey) : 0;
+            long timedOutAt = stampCache != null && stampKey != null ? stampCache.timedOutAt(stampKey) : 0;
             if (remembersTimeout(timedOutAt, spec.fileTimeoutMs)) {
                 return new FileResult(ref.file(), "error", rememberedTimeout(timedOutAt, original));
             }
@@ -587,7 +595,7 @@ public final class CodeFormatter implements Plugin {
         };
     }
 
-    private static void emitFile(ProtocolWriter out, File file, String status, String msg) {
+    private static void emitFile(ProtocolWriter out, File file, String status, @Nullable String msg) {
         out.emit(PluginReply.file(file.getAbsolutePath(), status, msg));
     }
 
@@ -620,7 +628,7 @@ public final class CodeFormatter implements Plugin {
     }
 
     /** Palantir-aligned defaults: 4-space indent, 120 columns, Scala 3 dialect. */
-    private static File scalaConfig(Spec spec) {
+    private static @Nullable File scalaConfig(Spec spec) {
         Path dir = spec.cacheDir;
         if (dir == null) return null;
         try {
@@ -699,7 +707,11 @@ public final class CodeFormatter implements Plugin {
         boolean optimizeImports = false;
         boolean importOrder = true;
         boolean removeUnusedImports = true;
+
+        @Nullable
         Path cacheDir = null;
+
+        @Nullable
         String configKey = null;
         /** All project sources the type index should read (may be a superset of {@link #files}). */
         List<Path> indexFiles = List.of();

@@ -28,6 +28,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.zip.GZIPInputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The {@code java} binary out of a base image, without a container runtime.
@@ -75,7 +76,8 @@ final class BaseJre {
      * Digest-pinned references never re-validate; mutable tags re-resolve after
      * {@link #REVALIDATE_MILLIS} (Jib's layer cache makes an unchanged re-pull cheap).
      */
-    static Path javaBinary(String base, Path cacheRoot, RegistryAuth auth) throws IOException, InterruptedException {
+    static @Nullable Path javaBinary(String base, Path cacheRoot, RegistryAuth auth)
+            throws IOException, InterruptedException {
         Path root = CacheTree.BASE_JRE.under(cacheRoot).resolve(Hashing.sha256Hex(base));
         Path marker = root.resolve(".extracted");
         boolean pinned = base.contains("@sha256:");
@@ -263,7 +265,7 @@ final class BaseJre {
      * success. So candidates are ordered by depth (the real JVM lives under
      * {@code lib/jvm/<dist>/bin}) and each is proven with {@code -version} before it is returned.
      */
-    private static Path findJava(Path root) throws IOException, InterruptedException {
+    private static @Nullable Path findJava(Path root) throws IOException, InterruptedException {
         List<Path> candidates;
         try (var walk = Files.walk(root)) {
             // Free test first: the walk already paid for this entry, and isRegularFile re-resolves

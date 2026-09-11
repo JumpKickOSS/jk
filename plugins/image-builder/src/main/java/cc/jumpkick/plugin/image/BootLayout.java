@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A Spring Boot jar unpacked into the shape an AOT cache can be trained against.
@@ -100,7 +101,7 @@ final class BootLayout {
     }
 
     /** The thin jar sits at the root; every other jar is under {@code lib/}. */
-    private static String launcherJarIn(Path dest) throws IOException {
+    private static @Nullable String launcherJarIn(Path dest) throws IOException {
         try (var list = Files.list(dest)) {
             return list.filter(Files::isRegularFile)
                     .map(p -> p.getFileName().toString())

@@ -16,6 +16,7 @@ import com.google.cloud.tools.jib.frontend.CredentialRetrieverFactory;
 import com.google.cloud.tools.jib.global.JibSystemProperties;
 import java.io.IOException;
 import java.util.concurrent.ExecutionException;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The credential behind every registry this plugin touches, and the only way it names a {@link
@@ -57,7 +58,11 @@ public final class RegistryAuth {
      * or null in tarball and daemon mode — where the base pull is still a registry read, and still
      * needs {@code basePull}.
      */
-    public static RegistryAuth of(RepoCredential basePull, RepoCredential push, String baseRef, String pushRef) {
+    public static RegistryAuth of(
+            @Nullable RepoCredential basePull,
+            @Nullable RepoCredential push,
+            String baseRef,
+            @Nullable String pushRef) {
         // Plain HTTP only when EVERY registry contacted is loopback. Both switches below are
         // wider than one reference — the containerizer flag covers the whole build and the
         // credentials-over-HTTP property is JVM-wide — so one public registry in the mix means
@@ -101,7 +106,7 @@ public final class RegistryAuth {
      * grant instead. A registry that does read the user name (Docker Hub, a Harbor robot account)
      * needs {@code jk repo login <registry> --username <user>}, which resolves to Basic.
      */
-    private static Credential jibCredential(RepoCredential credential) {
+    private static @Nullable Credential jibCredential(RepoCredential credential) {
         return switch (credential) {
             case RepoCredential.Basic b -> Credential.from(b.username(), b.password());
             case RepoCredential.Bearer b -> Credential.from("jk", b.token());

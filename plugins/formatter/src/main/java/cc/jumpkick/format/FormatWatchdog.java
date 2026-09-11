@@ -6,6 +6,7 @@ import java.io.File;
 import java.util.Locale;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The wall bound on one file's formatting.
@@ -73,7 +74,7 @@ final class FormatWatchdog implements AutoCloseable {
 
     private final ConcurrentMap<Integer, String> verdicts = new ConcurrentHashMap<>();
 
-    private volatile Thread ticker;
+    private volatile @Nullable Thread ticker;
 
     FormatWatchdog(long warnMs, long timeoutMs, Clock clock, Slow slow, Runnable onAbandon) {
         this.warnNanos = warnMs * 1_000_000L;
@@ -95,6 +96,7 @@ final class FormatWatchdog implements AutoCloseable {
     }
 
     /** Why the file at {@code index} was abandoned, or null while it is still the run's to finish. */
+    @Nullable
     String verdict(int index) {
         return verdicts.get(index);
     }

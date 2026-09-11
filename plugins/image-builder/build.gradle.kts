@@ -2,6 +2,7 @@
 
 plugins {
     id("jk.plugin-conventions")
+    id("jk.nullmarked-conventions")
 }
 
 description = "jk-image-runner: child-JVM worker that builds and pushes OCI images via Jib. " +

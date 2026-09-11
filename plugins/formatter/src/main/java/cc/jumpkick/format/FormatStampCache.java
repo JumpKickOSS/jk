@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
+import org.jspecify.annotations.Nullable;
 
 /**
  * What one formatter configuration already knows about a file's bytes, in two index files under
@@ -84,7 +85,8 @@ final class FormatStampCache {
      * The stamp key for a file whose raw bytes are {@code fileBytes}: SHA-256 over the run's config
      * digest and the content. Null for absent bytes (fail-open cache miss).
      */
-    String keyFor(byte[] fileBytes) {
+    @Nullable
+    String keyFor(byte @Nullable [] fileBytes) {
         if (fileBytes == null) return null;
         MessageDigest md = Hashing.newSha256();
         md.update((configKey + "\n").getBytes(StandardCharsets.UTF_8));
@@ -96,7 +98,7 @@ final class FormatStampCache {
      * Whether {@code key} is settled. A map read — no filesystem call at all. A hit is touched, so
      * {@link #save()} ranks what this run actually used above what it merely loaded.
      */
-    boolean contains(String key) {
+    boolean contains(@Nullable String key) {
         if (key == null) return false;
         if (keys.replace(key, tick.incrementAndGet()) == null) return false;
         dirty = true;
@@ -104,7 +106,7 @@ final class FormatStampCache {
     }
 
     /** Remember {@code key} as settled. A map write; nothing reaches disk until {@link #save()}. */
-    void record(String key) {
+    void record(@Nullable String key) {
         if (key == null) return;
         keys.put(key, tick.incrementAndGet());
         // These bytes formatted, so whatever they did on an earlier run under a tighter limit is no
@@ -118,7 +120,7 @@ final class FormatStampCache {
      * configuration — or {@code 0} when they have not. A hit is touched, so {@link #save()} ranks what
      * this run actually consulted above what it merely loaded.
      */
-    long timedOutAt(String key) {
+    long timedOutAt(@Nullable String key) {
         if (key == null) return 0;
         Timeout t = timeouts.computeIfPresent(key, (k, v) -> new Timeout(v.limitMs(), tick.incrementAndGet()));
         if (t == null) return 0;
@@ -130,7 +132,7 @@ final class FormatStampCache {
      * Remember that {@code key}'s bytes did not finish inside {@code limitMs}. Replaces any settled
      * stamp for the same bytes: the run just proved otherwise.
      */
-    void recordTimeout(String key, long limitMs) {
+    void recordTimeout(@Nullable String key, long limitMs) {
         if (key == null || limitMs <= 0) return;
         timeouts.put(key, new Timeout(limitMs, tick.incrementAndGet()));
         keys.remove(key);

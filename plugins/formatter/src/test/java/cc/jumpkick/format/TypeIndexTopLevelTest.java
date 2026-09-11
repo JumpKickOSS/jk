@@ -149,8 +149,10 @@ class TypeIndexTopLevelTest {
         if (!Files.isDirectory(root)) return; // not running from the module dir; nothing to check
         List<Path> sources;
         try (Stream<Path> s = Files.walk(root)) {
-            sources =
-                    s.filter(p -> p.getFileName().toString().endsWith(".java")).toList();
+            // package-info declares a package, not a type, so it names nothing the index holds.
+            sources = s.filter(p -> p.getFileName().toString().endsWith(".java"))
+                    .filter(p -> !p.getFileName().toString().equals("package-info.java"))
+                    .toList();
         }
         if (sources.isEmpty()) return;
         TypeIndex index = TypeIndex.scan(sources, false);
