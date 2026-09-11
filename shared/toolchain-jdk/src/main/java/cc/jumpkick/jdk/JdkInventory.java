@@ -27,6 +27,7 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Inventory of JumpKick-managed JDKs plus the Java / Graal defaults, at {@code
@@ -295,7 +296,7 @@ public final class JdkInventory {
         }
     }
 
-    private Row rowFor(InstalledJdk jdk, Row existing, boolean computeHash) {
+    private Row rowFor(InstalledJdk jdk, @Nullable Row existing, boolean computeHash) {
         Path home = jdk.home();
         Path dir = IntellijJdkDir.installDirOf(home);
         JdkHit hit = ProbeSupport.discoverJdk(home, "jk").orElse(null);
@@ -316,7 +317,7 @@ public final class JdkInventory {
         return new Row(jdk.identifier(), token, version == null ? "" : version, graal, touched, sha, storedHome);
     }
 
-    static Instant touchedOf(Path javaHome) {
+    static @Nullable Instant touchedOf(Path javaHome) {
         Path javac = JdkFingerprint.javac(javaHome);
         try {
             return Files.getLastModifiedTime(javac).toInstant().truncatedTo(ChronoUnit.SECONDS);
@@ -338,9 +339,9 @@ public final class JdkInventory {
         }
     }
 
-    private Snapshot cachedSnapshot;
+    private @Nullable Snapshot cachedSnapshot;
     private long cachedSize = -1;
-    private FileTime cachedModified;
+    private @Nullable FileTime cachedModified;
 
     /**
      * Read-path snapshot, memoized on (size, mtime): {@code jk hook-env} runs on every shell
@@ -354,10 +355,11 @@ public final class JdkInventory {
             // mtime together, and this runs on every shell prompt via `jk hook-env`.
             var attrs = Files.readAttributes(file, BasicFileAttributes.class);
             if (!attrs.isRegularFile()) return Snapshot.empty();
-            if (cachedSnapshot != null
+            Snapshot cached = cachedSnapshot;
+            if (cached != null
                     && attrs.size() == cachedSize
                     && attrs.lastModifiedTime().equals(cachedModified)) {
-                return cachedSnapshot;
+                return cached;
             }
             Snapshot snap = parse(Files.readString(file, StandardCharsets.UTF_8));
             cachedSnapshot = snap;
@@ -384,7 +386,7 @@ public final class JdkInventory {
         return new Snapshot(null, null, rows);
     }
 
-    private static Path installDirOfHome(Path home) {
+    private static @Nullable Path installDirOfHome(Path home) {
         try {
             if (!Files.exists(home)) return null;
             return IntellijJdkDir.installDirOf(home.toRealPath());
@@ -509,7 +511,7 @@ public final class JdkInventory {
         return new Snapshot(blankToNull(defaultId), blankToNull(graalId), rows);
     }
 
-    private static String blankToNull(String s) {
+    private static @Nullable String blankToNull(@Nullable String s) {
         return s == null || s.isBlank() ? null : s;
     }
 
@@ -533,7 +535,7 @@ public final class JdkInventory {
         });
     }
 
-    private <T> T withExclusiveLockGet(IoSupplier<T> body) throws IOException {
+    private <T extends @Nullable Object> T withExclusiveLockGet(IoSupplier<T> body) throws IOException {
         Path lockFile = file.resolveSibling(file.getFileName() + ".lock");
         Object jvmLock =
                 JVM_LOCKS.computeIfAbsent(lockFile.toAbsolutePath().normalize().toString(), k -> new Object());
@@ -552,17 +554,25 @@ public final class JdkInventory {
     }
 
     @FunctionalInterface
-    private interface IoSupplier<T> {
+    private interface IoSupplier<T extends @Nullable Object> {
         T get() throws IOException;
     }
 
     private static final class RowAccum {
+        @Nullable
         String id;
+
         String vendor = "";
         String version = "";
         boolean graal;
+
+        @Nullable
         Instant touched;
+
+        @Nullable
         String sha256;
+
+        @Nullable
         Path home;
 
         void reset() {
@@ -582,11 +592,11 @@ public final class JdkInventory {
     }
 
     static final class Snapshot {
-        final String defaultId;
-        final String graalId;
+        final @Nullable String defaultId;
+        final @Nullable String graalId;
         final Map<String, Row> rows;
 
-        Snapshot(String defaultId, String graalId, Map<String, Row> rows) {
+        Snapshot(@Nullable String defaultId, @Nullable String graalId, Map<String, Row> rows) {
             this.defaultId = defaultId;
             this.graalId = graalId;
             this.rows = rows;
@@ -596,7 +606,8 @@ public final class JdkInventory {
             return new Snapshot(null, null, Map.of());
         }
 
-        Row row(String id) {
+        @Nullable
+        Row row(@Nullable String id) {
             return id == null ? null : rows.get(id);
         }
 
@@ -606,23 +617,30 @@ public final class JdkInventory {
             return new Snapshot(defaultId, graalId, next);
         }
 
-        Snapshot withDefaultId(String id) {
+        Snapshot withDefaultId(@Nullable String id) {
             return new Snapshot(id, graalId, rows);
         }
 
-        Snapshot withGraalId(String id) {
+        Snapshot withGraalId(@Nullable String id) {
             return new Snapshot(defaultId, id, rows);
         }
     }
 
     public record Row(
-            String id, String vendor, String version, boolean graal, Instant touched, String sha256, Path home) {}
+            String id,
+            String vendor,
+            String version,
+            boolean graal,
+            @Nullable Instant touched,
+            @Nullable String sha256,
+            @Nullable Path home) {}
 
     /**
      * One verify result. {@link Kind#OK} is a match; any other kind is a problem {@code jk jdk
      * verify} reports as a non-zero exit.
      */
-    public record Finding(Kind kind, String id, Path installDir, String detail) {
+    public record Finding(
+            Kind kind, String id, Path installDir, @Nullable String detail) {
         public enum Kind {
             OK,
             UNHASHED,

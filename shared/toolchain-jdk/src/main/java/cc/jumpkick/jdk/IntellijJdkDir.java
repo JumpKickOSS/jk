@@ -3,6 +3,7 @@ package cc.jumpkick.jdk;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Objects;
 
 /**
  * Helpers for the macOS {@code .jdk/Contents/Home} bundle layout that JDK distributions ship with
@@ -40,7 +41,7 @@ public final class IntellijJdkDir {
                 && "Home".equals(fileName.toString())
                 && parent.getFileName() != null
                 && "Contents".equals(parent.getFileName().toString())) {
-            return parent.getParent();
+            return Objects.requireNonNull(parent.getParent(), "a Contents/Home has a bundle directory above it");
         }
         return javaHome;
     }

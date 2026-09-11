@@ -12,7 +12,9 @@ import cc.jumpkick.model.VersionSelector;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Renders a {@link JkBuild} (and workspace) as a Gradle Kotlin-DSL build: {@code
@@ -102,7 +104,8 @@ public final class GradleExporter {
     private static String renderBuild(
             JkBuild jk, Layout layout, Map<String, String> locked, ImportReport.Builder report) {
         Project p = jk.project();
-        boolean kotlin = p.kotlin() != null;
+        VersionSelector kotlinVersion = p.kotlin();
+        boolean kotlin = kotlinVersion != null;
         boolean app = jk.mainClass() != null;
         boolean assembly = jk.assembly();
         boolean nativeImg = jk.nativeMode() == JkBuild.NativeMode.ALWAYS;
@@ -112,7 +115,7 @@ public final class GradleExporter {
         sb.append("    java\n");
         if (kotlin) {
             sb.append("    kotlin(\"jvm\") version \"")
-                    .append(kEsc(extractVersion(p.kotlin(), "kotlin", report)))
+                    .append(kEsc(extractVersion(Objects.requireNonNull(kotlinVersion), "kotlin", report)))
                     .append("\"\n");
         }
         if (app) sb.append("    application\n");
@@ -240,7 +243,7 @@ public final class GradleExporter {
         }
         if (d.isPath()) {
             report.warning("dependency `"
-                    + d.pathSource().rawPath()
+                    + Objects.requireNonNull(d.pathSource()).rawPath()
                     + "` is a local path dependency; Gradle has no built-in"
                     + " equivalent — dropped. Consider `includeBuild` of that directory.");
             return true;
@@ -309,7 +312,7 @@ public final class GradleExporter {
     }
 
     /** Escape a Kotlin string literal ({@code \} and {@code "}). */
-    private static String kEsc(String s) {
+    private static String kEsc(@Nullable String s) {
         if (s == null) return "";
         return s.replace("\\", "\\\\").replace("\"", "\\\"");
     }

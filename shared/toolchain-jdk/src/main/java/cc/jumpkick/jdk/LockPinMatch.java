@@ -72,7 +72,7 @@ public final class LockPinMatch {
         return best(ok);
     }
 
-    private static boolean sameMajor(String hitVersion, Integer wantMajor) {
+    private static boolean sameMajor(@Nullable String hitVersion, @Nullable Integer wantMajor) {
         if (wantMajor == null || hitVersion == null) return false;
         Integer m = JdkKeywords.leadingMajor(hitVersion);
         return m != null && m.intValue() == wantMajor.intValue();
@@ -153,13 +153,15 @@ public final class LockPinMatch {
     }
 
     /** The {@code [jdk]} table for {@code spec}, with blanks filled from the JDK that resolved. */
-    public static Lockfile.JdkPin jdkPin(ToolchainSpec spec, JdkHit hit, Lockfile.ToolchainPin previous) {
+    public static Lockfile.JdkPin jdkPin(
+            @Nullable ToolchainSpec spec, @Nullable JdkHit hit, Lockfile.@Nullable ToolchainPin previous) {
         String[] f = fields(spec, hit, previous);
         return new Lockfile.JdkPin(f[0], f[1], f[2], f[3]);
     }
 
     /** The {@code [graal]} table for {@code spec}, with blanks filled from the GraalVM that resolved. */
-    public static Lockfile.GraalPin graalPin(ToolchainSpec spec, JdkHit hit, Lockfile.ToolchainPin previous) {
+    public static Lockfile.GraalPin graalPin(
+            @Nullable ToolchainSpec spec, @Nullable JdkHit hit, Lockfile.@Nullable ToolchainPin previous) {
         String[] f = fields(spec, hit, previous);
         return new Lockfile.GraalPin(f[0], f[1], f[2], f[3]);
     }
@@ -178,7 +180,8 @@ public final class LockPinMatch {
      * <p>A required field leaves its suggested counterpart empty: writing both would state a floor
      * the requirement has already overruled.
      */
-    private static String[] fields(ToolchainSpec spec, JdkHit hit, Lockfile.ToolchainPin previous) {
+    private static String[] fields(
+            @Nullable ToolchainSpec spec, @Nullable JdkHit hit, Lockfile.@Nullable ToolchainPin previous) {
         ToolchainSpec s = spec == null ? ToolchainSpec.NONE : spec;
         // Manifest dropped the pin: keep a previous suggestion only when it still names
         // something installable. Copying nosuchvendor-99 would make the next build try to
@@ -207,7 +210,7 @@ public final class LockPinMatch {
      * <p>{@code required-*} pins are not suggestions; this returns {@code false} for them so
      * callers do not treat a requirement as a droppable floor.
      */
-    public static boolean suggestionIsInstallable(Lockfile.ToolchainPin pin) {
+    public static boolean suggestionIsInstallable(Lockfile.@Nullable ToolchainPin pin) {
         if (pin == null || pin.isEmpty() || pin.hasRequirement()) return false;
         String vendor = pin.suggestedVendor();
         return vendor.isEmpty() || knownVendorId(vendor);

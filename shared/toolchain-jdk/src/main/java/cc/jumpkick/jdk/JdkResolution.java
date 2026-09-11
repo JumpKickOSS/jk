@@ -2,7 +2,6 @@
 package cc.jumpkick.jdk;
 
 import cc.jumpkick.discovery.ToolHealth;
-import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.Lockfile.JdkPin;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -44,15 +43,35 @@ public final class JdkResolution {
             @Nullable String projectJdkSpec,
             int projectJavaRelease,
             Function<String, @Nullable String> env) {
-        public Request {
-            if (env == null) env = k -> null;
+        // Spelled out rather than compact: the canonical constructor a compact form synthesizes
+        // reaches the class file without the type-argument annotation on {@code env}, and every
+        // caller compiled against it would read the lookup as never null.
+        public Request(
+                @Nullable Path projectDir,
+                @Nullable String switchSpec,
+                @Nullable String envSpec,
+                @Nullable JdkPin lockJdk,
+                @Nullable String projectJdkSpec,
+                int projectJavaRelease,
+                Function<String, @Nullable String> env) {
+            this.projectDir = projectDir;
+            this.switchSpec = switchSpec;
+            this.envSpec = envSpec;
+            this.lockJdk = lockJdk;
+            this.projectJdkSpec = projectJdkSpec;
+            this.projectJavaRelease = projectJavaRelease;
+            this.env = env;
         }
     }
 
     public record Resolved(
-            @Nullable InstalledJdk jdk, Tier tier, String specUsed, boolean wouldInstall, String installSpec) {
+            @Nullable InstalledJdk jdk,
+            Tier tier,
+            @Nullable String specUsed,
+            boolean wouldInstall,
+            @Nullable String installSpec) {
 
-        static Resolved found(InstalledJdk jdk, Tier tier, String spec) {
+        static Resolved found(InstalledJdk jdk, Tier tier, @Nullable String spec) {
             return new Resolved(jdk, tier, spec, false, null);
         }
 
@@ -156,9 +175,10 @@ public final class JdkResolution {
             // Nothing anywhere clears the lock's floor. A real vendor/major is an install;
             // an unknown-vendor suggestion is poison from a dropped manifest pin — settle
             // on whatever is already installed instead of `no JDK matches nosuchvendor-99`.
-            if (canInstall && lockFloor != null) {
-                if (LockPinMatch.suggestionIsInstallable(req.lockJdk())) {
-                    return Resolved.install(Tier.LOCKFILE, LockPinMatch.installSpec(req.lockJdk()));
+            JdkPin lockPin = req.lockJdk();
+            if (canInstall && lockFloor != null && lockPin != null) {
+                if (LockPinMatch.suggestionIsInstallable(lockPin)) {
+                    return Resolved.install(Tier.LOCKFILE, LockPinMatch.installSpec(lockPin));
                 }
                 Optional<JdkHit> settled = DefaultJdkPolicy.choose(hits, latestLtsMajor);
                 if (settled.isPresent()) {
@@ -183,7 +203,8 @@ public final class JdkResolution {
     }
 
     /** A named-spec tier: resolve on disk; else (build) signal install, else (hook) continue. */
-    private static Resolved named(String spec, Tier tier, JdkRegistry reg, boolean canInstall, String lockFloor) {
+    private static @Nullable Resolved named(
+            @Nullable String spec, Tier tier, JdkRegistry reg, boolean canInstall, @Nullable String lockFloor) {
         if (spec == null || spec.isBlank()) return null;
         Optional<InstalledJdk> hit = reg.findBySpec(spec);
         if (hit.isPresent()) {
@@ -195,7 +216,7 @@ public final class JdkResolution {
         return canInstall ? Resolved.install(tier, spec) : null;
     }
 
-    private static Resolved jdkVersionFile(Path dir, JdkRegistry reg, boolean canInstall) {
+    private static @Nullable Resolved jdkVersionFile(@Nullable Path dir, JdkRegistry reg, boolean canInstall) {
         if (dir == null) return null;
         Optional<String> pin;
         try {
@@ -219,7 +240,7 @@ public final class JdkResolution {
      * through with a major floor, unless the pin states a requirement, which a fall-through would
      * quietly ignore.
      */
-    private static Resolved lockfile(Lockfile.JdkPin pin, JdkRegistry reg, boolean canInstall) {
+    private static @Nullable Resolved lockfile(@Nullable JdkPin pin, JdkRegistry reg, boolean canInstall) {
         if (pin == null) return null;
         Optional<JdkHit> hit = LockPinMatch.choose(reg.listHits(), pin);
         if (hit.isPresent()) {
@@ -246,7 +267,7 @@ public final class JdkResolution {
         return LockPinMatch.hitFor(home, pool).isPresent();
     }
 
-    private static Resolved envHome(String home, Tier tier, String lockFloor) {
+    private static @Nullable Resolved envHome(@Nullable String home, Tier tier, @Nullable String lockFloor) {
         if (home == null || home.isBlank()) return null;
         Path p = Path.of(home);
         if (!hasBin(p) || !meetsFloor(p, lockFloor)) return null;
@@ -257,7 +278,7 @@ public final class JdkResolution {
      * Whether an ambient home clears the lock's floor. No registry knows these homes, so the
      * version comes off their release file; an unreadable one cannot be shown to clear a floor.
      */
-    private static boolean meetsFloor(Path home, String lockFloor) {
+    private static boolean meetsFloor(Path home, @Nullable String lockFloor) {
         if (lockFloor == null) return true;
         return ToolHealth.javaVersion(home)
                 .map(v -> LockPinMatch.meetsFloor(v, lockFloor))

@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Reads {@code JAVA_HOME} / {@code KOTLIN_HOME} / {@code M2_HOME} / {@code GRADLE_HOME} (and {@code
@@ -16,13 +17,13 @@ import java.util.function.Function;
  */
 public final class EnvVarProbe implements LocalToolProbe {
 
-    private final Function<String, String> env;
+    private final Function<String, @Nullable String> env;
 
     public EnvVarProbe() {
         this(System::getenv);
     }
 
-    EnvVarProbe(Function<String, String> env) {
+    EnvVarProbe(Function<String, @Nullable String> env) {
         this.env = env;
     }
 

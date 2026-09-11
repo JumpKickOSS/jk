@@ -15,6 +15,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Maven/Gradle → {@code jk.toml} conversion. Runs in the engine (the registry host) so import
@@ -35,7 +36,13 @@ public final class ProjectImport {
      * files. {@code exit} 0 success, {@link Exit#USAGE} a missing argument or an unrecognised
      * source, {@link Exit#CANT_CREATE} overwrite without force, 1 IO error.
      */
-    public static Outcome run(Path source, Path out, Path baseDir, Path tmpDir, boolean force, Path report) {
+    public static Outcome run(
+            Path source,
+            Path out,
+            @Nullable Path baseDir,
+            @Nullable Path tmpDir,
+            boolean force,
+            @Nullable Path report) {
         if (source == null || out == null) {
             return new Outcome(Exit.USAGE, 0, "import requires source and out", List.of());
         }

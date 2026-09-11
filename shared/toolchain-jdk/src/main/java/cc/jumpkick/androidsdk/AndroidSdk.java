@@ -8,6 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Android SDK root: reuse {@code ANDROID_HOME}/{@code ANDROID_SDK_ROOT}/Studio defaults, else
@@ -34,7 +35,7 @@ public final class AndroidSdk {
     }
 
     /** Explicit-env seam for tests. */
-    static AndroidSdk resolve(Function<String, String> env, Path managedRoot) throws IOException {
+    static AndroidSdk resolve(Function<String, @Nullable String> env, Path managedRoot) throws IOException {
         if (Files.isDirectory(managedRoot) || Files.isSymbolicLink(managedRoot)) {
             return new AndroidSdk(managedRoot);
         }
@@ -53,7 +54,7 @@ public final class AndroidSdk {
         return new AndroidSdk(managedRoot);
     }
 
-    private static Path discover(Function<String, String> env) {
+    private static @Nullable Path discover(Function<String, @Nullable String> env) {
         for (String var : new String[] {"ANDROID_HOME", "ANDROID_SDK_ROOT"}) {
             String value = env.apply(var);
             if (value != null && !value.isBlank() && Files.isDirectory(Path.of(value))) {
@@ -79,7 +80,7 @@ public final class AndroidSdk {
      * The installed component's dotted revision, read from its {@code source.properties}
      * ({@code Pkg.Revision} — the sdkmanager on-disk contract), or null when absent/unreadable.
      */
-    public String installedRevision(String componentPath) {
+    public @Nullable String installedRevision(String componentPath) {
         Path props = componentDir(componentPath).resolve("source.properties");
         if (!Files.isRegularFile(props)) return null;
         try {

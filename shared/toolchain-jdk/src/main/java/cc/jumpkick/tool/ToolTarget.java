@@ -6,6 +6,7 @@ import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.Locale;
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Purely syntactic classification of a {@code jk tool run|install} target (no network/catalog).
@@ -40,7 +41,7 @@ public sealed interface ToolTarget {
     record JBangAlias(String raw) implements ToolTarget {}
 
     /** Catalog name, optional {@code @suffix} (floating version selector for the consumer). */
-    record CatalogName(String name, String suffix, String raw) implements ToolTarget {}
+    record CatalogName(String name, @Nullable String suffix, String raw) implements ToolTarget {}
 
     static ToolTarget classify(String raw) {
         Objects.requireNonNull(raw, "raw");
@@ -132,7 +133,7 @@ public sealed interface ToolTarget {
         return -1;
     }
 
-    private static Path safePath(String s) {
+    private static @Nullable Path safePath(String s) {
         try {
             return Path.of(s);
         } catch (InvalidPathException e) {

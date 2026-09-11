@@ -20,6 +20,7 @@ import java.time.Duration;
 import java.util.Locale;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Ensures Android SDK components under {@link AndroidSdk}: reuse installed, else download from
@@ -32,7 +33,7 @@ public final class AndroidSdkInstaller {
 
     private final AndroidSdk sdk;
     private final HttpClient http;
-    private AndroidRepoFeed feed; // fetched once per installer instance
+    private @Nullable AndroidRepoFeed feed; // fetched once per installer instance
 
     public AndroidSdkInstaller(AndroidSdk sdk) {
         this.sdk = sdk;
@@ -58,7 +59,7 @@ public final class AndroidSdkInstaller {
      * reports the drift (stderr) instead of silently building against different tool bytes;
      * {@code jk lock} refreshes the pin.
      */
-    public Path ensure(String componentPath, String pinnedRevision) throws IOException, InterruptedException {
+    public Path ensure(String componentPath, @Nullable String pinnedRevision) throws IOException, InterruptedException {
         Path dir = sdk.componentDir(componentPath);
         if (sdk.installed(componentPath)) {
             warnOnDrift(componentPath, pinnedRevision);
@@ -97,7 +98,7 @@ public final class AndroidSdkInstaller {
         return dir;
     }
 
-    private void warnOnDrift(String componentPath, String pinnedRevision) {
+    private void warnOnDrift(String componentPath, @Nullable String pinnedRevision) {
         if (pinnedRevision == null) return;
         String installed = sdk.installedRevision(componentPath);
         if (installed != null && !installed.equals(pinnedRevision)) {

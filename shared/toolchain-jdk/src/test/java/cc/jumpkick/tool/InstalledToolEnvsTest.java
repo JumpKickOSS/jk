@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.tool;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.model.Coordinate;
@@ -32,9 +33,8 @@ class InstalledToolEnvsTest {
     void a_run_by_installed_name_reuses_what_the_install_recorded(@TempDir Path tmp) throws Exception {
         Path envsRoot = installed(tmp, "checkstyle", "com.puppycrawl.tools.checkstyle.Main");
 
-        InstalledToolEnvs.Installed installed = InstalledToolEnvs.read(envsRoot, "checkstyle");
+        InstalledToolEnvs.Installed installed = requireNonNull(InstalledToolEnvs.read(envsRoot, "checkstyle"));
 
-        assertThat(installed).isNotNull();
         assertThat(installed.env().primary().toGav()).isEqualTo("com.acme:checkstyle:1.0.0");
         assertThat(installed.env().mainClass())
                 .as("--main recorded at install time is reused, never repeated")

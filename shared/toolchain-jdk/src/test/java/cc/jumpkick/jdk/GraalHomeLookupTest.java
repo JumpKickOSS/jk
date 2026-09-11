@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -22,7 +23,7 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class GraalHomeLookupTest {
 
-    private static final Function<String, String> NO_ENV = name -> null;
+    private static final Function<String, @Nullable String> NO_ENV = name -> null;
 
     @Test
     void an_explicit_spec_answers_its_own_install_or_nothing(@TempDir Path tmp) throws IOException {
@@ -76,7 +77,7 @@ class GraalHomeLookupTest {
         Path jdks = Files.createDirectories(tmp.resolve("jdks"));
         Path graal = jdks.resolve("graalvm-25.0.4");
         makeGraalvmInstall(graal, "25.0.4");
-        Function<String, String> env = Map.of("GRAALVM_HOME", graal.toString())::get;
+        Function<String, @Nullable String> env = Map.of("GRAALVM_HOME", graal.toString())::get;
         assertThat(GraalHomeLookup.bySpec(new JdkRegistry(jdks), "graalvm-25", env))
                 .contains(graal);
         assertThat(Optional.ofNullable(env.apply("PATH"))).isEmpty();

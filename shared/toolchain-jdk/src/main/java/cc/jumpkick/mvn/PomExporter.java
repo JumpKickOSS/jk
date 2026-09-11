@@ -12,6 +12,8 @@ import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.pom.PomXml;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Renders a {@link JkBuild} as a Maven {@code pom.xml} (companion to {@code PomImporter}).
@@ -81,7 +83,7 @@ public final class PomExporter {
         if (!jkBuild.isWorkspaceRoot()) return;
         sb.append('\n');
         sb.append("  <modules>\n");
-        for (String module : jkBuild.workspace().modules()) {
+        for (String module : Objects.requireNonNull(jkBuild.workspace()).modules()) {
             sb.append("    <module>").append(PomXml.escape(module)).append("</module>\n");
         }
         sb.append("  </modules>\n");
@@ -134,7 +136,7 @@ public final class PomExporter {
     private static void appendDependency(
             StringBuilder sb,
             Dependency d,
-            String mavenScope,
+            @Nullable String mavenScope,
             Map<String, String> locked,
             ImportReport.Builder report) {
         if (warnIfUnmappable(d, report)) return;
@@ -154,7 +156,7 @@ public final class PomExporter {
         }
         if (d.isPath()) {
             report.warning("dependency `"
-                    + d.pathSource().rawPath()
+                    + Objects.requireNonNull(d.pathSource()).rawPath()
                     + "` is a local path dependency; Maven has no path-source"
                     + " equivalent — dropped. Build & install that project to your local repo"
                     + " (`mvn install`, or `jk install`) so it resolves by coordinate, then add it"
@@ -225,7 +227,7 @@ public final class PomExporter {
     }
 
     private static void appendKotlinPlugin(StringBuilder sb, Project p, ImportReport.Builder report) {
-        String ver = extractVersion(p.kotlin(), "kotlin", report);
+        String ver = extractVersion(Objects.requireNonNull(p.kotlin()), "kotlin", report);
         sb.append("      <plugin>\n");
         sb.append("        <groupId>org.jetbrains.kotlin</groupId>\n");
         sb.append("        <artifactId>kotlin-maven-plugin</artifactId>\n");
@@ -289,7 +291,7 @@ public final class PomExporter {
         sb.append("      </plugin>\n");
     }
 
-    private static void appendJarPlugin(StringBuilder sb, String mainClass, Map<String, String> manifest) {
+    private static void appendJarPlugin(StringBuilder sb, @Nullable String mainClass, Map<String, String> manifest) {
         sb.append("      <plugin>\n");
         sb.append("        <groupId>org.apache.maven.plugins</groupId>\n");
         sb.append("        <artifactId>maven-jar-plugin</artifactId>\n");

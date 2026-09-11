@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.discovery;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
@@ -18,9 +19,10 @@ class SdkmanProbeTest {
         Path sdkman = tempDir.resolve(".sdkman");
         Path candidate = sdkman.resolve("candidates").resolve("java").resolve("21.0.5-tem");
         Files.createDirectories(candidate);
-        ToolHealthTest.jdkLayout(candidate.getParent(), "21.0.5", "Eclipse Adoptium");
+        Path candidates = requireNonNull(candidate.getParent());
+        ToolHealthTest.jdkLayout(candidates, "21.0.5", "Eclipse Adoptium");
         // Move the synthetic layout to the SDKMAN-named path.
-        Path synthetic = candidate.getParent().resolve("jdk-21.0.5");
+        Path synthetic = candidates.resolve("jdk-21.0.5");
         moveContents(synthetic, candidate);
 
         Optional<DiscoveredTool> hit = new SdkmanProbe(sdkman).find(ToolSpec.jdk("21.0.5", "tem"));
@@ -34,8 +36,9 @@ class SdkmanProbeTest {
         Path sdkman = tempDir.resolve(".sdkman");
         Path candidate = sdkman.resolve("candidates").resolve("maven").resolve("3.9.15");
         Files.createDirectories(candidate);
-        ToolHealthTest.mavenLayout(candidate.getParent(), "3.9.15");
-        moveContents(candidate.getParent().resolve("apache-maven-3.9.15"), candidate);
+        Path candidates = requireNonNull(candidate.getParent());
+        ToolHealthTest.mavenLayout(candidates, "3.9.15");
+        moveContents(candidates.resolve("apache-maven-3.9.15"), candidate);
 
         // We ask for 3.9.9 — the wrong version. Probe must not match.
         assertThat(new SdkmanProbe(sdkman).find(ToolSpec.maven("3.9.9"))).isEmpty();
@@ -46,8 +49,9 @@ class SdkmanProbeTest {
         Path sdkman = tempDir.resolve(".sdkman");
         Path candidate = sdkman.resolve("candidates").resolve("kotlin").resolve("2.3.21");
         Files.createDirectories(candidate);
-        ToolHealthTest.kotlinLayout(candidate.getParent(), "2.3.21-release-298");
-        moveContents(candidate.getParent().resolve("kotlinc"), candidate);
+        Path candidates = requireNonNull(candidate.getParent());
+        ToolHealthTest.kotlinLayout(candidates, "2.3.21-release-298");
+        moveContents(candidates.resolve("kotlinc"), candidate);
 
         Optional<DiscoveredTool> hit = new SdkmanProbe(sdkman).find(ToolSpec.kotlin("2.3.21"));
         assertThat(hit).isPresent();
@@ -61,8 +65,9 @@ class SdkmanProbeTest {
         Path sdkman = tempDir.resolve(".sdkman");
         Path candidate = sdkman.resolve("candidates").resolve("java").resolve("21.0.5-tem");
         Files.createDirectories(candidate);
-        ToolHealthTest.jdkLayout(candidate.getParent(), "21.0.5", "Eclipse Adoptium");
-        moveContents(candidate.getParent().resolve("jdk-21.0.5"), candidate);
+        Path candidates = requireNonNull(candidate.getParent());
+        ToolHealthTest.jdkLayout(candidates, "21.0.5", "Eclipse Adoptium");
+        moveContents(candidates.resolve("jdk-21.0.5"), candidate);
 
         Optional<DiscoveredTool> hit =
                 new ToolProvisioner(List.of(new SdkmanProbe(sdkman))).discover(ToolSpec.jdk("21.0.5", "tem"));

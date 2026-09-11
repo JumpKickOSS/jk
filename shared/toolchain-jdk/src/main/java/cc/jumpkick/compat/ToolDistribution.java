@@ -3,6 +3,7 @@ package cc.jumpkick.compat;
 
 import java.net.URI;
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Metadata for a downloadable Maven or Gradle distribution. The {@code MavenResolver} / {@code
@@ -11,7 +12,12 @@ import java.util.Objects;
  * <p>{@link #sha256} is optional: wrapper-properties-derived distributions may not carry one (Maven
  * Wrapper does, Gradle Wrapper sometimes does). The installer skips verification when null/blank.
  */
-public record ToolDistribution(BuildTool tool, String version, URI downloadUri, String archiveType, String sha256) {
+public record ToolDistribution(
+        BuildTool tool,
+        String version,
+        URI downloadUri,
+        String archiveType,
+        @Nullable String sha256) {
 
     public ToolDistribution {
         Objects.requireNonNull(tool, "tool");

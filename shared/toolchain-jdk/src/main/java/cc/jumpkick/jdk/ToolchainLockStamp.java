@@ -32,13 +32,13 @@ public final class ToolchainLockStamp {
 
     private ToolchainLockStamp() {}
 
-    public static Lockfile apply(
-            Lockfile lock,
+    public static @Nullable Lockfile apply(
+            @Nullable Lockfile lock,
             @Nullable Lockfile previous,
             Path javaHome,
             JdkRegistry registry,
-            ToolchainSpec jdkSpec,
-            ToolchainSpec graalSpec,
+            @Nullable ToolchainSpec jdkSpec,
+            @Nullable ToolchainSpec graalSpec,
             boolean graalDeclared) {
         if (lock == null) return null;
         ToolchainSpec jdk = jdkSpec == null ? ToolchainSpec.NONE : jdkSpec;

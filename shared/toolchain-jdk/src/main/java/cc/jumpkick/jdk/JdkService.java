@@ -30,7 +30,7 @@ public final class JdkService {
      *     discards them
      */
     public JdkCatalog fetchCatalog(
-            @Nullable URI feedUrl, @Nullable Path cacheFile, boolean refresh, Consumer<String> warn)
+            @Nullable URI feedUrl, @Nullable Path cacheFile, boolean refresh, @Nullable Consumer<String> warn)
             throws IOException, InterruptedException {
         JdkCatalogClient client = feedUrl != null
                 ? new JdkCatalogClient(

@@ -4,6 +4,7 @@ package cc.jumpkick.compat;
 import cc.jumpkick.host.SearchPath;
 import java.nio.file.Path;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The one child-process environment jk hands to a tool it did not write: {@code jk mvn}, {@code jk
@@ -44,7 +45,7 @@ public final class PassthroughEnv {
      * caller has already put the JDK on {@code PATH} itself — {@code jk shell} already swapped the
      * toolchain bin onto PATH, so a second prepend here would double it.
      */
-    public static void apply(Map<String, String> env, Path javaHome) {
+    public static void apply(Map<String, String> env, @Nullable Path javaHome) {
         for (String name : STRIPPED) {
             env.remove(keyFor(env, name));
         }

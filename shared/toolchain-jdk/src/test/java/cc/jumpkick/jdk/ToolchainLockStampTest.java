@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.jdk;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.discovery.JkProbe;
@@ -10,6 +11,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -64,7 +66,7 @@ class ToolchainLockStampTest {
         // The host has only 25; the project asked for 17. The declaration is what gets recorded —
         // stamping the host's 25 is what would let a floor read as met and leave 17 unprovisioned.
         Lockfile stamped = apply(home, registry, ToolchainSpec.parse("jdk", "17"), false);
-        assertThat(stamped.jdk().suggestedVersion()).isEqualTo("17");
+        assertThat(requireNonNull(stamped.jdk()).suggestedVersion()).isEqualTo("17");
     }
 
     @Test
@@ -128,8 +130,8 @@ class ToolchainLockStampTest {
     }
 
     private static Lockfile apply(Path home, JdkRegistry registry, ToolchainSpec jdk, boolean graalDeclared) {
-        return ToolchainLockStamp.apply(
-                Lockfile.empty("0.1"), null, home, registry, jdk, ToolchainSpec.NONE, graalDeclared);
+        return requireNonNull(ToolchainLockStamp.apply(
+                Lockfile.empty("0.1"), null, home, registry, jdk, ToolchainSpec.NONE, graalDeclared));
     }
 
     @Test
@@ -141,8 +143,8 @@ class ToolchainLockStampTest {
         // Someone else locked this on Corretto. Re-locking here must not rewrite the record of
         // what built it just because this machine runs Temurin — only jk update refreshes that.
         Lockfile previous = Lockfile.empty("0.1").withJdk(Lockfile.JdkPin.suggested("corretto", "25.0.1"));
-        Lockfile kept = ToolchainLockStamp.apply(
-                Lockfile.empty("0.1"), previous, home, registry, ToolchainSpec.NONE, ToolchainSpec.NONE, false);
+        Lockfile kept = requireNonNull(ToolchainLockStamp.apply(
+                Lockfile.empty("0.1"), previous, home, registry, ToolchainSpec.NONE, ToolchainSpec.NONE, false));
         assertThat(kept.jdk()).isEqualTo(Lockfile.JdkPin.suggested("corretto", "25.0.1"));
 
         // jk update passes no previous, so the suggestion moves to what resolved.
@@ -157,8 +159,8 @@ class ToolchainLockStampTest {
         JdkRegistry registry = new JdkRegistry(jdks, List.of(new JkProbe(jdks)));
 
         Lockfile previous = Lockfile.empty("0.1").withJdk(Lockfile.JdkPin.suggested("nosuchvendor", "99"));
-        Lockfile rewritten = ToolchainLockStamp.apply(
-                Lockfile.empty("0.1"), previous, home, registry, ToolchainSpec.NONE, ToolchainSpec.NONE, false);
+        Lockfile rewritten = requireNonNull(ToolchainLockStamp.apply(
+                Lockfile.empty("0.1"), previous, home, registry, ToolchainSpec.NONE, ToolchainSpec.NONE, false));
         assertThat(rewritten.jdk()).isEqualTo(Lockfile.JdkPin.suggested("temurin", "25.0.4"));
     }
 
@@ -169,18 +171,19 @@ class ToolchainLockStampTest {
         JdkRegistry registry = new JdkRegistry(jdks, List.of(new JkProbe(jdks)));
 
         Lockfile previous = Lockfile.empty("0.1").withJdk(Lockfile.JdkPin.suggested("corretto", "25.0.1"));
-        Lockfile stamped = ToolchainLockStamp.apply(
+        Lockfile stamped = requireNonNull(ToolchainLockStamp.apply(
                 Lockfile.empty("0.1"),
                 previous,
                 home,
                 registry,
                 ToolchainSpec.parse("jdk", "microsoft-26"),
                 ToolchainSpec.NONE,
-                false);
+                false));
         assertThat(stamped.jdk()).isEqualTo(Lockfile.JdkPin.suggested("microsoft", "26"));
     }
 
-    private static Path fakeJdk(Path home, String version, String implementor, String extra) throws IOException {
+    private static Path fakeJdk(Path home, String version, String implementor, @Nullable String extra)
+            throws IOException {
         Files.createDirectories(home.resolve("bin"));
         Files.writeString(JdkFingerprint.java(home), "#!/fake\n");
         Files.writeString(JdkFingerprint.javac(home), "#!/fake\n");

@@ -12,6 +12,7 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Read-only view of JDKs registered in JetBrains/Android Studio {@code jdk.table.xml}. Used to
@@ -30,7 +31,7 @@ public final class IntellijJdkTable {
 
     private final List<Path> vendorRoots;
     private final String userHome;
-    private volatile Set<Path> cache;
+    private volatile @Nullable Set<Path> cache;
 
     IntellijJdkTable(List<Path> vendorRoots, String userHome) {
         this.vendorRoots = List.copyOf(vendorRoots);
@@ -53,8 +54,9 @@ public final class IntellijJdkTable {
         Set<Path> c = cache;
         if (c != null) return c;
         synchronized (this) {
-            if (cache == null) cache = scan();
-            return cache;
+            Set<Path> scanned = cache;
+            if (scanned == null) cache = scanned = scan();
+            return scanned;
         }
     }
 
@@ -63,7 +65,8 @@ public final class IntellijJdkTable {
      * products and Android Studio (under {@code Google}) live beside each other under the platform's
      * per-user config base.
      */
-    public static List<Path> defaultVendorRoots(Function<String, String> env, String osName, String userHome) {
+    public static List<Path> defaultVendorRoots(
+            Function<String, @Nullable String> env, String osName, String userHome) {
         String lower = osName.toLowerCase(Locale.ROOT);
         Path home = Path.of(userHome);
         Path base;

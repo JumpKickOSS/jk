@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.jdk;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
@@ -33,7 +34,7 @@ class JavaHomesTest {
                 name = "a"
                 """);
 
-        var build = JavaHomes.readBuildSoft(member);
+        var build = requireNonNull(JavaHomes.readBuildSoft(member));
         assertThat(build.project().jdk()).isEqualTo("temurin-21");
         assertThat(build.project().javaRelease()).isEqualTo(21);
     }
@@ -56,7 +57,7 @@ class JavaHomesTest {
                 java = 17
                 """);
 
-        var build = JavaHomes.readBuildSoft(member);
+        var build = requireNonNull(JavaHomes.readBuildSoft(member));
         assertThat(build.project().javaRelease()).isEqualTo(17);
         assertThat(build.project().jdk()).isEqualTo("temurin-21");
     }
@@ -67,7 +68,7 @@ class JavaHomesTest {
                 name = "solo"
                 """);
 
-        var build = JavaHomes.readBuildSoft(dir);
+        var build = requireNonNull(JavaHomes.readBuildSoft(dir));
         assertThat(build.project().jdk()).isNull();
         assertThat(build.project().javaRelease()).isZero();
     }

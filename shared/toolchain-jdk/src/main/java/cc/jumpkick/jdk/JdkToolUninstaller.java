@@ -6,6 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Best-effort "good neighbor" delegation for {@code jk jdk uninstall}.
@@ -52,7 +53,7 @@ public final class JdkToolUninstaller {
      * when we don't have a recipe for this source — the caller treats that the same as "tool failed"
      * and falls back to the direct delete.
      */
-    private static List<String> commandFor(JdkHit hit, String identifier) {
+    private static @Nullable List<String> commandFor(JdkHit hit, String identifier) {
         return switch (hit.source()) {
             // `sdk` is a shell function from sdkman-init.sh, not a binary —
             // source the init explicitly so this works under cron / non-login
@@ -91,7 +92,7 @@ public final class JdkToolUninstaller {
      * formula name. Returns {@code null} when the path doesn't look like a Cellar install (in which
      * case the caller falls back to the direct purge).
      */
-    private static String homebrewFormulaFor(Path home) {
+    private static @Nullable String homebrewFormulaFor(Path home) {
         Path p = home;
         while (p != null && p.getParent() != null) {
             Path parent = p.getParent();

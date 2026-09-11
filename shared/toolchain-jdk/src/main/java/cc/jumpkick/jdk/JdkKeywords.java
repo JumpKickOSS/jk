@@ -88,7 +88,7 @@ public final class JdkKeywords {
      * no hits qualify.
      */
     public static Optional<JdkHit> bestInstalledMatch(@Nullable String keyword, List<JdkHit> hits) {
-        if (!isKeyword(keyword) || keyword.trim().equalsIgnoreCase(NATIVE)) return Optional.empty();
+        if (keyword == null || !isKeyword(keyword) || keyword.trim().equalsIgnoreCase(NATIVE)) return Optional.empty();
         boolean wantLts =
                 keyword.trim().equalsIgnoreCase("lts") || keyword.trim().equalsIgnoreCase("stable");
         var candidates = new ArrayList<JdkHit>();
@@ -111,7 +111,7 @@ public final class JdkKeywords {
      * Parse the leading digit sequence of a JDK version string (e.g. {@code "25"} from {@code
      * "25.0.3"}).
      */
-    public static Integer leadingMajor(String version) {
+    public static @Nullable Integer leadingMajor(@Nullable String version) {
         if (version == null || version.isEmpty()) return null;
         int end = 0;
         while (end < version.length() && Character.isDigit(version.charAt(end))) end++;

@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -65,7 +66,14 @@ public final class ToolPlans {
                     URI url = repoUrl != null ? repoUrl : RepositorySpec.MAVEN_CENTRAL.url();
                     RepoGroup repos = RepoGroup.of(new MavenRepo(RepositorySpec.CENTRAL, url, new Http(), cas));
                     try {
-                        ctx.put(TOOL_ENV, new ToolResolver(repos).resolve(spec, bin, mainClassOverride, withSpecs));
+                        ctx.put(
+                                TOOL_ENV,
+                                new ToolResolver(repos)
+                                        .resolve(
+                                                spec,
+                                                Objects.requireNonNull(bin, "a tool resolve names its bin"),
+                                                mainClassOverride,
+                                                withSpecs));
                     } catch (RuntimeException | IOException e) {
                         ctx.error("resolve", Errors.text(e));
                         throw new RuntimeException(e);

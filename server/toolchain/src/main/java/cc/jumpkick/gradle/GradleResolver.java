@@ -11,6 +11,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Picks the Gradle distribution: wrapper {@code distributionUrl}, else {@link #DEFAULT_VERSION}.
@@ -39,7 +40,7 @@ public final class GradleResolver {
     }
 
     /** The distribution for an explicit Gradle version; blank means {@link #DEFAULT_VERSION}. */
-    public static ToolDistribution distributionFor(String version) {
+    public static ToolDistribution distributionFor(@Nullable String version) {
         String v = version == null || version.isBlank() ? DEFAULT_VERSION : version.trim();
         URI uri = URI.create(DEFAULT_BASE + "gradle-" + v + "-bin.zip");
         return new ToolDistribution(BuildTool.GRADLE, v, uri, "zip");

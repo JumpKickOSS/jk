@@ -4,6 +4,7 @@ package cc.jumpkick.compat;
 import cc.jumpkick.gradle.GradleResolver;
 import cc.jumpkick.kotlin.KotlinResolver;
 import cc.jumpkick.mvn.MavenResolver;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Which distribution a {@link BuildTool} means, at a named version or at the version jk defaults
@@ -27,7 +28,7 @@ public final class BuildToolDistributions {
      * BuildTool#LATEST} all mean the tool's default — the same one the engine provisions when a
      * build needs the tool and nothing has pinned it.
      */
-    public static ToolDistribution of(BuildTool tool, String version) {
+    public static ToolDistribution of(BuildTool tool, @Nullable String version) {
         String v = version == null || version.isBlank() || BuildTool.LATEST.equalsIgnoreCase(version.trim())
                 ? null
                 : version;

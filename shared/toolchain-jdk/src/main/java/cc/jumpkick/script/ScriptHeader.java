@@ -5,6 +5,7 @@ import cc.jumpkick.model.Dependency;
 import java.net.URI;
 import java.util.List;
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Parsed single-file script header from jk ({@code //jk …}), JBang, or Kotlin
@@ -12,17 +13,17 @@ import java.util.Objects;
  */
 public record ScriptHeader(
         List<Dependency> deps,
-        Integer release,
+        @Nullable Integer release,
         List<URI> repos,
         List<String> features,
         List<String> javacOptions,
         List<String> javaOptions,
         List<String> sources,
         List<String> files,
-        String main,
-        String gav,
-        String description,
-        String kotlinVersion) {
+        @Nullable String main,
+        @Nullable String gav,
+        @Nullable String description,
+        @Nullable String kotlinVersion) {
 
     public ScriptHeader {
         deps = List.copyOf(Objects.requireNonNull(deps, "deps"));

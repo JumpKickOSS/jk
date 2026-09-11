@@ -43,7 +43,7 @@ public final class JdkProvisioning {
 
     private final JdkRegistry registry;
     private final JdkCatalogClient catalogClient;
-    private final Function<String, String> env;
+    private final Function<String, @Nullable String> env;
     private final String os;
     private final String arch;
 

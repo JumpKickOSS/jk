@@ -2,6 +2,7 @@
 package cc.jumpkick.discovery;
 
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 /**
  * What we're looking for. {@code kind} matches SDKMAN candidate slugs ({@code java}, {@code
@@ -12,7 +13,8 @@ import java.util.Objects;
  * graalce}, {@code zulu}, …). Nullable for build tools (Maven, Gradle, Kotlin) which have a single
  * distribution.
  */
-public record ToolSpec(String kind, String version, String distribution) {
+public record ToolSpec(
+        String kind, String version, @Nullable String distribution) {
 
     public ToolSpec {
         Objects.requireNonNull(kind, "kind");
@@ -21,7 +23,7 @@ public record ToolSpec(String kind, String version, String distribution) {
         if (version.isBlank()) throw new IllegalArgumentException("version must not be blank");
     }
 
-    public static ToolSpec jdk(String version, String distribution) {
+    public static ToolSpec jdk(String version, @Nullable String distribution) {
         return new ToolSpec("java", version, distribution);
     }
 

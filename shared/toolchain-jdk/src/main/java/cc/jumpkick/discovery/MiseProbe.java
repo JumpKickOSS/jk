@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Discovers mise installs under {@code <data-dir>/installs/…}
@@ -70,7 +71,7 @@ public final class MiseProbe implements LocalToolProbe {
      * Resolve mise's data dir per <a href="https://mise.jdx.dev/configuration.html">mise's config
      * docs</a>.
      */
-    static Path resolveDataDir(Function<String, String> env, String userHome) {
+    static Path resolveDataDir(Function<String, @Nullable String> env, String userHome) {
         String miseData = env.apply("MISE_DATA_DIR");
         if (miseData != null && !miseData.isBlank()) return Path.of(miseData);
         String xdg = env.apply("XDG_DATA_HOME");

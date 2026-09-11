@@ -12,6 +12,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -247,10 +249,10 @@ class JdkResolutionTest {
     /** Tiny builder so each test only sets the tiers it cares about. */
     private static final class ReqBuilder {
         private final Path projectDir;
-        private String switchSpec, envSpec, projectJdkSpec;
-        private Lockfile.JdkPin lockJdk;
+        private @Nullable String switchSpec, envSpec, projectJdkSpec;
+        private Lockfile.@Nullable JdkPin lockJdk;
         private int projectJavaRelease;
-        private final Map<String, String> env = new HashMap<>();
+        private final Map<String, @Nullable String> env = new HashMap<>();
 
         ReqBuilder(Path projectDir) {
             this.projectDir = projectDir;
@@ -292,8 +294,9 @@ class JdkResolutionTest {
         }
 
         JdkResolution.Request build() {
+            Function<String, @Nullable String> lookup = env::get;
             return new JdkResolution.Request(
-                    projectDir, switchSpec, envSpec, lockJdk, projectJdkSpec, projectJavaRelease, env::get);
+                    projectDir, switchSpec, envSpec, lockJdk, projectJdkSpec, projectJavaRelease, lookup);
         }
     }
 }

@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Optional;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 
 /**
  * JDK home for the first {@code javac} on {@code PATH} (independent of {@code JAVA_HOME} / jk
@@ -35,7 +36,7 @@ public final class ActiveJavac {
      * env}. Returns the canonical JDK home, or empty when no {@code javac} is found on the path (or
      * none resolves to a {@code bin/} under a home directory).
      */
-    static Optional<Path> home(Function<String, String> env) {
+    static Optional<Path> home(Function<String, @Nullable String> env) {
         String path = env.apply("PATH");
         if (path == null || path.isBlank()) return Optional.empty();
         String exe = JdkFingerprint.toolName("javac");

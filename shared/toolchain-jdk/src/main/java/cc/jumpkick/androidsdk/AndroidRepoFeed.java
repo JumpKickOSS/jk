@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
@@ -37,7 +38,7 @@ public final class AndroidRepoFeed {
     public record Component(String path, String revision, String licenseId, String channel, List<Archive> archives) {
 
         /** The archive for {@code os} ({@code linux}/{@code macosx}/{@code windows}), or the OS-independent one. */
-        public Archive archiveFor(String os) {
+        public @Nullable Archive archiveFor(String os) {
             for (Archive a : archives) {
                 if (a.hostOs().equals(os)) return a;
             }
@@ -99,7 +100,7 @@ public final class AndroidRepoFeed {
     }
 
     /** The stable-channel component at {@code path} (fallback: any channel), or null when unknown. */
-    public Component find(String path) {
+    public @Nullable Component find(String path) {
         List<Component> candidates = byPath.get(path);
         if (candidates == null || candidates.isEmpty()) return null;
         for (Component c : candidates) {
@@ -109,7 +110,7 @@ public final class AndroidRepoFeed {
     }
 
     /** The license text for {@code id}, or null. */
-    public String licenseText(String id) {
+    public @Nullable String licenseText(String id) {
         return licenseTexts.get(id);
     }
 
@@ -134,7 +135,7 @@ public final class AndroidRepoFeed {
         return child == null ? "" : child.getAttribute(attr);
     }
 
-    private static Element firstChild(Element parent, String tag) {
+    private static @Nullable Element firstChild(Element parent, String tag) {
         NodeList list = parent.getElementsByTagName(tag);
         return list.getLength() == 0 ? null : (Element) list.item(0);
     }

@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Maps the current JVM's {@code os.arch} / {@code os.name} properties onto the strings the foojay
@@ -37,11 +38,11 @@ public final class Platform {
      * host as musl (Alpine and a few derivatives). Everything else under Linux is treated as glibc.
      * macOS reports {@code libc}, Windows reports {@code c_std_lib}.
      */
-    public static String currentLibCType() {
+    public static @Nullable String currentLibCType() {
         return libCTypeFor(currentOperatingSystem(), Path.of("/"));
     }
 
-    static String libCTypeFor(String os, Path rootFs) {
+    static @Nullable String libCTypeFor(String os, Path rootFs) {
         return switch (os) {
             case "linux" -> hasMuslLoader(rootFs) ? "musl" : "glibc";
             case "macos" -> "libc";

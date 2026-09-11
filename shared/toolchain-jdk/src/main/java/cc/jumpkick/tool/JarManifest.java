@@ -17,6 +17,7 @@ import java.util.jar.Attributes;
 import java.util.jar.Manifest;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Reads {@code META-INF/MANIFEST.MF} entries from a jar without unpacking. Used by the
@@ -147,7 +148,11 @@ public final class JarManifest {
      * {@code pom.xml} (suitable for {@code PomImporter.importFromBytes}); {@code pomProperties} is
      * the raw key-value text of {@code pom.properties}.
      */
-    public record EmbeddedPom(String group, String artifact, byte[] pomXml, String pomProperties) {
+    public record EmbeddedPom(
+            String group,
+            String artifact,
+            byte @Nullable [] pomXml,
+            @Nullable String pomProperties) {
         public boolean hasPomXml() {
             return pomXml != null && pomXml.length > 0;
         }
@@ -159,7 +164,9 @@ public final class JarManifest {
         static final class Builder {
             final String group;
             final String artifact;
-            byte[] pomXml;
+            byte @Nullable [] pomXml;
+
+            @Nullable
             String pomProperties;
 
             Builder(String group, String artifact) {

@@ -4,6 +4,7 @@ package cc.jumpkick.jdk;
 import java.net.URI;
 import java.util.List;
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Parsed view of the JetBrains JDK feed at {@code
@@ -38,7 +39,7 @@ public record JdkCatalog(List<Entry> entries) {
             String arch,
             String packageType,
             URI url,
-            String sha256,
+            @Nullable String sha256,
             long archiveSize,
             String installFolderName,
             String javaHomeSubpath) {

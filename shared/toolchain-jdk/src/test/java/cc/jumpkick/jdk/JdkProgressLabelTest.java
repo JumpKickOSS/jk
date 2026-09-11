@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.jdk;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.net.URI;
@@ -20,8 +21,7 @@ class JdkProgressLabelTest {
     void downloading_at_half_matches_the_build_row_shape() {
         String line = JdkProgressLabel.downloading("Temurin 25", 50, 100);
         assertThat(line).isEqualTo("downloading Temurin 25 ▰▰▰▰▰▱▱▱▱▱ 50%");
-        JdkProgressLabel.Parsed p = JdkProgressLabel.tryParse(line);
-        assertThat(p).isNotNull();
+        JdkProgressLabel.Parsed p = requireNonNull(JdkProgressLabel.tryParse(line));
         assertThat(p.verb()).isEqualTo("downloading");
         assertThat(p.name()).isEqualTo("Temurin 25");
         assertThat(p.bar()).hasSize(JdkProgressLabel.BAR_WIDTH);
@@ -33,15 +33,16 @@ class JdkProgressLabelTest {
     void installing_is_full_bar() {
         String line = JdkProgressLabel.installing("Temurin 25");
         assertThat(line).isEqualTo("installing Temurin 25 ▰▰▰▰▰▰▰▰▰▰ 100%");
-        assertThat(JdkProgressLabel.tryParse(line).verb()).isEqualTo("installing");
-        assertThat(JdkProgressLabel.tryParse(line).percent()).isEqualTo(100);
+        JdkProgressLabel.Parsed p = requireNonNull(JdkProgressLabel.tryParse(line));
+        assertThat(p.verb()).isEqualTo("installing");
+        assertThat(p.percent()).isEqualTo(100);
     }
 
     @Test
     void unknown_total_omits_the_bar() {
         String line = JdkProgressLabel.downloading("Temurin 25", 0, 0);
         assertThat(line).isEqualTo("downloading Temurin 25");
-        JdkProgressLabel.Parsed p = JdkProgressLabel.tryParse(line);
+        JdkProgressLabel.Parsed p = requireNonNull(JdkProgressLabel.tryParse(line));
         assertThat(p.hasBar()).isFalse();
         assertThat(p.percent()).isEqualTo(-1);
     }

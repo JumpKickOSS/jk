@@ -226,7 +226,7 @@ public final class JdkRegistry {
         return SupportedJdk.isSupported(m);
     }
 
-    private static Integer majorOfVersion(String version) {
+    private static @Nullable Integer majorOfVersion(String version) {
         Integer n = JdkKeywords.leadingMajor(version);
         if (n == null || n != 1 || version.length() < 3) return n;
         // Legacy "1.x" → x is the real major (only matters for inputs we'd
@@ -344,7 +344,7 @@ public final class JdkRegistry {
                 entries.filter(Files::isSymbolicLink).forEach(link -> {
                     try {
                         Path target = Files.readSymbolicLink(link);
-                        if (!target.isAbsolute()) target = link.getParent().resolve(target);
+                        if (!target.isAbsolute()) target = jdksRoot.resolve(target);
                         if (target.toAbsolutePath().normalize().equals(canonical)) {
                             Files.deleteIfExists(link);
                         }

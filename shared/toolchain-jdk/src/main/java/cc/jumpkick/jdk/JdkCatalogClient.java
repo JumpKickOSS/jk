@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Client for the JetBrains JDK feed ({@value #DEFAULT_FEED_URL}). Fetches the JSON catalog, caches
@@ -203,10 +204,18 @@ public final class JdkCatalogClient {
     /** The line scanner's state: the JDK entry (depth 2) and the package (depth 3) being read. */
     private static final class Scan {
         // Per-JDK fields (depth 2)
+        @Nullable
         String vendor;
+
+        @Nullable
         String product;
+
+        @Nullable
         String suggestedSdkName;
+
+        @Nullable
         String version;
+
         int majorVersion = 0;
         boolean defaultForMajor = false;
         boolean preview = false;
@@ -214,13 +223,27 @@ public final class JdkCatalogClient {
         boolean inAliases = false;
 
         // Per-package fields (depth 3)
+        @Nullable
         String os;
+
+        @Nullable
         String arch;
+
+        @Nullable
         String packageType;
+
+        @Nullable
         String url;
+
+        @Nullable
         String sha256;
+
+        @Nullable
         String installFolderName;
+
+        @Nullable
         String javaHomeSubpath;
+
         long archiveSize = 0;
         boolean inPackages = false;
 
@@ -228,7 +251,17 @@ public final class JdkCatalogClient {
         void closeObject(int depth, List<JdkCatalog.Entry> entries) {
             if (depth == 3 && inPackages) {
                 // End of a package entry — emit if complete
-                if (url != null && !url.isEmpty() && installFolderName != null && !installFolderName.isEmpty()) {
+                if (url != null
+                        && !url.isEmpty()
+                        && installFolderName != null
+                        && !installFolderName.isEmpty()
+                        && vendor != null
+                        && product != null
+                        && suggestedSdkName != null
+                        && version != null
+                        && os != null
+                        && arch != null
+                        && packageType != null) {
                     try {
                         entries.add(new JdkCatalog.Entry(
                                 vendor,
@@ -246,7 +279,7 @@ public final class JdkCatalogClient {
                                 sha256,
                                 archiveSize,
                                 installFolderName,
-                                javaHomeSubpath));
+                                javaHomeSubpath == null ? "" : javaHomeSubpath));
                     } catch (IllegalArgumentException ignored) {
                         /* bad URL */
                     }

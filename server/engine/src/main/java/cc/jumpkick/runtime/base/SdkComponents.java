@@ -37,6 +37,8 @@ public final class SdkComponents {
         Path base;
         if ("root".equals(component)) {
             base = sdk.root();
+        } else if (component == null) {
+            throw new IllegalArgumentException("an Android SDK component name is required");
         } else {
             base = new AndroidSdkInstaller(sdk).ensure(component, pinnedRevision);
         }

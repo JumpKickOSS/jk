@@ -30,6 +30,7 @@ import java.util.stream.Stream;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Downloads a {@link JdkPackage} and extracts it under the IntelliJ JDK directory ({@link
@@ -164,7 +165,7 @@ public final class JdkInstaller {
      * Fast path: if the target directory already exists, return the existing install descriptor
      * without touching the network or disk. Returns {@code null} when nothing's installed yet.
      */
-    public InstalledJdk alreadyInstalled(JdkCatalog.Entry entry) {
+    public @Nullable InstalledJdk alreadyInstalled(JdkCatalog.Entry entry) {
         String installName = installName(entry);
         Path target = registry.jdksRoot().resolve(installName);
         if (!Files.exists(target)) return null;
@@ -290,7 +291,8 @@ public final class JdkInstaller {
     }
 
     /** Buffered download for the {@link JdkPackage} flow: no progress, no streaming. */
-    private void downloadAndExtractBuffered(URI uri, String sha256, String displayName, String archiveType, Path target)
+    private void downloadAndExtractBuffered(
+            URI uri, @Nullable String sha256, String displayName, String archiveType, Path target)
             throws IOException, InterruptedException {
         Path downloads = prepareDownloadDir();
         Path archive = Files.createTempFile(downloads, DOWNLOAD_PREFIX, "-" + extensionFor(archiveType));
@@ -391,7 +393,7 @@ public final class JdkInstaller {
      * expectedSha256} on completion (when set).
      */
     private long streamingDownload(
-            URI uri, String expectedSha256, String displayName, Path archive, LongConsumer onBytesRead)
+            URI uri, @Nullable String expectedSha256, String displayName, Path archive, LongConsumer onBytesRead)
             throws IOException, InterruptedException {
         HttpResponse<InputStream> response = http.getStream(uri);
         if (response.statusCode() != 200) {

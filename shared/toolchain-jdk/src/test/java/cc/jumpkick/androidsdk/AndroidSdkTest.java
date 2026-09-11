@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.androidsdk;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -22,17 +23,18 @@ class AndroidSdkTest {
     void feed_parses_components_licenses_and_prefers_stable_channel() throws Exception {
         AndroidRepoFeed feed = AndroidRepoFeed.parse(fixture());
 
-        AndroidRepoFeed.Component platform = feed.find("platforms;android-28");
+        AndroidRepoFeed.Component platform = requireNonNull(feed.find("platforms;android-28"));
         assertThat(platform.revision()).isEqualTo("6");
         assertThat(platform.licenseId()).isEqualTo("android-sdk-license");
-        assertThat(platform.archiveFor("linux").url()).isEqualTo("platform-28_r06.zip");
-        assertThat(platform.archiveFor("linux").sha1()).isEqualTo("9a4e52b1d55bd2e24216b150aafae2503d3efba6");
+        AndroidRepoFeed.Archive linux = requireNonNull(platform.archiveFor("linux"));
+        assertThat(linux.url()).isEqualTo("platform-28_r06.zip");
+        assertThat(linux.sha1()).isEqualTo("9a4e52b1d55bd2e24216b150aafae2503d3efba6");
 
         // platform-tools appears on channel-2 (37.0.1) AND channel-0 (37.0.0) — stable wins.
-        AndroidRepoFeed.Component tools = feed.find("platform-tools");
+        AndroidRepoFeed.Component tools = requireNonNull(feed.find("platform-tools"));
         assertThat(tools.channel()).isEqualTo("channel-0");
         assertThat(tools.revision()).isEqualTo("37.0.0");
-        assertThat(tools.archiveFor("linux").hostOs()).isEqualTo("linux");
+        assertThat(requireNonNull(tools.archiveFor("linux")).hostOs()).isEqualTo("linux");
 
         assertThat(feed.licenseText("android-sdk-license")).contains("Android Software Development Kit");
         assertThat(feed.find("build-tools;0.0.0")).isNull();

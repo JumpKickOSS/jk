@@ -24,6 +24,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Resolves a Maven coord into a {@link ToolEnv}: walk POM, fetch jars into {@link Cas}, read
@@ -48,7 +49,8 @@ public final class ToolResolver {
      * Resolve {@code spec} (floating specs pinned first). {@code withSpecs} are extra root deps
      * merged into the classpath.
      */
-    public ToolEnv resolve(ToolCoordSpec spec, String binName, String mainClassOverride, List<ToolCoordSpec> withSpecs)
+    public ToolEnv resolve(
+            ToolCoordSpec spec, String binName, @Nullable String mainClassOverride, List<ToolCoordSpec> withSpecs)
             throws IOException, InterruptedException {
         Coordinate primary = pin(spec);
         List<Dependency> extras = new ArrayList<>();
@@ -67,12 +69,13 @@ public final class ToolResolver {
         };
     }
 
-    public ToolEnv resolve(Coordinate primary, String binName, String mainClassOverride)
+    public ToolEnv resolve(Coordinate primary, String binName, @Nullable String mainClassOverride)
             throws IOException, InterruptedException {
         return resolve(primary, binName, mainClassOverride, List.of());
     }
 
-    public ToolEnv resolve(Coordinate primary, String binName, String mainClassOverride, List<Dependency> extras)
+    public ToolEnv resolve(
+            Coordinate primary, String binName, @Nullable String mainClassOverride, List<Dependency> extras)
             throws IOException, InterruptedException {
         Objects.requireNonNull(primary, "primary");
         Objects.requireNonNull(binName, "binName");

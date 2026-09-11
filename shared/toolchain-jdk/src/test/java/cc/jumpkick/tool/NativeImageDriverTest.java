@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.tool;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.host.Os;
@@ -11,6 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.jar.JarFile;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -57,6 +59,7 @@ class NativeImageDriverTest {
     }
 
     @Test
+    @SuppressWarnings("NullAway") // the null is deliberate: an executable request must refuse it
     void executable_request_requires_a_main_class() {
         assertThat(catchThrowable(() -> new NativeImageDriver.Request(
                         Path.of("/opt/graalvm"), List.of(), null, Path.of("target/x"), List.of())))
@@ -66,24 +69,24 @@ class NativeImageDriverTest {
     @Test
     void step_header_normalizes_trailing_ascii_dots_to_ellipsis() {
         // Graal prints "[N/M] Label..." — live TUI labels use the same … as the rest of jk.
-        var step = NativeImageDriver.parseStepHeader("[1/8] Initializing...");
-        assertThat(step).isNotNull();
+        var step = requireNonNull(NativeImageDriver.parseStepHeader("[1/8] Initializing..."));
         assertThat(step.current()).isEqualTo(1);
         assertThat(step.total()).isEqualTo(8);
         assertThat(step.label()).isEqualTo("Initializing…");
 
-        assertThat(NativeImageDriver.parseStepHeader("[2/8] Performing analysis...")
+        assertThat(requireNonNull(NativeImageDriver.parseStepHeader("[2/8] Performing analysis..."))
                         .label())
                 .isEqualTo("Performing analysis…");
-        assertThat(NativeImageDriver.parseStepHeader("[5/8] Inlining methods...")
+        assertThat(requireNonNull(NativeImageDriver.parseStepHeader("[5/8] Inlining methods..."))
                         .label())
                 .isEqualTo("Inlining methods…");
         // Timing columns after two+ spaces are dropped; trailing ... still normalized.
-        assertThat(NativeImageDriver.parseStepHeader("[3/8] Building universe...      (1.2s @ 0.40GB)")
+        assertThat(requireNonNull(NativeImageDriver.parseStepHeader("[3/8] Building universe...      (1.2s @ 0.40GB)"))
                         .label())
                 .isEqualTo("Building universe…");
         // Already-unicode ellipsis stays; non-headers are ignored.
-        assertThat(NativeImageDriver.parseStepHeader("[8/8] Creating image…").label())
+        assertThat(requireNonNull(NativeImageDriver.parseStepHeader("[8/8] Creating image…"))
+                        .label())
                 .isEqualTo("Creating image…");
         assertThat(NativeImageDriver.parseStepHeader("not a step")).isNull();
     }
@@ -145,7 +148,7 @@ class NativeImageDriverTest {
         Path a = Files.createFile(libs.resolve("a.jar"));
         Path b = Files.createFile(libs.resolve("b.jar"));
 
-        Path jar = NativeImageDriver.writePathingJar(outputDir, List.of(a, b));
+        Path jar = requireNonNull(NativeImageDriver.writePathingJar(outputDir, List.of(a, b)));
 
         assertThat(jar).isNotNull();
         try (JarFile jf = new JarFile(jar.toFile())) {
@@ -202,7 +205,7 @@ class NativeImageDriverTest {
         assertThat(cmd).containsSequence("-o", NativeImageDriver.imageBasename(Path.of("target/clients/cli/jk.exe")));
     }
 
-    private static Throwable catchThrowable(Runnable r) {
+    private static @Nullable Throwable catchThrowable(Runnable r) {
         try {
             r.run();
             return null;

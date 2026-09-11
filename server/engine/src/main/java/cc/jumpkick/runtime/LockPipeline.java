@@ -70,6 +70,7 @@ import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
@@ -308,7 +309,7 @@ public final class LockPipeline {
         lock = withNativePin(lock, keepPins ? existing : null, pathPrep.repos(), progress);
         // graal() is non-null exactly when [native].graal is set or [native] turns native-image on,
         // which is what "the project asked for Graal" means.
-        lock = ToolchainLockStamp.apply(
+        lock = Objects.requireNonNull(ToolchainLockStamp.apply(
                 lock,
                 policy.keepToolchainSuggestion() ? existing : null,
                 javaHome,
@@ -318,7 +319,7 @@ public final class LockPipeline {
                         .nativeConfigOpt()
                         .map(NativeConfig::graalSpec)
                         .orElse(ToolchainSpec.NONE),
-                pathPrep.project().graal() != null);
+                pathPrep.project().graal() != null));
         if (profile) {
             ResolveProfile.phasePost(System.nanoTime() - postT0);
             System.err.println("jk: " + ResolveProfile.report());

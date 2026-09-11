@@ -23,6 +23,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.zip.GZIPOutputStream;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -314,7 +315,8 @@ class JdkInstallerTest {
         return home;
     }
 
-    private static JdkCatalog.Entry entry(String os, String arch, String javaHomeSubpath, URI url, String sha256) {
+    private static JdkCatalog.Entry entry(
+            String os, String arch, String javaHomeSubpath, URI url, @Nullable String sha256) {
         return new JdkCatalog.Entry(
                 "Eclipse",
                 "Temurin",

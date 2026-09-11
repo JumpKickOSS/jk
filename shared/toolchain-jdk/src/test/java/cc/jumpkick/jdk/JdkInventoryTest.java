@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.jdk;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
@@ -194,11 +195,12 @@ class JdkInventoryTest {
                 graal = false
                 home = "C:\\Users\\dev\\jdk-25"
                 """);
-        assertThat(snap.row("corp-jdk").home().toString()).isEqualTo("C:\\Users\\dev\\jdk-25".replace("\\\\", "\\"));
+        JdkInventory.Row corp = requireNonNull(snap.row("corp-jdk"));
+        assertThat(requireNonNull(corp.home()).toString()).isEqualTo("C:\\Users\\dev\\jdk-25".replace("\\\\", "\\"));
         // And render → parse is the identity on such a row.
         String rendered = JdkInventory.render(snap);
-        assertThat(JdkInventory.parse(rendered).row("corp-jdk").home())
-                .isEqualTo(snap.row("corp-jdk").home());
+        assertThat(requireNonNull(JdkInventory.parse(rendered).row("corp-jdk")).home())
+                .isEqualTo(corp.home());
     }
 
     @Test

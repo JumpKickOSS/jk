@@ -37,11 +37,11 @@ public final class NativeImageDriver {
     public record Request(
             Path javaHome,
             List<Path> classpath,
-            String mainClass,
+            @Nullable String mainClass,
             Path outputPath,
             List<String> extraArgs,
             boolean shared,
-            Path workingDir,
+            @Nullable Path workingDir,
             boolean verbatim) {
 
         public Request {
@@ -59,7 +59,7 @@ public final class NativeImageDriver {
         public Request(
                 Path javaHome,
                 List<Path> classpath,
-                String mainClass,
+                @Nullable String mainClass,
                 Path outputPath,
                 List<String> extraArgs,
                 boolean shared) {
@@ -135,7 +135,7 @@ public final class NativeImageDriver {
      * classpath as a pathing jar; both are temp files in the output directory, removed on the way
      * out. A killed JVM leaves them behind.
      */
-    public static int run(Request request, ProgressListener listener, Consumer<String> out)
+    public static int run(Request request, @Nullable ProgressListener listener, @Nullable Consumer<String> out)
             throws IOException, InterruptedException {
         Path binary = resolve(request.javaHome()).orElseThrow(() -> notFoundError(request.javaHome()));
         Files.createDirectories(request.outputPath().toAbsolutePath().getParent());
@@ -280,7 +280,7 @@ public final class NativeImageDriver {
      * Forward stdout to {@code sink} line-by-line, parsing {@code [N/M]} step headers and firing the
      * listener when found. stderr uses the simpler {@link #forwardStream} (no parsing needed).
      */
-    private static Thread forwardStdout(InputStream in, ProgressListener listener, Consumer<String> sink) {
+    private static Thread forwardStdout(InputStream in, @Nullable ProgressListener listener, Consumer<String> sink) {
         Thread t = new Thread(
                 () -> {
                     try (BufferedReader br = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
@@ -334,7 +334,7 @@ public final class NativeImageDriver {
      * LAYOUT ({@code bin} vs {@code lib/svm/bin}, and the three filenames). Returns the first
      * candidate that exists as a regular file.
      */
-    public static Optional<Path> resolve(Path javaHome) {
+    public static Optional<Path> resolve(@Nullable Path javaHome) {
         return resolve(javaHome, BuildEnv.ambient());
     }
 
@@ -346,7 +346,7 @@ public final class NativeImageDriver {
      * {@code BuildEnv.forModule(dir)} so {@code GRAALVM_HOME} and {@code PATH} are the ones the
      * user actually invoked jk with.
      */
-    public static Optional<Path> resolve(Path javaHome, Function<String, @Nullable String> env) {
+    public static Optional<Path> resolve(@Nullable Path javaHome, Function<String, @Nullable String> env) {
         // 1. Project-pinned JDK
         Optional<Path> pinned = GraalLauncher.in(javaHome);
         if (pinned.isPresent()) return pinned;
@@ -391,7 +391,7 @@ public final class NativeImageDriver {
      * -cp} — a command line that may be too long fails loudly, an entry that silently does not
      * resolve does not.
      */
-    static Path writePathingJar(Path dir, List<Path> classpath) throws IOException {
+    static @Nullable Path writePathingJar(Path dir, List<Path> classpath) throws IOException {
         Path jarDir = dir.toAbsolutePath().normalize();
         StringBuilder cp = new StringBuilder();
         for (Path p : classpath) {
@@ -428,7 +428,7 @@ public final class NativeImageDriver {
      * Parse a native-image step header. Strips trailing timing columns and rewrites a trailing
      * ASCII {@code ...} to {@code …} so live TUI labels match the rest of the CLI.
      */
-    static StepHeader parseStepHeader(String line) {
+    static @Nullable StepHeader parseStepHeader(@Nullable String line) {
         if (line == null) return null;
         Matcher m = STEP_PATTERN.matcher(line);
         if (!m.matches()) return null;

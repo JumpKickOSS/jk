@@ -4,6 +4,7 @@ package cc.jumpkick.jdk;
 import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Plain-text {@code ensure-jdk} progress for the TUI / dashboard detail segment.
@@ -84,7 +85,7 @@ public final class JdkProgressLabel {
         }
     }
 
-    public static Parsed tryParse(String text) {
+    public static @Nullable Parsed tryParse(@Nullable String text) {
         if (text == null || text.isBlank()) return null;
         Matcher m = LINE.matcher(text.trim());
         if (!m.matches()) return null;

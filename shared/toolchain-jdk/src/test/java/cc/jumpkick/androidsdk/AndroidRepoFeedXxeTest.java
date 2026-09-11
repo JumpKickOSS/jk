@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.androidsdk;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -62,10 +63,10 @@ class AndroidRepoFeedXxeTest {
                 </sdk-repository>
                 """.getBytes(StandardCharsets.UTF_8));
 
-        AndroidRepoFeed.Component tools = feed.find("platform-tools");
+        AndroidRepoFeed.Component tools = requireNonNull(feed.find("platform-tools"));
         assertThat(tools.revision()).isEqualTo("35.0.2");
         assertThat(tools.licenseId()).isEqualTo("android-sdk-license");
-        assertThat(tools.archiveFor("linux").url()).isEqualTo("platform-tools_r35.0.2-linux.zip");
+        assertThat(requireNonNull(tools.archiveFor("linux")).url()).isEqualTo("platform-tools_r35.0.2-linux.zip");
         assertThat(feed.licenseText("android-sdk-license")).isEqualTo("Terms");
     }
 }

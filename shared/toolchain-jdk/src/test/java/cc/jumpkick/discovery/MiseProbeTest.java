@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.discovery;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.jdk.DirLinks;
@@ -22,8 +23,8 @@ class MiseProbeTest {
         Path mise = tempDir.resolve(".local").resolve("share").resolve("mise");
         Path candidate = mise.resolve("installs").resolve("java").resolve("temurin-21.0.5");
         Files.createDirectories(candidate);
-        ToolHealthTest.jdkLayout(candidate.getParent(), "21.0.5", "Eclipse Adoptium");
-        moveContents(candidate.getParent().resolve("jdk-21.0.5"), candidate);
+        ToolHealthTest.jdkLayout(requireNonNull(candidate.getParent()), "21.0.5", "Eclipse Adoptium");
+        moveContents(requireNonNull(candidate.getParent()).resolve("jdk-21.0.5"), candidate);
 
         Optional<DiscoveredTool> hit = new MiseProbe(mise).find(ToolSpec.jdk("21.0.5", "tem"));
         assertThat(hit).isPresent();

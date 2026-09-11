@@ -31,7 +31,10 @@ public final class JdkEnsure {
         INSTALLED
     }
 
-    public record Outcome(@Nullable InstalledJdk jdk, Source source, String specUsed) {
+    public record Outcome(
+            @Nullable InstalledJdk jdk,
+            Source source,
+            @Nullable String specUsed) {
         public Outcome {
             Objects.requireNonNull(source, "source");
         }
@@ -175,7 +178,7 @@ public final class JdkEnsure {
         }
 
         // A named pin (or the bootstrap latest-LTS) isn't on disk — install it.
-        String spec = r.installSpec();
+        String spec = Objects.requireNonNull(r.installSpec(), "an install decision names its spec");
         InstalledJdk installed = install(spec, registry, warn, progress);
 
         // A bootstrap install (no JDK was pinned or configured) becomes the

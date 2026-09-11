@@ -4,6 +4,7 @@ package cc.jumpkick.kotlin;
 import cc.jumpkick.compat.BuildTool;
 import cc.jumpkick.compat.ToolDistribution;
 import java.net.URI;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Picks the Kotlin distribution to use for compiling {@code .kt} sources. Mirrors {@code
@@ -57,7 +58,7 @@ public final class KotlinResolver {
      * twice is a rename that half-lands: one caller keeps fetching from a path the other has moved
      * off, and the only symptom is a 404 in whichever branch was not updated.
      */
-    public static ToolDistribution distributionFor(String version) {
+    public static ToolDistribution distributionFor(@Nullable String version) {
         String v = version == null || version.isBlank() ? DEFAULT_VERSION : version.trim();
         URI uri = URI.create(DEFAULT_BASE + "v" + v + "/kotlin-compiler-" + v + ".zip");
         return new ToolDistribution(BuildTool.KOTLIN, v, uri, "zip");

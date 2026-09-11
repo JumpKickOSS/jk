@@ -57,7 +57,7 @@ public final class JavaHomes {
         return runningJavaHome();
     }
 
-    private static Lockfile readLockSoft(Path projectDir) {
+    private static @Nullable Lockfile readLockSoft(Path projectDir) {
         try {
             Path lock = LockPaths.lockFile(projectDir);
             return Files.isRegularFile(lock) ? LockfileReader.read(lock) : null;
@@ -67,7 +67,7 @@ public final class JavaHomes {
     }
 
     /** Bootstrap jdk/java pins for {@code projectDir}, workspace-inherited. Test-visible. */
-    static JkBuild readBuildSoft(Path projectDir) {
+    static @Nullable JkBuild readBuildSoft(Path projectDir) {
         try {
             Path toml = projectDir.resolve(ManifestPaths.MANIFEST);
             if (!Files.isRegularFile(toml)) return null;
@@ -101,7 +101,7 @@ public final class JavaHomes {
         }
     }
 
-    private static boolean isBlank(String s) {
+    private static boolean isBlank(@Nullable String s) {
         return s == null || s.isBlank();
     }
 

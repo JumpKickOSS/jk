@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * De-facto default JDK when no explicit {@code jk jdk default} is set: sole install if one; else
@@ -44,7 +45,7 @@ public final class DefaultJdkPolicy {
         return Optional.of(pool.getFirst());
     }
 
-    private static Integer major(JdkHit h) {
+    private static @Nullable Integer major(JdkHit h) {
         String v = h.version();
         if (v == null || v.isEmpty()) return null;
         int end = 0;

@@ -3,6 +3,7 @@ package cc.jumpkick.jdk;
 
 import cc.jumpkick.host.Os;
 import java.util.Locale;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The host's OS / architecture in the vocabulary the JetBrains JDK feed uses ({@code linux} /
@@ -56,7 +57,7 @@ public final class HostPlatform {
         };
     }
 
-    static String mapOs(String osName) {
+    static String mapOs(@Nullable String osName) {
         if (osName == null || osName.isBlank()) return UNSUPPORTED;
         if (Os.isLinux(osName)) return "linux";
         if (Os.isDarwin(osName)) return "macOS";

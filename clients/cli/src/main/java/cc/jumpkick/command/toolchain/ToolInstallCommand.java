@@ -462,7 +462,11 @@ public final class ToolInstallCommand implements CliCommand {
             if (prep.stdlib() != null) classpath.add(prep.stdlib());
         }
 
-        ToolEnv env = new ToolEnv(bin, Coordinate.of("script", bin, "local"), prep.mainClass(), classpath);
+        ToolEnv env = new ToolEnv(
+                bin,
+                Coordinate.of("script", bin, "local"),
+                Objects.requireNonNull(prep.mainClass(), "a script tool names its main class"),
+                classpath);
         Path launcher = ToolLauncher.install(envsRoot, binDir, JavaHomes.runningJavaHome(), env, provenance, jvmArgs);
         if (!global.outputIsJson()) {
             CommandWedge.printOk("Tool", "Installed " + file.getFileName() + " → " + launcher);

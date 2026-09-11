@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Persistent launcher for {@code jk install} and ephemeral exec for {@code jk exec}. Layout:
@@ -42,7 +43,12 @@ public final class ToolLauncher {
      * into the launcher's exec line.
      */
     public static Path install(
-            Path envsRoot, Path binDir, Path javaHome, ToolEnv env, ToolProvenance provenance, List<String> jvmArgs)
+            Path envsRoot,
+            Path binDir,
+            Path javaHome,
+            ToolEnv env,
+            @Nullable ToolProvenance provenance,
+            List<String> jvmArgs)
             throws IOException {
         Path envDir = LauncherName.resolveChild(envsRoot, env.binName());
         Files.createDirectories(envDir);
@@ -83,7 +89,7 @@ public final class ToolLauncher {
             Path kotlincBin,
             Path script,
             ToolEnv env,
-            ToolProvenance provenance)
+            @Nullable ToolProvenance provenance)
             throws IOException {
         Path envDir = LauncherName.resolveChild(envsRoot, env.binName());
         Files.createDirectories(envDir);
@@ -187,7 +193,8 @@ public final class ToolLauncher {
         return sb.toString();
     }
 
-    private static String renderEnvJson(ToolEnv env, Path javaHome, ToolProvenance provenance, List<String> jvmArgs) {
+    private static String renderEnvJson(
+            ToolEnv env, Path javaHome, @Nullable ToolProvenance provenance, List<String> jvmArgs) {
         StringBuilder sb = new StringBuilder();
         sb.append("{\n");
         sb.append("  \"binName\": ").append(jsonString(env.binName())).append(",\n");

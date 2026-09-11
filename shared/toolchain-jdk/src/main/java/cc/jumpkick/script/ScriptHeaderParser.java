@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Scans a script's leading comments for jk ({@code //jk dep|jdk|repo|…}) and JBang
@@ -139,7 +140,7 @@ public final class ScriptHeaderParser {
                 base.kotlinVersion());
     }
 
-    private static ParsedDirective parseDirective(String line) {
+    private static @Nullable ParsedDirective parseDirective(String line) {
         // jk-style: `//jk <name> <value>`
         var m = JK_DIRECTIVE.matcher(line);
         if (m.matches()) {
@@ -227,7 +228,7 @@ public final class ScriptHeaderParser {
      * plain {@code kotlinc} never sees them; {@code null} when none. Preserves line count for
      * diagnostics.
      */
-    public static String neutralizeKotlinAnnotations(String script) {
+    public static @Nullable String neutralizeKotlinAnnotations(String script) {
         String[] lines = script.split("\\R", -1);
         boolean changed = false;
         for (int i = 0; i < lines.length; i++) {
@@ -258,12 +259,12 @@ public final class ScriptHeaderParser {
         return out;
     }
 
-    private static String blankToNull(String s) {
+    private static @Nullable String blankToNull(String s) {
         String t = s.trim();
         return t.isEmpty() ? null : t;
     }
 
-    private static Integer parseJdk(String raw, Integer existing) {
+    private static @Nullable Integer parseJdk(String raw, @Nullable Integer existing) {
         String trimmed = raw.trim();
         if (trimmed.isEmpty()) return existing;
         // JBang's "17+" means "17 or newer is acceptable" — compile for 17.

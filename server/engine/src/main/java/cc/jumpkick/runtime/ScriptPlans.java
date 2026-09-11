@@ -461,7 +461,7 @@ public final class ScriptPlans {
                     for (JarManifest.EmbeddedPom p : JarManifest.scanEmbeddedPoms(jar)) {
                         if (!p.hasPomXml()) continue;
                         try {
-                            var imported = PomImporter.importFromBytes(p.pomXml());
+                            var imported = PomImporter.importFromBytes(Objects.requireNonNull(p.pomXml()));
                             var byScope = imported.jkBuild().dependencies().byScope();
                             for (Scope scope : EnumSet.of(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME)) {
                                 List<Dependency> scoped = byScope.get(scope);

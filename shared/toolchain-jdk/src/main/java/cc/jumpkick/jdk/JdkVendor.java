@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Properties;
+import org.jspecify.annotations.Nullable;
 
 /**
  * JDK vendors jk recognises on disk, mapped to JetBrains feed / SDKMAN / foojay identifiers.
@@ -45,11 +46,16 @@ public enum JdkVendor {
 
     private final String vendor;
     private final String product;
-    private final String jbPrefix;
-    private final String sdkmanSuffix;
-    private final String foojayDistro;
+    private final @Nullable String jbPrefix;
+    private final @Nullable String sdkmanSuffix;
+    private final @Nullable String foojayDistro;
 
-    JdkVendor(String vendor, String product, String jbPrefix, String sdkmanSuffix, String foojayDistro) {
+    JdkVendor(
+            String vendor,
+            String product,
+            @Nullable String jbPrefix,
+            @Nullable String sdkmanSuffix,
+            @Nullable String foojayDistro) {
         this.vendor = vendor;
         this.product = product;
         this.jbPrefix = jbPrefix;

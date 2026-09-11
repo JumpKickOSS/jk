@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.EnumSet;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Minimal tar/tar.gz reader for JDK installs: regular files, hard/symlinks, directories, GNU long
@@ -32,7 +33,14 @@ public final class MinimalTar {
          *     directories and symlinks
          * @param size uncompressed byte count of the entry data
          */
-        void handle(String name, String linkName, int mode, boolean isDir, boolean isLink, InputStream data, long size)
+        void handle(
+                String name,
+                String linkName,
+                int mode,
+                boolean isDir,
+                boolean isLink,
+                @Nullable InputStream data,
+                long size)
                 throws IOException;
     }
 
