@@ -4,12 +4,15 @@ package cc.jumpkick.config;
 import static cc.jumpkick.config.JkBuildParser.*;
 
 import cc.jumpkick.model.Dependency;
+import cc.jumpkick.model.EnvConfig;
+import cc.jumpkick.model.EnvDecl;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PlatformPolicy;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.PluginDeclaration;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.model.Sidecar;
 import cc.jumpkick.model.ToolchainSpec;
 import cc.jumpkick.model.UnmappedPolicy;
 import cc.jumpkick.model.VersionSelector;
@@ -302,7 +305,7 @@ public final class ManifestBuild {
                     List.of(),
                     List.of(),
                     List.of(),
-                    JkBuild.EnvConfig.EMPTY);
+                    EnvConfig.EMPTY);
         }
         BuildSettings s = new BuildSettings();
         if (build != null) readBuildTable(build, s);
@@ -325,7 +328,7 @@ public final class ManifestBuild {
                 List.of(),
                 List.of(),
                 List.of(),
-                JkBuild.EnvConfig.EMPTY);
+                EnvConfig.EMPTY);
     }
 
     /** The two {@code [resolve]} policies, at their defaults when the table or key is absent. */
@@ -513,7 +516,7 @@ public final class ManifestBuild {
      * number of seconds. Unknown keys fail the parse: {@code redy = …} would otherwise leave a
      * sidecar silently unprobed.
      */
-    static List<JkBuild.Sidecar> parseDevSidecars(TomlTable root) {
+    static List<Sidecar> parseDevSidecars(TomlTable root) {
         Object rawDev = root.get(List.of("dev"));
         if (rawDev == null) return List.of();
         if (!(rawDev instanceof TomlTable dev)) {
@@ -531,7 +534,7 @@ public final class ManifestBuild {
                     "[dev.sidecars] must be a table keyed by sidecar name, not an array: [dev.sidecars] web = {"
                             + " command = \"…\" }");
         }
-        List<JkBuild.Sidecar> out = new ArrayList<>();
+        List<Sidecar> out = new ArrayList<>();
         for (String name : sidecars.keySet()) {
             String where = "[dev.sidecars." + name + "]";
             if (!(sidecars.get(List.of(name)) instanceof TomlTable table)) {
@@ -542,7 +545,7 @@ public final class ManifestBuild {
         return List.copyOf(out);
     }
 
-    private static JkBuild.Sidecar parseSidecar(String name, TomlTable table, String where) {
+    private static Sidecar parseSidecar(String name, TomlTable table, String where) {
         for (String key : table.keySet()) {
             if (!SIDECAR_KEYS.contains(key)) {
                 throw new JkBuildParseException(
@@ -595,7 +598,7 @@ public final class ManifestBuild {
         }
         long timeout = table.contains("ready-timeout")
                 ? durationMillis(table.get(List.of("ready-timeout")), where + ".ready-timeout")
-                : JkBuild.Sidecar.DEFAULT_READY_TIMEOUT_MILLIS;
+                : Sidecar.DEFAULT_READY_TIMEOUT_MILLIS;
         boolean frontDoor = false;
         if (table.contains("front-door")) {
             if (!(table.get(List.of("front-door")) instanceof Boolean b)) {
@@ -603,15 +606,15 @@ public final class ManifestBuild {
             }
             frontDoor = b;
         }
-        JkBuild.SidecarRestart restart = JkBuild.SidecarRestart.NEVER;
+        Sidecar.Restart restart = Sidecar.Restart.NEVER;
         if (table.contains("restart")) {
             try {
-                restart = JkBuild.SidecarRestart.parse(scalar(table.get(List.of("restart")), where + ".restart"));
+                restart = Sidecar.Restart.parse(scalar(table.get(List.of("restart")), where + ".restart"));
             } catch (IllegalArgumentException e) {
                 throw new JkBuildParseException(where + ".restart " + e.getMessage());
             }
         }
-        return new JkBuild.Sidecar(name, command, cwd, env, ready, pattern, timeout, frontDoor, restart);
+        return new Sidecar(name, command, cwd, env, ready, pattern, timeout, frontDoor, restart);
     }
 
     private static final Pattern DURATION = Pattern.compile("(\\d+)\\s*(ms|s|m)?");
@@ -659,7 +662,7 @@ public final class ManifestBuild {
      * {@code docker run -e} flag — and quietly accepting either would make {@code "TZ=UTC"} a
      * variable literally named {@code TZ=UTC}.
      */
-    static List<JkBuild.EnvDecl> parseTestEnv(TomlTable root) {
+    static List<EnvDecl> parseTestEnv(TomlTable root) {
         TomlTable test = root.getTable("test");
         if (test == null) return List.of();
         return parseEnvDecls(test.get(List.of("env")), "[test]", "env");
@@ -679,9 +682,9 @@ public final class ManifestBuild {
      * inherit = true                            # the engine's whole environment; say why beside it
      * </pre>
      */
-    static JkBuild.EnvConfig parseEnv(TomlTable root) {
+    static EnvConfig parseEnv(TomlTable root) {
         Object raw = root.get(List.of("env"));
-        if (raw == null) return JkBuild.EnvConfig.EMPTY;
+        if (raw == null) return EnvConfig.EMPTY;
         if (!(raw instanceof TomlTable env)) {
             throw new JkBuildParseException("[env] must be a table: [env] vars = [\"CI\", { TZ = \"UTC\" }]");
         }
@@ -700,7 +703,7 @@ public final class ManifestBuild {
             }
             inherit = b;
         }
-        return new JkBuild.EnvConfig(inherit, parseEnvDecls(env.get(List.of("vars")), "[env]", "vars"));
+        return new EnvConfig(inherit, parseEnvDecls(env.get(List.of("vars")), "[env]", "vars"));
     }
 
     /**
@@ -708,21 +711,21 @@ public final class ManifestBuild {
      * the shape: a bare name forwards, a table sets. {@code table} and {@code key} only spell the
      * position in messages.
      */
-    private static List<JkBuild.EnvDecl> parseEnvDecls(@Nullable Object raw, String table, String key) {
+    private static List<EnvDecl> parseEnvDecls(@Nullable Object raw, String table, String key) {
         if (raw == null) return List.of();
         if (!(raw instanceof TomlArray arr)) {
             throw new JkBuildParseException(table + " " + key + " must be an array — a bare name to forward the"
                     + " caller's value, or a table to set one: " + key + " = [\"CI\", { TZ = \"UTC\" }]");
         }
-        List<JkBuild.EnvDecl> out = new ArrayList<>();
+        List<EnvDecl> out = new ArrayList<>();
         for (int i = 0; i < arr.size(); i++) {
             Object element = arr.get(i);
             String where = table + "." + key + "[" + i + "]";
             if (element instanceof String name) {
-                out.add(new JkBuild.EnvDecl.Forward(forwardName(name, where)));
+                out.add(new EnvDecl.Forward(forwardName(name, where)));
             } else if (element instanceof TomlTable values) {
                 for (String name : values.keySet()) {
-                    out.add(new JkBuild.EnvDecl.Set(name, scalar(values.get(List.of(name)), where + "." + name)));
+                    out.add(new EnvDecl.Set(name, scalar(values.get(List.of(name)), where + "." + name)));
                 }
             } else {
                 throw new JkBuildParseException(

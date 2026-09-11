@@ -4,7 +4,7 @@ package cc.jumpkick.engine.plugin;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.jsonl.Jsonl;
-import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.EnvConfig;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -32,8 +32,7 @@ class WorkerEnvForkTest {
 
     @Test
     void a_module_that_opted_into_inheritance_gets_it() throws Exception {
-        assertThat(seenBy(WorkerEnv.policy(new JkBuild.EnvConfig(true, List.of()))))
-                .isEqualTo("x");
+        assertThat(seenBy(WorkerEnv.policy(new EnvConfig(true, List.of())))).isEqualTo("x");
     }
 
     @Test

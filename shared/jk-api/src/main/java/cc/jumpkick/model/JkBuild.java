@@ -8,7 +8,6 @@ import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -1052,110 +1051,6 @@ public record JkBuild(
         /** True once {@code today} is past {@code until}; an entry without a date never expires. */
         public boolean expiredOn(LocalDate today) {
             return until != null && today.isAfter(until);
-        }
-    }
-
-    /**
-     * One {@code [dev.sidecars]} entry as the manifest states it: {@code command} already split
-     * into argv, {@code cwd} module-relative, {@code env} literal values laid over the inherited
-     * environment. {@code ready} is an HTTP(S) URL polled for 2xx/3xx; {@code readyPattern} a
-     * regex matched against the sidecar's output lines; at most one is set, and neither means
-     * "ready once it has stayed alive for a second". {@code readyTimeoutMillis} bounds either probe.
-     * {@code frontDoor} names the URL {@code jk dev} prints once everything is ready.
-     */
-    public record Sidecar(
-            String name,
-            List<String> command,
-            String cwd,
-            Map<String, String> env,
-            @Nullable String ready,
-            @Nullable String readyPattern,
-            long readyTimeoutMillis,
-            boolean frontDoor,
-            SidecarRestart restart) {
-
-        /** Default {@code ready-timeout}: a Vite or webpack cold start on a slow laptop fits in it. */
-        public static final long DEFAULT_READY_TIMEOUT_MILLIS = 60_000;
-
-        public Sidecar {
-            Objects.requireNonNull(name, "name");
-            command = List.copyOf(command);
-            if (command.isEmpty()) throw new IllegalArgumentException("sidecar `" + name + "` has an empty command");
-            cwd = cwd == null || cwd.isBlank() ? "." : cwd;
-            env = env == null || env.isEmpty() ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(env));
-            if (ready != null && readyPattern != null) {
-                throw new IllegalArgumentException("sidecar `" + name + "` sets both ready and ready-pattern");
-            }
-            if (readyTimeoutMillis <= 0) readyTimeoutMillis = DEFAULT_READY_TIMEOUT_MILLIS;
-            restart = restart == null ? SidecarRestart.NEVER : restart;
-        }
-    }
-
-    /** What {@code jk dev} does when a sidecar exits on its own. */
-    public enum SidecarRestart {
-        /** Report the exit once and carry on without it. */
-        NEVER,
-        /** Start it again with backoff; give up after five failures in a row. */
-        ON_EXIT;
-
-        /** The manifest spelling — {@code never} or {@code on-exit} — which is also the wire spelling. */
-        public String manifestValue() {
-            return name().toLowerCase(Locale.ROOT).replace('_', '-');
-        }
-
-        public static SidecarRestart parse(String raw) {
-            String value = raw.trim().toLowerCase(Locale.ROOT);
-            for (SidecarRestart r : values()) {
-                if (r.manifestValue().equals(value)) return r;
-            }
-            throw new IllegalArgumentException("restart is never or on-exit, not `" + raw + "`");
-        }
-    }
-
-    /**
-     * One entry of an environment array — {@code [test] env} or {@code [env] vars}: a variable to
-     * forward from the caller, or a value to set outright.
-     */
-    public sealed interface EnvDecl {
-
-        /** The variable this entry is about. */
-        String name();
-
-        /**
-         * A bare name in the array: {@code "JK_WEB_JS_SKIP"}. Take the caller's value if there is
-         * one; if there is not, the test JVM does not get the variable at all.
-         *
-         * <p>Absent, never empty. A suite asking {@code getenv("X") != null} must see what it would
-         * see outside jk, so an unset forward cannot become {@code X=""}.
-         */
-        record Forward(String name) implements EnvDecl {}
-
-        /**
-         * A table entry in the array: {@code { TZ = "UTC" }}. The value is what the module says it
-         * is, and may reference {@code ${target}}, {@code ${module}} or an environment variable —
-         * an unset {@code ${VAR}} here is an error, because a value stated outright and then
-         * silently emptied is how a build authenticates anonymously and calls it success.
-         */
-        record Set(String name, String value) implements EnvDecl {}
-    }
-
-    /**
-     * {@code [env]}: what a module's workers — the compiler, each test JVM, a plugin step — get from
-     * the environment beyond the allow-list jk applies by default. {@code inherit = true} hands them
-     * the engine's whole environment; {@code vars} names or sets variables in the {@code [test] env}
-     * shape. Not an action-key input by itself: a value that must retest a suite belongs in {@code
-     * [test] env}.
-     */
-    public record EnvConfig(boolean inherit, List<EnvDecl> vars) {
-
-        public static final EnvConfig EMPTY = new EnvConfig(false, List.of());
-
-        public EnvConfig {
-            vars = vars == null ? List.of() : List.copyOf(vars);
-        }
-
-        public boolean isEmpty() {
-            return !inherit && vars.isEmpty();
         }
     }
 

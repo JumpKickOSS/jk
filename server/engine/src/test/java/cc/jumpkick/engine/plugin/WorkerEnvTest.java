@@ -3,7 +3,8 @@ package cc.jumpkick.engine.plugin;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.EnvConfig;
+import cc.jumpkick.model.EnvDecl;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -95,7 +96,7 @@ class WorkerEnvTest {
     @Test
     void the_fingerprint_changes_with_the_policy_and_with_the_extras() {
         WorkerEnv strict = WorkerEnv.strict();
-        WorkerEnv inherit = WorkerEnv.policy(new JkBuild.EnvConfig(true, List.of()));
+        WorkerEnv inherit = WorkerEnv.policy(new EnvConfig(true, List.of()));
 
         assertThat(strict.fingerprint()).isEqualTo(WorkerEnv.strict().fingerprint());
         assertThat(strict.fingerprint()).isNotEqualTo(inherit.fingerprint());
@@ -108,11 +109,9 @@ class WorkerEnvTest {
 
     @Test
     void declared_vars_resolve_through_the_build_s_environment(@TempDir Path tmp) {
-        JkBuild.EnvConfig config = new JkBuild.EnvConfig(
+        EnvConfig config = new EnvConfig(
                 false,
-                List.of(
-                        new JkBuild.EnvDecl.Set("SCRATCH", "${module}/scratch"),
-                        new JkBuild.EnvDecl.Forward("JK_UNSET_ON_PURPOSE")));
+                List.of(new EnvDecl.Set("SCRATCH", "${module}/scratch"), new EnvDecl.Forward("JK_UNSET_ON_PURPOSE")));
 
         WorkerEnv env = WorkerEnv.forModule(config, tmp, null);
 

@@ -4,6 +4,8 @@ package cc.jumpkick.config;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.model.EnvConfig;
+import cc.jumpkick.model.EnvDecl;
 import cc.jumpkick.model.JkBuild;
 import org.junit.jupiter.api.Test;
 
@@ -18,20 +20,18 @@ class JkBuildParserEnvTest {
                 inherit = true
                 vars = ["DOCKER_HOST", { TZ = "UTC", LANG = "C" }]
                 """);
-        JkBuild.EnvConfig env = b.build().env();
+        EnvConfig env = b.build().env();
         assertThat(env.inherit()).isTrue();
         assertThat(env.vars())
                 .containsExactly(
-                        new JkBuild.EnvDecl.Forward("DOCKER_HOST"),
-                        new JkBuild.EnvDecl.Set("TZ", "UTC"),
-                        new JkBuild.EnvDecl.Set("LANG", "C"));
+                        new EnvDecl.Forward("DOCKER_HOST"), new EnvDecl.Set("TZ", "UTC"), new EnvDecl.Set("LANG", "C"));
     }
 
     @Test
     void an_absent_or_empty_table_is_the_default() {
         assertThat(JkBuildParser.parse(JkBuildParserFixtures.PROJECT).build().env())
-                .isEqualTo(JkBuild.EnvConfig.EMPTY);
-        JkBuild.EnvConfig empty = JkBuildParser.parse(JkBuildParserFixtures.PROJECT + "\n[env]\n")
+                .isEqualTo(EnvConfig.EMPTY);
+        EnvConfig empty = JkBuildParser.parse(JkBuildParserFixtures.PROJECT + "\n[env]\n")
                 .build()
                 .env();
         assertThat(empty.inherit()).isFalse();
@@ -48,8 +48,7 @@ class JkBuildParserEnvTest {
                 [test]
                 env = ["CI"]
                 """);
-        assertThat(b.build().testEnvDecls())
-                .containsExactly(new JkBuild.EnvDecl.Set("TZ", "UTC"), new JkBuild.EnvDecl.Forward("CI"));
+        assertThat(b.build().testEnvDecls()).containsExactly(new EnvDecl.Set("TZ", "UTC"), new EnvDecl.Forward("CI"));
     }
 
     @Test

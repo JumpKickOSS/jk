@@ -6,7 +6,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.WorkerEnv;
-import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.EnvConfig;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -214,7 +214,7 @@ class ForkedJavacTest {
         String strict = WorkerEnv.withEngineEnvironment(engine, () -> seenBy(request, dir));
         assertThat(strict).contains("FAKE_SECRET = \"null\"");
 
-        WorkerEnv inherit = WorkerEnv.policy(new JkBuild.EnvConfig(true, List.of()));
+        WorkerEnv inherit = WorkerEnv.policy(new EnvConfig(true, List.of()));
         String inherited = WorkerEnv.withEngineEnvironment(engine, () -> seenBy(request.withEnv(inherit), dir));
         assertThat(inherited).contains("FAKE_SECRET = \"x\"");
     }

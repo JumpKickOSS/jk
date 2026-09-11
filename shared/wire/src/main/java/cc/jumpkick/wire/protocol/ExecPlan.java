@@ -3,7 +3,7 @@ package cc.jumpkick.wire.protocol;
 
 import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.jsonl.Jsonl;
-import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Sidecar.Restart;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -56,7 +56,7 @@ public record ExecPlan(
             String readyPattern,
             long readyTimeoutMillis,
             boolean frontDoor,
-            JkBuild.SidecarRestart restart) {
+            Restart restart) {
 
         public Sidecar {
             command = List.copyOf(command);
@@ -92,7 +92,7 @@ public record ExecPlan(
                     required(object, "readyPattern"),
                     timeout,
                     Jsonl.bool(object, "frontDoor", false),
-                    JkBuild.SidecarRestart.parse(required(object, "restart")));
+                    Restart.parse(required(object, "restart")));
         }
 
         private static String required(String object, String key) {

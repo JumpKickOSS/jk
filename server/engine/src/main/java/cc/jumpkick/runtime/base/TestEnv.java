@@ -6,6 +6,7 @@ import cc.jumpkick.config.TestEnvValues;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.model.EnvConfig;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.util.TestHomes;
 import java.io.IOException;
@@ -135,7 +136,7 @@ public final class TestEnv {
         // opts in — Gradle does the same.
         out.put("JK_HTTP_ENABLED", "false");
         out.put("JK_HTTP_PORT", "0");
-        JkBuild.EnvConfig policy = project.build().env();
+        EnvConfig policy = project.build().env();
         out.putAll(WorkerEnv.declared(policy, moduleDir, target));
         Function<String, @Nullable String> buildEnv = BuildEnv.forModule(moduleDir);
         out.putAll(TestEnvValues.resolve(

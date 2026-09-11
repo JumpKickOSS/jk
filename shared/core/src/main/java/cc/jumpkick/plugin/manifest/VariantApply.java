@@ -6,6 +6,7 @@ import cc.jumpkick.config.Interpolation;
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.TestEnvValues;
 import cc.jumpkick.model.Dependency;
+import cc.jumpkick.model.EnvDecl;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.Scope;
@@ -256,10 +257,10 @@ public final class VariantApply {
         for (PluginConfig config : build.pluginConfigs().values()) {
             collectEnvRefs(config.values(), names);
         }
-        for (JkBuild.EnvDecl decl : build.build().testEnvDecls()) {
+        for (EnvDecl decl : build.build().testEnvDecls()) {
             switch (decl) {
-                case JkBuild.EnvDecl.Forward forward -> names.add(forward.name());
-                case JkBuild.EnvDecl.Set set -> collectReferences(set.value(), names);
+                case EnvDecl.Forward forward -> names.add(forward.name());
+                case EnvDecl.Set set -> collectReferences(set.value(), names);
             }
         }
     }

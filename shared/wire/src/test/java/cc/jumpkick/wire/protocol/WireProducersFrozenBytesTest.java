@@ -4,7 +4,7 @@ package cc.jumpkick.wire.protocol;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.PluginTuning;
-import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Sidecar;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -84,7 +84,7 @@ class WireProducersFrozenBytesTest {
                         "",
                         60000L,
                         true,
-                        JkBuild.SidecarRestart.NEVER)));
+                        Sidecar.Restart.NEVER)));
         assertThat(plan.encode())
                 .isEqualTo("{\"type\":\"exec-plan-ack\",\"error\":null,\"mainIssue\":\"issue\",\"kind\":\"run\","
                         + "\"argv\":[\"java\",\"-jar\"],\"workingDir\":\"/w\",\"display\":\"disp\",\"javaHome\":\"/jdk\","

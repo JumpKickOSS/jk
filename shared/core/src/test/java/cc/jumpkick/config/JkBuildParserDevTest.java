@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Sidecar;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -20,26 +21,26 @@ class JkBuildParserDevTest {
                 web = { command = "npm run dev", cwd = "../web", ready = "http://localhost:5173", front-door = true }
                 docs = { command = ["mkdocs", "serve", "-a", "127.0.0.1:8001"], env = { PORT = "8001" }, restart = "on-exit", ready-pattern = "Serving on", ready-timeout = "2m" }
                 """);
-        List<JkBuild.Sidecar> sidecars = b.build().devSidecars();
-        assertThat(sidecars).extracting(JkBuild.Sidecar::name).containsExactly("web", "docs");
+        List<Sidecar> sidecars = b.build().devSidecars();
+        assertThat(sidecars).extracting(Sidecar::name).containsExactly("web", "docs");
 
-        JkBuild.Sidecar web = sidecars.get(0);
+        Sidecar web = sidecars.get(0);
         assertThat(web.command()).containsExactly("npm", "run", "dev");
         assertThat(web.cwd()).isEqualTo("../web");
         assertThat(web.env()).isEmpty();
         assertThat(web.ready()).isEqualTo("http://localhost:5173");
         assertThat(web.readyPattern()).isNull();
-        assertThat(web.readyTimeoutMillis()).isEqualTo(JkBuild.Sidecar.DEFAULT_READY_TIMEOUT_MILLIS);
+        assertThat(web.readyTimeoutMillis()).isEqualTo(Sidecar.DEFAULT_READY_TIMEOUT_MILLIS);
         assertThat(web.frontDoor()).isTrue();
-        assertThat(web.restart()).isEqualTo(JkBuild.SidecarRestart.NEVER);
+        assertThat(web.restart()).isEqualTo(Sidecar.Restart.NEVER);
 
-        JkBuild.Sidecar docs = sidecars.get(1);
+        Sidecar docs = sidecars.get(1);
         assertThat(docs.command()).containsExactly("mkdocs", "serve", "-a", "127.0.0.1:8001");
         assertThat(docs.cwd()).isEqualTo(".");
         assertThat(docs.env()).isEqualTo(Map.of("PORT", "8001"));
         assertThat(docs.readyPattern()).isEqualTo("Serving on");
         assertThat(docs.readyTimeoutMillis()).isEqualTo(120_000);
-        assertThat(docs.restart()).isEqualTo(JkBuild.SidecarRestart.ON_EXIT);
+        assertThat(docs.restart()).isEqualTo(Sidecar.Restart.ON_EXIT);
     }
 
     @Test

@@ -6,6 +6,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Sidecar;
 import cc.jumpkick.wire.protocol.ExecPlan;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -30,17 +31,17 @@ final class DevSidecars {
         Path root = WorkspaceLocator.findRoot(moduleDir).orElse(null);
         if (root != null && !root.equals(moduleDir) && Files.isRegularFile(root.resolve(ManifestPaths.MANIFEST))) {
             JkBuild rootBuild = JkBuildParser.parse(root.resolve(ManifestPaths.MANIFEST));
-            for (JkBuild.Sidecar s : rootBuild.build().devSidecars()) {
+            for (Sidecar s : rootBuild.build().devSidecars()) {
                 byName.put(s.name(), resolve(root, s, clientEnv));
             }
         }
-        for (JkBuild.Sidecar s : module.build().devSidecars()) {
+        for (Sidecar s : module.build().devSidecars()) {
             byName.put(s.name(), resolve(moduleDir, s, clientEnv));
         }
         return List.copyOf(byName.values());
     }
 
-    private static ExecPlan.Sidecar resolve(Path declaredIn, JkBuild.Sidecar s, Map<String, String> clientEnv) {
+    private static ExecPlan.Sidecar resolve(Path declaredIn, Sidecar s, Map<String, String> clientEnv) {
         EnvLookup lookup = EnvLookup.forModule(declaredIn, clientEnv::get);
         Map<String, String> env = new LinkedHashMap<>();
         for (String name : lookup.fileNames()) {

@@ -5,7 +5,7 @@ import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.TestEnvValues;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Os;
-import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.EnvConfig;
 import java.nio.file.Path;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -106,7 +106,7 @@ public final class WorkerEnv {
     }
 
     /** A module's inheritance policy alone — {@code [env] inherit} — with nothing laid on top yet. */
-    public static WorkerEnv policy(JkBuild.EnvConfig config) {
+    public static WorkerEnv policy(EnvConfig config) {
         return new WorkerEnv(config.inherit(), Map.of());
     }
 
@@ -115,7 +115,7 @@ public final class WorkerEnv {
      * {@code moduleDir}. {@code target} is what {@code ${target}} stands for; null when the worker
      * has no build output to speak of.
      */
-    public static WorkerEnv forModule(JkBuild.EnvConfig config, Path moduleDir, @Nullable Path target) {
+    public static WorkerEnv forModule(EnvConfig config, Path moduleDir, @Nullable Path target) {
         return policy(config).with(declared(config, moduleDir, target));
     }
 
@@ -123,7 +123,7 @@ public final class WorkerEnv {
      * {@code [env] vars} resolved for a launch — the one expansion shared by every worker kind, so
      * the test JVM's seed and the compiler's cannot disagree about an unset {@code ${VAR}}.
      */
-    public static Map<String, String> declared(JkBuild.EnvConfig config, Path moduleDir, @Nullable Path target) {
+    public static Map<String, String> declared(EnvConfig config, Path moduleDir, @Nullable Path target) {
         if (config.vars().isEmpty()) return Map.of();
         Function<String, @Nullable String> env = BuildEnv.forModule(moduleDir);
         return TestEnvValues.resolve(

@@ -4,7 +4,7 @@ package cc.jumpkick.wire.protocol;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Sidecar;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -24,7 +24,7 @@ class ExecPlanSidecarTest {
             "",
             60_000L,
             true,
-            JkBuild.SidecarRestart.ON_EXIT);
+            Sidecar.Restart.ON_EXIT);
 
     @Test
     void every_field_round_trips_and_restart_is_spelled_as_in_the_manifest() {
@@ -61,8 +61,7 @@ class ExecPlanSidecarTest {
     void the_record_owns_copies_of_its_collections() {
         var command = new ArrayList<>(List.of("npm"));
         var env = new LinkedHashMap<>(Map.of("A", "1"));
-        ExecPlan.Sidecar s =
-                new ExecPlan.Sidecar("web", command, "/w", env, "", "", 1L, false, JkBuild.SidecarRestart.NEVER);
+        ExecPlan.Sidecar s = new ExecPlan.Sidecar("web", command, "/w", env, "", "", 1L, false, Sidecar.Restart.NEVER);
         command.add("run");
         env.put("B", "2");
         assertThat(s.command()).containsExactly("npm");

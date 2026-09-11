@@ -4,6 +4,8 @@ package cc.jumpkick.config;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.DenyPolicy;
+import cc.jumpkick.model.EnvConfig;
+import cc.jumpkick.model.EnvDecl;
 import cc.jumpkick.model.Features;
 import cc.jumpkick.model.GuardsConfig;
 import cc.jumpkick.model.JkBuild;
@@ -13,6 +15,7 @@ import cc.jumpkick.model.Profiles;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.model.Sidecar;
 import cc.jumpkick.model.Variants;
 import cc.jumpkick.model.Workspace;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
@@ -364,13 +367,13 @@ public final class JkBuildParser {
         build = build.withJavac(ManifestBuild.parseJavac(result));
         // [test] is its own top-level table (test settings are not build inputs), but it folds into
         // the Build block, which already carries the other test-scoped setting, test-plugin-jars.
-        List<JkBuild.EnvDecl> testEnv = ManifestBuild.parseTestEnv(result);
+        List<EnvDecl> testEnv = ManifestBuild.parseTestEnv(result);
         if (!testEnv.isEmpty()) build = build.withTestEnv(testEnv);
         // [env] is what the module's workers get from the environment; it folds in beside [test] env.
-        JkBuild.EnvConfig env = ManifestBuild.parseEnv(result);
+        EnvConfig env = ManifestBuild.parseEnv(result);
         if (!env.isEmpty()) build = build.withEnv(env);
         // [dev] is a live-loop concern, not a build input; it folds into the same block as [test].
-        List<JkBuild.Sidecar> devSidecars = ManifestBuild.parseDevSidecars(result);
+        List<Sidecar> devSidecars = ManifestBuild.parseDevSidecars(result);
         if (!devSidecars.isEmpty()) build = build.withDevSidecars(devSidecars);
         // [audit] is a report policy, not a build input; it folds into the same block as [test] and [dev].
         List<JkBuild.AuditIgnore> auditIgnores = ManifestBuild.parseAuditIgnores(result);
