@@ -22,6 +22,7 @@ import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.ReentrantLock;
 import lombok.AccessLevel;
 import lombok.Builder;
 import org.jspecify.annotations.Nullable;
@@ -44,7 +45,7 @@ import org.jspecify.annotations.Nullable;
  */
 public final class Calibration {
 
-    /** EWMA recency for {@link #refine} — matches {@link StepTimings#DEFAULT_ALPHA}. */
+    /** EWMA recency for {@link #refine} — matches {@link cc.jumpkick.runtime.base.StepTimings#DEFAULT_ALPHA}. */
     private static final double ALPHA = 0.4;
 
     /** Re-probe once a stored calibration is older than this (hardware/VM may have changed). */
@@ -130,6 +131,8 @@ public final class Calibration {
     static final int COLD_MAX_TEST_PARALLEL = 4;
 
     private static final AtomicReference<@Nullable Calibration> MEMO = new AtomicReference<>();
+
+    private static final ReentrantLock PROBE = new ReentrantLock();
 
     private final double msPerWeight;
     private final long jvmForkMs;
@@ -630,22 +633,31 @@ public final class Calibration {
         // that loaded is already current: re-testing schema here only re-probes every build.
         if (!force && current.present() && current.measured) return current;
         if (!force && failedRecently()) return current;
-        Calibration probed = probe(jdksDir, allowNetwork);
-        if (probed != null && probed.present()) {
-            // Preserve engine cold-start + continuous learned rates across re-probe.
-            if (current.engineColdStartMs > 0 && probed.engineColdStartMs == 0) {
-                probed = probed.withEngineColdStartMs(current.engineColdStartMs);
+        // One probe at a time in this engine: two jobs admitted together on a cold host would
+        // otherwise time each other and both write the file.
+        PROBE.lock();
+        try {
+            current = load();
+            if (!force && current.present() && current.measured) return current;
+            Calibration probed = probe(jdksDir, allowNetwork);
+            if (probed != null && probed.present()) {
+                // Preserve engine cold-start + continuous learned rates across re-probe.
+                if (current.engineColdStartMs > 0 && probed.engineColdStartMs == 0) {
+                    probed = probed.withEngineColdStartMs(current.engineColdStartMs);
+                }
+                if (!current.learned.isEmpty()) {
+                    probed = probed.withLearned(current.learned);
+                }
+                clearFailureMarker();
+                persist(probed);
+                MEMO.set(probed);
+                return probed;
             }
-            if (!current.learned.isEmpty()) {
-                probed = probed.withLearned(current.learned);
-            }
-            clearFailureMarker();
-            persist(probed);
-            MEMO.set(probed);
-            return probed;
+            recordFailure();
+            return current;
+        } finally {
+            PROBE.unlock();
         }
-        recordFailure();
-        return current;
     }
 
     private static boolean sessionOffline() {
