@@ -8,6 +8,7 @@ import cc.jumpkick.plugin.testing.FakeBuildIo;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Objects;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -34,20 +35,21 @@ class QuarkusPluginTest {
         Files.writeString(augment.resolve("app/app.jar"), "APP");
         Files.writeString(augment.resolve("quarkus/generated-bytecode.jar"), "GEN");
 
-        Path outJar = dir.resolve("target/hello.jar");
+        Path target = dir.resolve("target");
+        Path outJar = target.resolve("hello.jar");
         FakeBuildIo io = fake(dir, outJar, dir.resolve("augment"));
         QuarkusPlugin.produceFastJar(io);
 
         assertThat(outJar).hasContent("RUN");
-        assertThat(outJar.getParent().resolve("lib/main/dep.jar")).exists();
-        assertThat(outJar.getParent().resolve("quarkus-app/quarkus-run.jar")).exists();
+        assertThat(target.resolve("lib/main/dep.jar")).exists();
+        assertThat(target.resolve("quarkus-app/quarkus-run.jar")).exists();
         // the multi-file layout must be declared so the packaging cache stores it whole.
         assertThat(io.produced())
                 .contains(
-                        outJar.getParent().resolve("lib"),
-                        outJar.getParent().resolve("app"),
-                        outJar.getParent().resolve("quarkus"),
-                        outJar.getParent().resolve("quarkus-app"));
+                        target.resolve("lib"),
+                        target.resolve("app"),
+                        target.resolve("quarkus"),
+                        target.resolve("quarkus-app"));
     }
 
     @Test
@@ -81,12 +83,13 @@ class QuarkusPluginTest {
      * app whose fast-jar layout is promoted next to the runner.
      */
     private static FakeBuildIo fake(Path root, Path artifact, Path augmentRoot) throws IOException {
+        Path artifactDir = Objects.requireNonNull(artifact.getParent());
         return new FakeBuildIo(root, "quarkus")
                 .offline(false)
                 .project("g", "hello", "1.0", null)
                 .artifactPath(artifact)
-                .classesDir(artifact.getParent())
-                .moduleDir(artifact.getParent())
+                .classesDir(artifactDir)
+                .moduleDir(artifactDir)
                 .step(QuarkusPlugin.AUGMENT_STEP, augmentRoot);
     }
 }

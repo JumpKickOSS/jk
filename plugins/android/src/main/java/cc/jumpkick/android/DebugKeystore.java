@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The debug signing identity: ONE keystore, generated once at a stable location and reused by every
@@ -49,7 +50,7 @@ final class DebugKeystore {
     }
 
     /** Seam: the same rule over an explicit environment. */
-    static Path stableDir(Function<String, String> env, String userHome) {
+    static Path stableDir(Function<String, @Nullable String> env, String userHome) {
         String androidUserHome = env.apply("ANDROID_USER_HOME");
         if (androidUserHome != null && !androidUserHome.isBlank()) return Path.of(androidUserHome);
         String legacySdkHome = env.apply("ANDROID_SDK_HOME");

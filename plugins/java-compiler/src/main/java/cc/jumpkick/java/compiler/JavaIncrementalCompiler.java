@@ -18,7 +18,9 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Child-JVM Java compile worker: Zinc incremental compile, streaming diagnostics, AP provenance,
@@ -85,9 +87,9 @@ public final class JavaIncrementalCompiler implements Plugin {
     /** Run a compile from {@code specFile}, emitting JSONL to {@code out}; returns the exit code. */
     static int compileSpec(Path specFile, ProtocolWriter out) throws Exception {
         PluginSpec spec = PluginSpec.read(specFile);
-        Path workdir = spec.workdir();
-        boolean tempWork = workdir == null;
-        if (tempWork) workdir = Files.createTempDirectory("jk-zinc-");
+        Path specWorkdir = spec.workdir();
+        boolean tempWork = specWorkdir == null;
+        Path workdir = specWorkdir != null ? specWorkdir : Files.createTempDirectory("jk-zinc-");
         try {
             int release = (int) spec.config().intValue("release", 0);
             String scalaVersion = spec.config().stringOpt("scalaVersion").orElse(null);
@@ -127,11 +129,11 @@ public final class JavaIncrementalCompiler implements Plugin {
     }
 
     /** The spec's compile facts, read once for whichever entry point the spec selects. */
-    private static JavaCompileJob job(PluginSpec spec, Path workdir, int release) {
+    private static JavaCompileJob job(PluginSpec spec, @Nullable Path workdir, int release) {
         return new JavaCompileJob(
                 spec.sources(),
                 spec.compileClasspath(),
-                spec.classesDir(),
+                Objects.requireNonNull(spec.classesDir(), "spec missing layout.classesDir (OUTPUT)"),
                 workdir,
                 spec.sourceOutput(),
                 release,

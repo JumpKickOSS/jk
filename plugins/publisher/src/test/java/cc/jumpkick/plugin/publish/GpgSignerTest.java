@@ -4,7 +4,7 @@ package cc.jumpkick.plugin.publish;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import cc.jumpkick.publish.testkit.GpgTestFixture;
+import cc.jumpkick.plugin.publish.testkit.GpgTestFixture;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;

@@ -28,6 +28,7 @@ import javax.lang.model.util.Types;
 import javax.tools.FileObject;
 import javax.tools.JavaFileManager;
 import javax.tools.JavaFileObject;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Captures generated-file → originating-source mappings by wrapping annotation processors' {@link
@@ -35,7 +36,7 @@ import javax.tools.JavaFileObject;
  */
 final class ApProvenance {
     final Map<Path, Set<Path>> generated = new LinkedHashMap<>();
-    volatile Trees trees;
+    volatile @Nullable Trees trees;
 
     List<Processor> wrap(List<Processor> processors) {
         List<Processor> wrapped = new ArrayList<>(processors.size());
@@ -58,6 +59,7 @@ final class ApProvenance {
     }
 
     void record(FileObject created, Element[] originating) {
+        Trees trees = this.trees;
         if (trees == null) return;
         Path gen;
         try {

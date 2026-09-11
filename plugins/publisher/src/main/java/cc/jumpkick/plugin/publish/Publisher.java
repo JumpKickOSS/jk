@@ -42,6 +42,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -102,10 +103,10 @@ public final class Publisher implements Plugin, PublishExtension {
             return 0;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            out.emit(PluginReply.error("publish", e.getMessage()));
+            out.emit(PluginReply.error("publish", String.valueOf(e.getMessage())));
             return 1;
         } catch (Exception e) {
-            out.emit(PluginReply.error("publish", e.getMessage()));
+            out.emit(PluginReply.error("publish", String.valueOf(e.getMessage())));
             return 1;
         }
     }
@@ -265,7 +266,7 @@ public final class Publisher implements Plugin, PublishExtension {
 
         @Override
         public Path moduleDir() {
-            return spec.moduleDir();
+            return Objects.requireNonNull(spec.moduleDir(), "spec missing layout.moduleDir");
         }
 
         @Override
@@ -280,7 +281,7 @@ public final class Publisher implements Plugin, PublishExtension {
 
         @Override
         public Path javaHome() {
-            return spec.javaHome();
+            return Objects.requireNonNull(spec.javaHome(), "spec missing java-home.path");
         }
 
         @Override

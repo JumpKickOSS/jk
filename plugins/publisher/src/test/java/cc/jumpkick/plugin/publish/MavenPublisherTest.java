@@ -6,7 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.model.Project;
-import cc.jumpkick.publish.testkit.GpgTestFixture;
+import cc.jumpkick.plugin.publish.testkit.GpgTestFixture;
 import cc.jumpkick.repo.MavenMetadata;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
@@ -18,6 +18,8 @@ import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -73,7 +75,7 @@ class MavenPublisherTest {
         base = URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/repo/");
     }
 
-    private String metadataOnServer() {
+    private @Nullable String metadataOnServer() {
         byte[] body = received.get("/repo/com/example/widget/maven-metadata.xml");
         return body == null ? null : new String(body, StandardCharsets.UTF_8);
     }
@@ -168,7 +170,7 @@ class MavenPublisherTest {
                         stem + ".jar.asc.sha256", stem + ".jar.asc.sha512");
 
         // The .asc file is a valid PGP signature over the jar bytes.
-        byte[] sig = received.get(stem + ".jar.asc");
+        byte[] sig = Objects.requireNonNull(received.get(stem + ".jar.asc"));
         GpgTestFixture.verifyDetached(jarBytes, sig, key.publicRing());
     }
 
@@ -333,8 +335,8 @@ class MavenPublisherTest {
         publishVersion("0.1.0");
 
         String metaPath = "/repo/com/example/widget/maven-metadata.xml";
-        assertThat(new String(received.get(metaPath + ".sha256"), StandardCharsets.US_ASCII))
-                .isEqualTo(Checksums.sha256Hex(received.get(metaPath)));
+        assertThat(new String(Objects.requireNonNull(received.get(metaPath + ".sha256")), StandardCharsets.US_ASCII))
+                .isEqualTo(Checksums.sha256Hex(Objects.requireNonNull(received.get(metaPath))));
     }
 
     @Test

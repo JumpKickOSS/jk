@@ -16,6 +16,7 @@ import javax.xml.transform.Transformer;
 import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamResult;
+import org.jspecify.annotations.Nullable;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
@@ -34,7 +35,7 @@ final class ResourceMerger {
      * Merge every AAR's {@code res/} into {@code out}. Returns {@code out}, or null when no
      * dependency carries resources (link then has no dep input at all).
      */
-    static Path mergeDepRes(List<AndroidDeps.Aar> aars, Path out) throws Exception {
+    static @Nullable Path mergeDepRes(List<AndroidDeps.Aar> aars, Path out) throws Exception {
         // config dir → resource key → element (first wins); plus the xmlns decls seen.
         Map<String, Map<String, Element>> valuesByConfig = new LinkedHashMap<>();
         Map<String, String> xmlns = new TreeMap<>();

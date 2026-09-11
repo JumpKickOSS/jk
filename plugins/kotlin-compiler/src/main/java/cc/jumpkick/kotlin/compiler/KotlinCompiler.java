@@ -91,16 +91,19 @@ public final class KotlinCompiler implements Plugin {
                                 plugins);
             }
 
-            if (spec.incremental()) {
-                spec.workingDir.mkdirs();
+            File workingDir = spec.workingDir; // present ⇒ incremental
+            if (workingDir != null) {
+                workingDir.mkdirs();
                 // Classpath ABI snapshots let BTA recompile precisely when a
                 // dependency changes (without them it would fall back to a full
                 // rebuild on any classpath change). Source edits are tracked by
                 // the working dir under SourcesChanges.ToBeCalculated regardless.
-                List<Path> depSnapshots =
-                        spec.snapshotDir != null ? snapshotClasspath(jvm, session, policy, logger, spec) : List.of();
+                File snapshotDir = spec.snapshotDir;
+                List<Path> depSnapshots = snapshotDir != null
+                        ? snapshotClasspath(jvm, session, policy, logger, spec, snapshotDir.toPath())
+                        : List.of();
                 Builder ic = op.snapshotBasedIcConfigurationBuilder(
-                        spec.workingDir.toPath(), SourcesChanges.ToBeCalculated.INSTANCE, depSnapshots);
+                        workingDir.toPath(), SourcesChanges.ToBeCalculated.INSTANCE, depSnapshots);
                 ic.set(JvmSnapshotBasedIncrementalCompilationConfiguration.USE_FIR_RUNNER, Boolean.TRUE);
                 op.set(JvmCompilationOperation.INCREMENTAL_COMPILATION, ic.build());
             }
@@ -128,9 +131,9 @@ public final class KotlinCompiler implements Plugin {
             KotlinToolchains.BuildSession session,
             ExecutionPolicy policy,
             org.jetbrains.kotlin.buildtools.api.KotlinLogger logger,
-            CompileSpec spec) {
+            CompileSpec spec,
+            Path dir) {
         try {
-            Path dir = spec.snapshotDir.toPath();
             Files.createDirectories(dir);
             List<Path> out = new ArrayList<>(spec.classpath.size());
             for (File entry : spec.classpath) {

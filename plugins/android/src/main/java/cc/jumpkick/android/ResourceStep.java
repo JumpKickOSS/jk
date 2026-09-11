@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code android-res} step: aapt2 compile+link → {@code resources.ap_}, {@code R.txt}, {@code
@@ -141,11 +142,11 @@ final class ResourceStep {
             long minSdk,
             boolean library,
             List<Path> depFlats,
-            Path ownFlats,
+            @Nullable Path ownFlats,
             Path out,
-            Path gen,
-            Path rTxt,
-            Path keepRules,
+            @Nullable Path gen,
+            @Nullable Path rTxt,
+            @Nullable Path keepRules,
             boolean proto) {
         TaskExec.ToolRun link = exec.tool(aapt2)
                 .arg("link")

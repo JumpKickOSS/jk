@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Properties;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Forked entry point for Quarkus production packaging.
@@ -194,7 +195,7 @@ public final class QuarkusAugmentMain {
     }
 
     /** Bootstrap + createProductionApplication; the produced jar's path, or null when none was reported. */
-    private static Path augment(
+    private static @Nullable Path augment(
             ApplicationModel model,
             Path classesDir,
             Path appProjectRoot,
@@ -260,6 +261,7 @@ public final class QuarkusAugmentMain {
         }
         // Promote the layout next to the runner (lib/app/quarkus siblings).
         Path layoutRoot = runJar.getParent();
+        if (layoutRoot == null) throw new IllegalStateException("quarkus-run.jar has no parent directory: " + runJar);
         copyTree(layoutRoot, destApp);
         Files.copy(runJar, targetDir.resolve("quarkus-run.jar"), StandardCopyOption.REPLACE_EXISTING);
         System.out.println("jk-quarkus-augment: " + targetDir.resolve("quarkus-run.jar"));
@@ -274,7 +276,7 @@ public final class QuarkusAugmentMain {
         return "fast-jar";
     }
 
-    private static Path findProducedUberJar(Path augmentOut, Path producedJar) throws IOException {
+    private static @Nullable Path findProducedUberJar(Path augmentOut, @Nullable Path producedJar) throws IOException {
         if (producedJar != null && Files.isRegularFile(producedJar)) {
             return producedJar;
         }

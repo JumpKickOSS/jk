@@ -2,6 +2,7 @@
 
 plugins {
     id("jk.plugin-conventions")
+    id("jk.nullmarked-conventions")
 }
 
 description = "jk-java-compiler: child-JVM worker that runs Zinc's Java-only incremental " +

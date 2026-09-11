@@ -200,16 +200,17 @@ final class FileOps {
         }
 
         @Override
-        public JavaFileObject getJavaFileForInput(Location location, String className, JavaFileObject.Kind kind)
-                throws IOException {
+        public @Nullable JavaFileObject getJavaFileForInput(
+                Location location, String className, JavaFileObject.Kind kind) throws IOException {
             JavaFileObject file =
                     timed("getJavaFileForInput", () -> super.getJavaFileForInput(location, className, kind));
             return file == null ? null : new CountingJavaFileObject(file);
         }
 
         @Override
-        public JavaFileObject getJavaFileForOutput(
-                Location location, String className, JavaFileObject.Kind kind, FileObject sibling) throws IOException {
+        public @Nullable JavaFileObject getJavaFileForOutput(
+                Location location, String className, JavaFileObject.Kind kind, @Nullable FileObject sibling)
+                throws IOException {
             FileObject bare = sibling == null ? null : unwrap(sibling);
             JavaFileObject file =
                     timed("getJavaFileForOutput", () -> super.getJavaFileForOutput(location, className, kind, bare));
@@ -217,14 +218,14 @@ final class FileOps {
         }
 
         @Override
-        public FileObject getFileForInput(Location location, String pkg, String name) throws IOException {
+        public @Nullable FileObject getFileForInput(Location location, String pkg, String name) throws IOException {
             FileObject file = timed("getFileForInput", () -> super.getFileForInput(location, pkg, name));
             return file == null ? null : new CountingFileObject(file);
         }
 
         @Override
-        public FileObject getFileForOutput(Location location, String pkg, String name, FileObject sibling)
-                throws IOException {
+        public @Nullable FileObject getFileForOutput(
+                Location location, String pkg, String name, @Nullable FileObject sibling) throws IOException {
             FileObject bare = sibling == null ? null : unwrap(sibling);
             FileObject file = timed("getFileForOutput", () -> super.getFileForOutput(location, pkg, name, bare));
             return file == null ? null : new CountingFileObject(file);

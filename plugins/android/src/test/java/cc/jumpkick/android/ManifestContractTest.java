@@ -16,6 +16,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -70,7 +72,7 @@ class ManifestContractTest {
     /** No variant condition matches a plain debug app, so the base {@code [packaging]} applies. */
     @Test
     void the_base_packager_is_the_one_registration_chooses_for_a_plain_debug_app() {
-        assertThat(register(Map.of()).packager.name())
+        assertThat(packagerOf(Map.of()).name())
                 .isEqualTo(DESCRIPTOR.table("packaging").string("packager"));
     }
 
@@ -87,7 +89,7 @@ class ManifestContractTest {
         for (Toml.Table variant : variants) {
             Map<String, Object> config = conditionOf(variant);
 
-            assertThat(register(config).packager.name())
+            assertThat(packagerOf(config).name())
                     .as("[[packaging.variant]] %s declares packager `%s`", config, variant.string("packager"))
                     .isEqualTo(variant.string("packager"));
         }
@@ -106,7 +108,7 @@ class ManifestContractTest {
         both.putAll(conditionOf(variants.get(0)));
         both.putAll(conditionOf(variants.get(1)));
 
-        assertThat(register(both).packager.name())
+        assertThat(packagerOf(both).name())
                 .as("both conditions hold; the descriptor's first-listed variant wins")
                 .isEqualTo(variants.get(0).string("packager"));
     }
@@ -189,10 +191,8 @@ class ManifestContractTest {
      */
     private static Map<String, Object> conditionOf(Toml.Table variant) {
         Map<String, String> when = variant.inline("when");
-        String key = when.get("config");
-        String literal = when.get("equals");
-        assertThat(key).as("[[packaging.variant]] when.config").isNotNull();
-        assertThat(literal).as("[[packaging.variant]] when.equals").isNotNull();
+        String key = Objects.requireNonNull(when.get("config"), "[[packaging.variant]] when.config");
+        String literal = Objects.requireNonNull(when.get("equals"), "[[packaging.variant]] when.equals");
         Toml.Table schema = DESCRIPTOR.table("schema");
         String type = schema.has(key) ? schema.inline(key).get("type") : "string";
         return Map.of(key, "bool".equals(type) ? Boolean.valueOf(literal) : literal);
@@ -214,17 +214,19 @@ class ManifestContractTest {
         all.putAll(config);
         Registrations registrations = new Registrations(new PluginConfig("android", all));
         new AndroidPlugin().register(registrations);
-        assertThat(registrations.packager)
-                .as("android always registers exactly one packager")
-                .isNotNull();
         return registrations;
+    }
+
+    /** Register the plugin against {@code config} and hand back the packager it chose. */
+    private static PackagerSpec packagerOf(Map<String, Object> config) {
+        return Objects.requireNonNull(register(config).packager, "android always registers exactly one packager");
     }
 
     /** A recording {@link BuildPluginContext} — registration records, it never executes. */
     private static final class Registrations implements BuildPluginContext {
         private final PluginConfig config;
         private final List<String> commands = new ArrayList<>();
-        private PackagerSpec packager;
+        private @Nullable PackagerSpec packager;
 
         private Registrations(PluginConfig config) {
             this.config = config;
@@ -343,15 +345,13 @@ class ManifestContractTest {
             }
 
             String string(String key) {
-                String value = values.get(key);
-                assertThat(value).as("[%s] %s", header, key).isNotNull();
+                String value = Objects.requireNonNull(values.get(key), () -> "[" + header + "] " + key);
                 return unquote(value);
             }
 
             /** {@code key = { a = "x", b = true }} → the pairs, values unquoted. */
             Map<String, String> inline(String key) {
-                String value = values.get(key);
-                assertThat(value).as("[%s] %s", header, key).isNotNull();
+                String value = Objects.requireNonNull(values.get(key), () -> "[" + header + "] " + key);
                 assertThat(value).as("[%s] %s is an inline table", header, key).startsWith("{");
                 Map<String, String> out = new LinkedHashMap<>();
                 for (String pair : splitTopLevel(value.substring(1, value.lastIndexOf('}')))) {

@@ -2,6 +2,7 @@
 
 plugins {
     id("jk.plugin-conventions")
+    id("jk.nullmarked-conventions")
 }
 
 description = "jk-publish-runner: child-JVM worker that assembles, signs, and publishes Maven " +

@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.Set;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 import org.objectweb.asm.AnnotationVisitor;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
@@ -49,7 +50,7 @@ final class HiltTransformStep {
     }
 
     /** The rewritten class bytes, or null when the class doesn't rewrite (the common case). */
-    private static byte[] maybeRewrite(byte[] bytes, Path classesDir) throws IOException {
+    private static byte @Nullable [] maybeRewrite(byte[] bytes, Path classesDir) throws IOException {
         ClassReader reader = new ClassReader(bytes);
         Probe probe = new Probe();
         reader.accept(probe, ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
@@ -89,7 +90,7 @@ final class HiltTransformStep {
                 .accept(
                         new ClassVisitor(Opcodes.ASM9) {
                             @Override
-                            public MethodVisitor visitMethod(
+                            public @Nullable MethodVisitor visitMethod(
                                     int access, String name, String desc, String sig, String[] exceptions) {
                                 if ("onReceive".equals(name) && ON_RECEIVE_DESC.equals(desc)) found[0] = true;
                                 return null;
@@ -108,7 +109,7 @@ final class HiltTransformStep {
         }
 
         @Override
-        public AnnotationVisitor visitAnnotation(String descriptor, boolean visible) {
+        public @Nullable AnnotationVisitor visitAnnotation(String descriptor, boolean visible) {
             if (HILT_ANNOTATIONS.contains(descriptor)) annotated = true;
             return null;
         }

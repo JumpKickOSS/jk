@@ -14,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Uploads jar/pom/sources + checksums to a Maven HTTP repository via PUT. Auth via {@link
@@ -31,7 +32,7 @@ public final class MavenPublisher {
     }
 
     /** Convenience for HTTP Basic auth; a blank username means anonymous. */
-    public MavenPublisher(URI repoBase, String username, String password) {
+    public MavenPublisher(URI repoBase, @Nullable String username, @Nullable String password) {
         this(
                 repoBase,
                 (username == null || username.isEmpty())

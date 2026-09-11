@@ -12,7 +12,9 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.zip.ZipFile;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -212,7 +214,8 @@ class ZincJavaCompilerMixedTest {
     private static final class ToolJars {
         private static final Path DIR = toolDir();
         private static final List<Path> COMPILER = loadCompiler();
-        private static final Path JUNIT = loadJunit();
+        private static final Path JUNIT =
+                Objects.requireNonNull(loadJunit(), "junit-jupiter-api is on the test classpath");
 
         static List<Path> compilerClasspath() {
             return COMPILER;
@@ -284,7 +287,7 @@ class ZincJavaCompilerMixedTest {
             return List.copyOf(out);
         }
 
-        private static Path loadJunit() {
+        private static @Nullable Path loadJunit() {
             for (Path p : classpathFiles()) {
                 String n = p.getFileName().toString();
                 if (n.startsWith("junit-jupiter-api-") && n.endsWith(".jar")) return p;

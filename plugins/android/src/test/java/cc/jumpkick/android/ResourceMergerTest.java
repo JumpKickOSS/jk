@@ -193,7 +193,7 @@ class ResourceMergerTest {
         Path merged = ResourceMerger.mergeDepRes(aars(odd), out);
 
         assertThat(merged).isNotNull().isDirectory();
-        assertThat(valuesFiles(merged)).isEmpty();
+        assertThat(valuesFiles(out)).isEmpty();
     }
 
     /**
@@ -241,7 +241,7 @@ class ResourceMergerTest {
         Path out = tmp.resolve("merged");
         Path merged = ResourceMerger.mergeDepRes(aars(containers), out);
         assertThat(merged).as("these fixtures all carry resources").isEqualTo(out);
-        return merged;
+        return out;
     }
 
     private static String resources(String body) {

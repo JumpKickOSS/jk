@@ -15,6 +15,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Which generated file came from which source, carried across builds in {@code provenance.tsv}.
@@ -49,9 +50,10 @@ final class GeneratedProvenance {
      * my own output root — is "are these two names the same file", and only a link-resolved form
      * answers it.
      */
-    void reconcile(Path sourceOutput, Path classOutput, List<Path> compiledSources, Map<Path, Set<Path>> newProv)
+    void reconcile(
+            @Nullable Path sourceOutput, Path classOutput, List<Path> compiledSources, Map<Path, Set<Path>> newProv)
             throws IOException {
-        Path srcRoot = canonical(sourceOutput);
+        Path srcRoot = sourceOutput == null ? null : canonical(sourceOutput);
         Path classRoot = canonical(classOutput);
         Map<Path, Set<Path>> prev = read();
         Set<Path> recompiled = canonicalAll(compiledSources);
@@ -76,7 +78,7 @@ final class GeneratedProvenance {
     }
 
     /** All three arguments are already {@link #canonical}, which is what makes the containment test valid. */
-    private static void deleteOutputs(Path gen, Path srcRoot, Path classRoot) throws IOException {
+    private static void deleteOutputs(Path gen, @Nullable Path srcRoot, @Nullable Path classRoot) throws IOException {
         Files.deleteIfExists(gen); // the generated source/resource itself
         String name = gen.getFileName().toString();
         if (srcRoot == null || classRoot == null || !name.endsWith(".java")) return;
@@ -113,7 +115,6 @@ final class GeneratedProvenance {
      * build has not created yet, and a generated file in the instant after it is deleted.
      */
     private static Path canonical(Path p) {
-        if (p == null) return null;
         Path abs = p.toAbsolutePath().normalize();
         Deque<Path> tail = new ArrayDeque<>();
         for (Path probe = abs; probe != null; probe = probe.getParent()) {

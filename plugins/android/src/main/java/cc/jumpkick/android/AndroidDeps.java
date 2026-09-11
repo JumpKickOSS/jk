@@ -16,6 +16,7 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.ZipFile;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The Android view of the module's runtime entries: every dependency whose artifact is an AAR
@@ -51,6 +52,7 @@ final class AndroidDeps {
         }
 
         /** The AAR's package/namespace, parsed from its manifest's {@code package} attribute. */
+        @Nullable
         String namespace() throws IOException {
             if (!Files.isRegularFile(manifest())) return null;
             String xml = Files.readString(manifest());
@@ -146,7 +148,10 @@ final class AndroidDeps {
         Path mapping =
                 io.stepOutput("android-r8").map(dir -> dir.resolve("mapping")).orElse(null);
         if (mapping == null || !Files.isDirectory(mapping)) return;
-        Path targetR8 = io.artifactPath().getParent().getParent().resolve("r8");
+        Path artifactDir = io.artifactPath().getParent();
+        Path target = artifactDir == null ? null : artifactDir.getParent();
+        if (target == null) throw new IOException("artifact path has no target directory: " + io.artifactPath());
+        Path targetR8 = target.resolve("r8");
         Files.createDirectories(targetR8);
         try (var listing = Files.list(mapping)) {
             for (Path file : (Iterable<Path>) listing.sorted()::iterator) {

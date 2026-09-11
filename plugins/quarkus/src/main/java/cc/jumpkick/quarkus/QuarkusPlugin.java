@@ -30,6 +30,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Quarkus build plugin: {@code quarkus-augment} step + {@code quarkus-fast-jar}
@@ -167,7 +168,7 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
     }
 
     /** {@code fast-jar} (default) or {@code uber-jar}; unknown values fail early. */
-    static String normalizePackageType(String raw) throws IOException {
+    static String normalizePackageType(@Nullable String raw) throws IOException {
         if (raw == null || raw.isBlank()) return "fast-jar";
         String t = raw.trim().toLowerCase(Locale.ROOT);
         if ("fast-jar".equals(t) || "fastjar".equals(t) || "fast".equals(t)) return "fast-jar";
@@ -205,12 +206,12 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
                     + " — augment output is incomplete; rebuild with --redo");
         }
         Path layoutRoot = runJar.getParent(); // directory containing quarkus-run.jar + lib/
+        if (layoutRoot == null) throw new IOException("quarkus-run.jar has no parent directory: " + runJar);
         io.label("package " + outJar.getFileName() + " (quarkus-run.jar)");
-        Path outDir = outJar.getParent();
         for (String child : List.of("lib", "app", "quarkus")) {
             Path src = layoutRoot.resolve(child);
             if (Files.isDirectory(src)) {
-                Path dest = outDir.resolve(child);
+                Path dest = outJar.resolveSibling(child);
                 if (Files.exists(dest)) {
                     deleteTree(dest);
                 }
@@ -220,7 +221,7 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         }
         Files.copy(runJar, outJar, StandardCopyOption.REPLACE_EXISTING);
         // Canonical quarkus-app/ tree for docs / docker layering.
-        Path appDir = outDir.resolve("quarkus-app");
+        Path appDir = outJar.resolveSibling("quarkus-app");
         if (Files.exists(appDir)) {
             deleteTree(appDir);
         }
@@ -230,11 +231,11 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         io.produced(appDir);
     }
 
-    private static Path findQuarkusRunJar(Path root) throws IOException {
+    private static @Nullable Path findQuarkusRunJar(Path root) throws IOException {
         if (!Files.isDirectory(root)) return null;
         // Prefer a runner whose sibling lib/ exists (fast-jar Class-Path is relative).
         Path nested = root.resolve("quarkus-app").resolve("quarkus-run.jar");
-        if (Files.isRegularFile(nested) && Files.isDirectory(nested.getParent().resolve("lib"))) {
+        if (Files.isRegularFile(nested) && Files.isDirectory(nested.resolveSibling("lib"))) {
             return nested;
         }
         Path direct = root.resolve("quarkus-run.jar");
@@ -247,14 +248,14 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
             // the two stats only run for the handful of entries actually called quarkus-run.jar.
             return walk.filter(p -> p.getFileName().toString().equals("quarkus-run.jar"))
                     .filter(Files::isRegularFile)
-                    .filter(p -> Files.isDirectory(p.getParent().resolve("lib")))
+                    .filter(p -> Files.isDirectory(p.resolveSibling("lib")))
                     .findFirst()
                     .orElse(Files.isRegularFile(direct) ? direct : null);
         }
     }
 
     /** Uber-jar runner written by augment ({@code quarkus-uber.jar} staging or {@code *-runner.jar}). */
-    private static Path findUberJar(Path root) throws IOException {
+    private static @Nullable Path findUberJar(Path root) throws IOException {
         if (!Files.isDirectory(root)) return null;
         Path staged = root.resolve("quarkus-uber.jar");
         if (Files.isRegularFile(staged)) return staged;

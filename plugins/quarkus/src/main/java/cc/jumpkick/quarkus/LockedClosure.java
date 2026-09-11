@@ -11,8 +11,10 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * jk's resolved RUNTIME closure — the lockfile's answer to "what ships" — as the engine hands it
@@ -73,7 +75,11 @@ final class LockedClosure {
      *     what a classified variant does, because the runtime list names one jar per
      *     {@code group:artifact} and it is the unclassified one
      */
-    record Pin(Resolved dep, boolean ship, String version, Path jar) {}
+    record Pin(
+            Resolved dep,
+            boolean ship,
+            @Nullable String version,
+            @Nullable Path jar) {}
 
     /**
      * The lock's verdict on a resolved runtime classpath, one {@link Pin} per dependency in the
@@ -242,7 +248,9 @@ final class LockedClosure {
             if (covered.add(r.ga()) && !locked.version().equals(r.version())) {
                 overrides.add(r.ga() + ": maven picked " + r.version() + ", lock pins " + locked.version());
             }
-            boolean sole = variants.get(r.ga()) == 1 && r.classifier().isEmpty();
+            // Counted above for every GA the lock knows, and this one is locked.
+            boolean sole = Objects.requireNonNull(variants.get(r.ga())) == 1
+                    && r.classifier().isEmpty();
             pins.add(new Pin(r, true, locked.version(), sole ? locked.jar() : null));
         }
 

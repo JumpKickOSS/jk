@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.publish.testkit;
+package cc.jumpkick.plugin.publish.testkit;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;

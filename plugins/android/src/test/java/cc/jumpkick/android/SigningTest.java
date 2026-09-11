@@ -61,6 +61,7 @@ class SigningTest {
 
     /** {@code key-password} defaults to {@code store-password} — the common single-password store. */
     @Test
+    @SuppressWarnings("NullAway") // deliberate: a null secret is how the fixture models an omitted key
     void an_absent_key_password_falls_back_to_the_store_password(@TempDir Path tmp) throws Exception {
         FakeBuildIo io = release(tmp);
         io.secret("signing.key-password", null); // the engine simply omits it

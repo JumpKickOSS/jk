@@ -26,6 +26,11 @@ object NullMarking {
             "plugins/protobuf/src/main/java",
             "plugins/spring-boot/src/main/java",
             "plugins/test-runner/src/main/java",
+            "plugins/android/src/main/java",
+            "plugins/java-compiler/src/main/java",
+            "plugins/kotlin-compiler/src/main/java",
+            "plugins/publisher/src/main/java",
+            "plugins/quarkus/src/main/java",
         )
 
     /**
@@ -59,26 +64,11 @@ object NullMarking {
      */
     val unenforcedModules: Map<String, String> =
         mapOf(
-            "plugins/android" to
-                "16 production findings: aapt2 link's optional outputs, AAR namespace and manifest probes " +
-                    "that return null, and the artifact's grandparent as the retrace directory.",
             "plugins/formatter" to
                 "27 production findings: the stamp cache and type index are optional per run, and a file's " +
                     "verdict carries bytes and a stamp only when there is something to write.",
             "plugins/image-builder" to
                 "38 production findings: the container runtime, the local base JRE and the packager's app " +
                     "tree are each optional, and the spec's base image is declared nullable.",
-            "plugins/java-compiler" to
-                "29 production findings: Zinc's Scala half and the generated-source output are absent for a " +
-                    "Java-only compile, and javac's file-manager overrides return null by contract.",
-            "plugins/kotlin-compiler" to
-                "13 production findings: the compile spec's incremental and snapshot directories are " +
-                    "optional, and the Build Tools logger's throwable is nullable in the API.",
-            "plugins/publisher" to
-                "16 production findings: signing is optional per strategy, a lockfile may be absent for the " +
-                    "SBOM, and an artifact's checksum is nullable in the lock model.",
-            "plugins/quarkus" to
-                "17 production findings: the augment output is probed for a runner that may not exist, and " +
-                    "a lock pin has no version or jar for an unlocked dependency.",
         )
 }

@@ -9,6 +9,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import javax.tools.ToolProvider;
@@ -104,9 +105,9 @@ class ZincJavaCompilerEncodingTest {
             if (line.startsWith(Fork.CHARSET_LINE))
                 observed = line.substring(Fork.CHARSET_LINE.length()).trim();
         }
-        assertThat(observed).as("fork never reported its charset:%n%s", out).isNotNull();
+        String reported = Objects.requireNonNull(observed, () -> "fork never reported its charset:\n" + out);
         return new Run(
-                observed,
+                reported,
                 Files.readAllBytes(dir.resolve("plain/a/A.class")),
                 Files.readAllBytes(dir.resolve("ap/a/A.class")));
     }

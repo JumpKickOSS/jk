@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import org.junit.jupiter.api.Test;
@@ -134,7 +135,8 @@ class AarPackagerTest {
         assertThat(entryTimes(Files.readAllBytes(first.artifactPath())))
                 .isNotEmpty()
                 .allSatisfy(time -> assertThat(time).isEqualTo(PINNED));
-        assertThat(entryTimes(entries(first.artifactPath()).get("classes.jar")))
+        assertThat(entryTimes(
+                        Objects.requireNonNull(entries(first.artifactPath()).get("classes.jar"))))
                 .as("the jar nested inside the AAR is pinned too")
                 .isNotEmpty()
                 .allSatisfy(time -> assertThat(time).isEqualTo(PINNED));

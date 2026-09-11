@@ -3,6 +3,7 @@ package cc.jumpkick.kotlin.compiler;
 
 import cc.jumpkick.plugin.protocol.CompilerProtocol;
 import org.jetbrains.kotlin.buildtools.api.KotlinLogger;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Bridges the Build Tools API's logger onto jk's JSONL protocol. Compiler diagnostics arrive here
@@ -23,12 +24,12 @@ final class KcLogger implements KotlinLogger {
     }
 
     @Override
-    public void error(String msg, Throwable throwable) {
+    public void error(String msg, @Nullable Throwable throwable) {
         proto.diagnostic("ERROR", withThrowable(msg, throwable));
     }
 
     @Override
-    public void warn(String msg, Throwable throwable) {
+    public void warn(String msg, @Nullable Throwable throwable) {
         proto.diagnostic("WARNING", withThrowable(msg, throwable));
     }
 
@@ -52,7 +53,7 @@ final class KcLogger implements KotlinLogger {
         proto.diagnostic("INFO", msg);
     }
 
-    private static String withThrowable(String msg, Throwable t) {
+    private static String withThrowable(String msg, @Nullable Throwable t) {
         return t == null ? msg : msg + "\n" + t;
     }
 }

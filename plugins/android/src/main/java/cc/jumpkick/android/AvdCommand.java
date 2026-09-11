@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code avd create|list|boot} — managed AVDs under the jk SDK root ({@code ANDROID_AVD_HOME}).
@@ -161,7 +162,7 @@ final class AvdCommand {
         return process.isAlive() ? 0 : process.waitFor();
     }
 
-    private static String flag(List<String> args, String name) {
+    private static @Nullable String flag(List<String> args, String name) {
         for (int i = 0; i < args.size() - 1; i++) {
             if (name.equals(args.get(i))) return args.get(i + 1);
         }

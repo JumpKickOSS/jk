@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Hand-rolled SLSA v1 in-toto Statement JSON (unsigned; Sigstore bundling is layered via {@link
@@ -30,7 +31,7 @@ public final class SlsaProvenance {
     public record BuildContext(
             String builderId,
             String buildType,
-            String invocationId,
+            @Nullable String invocationId,
             Instant startedOn,
             Instant finishedOn,
             Map<String, String> externalParameters,

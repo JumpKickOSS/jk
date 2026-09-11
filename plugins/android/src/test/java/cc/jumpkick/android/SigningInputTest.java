@@ -15,6 +15,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -107,17 +109,14 @@ class SigningInputTest {
     private static PackagerSpec packagerOf(PluginConfig config) {
         Registrations registrations = new Registrations(config);
         new AndroidPlugin().register(registrations);
-        assertThat(registrations.packager)
-                .as("android always registers exactly one packager")
-                .isNotNull();
-        return registrations.packager;
+        return Objects.requireNonNull(registrations.packager, "android always registers exactly one packager");
     }
 
     /** A recording {@link BuildPluginContext} — registration records, it never executes. */
     private static final class Registrations implements BuildPluginContext {
         private final PluginConfig config;
         private final List<TaskSpec> tasks = new ArrayList<>();
-        private PackagerSpec packager;
+        private @Nullable PackagerSpec packager;
 
         private Registrations(PluginConfig config) {
             this.config = config;

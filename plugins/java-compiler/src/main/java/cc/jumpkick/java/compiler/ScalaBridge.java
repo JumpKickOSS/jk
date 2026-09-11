@@ -13,6 +13,7 @@ import java.util.Enumeration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import org.jspecify.annotations.Nullable;
 import sbt.internal.inc.ScalaInstance;
 import sbt.internal.inc.ZincUtil;
 import sbt.internal.inc.javac.JavaTools;
@@ -37,7 +38,11 @@ final class ScalaBridge {
 
     /** The Scala half of a mixed job: {@code null} for a Java-only compile. */
     record MixedScala(
-            String version, List<Path> compilerClasspath, Path bridgeJar, Path libraryJar, Path compilerJar) {}
+            String version,
+            List<Path> compilerClasspath,
+            @Nullable Path bridgeJar,
+            @Nullable Path libraryJar,
+            @Nullable Path compilerJar) {}
 
     /**
      * Cache the Scala compiler (ScalaInstance + classloaders + bridge) per compiler-classpath so a
@@ -54,19 +59,19 @@ final class ScalaBridge {
     private ScalaBridge() {}
 
     /** The compilers for this job: a real scalac when {@code mixed} is present, a dummy when not. */
-    static Compilers compilersFor(JavaCompiler javac, MixedScala mixed) {
+    static Compilers compilersFor(JavaCompiler javac, @Nullable MixedScala mixed) {
         return mixed != null ? mixedCompilers(javac, mixed) : javaOnlyCompilers(javac);
     }
 
     /** Extra classpath entries scalac needs and the compile classpath may not carry. */
-    static List<Path> extraClasspath(MixedScala mixed) {
+    static List<Path> extraClasspath(@Nullable MixedScala mixed) {
         if (mixed == null) return List.of();
         List<Path> out = new ArrayList<>();
         for (File lib : stdlibJars(mixed)) out.add(lib.toPath());
         return out;
     }
 
-    static String[] scalacOptions(MixedScala mixed, int release) {
+    static String[] scalacOptions(@Nullable MixedScala mixed, int release) {
         if (mixed == null || release <= 0) return new String[0];
         return new String[] {"-java-output-version", Integer.toString(release)};
     }
@@ -190,13 +195,13 @@ final class ScalaBridge {
         }
     }
 
-    private static File firstJar(Path extra, File[] allJars, String artifactPrefix) {
+    private static @Nullable File firstJar(@Nullable Path extra, File[] allJars, String artifactPrefix) {
         File named = findJar(allJars, artifactPrefix);
         if (named != null) return named;
         return extra != null ? extra.toFile() : null;
     }
 
-    private static File findJar(File[] jars, String artifactPrefix) {
+    private static @Nullable File findJar(File[] jars, String artifactPrefix) {
         for (File f : jars) {
             String n = f.getName();
             if (n.startsWith(artifactPrefix + "-") || n.startsWith(artifactPrefix + ".")) return f;

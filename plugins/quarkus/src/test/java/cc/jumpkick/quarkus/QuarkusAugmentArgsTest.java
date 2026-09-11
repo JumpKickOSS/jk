@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -80,7 +81,7 @@ class QuarkusAugmentArgsTest {
     }
 
     /** Only the four accessors {@code augmentArgs} reads; anything else is not part of the vector. */
-    private record ProbeExec(boolean offline, Path platformProps) implements TaskExec {
+    private record ProbeExec(boolean offline, @Nullable Path platformProps) implements TaskExec {
         @Override
         public Path moduleDir() {
             return Path.of("/m");

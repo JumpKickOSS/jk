@@ -7,6 +7,7 @@ import cc.jumpkick.model.JkBuild;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.UUID;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Generates CycloneDX 1.6 and SPDX 2.3 SBOM JSON from {@link JkBuild} + optional {@link Lockfile}
@@ -17,7 +18,7 @@ public final class Sbom {
     private Sbom() {}
 
     /** Render a CycloneDX 1.6 JSON SBOM. */
-    public static byte[] cyclonedx(JkBuild project, Lockfile lock) {
+    public static byte[] cyclonedx(JkBuild project, @Nullable Lockfile lock) {
         StringBuilder sb = new StringBuilder(512);
         sb.append('{');
         kv(sb, "$schema", "http://cyclonedx.org/schema/bom-1.6.schema.json");
@@ -70,7 +71,7 @@ public final class Sbom {
     }
 
     /** Render an SPDX 2.3 JSON SBOM. */
-    public static byte[] spdx(JkBuild project, Lockfile lock) {
+    public static byte[] spdx(JkBuild project, @Nullable Lockfile lock) {
         String docNamespace = "https://buildjk.dev/sbom/"
                 + project.project().group()
                 + "/"
@@ -134,7 +135,7 @@ public final class Sbom {
     // --- helpers ----------------------------------------------------------
 
     private static void appendCdxComponent(
-            StringBuilder sb, String group, String artifact, String version, String sha256Hex) {
+            StringBuilder sb, String group, String artifact, String version, @Nullable String sha256Hex) {
         String purl = "pkg:maven/" + group + "/" + artifact + "@" + version;
         sb.append('{');
         kv(sb, "type", "library");
@@ -160,7 +161,12 @@ public final class Sbom {
     }
 
     private static void appendSpdxPackage(
-            StringBuilder sb, String spdxId, String group, String artifact, String version, String sha256Hex) {
+            StringBuilder sb,
+            String spdxId,
+            String group,
+            String artifact,
+            String version,
+            @Nullable String sha256Hex) {
         sb.append('{');
         kv(sb, "SPDXID", spdxId);
         comma(sb);
@@ -197,7 +203,7 @@ public final class Sbom {
                 : new String[] {"unknown", module};
     }
 
-    private static String stripSha256Prefix(String checksum) {
+    private static @Nullable String stripSha256Prefix(@Nullable String checksum) {
         if (checksum == null) return null;
         if (checksum.startsWith("sha256:")) return checksum.substring("sha256:".length());
         return checksum;

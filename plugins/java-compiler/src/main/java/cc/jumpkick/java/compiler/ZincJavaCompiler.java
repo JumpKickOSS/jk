@@ -21,6 +21,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.ServiceConfigurationError;
 import java.util.ServiceLoader;
@@ -103,7 +104,7 @@ public final class ZincJavaCompiler {
         }
     }
 
-    public record Diag(String kind, String file, long line, long col, String message) {}
+    public record Diag(String kind, @Nullable String file, long line, long col, String message) {}
 
     /** One source Zinc would compile, with the analysis reason. */
     public record Invalidation(Path source, String why) {}
@@ -147,9 +148,9 @@ public final class ZincJavaCompiler {
             JavaCompileJob job,
             String scalaVersion,
             List<Path> compilerClasspath,
-            Path bridgeJar,
-            Path libraryJar,
-            Path compilerJar) {
+            @Nullable Path bridgeJar,
+            @Nullable Path libraryJar,
+            @Nullable Path compilerJar) {
         if (scalaVersion == null || scalaVersion.isBlank()) {
             throw new IllegalArgumentException("compileMixed requires scalaVersion");
         }
@@ -163,7 +164,7 @@ public final class ZincJavaCompiler {
         List<Path> sources = job.sources();
         List<Path> classpath = job.classpath();
         Path classOutput = job.classOutput();
-        Path workdir = job.workdir();
+        Path workdir = Objects.requireNonNull(job.workdir(), "a compile needs a workdir; only a forecast may omit it");
         Path sourceOutput = job.sourceOutput();
         int release = job.release();
         List<String> extraOptions = job.extraOptions();
@@ -452,7 +453,7 @@ public final class ZincJavaCompiler {
         return ZincSetup.stampChanged(old, now);
     }
 
-    private static Path pathOf(VirtualFileRef ref, FileConverter converter) {
+    private static @Nullable Path pathOf(@Nullable VirtualFileRef ref, FileConverter converter) {
         if (ref == null) return null;
         try {
             if (ref instanceof VirtualFile vf) {
@@ -617,7 +618,8 @@ public final class ZincJavaCompiler {
         return new URLClassLoader(urls, ClassLoader.getPlatformClassLoader());
     }
 
-    private static String[] javacOptions(int release, List<String> extra, Path sourceOutput, List<Path> processorPath) {
+    private static String[] javacOptions(
+            int release, List<String> extra, @Nullable Path sourceOutput, List<Path> processorPath) {
         List<String> opts = new ArrayList<>();
         // Unconditional: the charset a build decodes its sources with is not negotiable, because
         // nothing downstream can tell UTF-8 bytecode from Latin-1 bytecode. Neither reader here

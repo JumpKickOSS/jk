@@ -2,6 +2,7 @@
 
 plugins {
     id("jk.plugin-conventions")
+    id("jk.nullmarked-conventions")
 }
 
 description = "jk-kotlin-compiler: child-JVM worker that drives the Kotlin Build Tools API " +
