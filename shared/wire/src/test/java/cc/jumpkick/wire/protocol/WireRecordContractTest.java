@@ -223,6 +223,10 @@ class WireRecordContractTest {
             return values;
         }
         if (type.isRecord()) return build(type, seq);
+        if (type.isEnum()) {
+            Object[] constants = type.getEnumConstants();
+            return constants[n % constants.length];
+        }
         throw new IllegalStateException("no synthetic value for wire component type " + type);
     }
 }

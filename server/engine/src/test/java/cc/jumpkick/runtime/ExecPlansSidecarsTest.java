@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.runtime.workspace.ExecPlans;
 import cc.jumpkick.wire.protocol.ExecPlan;
 import java.nio.file.Files;
@@ -67,7 +68,7 @@ class ExecPlansSidecarsTest {
         assertThat(web.env()).doesNotContainKey("SHADOWED");
         assertThat(web.ready()).isEqualTo("http://localhost:5173");
         assertThat(web.frontDoor()).isTrue();
-        assertThat(web.restart()).isEqualTo("never");
+        assertThat(web.restart()).isEqualTo(JkBuild.SidecarRestart.NEVER);
 
         ExecPlan run = ExecPlans.execPlan(app, root.resolve("cache"), "run", null, null, null, null, "", Map.of());
         assertThat(run.sidecars()).isEmpty();

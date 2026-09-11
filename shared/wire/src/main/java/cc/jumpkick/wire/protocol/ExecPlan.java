@@ -3,7 +3,10 @@ package cc.jumpkick.wire.protocol;
 
 import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.model.JkBuild;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
@@ -41,8 +44,8 @@ public record ExecPlan(
 
     /**
      * One sidecar the client is to run beside the app: {@code cwd} absolute, {@code env} the
-     * values to lay over the inherited environment, probe fields as the manifest states them and
-     * {@code restart} as its manifest spelling ({@code never} or {@code on-exit}).
+     * values to lay over the inherited environment, probe fields as the manifest states them
+     * (empty when unset). Every field is written and every field is required on decode.
      */
     public record Sidecar(
             String name,
@@ -53,7 +56,12 @@ public record ExecPlan(
             String readyPattern,
             long readyTimeoutMillis,
             boolean frontDoor,
-            String restart) {
+            JkBuild.SidecarRestart restart) {
+
+        public Sidecar {
+            command = List.copyOf(command);
+            env = Collections.unmodifiableMap(new LinkedHashMap<>(env));
+        }
 
         String encode() {
             return JsonFields.object()
@@ -65,21 +73,36 @@ public record ExecPlan(
                     .string("readyPattern", readyPattern)
                     .number("readyTimeoutMillis", readyTimeoutMillis)
                     .bool("frontDoor", frontDoor)
-                    .string("restart", restart)
+                    .string("restart", restart.manifestValue())
                     .finish();
         }
 
         static Sidecar decode(String object) {
+            for (String key : List.of("command", "env", "frontDoor")) {
+                if (!Jsonl.has(object, key)) throw malformed(key);
+            }
+            long timeout = Jsonl.longValue(object, "readyTimeoutMillis", Long.MIN_VALUE);
+            if (timeout == Long.MIN_VALUE) throw malformed("readyTimeoutMillis");
             return new Sidecar(
-                    orEmpty(Jsonl.str(object, "name")),
+                    required(object, "name"),
                     Jsonl.strArray(object, "command"),
-                    orEmpty(Jsonl.str(object, "cwd")),
+                    required(object, "cwd"),
                     Jsonl.strMap(object, "env"),
-                    orEmpty(Jsonl.str(object, "ready")),
-                    orEmpty(Jsonl.str(object, "readyPattern")),
-                    Jsonl.longValue(object, "readyTimeoutMillis", 60_000L),
+                    required(object, "ready"),
+                    required(object, "readyPattern"),
+                    timeout,
                     Jsonl.bool(object, "frontDoor", false),
-                    orEmpty(Jsonl.str(object, "restart")));
+                    JkBuild.SidecarRestart.parse(required(object, "restart")));
+        }
+
+        private static String required(String object, String key) {
+            String value = Jsonl.str(object, key);
+            if (value == null) throw malformed(key);
+            return value;
+        }
+
+        private static IllegalArgumentException malformed(String key) {
+            return new IllegalArgumentException("malformed exec plan: sidecar lacks `" + key + "`");
         }
 
         static String encodeAll(List<Sidecar> sidecars) {

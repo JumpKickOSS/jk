@@ -915,12 +915,17 @@ public record JkBuild(
         /** Start it again with backoff; give up after five failures in a row. */
         ON_EXIT;
 
+        /** The manifest spelling — {@code never} or {@code on-exit} — which is also the wire spelling. */
+        public String manifestValue() {
+            return name().toLowerCase(Locale.ROOT).replace('_', '-');
+        }
+
         public static SidecarRestart parse(String raw) {
-            return switch (raw.trim().toLowerCase(Locale.ROOT)) {
-                case "never" -> NEVER;
-                case "on-exit" -> ON_EXIT;
-                default -> throw new IllegalArgumentException("restart is never or on-exit, not `" + raw + "`");
-            };
+            String value = raw.trim().toLowerCase(Locale.ROOT);
+            for (SidecarRestart r : values()) {
+                if (r.manifestValue().equals(value)) return r;
+            }
+            throw new IllegalArgumentException("restart is never or on-exit, not `" + raw + "`");
         }
     }
 

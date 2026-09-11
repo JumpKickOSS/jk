@@ -4,6 +4,7 @@ package cc.jumpkick.cli.watch;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.testing.FakeClock;
 import cc.jumpkick.wire.protocol.ExecPlan;
 import com.sun.net.httpserver.HttpServer;
@@ -32,7 +33,8 @@ class SidecarsTest {
     /** Backoff that does not wait: the schedule is asserted from the report lines, not the clock. */
     private static final Sidecars.Sleeper NO_WAIT = millis -> {};
 
-    private static ExecPlan.Sidecar sh(String name, String script, String readyPattern, String restart, Path cwd) {
+    private static ExecPlan.Sidecar sh(
+            String name, String script, String readyPattern, JkBuild.SidecarRestart restart, Path cwd) {
         return new ExecPlan.Sidecar(
                 name,
                 List.of("sh", "-c", script),
@@ -58,8 +60,9 @@ class SidecarsTest {
     @Test
     void output_is_prefixed_env_is_applied_and_the_pattern_probe_reads_it(@TempDir Path dir) throws Exception {
         List<String> lines = new CopyOnWriteArrayList<>();
-        try (Sidecars sidecars =
-                start(List.of(sh("web", "echo \"$GREETING ready\"; sleep 30", "ready", "never", dir)), lines::add)) {
+        try (Sidecars sidecars = start(
+                List.of(sh("web", "echo \"$GREETING ready\"; sleep 30", "ready", JkBuild.SidecarRestart.NEVER, dir)),
+                lines::add)) {
             assertThat(sidecars.awaitReady()).isEmpty();
             String expected = "web" + Sidecars.PREFIX_SEPARATOR + "hi ready";
             assertThat(lines).contains(expected);
@@ -77,7 +80,15 @@ class SidecarsTest {
         try {
             String url = "http://127.0.0.1:" + server.getAddress().getPort() + "/";
             ExecPlan.Sidecar spec = new ExecPlan.Sidecar(
-                    "web", List.of("sh", "-c", "sleep 30"), dir.toString(), Map.of(), url, "", 5_000L, true, "never");
+                    "web",
+                    List.of("sh", "-c", "sleep 30"),
+                    dir.toString(),
+                    Map.of(),
+                    url,
+                    "",
+                    5_000L,
+                    true,
+                    JkBuild.SidecarRestart.NEVER);
             try (Sidecars sidecars = start(List.of(spec), line -> {})) {
                 assertThat(sidecars.awaitReady()).isEmpty();
                 assertThat(sidecars.frontDoor()).hasValue(url);
@@ -98,7 +109,7 @@ class SidecarsTest {
                 "never printed",
                 300L,
                 false,
-                "never");
+                JkBuild.SidecarRestart.NEVER);
         try (Sidecars sidecars = start(List.of(spec), line -> {})) {
             assertThat(sidecars.awaitReady())
                     .hasValueSatisfying(msg -> assertThat(msg).contains("web").contains("never matched"));
@@ -120,8 +131,9 @@ class SidecarsTest {
         List<String> lines = new CopyOnWriteArrayList<>();
         List<ProcessHandle> family = new ArrayList<>();
         String pidPrefix = "web" + Sidecars.PREFIX_SEPARATOR;
-        try (Sidecars sidecars =
-                start(List.of(sh("web", "echo $$; sleep 30; echo done", "", "never", dir)), lines::add)) {
+        try (Sidecars sidecars = start(
+                List.of(sh("web", "echo $$; sleep 30; echo done", "", JkBuild.SidecarRestart.NEVER, dir)),
+                lines::add)) {
             awaitLine(lines, l -> l.startsWith(pidPrefix));
             long pid = Long.parseLong(lines.stream()
                     .filter(l -> l.startsWith(pidPrefix))
@@ -145,8 +157,8 @@ class SidecarsTest {
 
     @Test
     void stdin_is_closed_so_a_sidecar_that_reads_it_sees_eof(@TempDir Path dir) throws Exception {
-        try (Sidecars sidecars =
-                start(List.of(sh("web", "cat; echo eof-seen", "eof-seen", "never", dir)), line -> {})) {
+        try (Sidecars sidecars = start(
+                List.of(sh("web", "cat; echo eof-seen", "eof-seen", JkBuild.SidecarRestart.NEVER, dir)), line -> {})) {
             assertThat(sidecars.awaitReady()).isEmpty();
         }
     }
@@ -154,7 +166,8 @@ class SidecarsTest {
     @Test
     void an_exit_before_readiness_fails_the_probe_and_is_reported(@TempDir Path dir) throws Exception {
         List<String> lines = new CopyOnWriteArrayList<>();
-        try (Sidecars sidecars = start(List.of(sh("web", "exit 3", "never-printed", "never", dir)), lines::add)) {
+        try (Sidecars sidecars =
+                start(List.of(sh("web", "exit 3", "never-printed", JkBuild.SidecarRestart.NEVER, dir)), lines::add)) {
             assertThat(sidecars.awaitReady())
                     .hasValueSatisfying(msg -> assertThat(msg).contains("web").contains("exited with 3"));
             awaitLine(lines, "web exited with 3"::equals);
@@ -164,7 +177,8 @@ class SidecarsTest {
     @Test
     void on_exit_restarts_with_backoff_and_gives_up(@TempDir Path dir) throws Exception {
         List<String> lines = new CopyOnWriteArrayList<>();
-        try (Sidecars sidecars = start(List.of(sh("flaky", "exit 1", "", "on-exit", dir)), lines::add)) {
+        try (Sidecars sidecars =
+                start(List.of(sh("flaky", "exit 1", "", JkBuild.SidecarRestart.ON_EXIT, dir)), lines::add)) {
             awaitLine(lines, l -> l.contains("gave up"));
             assertThat(restartDelays(lines)).containsExactly(500L, 1_000L, 2_000L, 4_000L, 8_000L);
             assertThat(lines).anyMatch(l -> l.contains("gave up after " + Sidecars.MAX_RESTARTS + " restarts"));
@@ -180,8 +194,8 @@ class SidecarsTest {
         // The first run exits at once; the second waits to be released; every later one exits at once.
         String script = "if [ -e '" + first + "' ]; then echo waiting; while [ ! -e '" + go
                 + "' ]; do sleep 0.02; done; exit 1; fi; touch '" + first + "'; exit 1";
-        try (Sidecars sidecars =
-                Sidecars.start(List.of(sh("flaky", script, "", "on-exit", dir)), lines::add, clock, NO_WAIT)) {
+        try (Sidecars sidecars = Sidecars.start(
+                List.of(sh("flaky", script, "", JkBuild.SidecarRestart.ON_EXIT, dir)), lines::add, clock, NO_WAIT)) {
             awaitLine(lines, l -> l.endsWith("waiting"));
             clock.advance(Duration.ofMillis(Sidecars.STABLE_RUN_MILLIS + 1_000));
             Files.createFile(go);
@@ -202,7 +216,10 @@ class SidecarsTest {
         };
         List<String> lines = new CopyOnWriteArrayList<>();
         Sidecars sidecars = Sidecars.start(
-                List.of(sh("flaky", "echo started; exit 1", "", "on-exit", dir)), lines::add, Clock.SYSTEM, heldBack);
+                List.of(sh("flaky", "echo started; exit 1", "", JkBuild.SidecarRestart.ON_EXIT, dir)),
+                lines::add,
+                Clock.SYSTEM,
+                heldBack);
         assertThat(sleeping.await(10, TimeUnit.SECONDS)).isTrue();
         sidecars.close();
         release.countDown();

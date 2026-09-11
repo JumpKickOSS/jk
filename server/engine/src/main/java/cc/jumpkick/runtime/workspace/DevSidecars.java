@@ -10,10 +10,8 @@ import cc.jumpkick.wire.protocol.ExecPlan;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -52,16 +50,15 @@ final class DevSidecars {
             }
         }
         env.putAll(s.env());
-        List<String> command = new ArrayList<>(s.command());
         return new ExecPlan.Sidecar(
                 s.name(),
-                command,
+                s.command(),
                 declaredIn.resolve(s.cwd()).toAbsolutePath().normalize().toString(),
                 env,
                 s.ready() == null ? "" : s.ready(),
                 s.readyPattern() == null ? "" : s.readyPattern(),
                 s.readyTimeoutMillis(),
                 s.frontDoor(),
-                s.restart().name().toLowerCase(Locale.ROOT).replace('_', '-'));
+                s.restart());
     }
 }

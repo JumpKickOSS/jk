@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.watch;
 
 import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.wire.protocol.ExecPlan;
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -172,7 +173,7 @@ public final class Sidecars implements AutoCloseable {
         }
         boolean stable = r.exited(exit);
         if (closing) return;
-        if (!"on-exit".equals(r.spec.restart())) {
+        if (r.spec.restart() != JkBuild.SidecarRestart.ON_EXIT) {
             report.accept(r.spec.name() + " exited with " + exit);
             return;
         }
