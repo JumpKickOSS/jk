@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The parts of a program that static analysis cannot see: reflection, proxies, resources,
@@ -157,7 +158,7 @@ public record DynamicSurface(List<Entry> entries) {
      * one whose members are the union of both and whose origin lists every contributor, so a rule
      * observed by two profiles is one rule that credits both.
      */
-    public DynamicSurface merge(DynamicSurface... others) {
+    public DynamicSurface merge(@Nullable DynamicSurface... others) {
         List<Entry> all = new ArrayList<>(entries);
         for (DynamicSurface other : others) {
             if (other != null) all.addAll(other.entries());

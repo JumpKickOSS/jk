@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Serialize / deserialize {@link DynamicSurface} as JSON, and import Graal tracing-agent output
@@ -160,7 +161,7 @@ public final class DynamicSurfaceIo {
         }
     }
 
-    private static String str(Object o) {
+    private static String str(@Nullable Object o) {
         return o == null ? "" : String.valueOf(o);
     }
 }

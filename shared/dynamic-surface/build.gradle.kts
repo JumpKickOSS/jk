@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 plugins {
-    id("jk.java-conventions")
+    id("jk.nullmarked-conventions")
 }
 
 description = "jk dynamic surface: the parts of a program static analysis cannot see " +

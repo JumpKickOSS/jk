@@ -3,6 +3,7 @@ package cc.jumpkick.surface;
 
 import java.util.Set;
 import java.util.StringJoiner;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A {@link DynamicSurface} as ProGuard/R8 keep rules.
@@ -32,7 +33,7 @@ public final class KeepRuleEmitter {
         return out.toString();
     }
 
-    private static String rule(DynamicSurface.Entry entry) {
+    private static @Nullable String rule(DynamicSurface.Entry entry) {
         return switch (entry.kind()) {
             // A resource is not a class; R8 passes non-class entries through untouched.
             case RESOURCE, RESOURCE_PATTERN, RESOURCE_EXCLUDE_PATTERN -> null;
@@ -112,7 +113,7 @@ public final class KeepRuleEmitter {
      * a reference array keeps its element class. The reachability emitter is untouched — Graal
      * accepts the original names, so they pass through verbatim there.
      */
-    static String className(String name) {
+    static @Nullable String className(String name) {
         String n = name;
         int dims = 0;
         while (n.startsWith("[")) {

@@ -17,6 +17,7 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.function.UnaryOperator;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Library-published GraalVM metadata, read into a {@link DynamicSurface}.
@@ -95,10 +96,10 @@ public final class NativeImageMetadata {
      * schema, so named members still register the type itself.
      */
     private static void reflection(
-            Object root,
+            @Nullable Object root,
             String origin,
             DynamicSurface.Kind typeKind,
-            DynamicSurface.Kind memberKind,
+            DynamicSurface.@Nullable Kind memberKind,
             List<DynamicSurface.Entry> out) {
         if (!(root instanceof List<?> items)) return;
         for (Object item : items) {
@@ -146,7 +147,7 @@ public final class NativeImageMetadata {
      *. Wrapper proxies are arrays of interface names and register proxy classes for
      * serialization; they are read as proxy entries so both emitters cover them.
      */
-    private static void serialization(Object root, String origin, List<DynamicSurface.Entry> out) {
+    private static void serialization(@Nullable Object root, String origin, List<DynamicSurface.Entry> out) {
         if (root instanceof Map<?, ?>) {
             reflection(MiniJson.list(root, "types"), origin, SERIALIZATION_TYPE, null, out);
             reflection(MiniJson.list(root, "lambdaCapturingTypes"), origin, SERIALIZATION_TYPE, null, out);
@@ -161,7 +162,7 @@ public final class NativeImageMetadata {
      * whole ordered interface list. The serialization-config wrapper writes each proxy
      * as a bare interface-name array instead; both shapes are read.
      */
-    private static void proxies(Object root, String origin, List<DynamicSurface.Entry> out) {
+    private static void proxies(@Nullable Object root, String origin, List<DynamicSurface.Entry> out) {
         if (!(root instanceof List<?> items)) return;
         for (Object item : items) {
             addProxy(item instanceof List<?> bare ? bare : MiniJson.list(item, "interfaces"), origin, out);
@@ -184,7 +185,7 @@ public final class NativeImageMetadata {
      * schema, the same nested under the unified document, and a bare {@code [{"glob": …}]} list —
      * which is what the tracing agent writes.
      */
-    private static void resources(Object root, String origin, List<DynamicSurface.Entry> out) {
+    private static void resources(@Nullable Object root, String origin, List<DynamicSurface.Entry> out) {
         if (root == null) return;
         Object includes = root;
         if (!(root instanceof List<?>)) {
@@ -269,7 +270,7 @@ public final class NativeImageMetadata {
      * Anything else — character classes, alternation, a bare {@code .}, a within-level
      * {@code .*} — is not translatable without changing what it matches.
      */
-    static String regexToGlob(String regex) {
+    static @Nullable String regexToGlob(String regex) {
         StringBuilder glob = new StringBuilder();
         int i = 0;
         int n = regex.length();
@@ -321,12 +322,12 @@ public final class NativeImageMetadata {
         return false;
     }
 
-    private static void addName(Object member, UnaryOperator<String> tag, Set<String> sink) {
+    private static void addName(@Nullable Object member, UnaryOperator<String> tag, Set<String> sink) {
         String name = MiniJson.str(member, "name");
         if (name != null && !name.isBlank()) sink.add(tag.apply(name));
     }
 
-    private static boolean isTrue(Object holder, String key) {
+    private static boolean isTrue(@Nullable Object holder, String key) {
         return holder instanceof Map<?, ?> map && Boolean.TRUE.equals(map.get(key));
     }
 }

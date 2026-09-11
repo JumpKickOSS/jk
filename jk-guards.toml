@@ -600,7 +600,7 @@ why      = "a cyclic component has no edge anyone can name to cut, so the count 
 kind    = "annotate"
 require = "org.jspecify.annotations.NullMarked"
 on      = "package"
-scope   = ["shared/jk-api", "shared/wire", "shared/plugin-sdk", "shared/core", "clients/cli", "shared/guard-api", "server/guard", "shared/host", "shared/client-io", "shared/toolchain-jdk", "server/io", "server/resolver", "server/toolchain"]
+scope   = ["shared/jk-api", "shared/wire", "shared/plugin-sdk", "shared/core", "clients/cli", "shared/guard-api", "server/guard", "shared/host", "shared/client-io", "shared/toolchain-jdk", "server/io", "server/resolver", "server/toolchain", "shared/dynamic-surface"]
 instead = "a package-info.java in the package carrying @NullMarked"
 why     = "NullAway checks a package only where it says @NullMarked; an unmarked package is one where every nullness finding is off"
 
