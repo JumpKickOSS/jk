@@ -13,6 +13,7 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
@@ -67,8 +68,16 @@ public class LoopbackHttp implements BeforeEachCallback, AfterEachCallback {
      */
     private final Map<String, byte[]> served = new ConcurrentHashMap<>();
 
+    /** Paths that answer 302 with a {@code Location} instead of a body — see {@link #redirect}. */
+    private final Map<String, URI> redirects = new ConcurrentHashMap<>();
+
     /** Every request path in arrival order — for "did it re-fetch?" without a bespoke handler. */
     private final List<String> requested = new CopyOnWriteArrayList<>();
+
+    /** Request headers per path, latest request wins — for "what did the client send here?". */
+    private final Map<String, Map<String, List<String>>> requestHeaders = new ConcurrentHashMap<>();
+
+    private String host = "127.0.0.1";
 
     private volatile @Nullable Consumer<String> beforeServe;
     private volatile @Nullable Consumer<String> beforeMiss;
@@ -94,6 +103,16 @@ public class LoopbackHttp implements BeforeEachCallback, AfterEachCallback {
     /** Stop answering {@code <path>.sha1} for served paths: a repository that publishes no checksums. */
     public LoopbackHttp withoutChecksums() {
         this.checksums = false;
+        return this;
+    }
+
+    /**
+     * Bind {@code host} instead of {@code 127.0.0.1}. {@code localhost} still lands on the loopback
+     * interface but is a different host <em>name</em>, which is what a cross-host redirect test
+     * needs two listeners to disagree on. Call before the first test.
+     */
+    public LoopbackHttp host(String host) {
+        this.host = host;
         return this;
     }
 
@@ -128,7 +147,7 @@ public class LoopbackHttp implements BeforeEachCallback, AfterEachCallback {
 
     /** Bind an ephemeral loopback port and start serving. Also callable directly (re-startable). */
     public void start() throws IOException {
-        HttpServer bound = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        HttpServer bound = HttpServer.create(new InetSocketAddress(host, 0), 0);
         if (concurrent) {
             pool = Executors.newCachedThreadPool();
             bound.setExecutor(pool);
@@ -136,12 +155,17 @@ public class LoopbackHttp implements BeforeEachCallback, AfterEachCallback {
         bound.createContext("/", exchange -> {
             String path = exchange.getRequestURI().getPath();
             requested.add(path);
+            requestHeaders.put(path, Map.copyOf(exchange.getRequestHeaders()));
+            URI target = redirects.get(path);
             byte[] body = served.get(path);
             if (body == null && checksums && path.endsWith(".sha1")) {
                 byte[] artifact = served.get(path.substring(0, path.length() - ".sha1".length()));
                 if (artifact != null) body = sha1Hex(artifact).getBytes(StandardCharsets.UTF_8);
             }
-            if (body == null) {
+            if (target != null) {
+                exchange.getResponseHeaders().add("Location", target.toString());
+                exchange.sendResponseHeaders(302, -1);
+            } else if (body == null) {
                 Consumer<String> gate = beforeMiss;
                 if (gate != null) gate.accept(path);
                 exchange.sendResponseHeaders(404, -1);
@@ -155,7 +179,7 @@ public class LoopbackHttp implements BeforeEachCallback, AfterEachCallback {
         });
         bound.start();
         server = bound;
-        base = URI.create("http://127.0.0.1:" + bound.getAddress().getPort());
+        base = URI.create("http://" + host + ":" + bound.getAddress().getPort());
     }
 
     /**
@@ -183,7 +207,7 @@ public class LoopbackHttp implements BeforeEachCallback, AfterEachCallback {
         }
     }
 
-    /** {@code http://127.0.0.1:<port>}, no trailing slash. */
+    /** {@code http://<host>:<port>} ({@code 127.0.0.1} unless {@link #host} said otherwise), no trailing slash. */
     public URI base() {
         return Objects.requireNonNull(base, "LoopbackHttp.base() before start()");
     }
@@ -202,6 +226,20 @@ public class LoopbackHttp implements BeforeEachCallback, AfterEachCallback {
     public LoopbackHttp serve(String path, String body) {
         served.put(path, body.getBytes(StandardCharsets.UTF_8));
         return this;
+    }
+
+    /** Answer {@code path} with a 302 to {@code target} — the redirect half of a two-listener test. */
+    public LoopbackHttp redirect(String path, URI target) {
+        redirects.put(path, target);
+        return this;
+    }
+
+    /**
+     * The request headers the latest request for {@code path} carried, keyed as the client sent
+     * them (the JDK server normalises names to {@code Title-Case}); empty when nothing asked for it.
+     */
+    public Optional<Map<String, List<String>>> headersFor(String path) {
+        return Optional.ofNullable(requestHeaders.get(path));
     }
 
     /** Request paths in arrival order, including the ones that 404'd. */
