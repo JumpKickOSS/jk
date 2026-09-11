@@ -1,0 +1,27 @@
+name = "app"
+description = "The service: a REST API under /api, and the SPA bundle served from classpath:static"
+
+[application]
+main = "$package$.Application"
+
+[spring-boot]
+version = "latest"
+
+# `jk image`: a JRE base and a JEP 514 AOT cache trained with the image's own JVM.
+[image]
+name      = "$name$"
+base      = "docker.io/bellsoft/liberica-runtime-container:jre-25-slim-glibc"
+aot-cache = true
+
+# `jk dev` here runs the Vite dev server beside the JVM: its /api proxy points at :8080, and the
+# front door is the URL printed once both are up. `jk dev --no-sidecars` runs the app alone.
+[dev.sidecars]
+web = { command = "npm run dev", cwd = "../web", ready = "http://localhost:5173", front-door = true }
+
+[dependencies]
+starter-webmvc = { group = "org.springframework.boot", name = "spring-boot-starter-webmvc" }
+# the SPA bundle: a resource jar with static/ at its root
+web = { workspace = true }
+
+[test-dependencies]
+starter-test = { group = "org.springframework.boot", name = "spring-boot-starter-test" }

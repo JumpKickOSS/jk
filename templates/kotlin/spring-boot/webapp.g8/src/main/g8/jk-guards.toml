@@ -1,0 +1,5 @@
+# House rules, from the starter packs this template ships with: the Spring pack, and the monorepo
+# pack's workspace-shaped rules beside it. `jk lock` pins them, `jk guard explain` lists their rules.
+# Add your own [guards.<id>] tables below; exempt a site with `allow` and a reason.
+[guards]
+extends = ["cc.jumpkick.guards:spring:$jk_version$", "cc.jumpkick.guards:monorepo:$jk_version$"]

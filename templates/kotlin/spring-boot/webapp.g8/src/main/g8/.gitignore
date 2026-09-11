@@ -1,0 +1,8 @@
+# jk build outputs (`.jk/` stem scripts are source — ignore generated plan only)
+target/
+.jk/selective-plan.json
+
+# the front end: its dependencies, and the bundle Vite writes into the web module's resource root
+web/node_modules/
+web/resources/
+web/.vite/

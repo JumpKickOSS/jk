@@ -1,0 +1,8 @@
+name = "web"
+description = "The SPA bundle as a resource jar; app serves it from classpath:static"
+
+# No JVM sources. Simple layout, so `resources/` is this module's resource root, and `npm run build`
+# (vite.config.ts `build.outDir`) writes the bundle straight into `resources/static/`. `app` depends
+# on this module, so the bundle rides in as a sibling jar with `static/` at its root instead of
+# being copied into another module's tree — jk refuses cross-module file copies on purpose. Before
+# the first `npm run build` the jar is empty: the app still builds and serves its API, with no pages.

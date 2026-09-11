@@ -1,0 +1,32 @@
+group = "$organization$"
+name = "$name$"
+version = "0.1.0"
+java = $java$
+
+# `web` is the SPA bundle as a resource jar; `app` is the service that depends on it.
+[workspace]
+modules = ["web", "app"]
+
+# Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
+# test runs in exactly one tier (`jk test --profile integration`).
+[test]
+exclude-tags = ["integration", "network", "slow", "bench"]
+
+[profiles.integration]
+include-tags = ["integration"]
+exclude-tags = []
+
+[profiles.network]
+include-tags = ["network"]
+exclude-tags = ["integration"]
+
+[profiles.slow]
+include-tags = ["slow"]
+exclude-tags = ["integration", "network"]
+
+[profiles.bench]
+include-tags = ["bench"]
+exclude-tags = ["integration", "network", "slow"]
+
+[format]
+style = "standard"
