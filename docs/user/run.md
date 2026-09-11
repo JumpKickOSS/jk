@@ -13,6 +13,22 @@ is not available on this path.
 `jk run` is a **wrapper** around the process: Ctrl-C is owned by JumpKick (cancels the
 engine job, then the process). It is not `exec`-replace.
 
+### Debug the app JVM
+
+```bash
+jk run --debug-jvm                      # localhost:5005, suspended until a debugger attaches
+jk run --debug-jvm=0 . -- args…         # a free port; use `=` when args follow
+jk run --debug-jvm=6006,suspend=n
+```
+
+The app JVM starts with `-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=…`
+as its first option; nothing else jk forks for the build sees the flag. The address is printed
+on stderr right before the program starts; attach a stock remote debugger (IDEA *Remote JVM
+Debug*, VS Code `java` `attach`) — recipe in [IDE and BSP](ide.md#debugging-through-bsp).
+A native image is passed over under `--debug-jvm` (JDWP needs a JVM), and a device artifact
+(an APK) cannot be debugged this way. The flag applies to jk project runs, not to tools,
+scripts or coordinates.
+
 ## Live loops (`jk watch` / `jk dev`)
 
 One mechanism: re-run a verb when sources change. **`jk dev` is only an alias for

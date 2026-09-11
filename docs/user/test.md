@@ -14,6 +14,8 @@ jk test --suite e2e                  # UI / compose / contract; not a habit
 jk test --all                        # every suite; tag excludes cleared. Nightly / release.
 jk test --exclude-tags slow,bench
 jk test --include-tags smoke
+jk test --class OrdersTest           # one class (simple or qualified name, * wildcards; repeatable)
+jk test --debug-jvm                  # suspended test JVM listening on localhost:5005 — attach and go
 jk test --affected                   # ranked classes for the working tree (does not run them)
 jk test --affected-since=HEAD~2      # ranked classes since that ref (does not run them)
 jk build --guard                      # package with the guards green (same flag on assemble, image, native, install)
@@ -71,6 +73,46 @@ Default-suite paths depend on [layout](layout.md) (`src/test/…` vs `test/src/`
 suites are discovered when those directories exist.
 
 When tests fail: `jk results` — [Troubleshooting](troubleshooting.md).
+
+## Pick classes (`--class`)
+
+`--class <name>` runs only the matching test classes of the selected suites: a fully
+qualified name is exact, a simple name matches in any package, and `*` stands for any run of
+characters (`--class '*IT'`). Repeat the flag to union. Tags still apply. A pattern that
+matches nothing **fails** the run — a typo must not pass green. The filter is part of the
+run's stamp, so a green `--class` run never marks the whole suite up to date.
+
+## Debug a test JVM
+
+```bash
+jk test --debug-jvm                     # localhost:5005, suspend=y — IDEA's default remote port
+jk test --debug-jvm=0                   # a free port jk picks; the address is printed
+jk test --debug-jvm=6006,suspend=n      # listen, but do not wait for the attach
+jk test --debug-jvm='*:5005'            # every interface (remote attach)
+jk test --class OrdersTest --debug-jvm  # the usual selection applies unchanged
+```
+
+The forked test JVM — and only that JVM — starts with
+`-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=<host:port>`. The engine,
+compiler workers and test discovery run as they always do. One line on stderr says where:
+
+```
+● Debugger listening on localhost:5005 — the JVM waits for a debugger to attach
+```
+
+Attach a stock remote debugger (IDEA *Remote JVM Debug*, VS Code `java` `attach`) to that
+address; the recipe is in [IDE and BSP](ide.md#debugging-through-bsp). A debug run pins the
+module to one test JVM (`-w1`) and runs modules serially, because one listener means one
+JVM at a time — in a workspace each module's suite takes the address in turn, so pass
+`-m <module>` (or run from the module directory) to debug one. A debug run always runs the
+suite, even when the cache would have skipped it.
+
+jk settles the address before the launch: an explicit port is used as given, and `0` is a
+free port bound and released by the client so the JVM can take it. Nothing reads the JVM's
+own "Listening for transport" line — `jk run` hands the terminal to the program, and both the
+CLI and a BSP client need the address *before* a suspended JVM exists. If another process
+takes the port in the meantime, the JVM refuses to start and the run fails loudly with the
+bind error; run again.
 
 ## Affected tests (WIP)
 
