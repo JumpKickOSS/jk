@@ -32,6 +32,54 @@ hits and misses before you run — [Explain](explain.md).
 from the action cache when inputs are unchanged (discovery + I/O only). Input fingerprints
 also live under `~/.jk/cache/projects/…` so clean does not force a full rebuild forecast.
 
+## javac plugins
+
+A javac **plugin** (Error Prone, NullAway, Checker Framework, Manifold) is a jar on the
+processor path that javac invokes by name with `-Xplugin:<Name> <options…>`. Declare the jar in
+`[processor-dependencies]` and name the plugin in `[javac]`:
+
+```toml
+java = 25                      # the release; [javac] is the compiler table
+
+[processor-dependencies]
+error_prone_core = { group = "com.google.errorprone", name = "error_prone_core", version = "latest" }
+nullaway         = { group = "com.uber.nullaway", name = "nullaway", version = "latest" }
+
+[javac]
+plugins = { ErrorProne = { options = ["-Xep:NullAway:ERROR", "-XepOpt:NullAway:AnnotatedPackages=com.example"] } }
+args    = ["-XDcompilePolicy=simple", "--should-stop=ifError=FLOW"]
+```
+
+| Key | Meaning |
+|-----|---------|
+| `plugins.<Name>` | The plugin's registered javac name, case-sensitive (`ErrorProne`, not `errorprone`); passed as `-Xplugin:<Name>` |
+| `plugins.<Name>.options` | Handed to the plugin after its name |
+| `args` | Verbatim javac arguments, appended after every plugin |
+
+The table is named `javac`, not `java`: `java = 25` is the release, and a TOML key cannot be
+both a value and a table.
+
+`compile-main` and `compile-test` run the same plugins, and every plugin and option is part
+of the compile action key — bumping a severity recompiles. `jk explain --verbose` names the
+plugins a compile step invokes. Unknown keys under `[javac]` fail the parse. Lint
+(`[build] lint`), plugin-contributed and profile `javac` args come first in the argv, then the
+plugins, then `args`.
+
+**Error Prone's companions.** Error Prone documents two javac flags it needs beside the plugin,
+and jk does not add them silently: `-XDcompilePolicy=simple` (the default by-todo policy is not
+supported) and `--should-stop=ifError=FLOW` (so its checks still run after an ordinary compile
+error). Put both in `args`, as above. NullAway also needs `-XepOpt:NullAway:AnnotatedPackages=…`
+or it refuses to run. The worker JVM already opens `jdk.compiler`'s internals, which Error Prone
+requires on JDK 16+; nothing to configure.
+
+A planted dereference then fails the build with NullAway's diagnostic in `target/jk-results.md`:
+
+```
+Widget.java:7: error: [NullAway] dereferenced expression 'label' is @Nullable
+```
+
+Kotlin compiler plugins are `[[kotlin-plugins]]`, a separate table.
+
 ## Parallelism (`-j`)
 
 Module graph concurrency:

@@ -76,12 +76,23 @@ module is rejected.** Scaffold with `jk new --lang kotlin`, `--lang groovy`, or 
 | `[test-dependencies]` | Tests only |
 | `[provided-dependencies]` | Compile, not packaged |
 | `[runtime-dependencies]` | Runtime only |
-| `[processor-dependencies]` | Annotation processors (own resolve graph) |
+| `[processor-dependencies]` | Annotation processors and javac plugins (own resolve graph) — [javac plugins](build.md#javac-plugins) |
 | `[platform-dependencies]` | BOMs — [Platforms](platforms.md) |
 | `[export-dependencies]` | Published API surface |
 | `[dev-dependencies]` / `[test-dev-dependencies]` | Optional extra scopes |
 
 Git, path, workspace, optional features: [Dependencies](dependencies.md).
+
+## javac plugins and args
+
+```toml
+[javac]
+plugins = { ErrorProne = { options = ["-Xep:NullAway:ERROR"] } }
+args    = ["-Xlint:all"]        # verbatim javac args, appended last
+```
+
+The plugin's jar is a `[processor-dependencies]` entry; the key is its javac name. Both compile
+steps run it and the compile key hashes it — [Build](build.md#javac-plugins).
 
 ## Application
 
