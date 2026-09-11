@@ -58,6 +58,11 @@ public final class GuardMessages {
             sb.append("  Instead:  ").append(rule.instead()).append('\n');
         sb.append("  Why:      ").append(rule.why()).append('\n');
         if (r.outcome() == Outcome.VIOLATIONS) {
+            if (rule.baseline() && Evaluators.acceptsBaseline(rule)) {
+                sb.append("  Accept:   jk guard freeze ")
+                        .append(rule.id())
+                        .append(" --reason \"…\" records today's sites; the baseline only shrinks after\n");
+            }
             sb.append("  Exempt:   ask the user to add [guards.")
                     .append(rule.id())
                     .append("].allow with a reason\n");

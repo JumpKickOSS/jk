@@ -197,10 +197,12 @@ and both are the user's call. Machine readers get the same rows as SARIF and JSO
 
 ## Baseline and ratchets
 
-A rule with `baseline = true` tolerates the violations that exist when it lands and refuses
-new ones. The accepted sites live in **`jk-guards-baseline.toml`**, which only the engine
-writes: it tightens on its own as sites disappear, and grows only through
-`jk guard freeze <id> --reason "…"`, which records the reason beside the sites. A
+A rule with `baseline = true` can tolerate the violations that exist when it lands and refuses
+new ones. Landing is an explicit act: the first run reports today's sites red, with an
+`Accept:` line naming `jk guard freeze <id> --reason "…"`, and that freeze records them. The
+accepted sites live in **`jk-guards-baseline.toml`**, which only the engine writes: it tightens
+on its own as sites disappear, and grows only through a freeze, which records the reason beside
+the sites. A
 `--retire` freeze drops the entries of a rule that no longer exists. Hand edits to the
 baseline are refused by the pre-commit hook. `metric` rules are ratchets by nature: a cap a
 file already exceeds becomes that file's own ceiling, and it may only shrink.
