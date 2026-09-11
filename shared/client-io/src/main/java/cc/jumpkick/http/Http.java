@@ -2,6 +2,7 @@
 package cc.jumpkick.http;
 
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.time.Clock;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -62,6 +63,9 @@ public final class Http {
     /** Per-host rate-limit memory; shared across the process and persisted. */
     private final HostCooldown cooldown;
 
+    /** Wall clock a {@code Retry-After} is measured against; a test moves it instead of sleeping. */
+    private final Clock clock;
+
     public Http() {
         this(standardClient(), BACKOFFS);
     }
@@ -99,10 +103,16 @@ public final class Http {
 
     /** Visible for tests — also injects the per-host cooldown store. */
     Http(HttpClient client, Duration[] backoffs, CentralMirror centralMirror, HostCooldown cooldown) {
+        this(client, backoffs, centralMirror, cooldown, Clock.SYSTEM);
+    }
+
+    /** Visible for tests — also injects the clock a {@code Retry-After} is read against. */
+    Http(HttpClient client, Duration[] backoffs, CentralMirror centralMirror, HostCooldown cooldown, Clock clock) {
         this.client = client;
         this.backoffs = backoffs;
         this.centralMirror = centralMirror;
         this.cooldown = cooldown;
+        this.clock = clock;
     }
 
     public HttpResponse<byte[]> get(URI uri) throws IOException, InterruptedException {
@@ -269,7 +279,7 @@ public final class Http {
                     cooldown.noteRateLimited(
                             request.uri().getHost(),
                             HostCooldown.parseRetryAfter(
-                                    response.headers().firstValue("Retry-After").orElse(null), Instant.now()));
+                                    response.headers().firstValue("Retry-After").orElse(null), clock.instant()));
                 }
                 // Central's per-IP quota. Open the mirror window and reissue this very
                 // request against the mirror, so the resolve that tripped the limit still completes
