@@ -16,6 +16,8 @@ import cc.jumpkick.cli.tui.RenderContext;
 import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.cli.tui.Tree;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.ide.IdeGeneration;
+import cc.jumpkick.ide.IdeModel;
 import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
 import java.io.PrintStream;
@@ -142,6 +144,27 @@ public final class IdeChrome implements AutoCloseable, LiveRegion {
     /** Wipe without a settle chip — the caller already printed a failure. */
     public void dismiss() {
         settle(null, false);
+    }
+
+    /**
+     * The detail rows for one generator's result: the JDK it registered (when an IDE table was
+     * rewritten) and how many project files it produced, where.
+     */
+    public static List<RichText> details(IdeModel model, IdeGeneration generation) {
+        List<RichText> rows = new ArrayList<>();
+        int files = generation.files().size();
+        String count = "Generated " + files + " project file" + (files == 1 ? "" : "s");
+        switch (generation.target()) {
+            case IDEA -> {
+                if (!generation.sdkTables().isEmpty()) {
+                    rows.add(RichText.parse("Registered the [cyan]"
+                            + RichText.escape(model.defaultSdk().sdkName()) + "[/] JDK"));
+                }
+                rows.add(RichText.parse(count + " in [path].idea[/]"));
+            }
+            case VSCODE -> rows.add(RichText.parse(count + " for [cyan]redhat.java[/]"));
+        }
+        return rows;
     }
 
     /** One follow-up for every IDE we just wrote — a reload picks up project files and LS state. */

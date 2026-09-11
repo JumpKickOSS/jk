@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.command.ide;
+package cc.jumpkick.ide;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -116,11 +116,9 @@ class SiblingTestsKindGeneratorTest {
                 Map.of(),
                 null,
                 List.of(),
-                null,
-                null,
                 null);
 
-        String classpath = VscodeIdeGenerator.dotClasspath(model, appDir, app, 25);
+        String classpath = VscodeIdeGenerator.dotClasspath(IdeOutput.preview(), model, appDir, app, 25);
 
         // Exactly one project src entry — JDT rejects "Build path contains duplicate entry" —
         // main-scoped (no test attribute on the src entry), plus the test-classes lib.

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.cli.ide;
+package cc.jumpkick.ide;
 
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.TestSuites;

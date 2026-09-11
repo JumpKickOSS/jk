@@ -667,10 +667,10 @@ why     = "the CLI runtime is the native image; a test or build-time library the
 [guards.cli-runtime-modules]
 kind   = "layers"
 scope  = ["clients/cli"]
-layers = { cli = "clients/cli", client = ["shared/jk-api", "shared/core", "shared/client-io", "shared/toolchain-jdk", "shared/wire", "shared/host", "clients/cli-terminal"] }
+layers = { cli = "clients/cli", client = ["shared/jk-api", "shared/core", "shared/client-io", "shared/toolchain-jdk", "shared/wire", "shared/ide", "shared/host", "clients/cli-terminal"] }
 access = { cli = ["client"] }
 closed = true
-why    = "a CLI edge to an engine-side module puts engine code in the native image"
+why    = "a CLI edge to an engine-side module puts engine code in the native image; shared/ide is client-side by construction (the IDE file generators the CLI and the engine both link)"
 
 [[guards.cli-runtime-modules.allow]]
 in     = "clients/cli -> plugins/*"

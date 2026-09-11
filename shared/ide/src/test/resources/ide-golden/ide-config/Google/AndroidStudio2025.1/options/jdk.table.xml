@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<application>
+  <component name="ProjectJdkTable">
+    <jdk version="2">
+      <name value="jk-temurin-25" />
+      <type value="JavaSDK" />
+      <version value="java version &quot;25.0.3&quot;" />
+      <homePath value="${WS}/jdks/temurin-25" />
+      <roots>
+        <annotationsPath>
+          <root type="composite" />
+        </annotationsPath>
+        <classPath>
+          <root type="composite">
+            <root url="jrt://${WS}/jdks/temurin-25!/java.base" type="simple" />
+            <root url="jrt://${WS}/jdks/temurin-25!/java.sql" type="simple" />
+            <root url="jrt://${WS}/jdks/temurin-25!/java.xml" type="simple" />
+          </root>
+        </classPath>
+      </roots>
+      <additional />
+    </jdk>
+    <jdk version="2">
+      <name value="jk-temurin-17" />
+      <type value="JavaSDK" />
+      <version value="java version &quot;17.0.16&quot;" />
+      <homePath value="${WS}/jdks/temurin-17" />
+      <roots>
+        <annotationsPath>
+          <root type="composite" />
+        </annotationsPath>
+        <classPath>
+          <root type="composite">
+            <root url="jrt://${WS}/jdks/temurin-17!/java.base" type="simple" />
+            <root url="jrt://${WS}/jdks/temurin-17!/java.logging" type="simple" />
+          </root>
+        </classPath>
+      </roots>
+      <additional />
+    </jdk>
+  </component>
+</application>

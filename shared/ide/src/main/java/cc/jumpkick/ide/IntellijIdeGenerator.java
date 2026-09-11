@@ -1,14 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.command.ide;
+package cc.jumpkick.ide;
 
-import cc.jumpkick.cli.ide.IdeSourceRoots;
-import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.util.MinimalXml;
 import cc.jumpkick.wire.protocol.IdeWireModel;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -32,9 +29,8 @@ public final class IntellijIdeGenerator implements IdeGenerator {
     }
 
     @Override
-    public IdeGeneration generate(IdeModel model) throws IOException {
+    public void generate(IdeModel model, IdeOutput out) throws IOException {
         Path wsRoot = model.wsRoot();
-        Map<Path, IdeModule> modules = model.modules();
         Map<Path, IdeModule> allModules = model.allModules();
         Map<String, LibDef> allLibs = model.allLibs();
         SdkRef defaultSdk = model.defaultSdk();
@@ -42,41 +38,35 @@ public final class IntellijIdeGenerator implements IdeGenerator {
         Map<Path, List<Path>> processorJars = model.processorJars();
 
         Path ideaDir = wsRoot.resolve(".idea");
-        Files.createDirectories(ideaDir);
 
         // Register the SDKs into every IntelliJ/Android Studio jdk.table.xml (best-effort; may be
-        // clobbered if an IDE is open — see note below).
+        // clobbered if an IDE is open).
         Path ideConfigOverride = model.ideConfigDir();
         IntellijSdkRegistrar registrar = ideConfigOverride != null
                 ? IntellijSdkRegistrar.of(
                         List.of(ideConfigOverride.resolve("JetBrains"), ideConfigOverride.resolve("Google")))
                 : IntellijSdkRegistrar.shared();
-        List<Path> touchedTables = registrar.register(model.sdkEntries());
+        out.registerSdks(registrar, model.sdkEntries());
 
-        int files = 0;
-        files += writeModulesXml(ideaDir, wsRoot, allModules);
-        files += writeMiscXml(ideaDir, defaultSdk);
-        files += writeCompilerXml(ideaDir, allModules, processorJars);
+        writeModulesXml(out, ideaDir, wsRoot, allModules);
+        writeMiscXml(out, ideaDir, defaultSdk);
+        writeCompilerXml(out, ideaDir, allModules, processorJars);
 
         Path libsDir = ideaDir.resolve("libraries");
-        Files.createDirectories(libsDir);
         for (LibDef lib : allLibs.values()) {
-            write(libsDir.resolve(lib.fileName() + ".xml"), libraryXml(lib));
-            files++;
+            out.file(libsDir.resolve(lib.fileName() + ".xml"), libraryXml(lib));
         }
 
         Path runDir = ideaDir.resolve("runConfigurations");
         for (Map.Entry<Path, IdeModule> me : allModules.entrySet()) {
             String main = me.getValue().mainClass();
             if (main != null) {
-                Files.createDirectories(runDir);
                 String modName = me.getValue().name();
-                write(runDir.resolve(IdeSupport.sanitize(modName) + ".xml"), runConfigXml(modName, main));
-                files++;
+                out.file(runDir.resolve(sanitize(modName) + ".xml"), runConfigXml(modName, main));
             }
         }
         // jk test suite run configurations (workspace root working dir).
-        files += writeJkTestRunConfigs(runDir, wsRoot, allModules.keySet());
+        writeJkTestRunConfigs(out, runDir, wsRoot, allModules.keySet());
 
         // ---- generate *.iml for each module --------------------------------
         for (Map.Entry<Path, IdeModule> me : allModules.entrySet()) {
@@ -84,7 +74,7 @@ public final class IntellijIdeGenerator implements IdeGenerator {
             IdeModule module = me.getValue();
             List<ModuleRef> modRefs = model.siblingRefs().getOrDefault(moduleDir, List.of());
             List<LibRef> libRefs = libRefs(model, moduleDir);
-            write(
+            out.file(
                     moduleDir.resolve(module.name() + ".iml"),
                     imlXml(
                             moduleDir,
@@ -95,16 +85,7 @@ public final class IntellijIdeGenerator implements IdeGenerator {
                             sdkRefs.get(moduleDir),
                             defaultSdk,
                             processorJars.getOrDefault(moduleDir, List.of())));
-            files++;
         }
-
-        List<RichText> details = new ArrayList<>();
-        if (!touchedTables.isEmpty()) {
-            details.add(RichText.parse("Registered the [cyan]" + RichText.escape(defaultSdk.sdkName()) + "[/] JDK"));
-        }
-        details.add(RichText.parse(
-                "Generated " + files + " project file" + (files == 1 ? "" : "s") + " in [path].idea[/]"));
-        return IdeGeneration.of(details);
     }
 
     // =========================================================================
@@ -123,7 +104,8 @@ public final class IntellijIdeGenerator implements IdeGenerator {
     // XML generators
     // =========================================================================
 
-    private static int writeModulesXml(Path ideaDir, Path wsRoot, Map<Path, IdeModule> modules) throws IOException {
+    private static void writeModulesXml(IdeOutput out, Path ideaDir, Path wsRoot, Map<Path, IdeModule> modules)
+            throws IOException {
         StringBuilder sb = xmlHeader();
         sb.append("<project version=\"4\">\n");
         sb.append("  <component name=\"ProjectModuleManager\">\n");
@@ -139,11 +121,10 @@ public final class IntellijIdeGenerator implements IdeGenerator {
                     .append("\" />\n");
         }
         sb.append("    </modules>\n  </component>\n</project>\n");
-        write(ideaDir.resolve("modules.xml"), sb.toString());
-        return 1;
+        out.file(ideaDir.resolve("modules.xml"), sb.toString());
     }
 
-    private static int writeMiscXml(Path ideaDir, SdkRef defaultSdk) throws IOException {
+    private static void writeMiscXml(IdeOutput out, Path ideaDir, SdkRef defaultSdk) throws IOException {
         StringBuilder sb = xmlHeader();
         sb.append("<project version=\"4\">\n");
         sb.append("  <component name=\"ProjectRootManager\" version=\"2\"");
@@ -156,11 +137,11 @@ public final class IntellijIdeGenerator implements IdeGenerator {
         // "out"/"build" dir.
         sb.append("    <output url=\"file://$PROJECT_DIR$/target\" />\n");
         sb.append("  </component>\n</project>\n");
-        write(ideaDir.resolve("misc.xml"), sb.toString());
-        return 1;
+        out.file(ideaDir.resolve("misc.xml"), sb.toString());
     }
 
-    private static int writeCompilerXml(Path ideaDir, Map<Path, IdeModule> modules, Map<Path, List<Path>> processorJars)
+    private static void writeCompilerXml(
+            IdeOutput out, Path ideaDir, Map<Path, IdeModule> modules, Map<Path, List<Path>> processorJars)
             throws IOException {
         StringBuilder sb = xmlHeader();
         sb.append("<project version=\"4\">\n");
@@ -218,8 +199,7 @@ public final class IntellijIdeGenerator implements IdeGenerator {
         }
 
         sb.append("  </component>\n</project>\n");
-        write(ideaDir.resolve("compiler.xml"), sb.toString());
-        return 1;
+        out.file(ideaDir.resolve("compiler.xml"), sb.toString());
     }
 
     private static String libraryXml(LibDef lib) {
@@ -363,13 +343,10 @@ public final class IntellijIdeGenerator implements IdeGenerator {
      * Shell run configs: {@code jk test}, {@code jk test --all}, and one per non-default suite
      * discovered under any module.
      */
-    static int writeJkTestRunConfigs(Path runDir, Path wsRoot, Set<Path> moduleDirs) throws IOException {
-        Files.createDirectories(runDir);
-        int n = 0;
-        write(runDir.resolve("jk_test.xml"), shellRunConfigXml("jk test", "jk test", wsRoot));
-        n++;
-        write(runDir.resolve("jk_test_all.xml"), shellRunConfigXml("jk test (all suites)", "jk test --all", wsRoot));
-        n++;
+    static void writeJkTestRunConfigs(IdeOutput out, Path runDir, Path wsRoot, Set<Path> moduleDirs)
+            throws IOException {
+        out.file(runDir.resolve("jk_test.xml"), shellRunConfigXml("jk test", "jk test", wsRoot));
+        out.file(runDir.resolve("jk_test_all.xml"), shellRunConfigXml("jk test (all suites)", "jk test --all", wsRoot));
         LinkedHashSet<String> extraSuites = new LinkedHashSet<>();
         for (Path mod : moduleDirs) {
             for (String suite : IdeSourceRoots.discoveredSuites(mod)) {
@@ -377,11 +354,9 @@ public final class IntellijIdeGenerator implements IdeGenerator {
             }
         }
         for (String suite : extraSuites) {
-            String file = "jk_test_" + IdeSupport.sanitize(suite) + ".xml";
-            write(runDir.resolve(file), shellRunConfigXml("jk test · " + suite, "jk test --suite " + suite, wsRoot));
-            n++;
+            String file = "jk_test_" + sanitize(suite) + ".xml";
+            out.file(runDir.resolve(file), shellRunConfigXml("jk test · " + suite, "jk test --suite " + suite, wsRoot));
         }
-        return n;
     }
 
     /** IntelliJ ShConfigurationType: run a shell command in the workspace root. */
@@ -495,8 +470,9 @@ public final class IntellijIdeGenerator implements IdeGenerator {
         return MinimalXml.escapeAttr(s);
     }
 
-    private static void write(Path file, String content) throws IOException {
-        Files.writeString(file, content, StandardCharsets.UTF_8);
+    /** Sanitize a string to a valid filename component. */
+    static String sanitize(String s) {
+        return s.replaceAll("[^A-Za-z0-9._-]", "_");
     }
 
     /** A module's reference to an external library, tagged with the IntelliJ order-entry scope. */

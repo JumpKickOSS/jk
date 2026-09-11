@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.interop;
 
-import cc.jumpkick.command.ide.IdeTarget;
+import cc.jumpkick.ide.IdeTarget;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
@@ -13,7 +13,7 @@ import java.util.List;
  * redhat.java language server).
  *
  * <p>An alias of {@code jk ide --vscode}. All generation logic lives in {@link IdeCommand} +
- * {@link cc.jumpkick.command.ide.VscodeIdeGenerator}.
+ * {@link cc.jumpkick.ide.VscodeIdeGenerator}.
  */
 public final class VscodeCommand implements CliCommand {
 

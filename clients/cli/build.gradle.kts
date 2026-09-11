@@ -19,6 +19,8 @@ dependencies {
     implementation(project(":client-io"))
     implementation(project(":toolchain-jdk"))
     implementation(project(":wire"))
+    // The IDE project-file generators (jk ide), shared with the engine's jk_ide.
+    implementation(project(":ide"))
     // The host leaf: JSONL wire envelope, Hashing/PathUtil/Os, Exit (not the plugin SPI).
     implementation(project(":host"))
     implementation(project(":cli-terminal"))

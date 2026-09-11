@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.command.ide;
+package cc.jumpkick.ide;
 
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.IntellijJdkTable;
 import cc.jumpkick.util.MinimalXml;
 import cc.jumpkick.util.MinimalXml.Element;
@@ -76,12 +77,13 @@ public final class IntellijSdkRegistrar {
     private List<Path> targetTables() {
         List<Path> out = new ArrayList<>();
         for (Path root : vendorRoots) {
-            if (!Files.isDirectory(root)) continue;
-            try (Stream<Path> products = Files.list(root)) {
-                products.filter(Files::isDirectory)
-                        .filter(p -> isJavaIde(p.getFileName().toString()))
-                        .map(p -> p.resolve("options").resolve("jdk.table.xml"))
-                        .forEach(out::add);
+            try {
+                PathUtil.forEachChild(root, (product, attrs) -> {
+                    if (attrs.isDirectory() && isJavaIde(product.getFileName().toString())) {
+                        out.add(product.resolve("options").resolve("jdk.table.xml"));
+                    }
+                    return true;
+                });
             } catch (IOException ignored) {
                 // Unreadable vendor dir — nothing to register here.
             }
@@ -184,19 +186,19 @@ public final class IntellijSdkRegistrar {
         } catch (IOException ignored) {
             // No release file / unreadable — try jmods next.
         }
-        Path jmods = javaHome.resolve("jmods");
-        if (Files.isDirectory(jmods)) {
-            try (Stream<Path> entries = Files.list(jmods)) {
-                return entries.map(p -> p.getFileName().toString())
-                        .filter(n -> n.endsWith(".jmod"))
-                        .map(n -> n.substring(0, n.length() - ".jmod".length()))
-                        .sorted()
-                        .toList();
-            } catch (IOException ignored) {
-                // Unreadable jmods dir — give up, fall back to the bare root.
-            }
+        List<String> names = new ArrayList<>();
+        try {
+            PathUtil.forEachChild(javaHome.resolve("jmods"), (entry, attrs) -> {
+                String n = entry.getFileName().toString();
+                if (n.endsWith(".jmod")) names.add(n.substring(0, n.length() - ".jmod".length()));
+                return true;
+            });
+        } catch (IOException ignored) {
+            // Unreadable jmods dir — give up, fall back to the bare root.
+            return List.of();
         }
-        return List.of();
+        names.sort(null);
+        return List.copyOf(names);
     }
 
     private static Element valued(String tag, String value) {

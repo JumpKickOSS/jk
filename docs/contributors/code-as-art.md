@@ -1009,7 +1009,7 @@ by id, kind and why. This block is a `generated` guard's rendering
 | catalog-is-the-version-source | text | a version pinned in a build script is one the lockfiles and verification metadata were never written from, so it drifts unseen |
 | central-address | text | the mirror and the cooldown key on the canonical host; an alias matches neither |
 | cli-runtime-classpath | depend | the CLI runtime is the native image; a test or build-time library there is a mis-scoped dependency |
-| cli-runtime-modules | layers | a CLI edge to an engine-side module puts engine code in the native image |
+| cli-runtime-modules | layers | a CLI edge to an engine-side module puts engine code in the native image; shared/ide is client-side by construction (the IDE file generators the CLI and the engine both link) |
 | clock-owner | forbid | a wall-clock read the caller cannot move is a test that has to sleep, and a sleep asserts a duration instead of a condition |
 | file-size | metric | a file that no longer fits a context window no longer fits a reviewer |
 | git-writes-are-pinned | text | a write that searches upward mutates whichever repository encloses the path, not the one meant |

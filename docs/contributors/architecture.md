@@ -209,12 +209,12 @@ Bootstrap build: **Java 25 + Gradle** (until self-hosting CI is complete). Runti
 
 | Area | Modules | Role |
 |---|---|---|
-| `shared/` | `host`, `jk-api`, `plugin-sdk`, `core`, `client-io`, `toolchain-jdk`, `wire`, `guard-api` | JSONL codec + host primitives (`Hashing`, `PathUtil`, `Errors`, `Os`, `Exit`), client-safe contracts, config/lock, CLI I/O, JDK tools, wire, guard-test library (`jk-guards-junit`) |
+| `shared/` | `host`, `jk-api`, `plugin-sdk`, `core`, `client-io`, `toolchain-jdk`, `wire`, `ide`, `guard-api` | JSONL codec + host primitives (`Hashing`, `PathUtil`, `Errors`, `Os`, `Exit`), client-safe contracts, config/lock, CLI I/O, JDK tools, wire, IDE project-file generators, guard-test library (`jk-guards-junit`) |
 | `server/` | `io`, `resolver`, `toolchain`, `guard`, `engine` | Repo fetch, PubGrub, import/export tools, house-rule guards, build plan; `EngineMain` + fat jar packaging (never links CLI) |
 | `clients/` | `cli`, `cli-terminal`, `web` | Slim wire client (native/JVM), JDK-only TTY/style/keys leaf, dashboard SPA |
 | `plugins/` | `java-compiler` (job-scoped Zinc worker; PLAN for `jk explain`), `kotlin-compiler`, `groovy-compiler`, `test-runner`, `auditor`, `publisher`, `image-builder`, `formatter`, `spring-boot`, `quarkus`, `grails`, `android`, `protobuf`, `minified` | First-party workers / build plugins |
 
-**Layering:** `host` → `{plugin-sdk, wire, cli, cli-terminal}` ; `jk-api` → `core` → `{client-io, wire, …}` → server `{io, resolver, toolchain, guard}` → `engine` → clients. Plugins depend on `plugin-sdk` (+ transitive `host`), not on engine internals. `host` is the only module a plugin worker, the engine and the native client all link, so it stays JDK-only — `core` cannot serve that role because it api-exposes tomlj.
+**Layering:** `host` → `{plugin-sdk, wire, cli, cli-terminal}` ; `jk-api` → `core` → `{client-io, wire, …}` → `ide` → server `{io, resolver, toolchain, guard}` → `engine` → clients. Plugins depend on `plugin-sdk` (+ transitive `host`), not on engine internals. `host` is the only module a plugin worker, the engine and the native client all link, so it stays JDK-only — `core` cannot serve that role because it api-exposes tomlj.
 
 **Inside `server/engine`:** the root package `cc.jumpkick.engine` (server, connection, startup, the
 SSE publisher) sits on top; `engine.api` is its leaf — the JSON and wire writers, the in-flight build
@@ -365,6 +365,14 @@ The method set is `BspServer`'s dispatch — `build/initialize` and `build/initi
 `ideModel`; `compile`/`test`/`run` are engine jobs through `IdeEngineClient`. The user-facing
 capability table, including what is deliberately not implemented (a debug adapter), is
 [docs/user/ide.md](../user/ide.md) — one owner, so this page does not carry a second copy to drift.
+
+**IDE file generators** live in `shared/ide` (`cc.jumpkick.ide`): `IdeModel.fromWire` rebuilds the
+`ide-model` record, `IdeGenerators` runs the IntelliJ and VS Code generators through an `IdeOutput`
+(writing, or preview), and `BspConnectionFile` writes `.bsp/jk.json`. The module is pure
+model-to-files — no terminal, no engine — which is why it sits above `wire` and `toolchain-jdk` and
+below both `cli` and `engine`: `jk ide` adds the live chrome around the same generators the engine's
+MCP `jk_ide` runs in-process. `wire` cannot host them (it is the frozen protocol contract, and the
+generators need `toolchain-jdk`); `core` cannot see the wire record at all.
 
 - **VS Code:** `clients/vscode/` — VSIX, tasks/commands via `jk`, BSP install.
 - **IntelliJ:** `clients/intellij/` — install-from-disk zip. **Sync project**

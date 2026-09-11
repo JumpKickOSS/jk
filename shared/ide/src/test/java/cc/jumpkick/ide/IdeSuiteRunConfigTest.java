@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.command.ide;
+package cc.jumpkick.ide;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -36,8 +36,9 @@ class IdeSuiteRunConfigTest {
                 java = 25
                 """);
         Path runDir = tmp.resolve(".idea/runConfigurations");
-        int n = IntellijIdeGenerator.writeJkTestRunConfigs(runDir, tmp, Set.of(mod));
-        assertThat(n).isGreaterThanOrEqualTo(3);
+        IdeOutput out = IdeOutput.writing();
+        IntellijIdeGenerator.writeJkTestRunConfigs(out, runDir, tmp, Set.of(mod));
+        assertThat(out.files()).hasSizeGreaterThanOrEqualTo(3);
         assertThat(Files.isRegularFile(runDir.resolve("jk_test.xml"))).isTrue();
         assertThat(Files.isRegularFile(runDir.resolve("jk_test_all.xml"))).isTrue();
         assertThat(Files.isRegularFile(runDir.resolve("jk_test_integration.xml")))
@@ -84,8 +85,6 @@ class IdeSuiteRunConfigTest {
                 Map.of(),
                 null,
                 List.of(),
-                null,
-                null,
                 null);
         String tasks = VscodeIdeGenerator.tasksJson(model);
         assertThat(tasks).contains("jk: test");

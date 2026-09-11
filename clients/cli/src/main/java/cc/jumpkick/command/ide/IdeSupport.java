@@ -12,8 +12,9 @@ import cc.jumpkick.cli.run.SilentListener;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.ide.IdeException;
+import cc.jumpkick.ide.IdeModel;
 import cc.jumpkick.lock.ManifestPaths;
-import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.EnginePaths;
@@ -21,40 +22,20 @@ import cc.jumpkick.wire.protocol.IdeWireModel;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.Nullable;
 
 /**
  * Client half of the {@code jk ide} model build. The model math — workspace + module parsing,
  * lockfile + CAS reads, cross-module edges, per-module JDK/SDK handles — runs engine-side
- * ({@code IdeOps}, thin-client contract) and ships as an {@link IdeWireModel}; this class runs the
- * hosted best-effort sync first (silent — {@link IdeChrome} owns the chip), fetches the wire
- * model, and reconstructs the {@link IdeModel} the generators consume. File generation and all TTY
- * output stay client-side.
- *
- * the pre-Wave-4 in-line jar fetch so it builds the exact same model with no engine.
+ * ({@code IdeOps}, thin-client contract) and ships as an {@link IdeWireModel}; this class ensures a
+ * fresh lock, runs the hosted best-effort sync (silent — {@link IdeChrome} owns the chip), fetches
+ * the wire model, and rebuilds the {@link IdeModel} the shared generators consume. All TTY output
+ * stays here; the generators themselves live in {@code cc.jumpkick.ide}.
  */
 public final class IdeSupport {
 
     private IdeSupport() {}
-
-    /** A build failure carrying the process exit code the command should return. */
-    public static final class IdeException extends RuntimeException {
-        private final int code;
-
-        public IdeException(int code, @Nullable String message) {
-            super(message);
-            this.code = code;
-        }
-
-        public int code() {
-            return code;
-        }
-    }
 
     // =========================================================================
     // Model build
@@ -75,10 +56,8 @@ public final class IdeSupport {
      * {@code jk ide} keeps a single {@code IDE} wedge (no nested Sync chip).
      */
     public static IdeModel build(Invocation in, @Nullable IdeChrome chrome) throws IOException {
-        Path cacheDir = in.value("cache-dir").map(Path::of).orElse(null);
-        Path jdksDir = CommonOpts.jdksDirValue(in);
         Path ideConfigDir = in.value("ide-config-dir").map(Path::of).orElse(null);
-        return reconstruct(wireModel(in, chrome), cacheDir, jdksDir, ideConfigDir);
+        return IdeModel.fromWire(wireModel(in, chrome), ideConfigDir);
     }
 
     /**
@@ -126,114 +105,6 @@ public final class IdeSupport {
             throw new IdeException(2, wire.error());
         }
         return wire;
-    }
-
-    /** Rebuild the generator-facing {@link IdeModel} from the wire form. */
-    private static IdeModel reconstruct(
-            IdeWireModel wire, @Nullable Path cacheDir, @Nullable Path jdksDir, @Nullable Path ideConfigDir) {
-        Path wsRoot = Path.of(wire.wsRoot());
-
-        List<Path> dirs = new ArrayList<>(wire.moduleDirs().size());
-        Map<Path, IdeModule> allModules = new LinkedHashMap<>();
-        Map<Path, SdkRef> sdkRefs = new LinkedHashMap<>();
-        for (int i = 0; i < wire.moduleDirs().size(); i++) {
-            Path dir = Path.of(wire.moduleDirs().get(i));
-            dirs.add(dir);
-            String main = wire.mainClasses().get(i);
-            allModules.put(
-                    dir,
-                    new IdeModule(
-                            wire.names().get(i),
-                            parseInt(wire.javaReleases().get(i)),
-                            main.isEmpty() ? null : main,
-                            Path.of(wire.classesDirs().get(i)),
-                            Path.of(wire.testClassesDirs().get(i)),
-                            Path.of(wire.jdtClassesDirs().get(i)),
-                            Path.of(wire.jdtTestClassesDirs().get(i)),
-                            Path.of(wire.genSrcDirs().get(i)),
-                            Path.of(wire.genTestSrcDirs().get(i))));
-            sdkRefs.put(
-                    dir,
-                    new SdkRef(
-                            wire.sdkStableNames().get(i),
-                            wire.sdkNames().get(i),
-                            parseInt(wire.sdkLevels().get(i)),
-                            Path.of(wire.sdkHomes().get(i)),
-                            wire.sdkVersions().get(i)));
-        }
-        Map<Path, IdeModule> modules = wire.workspace() ? allModules : Map.of();
-
-        Map<String, LibDef> allLibs = new LinkedHashMap<>();
-        for (int i = 0; i < wire.libNames().size(); i++) {
-            String sources = wire.libSources().get(i);
-            allLibs.put(
-                    wire.libNames().get(i),
-                    new LibDef(
-                            wire.libNames().get(i),
-                            wire.libFiles().get(i),
-                            Path.of(wire.libJars().get(i)),
-                            sources.isEmpty() ? null : Path.of(sources)));
-        }
-
-        Map<Path, List<ModuleRef>> siblingRefs = new LinkedHashMap<>();
-        for (String row : wire.siblingRefs()) {
-            String[] parts = row.split("\\|", 3);
-            Path dir = dirs.get(Integer.parseInt(parts[0]));
-            siblingRefs.computeIfAbsent(dir, d -> new ArrayList<>()).add(new ModuleRef(parts[1], parts[2]));
-        }
-        Map<Path, List<LibEntry>> libEntries = new LinkedHashMap<>();
-        for (String row : wire.libEntries()) {
-            String[] parts = row.split("\\|", 3);
-            Path dir = dirs.get(Integer.parseInt(parts[0]));
-            List<Scope> scopes = new ArrayList<>();
-            for (String s : parts[2].split(",")) {
-                if (!s.isBlank()) scopes.add(Scope.valueOf(s));
-            }
-            libEntries.computeIfAbsent(dir, d -> new ArrayList<>()).add(new LibEntry(parts[1], List.copyOf(scopes)));
-        }
-        Map<Path, List<Path>> processorJars = new LinkedHashMap<>();
-        for (String row : wire.processorJars()) {
-            String[] parts = row.split("\\|", 2);
-            Path dir = dirs.get(Integer.parseInt(parts[0]));
-            processorJars.computeIfAbsent(dir, d -> new ArrayList<>()).add(Path.of(parts[1]));
-        }
-
-        SdkRef defaultSdk = new SdkRef(
-                wire.defSdkStableName(),
-                wire.defSdkName(),
-                wire.defSdkLevel(),
-                Path.of(wire.defSdkHome()),
-                wire.defSdkVersion());
-
-        List<IntellijSdkRegistrar.SdkEntry> sdkEntries = new ArrayList<>();
-        for (String row : wire.sdkEntries()) {
-            String[] parts = row.split("\\|", 3);
-            sdkEntries.add(new IntellijSdkRegistrar.SdkEntry(parts[0], Path.of(parts[1]), parts[2]));
-        }
-
-        return new IdeModel(
-                wsRoot,
-                wire.rootName(),
-                modules,
-                allModules,
-                allLibs,
-                siblingRefs,
-                libEntries,
-                processorJars,
-                sdkRefs,
-                defaultSdk,
-                sdkEntries,
-                cacheDir,
-                jdksDir,
-                ideConfigDir);
-    }
-
-    private static int parseInt(String s) {
-        try {
-            return Integer.parseInt(s);
-        } catch (NumberFormatException e) {
-            return 0;
-        }
     }
 
     /**
@@ -326,14 +197,5 @@ public final class IdeSupport {
             return;
         }
         CommandWedge.printFail("IDE", message);
-    }
-
-    // =========================================================================
-    // Naming helpers
-    // =========================================================================
-
-    /** Sanitize a string to a valid filename component. */
-    public static String sanitize(String s) {
-        return s.replaceAll("[^A-Za-z0-9._-]", "_");
     }
 }

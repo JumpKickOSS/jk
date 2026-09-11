@@ -13,6 +13,7 @@ object NullMarking {
         listOf(
             "shared/jk-api/src/main/java",
             "shared/wire/src/main/java",
+            "shared/ide/src/main/java",
             "shared/plugin-sdk/src/main/java",
             "shared/core/src/main/java",
             "shared/host/src/main/java",

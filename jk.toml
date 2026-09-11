@@ -20,6 +20,7 @@ modules = [
   "shared/toolchain-jdk",
   "server/toolchain",
   "shared/wire",
+  "shared/ide",
   "server/guard",
   "server/engine",
   # Rule packs (cc.jumpkick.guards:*) — live under server/guard/packs/

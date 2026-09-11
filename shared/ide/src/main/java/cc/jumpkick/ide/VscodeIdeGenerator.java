@@ -1,15 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.command.ide;
+package cc.jumpkick.ide;
 
-import cc.jumpkick.cli.ide.IdeSourceRoots;
-import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.util.MinimalXml;
 import cc.jumpkick.wire.protocol.IdeWireModel;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -50,51 +47,41 @@ public final class VscodeIdeGenerator implements IdeGenerator {
     }
 
     @Override
-    public IdeGeneration generate(IdeModel model) throws IOException {
+    public void generate(IdeModel model, IdeOutput out) throws IOException {
         // Eclipse project names are workspace-global and cross-module deps reference them by name
         // reject duplicates rather than emit a silently-broken classpath.
         assertUniqueNames(model);
 
-        int files = 0;
         for (Map.Entry<Path, IdeModule> me : model.allModules().entrySet()) {
-            files += writeModule(model, me.getKey(), me.getValue());
+            writeModule(out, model, me.getKey(), me.getValue());
         }
 
         Path vscodeDir = model.wsRoot().resolve(".vscode");
-        Files.createDirectories(vscodeDir);
-        write(vscodeDir.resolve("settings.json"), settingsJson(model));
-        files++;
+        out.file(vscodeDir.resolve("settings.json"), settingsJson(model));
         String launch = launchJson(model);
         if (launch != null) {
-            write(vscodeDir.resolve("launch.json"), launch);
-            files++;
+            out.file(vscodeDir.resolve("launch.json"), launch);
         }
-        write(vscodeDir.resolve("extensions.json"), extensionsJson());
-        files++;
+        out.file(vscodeDir.resolve("extensions.json"), extensionsJson());
         // tasks for jk test / --all / per-suite
-        write(vscodeDir.resolve("tasks.json"), tasksJson(model));
-        files++;
-
-        return IdeGeneration.of(RichText.parse(
-                "Generated " + files + " project file" + (files == 1 ? "" : "s") + " for [cyan]redhat.java[/]"));
+        out.file(vscodeDir.resolve("tasks.json"), tasksJson(model));
     }
 
     // =========================================================================
     // Per-module Eclipse metadata
     // =========================================================================
 
-    private static int writeModule(IdeModel model, Path moduleDir, IdeModule module) throws IOException {
+    private static void writeModule(IdeOutput out, IdeModel model, Path moduleDir, IdeModule module)
+            throws IOException {
         String name = module.name();
         SdkRef sdk = model.sdkRefs().get(moduleDir);
         int level = sdk != null ? sdk.languageLevel() : module.javaRelease();
         if (level <= 0) level = MAX_KNOWN_EE;
 
-        write(moduleDir.resolve(".project"), dotProject(name));
-        write(moduleDir.resolve(".classpath"), dotClasspath(model, moduleDir, module, level));
+        out.file(moduleDir.resolve(".project"), dotProject(name));
+        out.file(moduleDir.resolve(".classpath"), dotClasspath(out, model, moduleDir, module, level));
         Path settings = moduleDir.resolve(".settings");
-        Files.createDirectories(settings);
-        write(settings.resolve("org.eclipse.jdt.core.prefs"), corePrefs(level));
-        return 3;
+        out.file(settings.resolve("org.eclipse.jdt.core.prefs"), corePrefs(level));
     }
 
     private static String dotProject(String name) {
@@ -116,7 +103,7 @@ public final class VscodeIdeGenerator implements IdeGenerator {
         return sb.toString();
     }
 
-    static String dotClasspath(IdeModel model, Path moduleDir, IdeModule module, int level) {
+    static String dotClasspath(IdeOutput out, IdeModel model, Path moduleDir, IdeModule module, int level) {
         String outMain = rel(moduleDir, module.jdtClassesDir());
         String outTest = rel(moduleDir, module.jdtTestClassesDir());
 
@@ -125,8 +112,7 @@ public final class VscodeIdeGenerator implements IdeGenerator {
 
         // all TestSuites roots as test sources (shared with IntelliJ generator).
         for (IdeSourceRoots.Root root : IdeSourceRoots.of(moduleDir)) {
-            String out = root.test() ? outTest : outMain;
-            srcEntry(sb, moduleDir, root.relative(), root.test(), out);
+            srcEntry(sb, moduleDir, root.relative(), root.test(), root.test() ? outTest : outMain);
         }
 
         // Annotation-processor output roots (created so JDT's classpath stays valid), emitted when
@@ -136,8 +122,8 @@ public final class VscodeIdeGenerator implements IdeGenerator {
         Path genTest = module.generatedTestSourcesDir();
         if (!procs.isEmpty() || Files.isDirectory(gen)) {
             try {
-                Files.createDirectories(gen);
-                Files.createDirectories(genTest);
+                out.directory(gen);
+                out.directory(genTest);
             } catch (IOException ignored) {
                 // best-effort; JDT tolerates a missing dir with a warning
             }
@@ -357,7 +343,7 @@ public final class VscodeIdeGenerator implements IdeGenerator {
         for (IdeModule module : model.allModules().values()) {
             String name = module.name();
             if (!seen.add(name)) {
-                throw new IdeSupport.IdeException(
+                throw new IdeException(
                         2, "duplicate module name '" + name + "' — Eclipse project names must be unique");
             }
         }
@@ -406,9 +392,5 @@ public final class VscodeIdeGenerator implements IdeGenerator {
         if (s == null) return "";
         String quoted = Jsonl.quote(s);
         return quoted.substring(1, quoted.length() - 1);
-    }
-
-    private static void write(Path file, String content) throws IOException {
-        Files.writeString(file, content, StandardCharsets.UTF_8);
     }
 }

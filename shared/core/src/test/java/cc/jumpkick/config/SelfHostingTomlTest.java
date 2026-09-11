@@ -68,6 +68,7 @@ class SelfHostingTomlTest {
                         "shared/toolchain-jdk",
                         "server/toolchain",
                         "shared/wire",
+                        "shared/ide",
                         "server/guard",
                         "server/engine",
                         "server/guard/packs/spring",

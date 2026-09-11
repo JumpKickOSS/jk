@@ -2,7 +2,7 @@ version = 1
 generated-by = "jk 0.13.2"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "4bea803640e7488c0a9e42c4303cf4589adb29efcc2ed1e3560771907e1fcfa2"
+manifests-sha256 = "349642918d7ca5c40b92317bbcb0f4700e8d37db702e02133251fa0518eacd5b"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [jdk]
@@ -2714,6 +2714,14 @@ name    = "jk-host"
 version = "0.13.2"
 java    = 17
 description = "Host leaf: JSONL/MiniJson codec, Hashing, PathUtil, Errors, Os, Exit — the JDK-only floor the CLI, the engine and every plugin worker share"
+
+[[module]]
+path    = "shared/ide"
+group   = "cc.jumpkick"
+name    = "jk-ide"
+version = "0.13.2"
+java    = 25
+description = "IDE project-file generators: IntelliJ IDEA, VS Code, and the BSP connection file"
 
 [[module]]
 path    = "shared/jk-api"

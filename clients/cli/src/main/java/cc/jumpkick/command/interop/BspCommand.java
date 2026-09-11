@@ -9,16 +9,14 @@ import cc.jumpkick.cli.api.ProjectContext;
 import cc.jumpkick.cli.bsp.BspServer;
 import cc.jumpkick.cli.ide.IdeEngineClient;
 import cc.jumpkick.cli.tui.CommandWedge;
-import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.ide.BspConnectionFile;
 import cc.jumpkick.lock.ManifestPaths;
-import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
-import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -104,22 +102,8 @@ public final class BspCommand implements CliCommand {
      * @return path of the connection file written
      */
     public static Path writeConnectionFile(Path projectDir) throws Exception {
-        Path bspDir = projectDir.resolve(".bsp");
-        Files.createDirectories(bspDir);
-        // Prefer the jk on PATH; IDE will spawn: jk bsp serve
-        String argv0 = System.getenv().getOrDefault("JK_BIN", "jk");
-        String json = """
-                {
-                  "name": "jk",
-                  "version": %s,
-                  "bspVersion": "2.1.0",
-                  "languages": ["java", "kotlin", "groovy"],
-                  "argv": [%s, "bsp", "serve"]
-                }
-                """.formatted(Jsonl.quote(JkVersion.VERSION), Jsonl.quote(argv0));
-        Path out = bspDir.resolve("jk.json");
-        AtomicWrites.replace(out, json);
-        return out;
+        // Prefer the jk on PATH; the IDE will spawn: jk bsp serve
+        return BspConnectionFile.write(projectDir, System.getenv().getOrDefault("JK_BIN", "jk"));
     }
 
     private static int serve(Path projectDir, GlobalOptions global) throws Exception {

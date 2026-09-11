@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.interop;
 
-import cc.jumpkick.command.ide.IdeTarget;
+import cc.jumpkick.ide.IdeTarget;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;

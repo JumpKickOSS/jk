@@ -5,14 +5,14 @@ import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.CommonOpts;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.command.ide.IdeChrome;
-import cc.jumpkick.command.ide.IdeGeneration;
-import cc.jumpkick.command.ide.IdeGenerator;
-import cc.jumpkick.command.ide.IdeModel;
 import cc.jumpkick.command.ide.IdeSupport;
-import cc.jumpkick.command.ide.IdeTarget;
-import cc.jumpkick.command.ide.IntellijIdeGenerator;
-import cc.jumpkick.command.ide.VscodeIdeGenerator;
 import cc.jumpkick.host.Errors;
+import cc.jumpkick.ide.IdeException;
+import cc.jumpkick.ide.IdeGeneration;
+import cc.jumpkick.ide.IdeGenerator;
+import cc.jumpkick.ide.IdeGenerators;
+import cc.jumpkick.ide.IdeModel;
+import cc.jumpkick.ide.IdeTarget;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
@@ -25,13 +25,11 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk ide} — generate IntelliJ + VS Code project files ({@code --idea}/{@code --vscode}
- * narrow to one) and always refresh {@code .bsp/jk.json} for BSP clients. Dependency sync is
- * engine-hosted; model + file generation stay client-side.
+ * narrow to one) and always refresh {@code .bsp/jk.json} for BSP clients. Lock, sync and the model
+ * are engine-hosted; the shared {@link IdeGenerators} write the files here, under this command's
+ * chrome.
  */
 public final class IdeCommand implements CliCommand {
-
-    /** The generators, in a stable emit order. */
-    private static final List<IdeGenerator> GENERATORS = List.of(new IntellijIdeGenerator(), new VscodeIdeGenerator());
 
     /** When non-null, the command runs exactly these targets and ignores the {@code --idea/--vscode} flags. */
     private final @Nullable Set<IdeTarget> forced;
@@ -93,7 +91,7 @@ public final class IdeCommand implements CliCommand {
             IdeModel model;
             try {
                 model = IdeSupport.build(in, chrome);
-            } catch (IdeSupport.IdeException e) {
+            } catch (IdeException e) {
                 // null message = already reported (e.g. EnsureFreshLock failure wedge)
                 if (e.getMessage() != null && !e.getMessage().isBlank()) {
                     chrome.fail(e.getMessage());
@@ -104,13 +102,13 @@ public final class IdeCommand implements CliCommand {
             }
 
             String rootName = model.rootName();
-            for (IdeGenerator gen : GENERATORS) {
+            for (IdeGenerator gen : IdeGenerators.all()) {
                 if (!targets.contains(gen.target())) continue;
                 chrome.phase(IdeChrome.phaseReady(gen.target().label(), rootName));
                 try {
-                    IdeGeneration result = gen.generate(model);
-                    chrome.addDetails(result.details());
-                } catch (IdeSupport.IdeException e) {
+                    IdeGeneration result = IdeGenerators.run(gen, model, false);
+                    chrome.addDetails(IdeChrome.details(model, result));
+                } catch (IdeException e) {
                     chrome.fail(Errors.text(e));
                     return e.code();
                 } catch (Exception e) {
@@ -146,7 +144,7 @@ public final class IdeCommand implements CliCommand {
             // Raw wire JSON only — no TTY chrome (plugins parse stdout).
             CliOutput.out(wire.encode());
             return 0;
-        } catch (IdeSupport.IdeException e) {
+        } catch (IdeException e) {
             if (e.getMessage() != null && !e.getMessage().isBlank()) {
                 CommandWedge.printFail("IDE", e.getMessage());
             }

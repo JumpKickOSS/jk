@@ -6,10 +6,10 @@ import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The engine's IDE-agnostic workspace model ({@link EngineProtocol#IDE_MODEL_REQUEST}) — the thin
- * client's replacement for the client-side {@code IdeSupport.build} model math, which needed the
- * parsed root, every workspace module, and their lockfiles. The client-side generators (IntelliJ /
- * VS Code file emitters — TTY + disk writers) consume this instead of {@code JkBuild}.
+ * The engine's IDE-agnostic workspace model ({@link EngineProtocol#IDE_MODEL_REQUEST}): the model
+ * math needs the parsed root, every workspace module and their lockfiles, so it runs engine-side.
+ * The IntelliJ / VS Code generators ({@code cc.jumpkick.ide}, linked by the CLI and the engine
+ * alike) consume this instead of {@code JkBuild}.
  *
  * <p>Per-module data rides as parallel lists indexed by {@code moduleDirs}; cross-module edges and
  * per-module lists ride as {@code moduleIndex|…} strings (the {@code WhyReport} convention). Jar

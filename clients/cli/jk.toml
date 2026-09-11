@@ -10,6 +10,7 @@ jk-core.workspace = true
 jk-client-io.workspace = true
 jk-toolchain-jdk.workspace = true
 jk-engine-api.workspace = true
+jk-ide.workspace = true
 jk-host.workspace = true
 jk-cli-terminal.workspace = true
 

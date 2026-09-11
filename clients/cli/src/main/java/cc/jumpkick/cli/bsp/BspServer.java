@@ -2,11 +2,11 @@
 package cc.jumpkick.cli.bsp;
 
 import cc.jumpkick.cli.ide.IdeEngineClient;
-import cc.jumpkick.cli.ide.IdeSourceRoots;
 import cc.jumpkick.cli.run.DebugAttach;
 import cc.jumpkick.config.DebugJvm;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.diagnostic.CompilerLocus;
+import cc.jumpkick.ide.IdeSourceRoots;
 import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.model.JkVersion;

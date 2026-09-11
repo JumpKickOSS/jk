@@ -103,6 +103,7 @@ include(
     ":client-io",       // client I/O slice: http, forge auth, credential files, CAS read/link
     ":toolchain-jdk",   // client JDK/tool flow: catalog/installer/registry, launchers, exporters
     ":wire",            // the client<->engine wire contract (was :engine-api)
+    ":ide",             // IDE project-file generators over the wire model (CLI + engine)
     ":dynamic-surface", // reflection/proxy/resource surface → R8 keeps + Graal reachability
     ":guard-api",       // the guard-test library (JDK-17; published as jk-guards-junit)
     // server/ — engine-only (never on the native CLI classpath)
@@ -148,6 +149,7 @@ project(":core").projectDir          = file("shared/core")
 project(":client-io").projectDir     = file("shared/client-io")
 project(":toolchain-jdk").projectDir = file("shared/toolchain-jdk")
 project(":wire").projectDir          = file("shared/wire")
+project(":ide").projectDir           = file("shared/ide")
 project(":dynamic-surface").projectDir = file("shared/dynamic-surface")
 project(":guard-api").projectDir     = file("shared/guard-api")
 
