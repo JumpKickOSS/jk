@@ -139,6 +139,9 @@ public final class PlannerPackage {
                     }
                     if (!jarAttrs.isEmpty()) jarRequest = jarRequest.withAttributes(jarAttrs);
                     new JarPackager().packageJar(jarRequest);
+                    // A jar written anew is a build, whatever the compile step found cached: the
+                    // client's tail says "built" for it, not "up to date".
+                    ctx.put(BUILD_OUTCOME, "built");
                     storePackaged(
                             in.cache(),
                             pkgTask,

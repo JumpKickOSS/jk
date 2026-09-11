@@ -554,6 +554,8 @@ public final class PlannerPlugin {
             throw new IOException(
                     "plugin packager " + packager.name() + " reported success but produced no " + jarPath);
         }
+        // An artifact written anew is a build, whatever the compile step found cached.
+        ctx.put(BUILD_OUTCOME, "built");
         // A container packager (an AAR) may also emit the conventional classes jar next to the
         // main artifact — the host-classpath view workspace siblings compile against. Both cache
         // under the same key so a hit restores the pair.
