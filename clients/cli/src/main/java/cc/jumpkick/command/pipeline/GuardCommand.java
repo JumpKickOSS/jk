@@ -15,6 +15,7 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
+import cc.jumpkick.util.GuardBaselineMarker;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.GuardCommitMsgAck;
 import cc.jumpkick.wire.protocol.GuardExplainAck;
@@ -300,7 +301,7 @@ public final class GuardCommand implements CliCommand {
             CommandWedge.printFail("Guard", ack.error());
             return 1;
         }
-        GuardHooks.markFreeze(dir);
+        GuardBaselineMarker.leave(dir, "jk guard freeze");
         if (retire) {
             CliOutput.out("jk guard: retired " + id + " — dropped " + ack.accepted() + " baseline "
                     + (ack.accepted() == 1 ? "entry" : "entries") + "; " + ack.total() + " remain");

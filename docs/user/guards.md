@@ -204,7 +204,8 @@ accepted sites live in **`jk-guards-baseline.toml`**, which only the engine writ
 on its own as sites disappear, and grows only through a freeze, which records the reason beside
 the sites. A
 `--retire` freeze drops the entries of a rule that no longer exists. Hand edits to the
-baseline are refused by the pre-commit hook. `metric` rules are ratchets by nature: a cap a
+baseline are refused by the pre-commit hook; a freeze and an engine tightening both leave the
+marker the hook looks for, so either commits without ceremony. `metric` rules are ratchets by nature: a cap a
 file already exceeds becomes that file's own ceiling, and it may only shrink.
 
 ## Guard tests

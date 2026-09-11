@@ -60,6 +60,7 @@ import cc.jumpkick.runtime.base.GuardSuiteLibrary;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.util.AtomicWrites;
+import cc.jumpkick.util.GuardBaselineMarker;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -723,6 +724,9 @@ final class PlannerGuards {
             return baselineSha;
         }
         mergeTightened(baselineFile, result);
+        // The pre-commit hook lets a baseline through only behind this marker; a tightening is the
+        // engine's own write, so it leaves the marker exactly as a freeze does.
+        GuardBaselineMarker.leave(g.root(), "jk guard (tightened)");
         ctx.output(result.tightened() + " baseline entries tightened");
         return GuardKeys.baselineSha(g.root());
     }

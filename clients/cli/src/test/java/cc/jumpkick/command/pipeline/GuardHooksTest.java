@@ -4,6 +4,7 @@ package cc.jumpkick.command.pipeline;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.util.GuardBaselineMarker;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -54,12 +55,12 @@ class GuardHooksTest {
         Files.writeString(wtGit.resolve("commondir"), "../..\n");
         Path worktree = Files.createDirectories(tmp.resolve("feature"));
         Files.writeString(worktree.resolve(".git"), "gitdir: " + wtGit + "\n");
-        assertThat(GuardHooks.gitDir(worktree.resolve("sub/dir"))).isEqualTo(main);
         GuardHooks.Installed done = GuardHooks.install(worktree, false);
         assertThat(done.hooksDir()).isEqualTo(main.resolve("hooks"));
         assertThat(main.resolve("hooks/commit-msg")).exists();
-        GuardHooks.markFreeze(worktree);
-        assertThat(main.resolve(GuardHooks.FREEZE_MARKER)).exists();
+        assertThat(GuardHooks.preCommit())
+                .as("the hook names the marker the shared helper writes")
+                .contains("$git_dir/" + GuardBaselineMarker.NAME);
 
         Path bare = Files.createDirectories(tmp.resolve("nowhere"));
         assertThatThrownBy(() -> GuardHooks.install(bare, false))

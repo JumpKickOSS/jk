@@ -2,6 +2,7 @@
 package cc.jumpkick.command.pipeline;
 
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.util.GuardBaselineMarker;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -11,7 +12,6 @@ import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
-import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk guard hooks [install]}: the git hooks that put the house rules at the commit boundary.
@@ -33,9 +33,6 @@ final class GuardHooks {
 
     /** Files the hooks protect; also written as {@code target/jk-guards.protected} for agent harnesses. */
     static final List<String> PROTECTED = List.of("jk-guards-baseline.toml", "jk-guards.toml");
-
-    /** {@code jk guard freeze} touches this so the next commit may carry the baseline it grew. */
-    static final String FREEZE_MARKER = "jk-guard-freeze";
 
     static final String PROTECTED_LIST = "jk-guards.protected";
 
@@ -109,7 +106,7 @@ final class GuardHooks {
      * kind of quiet change these hooks exist to catch.
      */
     static Installed install(Path repoDir, boolean force) throws IOException {
-        Path gitDir = gitDir(repoDir);
+        Path gitDir = GuardBaselineMarker.gitCommonDir(repoDir);
         if (gitDir == null) throw new IOException(repoDir + " is not inside a git repository (no .git)");
         Path hooksDir = gitDir.resolve("hooks");
         Files.createDirectories(hooksDir);
@@ -133,46 +130,6 @@ final class GuardHooks {
         Files.createDirectories(list.getParent());
         Files.writeString(list, String.join("\n", PROTECTED) + "\n", StandardCharsets.UTF_8);
         return new Installed(written, refused, hooksDir, list);
-    }
-
-    /** Touch the freeze marker in the common git dir so the pre-commit hook lets the grown baseline through. */
-    static void markFreeze(Path repoDir) {
-        try {
-            Path gitDir = gitDir(repoDir);
-            if (gitDir == null) return;
-            Files.writeString(gitDir.resolve(FREEZE_MARKER), "jk guard freeze\n", StandardCharsets.UTF_8);
-        } catch (IOException ignored) {
-            // the marker is a courtesy to the hook; a freeze that cannot leave one still froze
-        }
-    }
-
-    /**
-     * The common git directory of the repository containing {@code dir}: {@code .git} as a directory,
-     * or the {@code gitdir:} pointer of a worktree or submodule, followed through {@code commondir}
-     * so hooks land where every worktree's git reads them.
-     */
-    static @Nullable Path gitDir(Path dir) throws IOException {
-        Path d = dir.toAbsolutePath().normalize();
-        while (d != null) {
-            Path dotGit = d.resolve(".git");
-            if (Files.isDirectory(dotGit)) return dotGit;
-            if (Files.isRegularFile(dotGit)) {
-                String pointer =
-                        Files.readString(dotGit, StandardCharsets.UTF_8).strip();
-                if (!pointer.startsWith("gitdir:")) return null;
-                Path gitDir =
-                        d.resolve(pointer.substring("gitdir:".length()).strip()).normalize();
-                Path common = gitDir.resolve("commondir");
-                if (Files.isRegularFile(common)) {
-                    return gitDir.resolve(Files.readString(common, StandardCharsets.UTF_8)
-                                    .strip())
-                            .normalize();
-                }
-                return gitDir;
-            }
-            d = d.getParent();
-        }
-        return null;
     }
 
     private static void executable(Path file) {
