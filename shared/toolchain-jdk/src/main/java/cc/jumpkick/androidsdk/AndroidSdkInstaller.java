@@ -188,8 +188,21 @@ public final class AndroidSdkInstaller {
         }
         Path root = singleTopLevel(staging);
         Files.createDirectories(dir.getParent());
-        AtomicWrites.publishDir(root, dir);
+        publishOrAccept(root, dir);
         deleteRecursively(staging);
+    }
+
+    /**
+     * Install the extracted component at {@code dir}. Two modules of one build can reach the same
+     * missing component together; the second extraction then finds the directory already there
+     * and keeps it — the archive is the same bytes — instead of failing the build on the rename.
+     */
+    static void publishOrAccept(Path extracted, Path dir) throws IOException {
+        try {
+            AtomicWrites.publishDir(extracted, dir);
+        } catch (IOException raced) {
+            if (!Files.isDirectory(dir)) throw raced;
+        }
     }
 
     private static Path mkdirs(Path dir) throws IOException {
