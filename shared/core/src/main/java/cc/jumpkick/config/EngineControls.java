@@ -56,7 +56,13 @@ public final class EngineControls {
                     "JK_AUTO_WARMUP",
                     "true",
                     "each idle cycle",
-                    "Idle AOT train and host calibration. false skips the whole pass."));
+                    "Idle AOT train and host calibration. false skips the whole pass."),
+            control(
+                    "log-max-mb",
+                    "JK_ENGINE_LOG_MAX_MB",
+                    "16",
+                    ENGINE_START,
+                    "Engine log size cap in MiB; at the cap the log rolls to .1 (one generation kept). 0 = no cap."));
 
     /** {@code JK_ENGINE_*} env that is not an {@code [engine]} key. */
     public static final List<Control> PROCESS = List.of(

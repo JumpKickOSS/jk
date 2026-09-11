@@ -126,6 +126,32 @@ class JkEngineConfigTest {
     }
 
     @Test
+    void log_max_mb_defaults_to_16_and_ci_does_not_bump(@TempDir Path tempDir) {
+        assertThat(JkEngineConfig.DEFAULTS.logMaxMb()).isEqualTo(16);
+        assertThat(JkEngineConfig.DEFAULTS.logMaxBytes()).isEqualTo(16L << 20);
+        assertThat(JkEngineConfig.resolve(tempDir.resolve("none.toml"), Map.of("CI", "1")::get)
+                        .logMaxMb())
+                .isEqualTo(16);
+    }
+
+    @Test
+    void log_max_mb_env_overrides_file_and_zero_means_uncapped(@TempDir Path tempDir) throws IOException {
+        Path toml = tempDir.resolve("config.toml");
+        Files.writeString(toml, "[engine]\nlog-max-mb = 64\n");
+        assertThat(JkEngineConfig.fromToml(toml).logMaxMb()).isEqualTo(64);
+        JkEngineConfig c = JkEngineConfig.resolve(toml, Map.of("JK_ENGINE_LOG_MAX_MB", "0")::get);
+        assertThat(c.logMaxMb()).isZero();
+        assertThat(c.logMaxBytes()).isZero();
+    }
+
+    @Test
+    void negative_log_max_mb_falls_back_to_default(@TempDir Path tempDir) throws IOException {
+        Path toml = tempDir.resolve("config.toml");
+        Files.writeString(toml, "[engine]\nlog-max-mb = -1\n");
+        assertThat(JkEngineConfig.fromToml(toml).logMaxMb()).isEqualTo(JkEngineConfig.DEFAULT_LOG_MAX_MB);
+    }
+
+    @Test
     void max_heap_env_overrides_file() throws IOException {
         Path toml = Files.createTempFile("jk-engine-", ".toml");
         try {

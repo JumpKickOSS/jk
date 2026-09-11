@@ -89,6 +89,8 @@ public final class EngineMain {
         try {
             JkDirs.current().secureRoots();
             EnginePaths.Paths paths = EnginePaths.current();
+            JkEngineConfig config = JkEngineConfig.resolve();
+            installLogSink(paths.log(), config);
             BuiltInPluginJars.registerMissingBuiltInFetcher();
             BuiltInPluginJars.install();
             try {
@@ -99,7 +101,6 @@ public final class EngineMain {
                 System.err.println("jk engine: " + badConfig.getMessage());
                 return 1;
             }
-            JkEngineConfig config = JkEngineConfig.resolve();
             JkHttpConfig httpConfig = JkHttpConfig.resolve().orElse(null);
             EngineServer server = new EngineServer(paths, config, httpConfig, JkVersion.VERSION, System.err::println);
             // The spawner asks for an AOT cache with -Djk.aot.train.output=<path> when none exists
@@ -115,6 +116,21 @@ public final class EngineMain {
         } catch (IOException e) {
             System.err.println("jk engine: failed to start: " + e.getMessage());
             return 1;
+        }
+    }
+
+    /**
+     * Route this process's stderr/stdout through the size-capped {@link EngineLogSink} on the
+     * engine log. When the log cannot be opened the inherited streams stay — the spawner's
+     * redirect still reaches the same file, only uncapped — and the reason is the first line
+     * written there.
+     */
+    private static @Nullable EngineLogSink installLogSink(Path log, JkEngineConfig config) {
+        try {
+            return EngineLogSink.install(log, config.logMaxBytes());
+        } catch (IOException e) {
+            System.err.println("jk engine: log size cap is off — could not open " + log + ": " + e.getMessage());
+            return null;
         }
     }
 

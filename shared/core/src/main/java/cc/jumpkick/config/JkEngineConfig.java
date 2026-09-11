@@ -29,7 +29,8 @@ public record JkEngineConfig(
         boolean keepGoing,
         int vfsMaxMb,
         boolean autoWarmup,
-        JobLimits jobLimits) {
+        JobLimits jobLimits,
+        int logMaxMb) {
 
     /** Default engine-process heap ceiling ({@code -Xmx}) when not on CI. */
     public static final int DEFAULT_MAX_HEAP_MB = 256;
@@ -43,12 +44,15 @@ public record JkEngineConfig(
     /** Per-job input-tree retain, in MiB. {@code 0} disables the VFS (always live-walk). CI does not change this. */
     public static final int DEFAULT_VFS_MAX_MB = 32;
 
+    /** Engine log size cap, in MiB; the log rolls to {@code .1} at the cap. {@code 0} = no cap. */
+    public static final int DEFAULT_LOG_MAX_MB = 16;
+
     /**
-     * Logical non-CI defaults (256 MiB heap, fail-fast, 32 MiB VFS, warmup on, default job limits).
-     * Prefer {@link #resolve()} for effective policy.
+     * Logical non-CI defaults (256 MiB heap, fail-fast, 32 MiB VFS, warmup on, default job limits,
+     * 16 MiB log cap). Prefer {@link #resolve()} for effective policy.
      */
-    public static final JkEngineConfig DEFAULTS =
-            new JkEngineConfig(DEFAULT_MAX_HEAP_MB, null, false, DEFAULT_VFS_MAX_MB, true, JobLimits.DEFAULTS);
+    public static final JkEngineConfig DEFAULTS = new JkEngineConfig(
+            DEFAULT_MAX_HEAP_MB, null, false, DEFAULT_VFS_MAX_MB, true, JobLimits.DEFAULTS, DEFAULT_LOG_MAX_MB);
 
     /** {@code max-heap-mb} / {@code JK_ENGINE_MAX_HEAP_MB}: negatives are not a heap, 0 = uncapped. */
     private static final MachineConfig<Integer> MAX_HEAP_MB =
@@ -66,24 +70,27 @@ public record JkEngineConfig(
     /** {@code auto-warmup} / {@code JK_AUTO_WARMUP}: the built-in is on. */
     private static final MachineConfig<Boolean> AUTO_WARMUP = MachineConfig.of(true);
 
-    /** Heap-only config (jobs default, fail-fast, default VFS, warmup on, default job limits). */
+    /** {@code log-max-mb} / {@code JK_ENGINE_LOG_MAX_MB}: {@code 0} = no cap, negatives fall through. */
+    private static final MachineConfig<Integer> LOG_MAX_MB = MachineConfig.of(DEFAULT_LOG_MAX_MB, v -> v >= 0);
+
+    /** Heap-only config; everything else at its default. */
     public JkEngineConfig(int maxHeapMb) {
-        this(maxHeapMb, null, false, DEFAULT_VFS_MAX_MB, true, JobLimits.DEFAULTS);
+        this(maxHeapMb, null, false, DEFAULT_VFS_MAX_MB, true, JobLimits.DEFAULTS, DEFAULT_LOG_MAX_MB);
     }
 
-    /** Heap + jobs + continue; VFS at the default 32 MiB, warmup on, default job limits. */
+    /** Heap + jobs + continue; everything else at its default. */
     public JkEngineConfig(int maxHeapMb, @Nullable Integer jobs, boolean keepGoing) {
-        this(maxHeapMb, jobs, keepGoing, DEFAULT_VFS_MAX_MB, true, JobLimits.DEFAULTS);
+        this(maxHeapMb, jobs, keepGoing, DEFAULT_VFS_MAX_MB, true, JobLimits.DEFAULTS, DEFAULT_LOG_MAX_MB);
     }
 
-    /** Heap + jobs + continue + VFS; warmup on, default job limits. */
+    /** Heap + jobs + continue + VFS; everything else at its default. */
     public JkEngineConfig(int maxHeapMb, @Nullable Integer jobs, boolean keepGoing, int vfsMaxMb) {
-        this(maxHeapMb, jobs, keepGoing, vfsMaxMb, true, JobLimits.DEFAULTS);
+        this(maxHeapMb, jobs, keepGoing, vfsMaxMb, true, JobLimits.DEFAULTS, DEFAULT_LOG_MAX_MB);
     }
 
     /** This config with different job limits — how a test gives a live engine a millisecond deadline. */
     public JkEngineConfig withJobLimits(JobLimits limits) {
-        return new JkEngineConfig(maxHeapMb, jobs, keepGoing, vfsMaxMb, autoWarmup, limits);
+        return new JkEngineConfig(maxHeapMb, jobs, keepGoing, vfsMaxMb, autoWarmup, limits, logMaxMb);
     }
 
     /** Effective machine config: user-global file + {@code JK_ENGINE_MAX_HEAP_MB} / {@code JK_JOBS}. */
@@ -112,13 +119,22 @@ public record JkEngineConfig(
                         scanInt(scan, "engine.vfs-max-mb")),
                 AUTO_WARMUP.layer(
                         EnvValues.bool(env, "JK_AUTO_WARMUP").orElse(null), scanBool(scan, "engine.auto-warmup")),
-                JobLimits.resolve(env));
+                JobLimits.resolve(env),
+                LOG_MAX_MB.layer(
+                        EnvValues.intValue(env, "JK_ENGINE_LOG_MAX_MB").orElse(null),
+                        scanInt(scan, "engine.log-max-mb")));
     }
 
     /** Machine defaults only (CI-aware heap and continue, no file/env override). */
     public static JkEngineConfig resolvedDefaults(Function<String, @Nullable String> env) {
         return new JkEngineConfig(
-                defaultMaxHeapMb(env), null, defaultKeepGoing(env), DEFAULT_VFS_MAX_MB, true, JobLimits.DEFAULTS);
+                defaultMaxHeapMb(env),
+                null,
+                defaultKeepGoing(env),
+                DEFAULT_VFS_MAX_MB,
+                true,
+                JobLimits.DEFAULTS,
+                DEFAULT_LOG_MAX_MB);
     }
 
     /** Unset heap default: 512 MiB on CI, else 256 MiB. */
@@ -143,7 +159,8 @@ public record JkEngineConfig(
                 KEEP_GOING.layer(scanBool(scan, "engine.continue")),
                 VFS_MAX_MB.layer(scanInt(scan, "engine.vfs-max-mb")),
                 AUTO_WARMUP.layer(scanBool(scan, "engine.auto-warmup")),
-                JobLimits.DEFAULTS);
+                JobLimits.DEFAULTS,
+                LOG_MAX_MB.layer(scanInt(scan, "engine.log-max-mb")));
     }
 
     private static TomlScan scan(Path file) {
@@ -177,5 +194,10 @@ public record JkEngineConfig(
     /** The {@code -Xms} the spawner should request: {@link #MIN_HEAP_MB}, never above the cap. */
     public int minHeapMb() {
         return heapCapped() ? Math.min(MIN_HEAP_MB, maxHeapMb) : MIN_HEAP_MB;
+    }
+
+    /** {@link #logMaxMb} in bytes; {@code 0} when the log is uncapped. */
+    public long logMaxBytes() {
+        return (long) logMaxMb << 20;
     }
 }
