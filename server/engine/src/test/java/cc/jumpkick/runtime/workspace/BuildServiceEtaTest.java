@@ -86,15 +86,13 @@ class BuildServiceEtaTest {
     @Test
     void history_prior_never_pulls_step_sum_toward_whole_build_average() {
         // ETA is Σ dirty step walls — whole-build history must not inflate a partial schedule.
-        assertThat(BuildService.applyHistoryPrior(20_000, ok(3, 150_000, 140_000, 160_000), true))
-                .isEqualTo(20_000);
-        assertThat(BuildService.applyHistoryPrior(20_000, ok(3, 150_000, 140_000, 160_000), false, 27))
+        assertThat(BuildService.applyHistoryPrior(20_000, ok(3, 150_000, 140_000, 160_000)))
                 .isEqualTo(20_000);
         // Cold seed (base=0) may still use history when nothing is modeled yet.
-        assertThat(BuildService.applyHistoryPrior(0, ok(3, 150_000, 140_000, 160_000), true))
+        assertThat(BuildService.applyHistoryPrior(0, ok(3, 150_000, 140_000, 160_000)))
                 .isEqualTo(150_000);
         // One-sided clamp still applies for absurd over-estimates with settled history.
-        assertThat(BuildService.applyHistoryPrior(60_000, ok(5, 2000, 800, 6000), false))
+        assertThat(BuildService.applyHistoryPrior(60_000, ok(5, 2000, 800, 6000)))
                 .isEqualTo(12_000);
     }
 

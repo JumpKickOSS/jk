@@ -203,7 +203,7 @@ final class WorkspaceRunView {
                 // Composed into the *returned* listener rather than attached to m.plan directly:
                 // an engine-hosted module's plan is a client-side reconstruction that is never run,
                 // and only the returned listener is driven by wire-replayed events.
-                var lis = new AggregateModuleListener(agg, m.coord(), m.plan().steps(), m.weight());
+                var lis = new AggregateModuleListener(agg, m.coord(), m.plan().steps());
                 if (chrome.buffered()) lis.bufferOutputInto(buffer(m.dir()));
                 event(JsonlShape.moduleStart(m.dir().toString(), m.coord()));
                 return withMirror(lis);

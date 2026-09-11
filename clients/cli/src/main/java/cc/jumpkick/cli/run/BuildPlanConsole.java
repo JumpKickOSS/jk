@@ -238,34 +238,23 @@ public final class BuildPlanConsole {
      */
     public static BuildPlanResult runBuildPlanInto(
             BuildPlan plan, Path cacheRoot, String module, AggregateContext agg) {
-        return runBuildPlanInto(plan, cacheRoot, module, agg, 0);
-    }
-
-    /**
-     * As {@link #runBuildPlanInto(BuildPlan, Path, String, AggregateContext)}, but with the module's reserved
-     * {@code slice} of the calibrated total (its pre-scan estimate). The slice scales the module's
-     * own 0→100% into its share of the aggregate bar so the bar advances cumulatively without
-     * backtracking. Pass the same estimate that was summed into {@code AggregateContext#calibrate}.
-     */
-    public static BuildPlanResult runBuildPlanInto(
-            BuildPlan plan, Path cacheRoot, String module, AggregateContext agg, long slice) {
         // Workspace TTY path is never JSON mode — always mirror plan events into details.jsonl.
         attachSessionMirror(plan, Mode.AUTO);
-        plan.addListener(new AggregateModuleListener(agg, module, plan.steps(), slice));
+        plan.addListener(new AggregateModuleListener(agg, module, plan.steps()));
         return plan.run();
     }
 
     /**
-     * As {@link #runBuildPlanInto(BuildPlan, Path, String, AggregateContext, long)} but for a module built
+     * As {@link #runBuildPlanInto(BuildPlan, Path, String, AggregateContext)} but for a module built
      * <em>concurrently</em>: its process output is appended to {@code outBuffer} instead of being
      * written above the live region as it arrives, so parallel modules' logs never interleave. The
      * caller flushes the buffer (above the shared region) when the module completes. Step/progress
      * events still feed the shared aggregate view live (the running rows + bar).
      */
     public static BuildPlanResult runBuildPlanIntoBuffered(
-            BuildPlan plan, Path cacheRoot, String module, AggregateContext agg, long slice, List<String> outBuffer) {
+            BuildPlan plan, Path cacheRoot, String module, AggregateContext agg, List<String> outBuffer) {
         attachSessionMirror(plan, Mode.AUTO);
-        AggregateModuleListener lis = new AggregateModuleListener(agg, module, plan.steps(), slice);
+        AggregateModuleListener lis = new AggregateModuleListener(agg, module, plan.steps());
         lis.bufferOutputInto(outBuffer);
         plan.addListener(lis);
         return plan.run();

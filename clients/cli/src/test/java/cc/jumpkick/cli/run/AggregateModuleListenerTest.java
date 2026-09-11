@@ -115,11 +115,11 @@ class AggregateModuleListenerTest {
         JkManager view = JkManager.plan(new PrintStream(buf, true, StandardCharsets.UTF_8), "Building", false);
         var agg = new AggregateContext(view);
 
-        var a = new AggregateModuleListener(agg, "g:api", List.of(step("compile", "Compile")), 10);
+        var a = new AggregateModuleListener(agg, "g:api", List.of(step("compile", "Compile")));
         a.planStart(new BuildPlanView("build", 0, 10, 1, 0, false));
         a.stepStart("compile", "compile", 10);
 
-        var b = new AggregateModuleListener(agg, "g:web", List.of(step("test", "Test")), 10);
+        var b = new AggregateModuleListener(agg, "g:web", List.of(step("test", "Test")));
         b.planStart(new BuildPlanView("build", 0, 10, 1, 0, false));
         b.stepStart("test", "test", 10);
 

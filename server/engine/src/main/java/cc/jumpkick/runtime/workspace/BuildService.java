@@ -467,19 +467,6 @@ public final class BuildService {
         return BuildEta.applyHistoryPrior(base, okHist);
     }
 
-    /** @param rebuildShape ignored — kept for call-site compatibility; step composition owns ETA. */
-    static long applyHistoryPrior(long base, BuildMetrics.Stats okHist, boolean rebuildShape) {
-        return BuildEta.applyHistoryPrior(base, okHist, rebuildShape);
-    }
-
-    /**
-     * @param rebuildShape ignored (API compat)
-     * @param dirtyModules ignored (API compat)
-     */
-    static long applyHistoryPrior(long base, BuildMetrics.Stats okHist, boolean rebuildShape, int dirtyModules) {
-        return BuildEta.applyHistoryPrior(base, okHist, rebuildShape, dirtyModules);
-    }
-
     static BuildMetrics.Stats okHistory(Path entryDir) {
         return BuildEta.okHistory(entryDir);
     }

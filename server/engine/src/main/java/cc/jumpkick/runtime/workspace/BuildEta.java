@@ -703,19 +703,6 @@ public final class BuildEta {
      * Success-only stats: failed/cancelled runs have abnormal durations.
      */
     static long applyHistoryPrior(long base, BuildMetrics.Stats okHist) {
-        return applyHistoryPrior(base, okHist, false);
-    }
-
-    /** @param rebuildShape ignored — step composition owns ETA. */
-    static long applyHistoryPrior(long base, BuildMetrics.Stats okHist, boolean rebuildShape) {
-        return applyHistoryPrior(base, okHist, rebuildShape, -1);
-    }
-
-    /**
-     * @param rebuildShape ignored
-     * @param dirtyModules ignored
-     */
-    static long applyHistoryPrior(long base, BuildMetrics.Stats okHist, boolean rebuildShape, int dirtyModules) {
         if (okHist == null || okHist.count() == 0) return base;
         if (base == 0) return okHist.avgMillis();
         // One-sided clamp for absurd over-estimates only. Require a credible history max so a
@@ -730,9 +717,8 @@ public final class BuildEta {
      * As {@link #applyHistoryPrior(long, BuildMetrics.Stats)}, but declining to clamp when the
      * samples did not come from this build's own kind.
      *
-     * <p>Takes the {@link HistoryMatch} rather than a boolean on purpose: the existing overloads
-     * already carry an ignored {@code rebuildShape} flag in that position, and giving a second
-     * meaning to a boolean there is how a caller passing {@code false} silently changes behaviour.
+     * <p>Takes the {@link HistoryMatch} rather than a boolean on purpose: a bare flag in that
+     * position is how a caller passing {@code false} silently changes behaviour.
      *
      * <p>A fallback sample is a fine prior for a cold estimate and a terrible bound for a warm one.
      * Clamping across kinds capped a full-rebuild schedule accurate to 2.8% (75.6 s simulated,

@@ -39,13 +39,6 @@ public final class AggregateModuleListener implements BuildPlanListener {
     }
 
     public AggregateModuleListener(AggregateContext agg, String module, List<Task> steps) {
-        this(agg, module, steps, 0);
-    }
-
-    /**
-     * {@code slice} is ignored (engine owns weights); kept for call-site compatibility.
-     */
-    public AggregateModuleListener(AggregateContext agg, String module, List<Task> steps, long slice) {
         this.agg = agg;
         this.cm = agg.view();
         this.module = module;
