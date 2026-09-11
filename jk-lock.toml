@@ -2,7 +2,7 @@ version = 1
 generated-by = "jk 0.13.2"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "424e4d7c7f7af8ce18ba55a57ff9c28fb8df97fa81b8123c73f48a577dd44b44"
+manifests-sha256 = "01474e272c2d30106ff8ac7c9d80e473aa0a237a3bd1a73f199d6d3882db959d"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [jdk]
@@ -125,6 +125,24 @@ deps = [
 ]
 
 [[artifact]]
+name     = "com.github.ben-manes.caffeine:caffeine:jar:"
+version  = "3.2.4"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:9d9d2cfd681fd9272ded3d27c9930db12f89f732345975aa113ebc223bbf1224"
+scopes   = ["processor"]
+deps = [
+  "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
+  "org.jspecify:jspecify:jar:@1.0.1",
+]
+
+[[artifact]]
+name     = "com.github.kevinstern:software-and-algorithms:jar:"
+version  = "1.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:61ab82439cef37343b14f53154c461619375373a56b9338e895709fb54e0864c"
+scopes   = ["processor"]
+
+[[artifact]]
 name     = "com.google.android:annotations:jar:"
 version  = "4.1.1.4"
 source   = "central+https://repo.maven.apache.org/maven2/"
@@ -184,11 +202,28 @@ deps = [
 ]
 
 [[artifact]]
+name     = "com.google.auto.service:auto-service-annotations:jar:"
+version  = "1.1.1"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:16a76dd00a2650568447f5d6e3a9e2c809d9a42367d56b45215cfb89731f4d24"
+scopes   = ["processor"]
+
+[[artifact]]
 name     = "com.google.auto.value:auto-value-annotations:jar:"
 version  = "1.11.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:6c61a11420a5cddf3313888e9d335d5eedfbeb9a8da26591470fbfe61f5bf859"
-scopes   = ["main"]
+scopes   = ["main", "processor"]
+
+[[artifact]]
+name     = "com.google.auto:auto-common:jar:"
+version  = "1.2.2"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:f50b1ce8a41fad31a8a819c052f8ffa362ea0a3dbe9ef8f7c7dc9a36d4738a59"
+scopes   = ["processor"]
+deps = [
+  "com.google.guava:guava:jar:@33.7.1-jre",
+]
 
 [[artifact]]
 name     = "com.google.cloud.tools:jib-build-plan:jar:"
@@ -233,25 +268,87 @@ deps = [
 ]
 
 [[artifact]]
+name     = "com.google.errorprone:error_prone_annotation:jar:"
+version  = "2.50.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:aa9b67a3aa3418b366e26594e1ae35d100ad3369cd1010ae7d4782d984ea9aaf"
+scopes   = ["processor"]
+deps = [
+  "com.google.guava:guava:jar:@33.7.1-jre",
+]
+
+[[artifact]]
 name     = "com.google.errorprone:error_prone_annotations:jar:"
 version  = "2.50.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:4667724877f1d37a689202da191e23efa7657c62eef93ccdac406eccfe5cdd0a"
-scopes   = ["main", "provided"]
+scopes   = ["main", "provided", "processor"]
+
+[[artifact]]
+name     = "com.google.errorprone:error_prone_check_api:jar:"
+version  = "2.50.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:ee935a4f42ac409fb0a471affea938c3050c6887dbaadb106868936d83d8c8f1"
+scopes   = ["processor"]
+deps = [
+  "com.github.ben-manes.caffeine:caffeine:jar:@3.2.4",
+  "com.github.kevinstern:software-and-algorithms:jar:@1.0",
+  "com.google.auto.value:auto-value-annotations:jar:@1.11.1",
+  "com.google.errorprone:error_prone_annotation:jar:@2.50.0",
+  "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
+  "io.github.eisop:dataflow-errorprone:jar:@3.49.5-eisop1",
+  "io.github.java-diff-utils:java-diff-utils:jar:@4.17",
+  "javax.inject:javax.inject:jar:@1",
+  "org.jspecify:jspecify:jar:@1.0.1",
+]
+
+[[artifact]]
+name     = "com.google.errorprone:error_prone_core:jar:"
+version  = "2.50.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:40a88d3ea732fac3a57ae0e2b27f1729ce76cc41857bcd63d5845e79eae5f72e"
+scopes   = ["processor"]
+deps = [
+  "com.google.auto.service:auto-service-annotations:jar:@1.1.1",
+  "com.google.auto.value:auto-value-annotations:jar:@1.11.1",
+  "com.google.auto:auto-common:jar:@1.2.2",
+  "com.google.errorprone:error_prone_annotation:jar:@2.50.0",
+  "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
+  "com.google.errorprone:error_prone_check_api:jar:@2.50.0",
+  "com.google.googlejavaformat:google-java-format:jar:@1.36.1",
+  "com.google.guava:guava:jar:@33.7.1-jre",
+  "com.google.protobuf:protobuf-java:jar:@4.36.1",
+  "io.github.eisop:dataflow-errorprone:jar:@3.49.5-eisop1",
+  "javax.inject:javax.inject:jar:@1",
+  "org.jspecify:jspecify:jar:@1.0.1",
+  "org.pcollections:pcollections:jar:@5.0.0",
+]
+
+[[artifact]]
+name     = "com.google.googlejavaformat:google-java-format:jar:"
+version  = "1.36.1"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:57f9b550a662dcbbdf344073e3f5812b837a0e6e430548d8a0a3c9090cada65d"
+scopes   = ["processor"]
+deps = [
+  "com.google.guava:guava:jar:@33.7.1-jre",
+  "org.commonmark:commonmark-ext-gfm-tables:jar:@0.30.0",
+  "org.commonmark:commonmark:jar:@0.30.0",
+]
 
 [[artifact]]
 name     = "com.google.guava:failureaccess:jar:"
 version  = "1.0.3"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:cbfc3906b19b8f55dd7cfd6dfe0aa4532e834250d7f080bd8d211a3e246b59cb"
-scopes   = ["main", "provided"]
+scopes   = ["main", "provided", "processor"]
 
 [[artifact]]
 name     = "com.google.guava:guava:jar:"
 version  = "33.7.1-jre"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:796d8e28ac64e83a47c4c5935a8fecc4682650a04bbdead738ef0f5a3a0e6c46"
-scopes   = ["main", "provided"]
+scopes   = ["main", "provided", "processor"]
 deps = [
   "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
   "com.google.guava:failureaccess:jar:@1.0.3",
@@ -265,7 +362,7 @@ name     = "com.google.guava:listenablefuture:jar:"
 version  = "9999.0-empty-to-avoid-conflict-with-guava"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:b372a037d4230aa57fbeffdef30fd6123f9c0c2db85d0aced00c91b974f33f99"
-scopes   = ["main", "provided"]
+scopes   = ["main", "provided", "processor"]
 
 [[artifact]]
 name     = "com.google.http-client:google-http-client-apache-v2:jar:"
@@ -325,7 +422,7 @@ name     = "com.google.j2objc:j2objc-annotations:jar:"
 version  = "3.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:84d3a150518485f8140ea99b8a985656749629f6433c92b80c75b36aba3b099b"
-scopes   = ["main", "provided"]
+scopes   = ["main", "provided", "processor"]
 
 [[artifact]]
 name     = "com.google.oauth-client:google-oauth-client-java6:jar:"
@@ -379,7 +476,7 @@ name     = "com.google.protobuf:protobuf-java:jar:"
 version  = "4.36.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:26434a93561a1a44bf7157b2630fa73a5b4d8df20e94df167bc03fcd14abd7e4"
-scopes   = ["main"]
+scopes   = ["main", "processor"]
 
 [[artifact]]
 name     = "com.googlecode.javaewah:JavaEWAH:jar:"
@@ -410,6 +507,18 @@ checksum = "sha256:5ab139643fa5090af181ff8dc9eab48cb38ca306d3e03e66acacc75831a08
 scopes   = ["provided", "test"]
 deps = [
   "org.slf4j:slf4j-api:jar:@2.0.18",
+]
+
+[[artifact]]
+name     = "com.uber.nullaway:nullaway:jar:"
+version  = "0.14.1"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:a74a5fb5a047537a4bdc362f9c1821279d7122d9d36aa2e6a72b79832fab7e4d"
+scopes   = ["processor"]
+deps = [
+  "com.google.guava:guava:jar:@33.7.1-jre",
+  "org.checkerframework:dataflow-nullaway:jar:@4.2.3",
+  "org.jspecify:jspecify:jar:@1.0.1",
 ]
 
 [[artifact]]
@@ -475,11 +584,35 @@ deps = [
 ]
 
 [[artifact]]
+name     = "io.github.eisop:checker-qual:jar:"
+version  = "3.49.5-eisop1"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:d0e1853a5be971c7716669339b3451237b7177ee334881517947514ecbd25725"
+scopes   = ["processor"]
+
+[[artifact]]
+name     = "io.github.eisop:dataflow-errorprone:jar:"
+version  = "3.49.5-eisop1"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:a3f53467156715459ec50d95927cfb16464afa13cd07181183e0d491918f38c4"
+scopes   = ["processor"]
+deps = [
+  "io.github.eisop:checker-qual:jar:@3.49.5-eisop1",
+]
+
+[[artifact]]
 name     = "io.github.erdtman:java-json-canonicalization:jar:"
 version  = "1.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:ed12a01f28d147898312963a1f704e90290b67a61f34fa3a761f41c134f4e691"
 scopes   = ["main"]
+
+[[artifact]]
+name     = "io.github.java-diff-utils:java-diff-utils:jar:"
+version  = "4.17"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:3e3b6e149bf5d091422689ad6fcc22baad503a52b1139a9baf250fb6de633024"
+scopes   = ["processor"]
 
 [[artifact]]
 name     = "io.grpc:grpc-api:jar:"
@@ -902,7 +1035,7 @@ name     = "javax.inject:javax.inject:jar:"
 version  = "1"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:91c77044a50c481636c32d916fd89c9118a72195390452c81065080f957de7ff"
-scopes   = ["provided"]
+scopes   = ["provided", "processor"]
 
 [[artifact]]
 name     = "net.bytebuddy:byte-buddy:jar:"
@@ -1466,7 +1599,17 @@ name     = "org.checkerframework:checker-qual:jar:"
 version  = "4.2.3"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:f868f731f6e37db3e1c2140d06016477989959a2d13fc5bed9c46760cffd5ba0"
-scopes   = ["main"]
+scopes   = ["main", "processor"]
+
+[[artifact]]
+name     = "org.checkerframework:dataflow-nullaway:jar:"
+version  = "4.2.3"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:0524cc55673ac10f08d74ca659f7a12c9ce74fba1120a61950c5011b843fb25e"
+scopes   = ["processor"]
+deps = [
+  "org.checkerframework:checker-qual:jar:@4.2.3",
+]
 
 [[artifact]]
 name     = "org.codehaus.mojo:animal-sniffer-annotations:jar:"
@@ -1537,6 +1680,23 @@ version  = "4.3.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:7c805f36129ea9fa42b696093b7ae1eb20bb6ccec65c8280d6f33db5609ca5e1"
 scopes   = ["provided"]
+
+[[artifact]]
+name     = "org.commonmark:commonmark-ext-gfm-tables:jar:"
+version  = "0.30.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:5e28b48e66f7697bee4dfeb4c8f8f08a84a2827d91b53bbd9bd5445e82d14bda"
+scopes   = ["processor"]
+deps = [
+  "org.commonmark:commonmark:jar:@0.30.0",
+]
+
+[[artifact]]
+name     = "org.commonmark:commonmark:jar:"
+version  = "0.30.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:090f0a758ac2f4f51aa86dff9dff0fdf7403666d0efd29f59886dc8e8b1eac53"
+scopes   = ["processor"]
 
 [[artifact]]
 name     = "org.eclipse.jgit:org.eclipse.jgit:jar:"
@@ -1766,7 +1926,7 @@ name     = "org.jspecify:jspecify:jar:"
 version  = "1.0.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:070d75f261fe4c5b8202508366715f7f2d4660f88c8ef7e6d3575e48c9683b66"
-scopes   = ["main", "provided", "test"]
+scopes   = ["main", "provided", "test", "processor"]
 
 [[artifact]]
 name     = "org.junit.jupiter:junit-jupiter-api:jar:"
@@ -1888,6 +2048,13 @@ version  = "9.10.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:ed825d10ab1399c8c0cb669e688cf0c8c82629b4c8399b58352b68e92ca10fcb"
 scopes   = ["main", "provided"]
+
+[[artifact]]
+name     = "org.pcollections:pcollections:jar:"
+version  = "5.0.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:d42da212e052cbeedfea5eb20641b74ee574bc02302c584a16718db5376fa92c"
+scopes   = ["processor"]
 
 [[artifact]]
 name     = "org.projectlombok:lombok:jar:"

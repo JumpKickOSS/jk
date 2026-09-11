@@ -225,7 +225,16 @@ tasks.register("checkGuardParity") {
     val catalog = layout.projectDirectory.file("buildSrc/src/main/kotlin/Guards.kt")
     val jkRules = layout.projectDirectory.file("jk-guards.toml")
     val exceptions = layout.projectDirectory.file("guard-parity.txt")
+    val nullMarking = layout.projectDirectory.file("buildSrc/src/main/kotlin/NullMarking.kt")
+    val manifests = layout.projectDirectory.files(
+        NullMarking.enforcedRoots.map { it.substringBefore("/src/") + "/jk.toml" }
+            + fileTree(layout.projectDirectory) {
+                include("*/*/jk.toml")
+                exclude("**/build/**", "**/target/**")
+            }.files.map { it.relativeTo(layout.projectDirectory.asFile).path })
     inputs.file(catalog).withPropertyName("catalog")
+    inputs.file(nullMarking).withPropertyName("nullMarking")
+    inputs.files(manifests).withPropertyName("manifests")
     inputs.files(jkRules).withPropertyName("jkRules")
     // The engine's record of the rules file it loaded (GuardsPresence.RULES_HASH_FILE under the
     // build output); an input only when it exists.
@@ -307,6 +316,23 @@ tasks.register("checkGuardParity") {
                     + "\n  A contributor runs `jk build`; a gate that enforces less than it claims"
                     + " is worse than no gate. Port the rule, or record in guard-parity.txt why the"
                     + " letter cannot live in both.")
+        }
+        // Nullness parity: the convention plugin enforces NullAway on exactly NullMarking.enforcedRoots;
+        // the jk side is a `[javac.plugins.ErrorProne]` table naming NullAway at error severity in the
+        // same module's jk.toml. A module on one list and not the other is a rule enforced by one build.
+        val nullAwayOn = Regex("""(?m)^\[javac\.plugins\.ErrorProne]""")
+        val nullAwayError = Regex(""""-Xep:NullAway:ERROR"""")
+        val gradleNull = NullMarking.enforcedRoots.map { it.substringBefore("/src/") }.toSortedSet()
+        val jkNull = manifests.files.filter { it.isFile }
+            .filter { f -> f.readText().let { nullAwayOn.containsMatchIn(it) && nullAwayError.containsMatchIn(it) } }
+            .map { it.parentFile.relativeTo(layout.projectDirectory.asFile).path }.toSortedSet()
+        val nullProblems = mutableListOf<String>()
+        (gradleNull - jkNull).forEach { nullProblems.add("$it: NullMarking.enforcedRoots lists it, its jk.toml has no [javac.plugins.ErrorProne] with -Xep:NullAway:ERROR") }
+        (jkNull - gradleNull).forEach { nullProblems.add("$it: jk.toml runs NullAway at error severity, NullMarking.enforcedRoots does not list it") }
+        if (nullProblems.isNotEmpty()) {
+            throw GradleException("nullness is enforced by one build and not the other —\n  "
+                    + nullProblems.joinToString("\n  ")
+                    + "\n  Add the module to both NullMarking.enforcedRoots and its jk.toml [javac] table, or to neither.")
         }
         stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
     }
