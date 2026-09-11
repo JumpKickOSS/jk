@@ -12,8 +12,10 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
@@ -109,9 +111,9 @@ public final class PomParser {
                 parseDependencies(childElement(childElement(project, "dependencyManagement"), "dependencies"), ctx);
 
         return new Pom(
-                substitute(groupId, ctx),
+                substituteOrNull(groupId, ctx),
                 substitute(artifactId, ctx),
-                substitute(version, ctx),
+                substituteOrNull(version, ctx),
                 substitute(packaging, ctx),
                 parent,
                 properties,
@@ -121,17 +123,17 @@ public final class PomParser {
     }
 
     /** {@code <distributionManagement><relocation>} — absent for all but renamed artifacts. */
-    private static Pom.Relocation parseRelocation(Element project, Map<String, String> ctx) {
+    private static Pom.@Nullable Relocation parseRelocation(Element project, Map<String, String> ctx) {
         Element rel = childElement(childElement(project, "distributionManagement"), "relocation");
         if (rel == null) return null;
         return new Pom.Relocation(
-                substitute(childText(rel, "groupId"), ctx),
-                substitute(childText(rel, "artifactId"), ctx),
-                substitute(childText(rel, "version"), ctx),
-                substitute(childText(rel, "message"), ctx));
+                substituteOrNull(childText(rel, "groupId"), ctx),
+                substituteOrNull(childText(rel, "artifactId"), ctx),
+                substituteOrNull(childText(rel, "version"), ctx),
+                substituteOrNull(childText(rel, "message"), ctx));
     }
 
-    private static Pom.Parent parseParent(Element project) {
+    private static Pom.@Nullable Parent parseParent(Element project) {
         Element parent = childElement(project, "parent");
         if (parent == null) return null;
         String g = required(parent, "groupId", "<parent>");
@@ -150,7 +152,7 @@ public final class PomParser {
         return props;
     }
 
-    private static List<Pom.Dep> parseDependencies(Element deps, Map<String, String> ctx) {
+    private static List<Pom.Dep> parseDependencies(@Nullable Element deps, Map<String, String> ctx) {
         if (deps == null) return List.of();
         List<Pom.Dep> result = new ArrayList<>();
         for (Element dep : childElements(deps, "dependency")) {
@@ -166,17 +168,17 @@ public final class PomParser {
             result.add(new Pom.Dep(
                     substitute(g, ctx),
                     substitute(a, ctx),
-                    substitute(v, ctx),
-                    substitute(scope, ctx),
+                    substituteOrNull(v, ctx),
+                    substituteOrNull(scope, ctx),
                     "true".equalsIgnoreCase(optionalStr),
-                    substitute(classifier, ctx),
-                    substitute(type, ctx),
+                    substituteOrNull(classifier, ctx),
+                    substituteOrNull(type, ctx),
                     exclusions));
         }
         return result;
     }
 
-    private static List<Pom.Dep.Exclusion> parseExclusions(Element exclusions) {
+    private static List<Pom.Dep.Exclusion> parseExclusions(@Nullable Element exclusions) {
         if (exclusions == null) return List.of();
         List<Pom.Dep.Exclusion> result = new ArrayList<>();
         for (Element e : childElements(exclusions, "exclusion")) {
@@ -189,6 +191,10 @@ public final class PomParser {
     // --- substitution ------------------------------------------------------
 
     private static String substitute(String raw, Map<String, String> ctx) {
+        return Objects.requireNonNull(substituteOrNull(raw, ctx));
+    }
+
+    private static @Nullable String substituteOrNull(@Nullable String raw, Map<String, String> ctx) {
         if (raw == null) return null;
         Matcher m = PROPERTY_REF.matcher(raw);
         if (!m.find()) return raw;

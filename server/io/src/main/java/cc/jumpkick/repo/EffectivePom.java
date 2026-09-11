@@ -4,6 +4,7 @@ package cc.jumpkick.repo;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A POM with its parent chain merged, BOM imports flattened, and {@code <dependencyManagement>}
@@ -20,7 +21,7 @@ public record EffectivePom(
         Map<String, String> properties,
         List<Pom.Dep> dependencies,
         List<Pom.Dep> managedDependencies,
-        Pom.Relocation relocation) {
+        Pom.@Nullable Relocation relocation) {
 
     /** Compatibility constructor for POMs with no {@code <distributionManagement>} redirect. */
     public EffectivePom(

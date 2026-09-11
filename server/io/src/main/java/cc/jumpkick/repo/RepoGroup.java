@@ -94,11 +94,11 @@ public final class RepoGroup {
      * @param exclusiveGroups parallel list of exclusive group patterns per repo; {@code null} or
      * shorter lists are treated as no bindings for those entries
      */
-    public RepoGroup(List<MavenRepo> repos, List<List<String>> exclusiveGroups) {
+    public RepoGroup(List<MavenRepo> repos, @Nullable List<List<String>> exclusiveGroups) {
         this(repos, exclusiveGroups, 0);
     }
 
-    private RepoGroup(List<MavenRepo> repos, List<List<String>> exclusiveGroups, int priorityCount) {
+    private RepoGroup(List<MavenRepo> repos, @Nullable List<List<String>> exclusiveGroups, int priorityCount) {
         Objects.requireNonNull(repos, "repos");
         if (repos.isEmpty()) {
             throw new IllegalArgumentException("RepoGroup must contain at least one repo");
@@ -238,7 +238,7 @@ public final class RepoGroup {
      * Return a process-memo hit only when its on-disk payload is still present; drop stale paths
      * (cache GC / manual wipe mid-process).
      */
-    private static RepoFetched liveHit(ConcurrentHashMap<String, RepoFetched> cache, String key) {
+    private static @Nullable RepoFetched liveHit(ConcurrentHashMap<String, RepoFetched> cache, String key) {
         RepoFetched hit = cache.get(key);
         if (hit == null) return null;
         Path path = hit.fetched().cachePath();
@@ -436,7 +436,7 @@ public final class RepoGroup {
     /** Abort supplier for fetch paths with no abort semantics (POM / metadata). */
     private static final BooleanSupplier NO_ABORT = () -> false;
 
-    private static List<List<String>> normalizeExclusive(int n, List<List<String>> raw) {
+    private static List<List<String>> normalizeExclusive(int n, @Nullable List<List<String>> raw) {
         List<List<String>> out = new ArrayList<>(n);
         for (int i = 0; i < n; i++) {
             if (raw != null

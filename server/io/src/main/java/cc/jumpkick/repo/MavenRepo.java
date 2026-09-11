@@ -27,6 +27,7 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
+import org.jspecify.annotations.Nullable;
 
 /**
  * One Maven-style repository: fetch into {@code repos/<name>/} (Maven layout + {@code .jk} memo).
@@ -53,13 +54,13 @@ public final class MavenRepo {
     private final boolean m2integration;
 
     /** TTL + conditional-GET cache for maven-metadata.xml; null for non-HTTP transports. */
-    private final MavenMetadataCache metadataCache;
+    private final @Nullable MavenMetadataCache metadataCache;
 
     /**
      * The HTTP client, retained for the small sidecar GETs that are not artifact fetches — currently the
      * {@code .sha1} that confirms an {@code ~/.m2} candidate. Null for non-HTTP transports.
      */
-    private final Http http;
+    private final @Nullable Http http;
 
     /** Artifacts pinned this run without an upstream checksum sidecar. */
     private final AtomicInteger missingUpstreamChecksums = new AtomicInteger();
@@ -131,7 +132,7 @@ public final class MavenRepo {
             RepoTransport transport,
             Cas cas,
             RepoCredential credential,
-            Http httpOrNull,
+            @Nullable Http httpOrNull,
             boolean m2integration) {
         return new MavenRepo(name, baseUrl, transport, cas, credential, httpOrNull, m2integration);
     }
@@ -147,7 +148,7 @@ public final class MavenRepo {
             RepoTransport transport,
             Cas cas,
             RepoCredential credential,
-            Http httpOrNull,
+            @Nullable Http httpOrNull,
             boolean m2integration) {
         this.name = Objects.requireNonNull(name, "name");
         this.baseUrl = normalize(Objects.requireNonNull(baseUrl, "baseUrl"));
@@ -289,7 +290,7 @@ public final class MavenRepo {
             boolean mirror,
             Leg leg,
             BooleanSupplier abort,
-            String expectedSha256)
+            @Nullable String expectedSha256)
             throws IOException, InterruptedException {
         if (SessionContext.current().config().offlineOr(false)) {
             return fetchOffline(coord, relativePath);
@@ -395,7 +396,9 @@ public final class MavenRepo {
             M2CompatWriter.MavenHashes hashes = M2CompatWriter.copyToM2AndHash(source, m2Target);
             M2CompatWriter.writeMavenSidecars(m2Target, hashes.sha1(), hashes.md5());
             M2CompatWriter.writeRemoteRepositories(
-                    m2Target.getParent(), name, m2Target.getFileName().toString());
+                    Objects.requireNonNull(m2Target.getParent()),
+                    name,
+                    m2Target.getFileName().toString());
             repoStore.writeMemo(relativePath, m2Target, sha256);
             return Optional.of(m2Target);
         } catch (IOException e) {
@@ -462,8 +465,10 @@ public final class MavenRepo {
      * merely non-empty.
      */
     private Optional<String> fetchSidecar(URI uri, String suffix, int hexLength) {
+        Http client = http;
+        if (client == null) return Optional.empty(); // a non-HTTP transport publishes no sidecar this way
         try {
-            var resp = http.get(URI.create(uri + suffix));
+            var resp = client.get(URI.create(uri + suffix));
             if (resp.statusCode() < 200 || resp.statusCode() >= 300) return Optional.empty();
             return Hashing.checksumFromSidecar(new String(resp.body(), StandardCharsets.UTF_8), hexLength);
         } catch (IOException | InterruptedException | RuntimeException e) {
@@ -676,7 +681,7 @@ public final class MavenRepo {
      * of such a URL was inert on the wire and live everywhere else.
      */
     private static URI normalize(URI uri) {
-        URI safe = SafeUri.withoutUserInfo(uri);
+        URI safe = Objects.requireNonNull(SafeUri.withoutUserInfo(uri));
         String s = safe.toString();
         if (!s.endsWith("/")) {
             return URI.create(s + "/");
@@ -690,18 +695,18 @@ public final class MavenRepo {
     public static final class ArtifactNotFoundException extends IOException {
         /** The GAV that was missing, when the thrower knows it; lets callers that walk a POM
          * chain tell "this dep's own POM is absent" from "an ancestor/BOM of it is absent". */
-        private final transient Coordinate coordinate;
+        private final transient @Nullable Coordinate coordinate;
 
         public ArtifactNotFoundException(String message) {
             this(message, null);
         }
 
-        public ArtifactNotFoundException(String message, Coordinate coordinate) {
+        public ArtifactNotFoundException(String message, @Nullable Coordinate coordinate) {
             super(message);
             this.coordinate = coordinate;
         }
 
-        public Coordinate coordinate() {
+        public @Nullable Coordinate coordinate() {
             return coordinate;
         }
     }

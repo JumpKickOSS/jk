@@ -22,6 +22,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Runtime classpath for a thin jar from its Maven POM and the local repo layout.
@@ -101,7 +102,7 @@ public final class PomRuntimeClasspath {
         return resolved;
     }
 
-    private static String resolveCacheKey(Path worker, Path pom, Path extra) {
+    private static @Nullable String resolveCacheKey(Path worker, Path pom, @Nullable Path extra) {
         try {
             return worker + "|" + Files.size(worker) + "|"
                     + Files.getLastModifiedTime(worker).toMillis()
@@ -179,7 +180,7 @@ public final class PomRuntimeClasspath {
         return storeRepos(storeRootOf(worker), extraStoreFor(worker));
     }
 
-    static RepoGroup storeRepos(Path storeRoot, Path extraStore) {
+    static RepoGroup storeRepos(Path storeRoot, @Nullable Path extraStore) {
         Path extra = extraStore == null ? null : extraStore.toAbsolutePath().normalize();
         String key = storeRoot.toAbsolutePath().normalize()
                 + "|"
@@ -195,7 +196,7 @@ public final class PomRuntimeClasspath {
         return built;
     }
 
-    private static RepoGroup buildStoreRepos(Path storeRoot, Path extraStore) {
+    private static RepoGroup buildStoreRepos(Path storeRoot, @Nullable Path extraStore) {
         Cas cas = new Cas(storeRoot);
         Http http = new Http();
         MavenRepo local = storeOnlyRepo(
@@ -249,13 +250,13 @@ public final class PomRuntimeClasspath {
         return new MavenRepo(name, url, http, cas, RepoCredential.ANONYMOUS, false);
     }
 
-    static Path siblingPom(Path jar) {
+    static @Nullable Path siblingPom(Path jar) {
         String name = jar.getFileName().toString();
         if (!name.endsWith(".jar")) return null;
         return jar.resolveSibling(name.substring(0, name.length() - 4) + ".pom");
     }
 
-    static Path pomFor(Path worker) {
+    static @Nullable Path pomFor(Path worker) {
         Path sibling = siblingPom(worker);
         if (sibling != null && Files.isRegularFile(sibling)) return sibling;
         Coordinate coord = coordinateOf(worker);
@@ -272,7 +273,7 @@ public final class PomRuntimeClasspath {
      * sandbox {@link JkDirs#store()} has no POM. {@code -Djk.host.store} from the test launcher
      * wins; otherwise the platform store with {@code JK_HOME} ignored.
      */
-    static Path extraStoreFor(Path worker) {
+    static @Nullable Path extraStoreFor(Path worker) {
         if (!isWorkspaceLayout(worker)) return null;
         Path extra = configuredHostStore();
         if (extra == null) extra = unsandboxedProductStore();
@@ -281,14 +282,14 @@ public final class PomRuntimeClasspath {
         return extra.equals(live) ? null : extra;
     }
 
-    static Path configuredHostStore() {
+    static @Nullable Path configuredHostStore() {
         String p = System.getProperty(HOST_STORE_PROPERTY);
         if (p == null || p.isBlank()) return null;
         Path path = Path.of(p).toAbsolutePath().normalize();
         return Files.isDirectory(path) ? path : null;
     }
 
-    static Path unsandboxedProductStore() {
+    static @Nullable Path unsandboxedProductStore() {
         Path path = JkDirs.of(
                         name -> {
                             if ("JK_HOME".equals(name)) return null;
@@ -319,7 +320,7 @@ public final class PomRuntimeClasspath {
         return JkDirs.store();
     }
 
-    public static Coordinate coordinateOf(Path jar) {
+    public static @Nullable Coordinate coordinateOf(Path jar) {
         Path abs = jar.toAbsolutePath().normalize();
         Path verDir = abs.getParent();
         Path artDir = verDir == null ? null : verDir.getParent();
@@ -389,7 +390,7 @@ public final class PomRuntimeClasspath {
 
     private static void walkEffective(
             EffectivePom pom,
-            Coordinate self,
+            @Nullable Coordinate self,
             EffectivePomBuilder builder,
             RepoGroup repos,
             WalkState state,
@@ -427,7 +428,8 @@ public final class PomRuntimeClasspath {
      * silently trades a resolution-time error for NoClassDefFoundError in the worker. Optional
      * deps are the exception: absent-if-unresolvable mirrors their fetch policy.
      */
-    private static Coordinate runtimeCoordinate(EffectivePom pom, Pom.Dep d, boolean rootPom, Set<String> exclusions) {
+    private static @Nullable Coordinate runtimeCoordinate(
+            EffectivePom pom, Pom.Dep d, boolean rootPom, Set<String> exclusions) {
         if (!runtimeDep(d, rootPom)) return null;
         String ga = d.groupId() + ":" + d.artifactId();
         if (exclusions.contains(ga)) return null;

@@ -5,6 +5,7 @@ import cc.jumpkick.model.Coordinate;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The parsed contents of a single Maven POM. Property substitution within the POM's own scope
@@ -12,15 +13,15 @@ import java.util.Objects;
  * (parent inheritance, BOM imports, external properties) are the resolver's job.
  */
 public record Pom(
-        String groupId,
+        @Nullable String groupId,
         String artifactId,
-        String version,
+        @Nullable String version,
         String packaging,
-        Parent parent,
+        @Nullable Parent parent,
         Map<String, String> properties,
         List<Dep> dependencies,
         List<Dep> managedDependencies,
-        Relocation relocation) {
+        @Nullable Relocation relocation) {
 
     /** Compatibility constructor for POMs with no {@code <distributionManagement>} redirect. */
     public Pom(
@@ -28,7 +29,7 @@ public record Pom(
             String artifactId,
             String version,
             String packaging,
-            Parent parent,
+            @Nullable Parent parent,
             Map<String, String> properties,
             List<Dep> dependencies,
             List<Dep> managedDependencies) {
@@ -56,7 +57,11 @@ public record Pom(
      * redirect stub, which has no classes and no dependencies. Any field may be absent, in which
      * case the requesting coordinate's own value carries over.
      */
-    public record Relocation(String groupId, String artifactId, String version, String message) {
+    public record Relocation(
+            @Nullable String groupId,
+            @Nullable String artifactId,
+            @Nullable String version,
+            @Nullable String message) {
 
         /** Resolve against the coordinate that was asked for, filling in whatever was omitted. */
         public Coordinate applyTo(Coordinate from) {
@@ -92,11 +97,11 @@ public record Pom(
     public record Dep(
             String groupId,
             String artifactId,
-            String version,
-            String scope,
+            @Nullable String version,
+            @Nullable String scope,
             boolean optional,
-            String classifier,
-            String type,
+            @Nullable String classifier,
+            @Nullable String type,
             List<Exclusion> exclusions) {
 
         public Dep {

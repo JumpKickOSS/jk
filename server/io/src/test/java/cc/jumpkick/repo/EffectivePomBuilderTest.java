@@ -20,6 +20,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -36,7 +37,7 @@ class EffectivePomBuilderTest {
     final LoopbackHttp http = new LoopbackHttp().concurrent();
 
     /** When set, invoked with the request path before a registered POM is served (may block). */
-    private volatile Consumer<String> beforeServe;
+    private volatile @Nullable Consumer<String> beforeServe;
 
     @BeforeEach
     void start() {

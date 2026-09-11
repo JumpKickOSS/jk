@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.repo;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -114,10 +115,11 @@ class PomRuntimeClasspathTest {
         Coordinate worker = Coordinate.of("cc.jumpkick", "jk-host-worker", "1.0.0");
         Coordinate dep = Coordinate.of("org.example", "lib", "1.0");
         Path workspaceJar = tmp.resolve("target/plugins/host-worker/jk-host-worker-1.0.0.jar");
-        Files.createDirectories(workspaceJar.getParent());
+        Path moduleOut = requireNonNull(workspaceJar.getParent());
+        Files.createDirectories(moduleOut);
         // A module output directory, not just a path with `target` in it: the compiled classes are
         // what make this a jar jk built rather than a jar that happens to sit under that name.
-        Files.createDirectories(workspaceJar.getParent().resolve("classes").resolve("main"));
+        Files.createDirectories(moduleOut.resolve("classes").resolve("main"));
         Files.writeString(workspaceJar, "workspace-worker");
         putJar(host, RepoArtifactResolver.JK_LOCAL, worker, "store-worker");
         putPom(host, RepoArtifactResolver.JK_LOCAL, worker, """

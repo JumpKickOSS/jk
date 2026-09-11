@@ -22,6 +22,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Builds {@link EffectivePom}s: parent-chain merge, BOM import inlining, version backfill. Depth
@@ -178,7 +179,7 @@ public final class EffectivePomBuilder {
             String processKey,
             Set<String> visiting,
             int depth,
-            CompletableFuture<EffectivePom> flight)
+            @Nullable CompletableFuture<EffectivePom> flight)
             throws IOException, InterruptedException {
         RepoGroup.RepoFetched hit = repos.tryFetchPom(coord)
                 .orElseThrow(() ->
@@ -201,7 +202,7 @@ public final class EffectivePomBuilder {
      * completing, or the generous {@link #JOIN_FALLBACK_MS} bound elapsed — in which case the
      * caller degrades to an independent in-line walk.
      */
-    private static EffectivePom awaitShared(String localKey, String processKey, Flight flight)
+    private static @Nullable EffectivePom awaitShared(String localKey, String processKey, Flight flight)
             throws IOException, InterruptedException {
         Thread self = Thread.currentThread();
         WAITING_ON.put(self, processKey);
@@ -279,13 +280,13 @@ public final class EffectivePomBuilder {
         List<Coordinate> bomCoordsOrdered = new ArrayList<>();
         for (Pom.Dep dep : child.managedDependencies()) {
             if (isBomImport(dep)) {
-                bomCoordsOrdered.add(Coordinate.of(dep.groupId(), dep.artifactId(), substitute(dep.version(), props)));
+                bomCoordsOrdered.add(bomCoordinate(dep, props));
             }
         }
         Map<String, EffectivePom> bomsByGav = buildBomImportsParallel(bomCoordsOrdered, visiting, depth + 1);
         for (Pom.Dep dep : child.managedDependencies()) {
             if (isBomImport(dep)) {
-                Coordinate bomCoord = Coordinate.of(dep.groupId(), dep.artifactId(), substitute(dep.version(), props));
+                Coordinate bomCoord = bomCoordinate(dep, props);
                 EffectivePom bom = bomsByGav.get(bomCoord.toGav());
                 if (bom == null) {
                     // Should not happen; fall back to serial expand.
@@ -431,7 +432,7 @@ public final class EffectivePomBuilder {
             // elapses), the entry is simply left out and merge()'s serial-expand fallback builds
             // the BOM in-line with this thread's visiting set — a real POM cycle then throws the
             // loud cycle diagnostic.
-            String bomKey = processKey(unique.get(e.getKey()));
+            String bomKey = processKey(Objects.requireNonNull(unique.get(e.getKey())));
             WAITING_ON.put(self, bomKey);
             try {
                 long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(JOIN_FALLBACK_MS);
@@ -491,11 +492,11 @@ public final class EffectivePomBuilder {
             out.add(new Pom.Dep(
                     substitute(d.groupId(), props),
                     substitute(d.artifactId(), props),
-                    substitute(d.version(), props),
-                    substitute(d.scope(), props),
+                    substituteOrNull(d.version(), props),
+                    substituteOrNull(d.scope(), props),
                     d.optional(),
-                    substitute(d.classifier(), props),
-                    substitute(d.type(), props),
+                    substituteOrNull(d.classifier(), props),
+                    substituteOrNull(d.type(), props),
                     d.exclusions()));
         }
         return out;
@@ -517,11 +518,24 @@ public final class EffectivePomBuilder {
                 dep.groupId(), dep.artifactId(), version, scope, dep.optional(), classifier, type, exclusions);
     }
 
-    private static boolean blank(String s) {
+    private static boolean blank(@Nullable String s) {
         return s == null || s.isBlank();
     }
 
+    /** The BOM a {@code <scope>import</scope>} entry names; Maven requires the version on an import. */
+    private static Coordinate bomCoordinate(Pom.Dep dep, Map<String, String> props) {
+        String version = dep.version();
+        if (version == null) {
+            throw new IllegalStateException("BOM import " + dep.groupId() + ":" + dep.artifactId() + " has no version");
+        }
+        return Coordinate.of(dep.groupId(), dep.artifactId(), substitute(version, props));
+    }
+
     private static String substitute(String raw, Map<String, String> ctx) {
+        return Objects.requireNonNull(substituteOrNull(raw, ctx));
+    }
+
+    private static @Nullable String substituteOrNull(@Nullable String raw, Map<String, String> ctx) {
         if (raw == null) return null;
         // Iterate up to a small fixed budget to resolve chained refs like ${a} → ${b} → "x".
         String current = raw;

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.repo;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -43,7 +44,7 @@ class PomParserTest {
 
         assertThat(pom.groupId()).isEqualTo("org.springframework.boot");
         assertThat(pom.version()).isEqualTo("3.2.0");
-        assertThat(pom.parent().artifactId()).isEqualTo("spring-boot-starter-parent");
+        assertThat(requireNonNull(pom.parent()).artifactId()).isEqualTo("spring-boot-starter-parent");
     }
 
     @Test

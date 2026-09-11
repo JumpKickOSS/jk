@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Gradle {@code .module} slice for KMP root redirects: pick the {@code java-runtime} variant for
@@ -127,7 +128,7 @@ public final class GradleModuleMetadata {
         return out;
     }
 
-    private static Redirect availableAt(Map<String, Object> variant) {
+    private static @Nullable Redirect availableAt(Map<String, Object> variant) {
         if (!(variant.get("available-at") instanceof Map<?, ?> at)) return null;
         Object group = at.get("group");
         Object module = at.get("module");
