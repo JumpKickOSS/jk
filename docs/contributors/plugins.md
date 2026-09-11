@@ -103,8 +103,9 @@ options    = ["preset=jpa"]
 when       = { classpath-has = "jakarta.persistence:jakarta.persistence-api" }
 
 [[contribute.step-dependency]]        # a tool your steps (and packagers) read — engine-fetched,
-artifact   = "aapt2"                  # handed to the worker by name, in every step/packager key
+artifact   = "aapt2"                  # handed to the worker by name, in the key of each step
 coordinate = "com.android.tools.build:aapt2:9.3.1-15703166:${host.os}"
+for-step   = "android-res"            # that reads it: the named step(s)/packager, else all
 
 [[contribute.command-dependency]]     # a tool ONLY your commands read (an adb) — same entry
 artifact      = "adb"                 # shape and rules, but provisioned when the command runs
@@ -115,6 +116,16 @@ sdk-path      = "adb"                 # nothing
 A tool both lanes need is declared once, as a `step-dependency` — commands receive both lanes,
 so one artifact may not sit in both (parse error). `[[contribute.provided-classpath]]` resolves
 against the step lane only: a command-only tool never joins a compile classpath.
+
+**Scope (`for-step`).** Without it, a step tool is fetched by, handed to, and keyed into every
+step and packager the plugin registers. `for-step = "<name>"` — or a list, `["android-dex",
+"android-r8"]` — names the steps or packagers that read the tool (a `TaskSpec.named(…)` or
+`PackagerSpec.replacingMainArtifact(…)` name): those fetch it and carry it in their action key;
+the others never see it, so a debug build does not materialize the release packager's tool and
+bumping one tool's version re-runs only the steps that fork it. A name the plugin does not
+register under the current config (a step it adds only for release) simply matches nothing.
+`[[contribute.provided-classpath]]` names its tool itself and is unaffected by scope; commands
+receive the whole lane regardless. Step-lane only — a command tool has no step to scope to.
 
 **Interpolation (closed set):** `${config.<key>}`, `${kotlin.version}`,
 `${project.group|name|version}`, `${host.os}`, `${host.os-arch}`.
