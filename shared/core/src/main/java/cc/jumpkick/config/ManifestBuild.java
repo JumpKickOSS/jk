@@ -118,16 +118,6 @@ public final class ManifestBuild {
                 if (known.length() > 0) known.append(", ");
                 known.append('[').append(m.table()).append(']');
             }
-            if ("project".equals(key)) {
-                throw new JkBuildParseException("[project] was removed — move its keys to the top level of jk.toml"
-                        + " (e.g. name = \"…\", group = \"…\", version = \"…\")");
-            }
-            if ("shrink".equals(key)) {
-                // The plugin was renamed; steer pre-rename projects the same way the
-                // `assembly = "shrink"` migration message does.
-                throw new JkBuildParseException(
-                        "[shrink] was renamed — use a [minified] table (and `assembly = \"minified\"`)");
-            }
             String fetchDetail = builtInFetchFailures.get(key);
             throw new JkBuildParseException("[" + key + "] is not owned by any installed plugin — add it under"
                     + " [plugins] (plugin tables installed here: " + (known.length() == 0 ? "none" : known) + ")"
@@ -185,6 +175,10 @@ public final class ManifestBuild {
         return new JkBuild.Dependencies(byScope);
     }
 
+    /** The keys {@code [native]} may carry. */
+    public static final List<String> NATIVE_KEYS =
+            List.of("enabled", "main", "name", "args", "graal", "graal-vendor", "graal-version", "metadata-repository");
+
     /**
      * Optional {@code [native]}: empty when the table is absent. Presence defaults to {@link
      * JkBuild.NativeMode#SUPPORTED} ({@code enabled = true}). {@code enabled = false} keeps the
@@ -194,8 +188,11 @@ public final class ManifestBuild {
     static Optional<JkBuild.NativeConfig> parseNativeConfig(TomlTable root) {
         TomlTable native_ = root.getTable("native");
         if (native_ == null) return Optional.empty();
-        if (native_.contains("main-class")) {
-            throw new JkBuildParseException("[native].main-class was renamed — use main");
+        for (String key : native_.keySet()) {
+            if (!NATIVE_KEYS.contains(key)) {
+                throw new JkBuildParseException(
+                        "[native] unknown key `" + key + "` — expected one of: " + String.join(", ", NATIVE_KEYS));
+            }
         }
         String mainClass = native_.getString("main");
         String name = native_.getString("name");
@@ -280,7 +277,6 @@ public final class ManifestBuild {
         TomlTable build = root.getTable("build");
         TomlTable test = root.getTable("test");
         TomlTable resolve = root.getTable("resolve");
-        if (test != null) rejectRenamedTestKeys(test);
         ResolvePolicies policies = resolvePolicies(resolve);
         if (build == null && test == null && resolve == null) return JkBuild.Build.EMPTY;
         if (build == null && test == null) {
@@ -319,23 +315,6 @@ public final class ManifestBuild {
                 policies.unmapped(),
                 List.of(),
                 List.of());
-    }
-
-    /**
-     * Dead/renamed [test] keys fail loudly: silently ignoring default-exclude-tags would run the
-     * slow/integration tests the config meant to exclude with no signal.
-     */
-    private static void rejectRenamedTestKeys(TomlTable test) {
-        if (test.contains("default-exclude-tags")) {
-            throw new JkBuildParseException("[test].default-exclude-tags was renamed to exclude-tags "
-                    + "(profiles and --exclude-tags replace it per run; `exclude-tags = []` clears)");
-        }
-        if (test.contains("include-tag") || test.contains("exclude-tag")) {
-            throw new JkBuildParseException("[test] tag keys are plural: include-tags / exclude-tags");
-        }
-        if (test.contains("guard-suite")) {
-            throw new JkBuildParseException("[test] guard suite list is plural: guard-suites");
-        }
     }
 
     /** The two {@code [resolve]} policies, at their defaults when the table or key is absent. */
@@ -524,15 +503,23 @@ public final class ManifestBuild {
      * sidecar silently unprobed.
      */
     static List<JkBuild.Sidecar> parseDevSidecars(TomlTable root) {
-        TomlTable dev = root.getTable("dev");
-        if (dev == null) return List.of();
+        Object rawDev = root.get(List.of("dev"));
+        if (rawDev == null) return List.of();
+        if (!(rawDev instanceof TomlTable dev)) {
+            throw new JkBuildParseException("[dev] must be a table: [dev.sidecars] web = { command = \"…\" }");
+        }
         for (String key : dev.keySet()) {
             if (!DEV_KEYS.contains(key)) {
                 throw new JkBuildParseException("[dev] unknown key `" + key + "` — expected sidecars");
             }
         }
-        TomlTable sidecars = dev.getTable("sidecars");
-        if (sidecars == null) return List.of();
+        Object rawSidecars = dev.get(List.of("sidecars"));
+        if (rawSidecars == null) return List.of();
+        if (!(rawSidecars instanceof TomlTable sidecars)) {
+            throw new JkBuildParseException(
+                    "[dev.sidecars] must be a table keyed by sidecar name, not an array: [dev.sidecars] web = {"
+                            + " command = \"…\" }");
+        }
         List<JkBuild.Sidecar> out = new ArrayList<>();
         for (String name : sidecars.keySet()) {
             String where = "[dev.sidecars." + name + "]";
@@ -574,7 +561,11 @@ public final class ManifestBuild {
                 throw new JkBuildParseException(where + ".env must be a table: env = { PORT = \"5173\" }");
             }
             for (String key : envTable.keySet()) {
-                env.put(key, scalar(envTable.get(List.of(key)), where + ".env." + key));
+                if (!(envTable.get(List.of(key)) instanceof String value)) {
+                    throw new JkBuildParseException(
+                            where + ".env." + key + " must be a string: env = { " + key + " = \"…\" }");
+                }
+                env.put(key, value);
             }
         }
         String ready = table.contains("ready") ? scalar(table.get(List.of("ready")), where + ".ready") : null;
@@ -636,21 +627,8 @@ public final class ManifestBuild {
     }
 
     /**
-     * {@code [test] env} — environment variables for each forked test JVM.
-     *
-     * <pre>
-     * [test]
-     * env = { JK_HOME = "${target}/test-jk-home", JK_HTTP_ENABLED = "false" }
-     * </pre>
-     *
-     * Values are stored exactly as written. {@code ${target}}, {@code ${module}} and {@code ${VAR}}
-     * are all expanded later, by {@link TestEnvValues}, because what they expand to depends on the
-     * consumer: the forked JVM wants real directories and real values, the run-tests cache key wants
-     * portable tokens and a digest. {@code [test] env} is one of the few positions where
-     * {@code ${VAR}} is legal at all — see {@link Interpolation}.
-     */
-    /**
-     * {@code [test] env} — an array whose element shape says which of the two statements it is.
+     * {@code [test] env} — environment for each forked test JVM, an array whose element shape says
+     * which of the two statements it is.
      *
      * <pre>{@code
      * env = [
@@ -658,6 +636,11 @@ public final class ManifestBuild {
      *   { TZ = "UTC", LANG = "C" },             # set these outright
      * ]
      * }</pre>
+     *
+     * <p>Values are stored exactly as written; {@code ${target}}, {@code ${module}} and {@code
+     * ${VAR}} are expanded later by {@link TestEnvValues}, because the forked JVM wants real values
+     * while the run-tests cache key wants portable tokens. This is one of the few positions where
+     * {@code ${VAR}} is legal at all — see {@link Interpolation}.
      *
      * <p>A bare string is a name and nothing else: it may not carry {@code =} or {@code ${…}}.
      * Both are rejected rather than interpreted, because both are how the same idea is spelled in

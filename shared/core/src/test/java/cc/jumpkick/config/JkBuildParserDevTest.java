@@ -90,6 +90,35 @@ class JkBuildParserDevTest {
     }
 
     @Test
+    void the_sidecars_table_is_keyed_by_name_not_an_array_of_tables() {
+        assertThatThrownBy(() -> JkBuildParser.parse(JkBuildParserFixtures.PROJECT + """
+
+                        [[dev.sidecars]]
+                        command = "npm run dev"
+                        """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[dev.sidecars] must be a table");
+        assertThatThrownBy(() -> JkBuildParser.parse(JkBuildParserFixtures.PROJECT + """
+
+                        [[dev]]
+                        sidecars = { web = { command = "npm run dev" } }
+                        """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[dev] must be a table");
+    }
+
+    @Test
+    void env_values_are_strings() {
+        assertThatThrownBy(() -> JkBuildParser.parse(JkBuildParserFixtures.PROJECT + """
+
+                        [dev.sidecars]
+                        web = { command = "npm run dev", env = { PORT = 5173 } }
+                        """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[dev.sidecars.web].env.PORT must be a string");
+    }
+
+    @Test
     void a_sidecar_has_one_probe_and_a_command() {
         assertThatThrownBy(() -> JkBuildParser.parse(JkBuildParserFixtures.PROJECT + """
 

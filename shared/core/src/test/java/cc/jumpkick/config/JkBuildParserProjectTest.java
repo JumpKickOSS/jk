@@ -34,29 +34,6 @@ class JkBuildParserProjectTest {
     }
 
     @Test
-    void dead_test_tag_keys_fail_with_a_migration_message() {
-        // silently ignoring the renamed keys would run the tests the config excluded.
-        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
-                        [test]
-                        default-exclude-tags = ["slow"]
-                        """))
-                .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("renamed to exclude-tags");
-        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
-                        [test]
-                        exclude-tag = ["slow"]
-                        """))
-                .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("plural");
-        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
-                        [test]
-                        guard-suite = ["test"]
-                        """))
-                .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("guard-suites");
-    }
-
-    @Test
     void platform_policy_survives_kotlin_plugins_rebuild() {
         // the kotlin-plugins fold used a ctor that hard-reset platformPolicy to ENFORCED.
         JkBuild parsed = JkBuildParser.parse(PROJECT + """

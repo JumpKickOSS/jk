@@ -148,15 +148,15 @@ class JkBuildParserApplicationTest {
     }
 
     @Test
-    void native_main_class_key_was_renamed() {
+    void native_rejects_an_unknown_key_by_name() {
         assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
 
                 [native]
                 main-class = "com.example.NativeMain"
                 """))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("[native].main-class")
-                .hasMessageContaining("use main");
+                .hasMessageContaining("[native] unknown key `main-class`")
+                .hasMessageContaining("main");
     }
 
     @Test
