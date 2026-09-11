@@ -113,7 +113,8 @@ final class EngineElection {
      */
     @Nullable
     Won win() throws IOException {
-        Files.createDirectories(paths.dir());
+        // The Unix socket is trusted on this directory's permissions alone: owner-only, always.
+        OwnerOnlyFiles.directory(paths.dir());
         // Startup mutex: serializes concurrent spawns/takeovers through bind + endpoint write.
         lockChannel = FileChannel.open(paths.lock(), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
         try {
@@ -198,6 +199,8 @@ final class EngineElection {
         } else {
             listener = ServerSocketChannel.open(StandardProtocolFamily.UNIX);
             listener.bind(UnixDomainSocketAddress.of(active.socket()));
+            // Defence in depth under the 0700 directory; bind itself follows the umask.
+            OwnerOnlyFiles.setOwnerOnly(active.socket(), "rw-------");
         }
         Files.writeString(active.pid(), pid + "\n" + startedAtMillis + "\n", StandardCharsets.UTF_8);
 

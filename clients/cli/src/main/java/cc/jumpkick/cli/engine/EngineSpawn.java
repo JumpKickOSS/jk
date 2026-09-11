@@ -23,6 +23,7 @@ import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.util.AotManifest;
 import cc.jumpkick.util.AotSettings;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.util.OwnerOnlyFiles;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.HelloAckFrame;
@@ -578,7 +579,7 @@ public final class EngineSpawn {
     private static Spawned spawn(EnginePaths.Paths paths, EngineTarget target, AotMode mode) throws IOException {
         EngineArtifact engine = target.engine();
         JkEngineConfig config = JkEngineConfig.resolve();
-        Files.createDirectories(paths.dir());
+        OwnerOnlyFiles.directory(paths.dir());
         rotateLog(paths.log());
         List<String> command = new ArrayList<>();
         // The child detaches ITSELF into its own session (setsid(2) via PosixDetach, first thing

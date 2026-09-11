@@ -13,8 +13,9 @@ import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Set;
 
 /**
- * Writes secret files as {@code 0600} inside a {@code 0700} directory. On non-POSIX filesystems
- * permission tightening is a best-effort no-op.
+ * Writes secret files as {@code 0600} inside a {@code 0700} directory, and creates the directories
+ * jk's own security rests on {@code 0700}. On non-POSIX filesystems permission tightening is a
+ * best-effort no-op.
  */
 public final class OwnerOnlyFiles {
 
@@ -49,6 +50,26 @@ public final class OwnerOnlyFiles {
     }
 
     private static final Set<PosixFilePermission> OWNER_ONLY = PosixFilePermissions.fromString("rw-------");
+    private static final Set<PosixFilePermission> OWNER_ONLY_DIR = PosixFilePermissions.fromString("rwx------");
+
+    /**
+     * Create {@code dir} (and any missing parents) {@code rwx------}, or tighten a pre-existing one
+     * that lets group or others in. Parents that already exist are left as they are.
+     *
+     * <p>The create itself carries the mode, so there is no umask-default window; a failed tighten
+     * is best-effort like every other chmod here, and {@code jk doctor} reports what remains loose.
+     * On non-POSIX filesystems this is a plain create.
+     */
+    public static void directory(Path dir) throws IOException {
+        if (Files.getFileAttributeView(dir, PosixFileAttributeView.class) == null) {
+            Files.createDirectories(dir);
+            return;
+        }
+        Files.createDirectories(dir, PosixFilePermissions.asFileAttribute(OWNER_ONLY_DIR));
+        if (!OWNER_ONLY_DIR.equals(Files.getPosixFilePermissions(dir))) {
+            setOwnerOnly(dir, "rwx------");
+        }
+    }
 
     /** Best-effort tighten POSIX permissions on {@code path}; a no-op where POSIX perms are unsupported. */
     public static void setOwnerOnly(Path path, String perms) {

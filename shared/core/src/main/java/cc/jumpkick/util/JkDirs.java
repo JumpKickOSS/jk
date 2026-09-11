@@ -3,6 +3,7 @@ package cc.jumpkick.util;
 
 import cc.jumpkick.host.Os;
 import cc.jumpkick.lock.ManifestPaths;
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Objects;
 import java.util.function.Function;
@@ -30,6 +31,11 @@ import org.jspecify.annotations.Nullable;
  * ones and putting them on another filesystem is a legitimate ask; each wins over {@code JK_HOME}.
  * Managed JDKs are the one thing deliberately outside the home tree: they share IntelliJ's root so
  * the IDE and jk see the same runtimes ({@link #jdksDir()}, {@code JK_JDKS_DIR}).
+ *
+ * <p>The home and {@code state} are owner-only ({@link #secureRoots()}): the engine socket under
+ * {@code state/engine} is trusted on directory permissions alone, so any process running as the
+ * user can drive the engine and nobody else can reach it. {@code store} and {@code cache} hold
+ * nothing secret and are left to the umask.
  *
  * <p>The roots are also the <strong>deletion units</strong>. {@code jk self nuke --store} cannot
  * remove a credential because {@code creds} is a sibling of {@code store} rather than a child, and
@@ -171,6 +177,21 @@ public final class JkDirs {
         String override = nonBlank(env.apply("JK_HOME"));
         if (override != null) return absoluteOverride("JK_HOME", override);
         return Path.of(userHome).resolve(HOME_DIR);
+    }
+
+    /**
+     * Create the home and {@code state} roots {@code rwx------}, tightening pre-existing looser
+     * ones. Best-effort: a root that cannot be created fails with a real error at the first write,
+     * and {@code jk doctor} reports a mode that would not tighten.
+     */
+    public void secureRoots() {
+        for (Path root : new Path[] {homeDir(), stateDir()}) {
+            try {
+                OwnerOnlyFiles.directory(root);
+            } catch (IOException ignored) {
+                // surfaces at the first write into the root
+            }
+        }
     }
 
     /** User config file: {@code <home>/config.toml}. */

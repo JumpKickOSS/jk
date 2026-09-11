@@ -25,6 +25,8 @@ import cc.jumpkick.wire.EnginePaths;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -35,7 +37,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk doctor} — host health checklist. Prints a wedge header plus one row per subsystem
- * (engine, dirs, jdk, lock, shell, tools) and a summary. {@code --output json} emits machine output.
+ * (engine, dirs, state, jdk, lock, shell, tools) and a summary. {@code --output json} emits machine output.
  */
 public final class DoctorCommand implements CliCommand {
 
@@ -71,6 +73,7 @@ public final class DoctorCommand implements CliCommand {
         // `--output json` performs the same repair the human view does instead of only reporting it.
         Check engine = checkEngine();
         Check cache = checkDirs();
+        Check state = checkStateMode();
         Check jdk = checkJdk();
         Check lock = checkLock();
         Check shell = checkShell();
@@ -82,38 +85,31 @@ public final class DoctorCommand implements CliCommand {
             toolRows = List.of();
             toolsError = e.getMessage();
         }
-        int healthy = 0, pruned = 0, verified = 0, drifted = 0, firstSeen = 0, empty = 0;
-        for (ToolRow row : toolRows) {
-            switch (row.kind()) {
-                case PRUNED -> pruned++;
-                case VERIFIED -> {
-                    healthy++;
-                    verified++;
-                }
-                case DRIFTED -> {
-                    healthy++;
-                    drifted++;
-                }
-                case FIRST_SEEN -> {
-                    healthy++;
-                    firstSeen++;
-                }
-                case EMPTY -> {
-                    healthy++;
-                    empty++;
-                }
-                case LINKED, OK -> healthy++;
-            }
-        }
+        Tally tally = Tally.of(toolRows);
+        int healthy = tally.healthy(), pruned = tally.pruned(), verified = tally.verified();
+        int drifted = tally.drifted(), firstSeen = tally.firstSeen(), empty = tally.empty();
 
         boolean hasFail = engine.status == Status.FAIL
                 || cache.status == Status.FAIL
+                || state.status == Status.FAIL
                 || jdk.status == Status.FAIL
                 || lock.status == Status.FAIL; // tools alone (including a scan error) never fails
 
         if (global.outputIsJson()) {
             CliOutput.out(reportJson(
-                    engine, cache, jdk, lock, shell, healthy, pruned, verified, drifted, firstSeen, empty, toolsError));
+                    engine,
+                    cache,
+                    state,
+                    jdk,
+                    lock,
+                    shell,
+                    healthy,
+                    pruned,
+                    verified,
+                    drifted,
+                    firstSeen,
+                    empty,
+                    toolsError));
             return hasFail ? 1 : 0;
         }
 
@@ -123,6 +119,7 @@ public final class DoctorCommand implements CliCommand {
 
         printCheck(engine, t);
         printCheck(cache, t);
+        printCheck(state, t);
         printCheck(jdk, t);
         printCheck(lock, t);
         printCheck(shell, t);
@@ -213,6 +210,29 @@ public final class DoctorCommand implements CliCommand {
             ToolRowKind kind,
             @Nullable String detail) {}
 
+    /** The tool-row counts the summary and the JSON report both print; every row but a pruned one is healthy. */
+    private record Tally(int healthy, int pruned, int verified, int drifted, int firstSeen, int empty) {
+
+        static Tally of(List<ToolRow> rows) {
+            int healthy = 0, pruned = 0, verified = 0, drifted = 0, firstSeen = 0, empty = 0;
+            for (ToolRow row : rows) {
+                if (row.kind() == ToolRowKind.PRUNED) {
+                    pruned++;
+                    continue;
+                }
+                healthy++;
+                switch (row.kind()) {
+                    case VERIFIED -> verified++;
+                    case DRIFTED -> drifted++;
+                    case FIRST_SEEN -> firstSeen++;
+                    case EMPTY -> empty++;
+                    default -> {}
+                }
+            }
+            return new Tally(healthy, pruned, verified, drifted, firstSeen, empty);
+        }
+    }
+
     private static Check checkEngine() {
         EnginePaths.Paths paths = EnginePaths.current();
         Path socket = EnginePaths.activeSocket(paths);
@@ -253,6 +273,39 @@ public final class DoctorCommand implements CliCommand {
                 + "G cache budget · store unbudgeted";
         return new Check(Status.OK, "dirs", detail);
     }
+
+    private static Check checkStateMode() {
+        return checkStateMode(JkDirs.state());
+    }
+
+    /**
+     * The engine socket under {@code <state>/engine} is trusted on directory permissions alone, so
+     * a state or engine directory that lets group or others in is a finding, with the chmod that
+     * closes it. Non-POSIX filesystems (Windows, where the loopback token gates the engine) are OK.
+     */
+    static Check checkStateMode(Path state) {
+        Path engine = state.resolve("engine");
+        List<String> loose = new ArrayList<>();
+        for (Path dir : List.of(state, engine)) {
+            if (!Files.isDirectory(dir)) continue;
+            try {
+                Set<PosixFilePermission> mode = Files.getPosixFilePermissions(dir);
+                if (!OWNER_ONLY_DIR.equals(mode)) loose.add(dir + " is " + PosixFilePermissions.toString(mode));
+            } catch (UnsupportedOperationException notPosix) {
+                return new Check(Status.OK, "state", "no POSIX modes on this filesystem");
+            } catch (IOException e) {
+                return new Check(Status.WARN, "state", "probe failed: " + e.getMessage());
+            }
+        }
+        if (loose.isEmpty()) return new Check(Status.OK, "state", state + " owner-only");
+        return new Check(
+                Status.FAIL,
+                "state",
+                String.join("; ", loose) + " — any local user can drive the engine socket; fix: chmod 700 " + state
+                        + " " + engine);
+    }
+
+    private static final Set<PosixFilePermission> OWNER_ONLY_DIR = PosixFilePermissions.fromString("rwx------");
 
     private static Check checkJdk() {
         try {
@@ -452,10 +505,11 @@ public final class DoctorCommand implements CliCommand {
         CliOutput.out(prefix + Theme.colorize(c.label, t.cyan()) + " — " + c.detail);
     }
 
-    /** The `--output json` report: the five checks, then the tool tallies and the scan error. */
+    /** The `--output json` report: the six checks, then the tool tallies and the scan error. */
     public static String reportJson(
             Check engine,
             Check cache,
+            Check state,
             Check jdk,
             Check lock,
             Check shell,
@@ -469,6 +523,7 @@ public final class DoctorCommand implements CliCommand {
         return JsonFields.object()
                 .token("engine", checkJson(engine))
                 .token("cache", checkJson(cache))
+                .token("state", checkJson(state))
                 .token("jdk", checkJson(jdk))
                 .token("lock", checkJson(lock))
                 .token("shell", checkJson(shell))

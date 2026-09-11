@@ -5,14 +5,21 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.testing.ShortTempDirs;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
+import org.junit.jupiter.api.io.TempDir;
 
 class JkDirsTest {
 
@@ -307,5 +314,41 @@ class JkDirsTest {
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> linux(Map.of("JK_JDKS_DIR", "relative")).jdksDir())
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    private static final Set<PosixFilePermission> OWNER_ONLY = PosixFilePermissions.fromString("rwx------");
+
+    /** The engine socket is trusted on these directories' modes alone, so they are never left to the umask. */
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void securing_the_roots_creates_the_home_and_state_owner_only(@TempDir Path tmp) throws Exception {
+        Path home = tmp.resolve("jk");
+        JkDirs dirs = linux(Map.of("JK_HOME", home.toString()));
+
+        dirs.secureRoots();
+
+        assertThat(Files.getPosixFilePermissions(home)).isEqualTo(OWNER_ONLY);
+        assertThat(Files.getPosixFilePermissions(home.resolve("state"))).isEqualTo(OWNER_ONLY);
+    }
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void securing_the_roots_tightens_a_pre_existing_755_home_and_leaves_the_store_alone(@TempDir Path tmp)
+            throws Exception {
+        Path home = tmp.resolve("jk");
+        Set<PosixFilePermission> loose = PosixFilePermissions.fromString("rwxr-xr-x");
+        for (Path dir : List.of(home, home.resolve("state"), home.resolve("store"))) {
+            Files.createDirectories(dir);
+            Files.setPosixFilePermissions(dir, loose);
+        }
+        JkDirs dirs = linux(Map.of("JK_HOME", home.toString()));
+
+        dirs.secureRoots();
+
+        assertThat(Files.getPosixFilePermissions(home)).isEqualTo(OWNER_ONLY);
+        assertThat(Files.getPosixFilePermissions(home.resolve("state"))).isEqualTo(OWNER_ONLY);
+        assertThat(Files.getPosixFilePermissions(home.resolve("store")))
+                .as("the store holds nothing secret")
+                .isEqualTo(loose);
     }
 }

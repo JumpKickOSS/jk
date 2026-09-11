@@ -156,15 +156,16 @@ class CommandJsonFrozenBytesTest {
         var warn = new DoctorCommand.Check(DoctorCommand.Status.WARN, "Cache", "large");
         var fail = new DoctorCommand.Check(DoctorCommand.Status.FAIL, "JDK", "missing \"25\"");
         assertThat(DoctorCommand.checkJson(fail)).isEqualTo("{\"status\":\"fail\",\"detail\":\"missing \\\"25\\\"\"}");
-        assertThat(DoctorCommand.reportJson(ok, warn, fail, ok, ok, 3, 1, 0, 0, 2, 0, null))
+        assertThat(DoctorCommand.reportJson(ok, warn, ok, fail, ok, ok, 3, 1, 0, 0, 2, 0, null))
                 .isEqualTo(
                         "{\"engine\":{\"status\":\"ok\",\"detail\":\"running\"},"
                                 + "\"cache\":{\"status\":\"warn\",\"detail\":\"large\"},"
+                                + "\"state\":{\"status\":\"ok\",\"detail\":\"running\"},"
                                 + "\"jdk\":{\"status\":\"fail\",\"detail\":\"missing \\\"25\\\"\"},"
                                 + "\"lock\":{\"status\":\"ok\",\"detail\":\"running\"},"
                                 + "\"shell\":{\"status\":\"ok\",\"detail\":\"running\"},"
                                 + "\"tools\":{\"healthy\":3,\"pruned\":1,\"verified\":0,\"drifted\":0,\"firstSeen\":2,\"empty\":0,\"error\":null}}");
-        assertThat(DoctorCommand.reportJson(ok, ok, ok, ok, ok, 0, 0, 0, 0, 0, 0, "scan failed"))
+        assertThat(DoctorCommand.reportJson(ok, ok, ok, ok, ok, ok, 0, 0, 0, 0, 0, 0, "scan failed"))
                 .endsWith("\"empty\":0,\"error\":\"scan failed\"}}");
     }
 }

@@ -28,6 +28,7 @@ These are current facts, not a promise that they will never change.
 |---------|----------|
 | **Client** | Native `jk` or the thin JVM launcher. Runs as you. Owns the terminal. Does not interpret plugin schemas. |
 | **Engine** | Resident JVM. Resolve, plan, cache, HTTP/MCP. Same user. Does **not** classload plugin code. |
+| **Engine socket** | POSIX: the engine socket is protected by the `0700` state directory; any process running as you can drive the engine. `~/.jk` and `~/.jk/state` are created owner-only and re-tightened on every `jk` run; `jk doctor` reports a mode that stayed loose. Windows: loopback TCP gated by an owner-only token. |
 | **Plugin workers** | Forked processes for compilers, tests, and first-party plugins. Same user. |
 | **`jk run` / `jk tool` / `jkx`** | Runs your app or an installed tool on the host, as you. |
 | **`jk/` or `.jk/` scripts** | Project-local generate/prep. Treated as code you trust. |
@@ -51,6 +52,7 @@ signing: [HTTP](../contributors/http.md), [Releases](../contributors/releases.md
 - Tokenless access to `/api/*` or `/mcp`
 - Path escape on tool install/uninstall or launcher names
 - Credential files readable by other users on POSIX
+- The engine socket or its state directory reachable by another local user on POSIX
 - Plugin code loading into the engine JVM
 - Anything that lets a project you did not intend to trust run code as you *without* you
   invoking `jk run`, `jk tool`, a worker, or a `jk/` / `.jk/` script

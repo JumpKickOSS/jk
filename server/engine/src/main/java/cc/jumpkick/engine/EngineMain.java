@@ -11,6 +11,7 @@ import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.util.AtomicWrites;
+import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.EnginePaths;
 import java.io.IOException;
 import java.lang.management.ManagementFactory;
@@ -86,6 +87,7 @@ public final class EngineMain {
         PosixDetach.intoOwnSession();
         TerminalSignals.ignoreInterruptAndHangup();
         try {
+            JkDirs.current().secureRoots();
             EnginePaths.Paths paths = EnginePaths.current();
             BuiltInPluginJars.registerMissingBuiltInFetcher();
             BuiltInPluginJars.install();

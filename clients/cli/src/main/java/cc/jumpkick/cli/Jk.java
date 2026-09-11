@@ -99,6 +99,9 @@ public final class Jk {
         // `--list` is an undocumented synonym for `--help`. Rewrite it before any
         // arg scan so both the config loader and the dispatcher only ever see `--help`.
         args = rewriteListToHelp(args);
+        // The home and state roots are owner-only before anything writes into them: the engine
+        // socket under state/ is trusted on those permissions alone.
+        JkDirs.current().secureRoots();
         // Resolve configuration first — the dispatcher's subsequent option parsing only
         // determines explicit flag values; defaults still need to come from the
         // env / project jk.toml / user / system layers via JkConfigLoader.

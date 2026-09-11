@@ -27,11 +27,14 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
 /**
@@ -305,5 +308,41 @@ class EngineElectionTest {
 
         assertThat(won.active().socket()).doesNotExist();
         assertThat(Files.readString(EnginePaths.endpoint(p)).trim()).isEqualTo(p.key() + ".gen7.sock");
+    }
+
+    /**
+     * The Unix socket carries no token: whoever can reach the file can drive the engine. A
+     * user-private-group host ({@code umask 002}) would otherwise leave the engine directory
+     * group-writable, so the election sets the modes itself rather than trusting the umask.
+     */
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void winning_leaves_the_engine_dir_and_socket_owner_only_whatever_the_umask() throws Exception {
+        Path state = tempDirs.create();
+        Files.setPosixFilePermissions(state, PosixFilePermissions.fromString("rwxrwxr-x"));
+        EnginePaths.Paths p = EnginePaths.resolve(state);
+
+        EngineElection.Won won = election(p, "aaaa", 4242).win();
+
+        assertThat(won).isNotNull();
+        closeLater(won.listener());
+        assertThat(Files.getPosixFilePermissions(p.dir())).isEqualTo(PosixFilePermissions.fromString("rwx------"));
+        assertThat(Files.getPosixFilePermissions(won.active().socket()))
+                .isEqualTo(PosixFilePermissions.fromString("rw-------"));
+    }
+
+    /** A directory a previous engine left loose is tightened, not merely reused. */
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void winning_tightens_a_pre_existing_loose_engine_dir() throws Exception {
+        EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
+        Files.createDirectories(p.dir());
+        Files.setPosixFilePermissions(p.dir(), PosixFilePermissions.fromString("rwxr-xr-x"));
+
+        EngineElection.Won won = election(p, "aaaa", 4242).win();
+
+        assertThat(won).isNotNull();
+        closeLater(won.listener());
+        assertThat(Files.getPosixFilePermissions(p.dir())).isEqualTo(PosixFilePermissions.fromString("rwx------"));
     }
 }
