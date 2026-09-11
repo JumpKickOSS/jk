@@ -40,7 +40,7 @@ public abstract class JkCliAction extends AnAction implements DumbAware {
             return;
         }
         File base = projectBase(project);
-        if (!JkBin.isJumpKickRoot(base)) {
+        if (base == null || !JkBin.isJumpKickRoot(base)) {
             balloon(project, "No jk.toml in project base — open a JumpKick project root", NotificationType.ERROR);
             return;
         }
@@ -100,7 +100,7 @@ public abstract class JkCliAction extends AnAction implements DumbAware {
                 return;
             }
             File base = projectBase(project);
-            if (!JkBin.isJumpKickRoot(base)) {
+            if (base == null || !JkBin.isJumpKickRoot(base)) {
                 balloon(project, "No jk.toml in project base — open a JumpKick project root", NotificationType.ERROR);
                 return;
             }

@@ -30,7 +30,7 @@ public final class JkProjectOpenActivity implements StartupActivity.DumbAware, D
     private static void maybePrompt(Project project) {
         if (project.isDisposed()) return;
         File base = JkCliAction.projectBase(project);
-        if (!JkBin.isJumpKickRoot(base)) return;
+        if (base == null || !JkBin.isJumpKickRoot(base)) return;
 
         boolean hasIdeaModules = new File(base, ".idea/modules.xml").isFile() || hasIml(base);
         Notification n = NotificationGroupManager.getInstance()

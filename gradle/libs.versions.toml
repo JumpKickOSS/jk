@@ -124,3 +124,5 @@ scala3-sbt-bridge      = { module = "org.scala-lang:scala3-sbt-bridge",         
 
 [plugins]
 graalvm-native = { id = "org.graalvm.buildtools.native", version.ref = "graalvm-native" }
+errorprone     = { id = "net.ltgt.errorprone",              version.ref = "errorprone-plugin" }
+nullaway       = { id = "net.ltgt.nullaway",                version.ref = "nullaway-plugin" }

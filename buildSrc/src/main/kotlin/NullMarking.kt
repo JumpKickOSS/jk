@@ -23,6 +23,7 @@ object NullMarking {
             "server/toolchain/src/main/java",
             "shared/dynamic-surface/src/main/java",
             "clients/cli-terminal/src/main/java",
+            "clients/intellij/src/main/java",
             "clients/cli/src/main/java",
             "shared/guard-api/src/main/java",
             "server/guard/src/main/java",
@@ -63,10 +64,5 @@ object NullMarking {
      * never applies the plugin looks the same as one with nothing to fix — so this is where the remaining work is
      * written down rather than inferred.
      */
-    val unenforcedModules: Map<String, String> =
-        mapOf(
-            "clients/intellij" to
-                "a standalone Gradle build the root build never compiles; unmeasured until it applies the " +
-                    "same plugins itself"
-        )
+    val unenforcedModules: Map<String, String> = emptyMap()
 }

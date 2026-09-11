@@ -1,8 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // JumpKick IntelliJ plugin — wire-only (jk CLI + BSP). Never depends on engine jars.
+import net.ltgt.gradle.errorprone.errorprone
+import net.ltgt.gradle.nullaway.nullaway
+
 plugins {
     id("java")
     id("org.jetbrains.intellij.platform") version "2.1.0"
+    alias(libs.plugins.errorprone)
+    alias(libs.plugins.nullaway)
 }
 
 group = "cc.jumpkick"
@@ -27,6 +32,17 @@ dependencies {
         instrumentationTools()
     }
     testImplementation(libs.junit4)
+    // Nullness is enforced here as in the root build: this build is standalone, so it names the
+    // same plugins and pins itself instead of applying `jk.nullmarked-conventions`.
+    compileOnly(libs.jspecify)
+    testCompileOnly(libs.jspecify)
+    errorprone(libs.errorprone.core)
+    errorprone(libs.nullaway)
+}
+
+nullaway {
+    onlyNullMarked = true
+    jspecifyMode = true
 }
 
 intellijPlatform {
@@ -71,6 +87,12 @@ tasks {
     }
     withType<JavaCompile>().configureEach {
         options.release.set(17)
+        options.compilerArgs.addAll(listOf("-Xmaxerrs", "10000"))
+        options.errorprone {
+            disableAllChecks = true
+            error("RequireExplicitNullMarking")
+            nullaway { error() }
+        }
     }
     // Packaging guard: plugin must not ship engine/server jars. On `buildPlugin`, not
     // `test`: `scripts/package-intellij.sh` runs `buildPlugin` and nothing else, so hanging the

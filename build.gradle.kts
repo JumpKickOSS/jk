@@ -322,7 +322,12 @@ tasks.register("checkGuardParity") {
         // same module's jk.toml. A module on one list and not the other is a rule enforced by one build.
         val nullAwayOn = Regex("""(?m)^\[javac\.plugins\.ErrorProne]""")
         val nullAwayError = Regex(""""-Xep:NullAway:ERROR"""")
-        val gradleNull = NullMarking.enforcedRoots.map { it.substringBefore("/src/") }.toSortedSet()
+        // A root whose module directory has no jk.toml is a Gradle-only module (clients/intellij is a
+        // standalone Gradle build the workspace never compiles), so the jk side cannot enforce it and
+        // the Gradle side alone is the whole answer. A root that HAS a jk.toml without the table is
+        // still a rule enforced by one build.
+        val gradleNull = NullMarking.enforcedRoots.map { it.substringBefore("/src/") }
+            .filter { layout.projectDirectory.file("$it/jk.toml").asFile.isFile }.toSortedSet()
         val jkNull = manifests.files.filter { it.isFile }
             .filter { f -> f.readText().let { nullAwayOn.containsMatchIn(it) && nullAwayError.containsMatchIn(it) } }
             .map { it.parentFile.relativeTo(layout.projectDirectory.asFile).path }.toSortedSet()
