@@ -34,7 +34,7 @@ class TestSuitesGuardNotASuiteTest {
         src("integration", "WireIT.java");
         assertThat(TestSuites.discover(module, false)).containsExactly(TestSuites.DEFAULT, "integration");
         assertThat(TestSuites.collectJavaSources(module, false, TestSuites.discover(module, false)))
-                .noneSatisfy(p -> assertThat(p.toString()).contains("guard"));
+                .noneSatisfy(p -> assertThat(module.relativize(p).toString()).contains("guard"));
         assertThat(TestSuites.hasGuardSuite(module, false)).isTrue();
         assertThat(TestSuites.guardSources(module, false))
                 .singleElement()
