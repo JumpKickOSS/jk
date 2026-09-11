@@ -349,7 +349,7 @@ final class MetricEvaluator implements Evaluator {
                 }
             }
         }
-        return finish(rule, units, out, allowUsed, ctx.facts(), ctx.module());
+        return finish(rule, units, out, allowUsed, ctx.facts(), ctx);
     }
 
     // ---- output -------------------------------------------------------------------------------
@@ -428,7 +428,7 @@ final class MetricEvaluator implements Evaluator {
     // ---- shared -------------------------------------------------------------------------------
 
     private static Evaluation finish(Rule rule, long units, List<Observation> out, Map<Allow, Boolean> allowUsed) {
-        return finish(rule, units, out, allowUsed, null, "");
+        return finish(rule, units, out, allowUsed, null, null);
     }
 
     /** Facts measures run per module: an allow naming another module's class is not stale here. */
@@ -438,12 +438,12 @@ final class MetricEvaluator implements Evaluator {
             List<Observation> out,
             Map<Allow, Boolean> allowUsed,
             @Nullable FactsIndex facts,
-            String module) {
+            @Nullable EvalContext ctx) {
         Map<String, Long> population = Map.of("units", units);
         List<String> stale = new ArrayList<>();
         for (var e : allowUsed.entrySet()) {
             if (e.getValue()) continue;
-            if (facts != null && !ForbidEvaluator.appliesHere(e.getKey(), facts, module)) continue;
+            if (facts != null && ctx != null && !ForbidEvaluator.appliesHere(e.getKey(), facts, ctx)) continue;
             stale.add(e.getKey().in());
         }
         if (!stale.isEmpty() && units > 0) {

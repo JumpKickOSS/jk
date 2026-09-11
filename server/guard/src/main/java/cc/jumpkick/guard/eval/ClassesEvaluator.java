@@ -103,7 +103,7 @@ final class ClassesEvaluator implements Evaluator {
         Map<String, Long> population = Map.of("classes", selected);
         List<String> stale = new ArrayList<>();
         for (var e : allowUsed.entrySet()) {
-            if (!e.getValue() && ForbidEvaluator.appliesHere(e.getKey(), facts, ctx.module())) {
+            if (!e.getValue() && ForbidEvaluator.appliesHere(e.getKey(), facts, ctx)) {
                 stale.add(e.getKey().in());
             }
         }

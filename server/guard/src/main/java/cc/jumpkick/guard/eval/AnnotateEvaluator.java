@@ -228,7 +228,7 @@ final class AnnotateEvaluator implements Evaluator {
                     "elements", examined, "classes", (long) facts.classes().size());
             List<String> stale = new ArrayList<>();
             for (var e : allowUsed.entrySet()) {
-                if (!e.getValue() && ForbidEvaluator.appliesHere(e.getKey(), facts, module))
+                if (!e.getValue() && ForbidEvaluator.appliesHere(e.getKey(), facts, ctx))
                     stale.add(e.getKey().in());
             }
             if (!stale.isEmpty() && examined > 0) {

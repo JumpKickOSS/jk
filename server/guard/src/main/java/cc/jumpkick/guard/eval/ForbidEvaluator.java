@@ -2,6 +2,7 @@
 package cc.jumpkick.guard.eval;
 
 import cc.jumpkick.guard.baseline.Observation;
+import cc.jumpkick.guard.extract.WorkspaceFacts;
 import cc.jumpkick.guard.facts.AnnotationFacts;
 import cc.jumpkick.guard.facts.CallSite;
 import cc.jumpkick.guard.facts.ClassFacts;
@@ -12,6 +13,8 @@ import cc.jumpkick.guard.facts.Fingerprints;
 import cc.jumpkick.guard.facts.MethodFacts;
 import cc.jumpkick.guard.rules.Allow;
 import cc.jumpkick.guard.rules.Rule;
+import java.io.IOException;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -236,7 +239,7 @@ final class ForbidEvaluator implements Evaluator {
             }
             List<String> stale = new ArrayList<>();
             for (var e : allowUsed.entrySet())
-                if (!e.getValue() && appliesHere(e.getKey(), facts, ctx.module()))
+                if (!e.getValue() && appliesHere(e.getKey(), facts, ctx))
                     stale.add(e.getKey().in());
             if (!stale.isEmpty() && !facts.classes().isEmpty()) {
                 return new Evaluation(
@@ -347,16 +350,48 @@ final class ForbidEvaluator implements Evaluator {
      * class the facts hold, or a package the facts hold. One that names another module's class is
      * not stale here — stale is judged where the exemption lives.
      */
-    static boolean appliesHere(Allow a, FactsIndex facts, String module) {
+    /**
+     * Whether this module's verdict answers for {@code a} being unused. An allow that names the
+     * module does; a class or package glob does only when every class it names lives here — a
+     * glob that also reaches into another module may be earning its keep there, and a module
+     * lane sees one module at a time.
+     */
+    static boolean appliesHere(Allow a, FactsIndex facts, EvalContext ctx) {
         String in = a.in();
+        String module = ctx.module();
         if (in.equals(module) || Rule.globMatches(in, module)) return true;
+        boolean here = false;
         for (ClassFacts c : facts.classList()) {
-            if (in.equals(c.binaryName()) || Rule.globMatches(in, c.binaryName())) return true;
-            if (in.endsWith(".**")) {
-                String p = in.substring(0, in.length() - 3);
-                if (c.packageName().equals(p) || c.packageName().startsWith(p + ".")) return true;
+            if (namesClass(in, c.binaryName(), c.packageName())) {
+                here = true;
+                break;
             }
-            if (in.endsWith(".*") && c.packageName().equals(in.substring(0, in.length() - 2))) return true;
+        }
+        return here && !namesAClassElsewhere(in, ctx);
+    }
+
+    private static boolean namesClass(String in, String binaryName, String packageName) {
+        if (in.equals(binaryName) || Rule.globMatches(in, binaryName)) return true;
+        if (in.endsWith(".**")) {
+            String p = in.substring(0, in.length() - 3);
+            return packageName.equals(p) || packageName.startsWith(p + ".");
+        }
+        return in.endsWith(".*") && packageName.equals(in.substring(0, in.length() - 2));
+    }
+
+    private static boolean namesAClassElsewhere(String in, EvalContext ctx) {
+        List<Path> modules;
+        try {
+            modules = WorkspaceModules.of(ctx.root());
+        } catch (IOException unreadable) {
+            return false;
+        }
+        for (var e : WorkspaceFacts.classModules(ctx.root(), modules).entrySet()) {
+            if (e.getValue().equals(ctx.module())) continue;
+            String binary = e.getKey().replace('/', '.');
+            int dot = binary.lastIndexOf('.');
+            String pkg = dot < 0 ? "" : binary.substring(0, dot);
+            if (namesClass(in, binary, pkg)) return true;
         }
         return false;
     }
