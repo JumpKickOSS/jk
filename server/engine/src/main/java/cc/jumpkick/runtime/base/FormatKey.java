@@ -39,7 +39,7 @@ public record FormatKey(
         String scalaVersion,
         // The sources the type index is built from; see #indexIdentity.
         List<Path> indexFiles,
-        Path workerJar) {
+        @Nullable Path workerJar) {
 
     private static final String VERSION = "format-key-v3";
 

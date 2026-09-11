@@ -4,6 +4,7 @@ package cc.jumpkick.giter8;
 import cc.jumpkick.model.Layout;
 import java.util.Locale;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Layout names and language-default order shared by the template index and blank scaffolder.
@@ -37,7 +38,7 @@ public final class Giter8ShortNames {
         return Optional.empty();
     }
 
-    public static String normalizeLayout(String layout) {
+    public static String normalizeLayout(@Nullable String layout) {
         if (layout == null || layout.isBlank()) return LAYOUT_TRADITIONAL;
         String l = layout.strip().toLowerCase(Locale.ROOT);
         return switch (l) {

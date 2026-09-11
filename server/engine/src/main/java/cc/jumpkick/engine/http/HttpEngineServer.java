@@ -126,7 +126,7 @@ public final class HttpEngineServer implements AutoCloseable {
             BuildJournal journal,
             Supplier<List<BuildMetrics.Entry>> metrics,
             Supplier<CacheSnapshot> cache,
-            Consumer<String> log) {
+            @Nullable Consumer<String> log) {
         this.config = config;
         this.staticContent = new StaticContent(webRoot, version);
         this.admission = new HttpAdmission(config);

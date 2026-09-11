@@ -246,7 +246,13 @@ public final class TaskForecaster {
      * already-installed JDK predicts a zero-cost {@code ensure-jdk} rather than a phantom download.
      */
     public static BuildPlanner.Inputs inputsFor(
-            Path dir, Path cache, int workers, Path jdksDir, String profile, boolean skipTests, boolean verbose) {
+            Path dir,
+            Path cache,
+            int workers,
+            @Nullable Path jdksDir,
+            @Nullable String profile,
+            boolean skipTests,
+            boolean verbose) {
         return inputsFor(dir, cache, workers, jdksDir, profile, skipTests, verbose, Set.of());
     }
 

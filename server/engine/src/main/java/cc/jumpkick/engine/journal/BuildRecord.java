@@ -184,11 +184,11 @@ public record BuildRecord(
             long buildNumber,
             String kind,
             String dir,
-            String coord,
-            String projectId,
+            @Nullable String coord,
+            @Nullable String projectId,
             long startedAt,
             String jkVersion,
-            String trigger) {
+            @Nullable String trigger) {
         return new BuildRecord(
                 null,
                 buildNumber,
@@ -342,16 +342,16 @@ public record BuildRecord(
         public Diag(
                 String severity,
                 String dir,
-                String step,
+                @Nullable String step,
                 String code,
                 String message,
-                String test,
-                String exceptionClass,
-                String module,
-                String engine,
-                String className,
-                String method,
-                String stack) {
+                @Nullable String test,
+                @Nullable String exceptionClass,
+                @Nullable String module,
+                @Nullable String engine,
+                @Nullable String className,
+                @Nullable String method,
+                @Nullable String stack) {
             this(
                     severity,
                     dir,
@@ -377,11 +377,11 @@ public record BuildRecord(
         public Diag(
                 String severity,
                 String dir,
-                String step,
+                @Nullable String step,
                 String code,
                 String message,
-                String test,
-                String exceptionClass) {
+                @Nullable String test,
+                @Nullable String exceptionClass) {
             this(severity, dir, step, code, message, test, exceptionClass, "", "", "", "", "");
         }
     }

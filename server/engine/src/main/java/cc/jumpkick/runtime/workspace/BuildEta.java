@@ -702,7 +702,7 @@ public final class BuildEta {
      * average, and never distinguish {@code build} vs {@code build:rebuild} for the schedule sum.
      * Success-only stats: failed/cancelled runs have abnormal durations.
      */
-    static long applyHistoryPrior(long base, BuildMetrics.Stats okHist) {
+    static long applyHistoryPrior(long base, BuildMetrics.@Nullable Stats okHist) {
         if (okHist == null || okHist.count() == 0) return base;
         if (base == 0) return okHist.avgMillis();
         // One-sided clamp for absurd over-estimates only. Require a credible history max so a
@@ -726,7 +726,7 @@ public final class BuildEta {
      * in the bare-project bucket. The under-read read as a modelling error for a long time, because
      * a clamp leaves no trace in the output.
      */
-    static long applyHistoryPrior(long base, HistoryMatch match) {
+    static long applyHistoryPrior(long base, @Nullable HistoryMatch match) {
         if (match == null) return base;
         if (!match.sameKind()) {
             BuildMetrics.Stats st = match.stats();

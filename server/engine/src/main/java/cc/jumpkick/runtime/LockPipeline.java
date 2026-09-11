@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import static java.util.Objects.requireNonNull;
+
 import cc.jumpkick.androidsdk.AndroidSdk;
 import cc.jumpkick.androidsdk.AndroidSdkInstaller;
 import cc.jumpkick.cache.Cas;
@@ -777,16 +779,18 @@ public final class LockPipeline {
      * Resolve the project's {@code scala} version selector to a concrete Scala 3 compiler release.
      * Returns null for a non-Scala project or when resolution can't complete.
      */
-    public static @Nullable String resolveScalaVersion(JkBuild effective, RepoGroup repos) {
+    public static @Nullable String resolveScalaVersion(JkBuild effective, @Nullable RepoGroup repos) {
         VersionSelector scala = effective.project().scala();
         if (scala == null) return null;
         return highestMatch(scala, repos, Coordinate.of("org.scala-lang", "scala3-compiler_3", "any"));
     }
 
-    private static @Nullable String highestMatch(VersionSelector selector, RepoGroup repos, Coordinate coord) {
+    private static @Nullable String highestMatch(
+            VersionSelector selector, @Nullable RepoGroup repos, Coordinate coord) {
         if (selector instanceof VersionSelector.Exact exact) {
             return exact.version();
         }
+        requireNonNull(repos, () -> "a floating selector needs the catalog: " + selector);
         List<String> available;
         try {
             available = repos.availableVersions(coord);

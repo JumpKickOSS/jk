@@ -238,7 +238,7 @@ public final class EngineServer implements AutoCloseable {
             JkEngineConfig config,
             @Nullable JkHttpConfig httpConfig,
             String version,
-            Consumer<String> log) {
+            @Nullable Consumer<String> log) {
         this(paths, config, httpConfig, version, BuildIdentity.buildId(), log);
     }
 

@@ -233,8 +233,8 @@ public final class BuildService {
             Path entryDir,
             Path cache,
             int workers,
-            Path jdksDir,
-            String profile,
+            @Nullable Path jdksDir,
+            @Nullable String profile,
             boolean skipTests,
             boolean verbose,
             boolean parallelTests,
@@ -303,8 +303,8 @@ public final class BuildService {
             ExplainPlan plan,
             Path cache,
             int workers,
-            Path jdksDir,
-            String profile,
+            @Nullable Path jdksDir,
+            @Nullable String profile,
             boolean skipTests,
             boolean verbose,
             int maxModuleConcurrency) {
@@ -463,7 +463,7 @@ public final class BuildService {
         BuildEta.logSeedQuality(seedMs, actualExecuteMs, dirtyModules);
     }
 
-    static long applyHistoryPrior(long base, BuildMetrics.Stats okHist) {
+    static long applyHistoryPrior(long base, BuildMetrics.@Nullable Stats okHist) {
         return BuildEta.applyHistoryPrior(base, okHist);
     }
 

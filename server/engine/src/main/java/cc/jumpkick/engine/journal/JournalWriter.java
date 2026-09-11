@@ -196,7 +196,7 @@ public final class JournalWriter {
     }
 
     /** {@code target/jk-results.md} at the invocation root. */
-    static @Nullable Path latestPath(String dir) {
+    static @Nullable Path latestPath(@Nullable String dir) {
         if (dir == null || dir.isBlank()) return null;
         try {
             return Path.of(dir).resolve(BuildLayout.TARGET).resolve(JkResultsMarkdown.FILE_NAME);

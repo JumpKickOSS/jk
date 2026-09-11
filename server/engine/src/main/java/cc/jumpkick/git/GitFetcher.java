@@ -35,7 +35,7 @@ public final class GitFetcher {
         this.backend = select(System.getenv(BACKEND_ENV), gitRoot, credentials);
     }
 
-    static GitBackend select(String mode, Path gitRoot, ForgeGitCredentials credentials) {
+    static GitBackend select(@Nullable String mode, Path gitRoot, ForgeGitCredentials credentials) {
         String m = (mode == null || mode.isBlank()) ? "auto" : mode.trim().toLowerCase(Locale.ROOT);
         return switch (m) {
             case "jgit" -> new JGitExtension(gitRoot, credentials);

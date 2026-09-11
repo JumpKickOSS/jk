@@ -45,9 +45,9 @@ public final class TestEffort {
             Map<String, Long> classWallsMs,
             Collection<String> classesToRun,
             int methodCount,
-            StepTimings timings,
+            @Nullable StepTimings timings,
             Collection<String> projectDirs,
-            BuildMetrics metrics,
+            @Nullable BuildMetrics metrics,
             int testWorkers) {
         long wallMs = wallMillis(
                 moduleDir, classWallsMs, classesToRun, methodCount, timings, projectDirs, metrics, testWorkers);
@@ -60,9 +60,9 @@ public final class TestEffort {
             Map<String, Long> classWallsMs,
             Collection<String> classesToRun,
             int methodCount,
-            StepTimings timings,
+            @Nullable StepTimings timings,
             Collection<String> projectDirs,
-            BuildMetrics metrics,
+            @Nullable BuildMetrics metrics,
             int testWorkers) {
         return wallMillis(
                 moduleDir,
@@ -89,9 +89,9 @@ public final class TestEffort {
             Map<String, Long> classWallsMs,
             Collection<String> classesToRun,
             int methodCount,
-            StepTimings timings,
+            @Nullable StepTimings timings,
             Collection<String> projectDirs,
-            BuildMetrics metrics,
+            @Nullable BuildMetrics metrics,
             int testWorkers,
             @Nullable Calibration cal) {
         long startup = suiteStartupMs(cal);
@@ -152,13 +152,16 @@ public final class TestEffort {
     }
 
     /** Hierarchical method-ms: module residual → project median → host absolute → calibration. */
-    public static double methodMs(String moduleDir, StepTimings timings, Collection<String> projectDirs) {
+    public static double methodMs(String moduleDir, @Nullable StepTimings timings, Collection<String> projectDirs) {
         return methodMs(moduleDir, timings, projectDirs, loadedCalibration());
     }
 
     /** {@link #methodMs} with the calibration rung supplied; {@code null} means fall to the baseline. */
     static double methodMs(
-            String moduleDir, StepTimings timings, Collection<String> projectDirs, @Nullable Calibration cal) {
+            String moduleDir,
+            @Nullable StepTimings timings,
+            Collection<String> projectDirs,
+            @Nullable Calibration cal) {
         if (timings != null) {
             var own = timings.perUnit(moduleDir == null ? "" : moduleDir, TaskNames.RUN_TESTS);
             if (own.isPresent() && own.getAsDouble() > 0) {

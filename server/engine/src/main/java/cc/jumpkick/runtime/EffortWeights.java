@@ -231,7 +231,7 @@ public final class EffortWeights {
      * not whole-build priors. Every caller picks its own fallback, so there is deliberately no
      * combiner that tries own-then-host for them.
      */
-    public static long stepOkAvgMillisOwn(BuildMetrics metrics, String dir, String step) {
+    public static long stepOkAvgMillisOwn(@Nullable BuildMetrics metrics, String dir, String step) {
         String key = metricsStepName(step);
         if (key.isEmpty()) return 0;
         // Prefer last successful wall (more recent than trimmed mean) when credible.
@@ -466,7 +466,7 @@ public final class EffortWeights {
             Set<Path> prereqs,
             Collection<String> runningSteps,
             BuildMetrics metrics,
-            StepTimings timings,
+            @Nullable StepTimings timings,
             Collection<String> projectDirs,
             Map<String, Integer> stepCounts) {
         return costFromRunningSteps(dir, prereqs, runningSteps, metrics, timings, projectDirs, stepCounts, 1);
@@ -481,7 +481,7 @@ public final class EffortWeights {
             Set<Path> prereqs,
             Collection<String> runningSteps,
             BuildMetrics metrics,
-            StepTimings timings,
+            @Nullable StepTimings timings,
             Collection<String> projectDirs,
             Map<String, Integer> stepCounts,
             int testWorkers) {

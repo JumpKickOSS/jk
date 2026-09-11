@@ -82,11 +82,11 @@ public final class BuildAccumulator {
     private volatile @Nullable Boolean success;
     private volatile int exitCode;
 
-    public BuildAccumulator(String kind, String dir, String coord, String trigger) {
+    public BuildAccumulator(String kind, String dir, @Nullable String coord, String trigger) {
         this(kind, dir, coord, trigger, null, false);
     }
 
-    public BuildAccumulator(String kind, String dir, String coord, String trigger, ChromeTimeline timeline) {
+    public BuildAccumulator(String kind, String dir, @Nullable String coord, String trigger, ChromeTimeline timeline) {
         this(kind, dir, coord, trigger, timeline, false);
     }
 

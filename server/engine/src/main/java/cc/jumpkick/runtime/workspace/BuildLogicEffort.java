@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Prices a project's {@code .jk/} build-logic scripts for the ETA.
@@ -88,7 +89,8 @@ public final class BuildLogicEffort {
      * <p>{@code 0} for the overwhelmingly common case of a module with no {@code .jk/}, which costs
      * one failed directory probe to establish.
      */
-    public static long moduleMillis(Path moduleDir, TaskForecast.Module m, BuildMetrics metrics) {
+    public static long moduleMillis(
+            @Nullable Path moduleDir, TaskForecast.@Nullable Module m, @Nullable BuildMetrics metrics) {
         if (moduleDir == null || m == null) return 0;
         Map<BuildLogicAnchor, List<BuildLogicScripts.ScriptTask>> present = scriptsIn(moduleDir);
         if (present.isEmpty()) return 0;
@@ -110,7 +112,7 @@ public final class BuildLogicEffort {
      * anything at all — the caller only asks when there is scheduled work — and {@code guard} runs
      * only when it was asked for.
      */
-    public static long rootMillis(Path entryDir, BuildMetrics metrics, boolean guardRequested) {
+    public static long rootMillis(@Nullable Path entryDir, @Nullable BuildMetrics metrics, boolean guardRequested) {
         if (entryDir == null) return 0;
         long total = 0;
         for (var e : scriptsIn(entryDir).entrySet()) {
@@ -127,7 +129,10 @@ public final class BuildLogicEffort {
      * nothing has timed the anchor on this host.
      */
     private static long millisFor(
-            Path dir, BuildLogicAnchor anchor, List<BuildLogicScripts.ScriptTask> scripts, BuildMetrics metrics) {
+            Path dir,
+            BuildLogicAnchor anchor,
+            List<BuildLogicScripts.ScriptTask> scripts,
+            @Nullable BuildMetrics metrics) {
         String task = taskOf(anchor);
         if (task.isEmpty()) return 0;
         long own = metrics == null

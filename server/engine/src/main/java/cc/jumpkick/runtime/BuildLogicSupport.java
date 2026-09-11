@@ -73,7 +73,7 @@ public final class BuildLogicSupport {
      * raw, so on Windows every line would otherwise keep its {@code \r}. A trailing blank from the
      * script's final newline adds nothing.
      */
-    static void emitLines(String scriptFile, String captured, Consumer<String> output) {
+    static void emitLines(String scriptFile, @Nullable String captured, @Nullable Consumer<String> output) {
         if (captured == null || captured.isBlank() || output == null) return;
         output.accept(scriptFile + ":");
         for (String line : captured.stripTrailing().split("\\R", -1)) {

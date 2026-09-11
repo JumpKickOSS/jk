@@ -55,7 +55,8 @@ public final class MarkdownTestReport {
      * JSON object from the protocol event's {@code throwable} field — {@code null} for a passing
      * test.
      */
-    public synchronized void recordFinished(String uniqueId, String display, long durationMs, String throwableJson) {
+    public synchronized void recordFinished(
+            String uniqueId, String display, long durationMs, @Nullable String throwableJson) {
         String className = classNameFrom(uniqueId);
         String failureMessage = null, failureStack = null;
         if (throwableJson != null) {

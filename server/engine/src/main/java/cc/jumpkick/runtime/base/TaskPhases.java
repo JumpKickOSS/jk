@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.run.BuildStage;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Wire stage keys for the journal's old-record fallback and for tests that compare string keys.
@@ -23,7 +24,7 @@ public final class TaskPhases {
     private TaskPhases() {}
 
     /** Wire stage key for a task name (empty/null → {@link #OTHER}). */
-    public static String of(String taskName) {
-        return BuildStage.ofTaskName(taskName).wireName();
+    public static String of(@Nullable String taskName) {
+        return BuildStage.ofTaskName(taskName == null ? "" : taskName).wireName();
     }
 }

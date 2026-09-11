@@ -169,7 +169,7 @@ public final class PluginAot {
     }
 
     /** True when this host JDK can record AOT caches (HotSpot 25+, not Graal). */
-    public static boolean hostEligible(Path javaHome) {
+    public static boolean hostEligible(@Nullable Path javaHome) {
         if (javaHome == null) return false;
         try {
             JdkId id = jdkId(javaHome);
