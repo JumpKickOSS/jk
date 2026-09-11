@@ -13,6 +13,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -28,7 +29,7 @@ class LibraryRegistryClientTest {
     private URI uri;
     private AtomicInteger hits;
     private volatile int forceStatus;
-    private volatile String lastIfNoneMatch;
+    private volatile @Nullable String lastIfNoneMatch;
 
     @BeforeEach
     void start() throws IOException {

@@ -24,10 +24,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.function.LongSupplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The live JumpKick engine install: jars under {@code <product-lib>/jk-engine/} and a pointer file
@@ -133,7 +135,7 @@ public final class EngineInstall {
      * @param binDir PATH install directory ({@code jk.old} / {@code jk.exe.old}); {@code null} skips
      * @param stateDir engine state (+ AOT); {@code null} skips AOT
      */
-    public List<Path> gc(Path binDir, Path stateDir) {
+    public List<Path> gc(@Nullable Path binDir, @Nullable Path stateDir) {
         List<Path> removed = new ArrayList<>();
         sweepRetiredJars(removed);
         sweepParkedClients(binDir, removed);
@@ -233,17 +235,18 @@ public final class EngineInstall {
         return wipeAotDirectory(aotDir, keepVersion);
     }
 
-    public static int wipeAotDirectory(Path aotDir) {
+    public static int wipeAotDirectory(@Nullable Path aotDir) {
         return wipeAotDirectory(aotDir, null);
     }
 
-    public static int wipeAotDirectory(Path aotDir, String keepVersion) {
+    public static int wipeAotDirectory(@Nullable Path aotDir, @Nullable String keepVersion) {
         return wipeAotDirectory(aotDir, keepVersion, null);
     }
 
-    static int wipeAotDirectory(Path aotDir, String keepVersion, List<Path> removedOut) {
+    static int wipeAotDirectory(@Nullable Path aotDir, @Nullable String keepVersion, @Nullable List<Path> removedOut) {
         if (aotDir == null || !Files.isDirectory(aotDir)) return 0;
-        boolean keepAny = keepVersion != null && !keepVersion.isBlank();
+        String kept = keepVersion == null || keepVersion.isBlank() ? null : keepVersion;
+        boolean keepAny = kept != null;
         int aotFiles = 0;
         List<String> removedPrimaries = new ArrayList<>();
         try (var stream = Files.list(aotDir)) {
@@ -254,14 +257,14 @@ public final class EngineInstall {
                     continue;
                 }
                 if (!isAotArtifactName(name)) continue;
-                if (keepAny && belongsToProductVersion(name, keepVersion)) continue;
+                if (kept != null && belongsToProductVersion(name, kept)) continue;
                 if (!tryDelete(p, removedOut)) continue;
                 boolean primary = isPrimaryAotCacheName(name);
                 if (primary) {
                     aotFiles++;
                     removedPrimaries.add(name);
                 } else if (AotCacheFiles.isMarker(name)) {
-                    String primaryName = AotCacheFiles.cacheOf(name);
+                    String primaryName = Objects.requireNonNull(AotCacheFiles.cacheOf(name));
                     if (isPrimaryAotCacheName(primaryName)) removedPrimaries.add(primaryName);
                 } else if (name.endsWith(AotCacheFiles.CACHE + AotCacheFiles.CONFIG)) {
                     String primaryName = name.substring(0, name.length() - AotCacheFiles.CONFIG.length());
@@ -551,7 +554,7 @@ public final class EngineInstall {
         }
     }
 
-    private static void sweepParkedClients(Path binDir, List<Path> removed) {
+    private static void sweepParkedClients(@Nullable Path binDir, List<Path> removed) {
         if (binDir == null || !Files.isDirectory(binDir)) return;
         try (DirectoryStream<Path> entries = Files.newDirectoryStream(binDir)) {
             for (Path p : entries) {
@@ -563,7 +566,7 @@ public final class EngineInstall {
         }
     }
 
-    private static boolean tryDelete(Path p, List<Path> removed) {
+    private static boolean tryDelete(@Nullable Path p, @Nullable List<Path> removed) {
         if (p == null) return false;
         try {
             if (!Files.exists(p)) return false;
@@ -576,7 +579,7 @@ public final class EngineInstall {
         }
     }
 
-    private void sweepSupersededAot(Path stateDir, List<Path> removed) {
+    private void sweepSupersededAot(@Nullable Path stateDir, List<Path> removed) {
         if (stateDir == null) return;
         String keep = currentInstall().map(Materialized::version).orElse(null);
         if (keep == null || keep.isBlank()) return;

@@ -11,6 +11,7 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Conditional-GET fetch of the jk library registry (the source {@code jk library update} pulls and
@@ -40,7 +41,7 @@ public final class LibraryRegistryClient {
         record Unchanged() implements Result {}
 
         /** A 200 response with a fresh body and (if the server sent one) its {@code ETag}. */
-        record Updated(byte[] body, String etag) implements Result {}
+        record Updated(byte[] body, @Nullable String etag) implements Result {}
     }
 
     /**
@@ -66,7 +67,7 @@ public final class LibraryRegistryClient {
         return new Result.Updated(response.body(), newEtag);
     }
 
-    private static String readEtag(Path etagFile) throws IOException {
+    private static @Nullable String readEtag(Path etagFile) throws IOException {
         if (!Files.isRegularFile(etagFile)) return null;
         String value = Files.readString(etagFile, StandardCharsets.UTF_8).strip();
         return value.isBlank() ? null : value;

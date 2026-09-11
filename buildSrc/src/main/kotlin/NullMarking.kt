@@ -16,6 +16,7 @@ object NullMarking {
             "shared/plugin-sdk/src/main/java",
             "shared/core/src/main/java",
             "shared/host/src/main/java",
+            "shared/client-io/src/main/java",
             "clients/cli/src/main/java",
             "shared/guard-api/src/main/java",
             "server/guard/src/main/java",
@@ -58,7 +59,6 @@ object NullMarking {
      */
     val unenforcedModules: Map<String, String> =
         mapOf(
-            "shared/client-io" to "84 findings in production, 52 in the suite; next in dependency order after host",
             "shared/toolchain-jdk" to
                 "79 findings in production, 63 in the suite; cc.jumpkick.jdk is already marked through host's " +
                     "package-info, so its nullable parameters are annotated where the CLI reads them",

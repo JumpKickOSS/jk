@@ -51,7 +51,7 @@ public final class ResolvedSecrets {
      * <p>Silently ignores a value shorter than {@link SecretRedactor#MIN_SECRET_LENGTH}, on the
      * same reasoning: below that a "credential" masks ordinary build text.
      */
-    public static void record(String value) {
+    public static void record(@Nullable String value) {
         recordFor(SessionContext.current().workingDir(), value);
     }
 

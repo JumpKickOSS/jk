@@ -3,6 +3,7 @@ package cc.jumpkick.repo;
 
 import cc.jumpkick.lock.RepoSource;
 import cc.jumpkick.model.RepositorySpec;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The lockfile {@code "<name>+<url>"} source-string format and named-remote vs local classification.
@@ -28,7 +29,7 @@ public final class RepoArtifactResolver {
      * or {@code null} when the source is malformed. Delegates to the shared {@link RepoSource}
      * parser (in {@code :core}), which owns the {@code <name>+<url>} split.
      */
-    public static String repoName(String source) {
+    public static @Nullable String repoName(String source) {
         return RepoSource.parse(source).name();
     }
 
@@ -38,7 +39,7 @@ public final class RepoArtifactResolver {
      * synthesized and never live in the Maven local repository. A user remote named {@code local}
      * is a normal named remote.
      */
-    public static boolean isNamedRemote(String repoName) {
+    public static boolean isNamedRemote(@Nullable String repoName) {
         return repoName != null
                 && !repoName.isEmpty()
                 && !JK_LOCAL.equals(repoName)

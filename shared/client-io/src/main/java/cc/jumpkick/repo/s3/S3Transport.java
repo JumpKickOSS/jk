@@ -14,9 +14,11 @@ import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@link RepoTransport} for {@code s3://} and S3-compatible stores (path-style URLs + {@link
@@ -43,7 +45,8 @@ public final class S3Transport implements RepoTransport {
     }
 
     /** Resolve endpoint/region/credentials from the AWS environment for an {@code s3://} URL. */
-    public static S3Transport fromEnv(Http http, URI s3Url, AwsCredentialChain chain, Function<String, String> env) {
+    public static S3Transport fromEnv(
+            Http http, URI s3Url, AwsCredentialChain chain, Function<String, @Nullable String> env) {
         return forS3(http, s3Url, ObjectStoreConfig.EMPTY, chain, env);
     }
 
@@ -54,10 +57,15 @@ public final class S3Transport implements RepoTransport {
      * s3.<region>.amazonaws.com}. Credentials: explicit config keys → chain → none (unsigned/public).
      */
     public static S3Transport forS3(
-            Http http, URI s3Url, ObjectStoreConfig cfg, AwsCredentialChain chain, Function<String, String> env) {
-        String region = firstNonBlank(
-                cfg.region(),
-                chain.resolve(cfg.region()).map(AwsCredentials::region).orElse(null),
+            Http http,
+            URI s3Url,
+            ObjectStoreConfig cfg,
+            AwsCredentialChain chain,
+            Function<String, @Nullable String> env) {
+        String region = Objects.requireNonNullElse(
+                firstNonBlank(
+                        cfg.region(),
+                        chain.resolve(cfg.region()).map(AwsCredentials::region).orElse(null)),
                 "us-east-1");
         Optional<AwsCredentials> creds = resolveCreds(cfg, chain, region);
         String endpointOverride = firstNonBlank(cfg.endpoint(), env.apply("AWS_ENDPOINT_URL"));
@@ -71,13 +79,18 @@ public final class S3Transport implements RepoTransport {
      * {@code gs://} via GCS's S3-compatible XML API ({@code storage.googleapis.com}, region {@code
      * auto}).
      */
-    public static S3Transport forGcs(Http http, URI gsUrl, AwsCredentialChain chain, Function<String, String> env) {
+    public static S3Transport forGcs(
+            Http http, URI gsUrl, AwsCredentialChain chain, Function<String, @Nullable String> env) {
         return forGcs(http, gsUrl, ObjectStoreConfig.EMPTY, chain, env);
     }
 
     /** {@link #forGcs(Http, URI, AwsCredentialChain, Function)} with explicit per-repo config. */
     public static S3Transport forGcs(
-            Http http, URI gsUrl, ObjectStoreConfig cfg, AwsCredentialChain chain, Function<String, String> env) {
+            Http http,
+            URI gsUrl,
+            ObjectStoreConfig cfg,
+            AwsCredentialChain chain,
+            Function<String, @Nullable String> env) {
         Optional<AwsCredentials> creds = resolveCreds(cfg, chain, "auto");
         String endpointOverride = firstNonBlank(cfg.endpoint(), env.apply("AWS_ENDPOINT_URL"));
         URI endpoint = endpointOverride != null
@@ -93,14 +106,19 @@ public final class S3Transport implements RepoTransport {
     private static Optional<AwsCredentials> resolveCreds(
             ObjectStoreConfig cfg, AwsCredentialChain chain, String region) {
         if (cfg.hasExplicitCredentials()) {
-            String token = (cfg.sessionToken() != null && !cfg.sessionToken().isBlank()) ? cfg.sessionToken() : null;
-            return Optional.of(new AwsCredentials(cfg.accessKey(), cfg.secretKey(), token, region));
+            String sessionToken = cfg.sessionToken();
+            String token = (sessionToken != null && !sessionToken.isBlank()) ? sessionToken : null;
+            return Optional.of(new AwsCredentials(
+                    Objects.requireNonNull(cfg.accessKey(), "accessKey"),
+                    Objects.requireNonNull(cfg.secretKey(), "secretKey"),
+                    token,
+                    region));
         }
         return chain.resolve(region)
                 .map(c -> new AwsCredentials(c.accessKeyId(), c.secretAccessKey(), c.sessionToken(), region));
     }
 
-    private static String firstNonBlank(String... values) {
+    private static @Nullable String firstNonBlank(@Nullable String... values) {
         for (String v : values) {
             if (v != null && !v.isBlank()) return v.strip();
         }

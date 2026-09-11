@@ -13,6 +13,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
@@ -34,7 +35,12 @@ import org.w3c.dom.Element;
  * mean one of them escapes and the other does not; two readers mean a republish either double-
  * escapes what the last one wrote or fails to see it at all.
  */
-public record MavenMetadata(String groupId, String artifactId, List<String> versions, String latest, String release) {
+public record MavenMetadata(
+        @Nullable String groupId,
+        String artifactId,
+        List<String> versions,
+        @Nullable String latest,
+        @Nullable String release) {
 
     public MavenMetadata {
         Objects.requireNonNull(artifactId, "artifactId");
@@ -42,7 +48,7 @@ public record MavenMetadata(String groupId, String artifactId, List<String> vers
     }
 
     /** A coordinate with nothing published yet — the starting point {@link #withVersion} builds on. */
-    public static MavenMetadata empty(String groupId, String artifactId) {
+    public static MavenMetadata empty(@Nullable String groupId, String artifactId) {
         return new MavenMetadata(groupId, artifactId, List.of(), null, null);
     }
 

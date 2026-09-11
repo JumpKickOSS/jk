@@ -1062,7 +1062,7 @@ public final class EffortWeights {
                 // it even succeeds offline. Reserving a per-artifact download here for cached deps
                 // was the bug that made `jk explain --force` predict tens of seconds of phantom fetch.
                 String hex = a.checksumHex();
-                if (!cas.contains(hex)) fetches++;
+                if (hex == null || !cas.contains(hex)) fetches++;
             }
             return fetches == 0 ? SKIP : fetches * perFetch;
         } catch (Exception e) {

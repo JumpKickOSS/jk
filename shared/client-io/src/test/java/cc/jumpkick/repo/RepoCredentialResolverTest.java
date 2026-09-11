@@ -16,6 +16,7 @@ import java.nio.file.Path;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -24,7 +25,7 @@ class RepoCredentialResolverTest {
     /** Identity lookup that can't resolve a login (offline / error). */
     private static final ForgeIdentity NO_IDENTITY = (endpoint, field, token) -> Optional.empty();
 
-    private static Function<String, String> env(Map<String, String> m) {
+    private static Function<String, @Nullable String> env(Map<String, String> m) {
         return m::get;
     }
 
@@ -34,7 +35,10 @@ class RepoCredentialResolverTest {
     }
 
     private static RepoCredentialResolver resolver(
-            Function<String, String> env, MavenSettings settings, RepoCredentialStore store, ForgeAuth forge) {
+            Function<String, @Nullable String> env,
+            MavenSettings settings,
+            RepoCredentialStore store,
+            ForgeAuth forge) {
         return new RepoCredentialResolver(env, settings, store, forge, NO_IDENTITY);
     }
 

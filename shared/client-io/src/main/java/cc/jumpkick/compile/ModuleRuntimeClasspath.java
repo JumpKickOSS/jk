@@ -13,6 +13,7 @@ import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.model.Workspace;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -21,6 +22,7 @@ import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -103,9 +105,9 @@ public final class ModuleRuntimeClasspath {
             rootManifest = JkBuildParser.parse(root.resolve(ManifestPaths.MANIFEST));
             if (!rootManifest.isWorkspaceRoot()) return List.of();
         }
+        Workspace workspace = Objects.requireNonNull(rootManifest.workspace(), "workspace root without [workspace]");
         List<JkBuild> out = new ArrayList<>();
-        for (String moduleName :
-                WorkspaceModules.expand(root, rootManifest.workspace().modules())) {
+        for (String moduleName : WorkspaceModules.expand(root, workspace.modules())) {
             Path unitDir = root.resolve(moduleName);
             Path manifest = unitDir.resolve(ManifestPaths.MANIFEST);
             if (!Files.isRegularFile(manifest)) continue;

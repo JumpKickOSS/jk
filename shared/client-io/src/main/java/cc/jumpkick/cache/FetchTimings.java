@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.locks.ReentrantLock;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Host-wide remote artifact fetch durations for ETA (CAS misses). Successful network fetches only
@@ -25,7 +26,7 @@ public final class FetchTimings {
     static final int MAX_SAMPLES = 200;
 
     private static final ReentrantLock LOCK = new ReentrantLock();
-    private static volatile List<Long> memo;
+    private static volatile @Nullable List<Long> memo;
 
     private FetchTimings() {}
 
@@ -100,9 +101,11 @@ public final class FetchTimings {
         if (m != null) return m;
         LOCK.lock();
         try {
-            if (memo != null) return memo;
-            memo = List.copyOf(loadUnlocked());
-            return memo;
+            List<Long> loaded = memo;
+            if (loaded != null) return loaded;
+            loaded = List.copyOf(loadUnlocked());
+            memo = loaded;
+            return loaded;
         } finally {
             LOCK.unlock();
         }

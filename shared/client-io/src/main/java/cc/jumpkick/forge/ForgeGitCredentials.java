@@ -3,6 +3,7 @@ package cc.jumpkick.forge;
 
 import java.net.URI;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * HTTP git credentials from forge auth tokens. GitHub/Gitea: token as username; GitLab:
@@ -24,7 +25,7 @@ public final class ForgeGitCredentials {
      * Resolve {@code {username, password}} for a remote, or {@code null} when auth isn't applicable
      * (non-HTTP, unknown host, or no stored token).
      */
-    public String[] resolveCredentials(String remoteUrl) {
+    public String @Nullable [] resolveCredentials(String remoteUrl) {
         return credentials(remoteUrl, forgeAuth).orElse(null);
     }
 

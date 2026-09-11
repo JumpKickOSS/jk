@@ -11,6 +11,7 @@ import cc.jumpkick.repo.RepoArtifactStore;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -139,11 +140,11 @@ class ClasspathResolverTest {
         return new Lockfile(Lockfile.CURRENT_VERSION, "jk test", Lockfile.RESOLUTION_ALGORITHM, List.of(artifacts));
     }
 
-    private static Lockfile.Artifact pkg(String module, String version, String checksum) {
+    private static Lockfile.Artifact pkg(String module, String version, @Nullable String checksum) {
         return pkg(module, version, checksum, List.of());
     }
 
-    private static Lockfile.Artifact pkg(String module, String version, String checksum, List<String> deps) {
+    private static Lockfile.Artifact pkg(String module, String version, @Nullable String checksum, List<String> deps) {
         String c = checksum == null || checksum.startsWith("sha256:") || checksum.length() != 64
                 ? checksum
                 : "sha256:" + checksum;

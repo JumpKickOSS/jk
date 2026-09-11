@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.locks.ReentrantLock;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Host-wide atomized lock timings for ETA (survives {@code jk clean}).
@@ -49,7 +50,7 @@ public final class LockTimings {
     public static final int COLD_PACKAGES_PER_ROOT = 10;
 
     private static final ReentrantLock LOCK = new ReentrantLock();
-    private static volatile Snapshot memo;
+    private static volatile @Nullable Snapshot memo;
 
     private LockTimings() {}
 
@@ -178,9 +179,11 @@ public final class LockTimings {
         if (m != null) return m;
         LOCK.lock();
         try {
-            if (memo != null) return memo;
-            memo = loadUnlocked();
-            return memo;
+            Snapshot loaded = memo;
+            if (loaded != null) return loaded;
+            loaded = loadUnlocked();
+            memo = loaded;
+            return loaded;
         } finally {
             LOCK.unlock();
         }

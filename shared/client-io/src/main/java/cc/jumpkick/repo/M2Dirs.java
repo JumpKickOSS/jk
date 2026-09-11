@@ -36,7 +36,7 @@ public final class M2Dirs {
      * {@code ~/.m2} is never written — so the lower-precedence steps are only reachable through
      * this entry point.
      */
-    static Path localRepository(String override) {
+    static Path localRepository(@Nullable String override) {
         String prop = System.getProperty("jk.m2.local");
         if (prop != null && !prop.isBlank()) return Path.of(prop.trim());
         if (override != null && !override.isBlank()) return Path.of(override.trim());
@@ -48,7 +48,7 @@ public final class M2Dirs {
     }
 
     /** Top-level {@code <localRepository>} only; null when missing or unusable. */
-    static Path settingsLocalRepository() {
+    static @Nullable Path settingsLocalRepository() {
         Path settings = settingsXml();
         if (settings == null) return null;
         StampedMemo.FileStamp stamp = StampedMemo.FileStamp.of(settings);
@@ -95,7 +95,7 @@ public final class M2Dirs {
     }
 
     /** {@code jk.m2.settings} (tests) or {@code ~/.m2/settings.xml}. */
-    private static Path settingsXml() {
+    private static @Nullable Path settingsXml() {
         String prop = System.getProperty("jk.m2.settings");
         if (prop != null && !prop.isBlank()) return Path.of(prop.trim());
         String home = System.getProperty("user.home");

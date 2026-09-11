@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.http;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.net.URI;
@@ -47,7 +48,8 @@ class SafeUriTest {
                 .as("nothing to strip — the same instance, not a re-encoding")
                 .isSameAs(clean);
 
-        URI stripped = SafeUri.withoutUserInfo(URI.create("https://alice:pw@nexus.example.com/repo/a%2Bb/x.jar"));
+        URI stripped = requireNonNull(
+                SafeUri.withoutUserInfo(URI.create("https://alice:pw@nexus.example.com/repo/a%2Bb/x.jar")));
         assertThat(stripped.toString())
                 .as("percent-encoding survives: no decode/re-encode round trip")
                 .isEqualTo("https://nexus.example.com/repo/a%2Bb/x.jar");

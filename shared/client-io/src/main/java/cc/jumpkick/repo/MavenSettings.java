@@ -7,6 +7,7 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Reads {@code <server>} credentials from Maven's {@code ~/.m2/settings.xml} so teams already on
@@ -27,7 +28,8 @@ public final class MavenSettings {
     }
 
     /** A server entry: a username/password keyed by repository id. */
-    public record Server(String id, String username, String password) {}
+    public record Server(
+            String id, @Nullable String username, @Nullable String password) {}
 
     public static MavenSettings empty() {
         return new MavenSettings(Map.of());
@@ -74,7 +76,7 @@ public final class MavenSettings {
     }
 
     /** Text of the first direct child element named {@code tag}, or null. */
-    private static String childText(MinimalXml.Element parent, String tag) {
+    private static @Nullable String childText(MinimalXml.Element parent, String tag) {
         return parent.element(tag).map(MinimalXml.Element::text).orElse(null);
     }
 }

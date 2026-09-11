@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.forge;
 
+import org.jspecify.annotations.Nullable;
+
 /**
  * The device-code grant's first-response payload (RFC 8628 §3.2). Handed to the caller's prompt
  * callback so the UI can show {@link #userCode()} and point the user at {@link #verificationUri()}
@@ -10,6 +12,6 @@ public record DeviceCode(
         String deviceCode,
         String userCode,
         String verificationUri,
-        String verificationUriComplete, // may be null; provider-optional
+        @Nullable String verificationUriComplete, // provider-optional
         int interval,
         int expiresIn) {}

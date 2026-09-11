@@ -4,6 +4,7 @@ package cc.jumpkick.forge;
 import java.util.Optional;
 import java.util.function.Function;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Token for a {@code (provider, host)}: {@code JK_<KIND>_TOKEN} → ecosystem env → native CLI →
@@ -13,7 +14,7 @@ import lombok.RequiredArgsConstructor;
 public final class ForgeAuth {
 
     private final TokenStore store;
-    private final Function<String, String> env;
+    private final Function<String, @Nullable String> env;
     private final CliTokenProbe cliProbe;
 
     public ForgeAuth() {
@@ -24,7 +25,7 @@ public final class ForgeAuth {
      * Steps 1–4: resolve a token without ever prompting. Returns empty when nothing is configured and
      * the caller should fall back to an interactive login.
      */
-    public Optional<ResolvedToken> resolveSilently(ForgeKind kind, String host) {
+    public Optional<ResolvedToken> resolveSilently(ForgeKind kind, @Nullable String host) {
         // 1. jk's own override
         String jk = nonBlank(env.apply(kind.jkEnvVar()));
         if (jk != null) return Optional.of(new ResolvedToken(jk, TokenSource.JK_ENV));
@@ -57,14 +58,14 @@ public final class ForgeAuth {
      * Resolve the effective host: explicit value wins, else the provider's default. Providers without
      * a default (Gitea/Forgejo) require one.
      */
-    public static String resolveHost(ForgeKind kind, String host) {
+    public static String resolveHost(ForgeKind kind, @Nullable String host) {
         String h = nonBlank(host);
         if (h != null) return ForgeKind.normalizeHost(h);
         return kind.defaultHost()
                 .orElseThrow(() -> new AuthException(kind.displayName() + " has no default host — pass --host."));
     }
 
-    private static String nonBlank(String s) {
+    private static @Nullable String nonBlank(@Nullable String s) {
         return (s == null || s.isBlank()) ? null : s.strip();
     }
 }

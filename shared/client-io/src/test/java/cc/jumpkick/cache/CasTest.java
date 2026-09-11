@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cache;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -132,8 +133,10 @@ class CasTest {
 
         // We must look it up by the original hash to trigger verification.
         String originalHex = path.getFileName().toString();
-        String expected = path.getParent().getParent().getFileName().toString()
-                + path.getParent().getFileName().toString()
+        String expected = requireNonNull(requireNonNull(path.getParent()).getParent())
+                        .getFileName()
+                        .toString()
+                + requireNonNull(path.getParent()).getFileName().toString()
                 + originalHex;
         assertThatThrownBy(() -> cas.read(expected))
                 .isInstanceOf(IOException.class)

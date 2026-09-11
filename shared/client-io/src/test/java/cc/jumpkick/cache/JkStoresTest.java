@@ -39,11 +39,11 @@ class JkStoresTest {
     void cache_cas_is_rooted_at_the_cache_dir(@TempDir Path tmp) {
         Path cache = tmp.resolve("cache");
         assertThat(JkStores.cacheCas(cache).root()).isEqualTo(cache);
+        // a blob sits three levels below the digest directory
         assertThat(JkStores.cacheCas(cache)
                         .pathFor("abcd0123")
-                        .getParent()
-                        .getParent()
-                        .getParent())
+                        .resolve("../../..")
+                        .normalize())
                 .isEqualTo(cache.resolve("sha256"));
     }
 }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 plugins {
-    id("jk.java-conventions")
+    id("jk.nullmarked-conventions")
 }
 
 description = "jk client I/O: plain-JDK HTTP, forge auth, repository credentials and transports, " +

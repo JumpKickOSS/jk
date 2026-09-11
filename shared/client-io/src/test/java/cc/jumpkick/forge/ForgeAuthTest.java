@@ -9,12 +9,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class ForgeAuthTest {
 
-    private static Function<String, String> env(Map<String, String> m) {
+    private static Function<String, @Nullable String> env(Map<String, String> m) {
         return m::get;
     }
 

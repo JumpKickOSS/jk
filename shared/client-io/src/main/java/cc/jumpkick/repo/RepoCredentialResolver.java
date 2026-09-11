@@ -10,9 +10,11 @@ import cc.jumpkick.forge.ForgeKind;
 import cc.jumpkick.forge.ResolvedToken;
 import java.net.URI;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Resolves {@link RepoCredential}: inline → env → {@code jk repo login} store → Maven settings →
@@ -21,7 +23,7 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public final class RepoCredentialResolver {
 
-    private final Function<String, String> env;
+    private final Function<String, @Nullable String> env;
     private final MavenSettings settings;
     private final RepoCredentialStore store;
     private final ForgeAuth forgeAuth;
@@ -32,7 +34,7 @@ public final class RepoCredentialResolver {
     }
 
     /** The default resolver, but reading environment variables through {@code env}. */
-    public static RepoCredentialResolver withEnv(Function<String, String> env) {
+    public static RepoCredentialResolver withEnv(Function<String, @Nullable String> env) {
         return new RepoCredentialResolver(
                 env, MavenSettings.load(), new RepoCredentialStore(), new ForgeAuth(), ForgeIdentity.real());
     }
@@ -46,7 +48,7 @@ public final class RepoCredentialResolver {
      * parsed — which also means a manifest may reference a private mirror whose credentials this
      * machine does not have, as long as nothing asks for it.
      */
-    private RepoCredential expand(String repoId, RepoCredential credential) {
+    private RepoCredential expand(@Nullable String repoId, RepoCredential credential) {
         return switch (credential) {
             case RepoCredential.Basic b ->
                 new RepoCredential.Basic(interp(repoId, b.username()), interp(repoId, b.password()));
@@ -55,8 +57,8 @@ public final class RepoCredentialResolver {
         };
     }
 
-    private String interp(String repoId, String raw) {
-        return RepositoryToml.interpolate(raw, var -> {
+    private String interp(@Nullable String repoId, String raw) {
+        return Objects.requireNonNull(RepositoryToml.interpolate(raw, var -> {
             String value = env.apply(var);
             if (value == null) {
                 throw new IllegalStateException("repository "
@@ -64,7 +66,7 @@ public final class RepoCredentialResolver {
                         + " references unset environment variable ${" + var + "}");
             }
             return value;
-        });
+        }));
     }
 
     /**
@@ -77,13 +79,13 @@ public final class RepoCredentialResolver {
      * print it, so it is where the redactor gets told. Nothing here inspects a name to decide
      * secrecy — the value is secret because this method just resolved it as a credential.
      */
-    public RepoCredential resolve(String repoId, URI url, Optional<RepoCredential> inline) {
+    public RepoCredential resolve(@Nullable String repoId, @Nullable URI url, Optional<RepoCredential> inline) {
         RepoCredential credential = select(repoId, url, inline);
         ResolvedSecrets.record(credential.secret());
         return credential;
     }
 
-    private RepoCredential select(String repoId, URI url, Optional<RepoCredential> inline) {
+    private RepoCredential select(@Nullable String repoId, @Nullable URI url, Optional<RepoCredential> inline) {
         // 1. inline jk.toml — expanding ${VAR} here rather than at parse time, because this
         // is where the request's environment is in scope. Doing it during the parse made the parse
         // environment-dependent, so a memoized result served the first caller's values to everyone,
@@ -93,8 +95,7 @@ public final class RepoCredentialResolver {
 
         // Sources 2–4 are keyed by repo id; skip them when there's no declared
         // name (e.g. `jk publish --repo-url <url>` with no matching repo).
-        boolean named = repoId != null && !repoId.isBlank();
-        if (named) {
+        if (repoId != null && !repoId.isBlank()) {
             // 2. environment variables
             Optional<RepoCredential> fromEnv = fromEnv(repoId);
             if (fromEnv.isPresent()) return fromEnv.get();
@@ -142,7 +143,7 @@ public final class RepoCredentialResolver {
      * Reuse a {@code jk auth login} token for forge package hosts (GitHub Packages → Basic preferred;
      * GitLab/Gitea → Bearer).
      */
-    private Optional<RepoCredential> forgeBridge(URI url) {
+    private Optional<RepoCredential> forgeBridge(@Nullable URI url) {
         if (url == null || url.getHost() == null) return Optional.empty();
         String host = url.getHost().toLowerCase(Locale.ROOT);
 
@@ -179,7 +180,7 @@ public final class RepoCredentialResolver {
         return sb.toString();
     }
 
-    private static String nonBlank(String s) {
+    private static @Nullable String nonBlank(@Nullable String s) {
         return (s == null || s.isBlank()) ? null : s.strip();
     }
 }

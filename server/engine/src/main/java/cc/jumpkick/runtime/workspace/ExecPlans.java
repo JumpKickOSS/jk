@@ -730,10 +730,11 @@ public final class ExecPlans {
             Lockfile lock = LockfileReader.read(lockFile);
             for (ClasspathResolver.Entry entry :
                     new ClasspathResolver(JkStores.storeCas()).entriesFor(lock, ClasspathResolver.RUNTIME)) {
-                if (!Files.exists(entry.jar())) continue;
+                Path jar = entry.jar();
+                if (jar == null || !Files.exists(jar)) continue;
                 libNames.add(entry.artifact().moduleArtifact() + "-"
                         + entry.artifact().version() + ".jar");
-                libPaths.add(entry.jar().toAbsolutePath().toString());
+                libPaths.add(jar.toAbsolutePath().toString());
             }
         }
         // A self-contained executable jar (Boot-style) trains via -jar; anything else names

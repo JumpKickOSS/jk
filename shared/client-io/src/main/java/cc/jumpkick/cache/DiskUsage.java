@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * File-tree size accounting that does not double-count hard-linked files.
@@ -104,12 +105,10 @@ public final class DiskUsage {
                     if (u != null) {
                         if (!Boolean.TRUE.equals(u.get("isRegularFile"))) continue;
                         files++;
-                        long nlink = ((Number) u.get("nlink")).longValue();
+                        long nlink = attr(u, "nlink");
                         // A single-link file cannot be met again on any tree — skip the set entirely.
-                        if (nlink <= 1
-                                || seen.addInode(
-                                        ((Number) u.get("dev")).longValue(), ((Number) u.get("ino")).longValue())) {
-                            bytes += ((Number) u.get("size")).longValue();
+                        if (nlink <= 1 || seen.addInode(attr(u, "dev"), attr(u, "ino"))) {
+                            bytes += attr(u, "size");
                         }
                         continue;
                     }
@@ -172,10 +171,15 @@ public final class DiskUsage {
      * an object set of {@code fileKey}s elsewhere, and a {@link SameFileKeys} identity when
      * {@code fileKey} is null (Windows).
      */
+    /** A {@code unix:*} attribute the view always reports; the map is total for a regular file. */
+    private static long attr(Map<String, Object> unixAttributes, String name) {
+        return ((Number) Objects.requireNonNull(unixAttributes.get(name), name)).longValue();
+    }
+
     private static final class SeenLinks {
         boolean unixSupported = true;
-        private Set<Object> objects; // fallback platforms only, lazily created
-        private SameFileKeys sameFile; // null-fileKey platforms only, lazily created
+        private @Nullable Set<Object> objects; // fallback platforms only, lazily created
+        private @Nullable SameFileKeys sameFile; // null-fileKey platforms only, lazily created
         private long[] slots = new long[1 << 10];
         private int used;
         private boolean hasZero;
@@ -203,13 +207,15 @@ public final class DiskUsage {
         }
 
         boolean addObject(Object key) {
-            if (objects == null) objects = new HashSet<>();
-            return objects.add(key);
+            Set<Object> set = objects;
+            if (set == null) objects = set = new HashSet<>();
+            return set.add(key);
         }
 
         Object sameFileIdentity(Path path, long size) {
-            if (sameFile == null) sameFile = new SameFileKeys();
-            return sameFile.identity(path, size);
+            SameFileKeys keys = sameFile;
+            if (keys == null) sameFile = keys = new SameFileKeys();
+            return keys.identity(path, size);
         }
 
         private void grow() {

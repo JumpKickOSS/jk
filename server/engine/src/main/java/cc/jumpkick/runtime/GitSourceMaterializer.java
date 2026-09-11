@@ -20,6 +20,7 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.Objects;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
@@ -199,7 +200,9 @@ public final class GitSourceMaterializer {
         Files.createDirectories(metaPath.getParent());
         Files.write(
                 metaPath,
-                MavenMetadata.empty(group, artifact).withVersion(version).render());
+                MavenMetadata.empty(group, Objects.requireNonNull(artifact, "artifact"))
+                        .withVersion(Objects.requireNonNull(version, "version"))
+                        .render());
     }
 
     private static String deriveVersion(GitFetcher fetcher, GitSource source, String sha) throws IOException {

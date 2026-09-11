@@ -29,6 +29,7 @@ import java.util.Objects;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Maps a {@link Lockfile}'s checksummed packages to on-disk {@code *.jar} paths, filtered by
@@ -76,7 +77,7 @@ public final class ClasspathResolver {
      * Store-only locator for a lock that opted out of {@code [m2] integration}, built once so
      * {@link #resolved} keys stay stable across calls.
      */
-    private volatile ArtifactLocator storeOnlyLocator;
+    private volatile @Nullable ArtifactLocator storeOnlyLocator;
 
     /**
      * Artifact coordinate &rarr; the jar backing it, per locator. A workspace resolves every
@@ -167,7 +168,10 @@ public final class ClasspathResolver {
      * AndroidManifest.xml, R.txt live there; {@code jar} is its {@code classes.jar}) — null for
      * plain jars. An AAR with no classes.jar yields a null {@code jar} (resources-only library).
      */
-    public record Entry(Lockfile.Artifact artifact, Path jar, Path container) {
+    public record Entry(
+            Lockfile.Artifact artifact,
+            @Nullable Path jar,
+            @Nullable Path container) {
 
         /** Plain-jar entry (no sources/javadoc). */
         public Entry(Lockfile.Artifact artifact, Path jar) {
@@ -274,7 +278,7 @@ public final class ClasspathResolver {
         return result;
     }
 
-    private static Lockfile.Artifact lookup(Map<String, Lockfile.Artifact> byKey, String moduleOrKey) {
+    private static Lockfile.@Nullable Artifact lookup(Map<String, Lockfile.Artifact> byKey, String moduleOrKey) {
         Lockfile.Artifact direct = byKey.get(moduleOrKey);
         if (direct != null) return direct;
         if (!PackageId.isMavenPackageKey(moduleOrKey)) return null;
@@ -342,7 +346,7 @@ public final class ClasspathResolver {
     }
 
     /** {@link #resolved}-backed {@code locate}; see that field for why this is worth caching. */
-    private Path locate(ArtifactLocator loc, Lockfile.Artifact pkg) {
+    private @Nullable Path locate(ArtifactLocator loc, Lockfile.Artifact pkg) {
         String key = (loc == locator ? "m|" : "s|")
                 + pkg.source()
                 + '|'

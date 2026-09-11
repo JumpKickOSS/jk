@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Objects;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Finds a locked artifact as a real {@code *.jar} (or {@code *.aar}) path: Maven local repository
@@ -16,10 +17,10 @@ import java.util.Optional;
 public final class ArtifactLocator {
 
     private final Path storeRoot;
-    private final Path m2Root;
+    private final @Nullable Path m2Root;
     private final boolean m2integration;
 
-    public ArtifactLocator(Path storeRoot, Path m2Root, boolean m2integration) {
+    public ArtifactLocator(Path storeRoot, @Nullable Path m2Root, boolean m2integration) {
         this.storeRoot = Objects.requireNonNull(storeRoot, "storeRoot");
         this.m2Root = m2Root;
         this.m2integration = m2integration && m2Root != null;
@@ -39,11 +40,13 @@ public final class ArtifactLocator {
         return locate(repoName, rel, pkg.checksumHex(), coord.toGav());
     }
 
-    public Optional<Path> locate(String repoName, String relativePath, String expectedSha256, String gav) {
+    public Optional<Path> locate(
+            @Nullable String repoName, @Nullable String relativePath, @Nullable String expectedSha256, String gav) {
         if (expectedSha256 == null || expectedSha256.isBlank() || relativePath == null) return Optional.empty();
         boolean storeOnly = !RepoArtifactResolver.isNamedRemote(repoName);
-        if (m2integration && !storeOnly) {
-            Path m2File = m2Root.resolve(relativePath);
+        Path m2 = m2Root;
+        if (m2integration && m2 != null && !storeOnly) {
+            Path m2File = m2.resolve(relativePath);
             if (Files.isRegularFile(m2File)
                     && verified(m2File, m2MemoPath(repoName, relativePath), gav, expectedSha256)) {
                 return Optional.of(m2File.toAbsolutePath().normalize());
@@ -67,7 +70,7 @@ public final class ArtifactLocator {
      * and the store file kept invalidating each other's fast path and re-hashing the full jar on
      * every resolve when they diverged (a stale ~/.m2 after a re-lock).
      */
-    private Path m2MemoPath(String repoName, String relativePath) {
+    private Path m2MemoPath(@Nullable String repoName, String relativePath) {
         String name = repoName == null || repoName.isBlank() ? RepoArtifactResolver.JK_LOCAL : repoName;
         Path store = ArtifactMemo.jkPath(storeRoot.resolve("repos").resolve(name), relativePath);
         String n = store.getFileName().toString();

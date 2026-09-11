@@ -164,7 +164,7 @@ public final class CentralMirror {
     }
 
     /** When the window expires, or null when not currently mirrored. */
-    public Instant activeUntil() {
+    public @Nullable Instant activeUntil() {
         try {
             if (!Files.isRegularFile(stamp)) return null;
             return Files.getLastModifiedTime(stamp).toInstant().plus(window);

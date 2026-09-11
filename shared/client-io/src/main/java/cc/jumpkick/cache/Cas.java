@@ -114,7 +114,7 @@ public final class Cas {
         if (Files.exists(target)) {
             return target;
         }
-        Path shard = target.getParent();
+        Path shard = shardOf(target);
         ensureShard(shard);
         Path tmp = staging(shard, hex);
         boolean moved = false;
@@ -162,7 +162,7 @@ public final class Cas {
                 Files.deleteIfExists(tmp);
                 return new Stored(target, hex, size);
             }
-            ensureShard(target.getParent());
+            ensureShard(shardOf(target));
             AtomicWrites.moveInto(tmp, target);
             return new Stored(target, hex, size);
         } catch (IOException | RuntimeException e) {
@@ -185,6 +185,11 @@ public final class Cas {
      * almost never the same one twice, so the walk is paid per blob and never amortised. One
      * {@code createDirectory} answers the common case in a single syscall.
      */
+    /** The shard directory of a store path; {@link #pathFor} always places a blob one level down. */
+    private static Path shardOf(Path target) {
+        return Objects.requireNonNull(target.getParent(), "store path has no shard");
+    }
+
     private static void ensureShard(Path shard) throws IOException {
         try {
             Files.createDirectory(shard);
@@ -210,7 +215,7 @@ public final class Cas {
         if (Files.exists(target)) {
             return target;
         }
-        ensureShard(target.getParent());
+        ensureShard(shardOf(target));
         try {
             Files.createLink(target, source);
             return target;
@@ -229,7 +234,7 @@ public final class Cas {
         if (Files.exists(target)) {
             return target;
         }
-        Path shard = target.getParent();
+        Path shard = shardOf(target);
         ensureShard(shard);
         Path tmp = staging(shard, hex);
         // Cleanup on the failure path only: moveInto consumed tmp on success, so a finally unlink

@@ -11,6 +11,7 @@ import java.time.Duration;
 import java.util.Map;
 import java.util.function.Consumer;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
 
 /**
  * OAuth 2.0 Device Authorization Grant (RFC 8628) — the "copy this code into the browser" login
@@ -68,9 +69,9 @@ public final class DeviceFlow {
     private DeviceCode requestCode() {
         Object body = parseBody(post(deviceCodeUri, Map.of("client_id", clientId, "scope", scope)));
         return new DeviceCode(
-                MiniJson.str(body, "device_code"),
-                MiniJson.str(body, "user_code"),
-                MiniJson.str(body, "verification_uri"),
+                required(body, "device_code"),
+                required(body, "user_code"),
+                required(body, "verification_uri"),
                 MiniJson.str(body, "verification_uri_complete"),
                 intVal(body, "interval", 5),
                 intVal(body, "expires_in", 900));
@@ -126,7 +127,14 @@ public final class DeviceFlow {
      * every accessor below treats as "no such field": a provider answering with an HTML error
      * page must surface as the flow's own "Unexpected response" arm, not as a parse crash.
      */
-    private Object parseBody(HttpResponse<byte[]> resp) {
+    /** A field the device-authorization grant requires; a response without it is the provider's fault, not a null. */
+    private String required(@Nullable Object body, String key) {
+        String value = MiniJson.str(body, key);
+        if (value == null) throw new AuthException(providerName + " device-code response lacks \"" + key + "\".");
+        return value;
+    }
+
+    private @Nullable Object parseBody(HttpResponse<byte[]> resp) {
         int status = resp.statusCode();
         if (status >= 500) {
             throw new AuthException(providerName + " returned HTTP " + status + ".");
@@ -139,7 +147,7 @@ public final class DeviceFlow {
     }
 
     /** A JSON number field as an int; {@code def} when absent or not a number. */
-    private static int intVal(Object body, String key, int def) {
+    private static int intVal(@Nullable Object body, String key, int def) {
         return MiniJson.get(body, key) instanceof Number n ? n.intValue() : def;
     }
 

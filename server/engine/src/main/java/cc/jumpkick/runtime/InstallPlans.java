@@ -287,7 +287,9 @@ public final class InstallPlans {
             M2CompatWriter.MavenHashes jarH = M2CompatWriter.copyToM2AndHash(jar, m2Jar);
             M2CompatWriter.writeMavenSidecars(m2Jar, jarH.sha1(), jarH.md5());
             M2CompatWriter.writeRemoteRepositories(
-                    m2Jar.getParent(), "local", m2Jar.getFileName().toString());
+                    Objects.requireNonNull(m2Jar.getParent()),
+                    "local",
+                    m2Jar.getFileName().toString());
 
             Path m2Pom = m2Root.resolve(pomRelPath);
             M2CompatWriter.MavenHashes pomH = M2CompatWriter.writeBytesToM2(pomBytes, m2Pom);

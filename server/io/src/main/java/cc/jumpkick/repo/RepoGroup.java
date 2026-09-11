@@ -14,6 +14,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BooleanSupplier;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Ordered {@link MavenRepo}s with try-each / first-hit-wins semantics, plus optional exclusive
@@ -209,7 +210,7 @@ public final class RepoGroup {
      * compare it — a remote that serves different bytes than the lock pins reaches here verified
      * only against its own sidecar.
      */
-    public Optional<RepoFetched> tryFetchArtifact(Coordinate coord, String expectedSha256Hex)
+    public Optional<RepoFetched> tryFetchArtifact(Coordinate coord, @Nullable String expectedSha256Hex)
             throws IOException, InterruptedException {
         if (expectedSha256Hex == null) return tryFetchArtifact(coord);
         String key = repoIdentity

@@ -3,6 +3,7 @@ package cc.jumpkick.http;
 
 import java.net.URI;
 import java.util.Locale;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A URI rendered safe to print, and a URI safe to record.
@@ -37,7 +38,7 @@ public final class SafeUri {
      * {@code uri} with any {@code user:password@} prefix removed from its authority. Returns the
      * same instance when there is none, which is the overwhelmingly common case.
      */
-    public static URI withoutUserInfo(URI uri) {
+    public static @Nullable URI withoutUserInfo(@Nullable URI uri) {
         if (uri == null || uri.getRawUserInfo() == null) return uri;
         return URI.create(stripUserInfo(uri.toString()));
     }
@@ -48,7 +49,7 @@ public final class SafeUri {
      * values replaced by {@link #MASK}. A null URI renders as {@code "null"} so a message never
      * depends on the caller null-checking first.
      */
-    public static String forMessage(URI uri) {
+    public static String forMessage(@Nullable URI uri) {
         if (uri == null) return "null";
         return maskQuery(stripUserInfo(uri.toString()));
     }

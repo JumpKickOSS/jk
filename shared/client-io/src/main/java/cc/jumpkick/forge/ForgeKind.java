@@ -5,6 +5,7 @@ import java.net.URI;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Git forge software kind for auth (host is separate). Declares device-flow support, native token
@@ -28,17 +29,17 @@ public enum ForgeKind {
 
     private final String id;
     private final String displayName;
-    private final String defaultHost; // null → --host required
+    private final @Nullable String defaultHost; // null → --host required
     private final boolean supportsDeviceFlow;
-    private final List<String> nativeCliToken; // null → none
+    private final @Nullable List<String> nativeCliToken; // null → none
     private final String[] nativeEnvVars;
 
     ForgeKind(
             String id,
             String displayName,
-            String defaultHost,
+            @Nullable String defaultHost,
             boolean supportsDeviceFlow,
-            List<String> nativeCliToken,
+            @Nullable List<String> nativeCliToken,
             String[] nativeEnvVars) {
         this.id = id;
         this.displayName = displayName;

@@ -5,13 +5,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Path;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class ForgeGitCredentialsTest {
 
     /** A ForgeAuth with no env/CLI and an injectable token store. */
-    private static ForgeAuth forgeWith(Path dir, String host, String token) {
+    private static ForgeAuth forgeWith(Path dir, String host, @Nullable String token) {
         TokenStore store = new TokenStore(dir);
         if (token != null) store.write(host, token);
         return new ForgeAuth(store, k -> null, argv -> Optional.empty());

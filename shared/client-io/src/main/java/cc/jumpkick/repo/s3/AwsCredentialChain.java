@@ -7,8 +7,10 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 
 /**
  * AWS credential chain: env vars, then {@code ~/.aws/credentials}+config under {@code AWS_PROFILE}.
@@ -16,20 +18,20 @@ import java.util.function.Function;
  */
 public final class AwsCredentialChain {
 
-    private final Function<String, String> env;
+    private final Function<String, @Nullable String> env;
     private final Path awsDir;
 
     public AwsCredentialChain() {
         this(System::getenv, defaultAwsDir());
     }
 
-    public AwsCredentialChain(Function<String, String> env, Path awsDir) {
+    public AwsCredentialChain(Function<String, @Nullable String> env, Path awsDir) {
         this.env = env;
         this.awsDir = awsDir;
     }
 
     /** Resolve credentials; {@code regionOverride} (e.g. from the repo URL) wins for the region. */
-    public Optional<AwsCredentials> resolve(String regionOverride) {
+    public Optional<AwsCredentials> resolve(@Nullable String regionOverride) {
         String envAk = nonBlank(env.apply("AWS_ACCESS_KEY_ID"));
         String envSk = nonBlank(env.apply("AWS_SECRET_ACCESS_KEY"));
         String envRegion = firstNonBlank(env.apply("AWS_REGION"), env.apply("AWS_DEFAULT_REGION"));
@@ -39,7 +41,7 @@ public final class AwsCredentialChain {
             return Optional.of(new AwsCredentials(envAk, envSk, nonBlank(env.apply("AWS_SESSION_TOKEN")), region));
         }
 
-        String profile = firstNonBlank(env.apply("AWS_PROFILE"), "default");
+        String profile = Objects.requireNonNullElse(nonBlank(env.apply("AWS_PROFILE")), "default");
         Map<String, String> creds = section(awsDir.resolve("credentials"), profile);
         String ak = nonBlank(creds.get("aws_access_key_id"));
         String sk = nonBlank(creds.get("aws_secret_access_key"));
@@ -85,11 +87,11 @@ public final class AwsCredentialChain {
         return Path.of(home, ".aws");
     }
 
-    private static String nonBlank(String s) {
+    private static @Nullable String nonBlank(@Nullable String s) {
         return (s == null || s.isBlank()) ? null : s.strip();
     }
 
-    private static String firstNonBlank(String... values) {
+    private static @Nullable String firstNonBlank(@Nullable String... values) {
         for (String v : values) {
             String n = nonBlank(v);
             if (n != null) return n;

@@ -18,6 +18,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Per-named-repository Maven-layout store under {@code <store>/repos/<name>/}.
@@ -30,11 +31,11 @@ import java.util.stream.Stream;
 public final class RepoArtifactStore {
 
     /** No-op store for callers that don't participate in per-repo storage. */
-    public static final RepoArtifactStore NONE = new RepoArtifactStore((Path) null);
+    public static final RepoArtifactStore NONE = new RepoArtifactStore(null);
 
-    private final Path root; // <cache>/repos/<name>/
+    private final @Nullable Path root; // <cache>/repos/<name>/
 
-    private RepoArtifactStore(Path root) {
+    private RepoArtifactStore(@Nullable Path root) {
         this.root = root;
     }
 
@@ -267,7 +268,7 @@ public final class RepoArtifactStore {
         }
         List<Module> out = new ArrayList<>();
         for (var e : versionsByModule.entrySet()) {
-            String[] parts = ga.get(e.getKey());
+            String[] parts = Objects.requireNonNull(ga.get(e.getKey()));
             out.add(new Module(parts[0], parts[1], List.copyOf(e.getValue())));
         }
         return out;
@@ -308,7 +309,7 @@ public final class RepoArtifactStore {
         }
         List<Module> out = new ArrayList<>();
         for (var e : versionsByModule.entrySet()) {
-            String[] parts = ga.get(e.getKey());
+            String[] parts = Objects.requireNonNull(ga.get(e.getKey()));
             out.add(new Module(parts[0], parts[1], List.copyOf(e.getValue())));
         }
         return out;
@@ -327,7 +328,7 @@ public final class RepoArtifactStore {
     }
 
     /** The root directory ({@code <cache>/repos/<name>}), or {@code null} for {@link #NONE}. */
-    public Path root() {
+    public @Nullable Path root() {
         return root;
     }
 
@@ -358,12 +359,18 @@ public final class RepoArtifactStore {
     // -------------------------------------------------------------------------
 
     private Path artifactPath(String relativePath) {
-        return MavenLayout.safeResolve(root, relativePath);
+        return MavenLayout.safeResolve(rootOf(this), relativePath);
     }
 
     private Path sidecarPath(String relativePath) {
-        MavenLayout.safeResolve(root, relativePath); // reject traversal before deriving the sidecar
-        return ArtifactMemo.jkPath(root, relativePath);
+        Path dir = rootOf(this);
+        MavenLayout.safeResolve(dir, relativePath); // reject traversal before deriving the sidecar
+        return ArtifactMemo.jkPath(dir, relativePath);
+    }
+
+    /** The root of a store that has one; every path derivation is reached behind a {@code root == null} guard. */
+    private static Path rootOf(RepoArtifactStore store) {
+        return Objects.requireNonNull(store.root, "the NONE store has no root");
     }
 
     /** {@code g:a:v} from a Maven-relative path, or {@code -} when the path is too short. */

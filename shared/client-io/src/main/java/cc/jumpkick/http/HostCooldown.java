@@ -14,6 +14,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.function.Supplier;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Remembers that a host rate-limited us, and stops asking until it is worth asking again.
@@ -148,7 +149,7 @@ public final class HostCooldown {
     }
 
     /** Parse {@code Retry-After}: delta-seconds, or an HTTP date. Empty when absent or unparseable. */
-    public static Optional<Duration> parseRetryAfter(String value, Instant now) {
+    public static Optional<Duration> parseRetryAfter(@Nullable String value, Instant now) {
         if (value == null || value.isBlank()) return Optional.empty();
         String v = value.strip();
         try {

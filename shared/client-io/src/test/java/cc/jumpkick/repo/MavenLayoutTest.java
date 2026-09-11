@@ -4,6 +4,7 @@ package cc.jumpkick.repo;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.model.Coordinate;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -13,7 +14,7 @@ import org.junit.jupiter.api.Test;
  */
 class MavenLayoutTest {
 
-    private static Coordinate coord(String type, String classifier) {
+    private static Coordinate coord(String type, @Nullable String classifier) {
         return new Coordinate("com.acme", "helpers", "1.2.3", classifier, type);
     }
 

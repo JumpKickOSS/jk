@@ -20,6 +20,7 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
 import java.util.zip.GZIPInputStream;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@link HttpClient} wrapper: exponential backoff with jitter on 5xx and network {@link IOException}s;
@@ -230,7 +231,7 @@ public final class Http {
             URI uri,
             HttpRequest request,
             HttpResponse.BodyHandler<T> handler,
-            OnServerError<T> onServerError)
+            @Nullable OnServerError<T> onServerError)
             throws IOException, InterruptedException {
         IOException lastIo = null;
         int lastStatus = -1;

@@ -7,9 +7,11 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Best-effort detection of which forge a project lives on, by reading its git {@code origin} remote
@@ -43,7 +45,7 @@ public final class GitForgeDetector {
     }
 
     /** Package-private seam: caller supplies the ssh-config path (for tests). */
-    static Optional<ForgeRemote> detect(Path workingDir, Path sshConfig) {
+    static Optional<ForgeRemote> detect(Path workingDir, @Nullable Path sshConfig) {
         Optional<String> url = readOriginUrl(workingDir);
         if (url.isEmpty()) return Optional.empty();
 
@@ -91,7 +93,7 @@ public final class GitForgeDetector {
      * .git/} directory and the {@code .git} file form (worktrees / submodules) that points at the
      * real git dir.
      */
-    private static Path findGitConfig(Path startDir) {
+    private static @Nullable Path findGitConfig(@Nullable Path startDir) {
         if (startDir == null) return null;
         for (Path p = startDir.toAbsolutePath().normalize(); p != null; p = p.getParent()) {
             Path dotGit = p.resolve(".git");
@@ -107,13 +109,12 @@ public final class GitForgeDetector {
     }
 
     /** Follow a {@code .git} file's {@code gitdir: <path>} pointer to its config. */
-    private static Path resolveGitFile(Path dotGitFile) {
+    private static @Nullable Path resolveGitFile(Path dotGitFile) {
         try {
             for (String raw : Files.readAllLines(dotGitFile)) {
                 String line = raw.trim();
                 if (line.startsWith("gitdir:")) {
-                    Path gitDir = dotGitFile
-                            .getParent()
+                    Path gitDir = Objects.requireNonNull(dotGitFile.getParent())
                             .resolve(line.substring("gitdir:".length()).trim());
                     Path config = gitDir.normalize().resolve("config");
                     return Files.isRegularFile(config) ? config : null;
@@ -147,7 +148,7 @@ public final class GitForgeDetector {
      * {@code HostName}. Exact (case-insensitive) pattern match only — wildcard patterns are ignored,
      * so detection stays predictable. Empty when the file is missing or has no matching alias.
      */
-    static Optional<String> resolveSshAlias(String host, Path sshConfig) {
+    static Optional<String> resolveSshAlias(String host, @Nullable Path sshConfig) {
         if (sshConfig == null || !Files.isRegularFile(sshConfig)) return Optional.empty();
         try {
             boolean inMatchingBlock = false;

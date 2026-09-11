@@ -745,7 +745,7 @@ public final class LockPipeline {
         try {
             if (pkg.name().indexOf(':') < 0) return "";
             String repoName = RepoArtifactResolver.repoName(pkg.source());
-            if (!RepoArtifactResolver.isNamedRemote(repoName)) return "";
+            if (repoName == null || !RepoArtifactResolver.isNamedRemote(repoName)) return "";
             String m2Path = MavenLayout.artifactPath(pkg.coordinate());
             String stored = RepoArtifactStore.forRepoName(cas.root(), repoName)
                     .storedSha256(m2Path)
