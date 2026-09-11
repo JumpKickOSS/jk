@@ -12,10 +12,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import org.jspecify.annotations.Nullable;
 
 /**
  * KMP root-module redirects via Gradle {@code .module} metadata for this build's {@code
@@ -30,7 +32,7 @@ public final class KmpRedirects {
     /** A resolved root: the runtime target plus every platform sibling the POM must not follow. */
     public record Selection(GradleModuleMetadata.Redirect target, Set<String> allTargets) {}
 
-    private final RepoGroup repos;
+    private final @Nullable RepoGroup repos;
     private final String jvmEnvironment;
     private final Map<String, Optional<Selection>> cache = new ConcurrentHashMap<>();
 
@@ -75,7 +77,7 @@ public final class KmpRedirects {
         return Collections.unmodifiableMap(droppedSiblings);
     }
 
-    public KmpRedirects(RepoGroup repos, String jvmEnvironment) {
+    public KmpRedirects(@Nullable RepoGroup repos, String jvmEnvironment) {
         this.repos = repos;
         this.jvmEnvironment = jvmEnvironment == null || jvmEnvironment.isBlank() ? "standard-jvm" : jvmEnvironment;
     }
@@ -166,7 +168,8 @@ public final class KmpRedirects {
             // cheap gate that keeps non-KMP modules to zero extra fetches. Only the head of the
             // file is scanned — Gradle writes the marker near the top; reading multi-MB POMs as
             // full strings dominated warm Android locks (hundreds of KMP roots).
-            var pomHit = repos.tryFetchPom(coord);
+            var pomHit = Objects.requireNonNull(repos, "NONE never reaches the POM scan")
+                    .tryFetchPom(coord);
             if (pomHit.isEmpty()) return Optional.empty();
             if (!pomHasGradleMetadataMarker(pomHit.get().fetched().cachePath())) return Optional.empty();
 

@@ -77,7 +77,7 @@ public class PubGrubSolver {
      */
     private final Map<String, List<Incompatibility>> incompatibilitiesByPackage = new LinkedHashMap<>();
 
-    protected String rootPkg;
+    protected @Nullable String rootPkg;
 
     private final int maxDecisions;
     private final int maxSteps;
@@ -98,7 +98,7 @@ public class PubGrubSolver {
      * Optional progress hook fired after each successful non-root {@link PartialSolution#decide}.
      * Listener must be cheap/thread-safe if shared.
      */
-    private BiConsumer<String, String> onDecision;
+    private @Nullable BiConsumer<String, String> onDecision;
 
     public PubGrubSolver(PackageSource source) {
         this(source, envMaxDecisions(), envTimeoutMs());
@@ -142,6 +142,11 @@ public class PubGrubSolver {
     }
 
     /** Progress hook for live graph ticks during solve (LockOrchestrator /. */
+    /** The root package {@link #solve} named; every learned clause about it is spelled against this. */
+    private String root() {
+        return Objects.requireNonNull(rootPkg, "solve() names the root before anything reads it");
+    }
+
     public PubGrubSolver withOnDecision(BiConsumer<String, String> onDecision) {
         this.onDecision = onDecision;
         return this;
@@ -226,7 +231,7 @@ public class PubGrubSolver {
 
     private void throwBudget(String reason) {
         Incompatibility inco = new Incompatibility(
-                List.of(Term.positive(rootPkg, VersionSet.EMPTY)), new Incompatibility.Cause.BudgetExceeded(reason));
+                List.of(Term.positive(root(), VersionSet.EMPTY)), new Incompatibility.Cause.BudgetExceeded(reason));
         throw new UnsatisfiableException(inco);
     }
 
@@ -299,7 +304,8 @@ public class PubGrubSolver {
                         for (Term term : (learned == null ? inco : learned).terms()) changed.add(term.pkg());
                     }
                     case ALMOST_SATISFIED -> {
-                        Term derived = rel.unsatisfied().invert();
+                        Term derived = Objects.requireNonNull(rel.unsatisfied(), "ALMOST_SATISFIED names its term")
+                                .invert();
                         // satisfies() itself requires a positive commitment for positive terms
                         // , so a derivation that would first mark presence never skips.
                         if (solution.satisfies(derived)) continue;
@@ -380,9 +386,12 @@ public class PubGrubSolver {
         // by two `¬p {v}` derivations, say), the last of those is what the paper's definition
         // names, and its level decides between resolving and backjumping. Ignoring it backjumped
         // to the root with the unresolved clause and relearned it every round.
-        PartialSolution.Assignment previous = satisfierGiven(mostRecentTerm, mostRecent);
+        // an incompatibility has at least one term, so the loop above found a satisfier
+        Term pivotTerm = Objects.requireNonNull(mostRecentTerm);
+        PartialSolution.Assignment pivot = Objects.requireNonNull(mostRecent);
+        PartialSolution.Assignment previous = satisfierGiven(pivotTerm, pivot);
         if (previous != null) previousLevel = Math.max(previousLevel, previous.decisionLevel());
-        return new ResolutionStep(mostRecentTerm, mostRecent, previousLevel);
+        return new ResolutionStep(pivotTerm, pivot, previousLevel);
     }
 
     private PartialSolution.Assignment findSatisfier(Term term) {
@@ -460,7 +469,7 @@ public class PubGrubSolver {
             if (!t.effectiveVersions().isEmpty()) survivors.add(t);
         }
         if (survivors.isEmpty()) {
-            survivors = List.of(Term.positive(rootPkg, VersionSet.EMPTY));
+            survivors = List.of(Term.positive(root(), VersionSet.EMPTY));
         }
         return new Incompatibility(survivors, new Incompatibility.Cause.Derived(a, b));
     }
@@ -484,12 +493,12 @@ public class PubGrubSolver {
 
     private boolean isFailure(Incompatibility inco) {
         if (inco.terms().isEmpty()) return true;
-        return inco.terms().size() == 1 && inco.terms().getFirst().pkg().equals(rootPkg);
+        return inco.terms().size() == 1 && inco.terms().getFirst().pkg().equals(root());
     }
 
     // --- decisions ---------------------------------------------------------
 
-    protected String makeDecision() throws IOException, InterruptedException {
+    protected @Nullable String makeDecision() throws IOException, InterruptedException {
         // iterate the assignment stack once without copying into a TreeMap decisions
         // each time — both were dominant alloc sources on large BOM graphs.
         Set<String> seen = new LinkedHashSet<>();
@@ -514,7 +523,8 @@ public class PubGrubSolver {
                 if (widenable(pkg)) {
                     expandUniverse(pkg);
                 }
-                boolean unknownPackage = universes.get(pkg).size() == 0;
+                VersionUniverse known = universes.get(pkg);
+                boolean unknownPackage = known == null || known.size() == 0;
                 VersionSet allowed = solution.positiveSet(pkg);
                 if (allowed.isEmpty()) allowed = VersionSet.ALL;
                 List<String> available = sampleAvailable(pkg);
@@ -537,7 +547,8 @@ public class PubGrubSolver {
                 // Exact pin that was never advertised (or only candidate failed): NoVersions gives
                 // better diagnostics ("available: …") than Unavailable alone.
                 if (solution.hasNoCandidates(pkg)) {
-                    boolean unknownPackage = universes.get(pkg).size() == 0;
+                    VersionUniverse known = universes.get(pkg);
+                    boolean unknownPackage = known == null || known.size() == 0;
                     VersionSet allowed = solution.positiveSet(pkg);
                     if (allowed.isEmpty()) allowed = VersionSet.ALL;
                     addIncompatibility(new Incompatibility(

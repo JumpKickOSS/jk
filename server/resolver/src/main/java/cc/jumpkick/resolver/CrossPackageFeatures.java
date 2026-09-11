@@ -15,7 +15,9 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Cross-package feature selection, design C + path): when a consumer selects
@@ -52,8 +54,10 @@ public final class CrossPackageFeatures {
                         + "` selects features, but only path= dependencies support cross-package features yet"
                         + " (workspace/git/Maven sidecar come later)");
             }
-            Path libToml =
-                    projectDir.resolve(d.pathSource().rawPath()).normalize().resolve(ManifestPaths.MANIFEST);
+            Path libToml = projectDir
+                    .resolve(Objects.requireNonNull(d.pathSource()).rawPath())
+                    .normalize()
+                    .resolve(ManifestPaths.MANIFEST);
             if (!Files.isRegularFile(libToml)) {
                 throw new IllegalArgumentException("dependency `"
                         + d.library()
@@ -92,7 +96,7 @@ public final class CrossPackageFeatures {
         return new Result(extras, activatedByLibraryModule);
     }
 
-    private static Dependency findOptional(JkBuild lib, String libraryHandle) {
+    private static @Nullable Dependency findOptional(JkBuild lib, String libraryHandle) {
         for (Scope scope : Scope.values()) {
             if (scope == Scope.PLATFORM) continue;
             for (Dependency dep : lib.dependencies().of(scope)) {

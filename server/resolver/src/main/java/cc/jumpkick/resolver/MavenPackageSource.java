@@ -159,7 +159,7 @@ public final class MavenPackageSource implements PackageSource {
             Map<String, String> lockedVersionPrefs,
             KmpRedirects kmp,
             PlatformPolicy platformPolicy,
-            UnmappedPolicy unmappedPolicy) {
+            @Nullable UnmappedPolicy unmappedPolicy) {
         this.repos = Objects.requireNonNull(repos, "repos");
         this.pomBuilder = Objects.requireNonNull(pomBuilder, "pomBuilder");
         this.bomConstraints = Map.copyOf(Objects.requireNonNull(bomConstraints, "bomConstraints"));
@@ -242,7 +242,7 @@ public final class MavenPackageSource implements PackageSource {
         return Optional.empty();
     }
 
-    private static String firstNonBlank(@Nullable String a, @Nullable String b) {
+    private static @Nullable String firstNonBlank(@Nullable String a, @Nullable String b) {
         if (a != null && !a.isBlank()) return a;
         if (b != null && !b.isBlank()) return b;
         return null;
@@ -389,7 +389,7 @@ public final class MavenPackageSource implements PackageSource {
     }
 
     /** The highest version under Maven ordering, or null for an empty list. */
-    private static String highestOf(List<String> versions) {
+    private static @Nullable String highestOf(List<String> versions) {
         String max = null;
         for (String v : versions) {
             if (max == null || Versions.compare(v, max) > 0) max = v;
@@ -402,7 +402,7 @@ public final class MavenPackageSource implements PackageSource {
      * <em>not</em> invent a missing pininserting unreleased/stale pins that sit below
      * transitive floors made PubGrub thrash on Quarkus-sized graphs.
      */
-    static void preferBom(List<String> versions, String pin) {
+    static void preferBom(List<String> versions, @Nullable String pin) {
         if (pin == null || pin.isBlank()) return;
         if (versions.isEmpty()) {
             // Empty metadata: keep pin as the only candidate (versionless platform roots).
@@ -418,7 +418,7 @@ public final class MavenPackageSource implements PackageSource {
      * Move {@code preferred} to index 0 when it is already in {@code versions}. No-op when {@code
      * preferred} is null or absent (lock prefs never invent versions).
      */
-    static void preferFirst(List<String> versions, String preferred) {
+    static void preferFirst(List<String> versions, @Nullable String preferred) {
         if (preferred == null || preferred.isBlank()) return;
         if (versions.isEmpty()) return;
         if (versions.getFirst().equals(preferred)) return;

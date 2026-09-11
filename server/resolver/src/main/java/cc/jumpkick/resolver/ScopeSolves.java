@@ -10,7 +10,9 @@ import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The three scope solves, in the order that decides which version wins: {@link #ORDER}. Each graph
@@ -29,8 +31,8 @@ final class ScopeSolves {
     /** The three resolutions, one per graph. */
     record Solved(Resolution main, Resolution test, Resolution processor) {}
 
-    private final Resolver resolverOverride;
-    private final MavenPackageSource sharedSource;
+    private final @Nullable Resolver resolverOverride;
+    private final @Nullable MavenPackageSource sharedSource;
     private final EffectivePomBuilder pomBuilder;
     private final KmpRedirects kmp;
 
@@ -39,8 +41,8 @@ final class ScopeSolves {
      * @param sharedSource the package source shared by all three graphs; {@code null} only with an override
      */
     ScopeSolves(
-            Resolver resolverOverride,
-            MavenPackageSource sharedSource,
+            @Nullable Resolver resolverOverride,
+            @Nullable MavenPackageSource sharedSource,
             EffectivePomBuilder pomBuilder,
             KmpRedirects kmp) {
         this.resolverOverride = resolverOverride;
@@ -63,16 +65,19 @@ final class ScopeSolves {
             }
             solved.put(graph, resolution);
         }
+        // ORDER names every group, so each has a resolution by now
         return new Solved(
-                solved.get(LockRoots.GraphGroup.MAIN),
-                solved.get(LockRoots.GraphGroup.TEST),
-                solved.get(LockRoots.GraphGroup.PROCESSOR));
+                Objects.requireNonNull(solved.get(LockRoots.GraphGroup.MAIN)),
+                Objects.requireNonNull(solved.get(LockRoots.GraphGroup.TEST)),
+                Objects.requireNonNull(solved.get(LockRoots.GraphGroup.PROCESSOR)));
     }
 
     private Resolution resolve(List<Dependency> roots, Map<String, String> prefs, LockProgress progress)
             throws IOException, InterruptedException {
         if (roots.isEmpty()) return new Resolution(Map.of());
         if (resolverOverride != null) return resolverOverride.resolve(roots);
+        MavenPackageSource sharedSource =
+                Objects.requireNonNull(this.sharedSource, "a solve without an override needs its shared source");
         sharedSource.setLockedVersionPrefs(prefs);
         sharedSource.setSnapshotPackages(snapshotModules(roots));
         // exclusion state is per-graph; main's clean paths must not bleed into

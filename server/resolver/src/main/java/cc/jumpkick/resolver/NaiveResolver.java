@@ -17,6 +17,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Breadth-first highest-version-wins resolver over compile/runtime scopes. Prefer {@link
@@ -26,7 +27,7 @@ public final class NaiveResolver implements Resolver {
 
     private static final Set<String> FOLLOWED_SCOPES = Set.of("compile", "runtime");
 
-    private static boolean shouldFollow(String scope) {
+    private static boolean shouldFollow(@Nullable String scope) {
         return scope == null || scope.isEmpty() || FOLLOWED_SCOPES.contains(scope);
     }
 

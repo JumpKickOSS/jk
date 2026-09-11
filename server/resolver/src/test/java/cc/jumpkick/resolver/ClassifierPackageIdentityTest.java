@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.resolver;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.lock.Lockfile;
@@ -38,8 +39,8 @@ class ClassifierPackageIdentityTest {
                 resolver.resolve(List.of(Dependency.of("app", "com.example:app", VersionSelector.parse("=1.0"))));
 
         assertThat(r.modules()).containsKeys(root, plain, linux);
-        assertThat(r.modules().get(plain).version()).isEqualTo("4.1.100.Final");
-        assertThat(r.modules().get(linux).version()).isEqualTo("4.1.100.Final");
+        assertThat(requireNonNull(r.modules().get(plain)).version()).isEqualTo("4.1.100.Final");
+        assertThat(requireNonNull(r.modules().get(linux)).version()).isEqualTo("4.1.100.Final");
         assertThat(plain).isNotEqualTo(linux);
     }
 

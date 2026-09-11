@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 class PubGrubSolverTest {
@@ -162,7 +163,7 @@ class PubGrubSolverTest {
     }
 
     private static PackageSource counting(
-            PackageSource inner, AtomicInteger versionsCalls, Map<String, String> preferredOrNull) {
+            PackageSource inner, AtomicInteger versionsCalls, @Nullable Map<String, String> preferredOrNull) {
         return new PackageSource() {
             @Override
             public List<String> versions(String pkg) throws IOException, InterruptedException {

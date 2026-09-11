@@ -223,7 +223,7 @@ public final class SyncPlans {
                         }
 
                         @Override
-                        public void failed(Lockfile.Artifact pkg, String error) {
+                        public void failed(Lockfile.Artifact pkg, @Nullable String error) {
                             ctx.error("dep", formatCoord(label, pkg) + " — " + error);
                             ctx.progress(1);
                         }
@@ -401,7 +401,7 @@ public final class SyncPlans {
                         }
 
                         @Override
-                        public void failed(Lockfile.Artifact pkg, String error) {
+                        public void failed(Lockfile.Artifact pkg, @Nullable String error) {
                             ctx.warn("sources", pkg.displayCoord() + " — " + error);
                             ctx.progress(1);
                         }

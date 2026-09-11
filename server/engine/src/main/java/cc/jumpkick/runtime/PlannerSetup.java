@@ -243,7 +243,7 @@ public final class PlannerSetup {
                         }
 
                         @Override
-                        public void failed(Lockfile.Artifact pkg, String err) {
+                        public void failed(Lockfile.Artifact pkg, @Nullable String err) {
                             ctx.error("dep", pkg.displayCoord() + " — " + err);
                             ctx.progress(1);
                         }

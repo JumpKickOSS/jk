@@ -28,6 +28,7 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiConsumer;
+import org.jspecify.annotations.Nullable;
 
 /** {@link Resolver} backed by {@link PubGrubSolver} — maps jk deps onto solver terms. */
 public final class PubGrubResolver implements Resolver {
@@ -40,10 +41,10 @@ public final class PubGrubResolver implements Resolver {
     /** {@code from->to} pairs already reported this resolve — one relocation line per lock. */
     private final Set<String> reportedRelocations = ConcurrentHashMap.newKeySet();
 
-    private final EffectivePomBuilder pomBuilder;
+    private final @Nullable EffectivePomBuilder pomBuilder;
     private KmpRedirects kmp = KmpRedirects.NONE;
     /** Optional live graph progress (package key, version) during PubGrub decisions. */
-    private BiConsumer<String, String> onDecision;
+    private @Nullable BiConsumer<String, String> onDecision;
 
     public PubGrubResolver(MavenRepo repo) {
         this(RepoGroup.of(repo));
@@ -97,7 +98,7 @@ public final class PubGrubResolver implements Resolver {
             Map<String, String> lockedVersionPrefs,
             KmpRedirects kmp,
             PlatformPolicy platformPolicy,
-            UnmappedPolicy unmappedPolicy) {
+            @Nullable UnmappedPolicy unmappedPolicy) {
         EffectivePomBuilder builder = new EffectivePomBuilder(repos);
         this.pomBuilder = builder;
         this.kmp = kmp;
@@ -106,12 +107,12 @@ public final class PubGrubResolver implements Resolver {
     }
 
     /** Test seam: lets unit tests inject an in-memory {@link PackageSource}. */
-    PubGrubResolver(PackageSource source, EffectivePomBuilder pomBuilder) {
+    PubGrubResolver(PackageSource source, @Nullable EffectivePomBuilder pomBuilder) {
         this(source, pomBuilder, KmpRedirects.NONE);
     }
 
     /** Shared-source constructorreuse POM/version caches across scope groups. */
-    public PubGrubResolver(PackageSource source, EffectivePomBuilder pomBuilder, KmpRedirects kmp) {
+    public PubGrubResolver(PackageSource source, @Nullable EffectivePomBuilder pomBuilder, KmpRedirects kmp) {
         this.source = Objects.requireNonNull(source, "source");
         this.pomBuilder = pomBuilder;
         this.kmp = kmp == null ? KmpRedirects.NONE : kmp;

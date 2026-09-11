@@ -49,7 +49,7 @@ public final class LanguageRuntimeInject {
      */
     static Set<String> inject(
             JkBuild project,
-            Path projectDir,
+            @Nullable Path projectDir,
             Map<String, String> bomConstraints,
             LinkedHashMap<String, Dependency> mainDeduped,
             ToolVersions tools) {
@@ -109,7 +109,7 @@ public final class LanguageRuntimeInject {
     }
 
     /** True when any {@code ext} source exists under src/ or a plugin-contributed root. */
-    private static boolean hasLangSources(Path projectDir, String ext) {
+    private static boolean hasLangSources(@Nullable Path projectDir, String ext) {
         if (projectDir == null) return true; // no dir context — keep the inject (fail-safe)
         if (Languages.anySourceUnder(projectDir.resolve("src"), ext)) return true;
         for (var root : ModuleLayoutPlugins.pluginContributedRoots(projectDir)) {
@@ -126,7 +126,7 @@ public final class LanguageRuntimeInject {
             LinkedHashMap<String, Dependency> mainDeduped,
             Set<String> added,
             String module,
-            VersionSelector declared,
+            @Nullable VersionSelector declared,
             String fallbackMajor) {
         String pinLit = declared != null ? versionLiteral(declared) : null;
         boolean pinned = (pinLit != null && !pinLit.isBlank())
@@ -150,7 +150,10 @@ public final class LanguageRuntimeInject {
      * every edge agrees); else floating major.
      */
     private static VersionSelector runtimeSelector(
-            Map<String, String> bomConstraints, String module, VersionSelector declared, String fallbackMajor) {
+            Map<String, String> bomConstraints,
+            String module,
+            @Nullable VersionSelector declared,
+            String fallbackMajor) {
         if (declared instanceof VersionSelector.Latest || declared instanceof VersionSelector.Snapshot) {
             // Floating keywords are a deliberate choice, same as an exact pin: they override a
             // platform that manages this GA (Grails' bom pins an older groovy than latest).
@@ -168,7 +171,7 @@ public final class LanguageRuntimeInject {
     }
 
     /** Exact pin when the project declared a version literal; else floating major of {@code fallbackMajor}. */
-    private static VersionSelector languageRuntimeSelector(VersionSelector declared, String fallbackMajor) {
+    private static VersionSelector languageRuntimeSelector(@Nullable VersionSelector declared, String fallbackMajor) {
         if (declared != null) {
             String lit = versionLiteral(declared);
             if (lit != null && !lit.isBlank()) {
@@ -179,7 +182,7 @@ public final class LanguageRuntimeInject {
     }
 
     /** Concrete version literal, or {@code null} for range / latest / snapshot. */
-    private static String versionLiteral(VersionSelector v) {
+    private static @Nullable String versionLiteral(VersionSelector v) {
         return switch (v) {
             case VersionSelector.Exact e -> e.version();
             case VersionSelector.Caret c -> c.version();

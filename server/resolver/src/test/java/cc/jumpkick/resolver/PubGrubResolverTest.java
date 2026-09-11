@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.resolver;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
@@ -61,7 +62,8 @@ class PubGrubResolverTest {
         Resolution result = resolver.resolve(List.of(new Dependency("com.foo:middle", VersionSelector.parse("=1.0"))));
 
         assertThat(result.modules()).containsKey("com.foo:leaf:jar:");
-        assertThat(result.modules().get("com.foo:leaf:jar:").version()).isEqualTo("1.5");
+        assertThat(requireNonNull(result.modules().get("com.foo:leaf:jar:")).version())
+                .isEqualTo("1.5");
     }
 
     @Test
@@ -92,12 +94,14 @@ class PubGrubResolverTest {
 
         Resolution mediated = new PubGrubResolver(repos, bom)
                 .resolve(List.of(new Dependency("com.foo:middle", VersionSelector.parse("=1.0"))));
-        assertThat(mediated.modules().get("com.foo:leaf:jar:").version()).isEqualTo("2.0");
+        assertThat(requireNonNull(mediated.modules().get("com.foo:leaf:jar:")).version())
+                .isEqualTo("2.0");
 
         Resolution strict = new PubGrubResolver(
                         repos, bom, Map.of(), KmpRedirects.NONE, PlatformPolicy.ENFORCED, UnmappedPolicy.STRICT)
                 .resolve(List.of(new Dependency("com.foo:middle", VersionSelector.parse("=1.0"))));
-        assertThat(strict.modules().get("com.foo:leaf:jar:").version()).isEqualTo("1.0");
+        assertThat(requireNonNull(strict.modules().get("com.foo:leaf:jar:")).version())
+                .isEqualTo("1.0");
     }
 
     @Test
@@ -128,7 +132,8 @@ class PubGrubResolverTest {
 
         Resolution result = resolver.resolve(List.of(new Dependency("com.foo:middle", VersionSelector.parse("=1.0"))));
 
-        assertThat(result.modules().get("com.foo:leaf:jar:").version()).isEqualTo("1.0");
+        assertThat(requireNonNull(result.modules().get("com.foo:leaf:jar:")).version())
+                .isEqualTo("1.0");
     }
 
     @Test
@@ -147,7 +152,8 @@ class PubGrubResolverTest {
 
         Resolution result = resolver.resolve(List.of(new Dependency("com.foo:leaf", VersionSelector.parse("=1.0"))));
 
-        assertThat(result.modules().get("com.foo:leaf:jar:").version()).isEqualTo("1.0");
+        assertThat(requireNonNull(result.modules().get("com.foo:leaf:jar:")).version())
+                .isEqualTo("1.0");
     }
 
     @Test
@@ -165,7 +171,8 @@ class PubGrubResolverTest {
 
         Resolution result =
                 resolver.resolve(List.of(new Dependency("com.foo:other", VersionSelector.parseFloating("1.5"))));
-        assertThat(result.modules().get("com.foo:other:jar:").version()).isEqualTo("1.5");
+        assertThat(requireNonNull(result.modules().get("com.foo:other:jar:")).version())
+                .isEqualTo("1.5");
     }
 
     /**
@@ -207,7 +214,7 @@ class PubGrubResolverTest {
                 .resolve(List.of(new Dependency("com.foo:app", VersionSelector.parse("=1.0"))));
 
         assertThat(result.modules()).containsKey("com.foo:core:jar:");
-        assertThat(result.modules().get("com.foo:classic:jar:").deps())
+        assertThat(requireNonNull(result.modules().get("com.foo:classic:jar:")).deps())
                 .as("classic → core is a real POM edge; the app-level exclusion decided selection, not edges")
                 .anyMatch(d -> d.startsWith("com.foo:core:"));
     }
@@ -239,7 +246,8 @@ class PubGrubResolverTest {
                 .resolve(List.of(new Dependency("com.foo:app", VersionSelector.parse("=1.0"))));
 
         assertThat(result.modules()).doesNotContainKey("com.foo:core:jar:");
-        assertThat(result.modules().get("com.foo:classic:jar:").deps()).noneMatch(d -> d.startsWith("com.foo:core:"));
+        assertThat(requireNonNull(result.modules().get("com.foo:classic:jar:")).deps())
+                .noneMatch(d -> d.startsWith("com.foo:core:"));
     }
 
     private static String dependsOnCore(String artifact) {

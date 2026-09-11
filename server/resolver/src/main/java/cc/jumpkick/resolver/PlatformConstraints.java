@@ -16,6 +16,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The versions a project's platform BOMs manage, with the BOM each one came from, and the two
@@ -45,6 +46,7 @@ public final class PlatformConstraints {
     }
 
     /** The BOM that pinned {@code ga} at exactly {@code version}, or {@code null} when no BOM did. */
+    @Nullable
     String pinnedBy(String ga, String version) {
         String constrained = versions.get(ga);
         return constrained != null && constrained.equals(version) ? provenance.get(ga) : null;

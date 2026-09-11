@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.resolver;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
@@ -183,7 +184,8 @@ class MavenPackageSourceExclusionTest {
                 .resolve(List.of(new Dependency("com.foo:app", VersionSelector.parse("=1.0"))));
 
         assertThat(result.modules()).containsKey("com.foo:leaf:jar:");
-        assertThat(result.modules().get("com.foo:target:jar:").deps()).anyMatch(d -> d.startsWith("com.foo:leaf"));
+        assertThat(requireNonNull(result.modules().get("com.foo:target:jar:")).deps())
+                .anyMatch(d -> d.startsWith("com.foo:leaf"));
     }
 
     /**
@@ -343,7 +345,8 @@ class MavenPackageSourceExclusionTest {
                 .resolve(List.of(new Dependency("com.foo:app", VersionSelector.parse("=1.0"))));
 
         assertThat(result.modules()).containsKey("com.foo:leaf:jar:");
-        assertThat(result.modules().get("com.foo:target:jar:").deps()).anyMatch(d -> d.startsWith("com.foo:leaf"));
+        assertThat(requireNonNull(result.modules().get("com.foo:target:jar:")).deps())
+                .anyMatch(d -> d.startsWith("com.foo:leaf"));
     }
 
     @Test
@@ -531,7 +534,7 @@ class MavenPackageSourceExclusionTest {
                 .resolve(List.of(new Dependency("com.foo:old", VersionSelector.parse("=1.0"))));
 
         assertThat(result.modules()).containsKeys("com.foo:old:jar:", "com.foo:new:jar:", "com.foo:leaf:jar:");
-        assertThat(result.modules().get("com.foo:old:jar:").deps())
+        assertThat(requireNonNull(result.modules().get("com.foo:old:jar:")).deps())
                 .as("the stub's only edge is the redirect")
                 .anyMatch(d -> d.startsWith("com.foo:new"));
     }
@@ -557,7 +560,8 @@ class MavenPackageSourceExclusionTest {
         Resolution result = new PubGrubResolver(repoGroup(tempDir))
                 .resolve(List.of(new Dependency("com.foo:old", VersionSelector.parse("=2.5"))));
 
-        assertThat(result.modules().get("com.foo:new:jar:").version()).isEqualTo("2.5");
+        assertThat(requireNonNull(result.modules().get("com.foo:new:jar:")).version())
+                .isEqualTo("2.5");
     }
 
     /** A → B → C: each hop is a normal expansion, so the chain terminates at real content. */
@@ -656,7 +660,8 @@ class MavenPackageSourceExclusionTest {
         Resolution result = new PubGrubResolver(repoGroup(tempDir))
                 .resolve(List.of(new Dependency("com.foo:middle", VersionSelector.parse("=1.0"))));
 
-        assertThat(result.modules().get("com.foo:leaf:jar:").version()).isEqualTo("1.5");
+        assertThat(requireNonNull(result.modules().get("com.foo:leaf:jar:")).version())
+                .isEqualTo("1.5");
     }
 
     private RepoGroup repoGroup(Path tempDir) {

@@ -19,6 +19,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -106,7 +107,7 @@ class QuarkusLockPerfTest {
      * {@code JK_HOME}/{@code JK_STORE_DIR} that Gradle test conventions inject.
      */
     static Path developerStore() {
-        Function<String, String> env = k -> switch (k) {
+        Function<String, @Nullable String> env = k -> switch (k) {
             case "JK_HOME", "JK_STORE_DIR", "JK_CACHE_DIR" -> null;
             default -> System.getenv(k);
         };

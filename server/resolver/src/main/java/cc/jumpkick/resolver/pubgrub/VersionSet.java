@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A set of version strings, represented as a disjoint union of ranges. Closed under intersection,
@@ -168,7 +169,11 @@ public sealed interface VersionSet permits VersionSet.Empty, VersionSet.All, Ver
      * A single range. {@code null} bounds mean unbounded on that side. Inverted (empty) bounds are
      * rejected at construction; callers that need the empty set use {@link #EMPTY}.
      */
-    record Range(String min, boolean minInclusive, String max, boolean maxInclusive) implements VersionSet {
+    record Range(
+            @Nullable String min,
+            boolean minInclusive,
+            @Nullable String max,
+            boolean maxInclusive) implements VersionSet {
 
         public Range {
             // Reject inverted bounds at construction time so callers don't

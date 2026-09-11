@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
@@ -17,6 +18,7 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Download every resolved module in parallel on the io pool and hand back lock rows in declaration
@@ -63,7 +65,7 @@ final class ArtifactMaterializer {
         for (int i = 0; i < n; i++) {
             final int idx = i;
             var e = ordered.get(i);
-            EnumSet<Scope> tags = tagsByKey.get(e.getKey());
+            EnumSet<Scope> tags = Objects.requireNonNull(tagsByKey.get(e.getKey()), "every module has its scope tags");
             inFlight.add(CompletableFuture.supplyAsync(
                             () -> {
                                 try {
@@ -131,8 +133,9 @@ final class ArtifactMaterializer {
                 if (c instanceof Error err) throw err;
                 throw new IOException(c);
             }
-            arts[d.index] = d.artifact;
-            progress.materialized(d.module, d.version);
+            // not a failure event, so the row is complete
+            arts[d.index] = Objects.requireNonNull(d.artifact);
+            progress.materialized(Objects.requireNonNull(d.module), Objects.requireNonNull(d.version));
             received++;
         }
         return List.of(arts);
@@ -163,7 +166,11 @@ final class ArtifactMaterializer {
 
     /** Completion event for parallel jar materialize (progress on complete, rows ordered). */
     private record MaterializeDone(
-            int index, Lockfile.Artifact artifact, String module, String version, Throwable error) {
+            int index,
+            Lockfile.@Nullable Artifact artifact,
+            @Nullable String module,
+            @Nullable String version,
+            @Nullable Throwable error) {
         static MaterializeDone ok(int index, Lockfile.Artifact art, String module, String version) {
             return new MaterializeDone(index, art, module, version, null);
         }

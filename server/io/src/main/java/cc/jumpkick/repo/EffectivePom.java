@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.repo;
 
+import cc.jumpkick.repo.Pom.Relocation;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -21,7 +22,7 @@ public record EffectivePom(
         Map<String, String> properties,
         List<Pom.Dep> dependencies,
         List<Pom.Dep> managedDependencies,
-        Pom.@Nullable Relocation relocation) {
+        @Nullable Relocation relocation) {
 
     /** Compatibility constructor for POMs with no {@code <distributionManagement>} redirect. */
     public EffectivePom(

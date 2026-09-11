@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.resolver.pubgrub;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -18,6 +19,7 @@ import net.jqwik.api.EdgeCasesMode;
 import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
 import net.jqwik.api.Provide;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Solver invariants over generated dependency universes. A universe is a handful of packages,
@@ -48,10 +50,12 @@ class PubGrubSolverPropertyTest {
             List<String> pkgs = packages();
             Collections.shuffle(pkgs, order);
             for (String pkg : pkgs) {
-                List<String> versions = new ArrayList<>(table.get(pkg).keySet());
+                List<String> versions =
+                        new ArrayList<>(requireNonNull(table.get(pkg)).keySet());
                 Collections.shuffle(versions, order);
                 for (String v : versions) {
-                    Map<String, VersionSet> deps = table.get(pkg).get(v);
+                    Map<String, VersionSet> deps =
+                            requireNonNull(requireNonNull(table.get(pkg)).get(v));
                     b.version(pkg, v, d -> deps.forEach(d::require));
                 }
             }
@@ -166,21 +170,20 @@ class PubGrubSolverPropertyTest {
         if (solution == null) return; // the unsat half is its own property
         for (Term root : u.rootDeps()) {
             assertThat(solution).as("root dep %s selected", root.pkg()).containsKey(root.pkg());
-            assertThat(root.versions().contains(solution.get(root.pkg())))
+            assertThat(root.versions().contains(requireNonNull(solution.get(root.pkg()))))
                     .as("root dep %s admits %s", root, solution.get(root.pkg()))
                     .isTrue();
         }
         for (var e : solution.entrySet()) {
             if (e.getKey().equals("root")) continue;
-            Map<String, VersionSet> deps = u.table().get(e.getKey()).get(e.getValue());
-            assertThat(deps)
-                    .as("%s@%s is a version the universe has", e.getKey(), e.getValue())
-                    .isNotNull();
+            Map<String, VersionSet> deps = requireNonNull(
+                    requireNonNull(u.table().get(e.getKey())).get(e.getValue()),
+                    () -> e.getKey() + "@" + e.getValue() + " is a version the universe has");
             deps.forEach((dep, set) -> {
                 assertThat(solution)
                         .as("%s@%s needs %s", e.getKey(), e.getValue(), dep)
                         .containsKey(dep);
-                assertThat(set.contains(solution.get(dep)))
+                assertThat(set.contains(requireNonNull(solution.get(dep))))
                         .as("%s@%s needs %s in %s, got %s", e.getKey(), e.getValue(), dep, set, solution.get(dep))
                         .isTrue();
             });
@@ -211,7 +214,7 @@ class PubGrubSolverPropertyTest {
             // The stable preference is local: with every other choice held fixed, no stable version
             // of this package may complete the same solution. (A stable version whose own
             // dependencies conflict with the rest is not a candidate the preference could take.)
-            for (String candidate : u.table().get(e.getKey()).keySet()) {
+            for (String candidate : requireNonNull(u.table().get(e.getKey())).keySet()) {
                 if (!Versions.isStable(candidate)) continue;
                 Map<String, String> swapped = new HashMap<>(solution);
                 swapped.put(e.getKey(), candidate);
@@ -237,7 +240,7 @@ class PubGrubSolverPropertyTest {
      * The production contract ({@code PubGrubResolver}): a narrow solve, then one wide retry when
      * the narrow verdict was unsat over a possibly-incomplete universe. Null means unsatisfiable.
      */
-    private static Map<String, String> solveOrNull(Universe u, Random order) throws Exception {
+    private static @Nullable Map<String, String> solveOrNull(Universe u, Random order) throws Exception {
         PackageSource source = u.source(order);
         PubGrubSolver narrow = new PubGrubSolver(source, BUDGET, TIMEOUT_MS);
         try {

@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.TreeMap;
+import org.jspecify.annotations.Nullable;
 
 /**
  * PubGrub assignment stack (decisions + derivations) with decision-level backtracking. Per-package
@@ -34,7 +35,10 @@ public final class PartialSolution {
      */
     static final class PackageState {
         VersionSet continuous = VersionSet.ALL;
+
+        @Nullable
         AllowedSet allowed; // null until universe bound
+
         boolean hasPositive;
         boolean mentioned;
     }
@@ -174,7 +178,7 @@ public final class PartialSolution {
      * Preferred version among remaining candidates for an interned package, or {@code null}.
      * Requires {@link #bindUniverse} / a universe entry first.
      */
-    public String choosePreferred(String pkg) {
+    public @Nullable String choosePreferred(String pkg) {
         PackageState s = byPackage.get(pkg);
         if (s == null || s.allowed == null) return null;
         return s.allowed.choosePreferred();
@@ -347,5 +351,6 @@ public final class PartialSolution {
         INCONCLUSIVE
     }
 
-    public record Relation(IncompatibilityRelation kind, Term unsatisfied) {}
+    public record Relation(
+            IncompatibilityRelation kind, @Nullable Term unsatisfied) {}
 }

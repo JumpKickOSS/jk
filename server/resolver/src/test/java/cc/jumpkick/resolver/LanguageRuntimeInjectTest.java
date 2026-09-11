@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.resolver;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
@@ -71,16 +72,18 @@ class LanguageRuntimeInjectTest {
         LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
         var skipStrip = LanguageRuntimeInject.inject(
                 p, dir, Map.of(), deps, new LanguageRuntimeInject.ToolVersions("2.2.20", "3.8.4"));
-        assertThat(deps.get(key("org.scala-lang:scala3-library_3")).version())
+        assertThat(requireNonNull(deps.get(key("org.scala-lang:scala3-library_3")))
+                        .version())
                 .isInstanceOf(VersionSelector.Exact.class)
                 .extracting(v -> ((VersionSelector.Exact) v).version())
                 .isEqualTo("3.8.4");
         // 3.8+: the stub's scala-library edge is the real stdlib and is rooted exactly as well.
-        assertThat(deps.get(key("org.scala-lang:scala-library")).version())
+        assertThat(requireNonNull(deps.get(key("org.scala-lang:scala-library"))).version())
                 .isInstanceOf(VersionSelector.Exact.class)
                 .extracting(v -> ((VersionSelector.Exact) v).version())
                 .isEqualTo("3.8.4");
-        assertThat(deps.get(key("org.jetbrains.kotlin:kotlin-stdlib")).version())
+        assertThat(requireNonNull(deps.get(key("org.jetbrains.kotlin:kotlin-stdlib")))
+                        .version())
                 .isInstanceOf(VersionSelector.Exact.class)
                 .extracting(v -> ((VersionSelector.Exact) v).version())
                 .isEqualTo("2.2.20");
@@ -111,7 +114,7 @@ class LanguageRuntimeInjectTest {
         LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
         var skipStrip = LanguageRuntimeInject.inject(
                 p, dir, Map.of("org.apache.groovy:groovy", "5.0.6"), deps, LanguageRuntimeInject.ToolVersions.NONE);
-        assertThat(deps.get(key(GROOVY)).version().raw()).contains("5.0.7");
+        assertThat(requireNonNull(deps.get(key(GROOVY))).version().raw()).contains("5.0.7");
         assertThat(skipStrip).isEmpty();
     }
 
@@ -123,7 +126,7 @@ class LanguageRuntimeInjectTest {
         LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
         var skipStrip = LanguageRuntimeInject.inject(
                 p, dir, Map.of("org.apache.groovy:groovy", "5.0.6"), deps, LanguageRuntimeInject.ToolVersions.NONE);
-        assertThat(deps.get(key(GROOVY)).version().raw()).contains("5.0.6");
+        assertThat(requireNonNull(deps.get(key(GROOVY))).version().raw()).contains("5.0.6");
         assertThat(skipStrip).containsExactly("org.apache.groovy:groovy");
     }
 
@@ -195,7 +198,7 @@ class LanguageRuntimeInjectTest {
         LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
         var skipStrip = LanguageRuntimeInject.inject(
                 p, dir, Map.of("org.apache.groovy:groovy", "5.0.6"), deps, LanguageRuntimeInject.ToolVersions.NONE);
-        assertThat(deps.get(key(GROOVY)).version()).isInstanceOf(VersionSelector.Latest.class);
+        assertThat(requireNonNull(deps.get(key(GROOVY))).version()).isInstanceOf(VersionSelector.Latest.class);
         assertThat(skipStrip).isEmpty();
     }
 }

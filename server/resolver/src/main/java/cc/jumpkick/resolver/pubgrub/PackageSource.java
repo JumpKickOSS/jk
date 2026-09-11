@@ -4,6 +4,7 @@ package cc.jumpkick.resolver.pubgrub;
 import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * What the solver sees of the dependency universe: a list of available versions per package and the
@@ -68,7 +69,7 @@ public interface PackageSource {
      * excludes exactly that version and picks again.
      */
     final class VersionUnavailableException extends IOException {
-        public VersionUnavailableException(String message) {
+        public VersionUnavailableException(@Nullable String message) {
             super(message);
         }
     }

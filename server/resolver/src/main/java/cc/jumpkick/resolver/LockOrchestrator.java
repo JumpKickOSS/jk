@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * End-to-end lock: {@link JkBuild} → three independent scope solves (main / test / processor) →
@@ -29,7 +30,7 @@ import java.util.Set;
 public final class LockOrchestrator {
 
     private final RepoGroup repos;
-    private final Resolver resolverOverride;
+    private final @Nullable Resolver resolverOverride;
     private LockProgress.Timings timings = LockTimings::record;
 
     /**
@@ -39,7 +40,7 @@ public final class LockOrchestrator {
     private String jvmEnvironment = "standard-jvm";
 
     /** Consuming project directory — language-runtime inference reads its source trees. */
-    private Path projectDir;
+    private @Nullable Path projectDir;
 
     /** Cross-package features activated per library module, recorded on that library's row. */
     private Map<String, List<String>> activatedFeatures = Map.of();

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.resolver;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
@@ -26,6 +27,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -44,7 +46,7 @@ class KmpRedirectsMemoTest {
     private final Map<String, byte[]> served = new ConcurrentHashMap<>();
     private final Map<String, AtomicInteger> hits = new ConcurrentHashMap<>();
     /** Paths whose response is held until {@link #release} opens. */
-    private volatile String heldPathPrefix;
+    private volatile @Nullable String heldPathPrefix;
 
     private final CountDownLatch heldArrived = new CountDownLatch(1);
     private final CountDownLatch release = new CountDownLatch(1);
@@ -134,7 +136,7 @@ class KmpRedirectsMemoTest {
                     .hasValue(1);
 
             // A third, fresh instance after completion answers from the memo — zero new requests.
-            int pomHits = hits.get("/com/example/kmpdemo/widget/1.0.0/widget-1.0.0.pom")
+            int pomHits = requireNonNull(hits.get("/com/example/kmpdemo/widget/1.0.0/widget-1.0.0.pom"))
                     .get();
             assertThat(new KmpRedirects(repos, "standard-jvm").selectionFor("com.example.kmpdemo:widget", "1.0.0"))
                     .isPresent();

@@ -213,7 +213,7 @@ public final class MavenRepo {
      * republished the same GAV and the lock was re-pinned) is evicted and re-fetched from the network
      * instead of failing the whole sync with a checksum-mismatch dead end.
      */
-    public Fetched fetchArtifact(Coordinate coord, String expectedSha256, BooleanSupplier abort)
+    public Fetched fetchArtifact(Coordinate coord, @Nullable String expectedSha256, BooleanSupplier abort)
             throws IOException, InterruptedException {
         return fetch(coord, MavenLayout.artifactPath(coord), true, Leg.ARTIFACT, abort, expectedSha256);
     }

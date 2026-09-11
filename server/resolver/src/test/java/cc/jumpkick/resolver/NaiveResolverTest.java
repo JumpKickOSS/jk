@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.resolver;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
@@ -13,6 +14,7 @@ import cc.jumpkick.testing.LoopbackHttp;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
@@ -29,7 +31,8 @@ class NaiveResolverTest {
         Resolution result = resolver(tempDir).resolve(List.of(dep("com.foo:leaf", "1.0")));
 
         assertThat(result.modules()).containsOnlyKeys("com.foo:leaf");
-        assertThat(result.modules().get("com.foo:leaf").version()).isEqualTo("1.0");
+        assertThat(requireNonNull(result.modules().get("com.foo:leaf")).version())
+                .isEqualTo("1.0");
     }
 
     @Test
@@ -61,7 +64,8 @@ class NaiveResolverTest {
                         dep("com.foo", "libA", "1.0", null) + dep("com.foo", "libB", "1.0", null)));
 
         Resolution result = resolver(tempDir).resolve(List.of(dep("com.foo:root", "1.0")));
-        assertThat(result.modules().get("com.foo:shared").version()).isEqualTo("2.0");
+        assertThat(requireNonNull(result.modules().get("com.foo:shared")).version())
+                .isEqualTo("2.0");
     }
 
     @Test
@@ -137,7 +141,7 @@ class NaiveResolverTest {
                 """.formatted(group, artifact, version, depBodies);
     }
 
-    private static String dep(String group, String artifact, String version, String scope) {
+    private static String dep(String group, String artifact, String version, @Nullable String scope) {
         String scopeElement = scope == null ? "" : "<scope>" + scope + "</scope>";
         return """
                 <dependency>

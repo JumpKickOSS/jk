@@ -4,6 +4,7 @@ package cc.jumpkick.resolver.pubgrub;
 import cc.jumpkick.resolver.Versions;
 import java.util.BitSet;
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A subset of a {@link VersionUniverse}, stored as a bitset over the universe's version indices.
@@ -83,7 +84,7 @@ public final class AllowedSet {
      * pins. Otherwise walk remaining candidates highest-first, preferring the first
      * <em>stable</em> version, then the first pre-release, else {@code null} when empty.
      */
-    public String choosePreferred() {
+    public @Nullable String choosePreferred() {
         int first = bits.nextSetBit(0);
         if (first < 0) return null;
         // Soft-prefer front: index 0 is not a strict max of the universe → pin was front-loaded.
@@ -124,7 +125,7 @@ public final class AllowedSet {
             VersionSet exact = VersionSet.exact(universe.version(i));
             acc = acc == null ? exact : acc.union(exact);
         }
-        return acc;
+        return Objects.requireNonNull(acc);
     }
 
     private void requireSameUniverse(AllowedSet other) {

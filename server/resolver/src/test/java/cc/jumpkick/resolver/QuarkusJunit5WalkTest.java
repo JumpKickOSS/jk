@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.resolver;
 
+import static java.util.Objects.requireNonNull;
+
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.Coordinate;
@@ -46,7 +48,7 @@ class QuarkusJunit5WalkTest {
         int opens = 0;
         while (!q.isEmpty() && chosen.size() < 800) {
             String pkg = q.removeFirst();
-            String ver = chosen.get(pkg);
+            String ver = requireNonNull(chosen.get(pkg));
             if (!seen.add(pkg + "@" + ver)) continue;
             List<Term> deps;
             try {

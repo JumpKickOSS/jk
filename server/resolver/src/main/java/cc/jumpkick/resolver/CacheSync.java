@@ -24,6 +24,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Ensures every lockfile sha256 is on disk as a Maven-layout {@code *.jar} (Maven local repo
@@ -169,7 +170,7 @@ public final class CacheSync {
         List<PendingFetch> pending = new ArrayList<>();
         for (Lockfile.Artifact pkg : lock.artifacts()) {
             if (pkg.sourcesChecksum() == null) continue;
-            String hex = pkg.sourcesChecksumHex();
+            String hex = Objects.requireNonNull(pkg.sourcesChecksumHex());
             Coordinate sourcesCoord =
                     new Coordinate(pkg.moduleGroup(), pkg.moduleArtifact(), pkg.version(), "sources", "jar");
             String repoName = RepoArtifactResolver.repoName(pkg.source());
@@ -239,7 +240,7 @@ public final class CacheSync {
 
         default void skipped(Lockfile.Artifact pkg) {}
 
-        default void failed(Lockfile.Artifact pkg, String error) {}
+        default void failed(Lockfile.Artifact pkg, @Nullable String error) {}
     }
 
     private static FetchResult fetch(PendingFetch p) {
@@ -289,10 +290,11 @@ public final class CacheSync {
     }
 
     /** A package whose jar is missing on disk and needs to be fetched. */
-    private record PendingFetch(Lockfile.Artifact pkg, String expectedHex, MavenRepo repo) {}
+    private record PendingFetch(
+            Lockfile.Artifact pkg, @Nullable String expectedHex, MavenRepo repo) {}
 
     /** Outcome of one parallel fetch — null error means success. */
-    private record FetchResult(String error) {
+    private record FetchResult(@Nullable String error) {
         static FetchResult ok() {
             return new FetchResult(null);
         }

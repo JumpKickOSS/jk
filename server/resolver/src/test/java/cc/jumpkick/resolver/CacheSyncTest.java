@@ -14,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
@@ -138,7 +139,7 @@ class CacheSyncTest {
         return new Lockfile(Lockfile.CURRENT_VERSION, "jk test", Lockfile.RESOLUTION_ALGORITHM, List.of(packages));
     }
 
-    private Lockfile.Artifact pkg(String module, String version, String checksum) {
+    private Lockfile.Artifact pkg(String module, String version, @Nullable String checksum) {
         return new Lockfile.Artifact(module, version, "central+" + http.base() + "/", checksum, null, List.of());
     }
 }

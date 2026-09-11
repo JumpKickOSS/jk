@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.resolver.pubgrub;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -192,8 +193,10 @@ class PubGrubBudgetTest {
 
         assertThat(solution.get("shared")).isNotNull();
         // Prefer 50 is lifted; solution must meet b's floor.
-        assertThat(solution.get("shared").split("\\.")[0]).asString().satisfies(major -> {
-            assertThat(Integer.parseInt(major)).isGreaterThanOrEqualTo(90);
-        });
+        assertThat(requireNonNull(solution.get("shared")).split("\\.")[0])
+                .asString()
+                .satisfies(major -> {
+                    assertThat(Integer.parseInt(major)).isGreaterThanOrEqualTo(90);
+                });
     }
 }

@@ -3,6 +3,7 @@ package cc.jumpkick.resolver.pubgrub;
 
 import java.util.List;
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A PubGrub <i>incompatibility</i>: a non-empty list of {@link Term}s such that at least one term
@@ -59,7 +60,8 @@ public record Incompatibility(List<Term> terms, Cause cause) {
          * unavailable (its POM 404s in every declared repo — a half-published release). The solver
          * excluded it and retreated to the next candidate.
          */
-        record Unavailable(String pkg, String version, String reason) implements Cause {}
+        record Unavailable(
+                String pkg, String version, @Nullable String reason) implements Cause {}
 
         /**
          * Conflict-resolution derived this from two prior incompatibilities. Used by the diagnostic

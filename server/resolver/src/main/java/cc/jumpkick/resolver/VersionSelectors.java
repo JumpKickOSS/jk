@@ -3,6 +3,7 @@ package cc.jumpkick.resolver;
 
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.resolver.pubgrub.VersionSet;
+import java.util.Objects;
 
 /**
  * Converts jk's {@link VersionSelector} (caret-by-default semantics from {@code jk.toml}) into the
@@ -139,7 +140,7 @@ public final class VersionSelectors {
         String min = minStr.isEmpty() ? null : minStr;
         String max = maxStr.isEmpty() ? null : maxStr;
         if (min == null && max == null) return VersionSet.ALL;
-        if (min == null) return VersionSet.lessThan(max, maxInclusive);
+        if (min == null) return VersionSet.lessThan(Objects.requireNonNull(max), maxInclusive);
         if (max == null) return VersionSet.atLeast(min, minInclusive);
         return VersionSet.between(min, minInclusive, max, maxInclusive);
     }
