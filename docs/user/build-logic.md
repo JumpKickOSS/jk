@@ -60,6 +60,18 @@ files gets the same treatment with its output attached: write to `outDir` and th
 replays it while the module's sources, `jk.toml` and `jk-lock.toml` are unchanged. Only a
 success is recorded, so a failing script re-runs rather than replaying its own red.
 
+**The key covers the whole scope, on purpose.** A script declares no inputs, so its key
+has to cover everything it *could* read: for a module stem, the module's source roots
+(plugin-contributed roots included) plus `jk.toml` and `jk-lock.toml`; for a root stem
+(`after-build`, `guard`), every file in the checkout except build output (`target/`,
+Gradle's `build/`) and tool metadata (`.git`, `.gradle`, `.idea`, `node_modules`). The
+tradeoff runs one way: an edit anywhere in scope re-runs the script even when it never
+reads the changed file, and a script is never skipped on inputs it did read. That re-run
+is the only cost of not declaring inputs, and computing the key is cheap — every hash is
+memoized on the file's size and mtime, so a warm engine pays one stat per file (tens of
+milliseconds for a few-thousand-file checkout, once per build across a module's anchors)
+and only reads a file that changed since it was last hashed.
+
 **A script that must run every time says so.** A `//` comment line `jk: always` in the
 script's header (its first 40 lines) exempts it from both the verdict and the artifact
 cache: it runs whenever its anchor runs, and nothing is recorded. That is for work whose
