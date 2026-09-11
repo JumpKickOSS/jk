@@ -64,6 +64,8 @@ test-plugin-jars = [
   "cc.jumpkick.guards:spring",
   "cc.jumpkick.guards:quarkus",
   "cc.jumpkick.guards:android",
+  "cc.jumpkick.guards:library",
+  "cc.jumpkick.guards:monorepo",
 ]
 
 [test]
