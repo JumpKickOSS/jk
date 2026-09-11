@@ -15,6 +15,7 @@ import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -30,6 +31,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -277,6 +279,8 @@ public final class JavaCompilerHost {
             enqueue(w);
             try {
                 return w.compile.get();
+            } catch (InterruptedException e) {
+                throw interrupted(w, e);
             } catch (Exception e) {
                 throw unwrap(e);
             }
@@ -286,9 +290,23 @@ public final class JavaCompilerHost {
             enqueue(w);
             try {
                 return w.forecast.get();
+            } catch (InterruptedException e) {
+                throw interrupted(w, e);
             } catch (Exception e) {
                 throw unwrap(e);
             }
+        }
+
+        /**
+         * The submitter was interrupted (job cancel). Take the item back off the queue so no lane
+         * compiles for a caller that has left, keep the interrupt, and say what happened.
+         */
+        private RuntimeException interrupted(Work w, InterruptedException e) {
+            Thread.currentThread().interrupt();
+            queue.remove(w);
+            w.compile.completeExceptionally(e);
+            w.forecast.completeExceptionally(e);
+            return new UncheckedIOException(new InterruptedIOException("compile interrupted while queued"));
         }
 
         /**
@@ -394,19 +412,31 @@ public final class JavaCompilerHost {
         }
     }
 
-    /** One worker JVM, draining its pool's shared queue one item at a time. */
+    /**
+     * One worker JVM, draining its pool's shared queue one item at a time.
+     *
+     * <p>Two threads share a lane. The {@code io} thread runs the body and outlives the worker by
+     * exactly as long as it takes to notice the exit. The worker's pump thread delivers every
+     * protocol line, so it is the pump — not {@code io} — that blocks in {@link #takeNext} and
+     * writes {@code slot}, {@code busy} and {@code inflight}. The pump may still be parked on the
+     * queue after the worker has died; {@link #takeNext} checks {@code dead} so an item it takes
+     * then goes back to the pool instead of to a worker that is gone.
+     */
     static final class Session {
         private final Lanes owner;
         private final Thread io;
-        private volatile @Nullable Work inflight;
+        // Atomic because the pump thread that dispatches an item and the io thread that notices
+        // the worker's death both try to take it out: whoever swaps it to null owns its fate.
+        private final AtomicReference<@Nullable Work> inflight = new AtomicReference<>();
         // Set the instant an item leaves the queue for this lane, before the slot wait and the spec
         // write; inflight is set only once the command is on the wire. grow() reads this one:
         // a lane parked in PluginSlots.acquire() holds an item and is not capacity.
         private volatile boolean busy;
         private volatile boolean dead;
         // Held only while a COMPILE/PLAN is in flight, so the resident worker does not pin a
-        // PluginSlots permit while idle. Touched only by the io thread.
-        private PluginSlots.@Nullable Lease slot;
+        // PluginSlots permit while idle. A lease is released exactly once, from whichever thread
+        // ends the exchange.
+        private final AtomicReference<PluginSlots.@Nullable Lease> slot = new AtomicReference<>();
         // Bounded record of the worker's non-protocol lines, surfaced on a crash; reset at each
         // dispatch so it describes the work item that died, not the worker's first breath.
         private final WorkerTranscript transcript = new WorkerTranscript();
@@ -436,15 +466,16 @@ public final class JavaCompilerHost {
             }
         }
 
-        /** The lane's whole life: run the body, then tell the pool this lane is gone. */
+        /** The lane's whole life: run the body, then tell the pool this lane is gone — once. */
         private void drive(LaneBody body) {
+            Throwable cause = null;
             try {
                 body.run(this);
             } catch (Exception e) {
-                failAll(e);
+                cause = e;
             } finally {
                 dead = true;
-                failAll(new IOException("zinc worker exited"));
+                failAll(cause != null ? cause : new IOException("zinc worker exited"));
             }
         }
 
@@ -460,16 +491,35 @@ public final class JavaCompilerHost {
                             ForkedJavac.trainerCommand(template, workerCp, hostJavaHome, aotOutput, scratch)));
             jvmFlags.addAll(JvmOptions.batchFlags(1));
             List<String> command = PluginLoader.command(javaExe, workerCp, jvmFlags, List.of("--pull"));
-            new PluginClient(ForkedJavac.PREFIX)
+            int exit = new PluginClient(ForkedJavac.PREFIX)
                     .passthrough(transcript::record)
                     .converseNoSlot(command, (json, convo) -> onLine(json, convo));
+            if (exit != 0) throw new IOException("zinc worker exited with status " + exit);
         }
 
-        /** Block for the pool's next item; the lane is busy from the moment it has one. */
+        /** How long a parked lane goes between looks at whether its worker is still there. */
+        private static final long TAKE_POLL_MS = 200;
+
+        /**
+         * Block for the pool's next item; the lane is busy from the moment it has one. A lane whose
+         * worker has died hands anything it takes straight back to the pool and reports {@link
+         * Work#POISON} so the pump unwinds: an item dispatched to a dead worker would never complete.
+         */
         Work takeNext() throws InterruptedException {
-            Work next = owner.queue.take();
-            busy = true;
-            return next;
+            while (true) {
+                Work next = owner.queue.poll(TAKE_POLL_MS, TimeUnit.MILLISECONDS);
+                if (next == null) {
+                    if (dead) return Work.POISON;
+                    continue;
+                }
+                if (dead) {
+                    if (next == Work.POISON) owner.queue.add(next);
+                    else owner.enqueue(next);
+                    return Work.POISON;
+                }
+                busy = true;
+                return next;
+            }
         }
 
         void onLine(String json, PluginProcess.Conversation convo) {
@@ -478,7 +528,7 @@ public final class JavaCompilerHost {
                 dispatchNext(convo);
                 return;
             }
-            Work w = inflight;
+            Work w = inflight.get();
             if (w == null) return;
             if (PluginProtocol.DIAGNOSTIC.equals(t)) {
                 // Through WorkerDiagnostics, never a bare `new Diagnostic(...)`: downstream
@@ -507,21 +557,26 @@ public final class JavaCompilerHost {
                 w.reason = Jsonl.str(json, "reason");
                 for (String s : Jsonl.strArray(json, "compiled")) w.compiledSources.add(Path.of(s));
                 for (String s : Jsonl.strArray(json, "whys")) w.whys.add(s);
+                // Free the lane before waking the submitter: its next module may enqueue at once,
+                // and a lane still marked busy would make grow() start a JVM this lane could take.
+                idle();
                 complete(w);
-                inflight = null;
-                busy = false;
-                releaseSlot();
                 return;
             }
             if (PluginProtocol.ERROR.equals(t)) {
                 IOException err = new IOException(Jsonl.str(json, "message"));
+                deleteSpec(w);
+                idle();
                 w.compile.completeExceptionally(err);
                 w.forecast.completeExceptionally(err);
-                deleteSpec(w);
-                inflight = null;
-                busy = false;
-                releaseSlot();
             }
+        }
+
+        /** The exchange is over: no item, not busy, no worker slot held. */
+        private void idle() {
+            inflight.set(null);
+            busy = false;
+            releaseSlot();
         }
 
         /**
@@ -548,12 +603,26 @@ public final class JavaCompilerHost {
                 }
                 // Take a worker slot only for the duration of this exchange; released on
                 // RESULT/ERROR/failure so an idle session holds none.
-                slot = PluginSlots.acquire();
+                slot.set(PluginSlots.acquire());
                 try {
                     next.waitNanos = CLOCK.nanos() - next.enqueuedNanos;
                     next.spec = owner.specs.write(next.req);
                     transcript.reset();
-                    inflight = next;
+                    inflight.set(next);
+                    // The worker may have died during the slot wait or the spec write. inflight is
+                    // published before this read and failAll sets dead before its read, so one of
+                    // the two sides always sees the other; the swap decides which one owns the item.
+                    if (dead) {
+                        if (inflight.compareAndSet(next, null)) {
+                            deleteSpec(next);
+                            owner.enqueue(next);
+                        }
+                        busy = false;
+                        releaseSlot();
+                        convo.send("DONE");
+                        convo.closeInput();
+                        return;
+                    }
                     convo.send((next.plan ? "PLAN " : "COMPILE ") + next.spec.toAbsolutePath());
                     return;
                 } catch (IOException e) {
@@ -564,10 +633,9 @@ public final class JavaCompilerHost {
             }
         }
 
-        /** Return the in-flight worker slot to the pool (idempotent; io thread only). */
+        /** Return the in-flight worker slot to the pool; a lease is closed once, whoever gets there. */
         private void releaseSlot() {
-            PluginSlots.Lease s = slot;
-            slot = null;
+            PluginSlots.Lease s = slot.getAndSet(null);
             if (s != null) s.close();
         }
 
@@ -611,8 +679,7 @@ public final class JavaCompilerHost {
          */
         private void failAll(Throwable e) {
             releaseSlot();
-            Work cur = inflight;
-            inflight = null;
+            Work cur = inflight.getAndSet(null);
             busy = false;
             if (cur != null) {
                 deleteSpec(cur);

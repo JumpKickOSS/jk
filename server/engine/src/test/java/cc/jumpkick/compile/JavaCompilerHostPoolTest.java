@@ -173,6 +173,110 @@ class JavaCompilerHostPoolTest {
         release.countDown();
     }
 
+    @Test
+    void a_lane_parked_on_the_queue_when_its_worker_dies_hands_back_what_it_takes(@TempDir Path dir) throws Exception {
+        // The worker's pump thread is the one blocked in takeNext(), and it does not learn of the
+        // worker's death by itself: the io thread does. An item the dead lane takes afterwards must
+        // go back to the pool, or its caller waits on a worker that no longer exists.
+        CountDownLatch firstDies = new CountDownLatch(1);
+        CountDownLatch secondDies = new CountDownLatch(1);
+        AtomicReference<Session> first = new AtomicReference<>();
+        Lanes pool = new Lanes(
+                1,
+                (owner, index) -> {
+                    if (first.get() == null) {
+                        Session s = new Session(owner, 7L, index, self -> {
+                            self.takeNext();
+                            firstDies.await();
+                        });
+                        first.set(s);
+                        return s;
+                    }
+                    return new Session(owner, 7L, index, self -> secondDies.await());
+                },
+                ForkedJavac::writeSpec);
+        pool.enqueue(Work.compile(request(dir, "a")));
+        awaitTrue(() -> pool.queued() == 0, "the first lane's body took the item");
+
+        List<String> sent = new ArrayList<>();
+        Thread pump = Thread.ofVirtual().start(() -> first.get()
+                .onLine("{\"" + PluginProtocol.T + "\":\"" + PluginProtocol.READY + "\"}", recording(sent)));
+        awaitTrue(
+                () -> pump.getState() == Thread.State.WAITING || pump.getState() == Thread.State.TIMED_WAITING,
+                "the pump is parked on the empty queue");
+
+        firstDies.countDown();
+        awaitTrue(() -> pool.liveLanes() == 0, "the first lane is gone");
+
+        Work b = Work.compile(request(dir, "b"));
+        pool.enqueue(b);
+        pump.join(TimeUnit.SECONDS.toMillis(10));
+
+        assertThat(pump.isAlive()).as("the dead lane's pump unwinds").isFalse();
+        assertThat(sent).as("the dead worker is told DONE, never COMPILE").containsExactly("DONE", "<eof>");
+        assertThat(pool.queued()).as("the item waits for a lane that is alive").isEqualTo(1);
+        assertThat(pool.liveLanes()).isEqualTo(1);
+        assertThat(b.compile).isNotDone();
+
+        secondDies.countDown();
+        awaitTrue(b.compile::isDone, "the last lane's death fails the item that was handed back");
+        assertThat(b.compile).isCompletedExceptionally();
+    }
+
+    @Test
+    void a_lane_whose_worker_dies_between_take_and_dispatch_hands_the_item_back(@TempDir Path dir) throws Exception {
+        // Between takeNext() and the COMPILE line the pump waits for a slot and writes the spec. A
+        // worker that dies in that window has no in-flight item for failAll to fail, so the pump has
+        // to notice on its own and give the item back rather than send it down a closed pipe.
+        CountDownLatch specGate = new CountDownLatch(1);
+        CountDownLatch firstDies = new CountDownLatch(1);
+        CountDownLatch secondDies = new CountDownLatch(1);
+        SpecFile specs = req -> {
+            try {
+                specGate.await();
+            } catch (InterruptedException e) {
+                throw new IOException(e);
+            }
+            return Files.writeString(dir.resolve("a.spec"), "spec");
+        };
+        AtomicReference<Session> first = new AtomicReference<>();
+        Lanes pool = new Lanes(
+                1,
+                (owner, index) -> {
+                    if (first.get() == null) {
+                        Session s = new Session(owner, 8L, index, self -> firstDies.await());
+                        first.set(s);
+                        return s;
+                    }
+                    return new Session(owner, 8L, index, self -> secondDies.await());
+                },
+                specs);
+        Work a = Work.compile(request(dir, "a"));
+        pool.enqueue(a);
+
+        List<String> sent = new ArrayList<>();
+        Thread pump = Thread.ofVirtual().start(() -> first.get()
+                .onLine("{\"" + PluginProtocol.T + "\":\"" + PluginProtocol.READY + "\"}", recording(sent)));
+        awaitTrue(() -> pool.queued() == 0 && first.get().working(), "the pump took the item and is in the spec write");
+
+        firstDies.countDown();
+        awaitTrue(() -> pool.liveLanes() == 0, "the first lane is gone while the pump still holds the item");
+        specGate.countDown();
+        pump.join(TimeUnit.SECONDS.toMillis(10));
+
+        assertThat(pump.isAlive()).isFalse();
+        assertThat(sent).as("the dead worker is told DONE, never COMPILE").containsExactly("DONE", "<eof>");
+        assertThat(pool.queued()).as("the item went back to the pool").isEqualTo(1);
+        assertThat(pool.liveLanes())
+                .as("handing it back opened a lane to take it")
+                .isEqualTo(1);
+        assertThat(a.compile).isNotDone();
+
+        secondDies.countDown();
+        awaitTrue(a.compile::isDone, "the last lane's death fails the item that was handed back");
+        assertThat(a.compile).isCompletedExceptionally();
+    }
+
     private static PluginProcess.Conversation recording(List<String> sent) {
         return new PluginProcess.Conversation() {
             @Override
