@@ -32,6 +32,9 @@ public final class Exit {
     /** Bad project/config input: no {@code jk.toml}/{@code jk-lock.toml}, or an invalid argument value. */
     public static final int CONFIG = 2;
 
+    /** The build ran and its tests did not all pass. */
+    public static final int TESTS_FAILED = 4;
+
     /** {@code EX_USAGE}: the command line itself was wrong (missing/unknown args). */
     public static final int USAGE = 64;
 

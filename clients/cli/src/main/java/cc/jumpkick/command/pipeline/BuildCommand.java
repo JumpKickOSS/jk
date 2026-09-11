@@ -435,7 +435,8 @@ public final class BuildCommand implements CliCommand {
         if (!result.errors().isEmpty()) {
             run.finishEvent(false, elapsed);
             if (!json) {
-                for (String err : result.errors()) CliOutput.err(ConsoleSpec.errorLine("composite", err));
+                String step = WorkspaceRunView.errorStep(result);
+                for (String err : result.errors()) CliOutput.err(ConsoleSpec.errorLine(step, err));
             }
             notifyBuild(BuildNotify.Outcome.FAILED, entryDir, 0, elapsed);
             // exitCode carries the engine's verdict: 2 for graph errors, 6 for an unsatisfiable

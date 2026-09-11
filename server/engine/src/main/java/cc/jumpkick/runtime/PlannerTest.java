@@ -517,6 +517,15 @@ public final class PlannerTest {
                     } finally {
                         if (gated) TEST_GATE.release();
                     }
+                    if (TestClassMatch.nothingMatched(effectiveSel, affected != null, result)) {
+                        // A workspace judges the patterns across its modules; this one skips.
+                        if (in.projectModules().size() > 1) {
+                            ctx.label(TestClassMatch.skipLabel(effectiveSel.classes()));
+                            ctx.cached();
+                            return;
+                        }
+                        result = TestClassMatch.asFailure(moduleLabel, effectiveSel.classes());
+                    }
                     ctx.put(TEST_RESULT, result);
                     recordOutcome(ctx, in, actionCache, testTaskId, stampKey, result, snippets);
                 })

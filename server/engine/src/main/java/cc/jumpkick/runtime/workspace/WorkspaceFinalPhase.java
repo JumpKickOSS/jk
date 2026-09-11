@@ -1,12 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.workspace;
 
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.Calibration;
 import cc.jumpkick.runtime.PreflightMemo;
+import cc.jumpkick.runtime.TestClassMatch;
 import cc.jumpkick.runtime.base.ScheduleBias;
 import cc.jumpkick.runtime.base.StepTimings;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
+import cc.jumpkick.wire.runtime.ModulePlan;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
@@ -18,6 +23,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 /** Aggregates execution precedence and learns only from complete successful runs. */
 @NullMarked
@@ -29,8 +35,25 @@ final class WorkspaceFinalPhase {
 
     static WorkspaceResult complete(WorkspaceRunPhase.Run run) {
         Decision decision = aggregate(run.outcomes(), run.scheduleFailure(), run.cancelled());
-        if (decision.learn()) learn(run);
+        if (!decision.learn()) return decision.result();
+        WorkspaceResult noMatch = noClassMatched(run);
+        if (noMatch != null) return noMatch;
+        learn(run);
         return decision.result();
+    }
+
+    /**
+     * The one run-wide failure a green run can still turn into: every module skipped the
+     * {@code --class} patterns. Each module only knows its own suite; this is where their answers
+     * meet. {@code null} when some module matched, or the run selected no classes.
+     */
+    static @Nullable WorkspaceResult noClassMatched(WorkspaceRunPhase.Run run) {
+        List<BuildPlan> plans =
+                run.prepared().plans().values().stream().map(ModulePlan::plan).toList();
+        boolean skipTests = run.prepared().resources().request().skipTests();
+        String verdict = TestClassMatch.runWideVerdict(SessionContext.current(), skipTests, plans);
+        if (verdict == null) return null;
+        return new WorkspaceResult(false, Exit.TESTS_FAILED, run.outcomes(), List.of(verdict), false);
     }
 
     /**

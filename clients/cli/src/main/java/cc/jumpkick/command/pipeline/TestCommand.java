@@ -484,7 +484,8 @@ public final class TestCommand implements CliCommand {
         if (!json) {
             // Workspace-level errors (graph/lock problems) never reach a module listener —
             // print them before the wedge or a failing run shows no diagnostic at all.
-            for (String err : result.errors()) CliOutput.err(ConsoleSpec.errorLine("composite", err));
+            String step = WorkspaceRunView.errorStep(result);
+            for (String err : result.errors()) CliOutput.err(ConsoleSpec.errorLine(step, err));
             CommandWedge.printFail("Test", workspaceTestFailureTail(result, ms));
         }
         return result.exitCode();

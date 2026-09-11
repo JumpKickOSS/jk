@@ -88,18 +88,15 @@ public final class JUnitLauncher {
     /** {@code --class} patterns as one class-name regex for the runner, or null for every class. */
     private @Nullable String classFilter;
 
-    /** The patterns {@link #classFilter} was built from, for the no-match failure line. */
-    private List<String> classPatterns = List.of();
-
     /**
      * {@code --class}: run only classes matching these names (fully qualified, simple, or with
      * {@code *} wildcards). Discovery and the one-shot runner both apply the filter, so a sharded
      * run dispatches exactly the classes a single JVM would have run. Ignored when {@link
-     * #withClassNames} named exact classes.
+     * #withClassNames} named exact classes. A filter that matches nothing comes back as an empty
+     * summary; whether that is a skip or a failure is the caller's call, not the launcher's.
      */
     public JUnitLauncher withClassPatterns(List<String> patterns) {
-        this.classPatterns = patterns == null ? List.of() : List.copyOf(patterns);
-        this.classFilter = classPatterns.isEmpty() ? null : JUnitClassFilter.patternRegex(classPatterns);
+        this.classFilter = patterns == null || patterns.isEmpty() ? null : JUnitClassFilter.patternRegex(patterns);
         return this;
     }
 
@@ -411,8 +408,8 @@ public final class JUnitLauncher {
         // it per-path recorded the concurrency for 2 modules out of 29, which is worse than not at
         // all — a forecast rescales the modules it has a count for and not the rest.
         if (resolvedWorkers <= 1) {
-            return noMatchAsFailure(runSingle(javaBinary, classpath, testClassesDir, listener, testResultsDir)
-                    .withWorkers(1));
+            return runSingle(javaBinary, classpath, testClassesDir, listener, testResultsDir)
+                    .withWorkers(1);
         }
         // W>1 + Jupiter in-process parallel is a known double-parallelism footgun.
         List<Path> cpForDetect = new ArrayList<>();
@@ -421,14 +418,9 @@ public final class JUnitLauncher {
         if (JupiterParallelDetect.enabled(cpForDetect)) {
             listener.onWarning("jupiter-parallel", JupiterParallelDetect.stackWarning(resolvedWorkers));
         }
-        return noMatchAsFailure(runParallel(
+        return runParallel(
                         javaBinary, classpath, testClassesDir, resolvedWorkers, listener, testResultsDir, preDiscovered)
-                .withWorkers(resolvedWorkers));
-    }
-
-    private TestSummary noMatchAsFailure(TestSummary result) {
-        boolean filtered = classFilter != null && classNames.isEmpty();
-        return filtered ? JUnitClassFilter.noMatchAsFailure(result, moduleLabel, classPatterns) : result;
+                .withWorkers(resolvedWorkers);
     }
 
     // -------- single-worker ---------------------------------------------
@@ -552,7 +544,8 @@ public final class JUnitLauncher {
         return slash < 0 ? path : path.substring(slash + 1);
     }
 
-    private static TestSummary merge(TestSummary a, TestSummary b) {
+    /** The sharded pool's summary and the serial-tag pool's as one suite result. */
+    static TestSummary merge(TestSummary a, TestSummary b) {
         var failures = new ArrayList<>(a.failures());
         failures.addAll(b.failures());
         var walls = new LinkedHashMap<>(a.classWallMs());
@@ -656,8 +649,8 @@ public final class JUnitLauncher {
                     List.of(new TestFailureInfo(
                             moduleLabel, "", "", "(test run)", "", "runner exited " + worstExit, crash.toString())));
         }
-        // A worker that died mid-suite while its siblings kept going used to vanish silently:
-        // its in-flight class was neither run nor reported, so the suite went green with a
+        // A worker that dies mid-suite while its siblings keep going must not vanish silently:
+        // its in-flight class is neither run nor reported, and the suite would go green with a
         // shortfall. Surface every abnormal exit as a failure naming the worker's last class
         // (idle-watchdog kills land here too). Skipped on user cancel: those exits
         // are the kill we asked for.

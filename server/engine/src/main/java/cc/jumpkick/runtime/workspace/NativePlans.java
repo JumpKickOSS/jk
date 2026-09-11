@@ -176,7 +176,7 @@ public final class NativePlans {
             }
         }
         var testResult = plan.get(BuildPlanner.TEST_RESULT).orElse(null);
-        if (testResult != null && !testResult.allPassed()) return 4;
+        if (testResult != null && !testResult.allPassed()) return Exit.TESTS_FAILED;
         return 1;
     }
 }

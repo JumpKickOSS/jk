@@ -6,8 +6,10 @@ import java.util.List;
 /**
  * The whole workspace build result.
  *
- * @param errors graph-resolution errors (composite deps); non-empty ⇒ nothing built
- * @param cancelled user/deadline canceldistinct from a plain failure so clients can
+ * @param errors run-level errors no single module owns: graph-resolution errors (composite deps),
+ * in which case {@code modules} is empty and nothing was built, or a verdict over the finished
+ * modules such as a {@code --class} selection that matched nothing anywhere
+ * @param cancelled user/deadline cancel — distinct from a plain failure so clients can
  * render "cancelled" rather than "disconnected" / generic fail
  */
 public record WorkspaceResult(

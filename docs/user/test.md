@@ -78,9 +78,22 @@ When tests fail: `jk results` — [Troubleshooting](troubleshooting.md).
 
 `--class <name>` runs only the matching test classes of the selected suites: a fully
 qualified name is exact, a simple name matches in any package, and `*` stands for any run of
-characters (`--class '*IT'`). Repeat the flag to union. Tags still apply. A pattern that
-matches nothing **fails** the run — a typo must not pass green. The filter is part of the
-run's stamp, so a green `--class` run never marks the whole suite up to date.
+characters (`--class '*IT'`). Repeat the flag to union. Tags still apply. The filter is part of
+the run's stamp, so a green `--class` run never marks the whole suite up to date.
+
+The patterns are judged against the **run**, not each module. In a workspace a module whose
+suites contain no matching class is skipped — its `run-tests` step reads
+`no classes matched --class OrdersTest — skipped`, the same shape as a module that lacks the
+selected suite. The run **fails** with `no test classes matched --class OrdersTest` only when no
+module matched anything: a typo must not pass green. A standalone project is its own run, so
+there the empty match fails on the spot. `[test] serial-tags` partitions inside one module are
+judged together: a pattern that only matches serial-tagged classes is a match.
+
+`-m` narrows the run to the selected modules **and their prerequisites**, and a prerequisite
+runs its own suite too (a green suite replays from its stamp; a dirty one runs). `-m` is the
+same cone for `jk build` and `jk test`. To reach one module's class from the workspace root,
+name the class: `jk test -m clients/cli --class SelfNukeCommandTest` runs it in `clients/cli`
+and skips the prerequisites, whose suites match nothing.
 
 ## Debug a test JVM
 
@@ -103,9 +116,9 @@ compiler workers and test discovery run as they always do. One line on stderr sa
 Attach a stock remote debugger (IDEA *Remote JVM Debug*, VS Code `java` `attach`) to that
 address; the recipe is in [IDE and BSP](ide.md#debugging-through-bsp). A debug run pins the
 module to one test JVM (`-w1`) and runs modules serially, because one listener means one
-JVM at a time — in a workspace each module's suite takes the address in turn, so pass
-`-m <module>` (or run from the module directory) to debug one. A debug run always runs the
-suite, even when the cache would have skipped it.
+JVM at a time — in a workspace each module's suite takes the address in turn, prerequisites
+included, so pass `--class` with `-m <module>` to make the module you are debugging the only
+suite that runs. A debug run always runs the suite, even when the cache would have skipped it.
 
 jk settles the address before the launch: an explicit port is used as given, and `0` is a
 free port bound and released by the client so the JVM can take it. Nothing reads the JVM's

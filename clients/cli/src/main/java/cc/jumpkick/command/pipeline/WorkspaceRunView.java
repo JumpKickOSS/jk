@@ -324,9 +324,10 @@ final class WorkspaceRunView {
         }
         if (!result.errors().isEmpty()) {
             List<String> errs = new ArrayList<>(above);
-            for (String err : result.errors()) errs.add(ConsoleSpec.errorLine("composite", err));
-            view.finishBuildPlanFailure("dependency resolution failed", errs);
-            if (session != null) session.wedge("dependency resolution failed");
+            for (String err : result.errors()) errs.add(ConsoleSpec.errorLine(errorStep(result), err));
+            String tail = errorsTail(result);
+            view.finishBuildPlanFailure(tail, errs);
+            if (session != null) session.wedge(tail);
             event(JsonlShape.workspaceFinish(false, elapsedMs, planned()));
             after.accept(Settled.GRAPH_ERRORS);
             // 2 for graph errors, 6 for an unsatisfiable workspace lock (the engine's freshen guard).
@@ -378,6 +379,22 @@ final class WorkspaceRunView {
     /** Emit the terminal {@code workspace-finish} for a run that never reached the ladder. */
     void finishEvent(boolean success, long elapsedMs) {
         event(JsonlShape.workspaceFinish(success, elapsedMs, planned()));
+    }
+
+    /**
+     * The step a run-level error is printed under: {@code composite} for a graph error, which
+     * happens before any module exists, and {@code test} for a verdict over modules that finished
+     * (the one such verdict is a {@code --class} selection that matched nothing anywhere).
+     */
+    static String errorStep(WorkspaceResult result) {
+        return result.modules().isEmpty() ? "composite" : "test";
+    }
+
+    /** The failure wedge for a run that ended on run-level errors: the verdict itself when modules ran. */
+    static String errorsTail(WorkspaceResult result) {
+        return result.modules().isEmpty()
+                ? "dependency resolution failed"
+                : result.errors().get(0);
     }
 
     /** First failing module's coordinate, or {@code fallback} when the engine named none. */
