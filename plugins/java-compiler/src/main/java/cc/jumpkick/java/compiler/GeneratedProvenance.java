@@ -6,10 +6,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Deque;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -25,6 +24,10 @@ import org.jspecify.annotations.Nullable;
  * generated file is now stale needs last run's origin map, and that map is a fact about the workdir
  * with a lifetime longer than one compile — unrelated to the invalidation analysis {@link
  * ZincWorkdir} keeps beside it.
+ *
+ * <p>Paths are compared through {@link Canon}, which resolves links in directories only: a source
+ * file that is itself a link never reaches this class, because jk's source walks do not follow file
+ * links and the generated trees are written by javac and jk's own plugins.
  */
 final class GeneratedProvenance {
 
@@ -45,7 +48,7 @@ final class GeneratedProvenance {
      * processor that stopped generating it — e.g. its annotation was removed). Then persist the
      * merged provenance for the next build.
      *
-     * <p>Every path that takes part in a comparison below goes through {@link #canonical} first.
+     * <p>Every path that takes part in a comparison below goes through one {@link Canon} first.
      * Each question asked here — was this source recompiled, was this file regenerated, is it under
      * my own output root — is "are these two names the same file", and only a link-resolved form
      * answers it.
@@ -53,11 +56,12 @@ final class GeneratedProvenance {
     void reconcile(
             @Nullable Path sourceOutput, Path classOutput, List<Path> compiledSources, Map<Path, Set<Path>> newProv)
             throws IOException {
-        Path srcRoot = sourceOutput == null ? null : canonical(sourceOutput);
-        Path classRoot = canonical(classOutput);
-        Map<Path, Set<Path>> prev = read();
-        Set<Path> recompiled = canonicalAll(compiledSources);
-        Set<Path> regenerated = canonicalAll(newProv.keySet()); // this run's generated files
+        Canon canon = new Canon(sourceOutput == null ? List.of(classOutput) : List.of(sourceOutput, classOutput));
+        Path srcRoot = sourceOutput == null ? null : canon.canonical(sourceOutput);
+        Path classRoot = canon.canonical(classOutput);
+        Map<Path, Set<Path>> prev = read(canon);
+        Set<Path> recompiled = canon.all(compiledSources);
+        Set<Path> regenerated = canon.all(newProv.keySet()); // this run's generated files
 
         Map<Path, Set<Path>> merged = new LinkedHashMap<>();
         for (Map.Entry<Path, Set<Path>> e : prev.entrySet()) {
@@ -72,12 +76,12 @@ final class GeneratedProvenance {
             }
         }
         for (Map.Entry<Path, Set<Path>> e : newProv.entrySet()) {
-            merged.put(canonical(e.getKey()), canonicalAll(e.getValue()));
+            merged.put(canon.canonical(e.getKey()), canon.all(e.getValue()));
         }
         write(merged);
     }
 
-    /** All three arguments are already {@link #canonical}, which is what makes the containment test valid. */
+    /** All three arguments are already {@link Canon#canonical}, which is what makes the containment test valid. */
     private static void deleteOutputs(Path gen, @Nullable Path srcRoot, @Nullable Path classRoot) throws IOException {
         Files.deleteIfExists(gen); // the generated source/resource itself
         String name = gen.getFileName().toString();
@@ -97,7 +101,8 @@ final class GeneratedProvenance {
     }
 
     /**
-     * Absolute and symlink-resolved, so that two names for one file compare equal.
+     * One reconcile's answer to "which file is this": absolute, {@code ..}-free and with every link in
+     * the directory prefix resolved, so that two names for one file compare equal.
      *
      * <p>The paths meeting here come from three sources that disagree about links, and none of them
      * says so: javac real-paths the URIs it returns from {@code Filer} and {@code Trees}, Zinc's
@@ -110,31 +115,71 @@ final class GeneratedProvenance {
      * {@code /var} → {@code /private/var} link; a symlinked workspace, worktree or {@code $HOME}
      * reaches it anywhere.
      *
+     * <p>Links live in directories, not in the files this class compares, so the filesystem is asked
+     * once per root and once per other directory rather than once per file: a path beneath a root is
+     * the root's real path plus the lexical remainder, and any other file is its directory's real
+     * path plus its name. {@code toRealPath} costs two orders of magnitude more than the lexical
+     * form on Windows, and a compile hands over thousands of files in a few hundred directories.
+     *
      * <p>Real-pathing the deepest ancestor that exists and re-appending the rest is what lets this
      * be applied unconditionally, to a path that is not on disk: a {@code sourceOutput} the first
      * build has not created yet, and a generated file in the instant after it is deleted.
      */
-    private static Path canonical(Path p) {
-        Path abs = p.toAbsolutePath().normalize();
-        Deque<Path> tail = new ArrayDeque<>();
-        for (Path probe = abs; probe != null; probe = probe.getParent()) {
-            try {
-                Path real = probe.toRealPath();
-                for (Path name : tail) real = real.resolve(name);
-                return real;
-            } catch (IOException notThere) {
-                Path name = probe.getFileName();
-                if (name == null) break; // the root itself will not resolve; nothing left to walk up to
-                tail.addFirst(name);
+    static final class Canon {
+
+        /** Both spellings of each root — as given and as resolved — to the resolved one. */
+        private final Map<Path, Path> roots = new LinkedHashMap<>();
+
+        private final Map<Path, Path> dirs = new HashMap<>();
+        private int realPathCalls;
+
+        Canon(Collection<Path> roots) {
+            for (Path root : roots) {
+                Path abs = root.toAbsolutePath().normalize();
+                Path real = realDir(abs);
+                this.roots.put(abs, real);
+                this.roots.put(real, real);
             }
         }
-        return abs;
-    }
 
-    private static Set<Path> canonicalAll(Collection<Path> paths) {
-        Set<Path> out = new HashSet<>();
-        for (Path p : paths) out.add(canonical(p));
-        return out;
+        Path canonical(Path p) {
+            Path abs = p.toAbsolutePath().normalize();
+            for (Map.Entry<Path, Path> root : roots.entrySet()) {
+                if (abs.startsWith(root.getKey()))
+                    return root.getValue().resolve(root.getKey().relativize(abs));
+            }
+            Path parent = abs.getParent();
+            Path name = abs.getFileName();
+            if (parent == null || name == null) return abs;
+            return realDir(parent).resolve(name);
+        }
+
+        Set<Path> all(Collection<Path> paths) {
+            Set<Path> out = new HashSet<>();
+            for (Path p : paths) out.add(canonical(p));
+            return out;
+        }
+
+        /** How many times the filesystem was asked; one per root and per distinct directory. */
+        int realPathCalls() {
+            return realPathCalls;
+        }
+
+        private Path realDir(Path dir) {
+            Path known = dirs.get(dir);
+            if (known != null) return known;
+            Path real;
+            try {
+                realPathCalls++;
+                real = dir.toRealPath();
+            } catch (IOException notThere) {
+                Path parent = dir.getParent();
+                Path name = dir.getFileName();
+                real = parent == null || name == null ? dir : realDir(parent).resolve(name);
+            }
+            dirs.put(dir, real);
+            return real;
+        }
     }
 
     /**
@@ -143,7 +188,7 @@ final class GeneratedProvenance {
      * moved, or from before a link in its prefix was repointed. The alternative — trusting the file
      * because {@link #write} emits canonical paths — makes correctness depend on who wrote it.
      */
-    private Map<Path, Set<Path>> read() throws IOException {
+    private Map<Path, Set<Path>> read(Canon canon) throws IOException {
         Map<Path, Set<Path>> out = new LinkedHashMap<>();
         if (!Files.isRegularFile(file)) return out;
         for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
@@ -152,8 +197,8 @@ final class GeneratedProvenance {
             if (parts.length < 2) continue;
             try {
                 Set<Path> origins = new HashSet<>();
-                for (int i = 1; i < parts.length; i++) origins.add(canonical(Path.of(unescape(parts[i]))));
-                out.put(canonical(Path.of(unescape(parts[0]))), origins);
+                for (int i = 1; i < parts.length; i++) origins.add(canon.canonical(Path.of(unescape(parts[i]))));
+                out.put(canon.canonical(Path.of(unescape(parts[0]))), origins);
             } catch (InvalidPathException malformed) {
                 // A row this jk cannot read is a row it cannot prune for; the next write drops it.
             }

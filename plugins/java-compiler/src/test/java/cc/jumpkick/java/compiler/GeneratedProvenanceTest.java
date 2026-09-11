@@ -17,7 +17,9 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * {@code provenance.tsv} must survive its own delimiters appearing in the data: a tab or newline
  * is legal in a POSIX path, and unescaped it split the record into bogus columns — the row read
- * as malformed, was silently skipped, and the prune stopped for that file.
+ * as malformed, was silently skipped, and the prune stopped for that file. And two spellings of one
+ * file — through a link and through its target — must reconcile as one, without asking the
+ * filesystem about every file to get there.
  */
 class GeneratedProvenanceTest {
 
@@ -98,5 +100,95 @@ class GeneratedProvenanceTest {
         // skipped, and the stale file survived forever.
         prov.reconcile(srcOut, classOut, List.of(origin), Map.of());
         assertThat(gen).as("the stale generated source is pruned").doesNotExist();
+    }
+
+    @Test
+    void two_spellings_of_one_file_through_a_symlinked_source_root_reconcile_as_one(@TempDir Path tmp)
+            throws Exception {
+        Path real = Files.createDirectories(tmp.resolve("real"));
+        Path link = symlinkOrSkip(tmp.resolve("link"), real);
+        Files.createDirectories(real.resolve("src"));
+        Files.createDirectories(real.resolve("gen-src"));
+        Files.createDirectories(real.resolve("classes"));
+        Path workdir = Files.createDirectories(real.resolve("work"));
+        Files.writeString(real.resolve("src/A.java"), "class A {}");
+        Files.writeString(real.resolve("src/B.java"), "class B {}");
+        Files.writeString(real.resolve("gen-src/AGen.java"), "class AGen {}");
+        Files.writeString(real.resolve("gen-src/BGen.java"), "class BGen {}");
+        Files.writeString(real.resolve("classes/AGen.class"), "");
+        Files.writeString(real.resolve("classes/BGen.class"), "");
+
+        // The build spells its roots and sources through the link; javac real-paths what it reports.
+        GeneratedProvenance prov = GeneratedProvenance.of(workdir);
+        prov.reconcile(
+                link.resolve("gen-src"),
+                link.resolve("classes"),
+                List.of(link.resolve("src/A.java"), link.resolve("src/B.java")),
+                Map.of(
+                        real.resolve("gen-src/AGen.java"), Set.of(real.resolve("src/A.java")),
+                        real.resolve("gen-src/BGen.java"), Set.of(real.resolve("src/B.java"))));
+
+        // Only A recompiled, and it generated nothing: AGen is pruned through either spelling, BGen kept.
+        prov.reconcile(link.resolve("gen-src"), link.resolve("classes"), List.of(link.resolve("src/A.java")), Map.of());
+        assertThat(real.resolve("gen-src/AGen.java")).doesNotExist();
+        assertThat(link.resolve("gen-src/AGen.java")).doesNotExist();
+        assertThat(real.resolve("classes/AGen.class")).doesNotExist();
+        assertThat(real.resolve("gen-src/BGen.java")).exists();
+        assertThat(real.resolve("classes/BGen.class")).exists();
+        assertThat(Files.readString(workdir.resolve("provenance.tsv")))
+                .contains("BGen.java")
+                .doesNotContain("AGen.java");
+    }
+
+    @Test
+    void a_file_beneath_a_root_costs_no_filesystem_call_and_any_other_directory_is_asked_once(@TempDir Path tmp)
+            throws Exception {
+        Path gen = Files.createDirectories(tmp.resolve("gen"));
+        Files.createDirectories(tmp.resolve("src/p"));
+        Files.createDirectories(tmp.resolve("src/q"));
+        GeneratedProvenance.Canon canon = new GeneratedProvenance.Canon(List.of(gen));
+        assertThat(canon.realPathCalls()).as("the root itself").isEqualTo(1);
+
+        canon.canonical(gen.resolve("a/X.java"));
+        canon.canonical(gen.resolve("b/Y.java"));
+        assertThat(canon.realPathCalls())
+                .as("files beneath a root are answered lexically")
+                .isEqualTo(1);
+
+        Path first = canon.canonical(tmp.resolve("src/p/One.java"));
+        canon.canonical(tmp.resolve("src/p/Two.java"));
+        canon.canonical(tmp.resolve("src/p/Three.java"));
+        canon.canonical(tmp.resolve("src/q/Four.java"));
+        assertThat(canon.realPathCalls())
+                .as("one call per directory, not per file")
+                .isEqualTo(3);
+
+        assertThat(canon.canonical(tmp.resolve("src/q/../p/One.java"))).isEqualTo(first);
+
+        // A directory that does not exist yet resolves through its nearest existing ancestor, once.
+        canon.canonical(tmp.resolve("src/none/Z.java"));
+        canon.canonical(tmp.resolve("src/none/W.java"));
+        assertThat(canon.realPathCalls()).isEqualTo(5);
+        assertThat(canon.canonical(tmp.resolve("src/none/Z.java")))
+                .isEqualTo(tmp.toRealPath().resolve("src/none/Z.java"));
+    }
+
+    @Test
+    void a_root_reached_through_a_link_resolves_files_beneath_either_spelling_to_one(@TempDir Path tmp)
+            throws Exception {
+        Path real = Files.createDirectories(tmp.resolve("real"));
+        Path link = symlinkOrSkip(tmp.resolve("link"), real);
+        GeneratedProvenance.Canon canon = new GeneratedProvenance.Canon(List.of(link));
+        assertThat(canon.canonical(link.resolve("p/X.java"))).isEqualTo(canon.canonical(real.resolve("p/X.java")));
+        assertThat(canon.realPathCalls()).isEqualTo(1);
+    }
+
+    private static Path symlinkOrSkip(Path link, Path target) {
+        try {
+            return Files.createSymbolicLink(link, target);
+        } catch (IOException | UnsupportedOperationException cannot) {
+            assumeTrue(false, "filesystem cannot create a symlink: " + cannot);
+            throw new AssertionError("unreachable");
+        }
     }
 }
