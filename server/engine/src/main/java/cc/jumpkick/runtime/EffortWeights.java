@@ -1165,7 +1165,7 @@ public final class EffortWeights {
     /**
      * Estimate a build's wall-clock (ms) from per-module costs (Σ dirty step weights preferred).
      *
-     * <p>Mirrors {@link WorkspaceScheduler}: a module may start only after every dirty prereq has
+     * <p>Mirrors {@link cc.jumpkick.runtime.base.WorkspaceScheduler}: a module may start only after every dirty prereq has
      * <em>fully</em> finished (compile + test + package), and at most {@code concurrency} modules
      * run at once. Serial ({@code -j1}) is the sum of module weights. When tests are serialized
      * across modules ({@code parallelTests == false}), the serial test-step sum is also a lower
@@ -1240,7 +1240,7 @@ public final class EffortWeights {
     }
 
     /**
-     * Rolling-window list schedule matching {@link WorkspaceScheduler} (first-ready admission).
+     * Rolling-window list schedule matching {@link cc.jumpkick.runtime.base.WorkspaceScheduler} (first-ready admission).
      *
      * @return scheduled duration in the same units as {@link ModuleCost#weight}
      */

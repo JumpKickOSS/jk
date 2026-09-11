@@ -42,7 +42,7 @@
 #
 # 2026-09-08, clients/cli: the verbs are five families under `command` — pipeline, project, toolchain,
 # interop, system — with the shared helpers (module selectors, cwd scope, variant selection, engine
-# edits, JkEnv, toolchain path, tool targets) left in the root, which reads no family. The six
+# edits, JkEnv, toolchain path, tool targets) left in the root, which reads no family. The five
 # shell classes a verb still read (EnsureFreshLock, BuildOptions, ParallelTestsOpts, GraalResolver,
 # OpenBrowser) moved to `cli.api`; IdeSourceRoots moved to `cli.ide` so the BSP server stopped
 # reading a command package; the two verbs that named the dispatcher (selective's re-entry, the

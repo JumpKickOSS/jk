@@ -119,11 +119,9 @@ class CalibrationTest {
     }
 
     /**
-     * A measured calibration on disk must end the bootstrap probe for good. The skip used to test
-     * {@code schema >= 3} while {@link Calibration#SCHEMA} is 1 (guard G85 freezes every external
-     * format constant at 1 until 1.0) and {@link HostMetricsFile#readFrom} already rejects any
-     * other schema — so the condition was unsatisfiable and every workspace build re-ran the
-     * multi-second HardwareProbe. Pin the skip against the constant, not against a literal.
+     * A measured calibration on disk must end the bootstrap probe for good. {@link
+     * HostMetricsFile#readFrom} already rejects any schema but {@link Calibration#SCHEMA}, so the
+     * skip is pinned against the constant, never against a literal a rolled constant could strand.
      */
     @Test
     void a_measured_calibration_on_disk_ends_the_bootstrap_probe(@TempDir Path home) throws Exception {

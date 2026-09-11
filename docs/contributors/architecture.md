@@ -225,14 +225,15 @@ class there names the core or imports `task`, `compile`, `test` or `git`), `runt
 the plan builders, forecast, effort weights, lock pipeline — one strongly connected component of
 about fifty classes) and `runtime.workspace` (the workspace phases, the build service, the ETA and
 the plan builders that compose the core). The remaining package cycles are the three the guard's
-`cycle-baseline.txt` line counts: the planner core (`runtime`, `task`, `compile`, `test`), the MCP front
-(`http`, `http.mcp`, `http.mcp.tools`) and the job/journal pair.
+`cycle-baseline.txt` line counts: the planner core (`runtime` and `test`, joined by `AffectedTestRun`
+reading `BuildPlanner`), the MCP front (`http`, `http.mcp`, `http.mcp.tools`) and the job/journal pair.
 
 The CLI's verbs are five families under `cc.jumpkick.command` — `pipeline`, `project`, `toolchain`,
 `interop`, `system` — each with a package charter, over a root that holds only what more than one
 family reads. A verb reaches the shell through `cli.api` and never names it: the two verbs that need
 the dispatcher (selective's re-entry, the completion scripts' command table) take it through their
-constructor, so `command.* -> cli` is zero and the dispatcher is outside every cycle.
+constructor, so no verb imports the dispatcher's package (`cc.jumpkick.cli` itself) and the
+dispatcher is outside every cycle.
 
 Ship layout (`./gradlew dist`): slim native `jk` + `lib/jk-engine-<version>.jar`.
 

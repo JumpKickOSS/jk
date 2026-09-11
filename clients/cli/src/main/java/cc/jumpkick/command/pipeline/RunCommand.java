@@ -40,7 +40,7 @@ import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Project run plan (not a {@code CliCommand}): build then exec. {@link ToolRunCommand}
+ * Project run plan (not a {@code CliCommand}): build then exec. {@link cc.jumpkick.command.toolchain.ToolRunCommand}
  * delegates here via {@link #runProject}. Preference: <strong>native &gt; assembly jar &gt; plain
  * jar</strong>.
  *

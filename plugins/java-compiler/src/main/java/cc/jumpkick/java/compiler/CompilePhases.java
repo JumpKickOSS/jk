@@ -21,7 +21,9 @@ import org.jspecify.annotations.Nullable;
  * why a platform difference in it cannot be attributed to anything.
  *
  * <p>Off unless the variable is set: the timing costs a handful of clock reads, but the file it
- * writes is a measurement artifact and no build should produce one it was not asked for.
+ * writes is a measurement artifact and no build should produce one it was not asked for. The worker
+ * inherits the engine's environment, so the variable must be set in the shell the engine starts
+ * from — {@code jk engine stop}, then build with it exported.
  */
 final class CompilePhases {
 
@@ -54,7 +56,7 @@ final class CompilePhases {
     }
 
     /**
-     * Append one line for {@code module}. Best-effort: a measurement must never fail a compile, so a
+     * Append one line for the module compiled into {@code classOutput}. Best-effort: a measurement must never fail a compile, so a
      * write error is swallowed rather than surfaced as a compile diagnostic.
      */
     void write(Path classOutput, int sourceCount) {

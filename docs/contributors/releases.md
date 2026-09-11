@@ -8,7 +8,7 @@ How JumpKick ships installable binaries. For day-to-day use see [user install](.
 |------|---------|
 | **`0.13.2`** | Current product version (no `-SNAPSHOT` on `main`) |
 | Tag **`v0.13.2`** | Next public release cut from that line |
-| Prior | **`0.13.1`** — previous product line; **`0.10.1`** first public (store migration shim) |
+| Prior | **`0.13.0`** — previous tagged release; **`0.10.1`** first public |
 | Later | Semver-ish: `0.13.3`, `0.14.0`, … |
 
 Bump `JkVersion.VERSION`, Gradle `version` in plugin conventions, and workspace `jk.toml`

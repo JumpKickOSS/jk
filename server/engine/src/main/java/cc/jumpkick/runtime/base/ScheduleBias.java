@@ -14,7 +14,7 @@ import java.util.Map;
 /**
  * Learned schedule-contention bias: the EWMA of {@code actual wall / raw simulated schedule} for
  * successful multi-module builds, applied multiplicatively to {@link WorkSchedule}'s ideal
- * schedule in {@link BuildEta}. The simulation composes measured step walls into a perfect-overlap
+ * schedule in {@code BuildEta}. The simulation composes measured step walls into a perfect-overlap
  * timeline; reality pays JVM spawn queuing, {@code PluginSlots} gating, and cache/IO contention
  * the model cannot see — a structural, host-shaped gap (follow-up: the pipelined sim ran
  * ~25% hot on a 24-core monorepo rebuild). Learning the gap keeps the estimate honest across

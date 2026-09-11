@@ -38,7 +38,6 @@ Exact and prefix-matchable like the primary name, still hidden from help.
 | Alias                       | Canonical      |
 | --------------------------- | -------------- |
 | `assembly`                  | `assemble`     |
-| `dist`                      | `release`      |
 | `kill`                      | `cancel`       |
 | `repl`                      | `jshell`       |
 | `jdks`                      | `jdk`          |

@@ -39,14 +39,14 @@ in     = "com.example.cli.Main"
 reason = "the CLI entry point writes its usage to the terminal on purpose"
 ```
 
-`in` is a class, a package glob or a file path, whichever the kind reads.
+`in` is a class, a package glob or a file path, whichever the kind reads. A suppression comment in
+code is not a mechanism: the engine does not read them, and the pre-commit hook refuses a staged
+line shaped like one.
 
 A module-lane rule that reads test classes (`tiers`, `annotate` with `on = "test-class"`) is clean
 in a module that has none — a workspace has modules without tests, and a rule with nothing to
 examine there has nothing to say. It carries no bite evidence from such a module; what proves it can
-fire is a module where it does, or a `fixture`. A suppression
-comment in code is not a mechanism: the engine does not read them, and the pre-commit hook
-refuses a staged line shaped like one.
+fire is a module where it does, or a `fixture`.
 
 ## Kinds
 

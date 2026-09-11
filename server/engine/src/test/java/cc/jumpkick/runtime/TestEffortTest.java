@@ -25,9 +25,7 @@ class TestEffortTest {
      * Pin state + builds, the same way {@link EffortWeightsStepEtaTest} and {@link NativeEffortTest}
      * do and for the same reason: every cold rung here ends at {@code Calibration.load()}, so without
      * this the assertions read whatever {@code host-metrics.toml} the machine has and change meaning
-     * the moment it is calibrated. This class was the one of the three without it, and it went red at
-     * 481 ms/method against a 22.5–90 band after a fixture build of a one-method suite trained a
-     * host-wide rate into the shared test home.
+     * the moment it is calibrated.
      *
      * <p>The cold-ladder test also supplies its calibration outright, which is the stronger statement
      * — it names the rung it prices against instead of arranging for the file to be empty. This is
