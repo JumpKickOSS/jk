@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.publish;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -82,7 +83,7 @@ class MavenPublisherTest {
 
     /** The version list read back the way the resolver reads it — through the one owner. */
     private List<String> versionsOnServer() {
-        return MavenMetadata.parse(received.get("/repo/com/example/widget/maven-metadata.xml"))
+        return MavenMetadata.parse(requireNonNull(received.get("/repo/com/example/widget/maven-metadata.xml")))
                 .versions();
     }
 
