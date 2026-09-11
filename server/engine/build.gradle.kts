@@ -33,6 +33,8 @@ dependencies {
         exclude(group = "org.junit.platform")
     }
     implementation(project(":dynamic-surface"))
+    // The IDE project-file generators jk ide runs client-side; the engine runs them for jk_ide.
+    implementation(project(":ide"))
     // The web dashboard's static assets ride the engine's runtime classpath as /web/* (served by
     // StaticContent) and get bundled into the jk-engine fat jar. Kept resources-only + runtimeOnly
     // so the assets never touch the compile classpath and the native CLI never links them.

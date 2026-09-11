@@ -51,11 +51,13 @@ import org.jspecify.annotations.Nullable;
  * Engine-hosted {@code jk ide} model math (thin-client contract): resolving the workspace, its
  * modules, external libraries (lockfile + Maven-layout jars), cross-module edges, and per-module JDK/SDK
  * handles all need the parsed models, so it runs engine-side and ships as an {@link IdeWireModel}.
- * The IDE-specific file generators — TTY + disk writers — stay client-side.
+ * The IDE-specific file generators are {@code cc.jumpkick.ide}, which the CLI and the engine both
+ * run over this model.
  *
- * <p>The dependency <em>sync</em> is not here: a real invocation runs one hosted {@code jk sync}
- * (client-rendered) before requesting the model; the test-only in-process path passes {@code
- * fetchMissing} to keep the pre-Wave-4 in-line fetch, so both paths build the same model.
+ * <p>The dependency <em>sync</em> is not here: {@code jk ide} runs one hosted {@code jk sync}
+ * (client-rendered) before requesting the model; a caller with no hosted sync in front of it (a
+ * test, the MCP tool) passes {@code fetchMissing} for the in-line fetch, so both paths build the
+ * same model.
  *
  * <p>{@link StableJdkPointer#ensure} writes under the jk home — the engine and client share it, so
  * pointer maintenance is equally correct here at model-build time.
@@ -384,9 +386,8 @@ public final class IdeOps {
 
     /**
      * Collect all external (non-workspace) dep library definitions for one module as {@code
-     * libName → {fileName, jarPath, sourcesPath|null}}. {@code fetchMissing} is the test-only
-     * in-process mode: fetch missing JARs in-line; a real invocation already ran the hosted
-     * workspace sync.
+     * libName → {fileName, jarPath, sourcesPath|null}}. {@code fetchMissing} fetches missing JARs
+     * in-line, for callers with no hosted workspace sync in front of them.
      */
     private static void collectLibDefs(
             Path moduleDir,
