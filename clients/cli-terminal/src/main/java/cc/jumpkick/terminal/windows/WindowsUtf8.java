@@ -15,6 +15,7 @@ import java.lang.foreign.SymbolLookup;
 import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandle;
 import java.nio.charset.StandardCharsets;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Windows console UTF-8 bootstrap: CP 65001, VTP on {@code STD_OUTPUT_HANDLE}, UTF-8 streams.
@@ -26,8 +27,8 @@ public final class WindowsUtf8 {
     public static final int ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x4;
 
     private static volatile boolean enabled;
-    private static PrintStream originalOut;
-    private static PrintStream originalErr;
+    private static @Nullable PrintStream originalOut;
+    private static @Nullable PrintStream originalErr;
     private static int previousOutputCp = -1;
     private static int previousInputCp = -1;
 

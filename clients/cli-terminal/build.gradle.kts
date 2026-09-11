@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 plugins {
-    id("jk.java-conventions")
+    id("jk.nullmarked-conventions")
 }
 
 description = "Client TTY session, VT style, and keys — FFM POSIX/Windows, no JLine"

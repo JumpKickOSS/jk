@@ -13,6 +13,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Login shell from the account database: {@code getpwuid} (nsswitch / Directory Services), then
@@ -28,10 +29,10 @@ public final class PosixPasswd {
     private static final int MAX_SHELL_BYTES = 4096;
     private static final Path ETC_PASSWD = Path.of("/etc/passwd");
 
-    private static volatile MethodHandle getuidMh;
-    private static volatile MethodHandle getpwuidMh;
+    private static volatile @Nullable MethodHandle getuidMh;
+    private static volatile @Nullable MethodHandle getpwuidMh;
     private static volatile boolean initAttempted;
-    private static volatile Optional<String> cached;
+    private static volatile @Nullable Optional<String> cached;
 
     private PosixPasswd() {}
 
@@ -42,11 +43,13 @@ public final class PosixPasswd {
             return hit;
         }
         synchronized (PosixPasswd.class) {
-            if (cached != null) {
-                return cached;
+            Optional<String> again = cached;
+            if (again != null) {
+                return again;
             }
-            cached = lookup();
-            return cached;
+            Optional<String> looked = lookup();
+            cached = looked;
+            return looked;
         }
     }
 
@@ -135,7 +138,8 @@ public final class PosixPasswd {
     }
 
     @SuppressWarnings("restricted")
-    private static MethodHandle bind(Linker linker, SymbolLookup lookup, String name, FunctionDescriptor desc) {
+    private static @Nullable MethodHandle bind(
+            Linker linker, SymbolLookup lookup, String name, FunctionDescriptor desc) {
         try {
             return linker.downcallHandle(lookup.findOrThrow(name), desc);
         } catch (Throwable ignored) {

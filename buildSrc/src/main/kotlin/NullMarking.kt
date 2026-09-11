@@ -22,6 +22,7 @@ object NullMarking {
             "server/resolver/src/main/java",
             "server/toolchain/src/main/java",
             "shared/dynamic-surface/src/main/java",
+            "clients/cli-terminal/src/main/java",
             "clients/cli/src/main/java",
             "shared/guard-api/src/main/java",
             "server/guard/src/main/java",
@@ -64,9 +65,8 @@ object NullMarking {
      */
     val unenforcedModules: Map<String, String> =
         mapOf(
-            "clients/cli-terminal" to "59 findings in production, none in the suite",
             "clients/intellij" to
                 "a standalone Gradle build the root build never compiles; unmeasured until it applies the " +
-                    "same plugins itself",
+                    "same plugins itself"
         )
 }

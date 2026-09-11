@@ -13,7 +13,9 @@ import java.lang.invoke.MethodHandle;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayDeque;
+import java.util.Objects;
 import java.util.function.BooleanSupplier;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Session {@code CONIN$}/{@code CONOUT$}. Input is {@code WaitForSingleObject} then
@@ -71,18 +73,23 @@ public final class WindowsConsole implements AutoCloseable {
         this.savedOut = savedOut;
     }
 
-    public static WindowsConsole openControlling() {
+    public static @Nullable WindowsConsole openControlling() {
         if (!Os.isWindows()) {
             return null;
         }
         ensure();
-        if (createFileW == null) {
+        MethodHandle createFile = createFileW;
+        MethodHandle close = closeHandle;
+        MethodHandle setInfo = setHandleInformation;
+        MethodHandle getMode = getConsoleMode;
+        MethodHandle setMode = setConsoleMode;
+        if (createFile == null || close == null || setInfo == null || getMode == null || setMode == null) {
             return null;
         }
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment inName = wchar(arena, "CONIN$");
             MemorySegment outName = wchar(arena, "CONOUT$");
-            MemorySegment conIn = (MemorySegment) createFileW.invokeExact(
+            MemorySegment conIn = (MemorySegment) createFile.invokeExact(
                     inName,
                     GENERIC_READ | GENERIC_WRITE,
                     FILE_SHARE_READ | FILE_SHARE_WRITE,
@@ -93,7 +100,7 @@ public final class WindowsConsole implements AutoCloseable {
             if (invalid(conIn)) {
                 return null;
             }
-            MemorySegment conOut = (MemorySegment) createFileW.invokeExact(
+            MemorySegment conOut = (MemorySegment) createFile.invokeExact(
                     outName,
                     GENERIC_READ | GENERIC_WRITE,
                     FILE_SHARE_READ | FILE_SHARE_WRITE,
@@ -102,23 +109,23 @@ public final class WindowsConsole implements AutoCloseable {
                     0,
                     MemorySegment.NULL);
             if (invalid(conOut)) {
-                int ignored = (int) closeHandle.invokeExact(conIn);
+                int ignored = (int) close.invokeExact(conIn);
                 return null;
             }
-            int clearedIn = (int) setHandleInformation.invokeExact(conIn, HANDLE_FLAG_INHERIT, 0);
-            int clearedOut = (int) setHandleInformation.invokeExact(conOut, HANDLE_FLAG_INHERIT, 0);
+            int clearedIn = (int) setInfo.invokeExact(conIn, HANDLE_FLAG_INHERIT, 0);
+            int clearedOut = (int) setInfo.invokeExact(conOut, HANDLE_FLAG_INHERIT, 0);
             MemorySegment modeBuf = arena.allocate(ValueLayout.JAVA_INT);
-            if ((int) getConsoleMode.invokeExact(conIn, modeBuf) == 0) {
+            if ((int) getMode.invokeExact(conIn, modeBuf) == 0) {
                 closeBoth(conIn, conOut);
                 return null;
             }
             int savedIn = modeBuf.get(ValueLayout.JAVA_INT, 0);
-            if ((int) getConsoleMode.invokeExact(conOut, modeBuf) == 0) {
+            if ((int) getMode.invokeExact(conOut, modeBuf) == 0) {
                 closeBoth(conIn, conOut);
                 return null;
             }
             int savedOut = modeBuf.get(ValueLayout.JAVA_INT, 0);
-            int setVtp = (int) setConsoleMode.invokeExact(conOut, savedOut | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+            int setVtp = (int) setMode.invokeExact(conOut, savedOut | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
             return new WindowsConsole(conIn, conOut, savedIn, savedOut);
         } catch (Throwable t) {
             return null;
@@ -173,8 +180,12 @@ public final class WindowsConsole implements AutoCloseable {
             return;
         }
         int next = inputModeBits(savedIn, mode);
+        MethodHandle setMode = setConsoleMode;
+        if (setMode == null) {
+            return;
+        }
         try {
-            int ignored = (int) setConsoleMode.invokeExact(conIn, next);
+            int ignored = (int) setMode.invokeExact(conIn, next);
         } catch (Throwable ignored) {
             // best-effort
         }
@@ -184,9 +195,13 @@ public final class WindowsConsole implements AutoCloseable {
         if (!open) {
             return;
         }
+        MethodHandle setMode = setConsoleMode;
+        if (setMode == null) {
+            return;
+        }
         try {
-            int in = (int) setConsoleMode.invokeExact(conIn, savedIn);
-            int out = (int) setConsoleMode.invokeExact(conOut, savedOut | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+            int in = (int) setMode.invokeExact(conIn, savedIn);
+            int out = (int) setMode.invokeExact(conOut, savedOut | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
         } catch (Throwable ignored) {
             // best-effort
         }
@@ -202,7 +217,8 @@ public final class WindowsConsole implements AutoCloseable {
         boolean forever = timeout.isZero();
         long deadline = forever ? Long.MAX_VALUE : System.nanoTime() + timeout.toNanos();
         ensure();
-        if (waitForSingleObject == null || peekConsoleInputW == null || readConsoleInputW == null) {
+        MethodHandle wait = waitForSingleObject;
+        if (wait == null || peekConsoleInputW == null || readConsoleInputW == null) {
             return -1;
         }
         while (live.getAsBoolean() && open) {
@@ -217,7 +233,7 @@ public final class WindowsConsole implements AutoCloseable {
                     : (int) Math.min(Integer.MAX_VALUE, Math.max(0, (deadline - System.nanoTime()) / 1_000_000L));
             long t0 = System.nanoTime();
             try (Arena arena = Arena.ofConfined()) {
-                int waited = (int) waitForSingleObject.invokeExact(conIn, waitMs);
+                int waited = (int) wait.invokeExact(conIn, waitMs);
                 if (waited == WAIT_TIMEOUT) {
                     return -1;
                 }
@@ -246,11 +262,15 @@ public final class WindowsConsole implements AutoCloseable {
         if (!open || buf.length == 0 || !live.getAsBoolean()) {
             return;
         }
+        MethodHandle write = writeFile;
+        if (write == null) {
+            return;
+        }
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment src = arena.allocate(buf.length);
             MemorySegment.copy(MemorySegment.ofArray(buf), 0, src, 0, buf.length);
             MemorySegment nWritten = arena.allocate(ValueLayout.JAVA_INT);
-            int ignored = (int) writeFile.invokeExact(conOut, src, buf.length, nWritten, MemorySegment.NULL);
+            int ignored = (int) write.invokeExact(conOut, src, buf.length, nWritten, MemorySegment.NULL);
         } catch (Throwable ignored) {
             // best-effort paint
         }
@@ -273,11 +293,11 @@ public final class WindowsConsole implements AutoCloseable {
     private int takeQueuedKeyByte(Arena arena) throws Throwable {
         MemorySegment rec = arena.allocate(INPUT_RECORD_BYTES);
         MemorySegment nRead = arena.allocate(ValueLayout.JAVA_INT);
-        int peeked = (int) peekConsoleInputW.invokeExact(conIn, rec, 1, nRead);
+        int peeked = (int) Objects.requireNonNull(peekConsoleInputW).invokeExact(conIn, rec, 1, nRead);
         if (peeked == 0 || nRead.get(ValueLayout.JAVA_INT, 0) <= 0) {
             return -1;
         }
-        int consumed = (int) readConsoleInputW.invokeExact(conIn, rec, 1, nRead);
+        int consumed = (int) Objects.requireNonNull(readConsoleInputW).invokeExact(conIn, rec, 1, nRead);
         if (consumed == 0 || nRead.get(ValueLayout.JAVA_INT, 0) <= 0) {
             return -1;
         }
@@ -302,7 +322,7 @@ public final class WindowsConsole implements AutoCloseable {
         return arena.allocateFrom(ValueLayout.JAVA_CHAR, (s + "\0").toCharArray());
     }
 
-    private static boolean invalid(MemorySegment h) {
+    private static boolean invalid(@Nullable MemorySegment h) {
         return h == null || h.address() == 0L || h.address() == -1L;
     }
 
@@ -321,15 +341,15 @@ public final class WindowsConsole implements AutoCloseable {
         }
     }
 
-    private static volatile MethodHandle createFileW;
-    private static volatile MethodHandle closeHandle;
-    private static volatile MethodHandle setHandleInformation;
-    private static volatile MethodHandle getConsoleMode;
-    private static volatile MethodHandle setConsoleMode;
-    private static volatile MethodHandle waitForSingleObject;
-    private static volatile MethodHandle peekConsoleInputW;
-    private static volatile MethodHandle readConsoleInputW;
-    private static volatile MethodHandle writeFile;
+    private static volatile @Nullable MethodHandle createFileW;
+    private static volatile @Nullable MethodHandle closeHandle;
+    private static volatile @Nullable MethodHandle setHandleInformation;
+    private static volatile @Nullable MethodHandle getConsoleMode;
+    private static volatile @Nullable MethodHandle setConsoleMode;
+    private static volatile @Nullable MethodHandle waitForSingleObject;
+    private static volatile @Nullable MethodHandle peekConsoleInputW;
+    private static volatile @Nullable MethodHandle readConsoleInputW;
+    private static volatile @Nullable MethodHandle writeFile;
     private static volatile boolean initAttempted;
 
     @SuppressWarnings("restricted")

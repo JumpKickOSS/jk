@@ -14,11 +14,12 @@ import java.lang.foreign.MemorySegment;
 import java.lang.foreign.SymbolLookup;
 import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandle;
+import org.jspecify.annotations.Nullable;
 
 /** Process façade. One controlling TTY. Never owns FD 0/1/2 of the process. */
 public final class Terminals {
     private static final Object LOCK = new Object();
-    private static volatile NativeTerminal singleton;
+    private static volatile @Nullable NativeTerminal singleton;
 
     private Terminals() {}
 

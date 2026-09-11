@@ -9,15 +9,17 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.locks.ReentrantLock;
+import org.jspecify.annotations.Nullable;
 
 /** Thin dispatcher: mode stack, lock, isLive. FFM lives in {@link PosixTty} / {@link WindowsConsole}. */
 final class NativeTerminal implements TerminalSession {
     private final ReentrantLock lock = new ReentrantLock();
     private final Deque<InputMode> stack = new ArrayDeque<>();
-    private final PosixTty posix;
-    private final WindowsConsole windows;
+    private final @Nullable PosixTty posix;
+    private final @Nullable WindowsConsole windows;
     private final PrintWriter out;
     private volatile boolean live = true;
     private boolean fdsClosed;
@@ -34,7 +36,7 @@ final class NativeTerminal implements TerminalSession {
         }
     };
 
-    NativeTerminal(PosixTty posix, WindowsConsole windows) {
+    NativeTerminal(@Nullable PosixTty posix, @Nullable WindowsConsole windows) {
         this.posix = posix;
         this.windows = windows;
         this.out = new PrintWriter(
@@ -197,7 +199,10 @@ final class NativeTerminal implements TerminalSession {
             pushback = -1;
             return b;
         }
-        return posix != null ? posix.readByte(timeout, this::isLive) : windows.readByte(timeout, this::isLive);
+        return posix != null
+                ? posix.readByte(timeout, this::isLive)
+                : Objects.requireNonNull(windows, "a native terminal has a POSIX or a Windows backend")
+                        .readByte(timeout, this::isLive);
     }
 
     private void restore() {

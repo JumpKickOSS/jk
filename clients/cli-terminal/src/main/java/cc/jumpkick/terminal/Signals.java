@@ -5,6 +5,7 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Reflective {@code sun.misc.Signal} wrapper so javac never sees the internal API.
@@ -49,7 +50,7 @@ public final class Signals {
         }
     }
 
-    private static Object defaultValue(Method method) {
+    private static @Nullable Object defaultValue(Method method) {
         Class<?> r = method.getReturnType();
         if (!r.isPrimitive() || r == void.class) {
             return null;

@@ -6,13 +6,14 @@ import cc.jumpkick.terminal.windows.WindowsConsole;
 import java.io.OutputStream;
 import java.util.Arrays;
 import java.util.function.BooleanSupplier;
+import org.jspecify.annotations.Nullable;
 
 final class TtyOutputStream extends OutputStream {
-    private final PosixTty posix;
-    private final WindowsConsole windows;
+    private final @Nullable PosixTty posix;
+    private final @Nullable WindowsConsole windows;
     private final BooleanSupplier live;
 
-    TtyOutputStream(PosixTty posix, WindowsConsole windows, BooleanSupplier live) {
+    TtyOutputStream(@Nullable PosixTty posix, @Nullable WindowsConsole windows, BooleanSupplier live) {
         this.posix = posix;
         this.windows = windows;
         this.live = live;

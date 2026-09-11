@@ -13,6 +13,7 @@ import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandle;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Process-wide terminal-size cache. Native ioctl / {@code GetConsoleScreenBufferInfo}, then
@@ -28,7 +29,7 @@ public final class Size {
 
     public static Supplier<Window> probe = Size::probeOs;
 
-    private static volatile Window cached;
+    private static volatile @Nullable Window cached;
     private static volatile boolean winchAttempted;
     private static final AtomicInteger resizeGeneration = new AtomicInteger();
 
@@ -114,10 +115,10 @@ public final class Size {
     }
 
     private static final int O_RDONLY = 0;
-    private static volatile MethodHandle posixOpen;
-    private static volatile MethodHandle posixClose;
-    private static volatile MethodHandle posixIsatty;
-    private static volatile MethodHandle posixIoctl;
+    private static volatile @Nullable MethodHandle posixOpen;
+    private static volatile @Nullable MethodHandle posixClose;
+    private static volatile @Nullable MethodHandle posixIsatty;
+    private static volatile @Nullable MethodHandle posixIoctl;
     private static volatile long posixTiocgwinsz;
     private static volatile boolean posixInitAttempted;
 
@@ -175,27 +176,31 @@ public final class Size {
     }
 
     @SuppressWarnings("restricted")
-    private static Window probePosix() throws Throwable {
+    private static @Nullable Window probePosix() throws Throwable {
         ensurePosix();
-        if (posixIoctl == null) {
+        MethodHandle ioctl = posixIoctl;
+        MethodHandle open = posixOpen;
+        MethodHandle close = posixClose;
+        MethodHandle isatty = posixIsatty;
+        if (ioctl == null || open == null || close == null || isatty == null) {
             return null;
         }
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment path = arena.allocateFrom("/dev/tty");
-            int fd = (int) posixOpen.invokeExact(path, O_RDONLY);
+            int fd = (int) open.invokeExact(path, O_RDONLY);
             if (fd >= 0) {
                 try {
-                    Window size = winsizeFromFd(fd, arena);
+                    Window size = winsizeFromFd(ioctl, fd, arena);
                     if (size != null) {
                         return size;
                     }
                 } finally {
-                    int ignore = (int) posixClose.invokeExact(fd);
+                    int ignore = (int) close.invokeExact(fd);
                 }
             }
             for (int candidate : new int[] {1, 2, 0}) {
-                if ((int) posixIsatty.invokeExact(candidate) == 1) {
-                    Window size = winsizeFromFd(candidate, arena);
+                if ((int) isatty.invokeExact(candidate) == 1) {
+                    Window size = winsizeFromFd(ioctl, candidate, arena);
                     if (size != null) {
                         return size;
                     }
@@ -206,9 +211,9 @@ public final class Size {
     }
 
     @SuppressWarnings("restricted")
-    private static Window winsizeFromFd(int fd, Arena arena) throws Throwable {
+    private static @Nullable Window winsizeFromFd(MethodHandle ioctl, int fd, Arena arena) throws Throwable {
         MemorySegment ws = arena.allocate(8);
-        int rc = (int) posixIoctl.invoke(fd, posixTiocgwinsz, ws);
+        int rc = (int) ioctl.invoke(fd, posixTiocgwinsz, ws);
         if (rc != 0) {
             return null;
         }
@@ -235,8 +240,8 @@ public final class Size {
             ValueLayout.JAVA_SHORT,
             ValueLayout.JAVA_SHORT);
     private static final long SR_WINDOW_OFFSET = 10;
-    private static volatile MethodHandle winGetStdHandle;
-    private static volatile MethodHandle winGetConsoleScreenBufferInfo;
+    private static volatile @Nullable MethodHandle winGetStdHandle;
+    private static volatile @Nullable MethodHandle winGetConsoleScreenBufferInfo;
     private static volatile boolean winInitAttempted;
 
     @SuppressWarnings("restricted")
@@ -264,19 +269,21 @@ public final class Size {
     }
 
     @SuppressWarnings("restricted")
-    private static Window probeWindows() throws Throwable {
+    private static @Nullable Window probeWindows() throws Throwable {
         ensureWindows();
-        if (winGetConsoleScreenBufferInfo == null) {
+        MethodHandle getStdHandle = winGetStdHandle;
+        MethodHandle getInfo = winGetConsoleScreenBufferInfo;
+        if (getInfo == null || getStdHandle == null) {
             return null;
         }
         try (Arena arena = Arena.ofConfined()) {
             for (int std : new int[] {STD_OUTPUT_HANDLE, STD_ERROR_HANDLE}) {
-                MemorySegment handle = (MemorySegment) winGetStdHandle.invokeExact(std);
+                MemorySegment handle = (MemorySegment) getStdHandle.invokeExact(std);
                 if (handle == null || handle.address() == 0L || handle.address() == -1L) {
                     continue;
                 }
                 MemorySegment info = arena.allocate(CONSOLE_SCREEN_BUFFER_INFO);
-                int ok = (int) winGetConsoleScreenBufferInfo.invokeExact(handle, info);
+                int ok = (int) getInfo.invokeExact(handle, info);
                 if (ok == 0) {
                     continue;
                 }

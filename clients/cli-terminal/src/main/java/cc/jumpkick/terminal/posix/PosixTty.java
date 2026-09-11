@@ -13,7 +13,9 @@ import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.VarHandle;
 import java.time.Duration;
+import java.util.Objects;
 import java.util.function.BooleanSupplier;
+import org.jspecify.annotations.Nullable;
 
 /**
  * POSIX {@code /dev/tty}: open, termios, poll, non-blocking read/write. Never owns FD 0/1/2.
@@ -38,12 +40,14 @@ public final class PosixTty implements AutoCloseable {
         return fd;
     }
 
-    public static PosixTty openControlling() {
+    public static @Nullable PosixTty openControlling() {
         if (Os.isWindows() || !(Os.isLinux() || Os.isDarwin())) {
             return null;
         }
         ensure();
-        if (openMh == null) {
+        MethodHandle open = openMh;
+        MethodHandle close = closeMh;
+        if (open == null || close == null) {
             return null;
         }
         boolean darwin = Os.isDarwin();
@@ -51,12 +55,12 @@ public final class PosixTty implements AutoCloseable {
                 darwin ? TermiosDarwin.O_RDWR | TermiosDarwin.O_CLOEXEC : TermiosLinux.O_RDWR | TermiosLinux.O_CLOEXEC;
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment path = arena.allocateFrom("/dev/tty");
-            int fd = (int) openMh.invokeExact(path, flags);
+            int fd = (int) open.invokeExact(path, flags);
             if (fd < 0) {
                 return null;
             }
             if (fd == 0) {
-                int ignored = (int) closeMh.invokeExact(fd);
+                int ignored = (int) close.invokeExact(fd);
                 return null;
             }
             int oNonblock = darwin ? TermiosDarwin.O_NONBLOCK : TermiosLinux.O_NONBLOCK;
@@ -65,22 +69,24 @@ public final class PosixTty implements AutoCloseable {
             // O_NONBLOCK is best-effort: a missing native-image fcntl descriptor must not
             // kill the session. poll + non-blocking read still work without it; a blocking
             // read after POLLIN is correct.
-            if (fcntlMh != null) {
-                int cur = (int) fcntlMh.invokeExact(fd, fGet, 0);
+            MethodHandle fcntl = fcntlMh;
+            if (fcntl != null) {
+                int cur = (int) fcntl.invokeExact(fd, fGet, 0);
                 if (cur >= 0) {
-                    int set = (int) fcntlMh.invokeExact(fd, fSet, cur | oNonblock);
+                    int set = (int) fcntl.invokeExact(fd, fSet, cur | oNonblock);
                 }
             }
-            if (tcgetattrMh == null) {
-                int ignored = (int) closeMh.invokeExact(fd);
+            MethodHandle tcgetattr = tcgetattrMh;
+            if (tcgetattr == null) {
+                int ignored = (int) close.invokeExact(fd);
                 return null;
             }
             int size = darwin ? TermiosDarwin.SIZE : TermiosLinux.SIZE;
             MemorySegment term = arena.allocate(size);
             MemorySegment state = arena.allocate(CAPTURED);
-            int rc = (int) tcgetattrMh.invokeExact(state, fd, term);
+            int rc = (int) tcgetattr.invokeExact(state, fd, term);
             if (rc != 0) {
-                int ignored = (int) closeMh.invokeExact(fd);
+                int ignored = (int) close.invokeExact(fd);
                 return null;
             }
             byte[] original = term.toArray(ValueLayout.JAVA_BYTE);
@@ -95,6 +101,10 @@ public final class PosixTty implements AutoCloseable {
             return;
         }
         ensure();
+        MethodHandle tcsetattr = tcsetattrMh;
+        if (tcsetattr == null) {
+            return;
+        }
         int size = darwin ? TermiosDarwin.SIZE : TermiosLinux.SIZE;
         int tcsanow = darwin ? TermiosDarwin.TCSANOW : TermiosLinux.TCSANOW;
         try (Arena arena = Arena.ofConfined()) {
@@ -106,9 +116,9 @@ public final class PosixTty implements AutoCloseable {
                 TermiosLinux.apply(term, mode);
             }
             MemorySegment state = arena.allocate(CAPTURED);
-            int rc = (int) tcsetattrMh.invokeExact(state, fd, tcsanow, term);
+            int rc = (int) tcsetattr.invokeExact(state, fd, tcsanow, term);
             if (rc < 0 && errno(state) == eintr()) {
-                rc = (int) tcsetattrMh.invokeExact(state, fd, tcsanow, term);
+                rc = (int) tcsetattr.invokeExact(state, fd, tcsanow, term);
             }
         } catch (Throwable ignored) {
             // best-effort
@@ -125,11 +135,15 @@ public final class PosixTty implements AutoCloseable {
         }
         ensure();
         int tcsanow = darwin ? TermiosDarwin.TCSANOW : TermiosLinux.TCSANOW;
+        MethodHandle tcsetattr = tcsetattrMh;
+        if (tcsetattr == null) {
+            return;
+        }
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment term = arena.allocate(original.length);
             MemorySegment.copy(MemorySegment.ofArray(original), 0, term, 0, original.length);
             MemorySegment state = arena.allocate(CAPTURED);
-            int rc = (int) tcsetattrMh.invokeExact(state, fd, tcsanow, term);
+            int rc = (int) tcsetattr.invokeExact(state, fd, tcsanow, term);
         } catch (Throwable ignored) {
             // best-effort
         }
@@ -290,14 +304,14 @@ public final class PosixTty implements AutoCloseable {
         }
     }
 
-    private static volatile MethodHandle openMh;
-    private static volatile MethodHandle closeMh;
-    private static volatile MethodHandle fcntlMh;
-    private static volatile MethodHandle tcgetattrMh;
-    private static volatile MethodHandle tcsetattrMh;
-    private static volatile MethodHandle pollMh;
-    private static volatile MethodHandle readMh;
-    private static volatile MethodHandle writeMh;
+    private static volatile @Nullable MethodHandle openMh;
+    private static volatile @Nullable MethodHandle closeMh;
+    private static volatile @Nullable MethodHandle fcntlMh;
+    private static volatile @Nullable MethodHandle tcgetattrMh;
+    private static volatile @Nullable MethodHandle tcsetattrMh;
+    private static volatile @Nullable MethodHandle pollMh;
+    private static volatile @Nullable MethodHandle readMh;
+    private static volatile @Nullable MethodHandle writeMh;
     private static volatile boolean initAttempted;
 
     @SuppressWarnings("restricted")
@@ -377,7 +391,7 @@ public final class PosixTty implements AutoCloseable {
     }
 
     @SuppressWarnings("restricted")
-    private static MethodHandle bind(
+    private static @Nullable MethodHandle bind(
             Linker linker, SymbolLookup lookup, String name, FunctionDescriptor desc, Linker.Option... opts) {
         try {
             return linker.downcallHandle(lookup.findOrThrow(name), desc, opts);
@@ -388,21 +402,22 @@ public final class PosixTty implements AutoCloseable {
 
     @SuppressWarnings("restricted")
     private int poll(MemorySegment state, MemorySegment fds, int timeoutMs) throws Throwable {
+        MethodHandle poll = Objects.requireNonNull(pollMh);
         if (Os.isDarwin()) {
-            return (int) pollMh.invokeExact(state, fds, 1, timeoutMs);
+            return (int) poll.invokeExact(state, fds, 1, timeoutMs);
         }
-        return (int) pollMh.invokeExact(state, fds, 1L, timeoutMs);
+        return (int) poll.invokeExact(state, fds, 1L, timeoutMs);
     }
 
     @SuppressWarnings("restricted")
     private int readOne(MemorySegment state, MemorySegment buf) throws Throwable {
-        long n = (long) readMh.invokeExact(state, fd, buf, 1L);
+        long n = (long) Objects.requireNonNull(readMh).invokeExact(state, fd, buf, 1L);
         return (int) n;
     }
 
     @SuppressWarnings("restricted")
     private int writeSome(MemorySegment state, MemorySegment buf, int len) throws Throwable {
-        long n = (long) writeMh.invokeExact(state, fd, buf, (long) len);
+        long n = (long) Objects.requireNonNull(writeMh).invokeExact(state, fd, buf, (long) len);
         return (int) n;
     }
 
