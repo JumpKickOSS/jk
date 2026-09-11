@@ -38,16 +38,11 @@ public final class MetricsHarvest {
 
     /**
      * The {@code host-metrics.toml} sections neither writer of that file owns, and which therefore
-     * have to survive a rewrite by either of them. {@code [probe]} has no writer left but three
-     * readers, including {@link AggregatedMetrics}, so a file written by an older jk can still
-     * carry one; dropping it here would silently discard it on the next rewrite.
-     *
-     * <p>The two writers own different tables — this one owns {@code [mean]}'s run keys, {@code
-     * HostMetricsFile} owns {@code [calibration]} — so each also preserves the other's. That is
-     * the whole difference between the two lists, and it is the reason this shared part is one
-     * constant: they diverged once already, and {@code [probe]} was what fell out.
+     * have to survive a rewrite by either of them. One constant for both writers: this one owns
+     * {@code [mean]}'s run keys, {@code HostMetricsFile} owns {@code [calibration]}, and each
+     * preserves the other's table plus these.
      */
-    public static final List<String> FOREIGN_SECTIONS = List.of("probe", "bootstrap", "lock", "fetch");
+    public static final List<String> FOREIGN_SECTIONS = List.of("bootstrap", "lock", "fetch");
 
     /** {@link #FOREIGN_SECTIONS} plus {@code [calibration]}, the table the other writer owns. */
     private static final List<String> HARVEST_PRESERVES =

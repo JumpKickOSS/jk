@@ -227,10 +227,7 @@ final class HostMetricsFile {
      * Split every {@code [mean]} scalar in {@code existing} into the run-harvest keys and the
      * continuous-rate keys, each mapped to its verbatim line. Sub-tables ({@code
      * [mean.by_language.*]}) are not {@code [mean]} and travel via {@link #extractByLanguageBlocks}.
-     *
-     * <p>A legacy file may carry more than one {@code [mean]} header (see {@link #writeTo}); the
-     * last occurrence of a key wins, because the trailing block is the one this writer appended
-     * most recently. One rewrite collapses the duplicate for good.
+     * The last occurrence of a key wins.
      */
     static void splitMeanLines(String existing, Map<String, String> harvest, Map<String, String> continuous) {
         if (existing == null || existing.isBlank()) return;

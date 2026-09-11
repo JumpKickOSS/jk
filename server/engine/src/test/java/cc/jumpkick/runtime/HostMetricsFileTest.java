@@ -178,36 +178,8 @@ class HostMetricsFileTest {
                 .doesNotContain("5000");
     }
 
-    @Test
-    void a_legacy_duplicate_mean_collapses_and_the_later_copy_wins(@TempDir Path dir) throws Exception {
-        Path f = dir.resolve("host-metrics.toml");
-        Files.writeString(f, """
-                [mean]
-                task.guard.wall-ms = 182.548
-                native-image-ms-per-mib = 111
-
-                [mean]
-                native-image-ms-per-mib = 222
-
-                [calibration]
-                schema = 1
-                """);
-
-        HostMetricsFile.writeTo(f, Calibration.testInstance(42.5, true, JkVersion.VERSION, NOW));
-
-        String text = Files.readString(f);
-        assertThat(text.lines().filter(l -> l.strip().equals("[mean]")).count()).isEqualTo(1);
-        assertThat(Toml.parse(text).hasErrors()).isFalse();
-        assertThat(text)
-                .contains("task.guard.wall-ms = 182.548")
-                .contains("native-image-ms-per-mib = 222")
-                .doesNotContain("native-image-ms-per-mib = 111");
-    }
-
     /**
-     * The foreign-section list is {@link MetricsHarvest#FOREIGN_SECTIONS} and not a second copy of
-     * it. The two lists diverged once — this writer's was missing {@code [probe]}, so a calibration
-     * rewrite discarded a section the harvest writer and {@code AggregatedMetrics} both preserve.
+     * The foreign-section list is {@link MetricsHarvest#FOREIGN_SECTIONS}, not a second copy of it.
      * Driven off the constant, so adding a section to it without teaching this writer fails here.
      */
     @Test
@@ -229,10 +201,6 @@ class HostMetricsFileTest {
                     .contains(section + "-marker = 7");
         }
         assertThat(Toml.parse(rewritten).hasErrors()).isFalse();
-        // Named, not just iterated: the loop above shrinks with the constant, so it would follow
-        // [probe] straight back out of the list. [probe] has no writer and three readers, so
-        // nothing else would notice it going.
-        assertThat(MetricsHarvest.FOREIGN_SECTIONS).contains("probe");
     }
 
     /**

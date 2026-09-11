@@ -291,10 +291,7 @@ public final class AggregatedMetrics {
                 if (!km.matches()) continue;
                 String key = km.group(1);
                 double v = Double.parseDouble(km.group(2));
-                if ("mean".equals(section)
-                        || section.isEmpty()
-                        || "probe".equals(section)
-                        || "calibration".equals(section)) {
+                if ("mean".equals(section) || section.isEmpty() || "calibration".equals(section)) {
                     hostMean.putIfAbsent(key, v);
                 }
             }
