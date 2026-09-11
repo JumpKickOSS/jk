@@ -566,9 +566,15 @@ Zero-runtime. Safe on the Graal CLI. Dogfoods `jk init`.
    `@NonNull`.
 3. No JetBrains / JSR-305 / Lombok nullness in engine or shared.
    IntelliJ keeps JetBrains because the platform API uses it.
-4. The public API boundaries (`shared/jk-api`, `shared/wire`, and `shared/plugin-sdk`) compile with
-   Error Prone + NullAway in `OnlyNullMarked` JSpecify mode at error severity. Every production
-   package in those modules is marked; `checkNullMarkedApiPackages` prevents unmarked additions.
+4. The null-marked modules — every root `NullMarking.enforcedRoots` names: `shared/jk-api`,
+   `shared/wire`, `shared/plugin-sdk`, `shared/core`, `shared/guard-api`, `server/guard`,
+   `clients/cli` — compile with Error Prone + NullAway in `OnlyNullMarked` JSpecify mode at error
+   severity under **both builds**: the Gradle convention `jk.nullmarked-conventions` and the
+   module's own `[javac]` table in `jk.toml` pass the same flags. `checkGuardParity` fails when a
+   module is on one list and not the other. `core` and `cli` spare their unit suites through
+   `[javac.test]` for the reasons `NullMarking.unmarkedCompileTasks` records; production is never
+   spared. Every production package in those modules is marked; `checkNullMarkedApiPackages`
+   (G53) prevents unmarked additions.
 5. Three-state `Boolean success` on the accumulator is correct (unset /
    ok / fail). Mark `@Nullable`; do not “fix” it to `boolean`.
 
@@ -920,7 +926,7 @@ letter — is the Gradle-side follow-up recorded in `guard-parity.txt`.
 | G50 | — | a KanArtist ticket id anywhere in the tree — extension-blind, because every scope this rule was given by extension is where it was missed next: `*.kts` held 153 after the first sweep reported clean, the web client's CSS/JS held ~50 after the second, and a Giter8 template wrote one into a user's own new project | ban, two exemptions (`AGENTS.md`'s board protocol, this page's ban examples) + a self-fail on an empty candidate set | `no-ticket-ids` (text) |
 | G51 | `checkGuardParity` (root project) | a guard letter enforced by one build and not the other — G46 through G50 lived on the Gradle side only, so `jk build` printed "house rules clean" while enforcing 36 of the 41 it claimed, and neither gate's count was wrong about itself. Deliberately implemented twice: a parity check only one build runs has the shape of the problem it prevents. The exception list is single-owner (`guard-parity.txt`), so a letter cannot be excused on one side and demanded on the other | ban; exceptions carry the reason parity is impossible, and "not ported yet" is not one | `guard-rules-registered` (parity) |
 | G52 | — | the contributor tier table differs from `TestTiers` task names, include/exclude tags, order, or `checkAll` membership | exact generated-block comparison in both builds | guard test `test-tier-docs` |
-| G53 | — | a production package in an enforced null-marked root (`shared/jk-api`, `shared/wire`, `shared/plugin-sdk`, `shared/core`) lacks package-level `@NullMarked` without a `NullMarking.excludedPackages` entry, an exclusion goes stale, or the measured 30-package corpus drifts | ban, no allowlist | `null-marked-packages` (annotate) |
+| G53 | — | a production package in an enforced null-marked root (every root `NullMarking.enforcedRoots` names) lacks package-level `@NullMarked` without a `NullMarking.excludedPackages` entry, an exclusion goes stale, or the measured 30-package corpus drifts | ban, no allowlist | `null-marked-packages` (annotate) |
 | G54 | — | a first-party plugin adds an unclassified project dependency, or an exception disappears without removing its allowlist row | SDK/host baseline plus the current invariant table in `docs/contributors/plugins.md`; server dependencies are banned | `plugin-sdk-boundary` (layers) |
 | G55 | — | the published engine-config tables differ from `EngineControls` keys, env names, defaults, or meaning | exact generated-block comparison in both builds | guard test `engine-config-docs` |
 | G56 | — | the wrapper task version disagrees with `gradle-wrapper.properties`, or a `setup-node` step does not read `.nvmrc` | exact version comparison in both builds | `wrapper-version-parity` (parity) |

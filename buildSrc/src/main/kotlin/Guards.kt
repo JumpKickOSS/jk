@@ -531,7 +531,7 @@ object Guards {
             spec(
                 53,
                 "checkNullMarkedApiPackages",
-                "a production package in an enforced null-marked root (`shared/jk-api`, `shared/wire`, `shared/plugin-sdk`, `shared/core`) lacks package-level `@NullMarked` without a `NullMarking.excludedPackages` entry, an exclusion goes stale, or the measured 30-package corpus drifts",
+                "a production package in an enforced null-marked root (every root `NullMarking.enforcedRoots` names) lacks package-level `@NullMarked` without a `NullMarking.excludedPackages` entry, an exclusion goes stale, or the measured 30-package corpus drifts",
                 "ban, no allowlist",
                 GuardHome.SELF_HOSTED,
                 description = "Fail when an enforced null-marked package lacks package-level @NullMarked",

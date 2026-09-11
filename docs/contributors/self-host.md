@@ -159,6 +159,12 @@ has a Gradle task and no jk side, or when `jk-guards.toml` differs from the file
 the last `jk build` recorded a digest of under `target/`. Gradle running the rule
 file itself is the follow-up `guard-parity.txt` names.
 
+Nullness is enforced by both builds too. The modules `NullMarking.enforcedRoots` names
+compile with Error Prone + NullAway at error severity under Gradle's `jk.nullmarked-conventions`
+and under `jk build` through each module's `[javac]` table, with the two processors locked at
+the catalog's pins (`catalog-lock` keeps them equal). `checkGuardParity` fails when a module
+carries the table and not the convention, or the reverse.
+
 ```bash
 jk build                 # the lanes run with the build: model, module, workspace, tree, output
 jk guard                 # the lanes alone
