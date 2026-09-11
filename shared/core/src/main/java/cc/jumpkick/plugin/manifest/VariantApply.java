@@ -256,10 +256,10 @@ public final class VariantApply {
         for (PluginConfig config : build.pluginConfigs().values()) {
             collectEnvRefs(config.values(), names);
         }
-        for (JkBuild.TestEnvDecl decl : build.build().testEnv()) {
+        for (JkBuild.EnvDecl decl : build.build().testEnvDecls()) {
             switch (decl) {
-                case JkBuild.TestEnvDecl.Forward forward -> names.add(forward.name());
-                case JkBuild.TestEnvDecl.Set set -> collectReferences(set.value(), names);
+                case JkBuild.EnvDecl.Forward forward -> names.add(forward.name());
+                case JkBuild.EnvDecl.Set set -> collectReferences(set.value(), names);
             }
         }
     }

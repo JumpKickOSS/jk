@@ -82,6 +82,45 @@ Widget.java:7: error: [NullAway] dereferenced expression 'label' is @Nullable
 
 Kotlin compiler plugins are `[[kotlin-plugins]]`, a separate table.
 
+## Worker environment (`[env]`)
+
+Every worker jk forks for a module — the compiler, each test JVM, a plugin step — starts from
+an allow-list, not from a shell. A token exported in the shell that started the engine does
+not reach a compiler worker or your test code by accident. Workers inherit only:
+
+- `PATH`, `HOME`, `JAVA_HOME`, `TMPDIR` / `TMP` / `TEMP`, `LANG` / `LANGUAGE` / `LC_*`, `TERM`
+- on Windows also `USERPROFILE`, `SystemRoot`, `SystemDrive`, `windir`, `PATHEXT`, `COMSPEC`,
+  `NUMBER_OF_PROCESSORS`
+- the `JK_*` settings a worker reads: the product roots (`JK_HOME`, `JK_STATE_DIR`,
+  `JK_STORE_DIR`, `JK_CACHE_DIR`, `JK_JDKS_DIR`, `JK_M2_LOCAL`), terminal and output
+  switches (`JK_COLOR`, `JK_NO_ANSI`, `JK_FORCE_ANSI`, `JK_NO_OSC`, `JK_NO_PROGRESS`,
+  `JK_PROGRESS_MODE`, `JK_QUIET`, `JK_VERBOSE`, `JK_NERD_FONT`, `JK_NONINTERACTIVE`) and worker
+  tuning (`JK_COMPILE_PHASES`, `JK_FILE_OPS`, `JK_WORKER_AOT`, `JK_AOT_TRAIN`,
+  `JK_ANDROID_FEED_URL`)
+
+Everything else — `SSH_AUTH_SOCK`, `DOCKER_HOST`, `GITHUB_TOKEN`, a repository's
+`JK_REPO_*_TOKEN` — is dropped unless the module asks for it:
+
+```toml
+[env]
+vars = ["DOCKER_HOST", { TZ = "UTC" }]   # forward a name, or set a value
+```
+
+`vars` has the `[test] env` shape: a bare name forwards the caller's value when it is set, a
+table sets values outright (`${VAR}`, `${module}` and `${target}` expand; an unset `${VAR}` is
+an error). `vars` reaches every worker of the module; `[test] env` layers on top for test JVMs
+only and, unlike `vars`, is part of the run-tests key — [Test](test.md).
+
+```toml
+[env]
+inherit = true   # the legacy build scripts read a dozen CI variables; listing them is on the backlog
+```
+
+`inherit = true` hands the module's workers the engine's whole environment, secrets included.
+Write the reason beside it. `[env]` is per module and is not inherited from a workspace root.
+The engine's own environment is the shell that started it, not the one running `jk` — a
+variable set for one command reaches a worker only through `vars` or `[test] env`.
+
 ## Parallelism (`-j`)
 
 Module graph concurrency:

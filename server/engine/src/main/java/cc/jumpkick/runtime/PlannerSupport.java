@@ -33,7 +33,7 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.model.JkBuild.TestEnvDecl;
+import cc.jumpkick.model.JkBuild.EnvDecl;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.plugin.manifest.PluginContributions;
@@ -882,7 +882,7 @@ public final class PlannerSupport {
      * produce a key that disagrees with this one.
      */
     static List<String> testStampExtras(
-            Map<String, String> workerJars, TestSelection selection, List<TestEnvDecl> testEnv, Path moduleDir) {
+            Map<String, String> workerJars, TestSelection selection, List<EnvDecl> testEnv, Path moduleDir) {
         EnvLookup lookup = BuildEnv.lookupFor(Objects.requireNonNull(moduleDir, "moduleDir"));
         return testStampExtras(workerJars, selection, testEnv, SecretRedactor.from(lookup), lookup);
     }
@@ -894,7 +894,7 @@ public final class PlannerSupport {
     static List<String> testStampExtras(
             Map<String, String> workerJars,
             TestSelection selection,
-            List<TestEnvDecl> testEnv,
+            List<EnvDecl> testEnv,
             SecretRedactor redactor,
             EnvLookup lookup) {
         List<String> extras = new ArrayList<>();
@@ -907,7 +907,8 @@ public final class PlannerSupport {
         // launch — a manifest jk cannot fork must never forecast as "tests cached".
         // The launch-side directories are not passed: the mode, not the caller, decides what the
         // two path tokens mean, and this mode keeps them literal.
-        var resolved = TestEnvValues.resolve(testEnv, null, null, new TestEnvValues.Mode.CacheKey(lookup, redactor));
+        var resolved = TestEnvValues.resolve(
+                "[test].env", testEnv, null, null, new TestEnvValues.Mode.CacheKey(lookup, redactor));
         for (Map.Entry<String, String> e : resolved.entrySet()) {
             extras.add("test-env:" + e.getKey() + "=" + e.getValue());
         }

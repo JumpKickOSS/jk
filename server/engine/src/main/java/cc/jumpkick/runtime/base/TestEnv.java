@@ -136,7 +136,11 @@ public final class TestEnv {
         out.put("JK_HTTP_PORT", "0");
         Function<String, @Nullable String> buildEnv = BuildEnv.forModule(moduleDir);
         out.putAll(TestEnvValues.resolve(
-                project.build().testEnv(), moduleDir, target, new TestEnvValues.Mode.Launch(buildEnv::apply)));
+                "[test].env",
+                project.build().testEnv(),
+                moduleDir,
+                target,
+                new TestEnvValues.Mode.Launch(buildEnv::apply)));
         return Map.copyOf(out);
     }
 }

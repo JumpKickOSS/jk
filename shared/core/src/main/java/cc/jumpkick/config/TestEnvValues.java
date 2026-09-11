@@ -12,7 +12,7 @@ import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The one expansion of {@code [test] env}.
+ * The one expansion of {@code [test] env} and {@code [env] vars}.
  *
  * <p>Two callers want the same values for different purposes: the environment a forked test JVM
  * receives, and the run-tests action key that decides whether that JVM is forked at all. They used
@@ -104,20 +104,21 @@ public final class TestEnvValues {
      * Mode.CacheKey} preserves those tokens deliberately and so reads neither; only {@link
      * Mode.Launch} needs them.
      *
-     * <p>Order is the manifest's: later entries win, and a {@link JkBuild.TestEnvDecl.Forward} of a
+     * <p>Order is the manifest's: later entries win, and a {@link JkBuild.EnvDecl.Forward} of a
      * variable the caller does not have <em>removes</em> what an earlier entry set, so a manifest
      * reads top to bottom with no precedence rule to memorise.
      *
-     * @throws JkBuildParseException if a {@link JkBuild.TestEnvDecl.Set} value references an
+     * @param at the position named in messages — {@code [test].env} or {@code [env].vars}
+     * @throws JkBuildParseException if a {@link JkBuild.EnvDecl.Set} value references an
      * environment variable that is not set — in both modes, which is the whole point of this type
      */
     public static Map<String, String> resolve(
-            List<JkBuild.TestEnvDecl> declared, @Nullable Path moduleDir, @Nullable Path target, Mode mode) {
+            String at, List<JkBuild.EnvDecl> declared, @Nullable Path moduleDir, @Nullable Path target, Mode mode) {
         Map<String, String> out = new LinkedHashMap<>();
-        for (JkBuild.TestEnvDecl decl : declared) {
-            String where = "[test].env." + decl.name();
+        for (JkBuild.EnvDecl decl : declared) {
+            String where = at + "." + decl.name();
             switch (decl) {
-                case JkBuild.TestEnvDecl.Forward forward -> {
+                case JkBuild.EnvDecl.Forward forward -> {
                     String value = forwarded(forward.name(), mode);
                     // Absent, not empty: a suite testing getenv(X) != null has to see what it would
                     // see outside jk. Remove, because an earlier entry may have set it and a later
@@ -125,7 +126,7 @@ public final class TestEnvValues {
                     if (value == null) out.remove(forward.name());
                     else out.put(forward.name(), value);
                 }
-                case JkBuild.TestEnvDecl.Set set ->
+                case JkBuild.EnvDecl.Set set ->
                     out.put(
                             set.name(),
                             switch (mode) {

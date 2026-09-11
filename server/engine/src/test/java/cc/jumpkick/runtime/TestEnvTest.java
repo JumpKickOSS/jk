@@ -241,8 +241,7 @@ class TestEnvTest {
                 env = [{ FLAG = false, COUNT = 3 }]
                 """);
         assertThat(project.build().testEnv())
-                .containsExactly(
-                        new JkBuild.TestEnvDecl.Set("FLAG", "false"), new JkBuild.TestEnvDecl.Set("COUNT", "3"));
+                .containsExactly(new JkBuild.EnvDecl.Set("FLAG", "false"), new JkBuild.EnvDecl.Set("COUNT", "3"));
     }
 
     @Test

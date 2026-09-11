@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -107,6 +108,19 @@ class JkTomlSchemaTest {
     }
 
     @Test
+    void env_properties_are_exactly_the_parser_s_env_keys() throws Exception {
+        String schema = Files.readString(SCHEMA);
+        // By position, not by first textual match: [dev.sidecars.<name>] has its own `env` key earlier.
+        String env = requireNonNull(memberOf(table(schema, "properties"), "env"), "env");
+        assertThat(keysOf(table(env, "properties"))).containsExactlyInAnyOrderElementsOf(ManifestBuild.ENV_KEYS);
+        // the table's own additionalProperties is its last one; the vars item's nested one comes first
+        int last = env.lastIndexOf("\"additionalProperties\"");
+        assertThat(env.substring(last).replaceAll("\\s", ""))
+                .as("a variable written straight into [env] is what an editor should flag")
+                .startsWith("\"additionalProperties\":false");
+    }
+
+    @Test
     void the_schema_names_the_dependency_scope_tables_the_parser_reads() throws Exception {
         String schema = Files.readString(SCHEMA);
         for (Scope s : Scope.values()) {
@@ -120,6 +134,61 @@ class JkTomlSchemaTest {
     /** The nested object the schema is expected to carry; its absence fails the test that reads it. */
     private static String table(String json, String key) {
         return requireNonNull(Jsonl.nested(json, key), key);
+    }
+
+    /** The object {@code key} maps to at brace depth one of {@code object}, or null when absent there. */
+    private static @Nullable String memberOf(String object, String key) {
+        int depth = 0;
+        boolean inString = false;
+        StringBuilder current = new StringBuilder();
+        boolean expectingKey = true;
+        boolean found = false;
+        for (int i = 0; i < object.length(); i++) {
+            char c = object.charAt(i);
+            if (inString) {
+                if (c == '"') {
+                    inString = false;
+                    if (depth == 1 && expectingKey && current.toString().equals(key)) found = true;
+                } else {
+                    current.append(c);
+                }
+                continue;
+            }
+            switch (c) {
+                case '"' -> {
+                    inString = true;
+                    current.setLength(0);
+                }
+                case '{' -> {
+                    if (found && depth == 1) {
+                        int end = i;
+                        int inner = 0;
+                        boolean quoted = false;
+                        for (; end < object.length(); end++) {
+                            char d = object.charAt(end);
+                            if (quoted) {
+                                if (d == '\\') end++;
+                                else if (d == '"') quoted = false;
+                            } else if (d == '"') quoted = true;
+                            else if (d == '{') inner++;
+                            else if (d == '}' && --inner == 0) return object.substring(i, end + 1);
+                        }
+                        return null;
+                    }
+                    depth++;
+                }
+                case '[' -> depth++;
+                case '}', ']' -> depth--;
+                case ':' -> {
+                    if (depth == 1) expectingKey = false;
+                }
+                case ',' -> {
+                    if (depth == 1) expectingKey = true;
+                }
+                default -> {}
+            }
+        }
+        return null;
     }
 
     private static List<String> keysOf(String object) {

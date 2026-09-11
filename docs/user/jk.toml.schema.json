@@ -267,6 +267,34 @@
       "type": "object",
       "description": "[deny] table; keys are documented in docs/user."
     },
+    "env": {
+      "type": "object",
+      "description": "[env] table: what this module's workers (the compiler, each test JVM, plugin steps) may take from the environment beyond jk's allow-list. Per module; not inherited from a workspace root. Not an action-key input by itself.",
+      "properties": {
+        "inherit": {
+          "type": "boolean",
+          "description": "true hands the module's workers the engine's whole environment, secrets included. Default false. Write the reason beside it."
+        },
+        "vars": {
+          "type": "array",
+          "description": "The [test] env shape: a bare name forwards the caller's value when it is set; a table sets values outright (${VAR}, ${module} and ${target} expand; an unset ${VAR} is an error). Reaches every worker of the module; [test] env layers on top for test JVMs.",
+          "items": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "additionalProperties": false
+    },
     "audit": {
       "type": "object",
       "description": "[audit] table: what `jk audit` reports without gating on. Read by the audit alone; never part of an action key.",

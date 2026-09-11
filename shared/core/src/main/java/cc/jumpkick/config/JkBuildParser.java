@@ -364,8 +364,11 @@ public final class JkBuildParser {
         build = build.withJavac(ManifestBuild.parseJavac(result));
         // [test] is its own top-level table (test settings are not build inputs), but it folds into
         // the Build block, which already carries the other test-scoped setting, test-plugin-jars.
-        List<JkBuild.TestEnvDecl> testEnv = ManifestBuild.parseTestEnv(result);
+        List<JkBuild.EnvDecl> testEnv = ManifestBuild.parseTestEnv(result);
         if (!testEnv.isEmpty()) build = build.withTestEnv(testEnv);
+        // [env] is what the module's workers get from the environment; it folds in beside [test] env.
+        JkBuild.EnvConfig env = ManifestBuild.parseEnv(result);
+        if (!env.isEmpty()) build = build.withEnv(env);
         // [dev] is a live-loop concern, not a build input; it folds into the same block as [test].
         List<JkBuild.Sidecar> devSidecars = ManifestBuild.parseDevSidecars(result);
         if (!devSidecars.isEmpty()) build = build.withDevSidecars(devSidecars);

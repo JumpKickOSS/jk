@@ -74,6 +74,7 @@ public final class ManifestBuild {
                 "forge",
                 "kotlin-plugins",
                 "javac",
+                "env",
                 "m2",
                 "install",
                 "guards"));
@@ -300,7 +301,8 @@ public final class ManifestBuild {
                     policies.unmapped(),
                     List.of(),
                     List.of(),
-                    List.of());
+                    List.of(),
+                    JkBuild.EnvConfig.EMPTY);
         }
         BuildSettings s = new BuildSettings();
         if (build != null) readBuildTable(build, s);
@@ -322,7 +324,8 @@ public final class ManifestBuild {
                 policies.unmapped(),
                 List.of(),
                 List.of(),
-                List.of());
+                List.of(),
+                JkBuild.EnvConfig.EMPTY);
     }
 
     /** The two {@code [resolve]} policies, at their defaults when the table or key is absent. */
@@ -656,24 +659,70 @@ public final class ManifestBuild {
      * {@code docker run -e} flag — and quietly accepting either would make {@code "TZ=UTC"} a
      * variable literally named {@code TZ=UTC}.
      */
-    static List<JkBuild.TestEnvDecl> parseTestEnv(TomlTable root) {
+    static List<JkBuild.EnvDecl> parseTestEnv(TomlTable root) {
         TomlTable test = root.getTable("test");
         if (test == null) return List.of();
-        Object raw = test.get(List.of("env"));
+        return parseEnvDecls(test.get(List.of("env")), "[test]", "env");
+    }
+
+    /** The keys {@code [env]} may carry. */
+    public static final List<String> ENV_KEYS = List.of("inherit", "vars");
+
+    /**
+     * {@code [env]} — what this module's workers may take from the environment beyond jk's
+     * allow-list (docs/user/build.md). Unknown keys fail the parse: a variable written straight into
+     * the table is refused with the {@code vars} spelling, so a typo cannot silently become a knob.
+     *
+     * <pre>
+     * [env]
+     * vars = ["DOCKER_HOST", { TZ = "UTC" }]   # forward a name, or set a value — the [test] env shape
+     * inherit = true                            # the engine's whole environment; say why beside it
+     * </pre>
+     */
+    static JkBuild.EnvConfig parseEnv(TomlTable root) {
+        Object raw = root.get(List.of("env"));
+        if (raw == null) return JkBuild.EnvConfig.EMPTY;
+        if (!(raw instanceof TomlTable env)) {
+            throw new JkBuildParseException("[env] must be a table: [env] vars = [\"CI\", { TZ = \"UTC\" }]");
+        }
+        for (String key : env.keySet()) {
+            if (!ENV_KEYS.contains(key)) {
+                throw new JkBuildParseException("[env] unknown key `" + key + "` — expected one of: "
+                        + String.join(", ", ENV_KEYS) + ". To hand workers a variable, list it under vars: vars = [{ "
+                        + key + " = \"…\" }]");
+            }
+        }
+        boolean inherit = false;
+        Object rawInherit = env.get(List.of("inherit"));
+        if (rawInherit != null) {
+            if (!(rawInherit instanceof Boolean b)) {
+                throw new JkBuildParseException("[env] inherit must be true or false");
+            }
+            inherit = b;
+        }
+        return new JkBuild.EnvConfig(inherit, parseEnvDecls(env.get(List.of("vars")), "[env]", "vars"));
+    }
+
+    /**
+     * The one parser for an environment array — {@code [test] env} and {@code [env] vars} share
+     * the shape: a bare name forwards, a table sets. {@code table} and {@code key} only spell the
+     * position in messages.
+     */
+    private static List<JkBuild.EnvDecl> parseEnvDecls(@Nullable Object raw, String table, String key) {
         if (raw == null) return List.of();
         if (!(raw instanceof TomlArray arr)) {
-            throw new JkBuildParseException("[test] env must be an array — a bare name to forward the"
-                    + " caller's value, or a table to set one: env = [\"CI\", { TZ = \"UTC\" }]");
+            throw new JkBuildParseException(table + " " + key + " must be an array — a bare name to forward the"
+                    + " caller's value, or a table to set one: " + key + " = [\"CI\", { TZ = \"UTC\" }]");
         }
-        List<JkBuild.TestEnvDecl> out = new ArrayList<>();
+        List<JkBuild.EnvDecl> out = new ArrayList<>();
         for (int i = 0; i < arr.size(); i++) {
             Object element = arr.get(i);
-            String where = "[test].env[" + i + "]";
+            String where = table + "." + key + "[" + i + "]";
             if (element instanceof String name) {
-                out.add(new JkBuild.TestEnvDecl.Forward(forwardName(name, where)));
-            } else if (element instanceof TomlTable table) {
-                for (String key : table.keySet()) {
-                    out.add(new JkBuild.TestEnvDecl.Set(key, scalar(table.get(List.of(key)), where + "." + key)));
+                out.add(new JkBuild.EnvDecl.Forward(forwardName(name, where)));
+            } else if (element instanceof TomlTable values) {
+                for (String name : values.keySet()) {
+                    out.add(new JkBuild.EnvDecl.Set(name, scalar(values.get(List.of(name)), where + "." + name)));
                 }
             } else {
                 throw new JkBuildParseException(

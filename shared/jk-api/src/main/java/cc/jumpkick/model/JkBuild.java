@@ -749,12 +749,12 @@ public record JkBuild(
              * manifest lists it. Test-scoped like {@code testPluginJars}, hence its home here.
              *
              * <p>A list rather than a map because the two things a module says about the environment
-             * are different statements — {@link TestEnvDecl.Forward} names a variable it wants if the
-             * caller has one, {@link TestEnvDecl.Set} states a value outright — and because order is
+             * are different statements — {@link EnvDecl.Forward} names a variable it wants if the
+             * caller has one, {@link EnvDecl.Set} states a value outright — and because order is
              * then a rule the manifest can express instead of one a reader has to memorise: later
              * wins, top to bottom.
              */
-            List<TestEnvDecl> testEnv,
+            List<EnvDecl> testEnv,
             /**
              * {@code [dev.sidecars]} — processes {@code jk dev} runs beside the application (a
              * frontend dev server, a docs server), in manifest order. Dev-only: {@code jk run},
@@ -767,7 +767,12 @@ public record JkBuild(
              * each with its reason and an optional expiry date. Read by the audit alone; never an
              * action-key input.
              */
-            List<AuditIgnore> auditIgnores) {
+            List<AuditIgnore> auditIgnores,
+            /**
+             * {@code [env]} — what this module's workers may take from the environment beyond the
+             * allow-list, and whether they inherit all of it. Per module, like {@code [test]}.
+             */
+            EnvConfig env) {
 
         /** Default {@code [test] fixtures = true} root — {@code src/fixtures/java}. */
         public static final String DEFAULT_FIXTURES = "src/fixtures/java";
@@ -788,7 +793,8 @@ public record JkBuild(
                 UnmappedPolicy.MEDIATE,
                 List.of(),
                 List.of(),
-                List.of());
+                List.of(),
+                EnvConfig.EMPTY);
 
         public Build {
             orderAfter = orderAfter == null ? List.of() : List.copyOf(orderAfter);
@@ -806,6 +812,18 @@ public record JkBuild(
             testEnv = testEnv == null ? List.of() : List.copyOf(testEnv);
             devSidecars = devSidecars == null ? List.of() : List.copyOf(devSidecars);
             auditIgnores = auditIgnores == null ? List.of() : List.copyOf(auditIgnores);
+            env = env == null ? EnvConfig.EMPTY : env;
+        }
+
+        /**
+         * What every forked test JVM's environment is declared to get, in precedence order:
+         * {@code [env] vars} for every worker of the module, then {@code [test] env} on top.
+         */
+        public List<EnvDecl> testEnvDecls() {
+            if (env.vars().isEmpty()) return testEnv;
+            List<EnvDecl> all = new ArrayList<>(env.vars());
+            all.addAll(testEnv);
+            return List.copyOf(all);
         }
 
         /** True when this module declares a fixtures source root. */
@@ -834,7 +852,8 @@ public record JkBuild(
                     unmappedPolicy,
                     testEnv,
                     devSidecars,
-                    auditIgnores);
+                    auditIgnores,
+                    env);
         }
 
         public Build withPlatformPolicy(PlatformPolicy policy) {
@@ -854,7 +873,8 @@ public record JkBuild(
                     unmappedPolicy,
                     testEnv,
                     devSidecars,
-                    auditIgnores);
+                    auditIgnores,
+                    env);
         }
 
         /** The same block with {@code [[kotlin-plugins]]} set. */
@@ -875,11 +895,12 @@ public record JkBuild(
                     unmappedPolicy,
                     testEnv,
                     devSidecars,
-                    auditIgnores);
+                    auditIgnores,
+                    env);
         }
 
         /** The same block with {@code [test] env} set. */
-        public Build withTestEnv(List<TestEnvDecl> env) {
+        public Build withTestEnv(List<EnvDecl> decls) {
             return new Build(
                     orderAfter,
                     testPluginJars,
@@ -894,9 +915,10 @@ public record JkBuild(
                     testSerialTags,
                     platformPolicy,
                     unmappedPolicy,
-                    env,
+                    decls,
                     devSidecars,
-                    auditIgnores);
+                    auditIgnores,
+                    env);
         }
 
         /** The same block with {@code [dev.sidecars]} set. */
@@ -917,7 +939,8 @@ public record JkBuild(
                     unmappedPolicy,
                     testEnv,
                     sidecars,
-                    auditIgnores);
+                    auditIgnores,
+                    env);
         }
 
         /** The same block with {@code [javac]} set. */
@@ -938,7 +961,30 @@ public record JkBuild(
                     unmappedPolicy,
                     testEnv,
                     devSidecars,
-                    auditIgnores);
+                    auditIgnores,
+                    env);
+        }
+
+        /** The same block with {@code [env]} set. */
+        public Build withEnv(EnvConfig config) {
+            return new Build(
+                    orderAfter,
+                    testPluginJars,
+                    lint,
+                    kotlinPlugins,
+                    kspOptions,
+                    javac,
+                    extraSrc,
+                    testExtraSrc,
+                    fixtures,
+                    testWorkers,
+                    testSerialTags,
+                    platformPolicy,
+                    unmappedPolicy,
+                    testEnv,
+                    devSidecars,
+                    auditIgnores,
+                    config);
         }
 
         /** The same block with {@code [audit] ignore} set. */
@@ -959,7 +1005,8 @@ public record JkBuild(
                     unmappedPolicy,
                     testEnv,
                     devSidecars,
-                    ignores);
+                    ignores,
+                    env);
         }
 
         /**
@@ -1065,7 +1112,11 @@ public record JkBuild(
         }
     }
 
-    public sealed interface TestEnvDecl {
+    /**
+     * One entry of an environment array — {@code [test] env} or {@code [env] vars}: a variable to
+     * forward from the caller, or a value to set outright.
+     */
+    public sealed interface EnvDecl {
 
         /** The variable this entry is about. */
         String name();
@@ -1077,7 +1128,7 @@ public record JkBuild(
          * <p>Absent, never empty. A suite asking {@code getenv("X") != null} must see what it would
          * see outside jk, so an unset forward cannot become {@code X=""}.
          */
-        record Forward(String name) implements TestEnvDecl {}
+        record Forward(String name) implements EnvDecl {}
 
         /**
          * A table entry in the array: {@code { TZ = "UTC" }}. The value is what the module says it
@@ -1085,7 +1136,27 @@ public record JkBuild(
          * an unset {@code ${VAR}} here is an error, because a value stated outright and then
          * silently emptied is how a build authenticates anonymously and calls it success.
          */
-        record Set(String name, String value) implements TestEnvDecl {}
+        record Set(String name, String value) implements EnvDecl {}
+    }
+
+    /**
+     * {@code [env]}: what a module's workers — the compiler, each test JVM, a plugin step — get from
+     * the environment beyond the allow-list jk applies by default. {@code inherit = true} hands them
+     * the engine's whole environment; {@code vars} names or sets variables in the {@code [test] env}
+     * shape. Not an action-key input by itself: a value that must retest a suite belongs in {@code
+     * [test] env}.
+     */
+    public record EnvConfig(boolean inherit, List<EnvDecl> vars) {
+
+        public static final EnvConfig EMPTY = new EnvConfig(false, List.of());
+
+        public EnvConfig {
+            vars = vars == null ? List.of() : List.copyOf(vars);
+        }
+
+        public boolean isEmpty() {
+            return !inherit && vars.isEmpty();
+        }
     }
 
     /**
