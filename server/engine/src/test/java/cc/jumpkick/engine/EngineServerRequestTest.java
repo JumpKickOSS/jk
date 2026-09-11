@@ -279,10 +279,13 @@ class EngineServerRequestTest extends EngineServerHarness {
             assertThat(finding)
                     .as("audit-finding event for the mock vulnerability%n%s", wire)
                     .isNotNull();
-            assertThat(Jsonl.str(finding, "module")).isEqualTo("com.foo:leaf");
+            assertThat(Jsonl.str(finding, "package")).isEqualTo("com.foo:leaf");
             assertThat(Jsonl.str(finding, "version")).isEqualTo("1.0");
-            assertThat(Jsonl.str(finding, "vulnId")).isEqualTo("GHSA-test-1");
+            assertThat(Jsonl.str(finding, "id")).isEqualTo("GHSA-test-1");
             assertThat(Jsonl.str(finding, "summary")).isEqualTo("Stub vulnerability");
+            assertThat(Jsonl.bool(finding, "ignoreExpired", true))
+                    .as("a project without a jk.toml has no ignore list; the finding is judged bare")
+                    .isFalse();
 
             server.close();
             serverThread.join(5_000);

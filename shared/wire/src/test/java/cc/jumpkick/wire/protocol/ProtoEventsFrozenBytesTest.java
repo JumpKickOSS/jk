@@ -3,9 +3,11 @@ package cc.jumpkick.wire.protocol;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.audit.AuditReport;
 import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
+import java.time.LocalDate;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -160,9 +162,22 @@ class ProtoEventsFrozenBytesTest {
         assertThat(ProtoEvents.lockFinish(false, 6, List.of("no such artifact", "x"), -1))
                 .isEqualTo(
                         "{\"type\":\"lock-finish\",\"success\":false,\"exitCode\":6,\"errors\":[\"no such artifact\",\"x\"],\"refreshed\":-1}");
-        assertThat(ProtoEvents.auditFinding("a/b", "g:x", "1.2", "GHSA-1", "HIGH", "bad"))
+        assertThat(ProtoEvents.auditFinding(
+                        "a/b", new AuditReport.Finding("g:x", "1.2", "GHSA-1", "bad", AuditReport.Severity.HIGH, null)))
                 .isEqualTo(
-                        "{\"type\":\"audit-finding\",\"dir\":\"a/b\",\"module\":\"g:x\",\"version\":\"1.2\",\"vulnId\":\"GHSA-1\",\"severity\":\"HIGH\",\"summary\":\"bad\"}");
+                        "{\"type\":\"audit-finding\",\"dir\":\"a/b\",\"package\":\"g:x\",\"version\":\"1.2\",\"id\":\"GHSA-1\",\"severity\":\"HIGH\",\"summary\":\"bad\",\"fixedIn\":null,\"ignoreReason\":null,\"ignoreUntil\":null,\"ignoreExpired\":false}");
+        assertThat(ProtoEvents.auditFinding(
+                        "a/b",
+                        new AuditReport.Finding(
+                                "g:x",
+                                "1.2",
+                                "GHSA-1",
+                                "bad",
+                                AuditReport.Severity.HIGH,
+                                "1.3",
+                                new AuditReport.Ignore("test only", LocalDate.of(2026, 12, 31), true))))
+                .isEqualTo(
+                        "{\"type\":\"audit-finding\",\"dir\":\"a/b\",\"package\":\"g:x\",\"version\":\"1.2\",\"id\":\"GHSA-1\",\"severity\":\"HIGH\",\"summary\":\"bad\",\"fixedIn\":\"1.3\",\"ignoreReason\":\"test only\",\"ignoreUntil\":\"2026-12-31\",\"ignoreExpired\":true}");
         assertThat(ProtoEvents.formatFile("a/b", "src/A.java", "changed", null, 1, 16))
                 .isEqualTo(
                         "{\"type\":\"format-file\",\"dir\":\"a/b\",\"path\":\"src/A.java\",\"status\":\"changed\",\"message\":null,\"index\":1,\"total\":16}");

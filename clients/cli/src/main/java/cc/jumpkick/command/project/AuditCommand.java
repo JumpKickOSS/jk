@@ -9,8 +9,11 @@ import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.run.BuildPlanConsole;
+import cc.jumpkick.cli.run.jsonl.JsonlEnvelope;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.host.Errors;
+import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.CliCommand;
@@ -20,7 +23,6 @@ import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.EnginePaths;
-import cc.jumpkick.wire.runtime.HostedEvents;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
@@ -30,8 +32,10 @@ import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /**
- * {@code jk audit} — scan the lockfile against OSV. Exits non-zero when any finding meets the
- * severity threshold. Worker runs engine-side; this command renders findings and applies the gate.
+ * {@code jk audit} — scan the lockfile against OSV. Exits {@link Exit#FAILURE} when any finding at
+ * or above {@code --severity} is not covered by an unexpired {@code [audit] ignore} entry, and
+ * {@link Exit#SUCCESS} otherwise. The worker runs engine-side, which also judges each finding
+ * against the manifest's ignore list; this command renders the findings and applies the gate.
  */
 public final class AuditCommand implements CliCommand {
 
@@ -83,22 +87,13 @@ public final class AuditCommand implements CliCommand {
         }
         if (global.offline) {
             CommandWedge.printFail("Audit", offlineRefusal(osvBatchUrl));
-            return 1;
+            return Exit.FAILURE;
         }
         Path cache = JkDirs.cache();
         AuditReport.Severity threshold = AuditReport.Severity.parse(severity);
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
 
-        // Findings accumulate here from either transport — raw worker fields in, typed report rows
-        // out — so the report/threshold tail below is transport-agnostic.
         List<AuditReport.Finding> findings = new ArrayList<>();
-        HostedEvents.FindingObserver observer = (module, version, vulnId, sev, summary) -> {
-            if (module != null && version != null && vulnId != null) {
-                findings.add(new AuditReport.Finding(
-                        module, version, vulnId, summary != null ? summary : "", AuditReport.Severity.parse(sev)));
-            }
-        };
-
         BuildPlanResult result;
         try {
             result = EngineClient.runAudit(
@@ -106,25 +101,77 @@ public final class AuditCommand implements CliCommand {
                     new EngineRequests.AuditRequest(
                             projectDir, cache, threshold.toString(), osvBatchUrl, osvVulnsUrl, global.offline),
                     steps -> BuildPlanConsole.chooseConsoleListener("audit", steps, mode),
-                    observer);
+                    findings::add);
         } catch (IOException e) {
             CommandWedge.printFail("Audit", e.getMessage());
             return Exit.SOFTWARE;
         }
 
-        if (!result.success()) return 1;
+        if (!result.success()) return Exit.FAILURE;
 
         AuditReport report = new AuditReport(findings);
-        if (!global.outputIsJson()) {
+        if (global.outputIsJson()) {
+            for (AuditReport.Finding f : report.findings()) {
+                CliOutput.out(findingJson(Clock.SYSTEM.millis(), f));
+            }
+        } else {
             CliOutput.out(report.renderMarkdown());
         }
 
-        List<AuditReport.Finding> blocking = report.filterAtLeast(threshold);
-        if (!blocking.isEmpty()) {
-            CommandWedge.printFail("Audit", blocking.size() + " finding(s) at or above " + threshold + " — failing.");
-            return 1;
+        int exit = exitFor(report, threshold);
+        if (exit != Exit.SUCCESS) {
+            CommandWedge.printFail("Audit", verdict(report, threshold));
         }
-        return 0;
+        return exit;
+    }
+
+    /**
+     * The gate: {@link Exit#FAILURE} when a finding at or above {@code threshold} is not covered by
+     * an unexpired ignore entry, else {@link Exit#SUCCESS}. Ignored findings are reported but never
+     * counted; an expired entry counts again.
+     */
+    static int exitFor(AuditReport report, AuditReport.Severity threshold) {
+        return report.blocking(threshold).isEmpty() ? Exit.SUCCESS : Exit.FAILURE;
+    }
+
+    /** The failing wedge's text: what blocked, and how many findings an ignore entry kept out of the count. */
+    static String verdict(AuditReport report, AuditReport.Severity threshold) {
+        int blocking = report.blocking(threshold).size();
+        int ignored = report.ignored().size();
+        StringBuilder sb = new StringBuilder()
+                .append(blocking)
+                .append(" finding")
+                .append(blocking == 1 ? "" : "s")
+                .append(" at or above ")
+                .append(threshold);
+        if (ignored > 0) sb.append(" (").append(ignored).append(" ignored)");
+        return sb.append(" — failing.").toString();
+    }
+
+    /**
+     * One {@code --output json} line per finding. {@code fixedIn} rides when OSV named a fixed
+     * version; {@code reason} and {@code until} ride when an ignore entry names the advisory, and
+     * {@code ignoreExpired} only when that entry has lapsed — in which case {@code ignored} is
+     * {@code false} and the finding counts toward the exit status again.
+     */
+    static String findingJson(long ts, AuditReport.Finding f) {
+        JsonFields json = JsonlEnvelope.open(ts, "audit-finding")
+                .string("id", f.vulnId())
+                .string("package", f.module())
+                .string("version", f.version())
+                .string("severity", f.severity().name())
+                .string("summary", f.summary())
+                .optionalString("fixedIn", f.fixedIn())
+                .bool("ignored", f.ignored());
+        AuditReport.Ignore ignore = f.ignore();
+        if (ignore != null) {
+            json.string("reason", ignore.reason())
+                    .optionalString(
+                            "until",
+                            ignore.until() == null ? null : ignore.until().toString())
+                    .optionalTrue("ignoreExpired", ignore.expired());
+        }
+        return json.finish();
     }
 
     /**

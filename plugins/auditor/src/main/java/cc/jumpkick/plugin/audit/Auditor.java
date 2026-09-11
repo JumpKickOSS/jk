@@ -97,7 +97,7 @@ public final class Auditor implements Plugin {
 
         for (AuditReport.Finding f : report.findings()) {
             out.emit(PluginReply.finding(
-                    f.module(), f.version(), f.vulnId(), f.severity().name(), f.summary()));
+                    f.module(), f.version(), f.vulnId(), f.severity().name(), f.summary(), f.fixedIn()));
         }
         return 0;
     }

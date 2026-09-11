@@ -4,6 +4,7 @@ package cc.jumpkick.plugin.audit;
 import cc.jumpkick.audit.AuditReport;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.PackageId;
+import cc.jumpkick.resolver.Versions;
 import cc.jumpkick.run.JkThreads;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -15,6 +16,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk audit} orchestration: lockfile → OSV batch query → concurrent detail fetch for hits.
@@ -77,12 +79,14 @@ public final class OsvAuditor {
                 Lockfile.Artifact pkg = pkgs.get(i);
                 for (String vulnId : results.get(i).vulnIds()) {
                     OsvClient.Vulnerability v = futures.get(vulnId).get();
+                    String ga = PackageId.parse(pkg.name()).ga();
                     findings.add(new AuditReport.Finding(
-                            PackageId.parse(pkg.name()).ga(),
+                            ga,
                             pkg.version(),
                             vulnId,
                             v.summary(),
-                            AuditReport.Severity.parse(v.severity())));
+                            AuditReport.Severity.parse(v.severity()),
+                            fixedIn(v.fixedVersions(ga), pkg.version())));
                 }
             }
         } catch (ExecutionException e) {
@@ -92,5 +96,18 @@ public final class OsvAuditor {
             throw new IOException("audit vuln-detail fetch failed: " + cause.getMessage(), cause);
         }
         return new AuditReport(findings);
+    }
+
+    /**
+     * The lowest of {@code fixed} above {@code locked} — the nearest upgrade that closes the
+     * advisory — or {@code null} when OSV names none above it.
+     */
+    static @Nullable String fixedIn(List<String> fixed, String locked) {
+        String best = null;
+        for (String candidate : fixed) {
+            if (Versions.compare(candidate, locked) <= 0) continue;
+            if (best == null || Versions.compare(candidate, best) < 0) best = candidate;
+        }
+        return best;
     }
 }

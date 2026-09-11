@@ -5,10 +5,12 @@ import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.audit.AuditReport;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.build.InvocationPhase;
 import cc.jumpkick.run.TestSummary;
+import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -361,14 +363,29 @@ class EngineProtocolTest {
     }
 
     @Test
-    void audit_finding_event_round_trips_the_worker_fields() {
-        String json = ProtoEvents.auditFinding("", "com.foo:leaf", "1.0", "GHSA-x", "HIGH", "bad news");
+    void audit_finding_event_round_trips_the_worker_fields_and_the_ignore_state() {
+        AuditReport.Finding judged = new AuditReport.Finding(
+                "com.foo:leaf",
+                "1.0",
+                "GHSA-x",
+                "bad news",
+                AuditReport.Severity.HIGH,
+                "1.1",
+                new AuditReport.Ignore("not reachable", LocalDate.of(2027, 1, 31), false));
+        String json = ProtoEvents.auditFinding("", judged);
         assertThat(EngineProtocol.typeOf(json)).isEqualTo(EngineProtocol.AUDIT_FINDING);
-        assertThat(Jsonl.str(json, "module")).isEqualTo("com.foo:leaf");
+        assertThat(Jsonl.str(json, "package")).isEqualTo("com.foo:leaf");
         assertThat(Jsonl.str(json, "version")).isEqualTo("1.0");
-        assertThat(Jsonl.str(json, "vulnId")).isEqualTo("GHSA-x");
+        assertThat(Jsonl.str(json, "id")).isEqualTo("GHSA-x");
         assertThat(Jsonl.str(json, "severity")).isEqualTo("HIGH");
         assertThat(Jsonl.str(json, "summary")).isEqualTo("bad news");
+        assertThat(Jsonl.str(json, "fixedIn")).isEqualTo("1.1");
+        assertThat(AuditFindingEvent.decode(json).toFinding()).isEqualTo(judged);
+
+        // A finding nothing in the manifest names decodes with no ignore at all, not an empty one.
+        AuditReport.Finding bare = new AuditReport.Finding("g:a", "1", "CVE-1", "", AuditReport.Severity.LOW, null);
+        assertThat(AuditFindingEvent.decode(ProtoEvents.auditFinding("", bare)).toFinding())
+                .isEqualTo(bare);
     }
 
     @Test

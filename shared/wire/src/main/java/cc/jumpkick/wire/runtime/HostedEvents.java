@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.wire.runtime;
 
+import cc.jumpkick.audit.AuditReport;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -13,9 +14,9 @@ public final class HostedEvents {
 
     private HostedEvents() {}
 
-    /** One {@code jk audit} finding, streamed as it is parsed from the auditor worker. */
+    /** One {@code jk audit} finding, streamed as the engine judges it against the manifest's ignore list. */
     public interface FindingObserver {
-        void onFinding(String module, String version, String vulnId, String severity, String summary);
+        void onFinding(AuditReport.Finding finding);
     }
 
     /** One {@code jk format} per-file result, streamed as the formatter worker reports it. */

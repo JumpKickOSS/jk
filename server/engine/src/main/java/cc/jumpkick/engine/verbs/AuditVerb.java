@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.verbs;
 
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.runtime.base.AuditPlans;
@@ -13,8 +17,13 @@ import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoEvents;
 import cc.jumpkick.wire.protocol.ProtoSession;
 import java.io.BufferedWriter;
+import java.io.IOException;
 import java.net.URI;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 public final class AuditVerb implements HostedVerb {
@@ -54,14 +63,16 @@ public final class AuditVerb implements HostedVerb {
                 Path cache = Path.of(body.cache());
                 Session session = ProtoSession.sessionOf(requestLine, cancelToken);
                 String dir = EngineProtocol.SINGLE_PLAN_DIR;
+                List<JkBuild.AuditIgnore> ignores = auditIgnores(entryDir);
+                LocalDate today = LocalDate.ofInstant(Clock.SYSTEM.instant(), ZoneId.systemDefault());
                 BuildPlan plan = AuditPlans.auditBuildPlan(
                         LockPaths.lockFile(entryDir),
                         cache,
                         body.severity(),
                         body.osvBatchUrl() != null ? URI.create(body.osvBatchUrl()) : null,
                         body.osvVulnsUrl() != null ? URI.create(body.osvVulnsUrl()) : null,
-                        (module, version, vulnId, sev, summary) -> host.sendQuiet(
-                                writer, ProtoEvents.auditFinding(dir, module, version, vulnId, sev, summary)));
+                        finding ->
+                                host.sendQuiet(writer, ProtoEvents.auditFinding(dir, finding.under(ignores, today))));
                 return host.streamSinglePlan(
                         plan, session, writer, result -> ProtoEvents.planFinish(dir, result.success()));
             } catch (Exception e) {
@@ -72,5 +83,15 @@ public final class AuditVerb implements HostedVerb {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
             return JobOutcome.failed(Exit.FAILURE);
         }
+    }
+
+    /**
+     * The {@code [audit] ignore} list of the manifest beside the lock — the workspace root's, or
+     * the standalone project's. None when that manifest is absent (a bare lock still audits).
+     */
+    private static List<JkBuild.AuditIgnore> auditIgnores(Path entryDir) throws IOException {
+        Path manifest = LockPaths.lockOwnerDir(entryDir).resolve(ManifestPaths.MANIFEST);
+        if (!Files.isRegularFile(manifest)) return List.of();
+        return JkBuildParser.parse(manifest).build().auditIgnores();
     }
 }

@@ -185,6 +185,51 @@ class OsvAuditorTest {
                 .containsExactlyInAnyOrder("A", "B");
     }
 
+    /**
+     * OSV states a fix as a {@code fixed} event inside a version range, one range per release line.
+     * The finding names the nearest fixed version above the locked one — the upgrade that closes
+     * the advisory — not the first line's fix, which may be below the locked version already.
+     */
+    @Test
+    void fixed_in_is_the_nearest_fixed_version_above_the_locked_one() throws Exception {
+        Lockfile lock = lockOf(artifact("com.fasterxml.jackson.core:jackson-databind:jar:", "2.10.0"));
+        post.put("/v1/querybatch", """
+                {"results":[{"vulns":[{"id":"GHSA-fix"}]}]}
+                """.getBytes(StandardCharsets.UTF_8));
+        get.put("/v1/vulns/GHSA-fix", """
+                {
+                  "id":"GHSA-fix",
+                  "summary":"gadget",
+                  "database_specific":{"severity":"HIGH"},
+                  "affected":[
+                    {"package":{"ecosystem":"Maven","name":"com.fasterxml.jackson.core:jackson-databind"},
+                     "ranges":[
+                       {"type":"ECOSYSTEM","events":[{"introduced":"2.9.0"},{"fixed":"2.9.10.4"}]},
+                       {"type":"ECOSYSTEM","events":[{"introduced":"2.10.0"},{"fixed":"2.10.0.1"}]},
+                       {"type":"ECOSYSTEM","events":[{"introduced":"2.11.0"},{"fixed":"2.11.1"}]}
+                     ]},
+                    {"package":{"ecosystem":"npm","name":"jackson-databind"},
+                     "ranges":[{"type":"SEMVER","events":[{"introduced":"0"},{"fixed":"9.9.9"}]}]}
+                  ]
+                }
+                """.getBytes(StandardCharsets.UTF_8));
+
+        AuditReport report = new OsvAuditor(osvClient()).audit(lock);
+        assertThat(report.findings().getFirst().fixedIn()).isEqualTo("2.10.0.1");
+    }
+
+    /** An advisory that names no fix above the locked version reports none rather than inventing one. */
+    @Test
+    void fixed_in_is_absent_when_osv_names_no_fix_above_the_locked_version() throws Exception {
+        assertThat(OsvAuditor.fixedIn(List.of(), "1.0")).isNull();
+        assertThat(OsvAuditor.fixedIn(List.of("0.9", "1.0"), "1.0")).isNull();
+        assertThat(OsvAuditor.fixedIn(List.of("1.2", "1.0.1", "2.0"), "1.0")).isEqualTo("1.0.1");
+        AuditReport report = auditOne("""
+                {"id":"GHSA-nofix","summary":"m","database_specific":{"severity":"LOW"}}
+                """);
+        assertThat(report.findings().getFirst().fixedIn()).isNull();
+    }
+
     private AuditReport auditOne(String vulnJson) throws Exception {
         String id = vulnJson.split("\"id\":\"")[1].split("\"")[0];
         post.put(

@@ -42,13 +42,21 @@ public final class PluginReply {
         return "{\"t\":\"provenance\",\"gen\":" + Jsonl.quote(generated) + ",\"src\":" + Jsonl.array(sources) + "}";
     }
 
-    /** An audit vulnerability finding. */
-    public static String finding(String module, String version, String id, String severity, String summary) {
-        return "{\"t\":\"finding\",\"module\":" + Jsonl.quote(module)
-                + ",\"version\":" + Jsonl.quote(version)
-                + ",\"id\":" + Jsonl.quote(id)
-                + ",\"severity\":" + Jsonl.quote(severity)
-                + ",\"summary\":" + Jsonl.quote(summary) + "}";
+    /** An audit vulnerability finding; {@code fixedIn} rides only when the feed named a fixed version. */
+    public static String finding(
+            String module, String version, String id, String severity, String summary, @Nullable String fixedIn) {
+        StringBuilder b = new StringBuilder("{\"t\":\"finding\",\"module\":")
+                .append(Jsonl.quote(module))
+                .append(",\"version\":")
+                .append(Jsonl.quote(version))
+                .append(",\"id\":")
+                .append(Jsonl.quote(id))
+                .append(",\"severity\":")
+                .append(Jsonl.quote(severity))
+                .append(",\"summary\":")
+                .append(Jsonl.quote(summary));
+        if (fixedIn != null) b.append(",\"fixedIn\":").append(Jsonl.quote(fixedIn));
+        return b.append('}').toString();
     }
 
     /** A formatter per-file outcome. */

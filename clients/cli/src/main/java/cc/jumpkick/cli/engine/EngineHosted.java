@@ -47,9 +47,9 @@ final class EngineHosted {
     private EngineHosted() {}
 
     /**
-     * Run {@code jk audit}'s plan against the engine (the worker forks engine-side). Findings
-     * stream to {@code findings} as plain structured strings — the command assembles/renders the
-     * report and applies the severity threshold itself.
+     * Run {@code jk audit}'s plan against the engine (the worker forks engine-side, and the engine
+     * applies the manifest's ignore list). Findings stream to {@code findings}; the command
+     * assembles/renders the report and applies the severity threshold itself.
      */
     static BuildPlanResult runAudit(
             EnginePaths.Paths paths,
@@ -73,10 +73,8 @@ final class EngineHosted {
                                 .encode(),
                         "audit",
                         listenerFactory,
-                        (type, line) -> {
-                            AuditFindingEvent e = AuditFindingEvent.decode(line);
-                            findings.onFinding(e.module(), e.version(), e.vulnId(), e.severity(), e.summary());
-                        })
+                        (type, line) -> findings.onFinding(
+                                AuditFindingEvent.decode(line).toFinding()))
                 .result();
     }
 

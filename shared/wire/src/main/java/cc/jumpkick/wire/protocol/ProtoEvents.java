@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.wire.protocol;
 
+import cc.jumpkick.audit.AuditReport;
 import cc.jumpkick.config.Redacted;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.TestFailureInfo;
@@ -292,9 +293,8 @@ public final class ProtoEvents {
         return new LockFinishEvent(success, exitCode, errors, refreshed).encode();
     }
 
-    public static String auditFinding(
-            String dir, String module, String version, String vulnId, String severity, String summary) {
-        return new AuditFindingEvent(dir, module, version, vulnId, severity, summary).encode();
+    public static String auditFinding(String dir, AuditReport.Finding finding) {
+        return AuditFindingEvent.of(dir, finding).encode();
     }
 
     public static String formatFile(

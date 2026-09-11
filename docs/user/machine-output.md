@@ -110,6 +110,7 @@ differs; field **names** match.
 | Module | `module-start` / `module-finish` (paired) |
 | Workspace end | `workspace-finish` (exactly one, on every outcome) |
 | Guard violation | `guard` — one per violation row of the last `jk guard` run, after the build's events: `code`, `kind`, `baseline` (`new`/`baselined`), `file`, `line`, `at` (fingerprint), `message`, `instead`, `why`, `source` |
+| Audit finding | `audit-finding` — one per `jk audit` finding, after the run's plan events: `id`, `package`, `version`, `severity`, `summary`, `fixedIn`, `ignored` (+ `reason`, `until`, `ignoreExpired`) — [Publish](publish.md#json) |
 
 `stage` is a **closed** set, in pipeline order: `resolve`, `generate`, `compile`, `test`,
 `package`, `train`, `native`, `image`, `publish`, `other`. The field is always present, but a

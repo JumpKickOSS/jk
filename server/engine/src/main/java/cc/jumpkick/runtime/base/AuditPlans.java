@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.base;
 
+import cc.jumpkick.audit.AuditReport;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginJar;
@@ -25,16 +26,12 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk audit} plan: scan {@code jk-lock.toml} against OSV via {@code jk-auditor}. Findings
- * stream plain via {@link FindingObserver}; threshold/exit-code handling stays client-side.
+ * stream to the caller as the worker reports them; the ignore list, threshold and exit code are
+ * judged outside the plan.
  */
 public final class AuditPlans {
 
     private AuditPlans() {}
-
-    /** Receives each finding as the plugin streams it (raw plugin fields; any may be {@code null}). */
-    public interface FindingObserver {
-        void onFinding(String module, String version, String vulnId, String severity, String summary);
-    }
 
     /**
      * Build the audit plan for {@code lockPath}. Locates the plugin jar eagerly, so a missing plugin
@@ -49,7 +46,7 @@ public final class AuditPlans {
             @Nullable String thresholdLabel,
             @Nullable URI osvBatchUrl,
             @Nullable URI osvVulnsUrl,
-            FindingObserver observer) {
+            Consumer<AuditReport.Finding> observer) {
         Path workerJar = PluginJar.AUDITOR.locate(JkStores.storeCas());
 
         Task readLock = Task.builder(TaskNames.READ_LOCK)
@@ -109,7 +106,7 @@ public final class AuditPlans {
             Path lockPath,
             @Nullable URI osvBatchUrl,
             @Nullable URI osvVulnsUrl,
-            FindingObserver observer,
+            Consumer<AuditReport.Finding> observer,
             Consumer<String> onOutput) {
         try {
             Path spec = writeSpec(lockPath, osvBatchUrl, osvVulnsUrl);
@@ -119,14 +116,10 @@ public final class AuditPlans {
                 // engine runs out of heap reporting it.
                 Deque<String> tail = new ArrayDeque<>();
                 int exit = new PluginClient("##JKAU:")
-                        .on(
-                                PluginProtocol.FINDING,
-                                json -> observer.onFinding(
-                                        Jsonl.str(json, "module"),
-                                        Jsonl.str(json, "version"),
-                                        Jsonl.str(json, "id"),
-                                        Jsonl.str(json, "severity"),
-                                        Jsonl.str(json, "summary")))
+                        .on(PluginProtocol.FINDING, json -> {
+                            AuditReport.Finding finding = finding(json);
+                            if (finding != null) observer.accept(finding);
+                        })
                         .on(PluginProtocol.ERROR, json -> error[0] = Jsonl.str(json, PluginProtocol.MESSAGE))
                         .passthrough(line -> {
                             onOutput.accept(line);
@@ -149,6 +142,21 @@ public final class AuditPlans {
             Thread.currentThread().interrupt();
             throw new RuntimeException("audit worker interrupted", e);
         }
+    }
+
+    /** The worker's {@code finding} line as a typed finding; {@code null} when a required field is missing. */
+    private static AuditReport.@Nullable Finding finding(String json) {
+        String module = Jsonl.str(json, "module");
+        String version = Jsonl.str(json, "version");
+        String id = Jsonl.str(json, "id");
+        if (module == null || version == null || id == null) return null;
+        return new AuditReport.Finding(
+                module,
+                version,
+                id,
+                Jsonl.str(json, "summary"),
+                AuditReport.Severity.parse(Jsonl.str(json, "severity")),
+                Jsonl.str(json, "fixedIn"));
     }
 
     /** How much of a failed worker's own output rides its exception. */

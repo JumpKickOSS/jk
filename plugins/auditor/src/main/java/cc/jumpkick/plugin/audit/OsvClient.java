@@ -57,7 +57,22 @@ public final class OsvClient {
         }
     }
 
-    public record Vulnerability(String id, String summary, String severity, String details) {}
+    /**
+     * One advisory. {@code fixedVersions} maps each affected Maven package ({@code group:artifact})
+     * to the versions its ranges name as {@code fixed}, in feed order; a package with no fix, or an
+     * advisory with no Maven ranges, is simply absent.
+     */
+    public record Vulnerability(
+            String id, String summary, String severity, String details, Map<String, List<String>> fixedVersions) {
+        public Vulnerability {
+            fixedVersions = Map.copyOf(fixedVersions);
+        }
+
+        /** The fixed versions OSV lists for {@code mavenPackage}; empty when it names none. */
+        public List<String> fixedVersions(String mavenPackage) {
+            return fixedVersions.getOrDefault(mavenPackage, List.of());
+        }
+    }
 
     /** Batch query — one Result per input query, in the same order. */
     public List<Result> queryBatch(List<Query> queries) throws IOException, InterruptedException {
@@ -106,7 +121,11 @@ public final class OsvClient {
         try {
             Map<?, ?> node = object(MiniJson.parse(response.body()));
             return new Vulnerability(
-                    vulnId, textOrEmpty(node, "summary"), extractSeverity(node), textOrEmpty(node, "details"));
+                    vulnId,
+                    textOrEmpty(node, "summary"),
+                    extractSeverity(node),
+                    textOrEmpty(node, "details"),
+                    extractFixedVersions(node));
         } catch (RuntimeException e) {
             throw new IOException("failed to parse OSV vuln body for " + vulnId, e);
         }
@@ -156,6 +175,31 @@ public final class OsvClient {
     private static String extractSeverity(Map<?, ?> node) {
         Object label = object(node.get("database_specific")).get("severity");
         return label instanceof String s ? s : "UNKNOWN";
+    }
+
+    /**
+     * {@code affected[].ranges[].events[].fixed}, per Maven package. OSV states a fix as an event in
+     * a version range rather than as a field on the advisory, and an advisory usually spans several
+     * release lines, so one package may carry several fixed versions.
+     */
+    private static Map<String, List<String>> extractFixedVersions(Map<?, ?> node) {
+        Map<String, List<String>> out = new LinkedHashMap<>();
+        if (!(node.get("affected") instanceof List<?> affected)) return out;
+        for (Object entry : affected) {
+            Map<?, ?> pkg = object(object(entry).get("package"));
+            if (!"Maven".equalsIgnoreCase(textOrEmpty(pkg, "ecosystem"))) continue;
+            String name = textOrEmpty(pkg, "name");
+            if (name.isEmpty() || !(object(entry).get("ranges") instanceof List<?> ranges)) continue;
+            for (Object range : ranges) {
+                if (!(object(range).get("events") instanceof List<?> events)) continue;
+                for (Object event : events) {
+                    String fixed = textOrEmpty(object(event), "fixed");
+                    if (!fixed.isEmpty())
+                        out.computeIfAbsent(name, k -> new ArrayList<>()).add(fixed);
+                }
+            }
+        }
+        return out;
     }
 
     private static String textOrEmpty(Map<?, ?> node, String field) {

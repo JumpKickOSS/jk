@@ -31,9 +31,68 @@ until enforcement ships — silent no-ops are not allowed.
 
 ## Audit
 
-`jk audit` queries OSV for vulnerabilities in the locked graph. Lock rows pin a source
-repo (namespace binding planned). Combine with exclusive repository groups —
-[Repositories](repositories.md).
+`jk audit` queries OSV for every package in `jk-lock.toml` and reports each advisory against
+the locked version: severity, summary, and — when OSV names one — the nearest fixed version
+above the locked one. Lock rows pin a source repo (namespace binding planned). Combine with
+exclusive repository groups — [Repositories](repositories.md).
+
+```bash
+jk audit                       # report everything, gate at LOW
+jk audit --severity HIGH       # gate at HIGH and above
+jk audit --output json         # one JSON line per finding
+```
+
+### Exit status
+
+The exit status is the verdict. `jk audit` exits **0** when no finding at or above
+`--severity` (default `LOW`) is outstanding, and **1** when one is. An advisory whose severity
+OSV does not label counts at every threshold — the audit fails closed rather than hide what it
+cannot classify. A finding covered by an unexpired `[audit] ignore` entry is reported but never
+counted. `--offline` is refused before anything is queried: an audit has no cached answer, and a
+clean report produced without asking OSV would be a claim about safety nobody made.
+
+A CI gate is `jk audit --severity HIGH` and a non-zero exit.
+
+### JSON
+
+With `--output json` every finding is one line in the [machine envelope](machine-output.md)
+(`schema` 1, `ts`, `type`), after the run's own plan events:
+
+```json
+{"schema":1,"ts":1721664000123,"type":"audit-finding","id":"GHSA-xxxx-xxxx-xxxx","package":"com.fasterxml.jackson.core:jackson-databind","version":"2.9.8","severity":"HIGH","summary":"…","fixedIn":"2.9.10.4","ignored":false}
+```
+
+| Field | Meaning |
+|-------|---------|
+| `id` | The advisory id as OSV reports it (`GHSA-…`, `CVE-…`) |
+| `package` / `version` | The locked package (`group:artifact`) and version the advisory applies to |
+| `severity` | `CRITICAL`, `HIGH`, `MEDIUM`, `LOW`, or `UNKNOWN` when OSV gave no label |
+| `summary` | OSV's one-line summary |
+| `fixedIn` | The nearest fixed version above the locked one; absent when OSV names none |
+| `ignored` | `true` when an unexpired `[audit] ignore` entry covers the finding |
+| `reason`, `until` | The covering entry's reason and last day, when an entry names the advisory |
+| `ignoreExpired` | `true` when that entry has lapsed — the finding counts again |
+
+Fields are additive; the exit status is still the verdict.
+
+### Accepting a finding
+
+An advisory you have reviewed and accept goes in the manifest beside `jk-lock.toml` — the
+workspace root's, or the standalone project's:
+
+```toml
+[audit]
+ignore = [
+  { id = "GHSA-xxxx-xxxx-xxxx", reason = "test-only dependency; the gadget is not on the runtime path" },
+  { id = "CVE-2025-0001", reason = "waiting on the upstream release", until = "2026-12-31" },
+]
+```
+
+Every entry needs its `reason` — an ignore nobody can review is refused at parse. `until` is
+optional and an ISO date (`YYYY-MM-DD`): the entry ignores through that day and expires after
+it. The text report says `ignored (reason)` for a covered finding and `ignore expired (reason,
+until …)` for a lapsed one; the JSON carries the same state. Unknown keys on either level are
+refused, so a misspelt `untill` cannot silently turn a dated ignore into a permanent one.
 
 ## Verify
 
