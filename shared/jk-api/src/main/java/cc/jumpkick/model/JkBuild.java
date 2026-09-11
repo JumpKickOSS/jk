@@ -846,6 +846,66 @@ public record JkBuild(
                     devSidecars);
         }
 
+        /** The same block with {@code [[kotlin-plugins]]} set. */
+        public Build withKotlinPlugins(List<KotlinPluginDecl> plugins) {
+            return new Build(
+                    orderAfter,
+                    testPluginJars,
+                    lint,
+                    plugins,
+                    kspOptions,
+                    javac,
+                    extraSrc,
+                    testExtraSrc,
+                    fixtures,
+                    testWorkers,
+                    testSerialTags,
+                    platformPolicy,
+                    unmappedPolicy,
+                    testEnv,
+                    devSidecars);
+        }
+
+        /** The same block with {@code [test] env} set. */
+        public Build withTestEnv(List<TestEnvDecl> env) {
+            return new Build(
+                    orderAfter,
+                    testPluginJars,
+                    lint,
+                    kotlinPlugins,
+                    kspOptions,
+                    javac,
+                    extraSrc,
+                    testExtraSrc,
+                    fixtures,
+                    testWorkers,
+                    testSerialTags,
+                    platformPolicy,
+                    unmappedPolicy,
+                    env,
+                    devSidecars);
+        }
+
+        /** The same block with {@code [dev.sidecars]} set. */
+        public Build withDevSidecars(List<Sidecar> sidecars) {
+            return new Build(
+                    orderAfter,
+                    testPluginJars,
+                    lint,
+                    kotlinPlugins,
+                    kspOptions,
+                    javac,
+                    extraSrc,
+                    testExtraSrc,
+                    fixtures,
+                    testWorkers,
+                    testSerialTags,
+                    platformPolicy,
+                    unmappedPolicy,
+                    testEnv,
+                    sidecars);
+        }
+
         /** The same block with {@code [javac]} set. */
         public Build withJavac(JavacConfig config) {
             return new Build(

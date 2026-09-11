@@ -12,8 +12,8 @@ import java.util.Arrays;
 
 /**
  * A javac plugin that records the options javac handed it: the first is the file to write, the
- * rest are written one per line. Registered under {@code META-INF/services} in the test resources,
- * so a processor path holding this module's test output makes it discoverable as {@code JkProbe}.
+ * rest are written one per line. Discoverable as {@code JkProbe} once a processor-path entry
+ * registers it under {@code META-INF/services}.
  */
 public final class ProbePlugin implements Plugin {
 

@@ -448,7 +448,7 @@ public final class TaskForecaster {
         if (plugins.isEmpty()) return step;
         String text = PlannerCompile.PLUGIN_FLAG + String.join(",", plugins);
         if (!step.text().isEmpty()) text = step.text() + " · " + text;
-        return new TaskForecast.Task(step.name(), step.status(), text, step.key());
+        return new TaskForecast.Task(name, step.status(), text, step.key());
     }
 
     private static TaskForecast.Task compileStep(String name, JavaCompile.Prediction pred, boolean compileDepDirty) {

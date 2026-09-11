@@ -3,7 +3,8 @@ package cc.jumpkick.java.compiler;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.net.URL;
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -30,26 +31,30 @@ class ZincJavaCompilerPluginTest {
                 null,
                 25,
                 List.of(option),
-                probeProcessorPath()));
+                probeProcessorPath(dir)));
 
         assertThat(r.success()).as(r.diagnostics().toString()).isTrue();
         assertThat(Files.readAllLines(record)).containsExactly("-Xep:NullAway:ERROR", "alpha");
     }
 
-    /** The test output roots holding {@link ProbePlugin} and its service registration. */
-    private static List<Path> probeProcessorPath() throws Exception {
-        Path classes = Path.of(ProbePlugin.class
-                .getProtectionDomain()
-                .getCodeSource()
-                .getLocation()
-                .toURI());
-        String service = "META-INF/services/com.sun.source.util.Plugin";
-        URL registration = ProbePlugin.class.getClassLoader().getResource(service);
-        assertThat(registration)
-                .as("the probe's service registration is on the test classpath")
-                .isNotNull();
-        String location = Path.of(registration.toURI()).toString();
-        Path resources = Path.of(location.substring(0, location.length() - service.length()));
-        return classes.equals(resources) ? List.of(classes) : List.of(classes, resources);
+    /**
+     * A processor-path directory holding {@link ProbePlugin}'s class and its {@code META-INF/services}
+     * registration, laid out the way its jar would be. Assembled from classpath resources, so it
+     * does not depend on where the test harness put the compiled test classes.
+     */
+    private static List<Path> probeProcessorPath(Path dir) throws IOException {
+        Path root = dir.resolve("probe-plugin");
+        String classFile = ProbePlugin.class.getName().replace('.', '/') + ".class";
+        try (InputStream in = ProbePlugin.class.getClassLoader().getResourceAsStream(classFile)) {
+            assertThat(in)
+                    .as("the probe's class bytes are on the test classpath")
+                    .isNotNull();
+            Path target = root.resolve(classFile);
+            Files.createDirectories(target.getParent());
+            Files.copy(in, target);
+        }
+        Path services = Files.createDirectories(root.resolve("META-INF/services"));
+        Files.writeString(services.resolve("com.sun.source.util.Plugin"), ProbePlugin.class.getName() + "\n");
+        return List.of(root);
     }
 }
