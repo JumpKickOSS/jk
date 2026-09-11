@@ -1002,11 +1002,6 @@ public record JkBuild(
      */
     public record AuditIgnore(
             String id, String reason, @Nullable LocalDate until) {
-        public AuditIgnore {
-            Objects.requireNonNull(id, "id");
-            Objects.requireNonNull(reason, "reason");
-        }
-
         /** True once {@code today} is past {@code until}; an entry without a date never expires. */
         public boolean expiredOn(LocalDate today) {
             return until != null && today.isAfter(until);

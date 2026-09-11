@@ -58,8 +58,8 @@ public final class AuditReport {
 
     /**
      * The {@code [audit] ignore} entry that names a finding, as it stands on the day of the audit.
-     * {@code expired} is true once that day is past {@code until}; an expired entry no longer
-     * ignores anything, it only explains why the finding used to be quiet.
+     * {@code expired} is true once that day is past {@code until}; an expired entry ignores nothing
+     * and only records why the finding was accepted.
      */
     public record Ignore(String reason, @Nullable LocalDate until, boolean expired) {
         public Ignore {

@@ -23,6 +23,7 @@ import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.EnginePaths;
+import cc.jumpkick.wire.protocol.EngineProtocol;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
@@ -155,7 +156,7 @@ public final class AuditCommand implements CliCommand {
      * {@code false} and the finding counts toward the exit status again.
      */
     static String findingJson(long ts, AuditReport.Finding f) {
-        JsonFields json = JsonlEnvelope.open(ts, "audit-finding")
+        JsonFields json = JsonlEnvelope.open(ts, EngineProtocol.AUDIT_FINDING)
                 .string("id", f.vulnId())
                 .string("package", f.module())
                 .string("version", f.version())
