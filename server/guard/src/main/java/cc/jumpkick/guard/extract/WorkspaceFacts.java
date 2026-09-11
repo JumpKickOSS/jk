@@ -119,9 +119,24 @@ public final class WorkspaceFacts {
         return r.equals(mm) ? "" : r.relativize(mm).toString().replace('\\', '/');
     }
 
-    /** The module's main index by the layout rule alone — no manifest is parsed for a lookup. */
+    /**
+     * The module's main index by the layout rule alone — no manifest is parsed for a lookup — brought
+     * up to date from its classes first. The workspace lane can run as soon as a module has
+     * published its jar, which is before that module's own guard lane has indexed its classes; a
+     * lane that read only indexes already on disk would find nothing and call the workspace blind.
+     * Without a classes tree the index on disk, if any, is the module's word.
+     */
     private static @Nullable Path indexOf(Path root, Path module) {
-        Path idx = FactsIndexing.indexPath(BuildLayout.moduleTargetDir(root, module), "main");
+        Path buildDir = BuildLayout.moduleTargetDir(root, module);
+        Path idx = FactsIndexing.indexPath(buildDir, "main");
+        Path classes = buildDir.resolve("classes").resolve("main");
+        if (Files.isDirectory(classes)) {
+            try {
+                FactsIndexing.ensure(classes, idx);
+            } catch (IOException unreadable) {
+                // The index already there, or nothing: the lane reports what it could read.
+            }
+        }
         return Files.isRegularFile(idx) ? idx : null;
     }
 }
