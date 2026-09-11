@@ -85,12 +85,14 @@ How jk is structured today. For day-to-day usage see [user documentation](../use
 |---|---|---|
 | **Probe** (`ping` / `hello` / `status`) | One request/reply | ~2s client watchdog |
 | **Stream** (build / test / sync) | Protocol lines keep flowing | `JK_STREAM_IDLE_MS` (default 60 minutes between lines; `0` disables) |
+| **Engine-side reader** | A connection sends its first line, then keeps sending between requests; the engine closes one that does not and counts it as `idleDropped` in status | **10 s** for the first line; `JK_STREAM_IDLE_MS` between requests afterwards; off while a job owns the connection (a quiet client mid-build is normal — the job watchdogs bound it) |
 | **Job heartbeat** | Engine emits `heartbeat` while async wire jobs run; detached (HTTP/MCP) jobs have no stream to keep alive, so only the wall-deadline watchdog runs | `JK_ENGINE_HEARTBEAT_MS` (default **30s**; `0` disables) — resets client stream idle |
 | **Job wall deadline** | Cancel token + worker shutdown + interrupt runner; connection join bounded | `JK_ENGINE_JOB_DEADLINE_MS` (default **0** = off); join grace `JK_ENGINE_JOB_DEADLINE_GRACE_MS` (default **30s**, last-chance wait capped ~1s) |
 | **User cancel / EOF** | Cancel token + **grace→force** worker kill; join bounded by cancel grace + 500 ms. Public cancel handle is **jid**. Entry points: Ctrl-C, `jk cancel` / `jk cancel <jid>`, `POST /api/cancel` (`jid` or `dir`), MCP `jk_cancel`. | `JK_CANCEL_GRACE_MS` (default **500**; max 5000). **Never hangs.** |
 | **Ensure** | Handshake must succeed | Silent peer (connect works, no reply) → hard-kill once + respawn |
 | **Stop** | Process death, not only `bye` | Force-stop waits for pid exit (~1.5s) then escalates |
 | **Out of memory** | The engine JVM runs with `-XX:+ExitOnOutOfMemoryError` and `-XX:+HeapDumpOnOutOfMemoryError`: the first `OutOfMemoryError` writes `<state>/engine/java_pid<pid>.hprof` and ends the process, however it was caught. The next client spawns a fresh engine and reports the exit once; `jk engine status` and `jk doctor` name the dump while it exists | Dump ≤ `max-heap-mb`; the idle boundary deletes dumps older than 7 days |
+| **Engine log** | The spawner redirects the engine's stderr to `<state>/engine/<key>.log` and rotates it to `.1` at each spawn; the engine writes through a byte-counting sink on the same file and rolls it to `.1` itself when it reaches the cap, so a warning loop cannot fill the disk. One generation is kept. `jk engine status` shows the size and the last roll | `[engine] log-max-mb` / `JK_ENGINE_LOG_MAX_MB` (default **16** MiB; `0` = no cap) |
 
 If a stream goes idle, the client fails closed with a clear error (tune with `JK_STREAM_IDLE_MS`;
 recover with `jk engine stop --force`). Heartbeats keep long quiet compiles honest against the

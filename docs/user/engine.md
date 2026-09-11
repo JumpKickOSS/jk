@@ -82,6 +82,22 @@ dumps older than seven days between builds. Raise `[engine] max-heap-mb` (or `JK
 `jk engine stop` to apply it, or shrink what the engine holds with `jk cache prune`. Open
 the `.hprof` with any Java heap analyser.
 
+### Log
+
+The engine writes its log to `~/.jk/state/engine/<key>.log`, beside its socket and pid file.
+The file is rotated to `<key>.log.1` when a fresh engine starts, and the running engine rolls
+it to the same `.1` on its own when it reaches `log-max-mb` (default 16 MiB; `0` = no cap), so
+a resident engine that warns in a loop for weeks cannot fill the disk. One previous generation
+is kept. `jk engine status` prints a `Log` row with the current size and when this engine last
+rolled it; `--output json` carries `logBytes` and `logRolledAt` (epoch millis, `-1` = never).
+
+### Idle connections
+
+A client that connects and never sends a request is closed after 10 seconds; one that has sent
+a request is held to the same `JK_STREAM_IDLE_MS` bound the client applies to the engine (off
+while a build owns the connection). `jk engine status` prints the count as a `Dropped` row;
+`--output json` and `GET /api/status` carry it as `idleDropped`.
+
 ### Process environment
 
 These are not `[engine]` keys. They configure how the engine process is spawned or how
