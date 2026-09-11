@@ -11,8 +11,8 @@ import org.jspecify.annotations.Nullable;
 /**
  * Human-facing settled command result chrome.
  *
- * <p>Preferred name for what historically lived as {@code BuildPlanWedge} (now {@link JkWedge}): every interactive
- * command should settle with a wedge (or a tree / table / wizard substitute). Agents should use
+ * <p>Every interactive command should settle with a wedge (or a tree / table / wizard
+ * substitute); {@link JkWedge} is the build plan's. Agents should use
  * {@code --json} / wire / BSP — not scrape these lines.
  *
  * <h2>Output modes</h2>

@@ -289,10 +289,7 @@ public final class JdkInstaller {
         return suggested;
     }
 
-    /**
-     * Buffered download path used by the {@link JdkPackage} flow. Smaller scope (no progress, no
-     * streaming) — kept for the test fixtures that go through the {@link JdkPackage} API.
-     */
+    /** Buffered download for the {@link JdkPackage} flow: no progress, no streaming. */
     private void downloadAndExtractBuffered(URI uri, String sha256, String displayName, String archiveType, Path target)
             throws IOException, InterruptedException {
         Path downloads = prepareDownloadDir();

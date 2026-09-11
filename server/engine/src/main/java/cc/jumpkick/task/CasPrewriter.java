@@ -157,7 +157,7 @@ public final class CasPrewriter implements AutoCloseable {
             return;
         }
         try {
-            String hex = hashAndLink(file);
+            String hex = hashAndCopy(file);
             processed.put(file, hex);
             tracked.remove(file);
         } catch (IOException ignored) {
@@ -167,10 +167,10 @@ public final class CasPrewriter implements AutoCloseable {
     }
 
     /**
-     * Streamed SHA-256 then {@link Cas#putFile} <em>copy</em> into CAS (never hard-link — compile
-     * trees rewrite class files in place; linking would poison the blob). Name kept for call sites.
+     * Streamed SHA-256 then {@link Cas#putFile} <em>copy</em> into CAS — never a hard link, because
+     * compile trees rewrite class files in place and a link would poison the blob.
      */
-    private String hashAndLink(Path file) throws IOException {
+    private String hashAndCopy(Path file) throws IOException {
         String hex = Hashing.sha256Hex(file);
         cas.putFile(file, hex);
         return hex;
