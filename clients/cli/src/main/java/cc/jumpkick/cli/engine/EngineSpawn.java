@@ -575,83 +575,85 @@ public final class EngineSpawn {
         }
     }
 
+    /**
+     * The installed engine's spawn line: a plain JVM app on the jk-managed JDK, one fat jar on the
+     * classpath, tuned by ordinary JVM flags. Sizing the heap happens here because only the spawner
+     * can (a process cannot shrink its own {@code -Xmx}); {@code max-heap-mb} stays authoritative.
+     */
+    static List<String> jarCommand(EnginePaths.Paths paths, EngineTarget target, AotMode mode, JkEngineConfig config) {
+        List<String> command = new ArrayList<>();
+        command.add(JdkFingerprint.java(target.javaHome()).toString());
+        // The shared serving/trainer flag list — one list with EngineMain.aotTrainerCommand,
+        // because JEP 514 refuses to map an AOT cache whose dump-time and runtime property sets
+        // differ. The OOM heap dump lands beside the engine log, per identity.
+        command.addAll(EngineJvmFlags.AOT_SENSITIVE);
+        command.add(EngineJvmFlags.heapDumpPath(EnginePaths.heapDump(paths)));
+        // Metaspace/stack mirror what workers already get from JvmOptions.
+        command.add("-XX:MaxMetaspaceSize=256m");
+        command.add("-Xss512k");
+        // AOT cache (JEP 514, JDK 25+): pre-parsed class metadata and AOT-compiled code.
+        // USE maps an existing cache. TRAIN boots cold and spawns a sidecar trainer
+        // (`EngineMain --aot-training`, isolated temp state, throwaway socket). NONE
+        // omits the cache (non-HotSpot host JDK, or a key that already proved unmappable).
+        switch (mode) {
+            case TRAIN -> command.add("-Djk.aot.train.output=" + target.aotCache());
+            case USE -> command.add("-XX:AOTCache=" + target.aotCache());
+            case NONE -> {
+                /* no AOT flag — a guaranteed cold-but-correct boot */
+            }
+        }
+        if (config.heapCapped()) {
+            command.add("-Xms" + config.minHeapMb() + "m");
+            command.add("-Xmx" + config.maxHeapMb() + "m");
+        }
+        for (var e : System.getProperties().entrySet()) {
+            String key = String.valueOf(e.getKey());
+            if (!forwarded(key)) continue;
+            String val = String.valueOf(e.getValue());
+            if (val == null || val.isBlank()) continue;
+            command.add("-D" + key + "=" + val);
+        }
+        command.add("-cp");
+        command.add(target.engine().path());
+        command.add("cc.jumpkick.engine.EngineMain");
+        return command;
+    }
+
+    /**
+     * A dedicated engine executable ({@code JK_ENGINE_EXE}): its main IS the engine loop. The JVM
+     * flags land as argv for the wrapper to consume; EngineMain ignores argv, so a wrapper that
+     * does not consume them degrades to an unsized engine, never a dead one.
+     */
+    private static List<String> exeCommand(EngineArtifact engine, JkEngineConfig config) {
+        List<String> command = new ArrayList<>();
+        command.add(engine.path());
+        if (config.heapCapped()) {
+            command.add("-Xms" + config.minHeapMb() + "m");
+            command.add("-Xmx" + config.maxHeapMb() + "m");
+        }
+        command.add("-XX:MinHeapFreeRatio=10");
+        command.add("-XX:MaxHeapFreeRatio=25");
+        command.add("-XX:-ShrinkHeapInSteps");
+        command.add("-XX:+ExitOnOutOfMemoryError");
+        command.add("-XX:+HeapDumpOnOutOfMemoryError");
+        return command;
+    }
+
     /** Spawn a fresh engine, detached — mirrors {@link CachePruneScheduler}'s spawn-and-forget pattern. */
     private static Spawned spawn(EnginePaths.Paths paths, EngineTarget target, AotMode mode) throws IOException {
         EngineArtifact engine = target.engine();
         JkEngineConfig config = JkEngineConfig.resolve();
         OwnerOnlyFiles.directory(paths.dir());
         rotateLog(paths.log());
-        List<String> command = new ArrayList<>();
         // The child detaches ITSELF into its own session (setsid(2) via PosixDetach, first thing
         // in the engine role) — without that it stays in THIS client's process group, and a
         // Ctrl-C/SIGTERM aimed at the client (or its whole group) would take down the engine and
         // every other build it is hosting.
-        // Sizing the engine's heap (docs/architecture.md "Memory target") happens on the spawn line
-        // the spawner is the only place that can, since a process can't shrink its own -Xmx, and
-        // the -Xms pre-sizing matters for a long-lived process (no growth churn). How the numbers
-        // ride along differs per artifact form below; user config max-heap-mb stays authoritative
-        // everywhere.
-        switch (engine.kind()) {
-            case JAR -> {
-                // The installed engine: a plain JVM app on the jk-managed JDK, one fat jar on the
-                // classpath. Tuning is ordinary JVM flags — SerialGC (lowest footprint/latency; a
-                // ≤256 MiB heap is well inside its comfort zone) plus the JkEngineConfig heap
-                // numbers. The long-lived engine is exactly what HotSpot's JIT and SHA-256
-                // intrinsics want; there is no native engine image. --enable-native-access:
-                // PosixDetach's setsid(2) FFM downcall without the JDK's restricted-method
-                // warning.
-                command.add(JdkFingerprint.java(target.javaHome()).toString());
-                // The shared serving/trainer flag list (EngineJvmFlags.AOT_SENSITIVE): SerialGC
-                // with tight heap-return ergonomics, IPv4 sockets, native access — one list with
-                // EngineMain.aotTrainerCommand, because JEP 514 refuses to map an AOT cache whose
-                // dump-time and runtime property sets differ.
-                command.addAll(EngineJvmFlags.AOT_SENSITIVE);
-                // Metaspace/stack mirror what workers already get from JvmOptions.
-                command.add("-XX:MaxMetaspaceSize=256m");
-                command.add("-Xss512k");
-                // AOT cache (JEP 514, JDK 25+): pre-parsed class metadata and AOT-compiled code.
-                // USE maps an existing cache. TRAIN boots cold and spawns a sidecar trainer
-                // (`EngineMain --aot-training`, isolated temp state, throwaway socket). NONE
-                // omits the cache (non-HotSpot host JDK, or a key that already proved unmappable).
-                // The cache is keyed to jar + host-JDK identity so an upgrade/JDK-swap retrains.
-                switch (mode) {
-                    case TRAIN -> command.add("-Djk.aot.train.output=" + target.aotCache());
-                    case USE -> command.add("-XX:AOTCache=" + target.aotCache());
-                    case NONE -> {
-                        /* no AOT flag — a guaranteed cold-but-correct boot */
-                    }
-                }
-                if (config.heapCapped()) {
-                    command.add("-Xms" + config.minHeapMb() + "m");
-                    command.add("-Xmx" + config.maxHeapMb() + "m");
-                }
-                for (var e : System.getProperties().entrySet()) {
-                    String key = String.valueOf(e.getKey());
-                    if (!forwarded(key)) continue;
-                    String val = String.valueOf(e.getValue());
-                    if (val == null || val.isBlank()) continue;
-                    command.add("-D" + key + "=" + val);
-                }
-                command.add("-cp");
-                command.add(engine.path());
-                command.add("cc.jumpkick.engine.EngineMain");
-            }
-            case EXE -> {
-                // A dedicated engine executable (JK_ENGINE_EXE): its main IS the engine loop, no
-                // flag. The -Xm* args land as argv; EngineMain ignores argv, so a wrapper that
-                // doesn't consume them degrades to an unsized engine, never a dead one.
-                command.add(engine.path());
-                if (config.heapCapped()) {
-                    command.add("-Xms" + config.minHeapMb() + "m");
-                    command.add("-Xmx" + config.maxHeapMb() + "m");
-                }
-                // Same heap-return ergonomics as the JAR spawn; like -Xm* above these
-                // land as argv for the wrapper to consume, and an ignoring wrapper stays alive.
-                command.add("-XX:MinHeapFreeRatio=10");
-                command.add("-XX:MaxHeapFreeRatio=25");
-                command.add("-XX:-ShrinkHeapInSteps");
-            }
-        }
+        List<String> command =
+                switch (engine.kind()) {
+                    case JAR -> jarCommand(paths, target, mode, config);
+                    case EXE -> exeCommand(engine, config);
+                };
         ProcessBuilder pb = new ProcessBuilder(command);
         // Forward resolve budgets into the engine process: PubGrubSolver reads them from its own
         // env, so a client-only export must reach the resident engine here.

@@ -32,6 +32,7 @@ class EnginePathsTest {
         assertThat(p.pid()).isEqualTo(engineDir.resolve(p.key() + ".pid"));
         assertThat(p.log()).isEqualTo(engineDir.resolve(p.key() + ".log"));
         assertThat(p.token()).isEqualTo(engineDir.resolve(p.key() + ".token"));
+        assertThat(EnginePaths.heapDump(p)).isEqualTo(engineDir.resolve(p.key() + ".hprof"));
     }
 
     @Test

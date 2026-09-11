@@ -138,6 +138,14 @@ public final class EnginePaths {
         return paths.dir().resolve(paths.key() + ".endpoint");
     }
 
+    /**
+     * The heap dump the engine JVM writes when it exits on {@code OutOfMemoryError}: {@code
+     * <key>.hprof}, a sibling of the log, so the next client and {@code jk engine status} can name it.
+     */
+    public static Path heapDump(Paths paths) {
+        return paths.dir().resolve(paths.key() + ".hprof");
+    }
+
     /** Generation {@code n}'s socket/lock/pid files ({@code <key>.gen<n>.sock} …). */
     public static Paths generation(Paths paths, int n) {
         String stem = paths.key() + ".gen" + n;

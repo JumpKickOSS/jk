@@ -33,6 +33,7 @@ class EngineMainAotTrainerTest {
 
         List<String> serving = new ArrayList<>(EngineJvmFlags.AOT_SENSITIVE);
         serving.addAll(List.of(
+                EngineJvmFlags.heapDumpPath(Path.of("/home/x/.jk/state/engine/0123456789abcdef.hprof")),
                 "-XX:MaxMetaspaceSize=256m",
                 "-Xss512k",
                 "-Djk.aot.train.output=" + finalPath,
@@ -45,6 +46,13 @@ class EngineMainAotTrainerTest {
         // The cache is mapped only under the flag set it was recorded under, heap included, so the
         // trainer runs the serving JVM's own flags — all of them — with only the AOT ones swapped.
         assertThat(cmd).containsAll(EngineJvmFlags.AOT_SENSITIVE);
+        // Including the OOM exit + dump pair: a trainer that survived an OutOfMemoryError would
+        // publish a cache recorded under a different flag set, or hang the sidecar.
+        assertThat(cmd)
+                .contains(
+                        "-XX:+ExitOnOutOfMemoryError",
+                        "-XX:+HeapDumpOnOutOfMemoryError",
+                        "-XX:HeapDumpPath=/home/x/.jk/state/engine/0123456789abcdef.hprof");
         assertThat(cmd)
                 .contains("-Xms32m", "-Xmx256m", "-XX:MaxMetaspaceSize=256m", "-Xss512k", "-Djk.home=/home/x/.jk");
         assertThat(cmd).noneMatch(a -> a.startsWith("-Djk.aot.train.output="));
