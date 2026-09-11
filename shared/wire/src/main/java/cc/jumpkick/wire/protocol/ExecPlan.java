@@ -125,6 +125,34 @@ public record ExecPlan(
         return error(kind, message, "");
     }
 
+    /** This plan launching {@code argv} instead, described by {@code display}; everything else as is. */
+    public ExecPlan withArgv(List<String> argv, String display) {
+        return new ExecPlan(
+                error,
+                mainIssue,
+                kind,
+                List.copyOf(argv),
+                workingDir,
+                display,
+                javaHome,
+                hotReload,
+                devtoolsInjected,
+                watchRoots,
+                linkSrcs,
+                linkDests,
+                launcherPath,
+                launcherScript,
+                binPath,
+                boot,
+                mainJar,
+                tier,
+                mainClass,
+                libNames,
+                libPaths,
+                deployCommand,
+                sidecars);
+    }
+
     /** As {@link #error(String, String)}, tagging the failure as an unresolved main-class scan. */
     public static ExecPlan error(@Nullable String kind, String message, String mainIssue) {
         return new ExecPlan(

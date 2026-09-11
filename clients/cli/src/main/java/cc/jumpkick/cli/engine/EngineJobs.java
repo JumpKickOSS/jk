@@ -14,6 +14,7 @@ import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ImageRequest;
 import cc.jumpkick.wire.protocol.InstallRequest;
 import cc.jumpkick.wire.protocol.NativeRequest;
+import cc.jumpkick.wire.protocol.ProtoJobs;
 import cc.jumpkick.wire.protocol.ProtoSession;
 import cc.jumpkick.wire.protocol.RequestEnvironment;
 import cc.jumpkick.wire.protocol.SingleBuildRequest;
@@ -119,6 +120,7 @@ final class EngineJobs {
                                         .sorted()
                                         .toList(),
                         session.testSelection(),
+                        ProtoJobs.debugJvmSpelling(session.debugJvm()),
                         Objects.requireNonNullElse(req.modules(), List.of()),
                         req.keepGoing(),
                         workspaceTarget,
@@ -149,6 +151,7 @@ final class EngineJobs {
             throws IOException {
         Session session = SessionContext.current();
         var sel = req.testSelection() != null ? req.testSelection() : session.testSelection();
+        var debug = req.debugJvm() != null ? req.debugJvm() : session.debugJvm();
         return singlePlan(
                 paths,
                 ProtoSession.withToolchain(
@@ -166,6 +169,7 @@ final class EngineJobs {
                                                 req.force(),
                                                 req.parallelTests() || session.parallelTests(),
                                                 sel,
+                                                ProtoJobs.debugJvmSpelling(debug),
                                                 RequestEnvironment.trigger(),
                                                 RequestEnvironment.progressMode())
                                         .encode(),

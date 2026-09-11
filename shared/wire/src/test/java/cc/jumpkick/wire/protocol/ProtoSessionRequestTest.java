@@ -4,6 +4,7 @@ package cc.jumpkick.wire.protocol;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.AffectedChanged;
+import cc.jumpkick.config.DebugJvm;
 import cc.jumpkick.config.PluginTuning;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.TestSelection;
@@ -53,7 +54,7 @@ class ProtoSessionRequestTest {
         return enveloped(
                 new BuildRequest(
                                 DIR, CACHE, JDKS, 3, "ci", false, true, 4, false, false, false, false, false, false,
-                                null, SELECTION, List.of(), false, null, Map.of(), null, null, null)
+                                null, SELECTION, null, List.of(), false, null, Map.of(), null, null, null)
                         .encode(),
                 true);
     }
@@ -66,7 +67,8 @@ class ProtoSessionRequestTest {
 
     private static String testLine() {
         return enveloped(
-                new TestRequest(DIR, CACHE, JDKS, 3, "ci", true, false, false, false, SELECTION, null, null).encode(),
+                new TestRequest(DIR, CACHE, JDKS, 3, "ci", true, false, false, false, SELECTION, null, null, null)
+                        .encode(),
                 true);
     }
 
@@ -99,6 +101,47 @@ class ProtoSessionRequestTest {
         assertThat(s.graalSpec()).isEqualTo("graal-25");
         assertThat(s.graalHome()).isEqualTo(Path.of("/opt/graal-25"));
         assertThat(s.cancel()).isSameAs(TOKEN);
+    }
+
+    /** A test or build line asking for a debugger lands the listener on the session; a silent line leaves it null. */
+    @Test
+    void a_debug_listener_on_the_line_lands_on_the_session() {
+        DebugJvm debug = DebugJvm.parse("*:6006,suspend=n");
+        String test = new TestRequest(
+                        DIR, CACHE, JDKS, 3, "ci", true, false, false, false, SELECTION, debug.spelling(), null, null)
+                .encode();
+        String build = new BuildRequest(
+                        DIR,
+                        CACHE,
+                        JDKS,
+                        3,
+                        "ci",
+                        false,
+                        true,
+                        4,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        null,
+                        SELECTION,
+                        debug.spelling(),
+                        List.of(),
+                        false,
+                        null,
+                        Map.of(),
+                        null,
+                        null,
+                        null)
+                .encode();
+
+        assertThat(ProtoSession.sessionOf(test, TOKEN).debugJvm()).isEqualTo(debug);
+        assertThat(ProtoSession.sessionOf(build, TOKEN).debugJvm()).isEqualTo(debug);
+        assertThat(ProtoSession.sessionOf(testLine(), TOKEN).debugJvm()).isNull();
+        assertThat(TestRequest.decode(test).debugJvm()).isEqualTo(debug.spelling());
+        assertThat(testLine()).doesNotContain("debugJvm");
     }
 
     /** The forecast's {@code --guard} is the selection's guard flag, read the same way as a build's. */

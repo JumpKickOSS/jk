@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
+import cc.jumpkick.config.DebugJvm;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.jsonl.Jsonl;
@@ -40,6 +41,7 @@ import cc.jumpkick.wire.protocol.PluginCommandReport;
 import cc.jumpkick.wire.protocol.PluginCommandRequest;
 import cc.jumpkick.wire.protocol.ProjectInfo;
 import cc.jumpkick.wire.protocol.ProjectInfoRequest;
+import cc.jumpkick.wire.protocol.ProtoJobs;
 import cc.jumpkick.wire.protocol.ProtoSession;
 import cc.jumpkick.wire.protocol.TreeRequest;
 import cc.jumpkick.wire.protocol.WhyReport;
@@ -450,7 +452,8 @@ final class EngineReads {
             @Nullable String mainOverride,
             @Nullable String binName,
             @Nullable Path binDir,
-            @Nullable Path libDir)
+            @Nullable Path libDir,
+            @Nullable DebugJvm debugJvm)
             throws IOException {
         return request(
                 paths,
@@ -463,7 +466,8 @@ final class EngineReads {
                                                 mainOverride,
                                                 binName,
                                                 binDir == null ? null : binDir.toString(),
-                                                libDir == null ? null : libDir.toString())
+                                                libDir == null ? null : libDir.toString(),
+                                                ProtoJobs.debugJvmSpelling(debugJvm))
                                         .encode(),
                                 SessionContext.current().variant(),
                                 SessionContext.current().clientEnv(),

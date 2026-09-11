@@ -2,6 +2,7 @@
 package cc.jumpkick.test;
 
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.config.DebugJvm;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.PluginLoader;
@@ -81,6 +82,36 @@ public final class JUnitLauncher {
     public JUnitLauncher withClassNames(List<String> names) {
         this.classNames = names == null ? List.of() : List.copyOf(names);
         return this;
+    }
+
+    /** JDWP listener for the suite JVM ({@code --debug-jvm}); null for an ordinary run. */
+    private @Nullable DebugJvm debug;
+
+    /**
+     * Start the suite JVM with {@link DebugJvm#agentArg()}. A debugger attaches to one process, so
+     * the run is pinned to a single worker: no discovery JVM, no pull-mode pool — the listener
+     * belongs to the JVM that runs the tests and to nothing else jk forks.
+     */
+    public JUnitLauncher withDebug(@Nullable DebugJvm debug) {
+        this.debug = debug;
+        return this;
+    }
+
+    /** Which forked JVM a flag list is for; only {@link #SUITE} may carry the debug agent. */
+    enum JvmRole {
+        /** {@code --list-only} discovery: names classes, runs nothing. */
+        DISCOVERY,
+        /** A pull-mode shard worker. */
+        PULL_WORKER,
+        /** The one JVM that runs the tests in single-worker mode. */
+        SUITE
+    }
+
+    /** {@link #runnerFlags} for {@code role}, plus the JDWP agent when the suite JVM is under debug. */
+    List<String> jvmFlags(JvmRole role, int concurrency, @Nullable Path tmpDir) {
+        List<String> flags = new ArrayList<>(runnerFlags(concurrency, tmpDir));
+        if (role == JvmRole.SUITE && debug != null) flags.add(debug.agentArg());
+        return flags;
     }
 
     /**
@@ -326,6 +357,8 @@ public final class JUnitLauncher {
         Objects.requireNonNull(listener, "listener");
         // workers: 0 = auto (Mill-like min(jobs, classes) + heap clamp); ≥1 = explicit.
         if (workers < 0) throw new IllegalArgumentException("workers must be >= 0 (0 = auto)");
+        // One debugger, one JVM: a pool would have every shard contend for the same port.
+        int wanted = debug != null ? 1 : workers;
         this.workerJarProps = workerJarProps == null ? Map.of() : Map.copyOf(workerJarProps);
         // Quarkus PathTestHelper only recognizes Maven/Gradle/IDE test-dir fragments. JK uses
         // target/classes/test + target/classes/main — register via TEST_TO_MAIN_MAPPINGS (BootstrapConstants).
@@ -352,19 +385,18 @@ public final class JUnitLauncher {
         this.cliTempDirSupport = CliTempDirSupport.onClasspath(classpathBase);
         Path javaBinary = javaBinary(javaHome);
 
-        int resolvedWorkers = workers;
+        int resolvedWorkers = wanted;
         List<String> preDiscovered = null;
         if (!classNames.isEmpty()) {
             preDiscovered = classNames;
-            resolvedWorkers =
-                    TestWorkers.resolve(workers == 0 ? 0 : workers, preDiscovered.size(), TestWorkers.effectiveJobs());
+            resolvedWorkers = TestWorkers.resolve(wanted, preDiscovered.size(), TestWorkers.effectiveJobs());
             if (preDiscovered.size() <= 1) resolvedWorkers = 1;
-        } else if (workers == 0) {
+        } else if (wanted == 0) {
             // Discover once so auto can size the pool; reuse the list when W>1.
             preDiscovered = discoverClasses(javaBinary, classpath, testClassesDir, listener);
             resolvedWorkers = TestWorkers.resolve(0, preDiscovered.size(), TestWorkers.effectiveJobs());
-        } else if (workers > 1) {
-            resolvedWorkers = TestWorkers.resolve(workers, Integer.MAX_VALUE, TestWorkers.effectiveJobs());
+        } else if (wanted > 1) {
+            resolvedWorkers = TestWorkers.resolve(wanted, Integer.MAX_VALUE, TestWorkers.effectiveJobs());
         }
 
         // Tag every summary with the runner count that produced it, at the one place that count is
@@ -407,7 +439,7 @@ public final class JUnitLauncher {
         int exit = PluginLoader.run(
                 javaBinary,
                 classpath,
-                runnerFlags(1, testTmpDir),
+                jvmFlags(JvmRole.SUITE, 1, testTmpDir),
                 PROTOCOL_PREFIX,
                 withTagArgs(JUnitClassFilter.singleWorkerArgs(testClassesDir, classNames)),
                 testEnv,
@@ -723,7 +755,7 @@ public final class JUnitLauncher {
         try {
             Path tmp = TestTmpDir.forWorker(testTmpDir, workerId, totalWorkers);
             Map<String, String> env = totalWorkers > 1 && tmp != null ? workerEnv(testEnv, workerId, tmp) : testEnv;
-            List<String> flags = new ArrayList<>(runnerFlags(totalWorkers, tmp));
+            List<String> flags = jvmFlags(JvmRole.PULL_WORKER, totalWorkers, tmp);
             return PluginLoader.converse(
                     javaBinary,
                     classpath,
@@ -757,7 +789,7 @@ public final class JUnitLauncher {
         PluginLoader.run(
                 javaBinary,
                 classpath,
-                runnerFlags(1, testTmpDir),
+                jvmFlags(JvmRole.DISCOVERY, 1, testTmpDir),
                 PROTOCOL_PREFIX,
                 withTagArgs(List.of("--list-only", "--scan-classpath=" + testClassesDir)),
                 testEnv,

@@ -52,7 +52,7 @@ class ExecPlansSidecarsTest {
         Files.createDirectories(app.resolve("target/classes/main"));
 
         ExecPlan dev = ExecPlans.execPlan(
-                app, root.resolve("cache"), "dev", null, null, null, null, "", Map.of("SHADOWED", "real"));
+                app, root.resolve("cache"), "dev", null, null, null, null, "", Map.of("SHADOWED", "real"), null);
         assertThat(dev.error()).isNull();
         assertThat(dev.sidecars()).extracting(ExecPlan.Sidecar::name).containsExactly("docs", "web");
         ExecPlan.Sidecar docs = dev.sidecars().get(0);
@@ -70,7 +70,8 @@ class ExecPlansSidecarsTest {
         assertThat(web.frontDoor()).isTrue();
         assertThat(web.restart()).isEqualTo(JkBuild.SidecarRestart.NEVER);
 
-        ExecPlan run = ExecPlans.execPlan(app, root.resolve("cache"), "run", null, null, null, null, "", Map.of());
+        ExecPlan run =
+                ExecPlans.execPlan(app, root.resolve("cache"), "run", null, null, null, null, "", Map.of(), null);
         assertThat(run.sidecars()).isEmpty();
     }
 }

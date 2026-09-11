@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
+import cc.jumpkick.config.DebugJvm;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
@@ -280,7 +281,17 @@ public final class EngineClient {
             @Nullable String mainOverride,
             @Nullable String binName)
             throws IOException {
-        return EngineReads.execPlan(paths, dir, cache, kind, mainOverride, binName, null, null);
+        return EngineReads.execPlan(paths, dir, cache, kind, mainOverride, binName, null, null, null);
+    }
+
+    /**
+     * A {@code run} plan whose JVM listens for a debugger ({@code --debug-jvm}); {@code debugJvm}
+     * null is the plain plan.
+     */
+    public static ExecPlan execPlan(
+            EnginePaths.Paths paths, Path dir, Path cache, String kind, @Nullable DebugJvm debugJvm)
+            throws IOException {
+        return EngineReads.execPlan(paths, dir, cache, kind, null, null, null, null, debugJvm);
     }
 
     /** As above with install-destination overrides ({@code --bin-dir}/{@code --lib-dir}). */
@@ -294,7 +305,7 @@ public final class EngineClient {
             @Nullable Path binDir,
             @Nullable Path libDir)
             throws IOException {
-        return EngineReads.execPlan(paths, dir, cache, kind, mainOverride, binName, binDir, libDir);
+        return EngineReads.execPlan(paths, dir, cache, kind, mainOverride, binName, binDir, libDir, null);
     }
 
     /**

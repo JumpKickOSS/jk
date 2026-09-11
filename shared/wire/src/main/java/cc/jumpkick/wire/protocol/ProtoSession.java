@@ -44,6 +44,7 @@ public final class ProtoSession {
                 .withParallelTests(Jsonl.bool(request, "parallelTests", true))
                 .withRequestedTestWorkers(Jsonl.intValue(request, "workers", 0))
                 .withTestSelection(ProtoJobs.testSelectionOf(request))
+                .withDebugJvm(ProtoJobs.debugJvmOf(request))
                 .withAffected(Jsonl.bool(request, "affected", false))
                 .withVariant(variantOf(request), clientEnvOf(request))
                 .withToolchainSpecs(jdkSpecOf(request), graalSpecOf(request), graalHomeOf(request))

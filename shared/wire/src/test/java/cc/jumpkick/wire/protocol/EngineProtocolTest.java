@@ -765,6 +765,7 @@ class EngineProtocolTest {
                         testOnly,
                         dirtyHint,
                         TestSelection.DEFAULT,
+                        null,
                         List.of(),
                         false,
                         null,

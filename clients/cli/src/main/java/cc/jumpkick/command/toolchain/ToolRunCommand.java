@@ -10,11 +10,13 @@ import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.BuildPlanConsole;
+import cc.jumpkick.cli.run.DebugAttach;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.command.ToolTargets;
 import cc.jumpkick.command.VariantSelection;
 import cc.jumpkick.command.pipeline.InstallCommand;
 import cc.jumpkick.command.pipeline.RunCommand;
+import cc.jumpkick.config.DebugJvm;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.http.Http;
@@ -77,6 +79,11 @@ public final class ToolRunCommand implements CliCommand {
                 Opt.value("<coord>", "Extra dependency on tool classpath", "--with")
                         .repeat(),
                 Opt.value(
+                                "<[host:]port[,suspend=n]>",
+                                "Debug the app JVM over JDWP (default localhost:5005, suspended; 0 picks a free port)",
+                                "--debug-jvm")
+                        .withFallback(""),
+                Opt.value(
                                 "<dir>",
                                 "Override cache-tier directory (action outputs; not the artifact store). Default: $JK_CACHE_DIR or ~/.jk/cache.",
                                 "--cache-dir")
@@ -123,6 +130,11 @@ public final class ToolRunCommand implements CliCommand {
     URI repoUrl;
 
     boolean forceRecompile;
+
+    /** {@code --debug-jvm}: the JDWP listener a project run's JVM starts with; null when not asked. */
+    @Nullable
+    DebugJvm debugJvm;
+
     List<String> toolArgs = new ArrayList<>();
     GlobalOptions global;
     // Set by a JBang alias whose script-ref is a coordinate: the alias's dependencies and
@@ -233,6 +245,12 @@ public final class ToolRunCommand implements CliCommand {
         }
     }
 
+    /** {@code --debug-jvm} names a JVM jk launches for a project; tools and scripts have their own launchers. */
+    private static int refuseDebug() {
+        CommandWedge.printFail("Run", "--debug-jvm applies to a jk project run (a directory with jk.toml)");
+        return Exit.USAGE;
+    }
+
     /**
      * Directory target: jk project builds (tests skipped) and execs; JBang-style {@code main.java};
      * or a single script file in the folder.
@@ -244,8 +262,10 @@ public final class ToolRunCommand implements CliCommand {
             RunCommand delegate = new RunCommand(global, buildOpts);
             delegate.cacheDirOverride = cacheDirOverride;
             delegate.jdksDir = jdksDir;
+            delegate.debugJvm = debugJvm;
             return delegate.runProject(dir, args);
         }
+        if (debugJvm != null) return refuseDebug();
         if (Files.isRegularFile(dir.resolve("jbang-catalog.json"))) {
             CommandWedge.printFail(
                     "Tool", dir + " is a JBang catalog — `alias@…` references aren't" + " supported yet.");
@@ -403,6 +423,12 @@ public final class ToolRunCommand implements CliCommand {
         this.repoUrl = in.value("repo-url").map(URI::create).orElse(null);
         this.forceRecompile = in.isSet("force");
         this.global = GlobalOptions.from(in);
+        try {
+            this.debugJvm = DebugAttach.fromFlag(in);
+        } catch (IllegalArgumentException e) {
+            CommandWedge.printFail("Run", e.getMessage());
+            return Exit.USAGE;
+        }
         // --release / --variant parameterize project targets (current dir or a directory target):
         // the selection rides the ambient session into the delegate's build + deploy command.
         VariantSelection.install(in, global.workingDir());
@@ -425,6 +451,7 @@ public final class ToolRunCommand implements CliCommand {
         // a proper "not found" error from the matching mode handler. Routing goes
         // through the classifier so a remote `https://…/tool.jar` is NOT a file.
         ToolTarget classified = ToolTarget.classify(target);
+        if (debugJvm != null && !(classified instanceof ToolTarget.Directory)) return refuseDebug();
         if (classified instanceof ToolTarget.RunnableFile file) {
             List<String> fileWith;
             try {

@@ -16,6 +16,7 @@ import cc.jumpkick.cli.run.AggregateContext;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.CliSessionTranscript;
 import cc.jumpkick.cli.run.ConsoleSpec;
+import cc.jumpkick.cli.run.DebugAttach;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
@@ -27,6 +28,7 @@ import cc.jumpkick.command.CwdModuleScope;
 import cc.jumpkick.command.ModuleSelectors;
 import cc.jumpkick.command.VariantSelection;
 import cc.jumpkick.config.BuildLogicToml;
+import cc.jumpkick.config.DebugJvm;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.TomlScan;
@@ -103,6 +105,11 @@ public final class TestCommand implements CliCommand {
                 .splitOn(","));
         opts.add(Opt.value("<tags>", "JUnit tags to exclude (CSV)", "--exclude-tags")
                 .splitOn(","));
+        opts.add(Opt.value(
+                        "<[host:]port[,suspend=n]>",
+                        "Debug the test JVM over JDWP (default localhost:5005, suspended; 0 picks a free port)",
+                        "--debug-jvm")
+                .withFallback(""));
         opts.addAll(VariantSelection.options());
         return opts;
     }
@@ -136,6 +143,11 @@ public final class TestCommand implements CliCommand {
     String modulesSpec;
 
     TestSelection testSelection = TestSelection.DEFAULT;
+
+    /** {@code --debug-jvm}: the one test JVM starts with a JDWP listener; null for a plain run. */
+    @Nullable
+    DebugJvm debugJvm;
+
     private @Nullable CliSessionTranscript session;
 
     @Override
@@ -158,10 +170,13 @@ public final class TestCommand implements CliCommand {
         this.keepGoing = CommonOpts.keepGoingValue(in);
         try {
             this.testSelection = resolveTestSelection(in);
+            this.debugJvm = DebugAttach.fromFlag(in);
         } catch (IllegalArgumentException e) {
             CommandWedge.printFail("Test", e.getMessage());
             return Exit.CONFIG;
         }
+        // One listener means one JVM at a time: module suites take the port in turn.
+        if (debugJvm != null) this.parallelTests = false;
         warnGateOverride(in, global);
         SessionContext.install(
                 SessionContext.current().withParallelTests(parallelTests).withTestSelection(testSelection));
@@ -182,6 +197,19 @@ public final class TestCommand implements CliCommand {
 
         if (affectedWip || (affectedSince != null && !affectedSince.isBlank())) {
             return finishSession(showAffected(dir));
+        }
+
+        if (debugJvm != null) {
+            // Settled once, here, so every JVM this run forks is told the same address that was
+            // announced — the workspace and single-project paths both read it off the session.
+            try {
+                this.debugJvm = DebugAttach.bind(debugJvm);
+            } catch (IOException e) {
+                CommandWedge.printFail("Test", "--debug-jvm: " + e.getMessage());
+                return finishSession(Exit.CONFIG);
+            }
+            SessionContext.install(SessionContext.current().withDebugJvm(debugJvm));
+            DebugAttach.announce(debugJvm);
         }
 
         var info = ProjectInfos.orNull(dir);
@@ -248,7 +276,8 @@ public final class TestCommand implements CliCommand {
                             SessionContext.current().offline(),
                             SessionContext.current().force(),
                             parallelTests,
-                            testSelection),
+                            testSelection,
+                            debugJvm),
                     steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, module),
                     testResultHolder);
         } catch (IOException e) {
@@ -350,6 +379,7 @@ public final class TestCommand implements CliCommand {
             argv.add("--workers");
             argv.add(w);
         });
+        in.value(DebugAttach.OPTION).ifPresent(d -> argv.add(d.isEmpty() ? "--debug-jvm" : "--debug-jvm=" + d));
         return argv;
     }
 

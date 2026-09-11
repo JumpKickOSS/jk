@@ -4,6 +4,7 @@ package cc.jumpkick.runtime.workspace;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.ClasspathResolver;
+import cc.jumpkick.config.DebugJvm;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.config.WorkspaceLoader;
@@ -70,7 +71,7 @@ public final class ExecPlans {
     /** Compute the plan for {@code kind} — never throws; failures ride {@code error}. */
     public static ExecPlan execPlan(
             Path dir, Path cache, String kind, @Nullable String mainOverride, @Nullable String binName) {
-        return execPlan(dir, cache, kind, mainOverride, binName, null, null, "", Map.of());
+        return execPlan(dir, cache, kind, mainOverride, binName, null, null, "", Map.of(), null);
     }
 
     /** As above with install-destination overrides ({@code --bin-dir}/{@code --lib-dir}). */
@@ -82,13 +83,14 @@ public final class ExecPlans {
             @Nullable String binName,
             @Nullable Path binDir,
             @Nullable Path libDir) {
-        return execPlan(dir, cache, kind, mainOverride, binName, binDir, libDir, "", Map.of());
+        return execPlan(dir, cache, kind, mainOverride, binName, binDir, libDir, "", Map.of(), null);
     }
 
     /**
      * As above with the request's variant selection: the plan must describe the SELECTED product
      * {@code jk run --release} on an Android app resolves the AAB packaging (and its deploy command),
-     * not the debug APK's.
+     * not the debug APK's. A non-null {@code debug} makes a {@code run} plan's JVM listen for a
+     * debugger; no other kind reads it.
      */
     public static ExecPlan execPlan(
             Path dir,
@@ -99,15 +101,16 @@ public final class ExecPlans {
             @Nullable Path binDir,
             @Nullable Path libDir,
             String variant,
-            Map<String, String> clientEnv) {
+            Map<String, String> clientEnv,
+            @Nullable DebugJvm debug) {
         try {
             JkBuild project = JkBuildParser.parse(dir.resolve(ManifestPaths.MANIFEST));
             project = VariantApply.applyLenient(project, dir, Variants.Selection.parse(variant), clientEnv)
                     .build();
             BuildLayout layout = BuildLayout.of(dir, project);
             return switch (kind == null ? "" : kind) {
-                case "run" -> runPlan(dir, cache, project, layout, false, clientEnv);
-                case "dev" -> runPlan(dir, cache, project, layout, true, clientEnv);
+                case "run" -> runPlan(dir, cache, project, layout, false, clientEnv, debug);
+                case "dev" -> runPlan(dir, cache, project, layout, true, clientEnv, null);
                 case "install" -> installPlan(dir, cache, project, layout, mainOverride, binName, binDir, libDir);
                 case "aot-cache" -> aotCachePlan(dir, cache, project, layout);
                 case "jshell" -> jshellPlan(dir, cache, project, layout);
@@ -206,10 +209,18 @@ public final class ExecPlans {
     /**
      * {@code jk run} / {@code jk dev}: pick the most self-contained artifact (native > shadow >
      * classes-dir) and assemble the full command line. Dev mode always runs from the classes dir
-     * (the loop recompiles into it, and DevTools watches it) with the RUN classpath.
+     * (the loop recompiles into it, and DevTools watches it) with the RUN classpath. Under
+     * {@code debug} the native binary is passed over — JDWP needs a JVM — and the chosen JVM
+     * command line carries the agent flag right after the launcher.
      */
     private static ExecPlan runPlan(
-            Path dir, Path cache, JkBuild project, BuildLayout layout, boolean dev, Map<String, String> clientEnv)
+            Path dir,
+            Path cache,
+            JkBuild project,
+            BuildLayout layout,
+            boolean dev,
+            Map<String, String> clientEnv,
+            @Nullable DebugJvm debug)
             throws IOException, InterruptedException {
         // Workspace root: pick the runnable module (declared [application] main, else unique scan).
         // Without this, jk run at the workspace coordinator fails even when e.g. app/ has main.
@@ -219,7 +230,7 @@ public final class ExecPlans {
         if (project.isWorkspaceRoot()) {
             String rootMain = project.mainClass();
             if (rootMain == null || rootMain.isBlank() || !CompileSupport.hasSources(dir)) {
-                return runWorkspace(dir, cache, project, dev, clientEnv);
+                return runWorkspace(dir, cache, project, dev, clientEnv, debug);
             }
         }
         // A device-mode artifact (an APK) is not host-runnable — the plugin's deploy command is
@@ -245,19 +256,27 @@ public final class ExecPlans {
         Path javaHome = projectJavaHome(dir);
         String java = javaBin(javaHome);
 
-        if (!dev) {
-            ExecPlan packaged = packagedPlan(dir, layout, hostShape, javaHome, java);
-            if (packaged != null) return packaged;
+        ExecPlan plan = dev ? null : packagedPlan(dir, layout, hostShape, javaHome, java, debug == null);
+        if (plan == null) {
+            plan = classpathPlan(
+                    dir,
+                    cache,
+                    project,
+                    layout,
+                    dev,
+                    javaHome,
+                    java,
+                    dev ? DevSidecars.resolve(dir, project, clientEnv) : List.of());
         }
-        return classpathPlan(
-                dir,
-                cache,
-                project,
-                layout,
-                dev,
-                javaHome,
-                java,
-                dev ? DevSidecars.resolve(dir, project, clientEnv) : List.of());
+        return debug == null ? plan : debugged(plan, debug);
+    }
+
+    /** {@code plan} with the JDWP agent as the first JVM option; an error plan rides unchanged. */
+    static ExecPlan debugged(ExecPlan plan, DebugJvm debug) {
+        if (plan.error() != null || plan.argv().size() < 2) return plan;
+        List<String> argv = new ArrayList<>(plan.argv());
+        argv.add(1, debug.agentArg());
+        return plan.withArgv(argv, plan.display());
     }
 
     /** Device artifact: client runs the plugin deploy command (dev re-dispatches after rebuild). */
@@ -302,9 +321,14 @@ public final class ExecPlans {
      * packager jar — or null when the classes-dir classpath run is the way to launch.
      */
     private static @Nullable ExecPlan packagedPlan(
-            Path dir, BuildLayout layout, Optional<PluginDescriptor.Packaging> hostShape, Path javaHome, String java) {
+            Path dir,
+            BuildLayout layout,
+            Optional<PluginDescriptor.Packaging> hostShape,
+            Path javaHome,
+            String java,
+            boolean allowNative) {
         Path nativeBin = layout.nativeBinary();
-        if (Files.isRegularFile(nativeBin) && PathUtil.isRunnable(nativeBin)) {
+        if (allowNative && Files.isRegularFile(nativeBin) && PathUtil.isRunnable(nativeBin)) {
             return runAck(
                     "run",
                     List.of(nativeBin.toAbsolutePath().toString()),
@@ -460,7 +484,12 @@ public final class ExecPlans {
      * error naming the candidates.
      */
     private static ExecPlan runWorkspace(
-            Path root, Path cache, JkBuild rootBuild, boolean dev, Map<String, String> clientEnv)
+            Path root,
+            Path cache,
+            JkBuild rootBuild,
+            boolean dev,
+            Map<String, String> clientEnv,
+            @Nullable DebugJvm debug)
             throws IOException, InterruptedException {
         String kind = dev ? "dev" : "run";
         Map<Path, JkBuild> modules = WorkspaceLoader.loadModules(root, rootBuild);
@@ -479,7 +508,7 @@ public final class ExecPlans {
         if (declaredApps.size() == 1) {
             Path modDir = declaredApps.get(0);
             JkBuild mod = Objects.requireNonNull(modules.get(modDir));
-            return runPlan(modDir, cache, mod, BuildLayout.of(modDir, mod), dev, clientEnv);
+            return runPlan(modDir, cache, mod, BuildLayout.of(modDir, mod), dev, clientEnv, debug);
         }
         if (declaredApps.size() > 1) {
             String names = declaredApps.stream()
@@ -540,7 +569,7 @@ public final class ExecPlans {
         }
         Path modDir = scannedModules.iterator().next();
         JkBuild mod = Objects.requireNonNull(modules.get(modDir));
-        return runPlan(modDir, cache, mod, BuildLayout.of(modDir, mod), dev, clientEnv);
+        return runPlan(modDir, cache, mod, BuildLayout.of(modDir, mod), dev, clientEnv, debug);
     }
 
     private static ExecPlan runAck(

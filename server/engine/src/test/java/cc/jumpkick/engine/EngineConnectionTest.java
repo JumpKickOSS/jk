@@ -102,6 +102,7 @@ class EngineConnectionTest extends EngineServerHarness {
                             false,
                             null,
                             TestSelection.DEFAULT,
+                            null,
                             List.of(),
                             false,
                             null,

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.verbs;
 
+import cc.jumpkick.config.DebugJvm;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
@@ -65,7 +66,8 @@ public final class ExecPlanVerb implements HostedVerb {
                                 binDir == null ? null : Path.of(binDir),
                                 libDir == null ? null : Path.of(libDir),
                                 ProtoSession.variantOf(requestLine),
-                                ProtoSession.clientEnvOf(requestLine)));
+                                ProtoSession.clientEnvOf(requestLine),
+                                DebugJvm.parseOrNull(req.debugJvm())));
             } catch (Exception e) {
                 plan = ExecPlan.error("unknown", Errors.text(e));
             }

@@ -32,14 +32,14 @@ class RequestJsonTest {
     @Test
     void trigger_and_progress_mode_are_components_not_environment_reads() {
         TestRequest cli = new TestRequest(
-                "/p", "/c", null, 0, null, false, false, false, true, TestSelection.DEFAULT, "ci", "plain");
+                "/p", "/c", null, 0, null, false, false, false, true, TestSelection.DEFAULT, null, "ci", "plain");
         String json = cli.encode();
         assertThat(json).contains("\"trigger\":\"ci\"").contains("\"progressMode\":\"plain\"");
         TestRequest back = TestRequest.decode(json);
         assertThat(back.trigger()).isEqualTo("ci");
         assertThat(back.progressMode()).isEqualTo("plain");
         TestRequest bare = new TestRequest(
-                "/p", "/c", null, 0, null, false, false, false, true, TestSelection.DEFAULT, null, null);
+                "/p", "/c", null, 0, null, false, false, false, true, TestSelection.DEFAULT, null, null, null);
         assertThat(bare.encode()).doesNotContain("trigger").doesNotContain("progressMode");
     }
 
@@ -102,6 +102,7 @@ class RequestJsonTest {
                         false,
                         null,
                         TestSelection.DEFAULT,
+                        null,
                         List.of(),
                         false,
                         null,

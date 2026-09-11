@@ -12,6 +12,7 @@ import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.AggregateContext;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ConsoleSpec;
+import cc.jumpkick.cli.run.DebugAttach;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Coord;
@@ -19,6 +20,7 @@ import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.cli.tui.ModuleScopeHint;
 import cc.jumpkick.command.CwdModuleScope;
 import cc.jumpkick.command.ModuleSelectors;
+import cc.jumpkick.config.DebugJvm;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.lock.ManifestPaths;
@@ -58,6 +60,10 @@ public final class RunCommand {
 
     @Nullable
     public Path jdksDir;
+
+    /** {@code --debug-jvm}: the app JVM starts with a JDWP listener at this address; null for a plain run. */
+    @Nullable
+    public DebugJvm debugJvm;
 
     final BuildOptions buildOpts;
     final GlobalOptions global;
@@ -163,9 +169,18 @@ public final class RunCommand {
         try {
             ExecPlan plan = execPlan(projectDir);
             if (!plan.deployCommand().isEmpty()) {
+                if (debugJvm != null) {
+                    CommandWedge.printFail(
+                            "Run", "--debug-jvm needs a JVM to attach to; this project runs through a deploy command");
+                    return Exit.USAGE;
+                }
                 return dispatchDeployCommand(projectDir, cache, plan.deployCommand(), appArgs, mode);
             }
             command = new ArrayList<>(plan.argv());
+            if (debugJvm != null && !command.contains(debugJvm.agentArg())) {
+                CommandWedge.printFail("Run", "--debug-jvm needs a JVM to attach to; this run is not a java launch");
+                return Exit.USAGE;
+            }
         } catch (EntryPointUnresolvedException e) {
             // The chip already settled with this exact failure (spec's softFailure closure ran
             // first and cached the same plan) — VERBOSE/JSON print no chip, so give them the plain
@@ -178,6 +193,7 @@ public final class RunCommand {
             CommandWedge.printFail("Run", e.getMessage());
             return Exit.USAGE;
         }
+        if (debugJvm != null) DebugAttach.announce(debugJvm);
         if (mode == BuildPlanConsole.Mode.VERBOSE || mode == BuildPlanConsole.Mode.JSON) {
             // No chip was printed in these modes — show the banner line as before.
             printExecBanner(projectDir, execPlan(projectDir));
@@ -290,7 +306,10 @@ public final class RunCommand {
      */
     private ExecPlan execPlan(Path projectDir) throws IOException {
         if (cachedPlan == null) {
-            cachedPlan = EngineClient.execPlan(EnginePaths.current(), projectDir, cacheDir(), "run", null, null);
+            // The port is settled here, as late as the plan allows, so the free port a `0` asked
+            // for is released as close to the JVM's own bind as this side can manage.
+            if (debugJvm != null) debugJvm = DebugAttach.bind(debugJvm);
+            cachedPlan = EngineClient.execPlan(EnginePaths.current(), projectDir, cacheDir(), "run", debugJvm);
         }
         // Checked on every access: the memoized plan may be an error plan (the console's
         // tail closure swallows the first throw; the exec path must still see it).

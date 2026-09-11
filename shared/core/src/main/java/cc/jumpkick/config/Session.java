@@ -28,6 +28,7 @@ import org.jspecify.annotations.Nullable;
  * @param parallelTests when false, module tests serialize through the engine's test gate
  * @param cancel never null after construction; {@code null} input becomes {@link CancelToken#NONE}
  * @param testSelection suite/tag selection for {@code jk test}+)
+ * @param debugJvm JDWP listener for the JVM under test/run, or {@code null}
  * @param io per-run byte accounting (network + local cache); shared by every copy of this session
  */
 public record Session(
@@ -65,6 +66,11 @@ public record Session(
         @With String assemblyOverride,
         /** Test suite / tag selection ({@code jk test --suite}/tags); default = unit suite only. */
         @With TestSelection testSelection,
+        /**
+         * {@code --debug-jvm}: start the one JVM under test with a JDWP listener at this address;
+         * null for an ordinary run. Never applied to the engine or to any other worker.
+         */
+        @With @Nullable DebugJvm debugJvm,
         /** {@code jk_run kind=test affected=true}: rank and run WIP test classes. */
         @With boolean affected,
         /** Cross-module changed-type carrier for {@code --affected}; shared by every copy. */
@@ -104,6 +110,7 @@ public record Session(
                 clientEnv,
                 assemblyOverride,
                 testSelection,
+                debugJvm,
                 affected,
                 affectedChanged,
                 io);
@@ -175,6 +182,7 @@ public record Session(
                 null,
                 "",
                 TestSelection.DEFAULT,
+                null,
                 false,
                 new AffectedChanged(),
                 IoLedger.currentOrNew());
@@ -198,6 +206,7 @@ public record Session(
                 clientEnv,
                 assemblyOverride,
                 testSelection,
+                debugJvm,
                 affected,
                 affectedChanged,
                 io);
@@ -221,6 +230,7 @@ public record Session(
                 clientEnv,
                 assemblyOverride,
                 testSelection,
+                debugJvm,
                 affected,
                 affectedChanged,
                 io);
@@ -248,6 +258,7 @@ public record Session(
                 clientEnv,
                 assemblyOverride,
                 testSelection,
+                debugJvm,
                 affected,
                 affectedChanged,
                 io);

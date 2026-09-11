@@ -27,6 +27,8 @@ public record BuildRequest(
         boolean testOnly,
         @Nullable List<String> dirtyHint,
         TestSelection selection,
+        /** {@link cc.jumpkick.config.DebugJvm#spelling() Spelling} of the JDWP listener for the JVM under test; null for none. */
+        @Nullable String debugJvm,
         List<String> modules,
         boolean keepGoing,
         @Nullable String workspaceTarget,
@@ -69,6 +71,7 @@ public record BuildRequest(
                 .optionalTrue("testOnly", testOnly)
                 .optionalArray("dirtyHint", dirtyHint)
                 .testSelection(selection, true)
+                .optionalNonBlankString(ProtoJobs.DEBUG_JVM, debugJvm)
                 .optionalArray("modules", modules)
                 .optionalTrue("keepGoing", keepGoing)
                 .optionalNonBlankString("workspaceTarget", workspaceTarget)
@@ -98,6 +101,7 @@ public record BuildRequest(
                 Jsonl.bool(json, "testOnly", false),
                 dirty.isEmpty() ? null : dirty,
                 ProtoJobs.testSelectionOf(json),
+                Jsonl.str(json, ProtoJobs.DEBUG_JVM),
                 Jsonl.strArray(json, "modules"),
                 Jsonl.bool(json, "keepGoing", false),
                 Jsonl.str(json, "workspaceTarget"),

@@ -5,6 +5,7 @@ import cc.jumpkick.cli.engine.EngineCancel;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineProbe;
 import cc.jumpkick.cli.engine.EngineRequests;
+import cc.jumpkick.config.DebugJvm;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.lock.ManifestPaths;
@@ -242,15 +243,20 @@ public class IdeEngineClient {
      * engine path as {@code jk test}.
      */
     public BuildOutcome testModule(@Nullable Path moduleDir, @Nullable BuildListener listener) throws IOException {
-        return testModule(moduleDir, listener, null);
+        return testModule(moduleDir, listener, null, null);
     }
 
     /**
-     * Run tests with optional suite/tag selection BSP {@code data} / CLI TestSelection).
-     * {@code selection} null → session default (usually suite {@code test} only).
+     * Run tests with optional suite/tag selection (BSP {@code data} / CLI TestSelection) and an
+     * optional JDWP listener for the test JVM. {@code selection} null → session default (usually
+     * suite {@code test} only); {@code debug} null → no listener. A workspace runs its modules one
+     * after another, so under {@code debug} each module's suite takes the same address in turn.
      */
     public BuildOutcome testModule(
-            @Nullable Path moduleDir, @Nullable BuildListener listener, @Nullable TestSelection selection)
+            @Nullable Path moduleDir,
+            @Nullable BuildListener listener,
+            @Nullable TestSelection selection,
+            @Nullable DebugJvm debug)
             throws IOException {
         BuildListener progress = listener == null ? BuildListener.NOOP : listener;
         if (moduleDir == null) {
@@ -259,20 +265,21 @@ public class IdeEngineClient {
                 return new BuildOutcome(false, 0, 0, List.of(info.error()));
             }
             if (info.workspaceRoot()) {
-                return testWorkspace(progress, selection);
+                return testWorkspace(progress, selection, debug);
             }
         }
         Path mod = moduleDir == null ? projectDir : moduleDir.toAbsolutePath().normalize();
-        return testOneModule(mod, progress, selection);
+        return testOneModule(mod, progress, selection, debug);
     }
 
     /** Sequential per-module {@code jk test} for a workspace root. */
-    private BuildOutcome testWorkspace(BuildListener progress, @Nullable TestSelection selection) throws IOException {
+    private BuildOutcome testWorkspace(
+            BuildListener progress, @Nullable TestSelection selection, @Nullable DebugJvm debug) throws IOException {
         IdeWireModel model = ideModel();
         List<String> dirs = model != null && model.moduleDirs() != null ? model.moduleDirs() : List.of();
         if (dirs.isEmpty()) {
             // No module list — fall back to testing the workspace root directory alone.
-            return testOneModule(projectDir, progress, selection);
+            return testOneModule(projectDir, progress, selection, debug);
         }
         int modules = 0;
         int failed = 0;
@@ -282,7 +289,7 @@ public class IdeEngineClient {
             if (d == null || d.isBlank()) continue;
             Path mod = Path.of(d);
             modules++;
-            BuildOutcome o = testOneModule(mod, progress, selection);
+            BuildOutcome o = testOneModule(mod, progress, selection, debug);
             if (!o.success()) {
                 failed++;
                 if (o.errors() != null) errors.addAll(o.errors());
@@ -292,7 +299,8 @@ public class IdeEngineClient {
         return new BuildOutcome(failed == 0, modules, failed, List.copyOf(errors), List.copyOf(warnings));
     }
 
-    private BuildOutcome testOneModule(Path mod, BuildListener progress, @Nullable TestSelection selection)
+    private BuildOutcome testOneModule(
+            Path mod, BuildListener progress, @Nullable TestSelection selection, @Nullable DebugJvm debug)
             throws IOException {
         String coord = mod.getFileName() != null ? mod.getFileName().toString() : mod.toString();
         progress.onModuleStart(coord, mod);
@@ -311,8 +319,10 @@ public class IdeEngineClient {
                         false,
                         session.offline(),
                         session.force(),
-                        session.parallelTests(),
-                        sel),
+                        // One listener, one JVM at a time.
+                        debug == null && session.parallelTests(),
+                        sel,
+                        debug),
                 steps -> progressListener(progress, steps),
                 testOut);
         for (var d : r.errors()) errors.add(d.message());
@@ -325,9 +335,14 @@ public class IdeEngineClient {
 
     /**
      * BSP {@code buildTarget/run}: build the module, then execute the engine exec plan (same path as
-     * {@code jk run}). Blocks until the process exits. {@code moduleDir} null → project root.
+     * {@code jk run}). Blocks until the process exits. {@code moduleDir} null → project root;
+     * {@code debug} non-null makes the app JVM listen for a debugger at that address.
      */
-    public BuildOutcome runModule(@Nullable Path moduleDir, @Nullable BuildListener listener, Consumer<String> onOutput)
+    public BuildOutcome runModule(
+            @Nullable Path moduleDir,
+            @Nullable BuildListener listener,
+            Consumer<String> onOutput,
+            @Nullable DebugJvm debug)
             throws IOException {
         BuildListener progress = listener == null ? BuildListener.NOOP : listener;
         Path mod = moduleDir == null ? projectDir : moduleDir.toAbsolutePath().normalize();
@@ -337,7 +352,7 @@ public class IdeEngineClient {
         String coord = mod.getFileName() != null ? mod.getFileName().toString() : mod.toString();
         progress.onModuleStart(coord + " (run)", mod);
         try {
-            var plan = EngineClient.execPlan(EnginePaths.current(), mod, cacheDir, "run", null, null);
+            var plan = EngineClient.execPlan(EnginePaths.current(), mod, cacheDir, "run", debug);
             if (plan.error() != null && !plan.error().isBlank()) {
                 progress.onModuleFinish(coord + " (run)", false);
                 return new BuildOutcome(false, 1, 1, List.of(plan.error()));

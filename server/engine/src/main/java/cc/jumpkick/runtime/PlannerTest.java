@@ -473,7 +473,10 @@ public final class PlannerTest {
                     // freshness checks above (which all guard on !rerun). Without
                     // this guard the action record would skip the runner even when
                     // the user explicitly asked to bypass build caches.
-                    boolean rerun = in.session().config().rebuildOr(false);
+                    // A debug request is a request for a JVM to attach to; a replayed green
+                    // marker would leave the debugger with nothing to reach.
+                    boolean rerun = in.session().config().rebuildOr(false)
+                            || in.session().debugJvm() != null;
                     if (!rerun && stampKey != null && replayGreenRun(ctx, actionCache, stampKey)) {
                         return; // skip — nothing changed since last green run
                     }
@@ -492,7 +495,9 @@ public final class PlannerTest {
                     try {
                         // Module pin ([test] workers / [build] test-workers) wins over CLI for
                         // hermetic opt-out (Mill testParallelism = false). 0 = auto min(jobs, classes).
-                        int testWorkers = dispatchWorkers(in, projectUnderTest.build());
+                        // One debugger attaches to one JVM: a debug run is a one-worker run.
+                        int testWorkers =
+                                in.session().debugJvm() != null ? 1 : dispatchWorkers(in, projectUnderTest.build());
                         TestProgressListener listener = TestSupport.bridgeListener(
                                 ctx, testWorkers, in.verbose(), moduleLabel, in.dir(), snippets);
                         JUnitLauncher launcher = new JUnitLauncher()
@@ -500,7 +505,8 @@ public final class PlannerTest {
                                 .withTagFilters(effectiveSel.includeTags(), effectiveSel.excludeTags())
                                 // [test] serial-tags: those classes run on one trailing worker
                                 // while the rest shard.
-                                .withSerialTags(projectUnderTest.build().testSerialTags());
+                                .withSerialTags(projectUnderTest.build().testSerialTags())
+                                .withDebug(in.session().debugJvm());
                         if (affected != null) launcher.withClassNames(affected.classNames());
                         result = launch(ctx, in, launcher, runtimeCp, testWorkers, workerJars, testEnv, listener);
                     } finally {

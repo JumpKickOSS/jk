@@ -17,6 +17,8 @@ public record TestRequest(
         boolean force,
         boolean parallelTests,
         TestSelection selection,
+        /** {@link cc.jumpkick.config.DebugJvm#spelling() Spelling} of the JDWP listener for the JVM under test; null for none. */
+        @Nullable String debugJvm,
         /** Who started the build ({@code cli}, {@code web}, {@code ci}, …); the requester's answer, journaled as such. */
         @Nullable String trigger,
         /** Progress-bar mode the requester's environment asked for; null for auto. */
@@ -38,6 +40,7 @@ public record TestRequest(
                 .bool("force", force)
                 .bool("parallelTests", parallelTests)
                 .testSelection(selection, false)
+                .optionalNonBlankString(ProtoJobs.DEBUG_JVM, debugJvm)
                 .optionalNonBlankString("trigger", trigger)
                 .optionalNonBlankString("progressMode", progressMode)
                 .finish();
@@ -55,6 +58,7 @@ public record TestRequest(
                 Jsonl.bool(json, "force", false),
                 Jsonl.bool(json, "parallelTests", true),
                 ProtoJobs.testSelectionOf(json),
+                Jsonl.str(json, ProtoJobs.DEBUG_JVM),
                 Jsonl.str(json, "trigger"),
                 Jsonl.str(json, "progressMode"));
     }

@@ -3,6 +3,7 @@ package cc.jumpkick.cli.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.DebugJvm;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.wire.protocol.BuildRequest;
@@ -36,6 +37,19 @@ class EngineJobsEncodeTest {
 
         assertThat(BuildRequest.decode(json).selection()).isEqualTo(widened);
         assertThat(json).contains("\"allSuites\":true").contains("\"includeTags\":[\"integration\"]");
+    }
+
+    /** The session's debug listener rides the workspace request; a session without one adds no field. */
+    @Test
+    void the_session_debug_listener_rides_the_workspace_request() {
+        DebugJvm debug = DebugJvm.parse("0").withPort(43_210);
+
+        String json =
+                EngineJobs.encodeWorkspaceRequest(request(), Session.defaults().withDebugJvm(debug));
+
+        assertThat(BuildRequest.decode(json).debugJvm()).isEqualTo("localhost:43210,suspend=y");
+        assertThat(EngineJobs.encodeWorkspaceRequest(request(), Session.defaults()))
+                .doesNotContain("debugJvm");
     }
 
     @Test

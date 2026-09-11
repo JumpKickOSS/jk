@@ -3,6 +3,8 @@ package cc.jumpkick.cli.bsp;
 
 import cc.jumpkick.cli.ide.IdeEngineClient;
 import cc.jumpkick.cli.ide.IdeSourceRoots;
+import cc.jumpkick.cli.run.DebugAttach;
+import cc.jumpkick.config.DebugJvm;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.diagnostic.CompilerLocus;
 import cc.jumpkick.jsonl.JsonFields;
@@ -173,7 +175,7 @@ public final class BspServer {
                         switch (kind) {
                             case "compile" -> compileJson(requestJson, moduleDir);
                             case "test" -> testJson(requestJson, moduleDir);
-                            case "run" -> runJson(moduleDir);
+                            case "run" -> runJson(requestJson, moduleDir);
                             default ->
                                 JsonFields.object()
                                         .number("statusCode", 2)
@@ -521,34 +523,69 @@ public final class BspServer {
      * "allSuites": false,
      * "suites": ["test","integration"],
      * "includeTags": ["smoke"],
-     * "excludeTags": ["slow"]
+     * "excludeTags": ["slow"],
+     * "debug": { "port": 0, "suspend": true }
      * }
      * </pre>
      *
-     * Omitted data → default suite only (same as bare {@code jk test}).
+     * Omitted data → default suite only (same as bare {@code jk test}). {@code debug} ({@code true}
+     * for the defaults, an object, or a {@code --debug-jvm} spec string) starts the test JVM with a
+     * JDWP listener; the address is announced as a {@code build/logMessage} before the launch and
+     * echoed in the result's {@code data} under {@code dataKind} {@value #DEBUG_DATA_KIND}.
      */
     private String testJson(String requestJson, @Nullable Path moduleDir) throws IOException {
         var selection = parseTestSelectionData(requestJson);
-        var outcome = ide.testModule(moduleDir, null, selection);
-        return statusResult(outcome, "test failed");
+        DebugJvm debug = armDebug(requestJson);
+        var outcome = ide.testModule(moduleDir, null, selection, debug);
+        return statusResult(outcome, "test failed", debug);
     }
 
-    private String runJson(@Nullable Path moduleDir) throws IOException {
+    /**
+     * BSP {@code buildTarget/run}. The same {@code data.debug} extension as {@link #testJson}; the
+     * result has no {@code data} in the protocol, so the address travels as the log message only.
+     */
+    private String runJson(String requestJson, @Nullable Path moduleDir) throws IOException {
+        DebugJvm debug = armDebug(requestJson);
         // The launched app's output travels as build/logMessage notifications — the parent's
         // stdout is the frame channel and must never carry raw program bytes.
-        var outcome = ide.runModule(moduleDir, null, line -> {
-            try {
-                notify(
-                        "build/logMessage",
-                        JsonFields.object()
-                                .number("type", 4)
-                                .string("message", line)
-                                .finish());
-            } catch (IOException clientGone) {
-                // The editor hung up mid-run; keep draining so the app can finish.
-            }
-        });
-        return statusResult(outcome, "run failed");
+        var outcome = ide.runModule(moduleDir, null, line -> logMessage(4, null, line), debug);
+        return statusResult(outcome, "run failed", null);
+    }
+
+    /** {@code dataKind} of a test result whose JVM listened for a debugger. */
+    static final String DEBUG_DATA_KIND = "jk-debug";
+
+    /**
+     * The debug request of a test/run, with its port settled and announced — a client attaching
+     * to a suspended JVM needs the address before the result, which only comes after the run.
+     */
+    private @Nullable DebugJvm armDebug(String requestJson) throws IOException {
+        DebugJvm debug = parseDebugData(requestJson);
+        if (debug == null) return null;
+        DebugJvm bound = DebugAttach.bind(debug);
+        logMessage(3, originId(requestJson), DebugAttach.announcement(bound));
+        return bound;
+    }
+
+    /** {@code build/logMessage}: 3 = info, 4 = log; {@code originId} echoes the request's when it had one. */
+    private void logMessage(int type, @Nullable String originId, String message) {
+        JsonFields params = JsonFields.object().number("type", type);
+        if (originId != null) params.string("originId", originId);
+        try {
+            notify("build/logMessage", params.string("message", message).finish());
+        } catch (IOException clientGone) {
+            // The editor hung up mid-run; keep draining so the app can finish.
+        }
+    }
+
+    private static @Nullable String originId(String requestJson) {
+        try {
+            Object parsed = MiniJson.parse(requestJson);
+            Object params = MiniJson.get(parsed, "params");
+            return MiniJson.str(params == null ? parsed : params, "originId");
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     /**
@@ -640,6 +677,32 @@ public final class BspServer {
         }
     }
 
+    /**
+     * The {@code data.debug} field of a BSP test/run request as a {@link DebugJvm}, or null when
+     * absent or false. Accepted shapes: {@code true} (the defaults), an object with optional
+     * {@code host}, {@code port} and {@code suspend}, or the {@code --debug-jvm} spec as a string.
+     * Unparseable payloads read as no debug request, like the selection parse beside it.
+     */
+    static @Nullable DebugJvm parseDebugData(String requestJson) {
+        if (requestJson == null || requestJson.isBlank()) return null;
+        try {
+            Object parsed = MiniJson.parse(requestJson);
+            if (!(parsed instanceof Map<?, ?> outer)) return null;
+            Map<?, ?> params = outer.get("params") instanceof Map<?, ?> inner ? inner : outer;
+            Map<?, ?> src = params.get("data") instanceof Map<?, ?> d ? d : params;
+            Object debug = src.get("debug");
+            if (debug instanceof Boolean on) return on ? DebugJvm.DEFAULT : null;
+            if (debug instanceof String spec) return DebugJvm.parse(spec);
+            if (!(debug instanceof Map<?, ?> fields)) return null;
+            String host = fields.get("host") instanceof String h && !h.isBlank() ? h : DebugJvm.DEFAULT_HOST;
+            int port = fields.get("port") instanceof Number n ? n.intValue() : DebugJvm.DEFAULT_PORT;
+            boolean suspend = !Boolean.FALSE.equals(fields.get("suspend"));
+            return new DebugJvm(host, port, suspend);
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
     private static List<String> stringList(@Nullable Object value) {
         if (!(value instanceof List<?> list)) return List.of();
         List<String> out = new ArrayList<>(list.size());
@@ -650,8 +713,24 @@ public final class BspServer {
     }
 
     static String statusResult(IdeEngineClient.BuildOutcome outcome, String defaultFail) {
+        return statusResult(outcome, defaultFail, null);
+    }
+
+    /** As {@link #statusResult(IdeEngineClient.BuildOutcome, String)}, with the debug address in {@code data} when one was listened on. */
+    static String statusResult(IdeEngineClient.BuildOutcome outcome, String defaultFail, @Nullable DebugJvm debug) {
         int statusCode = outcome.success() ? 1 : 2; // BSP: 1=OK, 2=ERROR
         JsonFields json = JsonFields.object().number("statusCode", statusCode);
+        if (debug != null) {
+            json.string("dataKind", DEBUG_DATA_KIND)
+                    .token(
+                            "data",
+                            JsonFields.object()
+                                    .string("address", debug.address())
+                                    .string("host", debug.host())
+                                    .number("port", debug.port())
+                                    .bool("suspend", debug.suspend())
+                                    .finish());
+        }
         if (!outcome.success()) {
             String msg = outcome.errors() != null && !outcome.errors().isEmpty()
                     ? String.join("; ", outcome.errors())

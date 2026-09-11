@@ -12,7 +12,9 @@ public record ExecPlanRequest(
         @Nullable String mainOverride,
         @Nullable String binName,
         @Nullable String binDir,
-        @Nullable String libDir) {
+        @Nullable String libDir,
+        /** {@link cc.jumpkick.config.DebugJvm#spelling() Spelling} of the JDWP listener for the launched JVM; null for none. */
+        @Nullable String debugJvm) {
 
     public String encode() {
         return RequestJson.request(EngineProtocol.EXEC_PLAN_REQUEST)
@@ -23,6 +25,7 @@ public record ExecPlanRequest(
                 .string("binName", binName)
                 .string("binDir", binDir)
                 .string("libDir", libDir)
+                .optionalNonBlankString(ProtoJobs.DEBUG_JVM, debugJvm)
                 .finish();
     }
 
@@ -34,6 +37,7 @@ public record ExecPlanRequest(
                 Jsonl.str(json, "mainOverride"),
                 Jsonl.str(json, "binName"),
                 Jsonl.str(json, "binDir"),
-                Jsonl.str(json, "libDir"));
+                Jsonl.str(json, "libDir"),
+                Jsonl.str(json, ProtoJobs.DEBUG_JVM));
     }
 }

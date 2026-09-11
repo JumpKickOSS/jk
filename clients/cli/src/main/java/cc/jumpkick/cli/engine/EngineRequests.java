@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
+import cc.jumpkick.config.DebugJvm;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.run.BuildPlanListener;
@@ -28,7 +29,9 @@ public final class EngineRequests {
             boolean offline,
             boolean force,
             boolean parallelTests,
-            TestSelection testSelection) {
+            TestSelection testSelection,
+            /** JDWP listener for the one JVM under test ({@code --debug-jvm}); null for an ordinary run. */
+            @Nullable DebugJvm debugJvm) {
         /** Serial cross-module gate, default suite. */
         public TestRequest(
                 Path entryDir,
@@ -39,7 +42,44 @@ public final class EngineRequests {
                 boolean verbose,
                 boolean offline,
                 boolean force) {
-            this(entryDir, cache, jdksDir, workers, profile, verbose, offline, force, false, TestSelection.DEFAULT);
+            this(
+                    entryDir,
+                    cache,
+                    jdksDir,
+                    workers,
+                    profile,
+                    verbose,
+                    offline,
+                    force,
+                    false,
+                    TestSelection.DEFAULT,
+                    null);
+        }
+
+        /** No debug listener. */
+        public TestRequest(
+                Path entryDir,
+                Path cache,
+                @Nullable Path jdksDir,
+                int workers,
+                @Nullable String profile,
+                boolean verbose,
+                boolean offline,
+                boolean force,
+                boolean parallelTests,
+                TestSelection testSelection) {
+            this(
+                    entryDir,
+                    cache,
+                    jdksDir,
+                    workers,
+                    profile,
+                    verbose,
+                    offline,
+                    force,
+                    parallelTests,
+                    testSelection,
+                    null);
         }
 
         public TestRequest(
@@ -62,7 +102,8 @@ public final class EngineRequests {
                     offline,
                     force,
                     parallelTests,
-                    TestSelection.DEFAULT);
+                    TestSelection.DEFAULT,
+                    null);
         }
     }
 
