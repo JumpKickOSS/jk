@@ -18,6 +18,8 @@ import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginDescriptorStore;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import java.nio.file.Path;
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumMap;
@@ -67,6 +69,7 @@ public final class ManifestBuild {
                 "variants",
                 "jvm",
                 "deny",
+                "audit",
                 "config",
                 "forge",
                 "kotlin-plugins",
@@ -296,6 +299,7 @@ public final class ManifestBuild {
                     policies.platform(),
                     policies.unmapped(),
                     List.of(),
+                    List.of(),
                     List.of());
         }
         BuildSettings s = new BuildSettings();
@@ -316,6 +320,7 @@ public final class ManifestBuild {
                 s.testSerialTags,
                 policies.platform(),
                 policies.unmapped(),
+                List.of(),
                 List.of(),
                 List.of());
     }
@@ -790,6 +795,86 @@ public final class ManifestBuild {
             out.add(s);
         }
         return out;
+    }
+
+    /** The keys {@code [audit]} may carry. */
+    public static final List<String> AUDIT_KEYS = List.of("ignore");
+
+    /** The keys one {@code [audit] ignore} entry may carry. */
+    public static final List<String> AUDIT_IGNORE_KEYS = List.of("id", "reason", "until");
+
+    /**
+     * {@code [audit] ignore} — advisories the audit reports without gating on:
+     *
+     * <pre>
+     * [audit]
+     * ignore = [
+     *   { id = "GHSA-xxxx-xxxx-xxxx", reason = "test-only dependency; not reachable", until = "2026-12-31" },
+     * ]
+     * </pre>
+     *
+     * Every entry needs its {@code reason}; {@code until} is optional and is an ISO date
+     * ({@code YYYY-MM-DD}, quoted or a bare TOML date). Unknown keys fail the parse, so a misspelt
+     * {@code untill} cannot silently turn a dated ignore into a permanent one.
+     */
+    static List<JkBuild.AuditIgnore> parseAuditIgnores(TomlTable root) {
+        Object raw = root.get(List.of("audit"));
+        if (raw == null) return List.of();
+        if (!(raw instanceof TomlTable audit)) {
+            throw new JkBuildParseException(
+                    "[audit] must be a table: [audit] ignore = [{ id = \"GHSA-…\", reason = \"…\" }]");
+        }
+        for (String key : audit.keySet()) {
+            if (!AUDIT_KEYS.contains(key)) {
+                throw new JkBuildParseException(
+                        "[audit] unknown key `" + key + "` — expected one of: " + String.join(", ", AUDIT_KEYS));
+            }
+        }
+        Object rawIgnore = audit.get(List.of("ignore"));
+        if (rawIgnore == null) return List.of();
+        if (!(rawIgnore instanceof TomlArray entries)) {
+            throw new JkBuildParseException(
+                    "[audit].ignore must be an array of tables: ignore = [{ id = \"GHSA-…\", reason = \"…\" }]");
+        }
+        List<JkBuild.AuditIgnore> out = new ArrayList<>();
+        for (int i = 0; i < entries.size(); i++) {
+            String where = "[audit].ignore[" + i + "]";
+            if (!(entries.get(i) instanceof TomlTable entry)) {
+                throw new JkBuildParseException(where + " must be a table: { id = \"GHSA-…\", reason = \"…\" }");
+            }
+            out.add(parseAuditIgnore(entry, where));
+        }
+        return List.copyOf(out);
+    }
+
+    private static JkBuild.AuditIgnore parseAuditIgnore(TomlTable entry, String where) {
+        for (String key : entry.keySet()) {
+            if (!AUDIT_IGNORE_KEYS.contains(key)) {
+                throw new JkBuildParseException(where + " unknown key `" + key + "` — expected one of: "
+                        + String.join(", ", AUDIT_IGNORE_KEYS));
+            }
+        }
+        if (!(entry.get(List.of("id")) instanceof String id) || id.isBlank()) {
+            throw new JkBuildParseException(where + " needs id = \"GHSA-…\" (the advisory id the audit reports)");
+        }
+        String at = "[audit].ignore " + id.trim();
+        if (!(entry.get(List.of("reason")) instanceof String reason) || reason.isBlank()) {
+            throw new JkBuildParseException(at + " needs a reason — an ignore without one cannot be reviewed");
+        }
+        LocalDate until = null;
+        Object rawUntil = entry.get(List.of("until"));
+        if (rawUntil instanceof LocalDate date) {
+            until = date;
+        } else if (rawUntil instanceof String text) {
+            try {
+                until = LocalDate.parse(text.trim());
+            } catch (DateTimeParseException e) {
+                throw new JkBuildParseException(at + " until must be an ISO date (YYYY-MM-DD), got `" + text + "`");
+            }
+        } else if (rawUntil != null) {
+            throw new JkBuildParseException(at + " until must be an ISO date (YYYY-MM-DD)");
+        }
+        return new JkBuild.AuditIgnore(id.trim(), reason.trim(), until);
     }
 
     /**

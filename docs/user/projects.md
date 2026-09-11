@@ -94,6 +94,18 @@ args    = ["-Xlint:all"]        # verbatim javac args, appended last
 The plugin's jar is a `[processor-dependencies]` entry; the key is its javac name. Both compile
 steps run it and the compile key hashes it — [Build](build.md#javac-plugins).
 
+## Audit ignores
+
+```toml
+[audit]
+ignore = [
+  { id = "GHSA-xxxx-xxxx-xxxx", reason = "test-only dependency", until = "2026-12-31" },
+]
+```
+
+Advisories `jk audit` reports but leaves out of its exit status; `reason` is required, `until` is
+optional. Lives in the manifest beside `jk-lock.toml` — [Publish](publish.md#accepting-a-finding).
+
 ## Application
 
 ```toml

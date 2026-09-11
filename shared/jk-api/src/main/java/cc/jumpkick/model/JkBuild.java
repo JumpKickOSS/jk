@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.model;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumMap;
@@ -760,7 +761,13 @@ public record JkBuild(
              * {@code jk build}, and {@code jk test} never read it, and nothing here enters an action
              * key. Not a build input, like {@code [test]}, hence its home here.
              */
-            List<Sidecar> devSidecars) {
+            List<Sidecar> devSidecars,
+            /**
+             * {@code [audit] ignore} — advisories {@code jk audit} reports but does not gate on,
+             * each with its reason and an optional expiry date. Read by the audit alone; never an
+             * action-key input.
+             */
+            List<AuditIgnore> auditIgnores) {
 
         /** Default {@code [test] fixtures = true} root — {@code src/fixtures/java}. */
         public static final String DEFAULT_FIXTURES = "src/fixtures/java";
@@ -780,6 +787,7 @@ public record JkBuild(
                 PlatformPolicy.ENFORCED,
                 UnmappedPolicy.MEDIATE,
                 List.of(),
+                List.of(),
                 List.of());
 
         public Build {
@@ -797,6 +805,7 @@ public record JkBuild(
             unmappedPolicy = unmappedPolicy == null ? UnmappedPolicy.MEDIATE : unmappedPolicy;
             testEnv = testEnv == null ? List.of() : List.copyOf(testEnv);
             devSidecars = devSidecars == null ? List.of() : List.copyOf(devSidecars);
+            auditIgnores = auditIgnores == null ? List.of() : List.copyOf(auditIgnores);
         }
 
         /** True when this module declares a fixtures source root. */
@@ -824,7 +833,8 @@ public record JkBuild(
                     platformPolicy,
                     unmappedPolicy,
                     testEnv,
-                    devSidecars);
+                    devSidecars,
+                    auditIgnores);
         }
 
         public Build withPlatformPolicy(PlatformPolicy policy) {
@@ -843,7 +853,8 @@ public record JkBuild(
                     policy == null ? PlatformPolicy.ENFORCED : policy,
                     unmappedPolicy,
                     testEnv,
-                    devSidecars);
+                    devSidecars,
+                    auditIgnores);
         }
 
         /** The same block with {@code [[kotlin-plugins]]} set. */
@@ -863,7 +874,8 @@ public record JkBuild(
                     platformPolicy,
                     unmappedPolicy,
                     testEnv,
-                    devSidecars);
+                    devSidecars,
+                    auditIgnores);
         }
 
         /** The same block with {@code [test] env} set. */
@@ -883,7 +895,8 @@ public record JkBuild(
                     platformPolicy,
                     unmappedPolicy,
                     env,
-                    devSidecars);
+                    devSidecars,
+                    auditIgnores);
         }
 
         /** The same block with {@code [dev.sidecars]} set. */
@@ -903,7 +916,8 @@ public record JkBuild(
                     platformPolicy,
                     unmappedPolicy,
                     testEnv,
-                    sidecars);
+                    sidecars,
+                    auditIgnores);
         }
 
         /** The same block with {@code [javac]} set. */
@@ -923,7 +937,29 @@ public record JkBuild(
                     platformPolicy,
                     unmappedPolicy,
                     testEnv,
-                    devSidecars);
+                    devSidecars,
+                    auditIgnores);
+        }
+
+        /** The same block with {@code [audit] ignore} set. */
+        public Build withAuditIgnores(List<AuditIgnore> ignores) {
+            return new Build(
+                    orderAfter,
+                    testPluginJars,
+                    lint,
+                    kotlinPlugins,
+                    kspOptions,
+                    javac,
+                    extraSrc,
+                    testExtraSrc,
+                    fixtures,
+                    testWorkers,
+                    testSerialTags,
+                    platformPolicy,
+                    unmappedPolicy,
+                    testEnv,
+                    devSidecars,
+                    ignores);
         }
 
         /**
@@ -958,6 +994,25 @@ public record JkBuild(
      * is the one thing a reader of this manifest most needs to be sure of. A {@code default} arm
      * would let a new consumer inherit whichever answer it happened to fall through to.
      */
+    /**
+     * One {@code [audit] ignore} entry: the advisory {@code id} ({@code GHSA-…}, {@code CVE-…}) the
+     * audit reports without gating on, why, and — when {@code until} is set — the last day that
+     * holds. From the day after, the entry is expired: the finding gates again and the report says
+     * so.
+     */
+    public record AuditIgnore(
+            String id, String reason, @Nullable LocalDate until) {
+        public AuditIgnore {
+            Objects.requireNonNull(id, "id");
+            Objects.requireNonNull(reason, "reason");
+        }
+
+        /** True once {@code today} is past {@code until}; an entry without a date never expires. */
+        public boolean expiredOn(LocalDate today) {
+            return until != null && today.isAfter(until);
+        }
+    }
+
     /**
      * One {@code [dev.sidecars]} entry as the manifest states it: {@code command} already split
      * into argv, {@code cwd} module-relative, {@code env} literal values laid over the inherited

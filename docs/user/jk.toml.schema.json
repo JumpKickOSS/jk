@@ -248,6 +248,27 @@
       "type": "object",
       "description": "[deny] table; keys are documented in docs/user."
     },
+    "audit": {
+      "type": "object",
+      "description": "[audit] table: what `jk audit` reports without gating on. Read by the audit alone; never part of an action key.",
+      "properties": {
+        "ignore": {
+          "type": "array",
+          "description": "Advisories the audit reports as ignored and leaves out of the exit status, in this order (the first entry naming an advisory wins).",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string", "description": "The advisory id as the audit reports it (GHSA-…, CVE-…)." },
+              "reason": { "type": "string", "description": "Why the finding is accepted. Required; an entry without one is refused." },
+              "until": { "type": "string", "format": "date", "description": "Last day the entry ignores (ISO YYYY-MM-DD). From the day after, the finding gates again and is reported as `ignore expired`." }
+            },
+            "required": ["id", "reason"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
     "guards": {
       "type": "object",
       "description": "[guards] table: on-build (default true) moves the module and workspace guard lanes to --guard when false; coverage-report names the coverage XML the coverage.* measures read. Rules live in jk-guards.toml.",

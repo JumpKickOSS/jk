@@ -82,6 +82,23 @@ class JkTomlSchemaTest {
     }
 
     @Test
+    void audit_properties_are_exactly_the_parser_s_audit_keys() throws Exception {
+        String schema = Files.readString(SCHEMA);
+        String audit = Jsonl.nested(Jsonl.nested(schema, "properties"), "audit");
+        assertThat(keysOf(Jsonl.nested(audit, "properties")))
+                .containsExactlyInAnyOrderElementsOf(ManifestBuild.AUDIT_KEYS);
+        String entry = Jsonl.nested(Jsonl.nested(Jsonl.nested(audit, "properties"), "ignore"), "items");
+        assertThat(keysOf(Jsonl.nested(entry, "properties")))
+                .containsExactlyInAnyOrderElementsOf(ManifestBuild.AUDIT_IGNORE_KEYS);
+        assertThat(Jsonl.bool(entry, "additionalProperties", true))
+                .as("an unknown key on an ignore entry is what an editor should flag")
+                .isFalse();
+        // the table's own additionalProperties is its last one; the entry's nested one comes first
+        int last = audit.lastIndexOf("\"additionalProperties\"");
+        assertThat(audit.substring(last).replaceAll("\\s", "")).startsWith("\"additionalProperties\":false");
+    }
+
+    @Test
     void the_schema_names_the_dependency_scope_tables_the_parser_reads() throws Exception {
         String schema = Files.readString(SCHEMA);
         for (Scope s : Scope.values()) {

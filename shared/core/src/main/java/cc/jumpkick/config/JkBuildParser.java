@@ -369,6 +369,9 @@ public final class JkBuildParser {
         // [dev] is a live-loop concern, not a build input; it folds into the same block as [test].
         List<JkBuild.Sidecar> devSidecars = ManifestBuild.parseDevSidecars(result);
         if (!devSidecars.isEmpty()) build = build.withDevSidecars(devSidecars);
+        // [audit] is a report policy, not a build input; it folds into the same block as [test] and [dev].
+        List<JkBuild.AuditIgnore> auditIgnores = ManifestBuild.parseAuditIgnores(result);
+        if (!auditIgnores.isEmpty()) build = build.withAuditIgnores(auditIgnores);
         JkBuild.FormatConfig format = ManifestTables.parseFormat(result);
         JkBuild.Install install = ManifestTables.parseInstall(result).orElse(null);
         Variants variants = ManifestTables.parseVariants(result, workspace, effective, installedManifests);
