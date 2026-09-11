@@ -433,4 +433,115 @@ class PluginContributionsTest {
                 .extracting(PluginContributions.PlatformDep::module)
                 .containsExactly("com.acme:kt-bom");
     }
+
+    // ---- for-step — a step tool scoped to the steps or packagers that read it ------------------
+
+    @Test
+    void for_step_parses_as_one_name_or_a_list_and_is_empty_when_absent() {
+        var parsed = PluginDescriptors.parse("""
+                [plugin]
+                id = "p"
+                table = "p"
+
+                [[contribute.step-dependency]]
+                artifact = "aapt2"
+                coordinate = "com.acme:aapt2:1.0.0"
+                for-step = "res"
+
+                [[contribute.step-dependency]]
+                artifact = "r8"
+                coordinate = "com.acme:r8:1.0.0"
+                for-step = ["dex", "shrink"]
+
+                [[contribute.step-dependency]]
+                artifact = "everywhere"
+                coordinate = "com.acme:everywhere:1.0.0"
+                """, "p.toml");
+        assertThat(parsed.contributions().stepDependencies())
+                .extracting(PluginDescriptor.StepDependency::forSteps)
+                .containsExactly(List.of("res"), List.of("dex", "shrink"), List.of());
+    }
+
+    @Test
+    void for_step_is_refused_on_a_command_dependency() {
+        assertThatThrownBy(() -> PluginDescriptors.parse("""
+                        [plugin]
+                        id = "p"
+                        table = "p"
+
+                        [[contribute.command-dependency]]
+                        artifact = "adb"
+                        sdk-component = "platform-tools"
+                        sdk-path = "adb"
+                        for-step = "deploy"
+                        """, "p.toml"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("for-step applies to a [[contribute.step-dependency]] only");
+    }
+
+    @Test
+    void for_step_refuses_blank_duplicate_and_empty_names() {
+        String base = """
+                [plugin]
+                id = "p"
+                table = "p"
+
+                [[contribute.step-dependency]]
+                artifact = "t"
+                coordinate = "com.acme:t:1.0.0"
+                """;
+        assertThatThrownBy(() -> PluginDescriptors.parse(base + "for-step = \"\"\n", "p.toml"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("blank");
+        assertThatThrownBy(() -> PluginDescriptors.parse(base + "for-step = [\"a\", \"a\"]\n", "p.toml"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("`a` twice");
+        assertThatThrownBy(() -> PluginDescriptors.parse(base + "for-step = []\n", "p.toml"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("at least one");
+        assertThatThrownBy(() -> PluginDescriptors.parse(base + "for-step = 3\n", "p.toml"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("a step name or an array of step names");
+    }
+
+    @Test
+    void for_step_rides_the_resolved_step_lane() {
+        PluginTableRegistry.putBuiltIn(PluginDescriptors.parse("""
+                        [plugin]
+                        id = "forstep-fixture"
+                        table = "forstep-fixture"
+
+                        [[contribute.step-dependency]]
+                        artifact = "aapt2"
+                        coordinate = "com.acme:aapt2:1.0.0"
+                        for-step = "res"
+
+                        [[contribute.step-dependency]]
+                        artifact = "android-jar"
+                        sdk-component = "platforms;android-36"
+                        sdk-path = "android.jar"
+                        for-step = ["res", "dex"]
+
+                        [[contribute.step-dependency]]
+                        artifact = "everywhere"
+                        coordinate = "com.acme:everywhere:1.0.0"
+                        """, "forstep-fixture.toml"), null);
+        JkBuild build = JkBuildParser.parse("""
+                name = "demo"
+                group = "com.example"
+                version = "1.0.0"
+                java = 25
+
+                [forstep-fixture]
+                """);
+
+        List<PluginContributions.StepDep> lane = PluginContributions.stepDependencies(build, null);
+        assertThat(lane)
+                .extracting(PluginContributions.StepDep::forSteps)
+                .containsExactly(List.of("res"), List.of("res", "dex"), List.of());
+        assertThat(lane.stream().filter(d -> d.reaches("dex")).map(PluginContributions.StepDep::artifact))
+                .containsExactly("android-jar", "everywhere");
+        assertThat(lane.stream().filter(d -> d.reaches("manifest")).map(PluginContributions.StepDep::artifact))
+                .containsExactly("everywhere");
+    }
 }

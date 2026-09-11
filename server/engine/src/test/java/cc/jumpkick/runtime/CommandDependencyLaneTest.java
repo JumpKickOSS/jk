@@ -169,11 +169,12 @@ class CommandDependencyLaneTest {
     }
 
     /**
-     * The provisioning split. A build's fetch — the one {@code PlannerPlugin}, {@code
-     * PackagingKeys} and {@code PlannerSupport} call — walks the step lane alone, so a
-     * command-only artifact that cannot provision does not fail (or even touch) a build. The
-     * command fetch does provision it, and leniently: {@code jk android licenses} must run before
-     * any license gates provisioning, so a failed provision is an absent extra, not an error.
+     * The provisioning split. The step-lane fetch — the whole lane here; a build's steps, packager
+     * and compile classpath each take their slice of it through {@code PluginBuild.StepTools} —
+     * never reaches the command lane, so a command-only artifact that cannot provision does not
+     * fail (or even touch) a build. The command fetch does provision it, and leniently: {@code jk
+     * android licenses} must run before any license gates provisioning, so a failed provision is
+     * an absent extra, not an error.
      */
     @Test
     void a_build_never_provisions_a_command_only_tool_and_the_command_fetch_is_lenient(@TempDir Path tmp)
