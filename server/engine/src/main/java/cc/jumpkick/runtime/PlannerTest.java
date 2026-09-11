@@ -478,23 +478,33 @@ public final class PlannerTest {
                     }
                     reweightForRealRun(ctx, in);
                     List<Path> runtimeCp = testRuntimeCpWithLanguageRuntimes(ctx, cx, cas, testRtCp, testSrcs);
-                    // Module pin ([test] workers / [build] test-workers) wins over CLI for hermetic
-                    // opt-out (Mill testParallelism = false). 0 = auto min(jobs, classes).
-                    int testWorkers = dispatchWorkers(in, projectUnderTest.build());
                     String moduleLabel = projectUnderTest.project().group() + ":"
                             + projectUnderTest.project().name();
                     TestFailureSource.Cache snippets = new TestFailureSource.Cache();
-                    TestProgressListener listener =
-                            TestSupport.bridgeListener(ctx, testWorkers, in.verbose(), moduleLabel, in.dir(), snippets);
-                    JUnitLauncher launcher = new JUnitLauncher()
-                            .withModuleLabel(moduleLabel)
-                            .withTagFilters(effectiveSel.includeTags(), effectiveSel.excludeTags())
-                            // [test] serial-tags: those classes run on one trailing worker
-                            // while the rest shard.
-                            .withSerialTags(projectUnderTest.build().testSerialTags());
-                    if (affected != null) launcher.withClassNames(affected.classNames());
-                    TestSummary result =
-                            launchGated(ctx, in, launcher, runtimeCp, testWorkers, workerJars, testEnv, listener);
+                    // Test execution is serialized across concurrently-built units unless the
+                    // user opted into parallel tests — shared ports/locks/fixtures. The worker
+                    // count is decided once the gate is held: a suite parked at the gate is
+                    // not running, and the ones running when it starts are what it shares with.
+                    boolean gated = !in.session().parallelTests();
+                    if (gated) awaitTestGate();
+                    TestSummary result;
+                    try {
+                        // Module pin ([test] workers / [build] test-workers) wins over CLI for
+                        // hermetic opt-out (Mill testParallelism = false). 0 = auto min(jobs, classes).
+                        int testWorkers = dispatchWorkers(in, projectUnderTest.build());
+                        TestProgressListener listener = TestSupport.bridgeListener(
+                                ctx, testWorkers, in.verbose(), moduleLabel, in.dir(), snippets);
+                        JUnitLauncher launcher = new JUnitLauncher()
+                                .withModuleLabel(moduleLabel)
+                                .withTagFilters(effectiveSel.includeTags(), effectiveSel.excludeTags())
+                                // [test] serial-tags: those classes run on one trailing worker
+                                // while the rest shard.
+                                .withSerialTags(projectUnderTest.build().testSerialTags());
+                        if (affected != null) launcher.withClassNames(affected.classNames());
+                        result = launch(ctx, in, launcher, runtimeCp, testWorkers, workerJars, testEnv, listener);
+                    } finally {
+                        if (gated) TEST_GATE.release();
+                    }
                     ctx.put(TEST_RESULT, result);
                     recordOutcome(ctx, in, actionCache, testTaskId, stampKey, result, snippets);
                 })
@@ -653,10 +663,18 @@ public final class PlannerTest {
     }
 
     /**
-     * Runs the suite, serializing test execution across concurrently-built units unless the user
-     * opted into parallel tests — shared ports/locks/fixtures.
+     * Wait for the serial-test gate without counting as a running unit: a suite parked here is
+     * sharing the machine with nobody yet, and counting it would hand every gated suite a fraction
+     * of the machine it then uses alone.
      */
-    private static TestSummary launchGated(
+    private static void awaitTestGate() {
+        try (LiveUnits.Lease parked = LiveUnits.stepOut()) {
+            TEST_GATE.acquireUninterruptibly();
+        }
+    }
+
+    /** Runs the suite; the caller holds the serial-test gate when the session asks for one. */
+    private static TestSummary launch(
             TaskContext ctx,
             BuildPlanner.Inputs in,
             JUnitLauncher launcher,
@@ -666,8 +684,6 @@ public final class PlannerTest {
             Map<String, String> testEnv,
             TestProgressListener listener)
             throws Exception {
-        boolean gated = !in.session().parallelTests();
-        if (gated) TEST_GATE.acquireUninterruptibly();
         try {
             return launcher.run(
                     ctx.require(JAVA_HOME),
@@ -686,8 +702,6 @@ public final class PlannerTest {
         } catch (IOException e) {
             ctx.error("test", Errors.text(e));
             throw e;
-        } finally {
-            if (gated) TEST_GATE.release();
         }
     }
 

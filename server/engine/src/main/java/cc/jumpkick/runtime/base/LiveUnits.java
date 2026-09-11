@@ -43,6 +43,20 @@ public final class LiveUnits {
         return running::decrementAndGet;
     }
 
+    /**
+     * Stop counting this thread's unit until the lease closes — for a wait the unit spends doing
+     * nothing, such as parking at the serial-test gate. A no-op outside a job scope or when the
+     * job counts nothing.
+     */
+    public static Lease stepOut() {
+        Long id = JobWorkers.currentRequestId();
+        if (id == null) return () -> {};
+        AtomicInteger running = BY_REQUEST.get(id);
+        if (running == null || running.get() <= 0) return () -> {};
+        running.decrementAndGet();
+        return running::incrementAndGet;
+    }
+
     /** Units running in this thread's job, including the caller's own; {@code 0} outside a job. */
     public static int running() {
         Long id = JobWorkers.currentRequestId();
