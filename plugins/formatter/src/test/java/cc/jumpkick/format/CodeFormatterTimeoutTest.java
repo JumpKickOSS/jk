@@ -134,6 +134,77 @@ class CodeFormatterTimeoutTest {
     }
 
     /**
+     * A late result carries what its task would have written and stamped, and none of it lands: the
+     * run already gave the file its verdict, and a timed-out file is neither formatted nor settled.
+     */
+    @Test
+    void a_file_that_comes_back_late_is_neither_written_nor_stamped() throws Exception {
+        var spec = spec("Late.java");
+        Path file = spec.files.getFirst().file().toPath();
+        byte[] before = Files.readAllBytes(file);
+        FormatStampCache memo = new FormatStampCache(dir.resolve("stamps"), CONFIG_KEY);
+        byte[] formatted = "class Late {\n}\n".getBytes(StandardCharsets.UTF_8);
+        String stamp = memo.keyFor(formatted);
+        Emissions out = new Emissions();
+
+        CodeFormatter.Tally tally = CodeFormatter.formatAll(spec, out.writer(), memo, (ref, index, dog) -> {
+            try (var window = dog.watch(index, ref.file())) {
+                holdFor(spec.fileTimeoutMs + 150);
+                return new CodeFormatter.FileResult(ref.file(), "changed", null, formatted, stamp);
+            }
+        });
+
+        assertThat(tally.errors()).isEqualTo(1);
+        assertThat(Files.readAllBytes(file)).isEqualTo(before);
+        assertThat(memo.contains(stamp)).isFalse();
+        assertThat(memo.size()).isZero();
+    }
+
+    /** The same result inside the bound is the run's to act on: written, stamped, counted. */
+    @Test
+    void a_file_that_finishes_in_time_is_written_and_stamped_by_the_run() throws Exception {
+        var spec = spec("Prompt.java");
+        Path file = spec.files.getFirst().file().toPath();
+        FormatStampCache memo = new FormatStampCache(dir.resolve("stamps"), CONFIG_KEY);
+        byte[] formatted = "class Prompt {\n}\n".getBytes(StandardCharsets.UTF_8);
+        String stamp = memo.keyFor(formatted);
+        Emissions out = new Emissions();
+
+        CodeFormatter.Tally tally = CodeFormatter.formatAll(spec, out.writer(), memo, (ref, index, dog) -> {
+            try (var window = dog.watch(index, ref.file())) {
+                return new CodeFormatter.FileResult(ref.file(), "changed", null, formatted, stamp);
+            }
+        });
+
+        assertThat(tally.changed()).isEqualTo(1);
+        assertThat(Files.readAllBytes(file)).isEqualTo(formatted);
+        assertThat(memo.contains(stamp)).isTrue();
+    }
+
+    /**
+     * Once the run is out of threads, the files still queued are settled at once rather than after a
+     * poll each — three thousand of them must not cost ten minutes of nothing.
+     */
+    @Test
+    void the_files_a_run_out_of_threads_will_never_start_are_settled_without_waiting_on_each() throws Exception {
+        String[] names = new String[102];
+        names[0] = "Wedged1.java";
+        names[1] = "Wedged2.java";
+        for (int i = 2; i < names.length; i++) names[i] = "Queued" + i + ".java";
+        var spec = spec(names);
+        Emissions out = new Emissions();
+
+        long started = Clock.SYSTEM.nanos();
+        CodeFormatter.Tally tally = CodeFormatter.formatAll(spec, out.writer(), null, work());
+        long elapsedMs = (Clock.SYSTEM.nanos() - started) / 1_000_000L;
+
+        assertThat(tally.errors()).isEqualTo(names.length);
+        assertThat(out.lineFor("Queued50.java")).contains("was left wedged by a file that timed out");
+        // The two timeouts are the whole cost. A poll apiece for the hundred behind them would be 20 s.
+        assertThat(elapsedMs).isLessThan(5_000);
+    }
+
+    /**
      * The run remembers what it gave up on, keyed on the bytes it gave up on — so the next run
      * reports the file without spending the limit again. {@code FormatTimeoutMemoTest} covers the
      * reading side.

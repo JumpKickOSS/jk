@@ -74,8 +74,7 @@ class FormatWatchdogTest {
             dog.tick();
 
             assertThat(dog.verdict(3)).isEqualTo("timed out after 2.1s (limit 2000 ms)");
-            // The thread was asked to stop, and the run was told to replace the slot it lost.
-            assertThat(Thread.interrupted()).isTrue();
+            // The run was told to replace the slot it lost.
             assertThat(replacements).hasValue(1);
         }
     }
@@ -91,8 +90,6 @@ class FormatWatchdogTest {
 
             assertThat(replacements).hasValue(1);
             assertThat(dog.verdict(0)).isEqualTo("timed out after 2.1s (limit 2000 ms)");
-        } finally {
-            Thread.interrupted();
         }
     }
 
@@ -107,7 +104,6 @@ class FormatWatchdogTest {
 
         assertThat(dog.verdict(0)).isNull();
         assertThat(replacements).hasValue(0);
-        assertThat(Thread.interrupted()).isFalse();
     }
 
     @Test
@@ -135,7 +131,6 @@ class FormatWatchdogTest {
         assertThat(dog.verdict(7)).startsWith("timed out after 2.2s");
         assertThat(dog.verdict(8)).isNull();
         slow.close();
-        Thread.interrupted();
     }
 
     @Test

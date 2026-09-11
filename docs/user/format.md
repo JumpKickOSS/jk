@@ -156,8 +156,10 @@ running for three seconds is not a big file — it is a search that has stopped 
 the source. The margin is deliberately generous for hosts that are nothing like that one.
 
 A timed-out file is **not** formatted and **not** recorded as clean, so `jk format` keeps
-reporting it and keeps exiting non-zero until you deal with it. When the source explains the
-stall, the error says so:
+reporting it and keeps exiting non-zero until you deal with it. That holds even when the
+formatter finishes late: a file's bytes are only written once the run has confirmed the file did
+not time out, so nothing that gave up on a file can leave a half-run's output in your tree. When
+the source explains the stall, the error says so:
 
 ```
   error  src/test/java/example/ProviderTest.java: timed out after 3.0s (limit 3000 ms);
@@ -190,6 +192,18 @@ sources that big are the main reason to raise the limit.
 
 Editing a remembered file — any change at all — or raising the limit makes the next run attempt it
 for real. So does a change to the formatting configuration, which re-keys every cache jk keeps.
+
+A thread that a timed-out file keeps busy is replaced, so the rest of the run keeps its
+parallelism — up to one replacement per thread the run started with. Past that, the files not yet
+started are reported as errors straight away rather than waited on:
+
+```
+  error  src/main/java/example/Later.java: not formatted: every formatter thread the run could
+         spare was left wedged by a file that timed out
+```
+
+Deal with the timed-out files (or raise the limit) and run again; nothing about those files is
+remembered, since they were never attempted.
 
 Both thresholds are formatter-worker JVM properties, in milliseconds; `0` turns either off. Raise
 the timeout if a genuinely slow host starts reporting files you know are fine — the error names

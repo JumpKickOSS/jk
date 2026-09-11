@@ -92,11 +92,15 @@ final class FormatStampCache {
         return Hashing.hex(md.digest());
     }
 
-    /** Whether {@code key} is settled. A map read — no filesystem call at all. */
+    /**
+     * Whether {@code key} is settled. A map read — no filesystem call at all. A hit is touched, so
+     * {@link #save()} ranks what this run actually used above what it merely loaded.
+     */
     boolean contains(String key) {
         if (key == null) return false;
-        // Touch on read so save() keeps what this run actually used.
-        return keys.replace(key, tick.incrementAndGet()) != null;
+        if (keys.replace(key, tick.incrementAndGet()) == null) return false;
+        dirty = true;
+        return true;
     }
 
     /** Remember {@code key} as settled. A map write; nothing reaches disk until {@link #save()}. */
@@ -111,13 +115,15 @@ final class FormatStampCache {
 
     /**
      * The per-file limit, in milliseconds, that {@code key}'s bytes already blew through under this
-     * configuration — or {@code 0} when they have not. Touched on read, so {@link #save()} keeps what
-     * this run actually consulted.
+     * configuration — or {@code 0} when they have not. A hit is touched, so {@link #save()} ranks what
+     * this run actually consulted above what it merely loaded.
      */
     long timedOutAt(String key) {
         if (key == null) return 0;
         Timeout t = timeouts.computeIfPresent(key, (k, v) -> new Timeout(v.limitMs(), tick.incrementAndGet()));
-        return t == null ? 0 : t.limitMs();
+        if (t == null) return 0;
+        dirty = true;
+        return t.limitMs();
     }
 
     /**

@@ -17,12 +17,13 @@ import java.util.concurrent.ConcurrentMap;
  * <p>Two thresholds, both measured from the moment a {@linkplain #watch window} opens. Past
  * {@code warnMs} the file is {@linkplain Slow named} while it is still in flight; past
  * {@code timeoutMs} it is abandoned — a {@linkplain #verdict verdict} recorded against its spec
- * index, its thread interrupted, and {@code onAbandon} run so the caller can replace the slot the
- * run just lost. Either threshold at {@code 0} or below is off.
+ * index and {@code onAbandon} run so the caller can replace the slot the run just lost. Either
+ * threshold at {@code 0} or below is off.
  *
- * <p>An interrupt cannot stop CPU-bound work that never checks for one, so what these thresholds
- * bound is the <em>run</em>, not the thread: the abandoned thread may keep a core busy until the
- * worker process exits. That is why the pool's threads are daemons and why a lost slot is replaced.
+ * <p>Nothing here stops the thread: a line-break search never checks for an interrupt, so what
+ * these thresholds bound is the <em>run</em>, not the thread. The abandoned thread may keep a core
+ * busy until the worker process exits — which is why the pool's threads are daemons and why a lost
+ * slot is replaced — and the verdict is what keeps its late result from counting.
  */
 final class FormatWatchdog implements AutoCloseable {
 
@@ -88,7 +89,7 @@ final class FormatWatchdog implements AutoCloseable {
      * that file is done; nothing outside the window is timed.
      */
     Watch watch(int index, File file) {
-        Watch w = new Watch(index, file, Thread.currentThread(), clock.nanos());
+        Watch w = new Watch(index, file, clock.nanos());
         inFlight.put(index, w);
         return w;
     }
@@ -143,10 +144,9 @@ final class FormatWatchdog implements AutoCloseable {
 
     private void abandon(Watch w, long elapsed) {
         // Loses to the window's own close, so a file that finished inside the same tick keeps its
-        // real verdict and its thread keeps the interrupt it never needed.
+        // real verdict.
         if (!inFlight.remove(w.index, w)) return;
         verdicts.put(w.index, "timed out after " + human(millis(elapsed)) + " (limit " + timeoutMs + " ms)");
-        w.thread.interrupt();
         onAbandon.run();
     }
 
@@ -171,23 +171,18 @@ final class FormatWatchdog implements AutoCloseable {
 
         private final int index;
         private final File file;
-        private final Thread thread;
         private final long startNanos;
         private volatile long nextNoticeNanos = warnNanos;
 
-        private Watch(int index, File file, Thread thread, long startNanos) {
+        private Watch(int index, File file, long startNanos) {
             this.index = index;
             this.file = file;
-            this.thread = thread;
             this.startNanos = startNanos;
         }
 
         @Override
         public void close() {
             inFlight.remove(index, this);
-            // Whatever interrupt this watchdog delivered dies with the window, so a pool thread that
-            // survived one does not carry it into the next file.
-            Thread.interrupted();
         }
     }
 }

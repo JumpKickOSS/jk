@@ -19,7 +19,8 @@ import org.junit.jupiter.api.io.TempDir;
  * list, and it has to report the file as an error every run while costing the run nothing.
  *
  * <p>These drive the real {@code formatOne} through Spotless's semicolon step, which needs no
- * resolved jars — so a run that <em>does</em> format the file is observable in the bytes on disk.
+ * resolved jars, and commit its result the way the run does — so a run that <em>does</em> format
+ * the file is observable in the bytes on disk.
  */
 class FormatTimeoutMemoTest {
 
@@ -178,7 +179,7 @@ class FormatTimeoutMemoTest {
         return new FormatStampCache(dir.resolve("stamps"), CONFIG_KEY);
     }
 
-    /** One file through the real per-file path, with a formatter that needs no resolved jars. */
+    /** One file through the real per-file path and its commit, with a formatter that needs no jars. */
     private CodeFormatter.FileResult format(Path file, FormatStampCache memo, long limitMs) {
         var spec = new CodeFormatter.Spec();
         spec.fileTimeoutMs = limitMs;
@@ -187,8 +188,9 @@ class FormatTimeoutMemoTest {
                 .encoding(StandardCharsets.UTF_8)
                 .steps(CodeFormatter.groovySteps())
                 .build()) {
-            return CodeFormatter.formatOne(
+            CodeFormatter.FileResult decided = CodeFormatter.formatOne(
                     new CodeFormatter.FileRef(CodeFormatter.Kind.GROOVY, file.toFile()), fmt, spec, memo, null);
+            return CodeFormatter.commit(decided, memo);
         }
     }
 

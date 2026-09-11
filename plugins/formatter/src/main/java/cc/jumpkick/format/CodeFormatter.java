@@ -22,19 +22,20 @@ import com.diffplug.spotless.java.PalantirJavaFormatStep;
 import com.diffplug.spotless.java.RemoveUnusedImportsStep;
 import com.diffplug.spotless.kotlin.KtfmtStep;
 import com.diffplug.spotless.scala.ScalaFmtStep;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.EnumMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
-import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -42,6 +43,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicIntegerArray;
 import java.util.regex.Pattern;
 
 /**
@@ -74,9 +76,7 @@ public final class CodeFormatter implements Plugin {
                 ? new FormatStampCache(CacheTree.FORMAT_STAMPS.under(spec.cacheDir), spec.configKey)
                 : null;
 
-        // Built once for the whole run, then only read, so every thread shares one copy. That is the
-        // property the OpenRewrite pass could not have: it needed a fresh parser per file for source
-        // isolation, so its type cache had to be per-thread and parallelism partly cancelled it.
+        // Built once for the whole run, then only read, so every thread shares one copy.
         TypeIndex index = spec.optimizeImports ? TypeIndex.scan(spec.indexFiles) : null;
 
         Workers workers = new Workers(spec);
@@ -106,8 +106,18 @@ public final class CodeFormatter implements Plugin {
         return tally.errors() > 0 || (!spec.apply && tally.changed() > 0) ? 1 : 0;
     }
 
-    /** One file's verdict, decided off-thread and emitted in spec order by {@link #formatAll}. */
-    record FileResult(File file, String status, String msg) {}
+    /**
+     * One file's verdict, decided off-thread and emitted in spec order by {@link #formatAll}. What the
+     * task would have done to the world rides along instead of being done: {@code bytes} to write
+     * to the file and a {@code stamp} to record, both null when there is nothing to do. The run
+     * {@linkplain #commit applies} them only after the verdict is confirmed to be the file's own.
+     */
+    record FileResult(File file, String status, String msg, byte[] bytes, String stamp) {
+
+        FileResult(File file, String status, String msg) {
+            this(file, status, msg, null, null);
+        }
+    }
 
     /** How the run's files fell out, counted as they were emitted. */
     record Tally(int changed, int clean, int errors) {}
@@ -129,10 +139,15 @@ public final class CodeFormatter implements Plugin {
      * work: a file that never returns stalls the emission of every file behind it, so
      * {@link FormatWatchdog} has to be able to settle one on the run's behalf.
      *
-     * <p>A settled timeout leaves its thread interrupted but very possibly still running, since
-     * nothing obliges a formatter to notice. The run therefore adds a replacement thread per
-     * abandoned one (up to as many as it started with) so the remaining files keep the concurrency
-     * they were planned for.
+     * <p>A settled timeout leaves its thread very possibly still running, since nothing can stop a
+     * line-break search that never checks for an interrupt. The run therefore adds a replacement
+     * thread per abandoned one (up to as many as it started with) so the remaining files keep the
+     * concurrency they were planned for.
+     *
+     * <p>A task decides but does not act: the bytes it would write and the key it would stamp ride
+     * in its {@link FileResult} and are {@linkplain #commit applied} here, on this thread, once the
+     * verdict is known to be the file's own. A file the run gave up on is therefore never written
+     * or stamped, however late its formatter comes back.
      */
     static Tally formatAll(Spec spec, ProtocolWriter out, FormatStampCache memo, FileWork work) {
         int slots = concurrency(spec);
@@ -146,7 +161,8 @@ public final class CodeFormatter implements Plugin {
                 (file, elapsedMs) ->
                         emitFile(out, file, "slow", "still formatting after " + FormatWatchdog.human(elapsedMs)),
                 () -> replaceSlot(pool, slots, abandoned));
-        Settling settling = new Settling(dog, abandoned, slots, spec.fileTimeoutMs, memo);
+        Settling settling = new Settling(
+                dog, abandoned, slots, spec.fileTimeoutMs, memo, new AtomicIntegerArray(spec.files.size()));
         int changed = 0, clean = 0, errors = 0;
         try {
             List<Future<FileResult>> pending = new ArrayList<>(spec.files.size());
@@ -155,13 +171,14 @@ public final class CodeFormatter implements Plugin {
                 for (int i = 0; i < spec.files.size(); i++) {
                     FileRef ref = spec.files.get(i);
                     int index = i;
-                    pending.add(pool.submit(() -> work.apply(ref, index, dog)));
+                    // A task that loses the claim was forfeited by settle; its result is nobody's.
+                    pending.add(pool.submit(() -> settling.claim(index) ? work.apply(ref, index, dog) : null));
                 }
             } finally {
                 pool.shutdown();
             }
             for (int i = 0; i < pending.size(); i++) {
-                FileResult result = settle(pending.get(i), i, spec.files.get(i), settling);
+                FileResult result = commit(settle(pending.get(i), i, spec.files.get(i), settling), memo);
                 switch (result.status()) {
                     case "changed" -> changed++;
                     case "error" -> errors++;
@@ -187,6 +204,9 @@ public final class CodeFormatter implements Plugin {
      */
     private static FileResult settle(Future<FileResult> f, int index, FileRef ref, Settling s) {
         while (true) {
+            // Before blocking: once the run is out of threads, every file still queued is settled
+            // now rather than after a poll each.
+            if (s.forfeits(index)) return unstarted(ref);
             try {
                 FileResult result = f.get(SETTLE_POLL_MS, TimeUnit.MILLISECONDS);
                 // Coming back late does not un-abandon a file. The run already acted on the verdict
@@ -196,16 +216,7 @@ public final class CodeFormatter implements Plugin {
                 return verdict == null ? result : timedOut(ref, verdict, s);
             } catch (TimeoutException e) {
                 String verdict = s.dog().verdict(index);
-                if (verdict != null) {
-                    f.cancel(true);
-                    return timedOut(ref, verdict, s);
-                }
-                if (s.abandoned().get() >= tolerable(s.slots()) && f.cancel(false)) return unstarted(ref);
-            } catch (CancellationException e) {
-                String verdict = s.dog().verdict(index);
-                return verdict != null
-                        ? timedOut(ref, verdict, s)
-                        : new FileResult(ref.file(), "error", "formatting was cancelled before it finished");
+                if (verdict != null) return timedOut(ref, verdict, s);
             } catch (ExecutionException e) {
                 Throwable cause = e.getCause() == null ? e : e.getCause();
                 return new FileResult(ref.file(), "error", String.valueOf(cause.getMessage()));
@@ -216,9 +227,50 @@ public final class CodeFormatter implements Plugin {
         }
     }
 
-    /** What settling one file needs beyond the file itself. */
+    /**
+     * What settling one file needs beyond the file itself. {@code claims} has one slot per spec
+     * index, taken exactly once: by the task as it begins, or by {@link #forfeits} when the run has
+     * no thread left to start it on.
+     */
     private record Settling(
-            FormatWatchdog dog, AtomicInteger abandoned, int slots, long limitMs, FormatStampCache memo) {}
+            FormatWatchdog dog,
+            AtomicInteger abandoned,
+            int slots,
+            long limitMs,
+            FormatStampCache memo,
+            AtomicIntegerArray claims) {
+
+        /** The task's claim on its file. False when the run already forfeited it. */
+        boolean claim(int index) {
+            return claims.compareAndSet(index, 0, 1);
+        }
+
+        /**
+         * Whether the run is out of threads and nothing has begun on the file at {@code index}. True
+         * takes the claim, so a task that turns up afterwards finds the file is no longer its own.
+         */
+        boolean forfeits(int index) {
+            return abandoned.get() >= tolerable(slots) && claims.compareAndSet(index, 0, 1);
+        }
+    }
+
+    /**
+     * Do what a settled task decided: write its bytes and record its stamp. Runs on the run's own
+     * thread, after {@link #settle} has confirmed the verdict is the file's — the results the run
+     * writes on a file's behalf carry nothing to do, so a file it gave up on is never written or
+     * stamped. A write that fails is that file's error.
+     */
+    static FileResult commit(FileResult r, FormatStampCache memo) {
+        if (r.bytes() != null) {
+            try {
+                Files.write(r.file().toPath(), r.bytes());
+            } catch (IOException e) {
+                return new FileResult(r.file(), "error", e.getMessage());
+            }
+        }
+        if (memo != null) memo.record(r.stamp());
+        return r;
+    }
 
     /**
      * Report a file the run gave up on, and — when its shape accounts for that — remember it so the
@@ -229,9 +281,9 @@ public final class CodeFormatter implements Plugin {
      * stalled than a source nothing can format, and a memo on it would refuse a good file on every
      * later run until somebody edited it — worse than paying the limit again.
      *
-     * <p>The memo is keyed on the bytes <em>as they are now</em>, which is what the next run will
-     * read: the FQCN pass may already have rewritten the file before the formatter stalled on the
-     * result. One read serves the key, the decision and the message.
+     * <p>The memo is keyed on the bytes on disk, which are the bytes the next run will read: a task
+     * writes nothing until the run confirms its verdict, so the file is as it was. One read serves
+     * the key, the decision and the message.
      */
     private static FileResult timedOut(FileRef ref, String verdict, Settling s) {
         byte[] bytes = readOrNull(ref.file());
@@ -290,9 +342,9 @@ public final class CodeFormatter implements Plugin {
 
     /**
      * The run has spent its replacement threads, so nothing is going to start this file. Reached
-     * only when {@link Future#cancel(boolean) cancel(false)} succeeds, which it does for a task that
-     * never ran and only for one — so this is a fact about the file, not a guess, and it cannot race
-     * a result the file was about to produce.
+     * only when {@link Settling#forfeits} took the file's claim, which a task that had begun on it
+     * would already hold — so this is a fact about the file, not a guess, and it cannot race a
+     * result the file was about to produce.
      */
     private static FileResult unstarted(FileRef ref) {
         return new FileResult(
@@ -302,8 +354,8 @@ public final class CodeFormatter implements Plugin {
     }
 
     /**
-     * Replace the thread a timed-out file kept. It was interrupted, but nothing obliges a formatter
-     * to notice, so it no longer counts as a slot.
+     * Replace the thread a timed-out file kept. Nothing can stop a formatter that never checks for
+     * an interrupt, so that thread no longer counts as a slot.
      *
      * <p>One replacement per slot the run started with. Past that the pool would grow a live
      * formatter per pathological file inside a heap sized for one worker, so the run stops promising
@@ -469,26 +521,26 @@ public final class CodeFormatter implements Plugin {
     }
 
     /**
-     * One file, start to finish: stamp lookup, the FQCN pass, then Spotless. Runs on a pool thread
-     * under the run's wall bound, and returns its verdict rather than emitting it, so
-     * {@link #formatAll} keeps the stream in spec order.
+     * One file, start to finish: stamp lookup, the FQCN pass, then Spotless, all in memory off one
+     * read. Runs on a pool thread under the run's wall bound. It writes nothing and stamps nothing:
+     * the verdict, the bytes and the key come back in the result for {@link #formatAll} to emit in
+     * spec order and {@linkplain #commit apply}.
      */
     static FileResult formatOne(FileRef ref, Formatter fmt, Spec spec, FormatStampCache stampCache, TypeIndex index) {
         try {
-            byte[] originalBytes = Files.readAllBytes(ref.file().toPath());
-            String stampKey = stampCache != null ? stampCache.keyFor(originalBytes) : null;
+            byte[] original = Files.readAllBytes(ref.file().toPath());
+            String stampKey = stampCache != null ? stampCache.keyFor(original) : null;
             if (stampKey != null && stampCache.contains(stampKey)) {
                 return new FileResult(ref.file(), "clean", null);
             }
 
             long timedOutAt = stampKey != null ? stampCache.timedOutAt(stampKey) : 0;
             if (remembersTimeout(timedOutAt, spec.fileTimeoutMs)) {
-                return new FileResult(ref.file(), "error", rememberedTimeout(timedOutAt, originalBytes));
+                return new FileResult(ref.file(), "error", rememberedTimeout(timedOutAt, original));
             }
 
-            if (ref.kind() == Kind.JAVA && isUnnamedClass(originalBytes)) {
-                if (stampKey != null) stampCache.record(stampKey);
-                return new FileResult(ref.file(), "skipped", null);
+            if (ref.kind() == Kind.JAVA && isUnnamedClass(original)) {
+                return new FileResult(ref.file(), "skipped", null, null, stampKey);
             }
 
             // Java only. The blanking pass implements Java's lexeme set, and the other three differ in
@@ -498,36 +550,32 @@ public final class CodeFormatter implements Plugin {
             // chain includes an import-repair step, so it is the only one where a mistake here would
             // be noticed downstream rather than written and stamped. Widening this needs a real lexer
             // per language, not a wider regex.
-            boolean shortened = false;
+            byte[] input = original;
             if (index != null && ref.kind() == Kind.JAVA) {
-                String src = new String(originalBytes, StandardCharsets.UTF_8);
-                FqcnShortener.Result r = FqcnShortener.shorten(src, index, syntax(ref.kind()));
-                if (r.changed()) {
-                    shortened = true;
-                    if (spec.apply) Files.writeString(ref.file().toPath(), r.source(), StandardCharsets.UTF_8);
-                }
+                FqcnShortener.Result r = FqcnShortener.shorten(text(original), index, syntax(ref.kind()));
+                if (r.changed()) input = r.source().getBytes(StandardCharsets.UTF_8);
             }
 
-            DirtyState state = DirtyState.of(fmt, ref.file());
-            boolean spotlessChanged = !state.isClean() && !state.didNotConverge();
-
+            DirtyState state = DirtyState.of(fmt, ref.file(), input);
             if (state.didNotConverge()) {
                 return new FileResult(ref.file(), "error", "formatter did not converge");
             }
-            if (shortened || spotlessChanged) {
-                if (spec.apply && spotlessChanged) state.writeCanonicalTo(ref.file());
-                if (spec.apply && stampCache != null) {
-                    byte[] finalBytes = Files.readAllBytes(ref.file().toPath());
-                    String finalKey = stampCache.keyFor(finalBytes);
-                    if (finalKey != null) stampCache.record(finalKey);
-                }
-                return new FileResult(ref.file(), "changed", null);
+            byte[] formatted = state.isClean() ? input : canonical(state);
+            if (Arrays.equals(formatted, original)) {
+                return new FileResult(ref.file(), "clean", null, null, stampKey);
             }
-            if (stampKey != null) stampCache.record(stampKey);
-            return new FileResult(ref.file(), "clean", null);
+            if (!spec.apply) return new FileResult(ref.file(), "changed", null);
+            String formattedKey = stampCache != null ? stampCache.keyFor(formatted) : null;
+            return new FileResult(ref.file(), "changed", null, formatted, formattedKey);
         } catch (Exception e) {
             return new FileResult(ref.file(), "error", e.getMessage());
         }
+    }
+
+    private static byte[] canonical(DirtyState state) throws IOException {
+        var out = new ByteArrayOutputStream();
+        state.writeCanonicalTo(out);
+        return out.toByteArray();
     }
 
     private static FqcnShortener.Syntax syntax(Kind kind) {

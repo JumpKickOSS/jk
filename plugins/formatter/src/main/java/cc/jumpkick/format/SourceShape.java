@@ -74,7 +74,9 @@ final class SourceShape {
         int lambdas = 0;
         int maxLambdas = 0;
         // One flag per open group: whether an arrow has already been counted at that depth, so a
-        // `(a, b) -> ...` chain contributes once per level rather than once per arrow.
+        // `(a, b) -> ...` chain contributes once per level rather than once per arrow. Depth 0 never
+        // closes, so an arrow there — a `case X ->` arm, a lambda assigned to a field — is not one
+        // that nests, and is not counted.
         boolean[] arrowed = new boolean[64];
         for (int i = 0; i < src.length(); i++) {
             char c = src.charAt(i);
@@ -96,7 +98,10 @@ final class SourceShape {
                     }
                 }
                 case '-' -> {
-                    if (i + 1 < src.length() && src.charAt(i + 1) == '>' && !arrowed[depth]) {
+                    // `i-->0` is a decrement followed by a comparison, not an arrow.
+                    boolean arrow =
+                            i + 1 < src.length() && src.charAt(i + 1) == '>' && (i == 0 || src.charAt(i - 1) != '-');
+                    if (arrow && depth > 0 && !arrowed[depth]) {
                         arrowed[depth] = true;
                         lambdas++;
                         if (lambdas > maxLambdas) maxLambdas = lambdas;

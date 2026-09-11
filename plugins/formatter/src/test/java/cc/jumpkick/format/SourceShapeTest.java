@@ -86,6 +86,24 @@ class SourceShapeTest {
                 .isFalse();
     }
 
+    /**
+     * Nesting means lambdas open inside one another. An arrow outside every parenthesis — a switch
+     * arm, a lambda whose parameter list has already closed — never nests anything, and a decrement
+     * beside a comparison is not an arrow at all.
+     */
+    @Test
+    void only_arrows_inside_an_open_group_nest() {
+        assertThat(SourceShape.of("class A { Object o = f(a -> g(b -> b)); }\n").lambdaNesting())
+                .isEqualTo(2);
+        assertThat(SourceShape.of("class A { int s = switch (x) { case 1 -> 2; default -> 3; };"
+                                + " Object o = f(a -> g(b -> b)); }\n")
+                        .lambdaNesting())
+                .as("a switch arm at depth 0 must not add a permanent level")
+                .isEqualTo(2);
+        assertThat(SourceShape.of("class A { void m() { while (i-->0) {} } }\n").lambdaNesting())
+                .isZero();
+    }
+
     /** Deep parentheses alone are enough; so are nested lambdas alone. Either arm, not both. */
     @Test
     void either_kind_of_nesting_explains_a_stall_on_its_own() {
