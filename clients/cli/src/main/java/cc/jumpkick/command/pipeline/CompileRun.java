@@ -1,0 +1,247 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.command.pipeline;
+
+import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.cli.api.GlobalOptions;
+import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EngineRequests;
+import cc.jumpkick.cli.engine.ProjectInfos;
+import cc.jumpkick.cli.run.AggregateContext;
+import cc.jumpkick.cli.run.BuildPlanConsole;
+import cc.jumpkick.cli.run.ConsoleSpec;
+import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.JkManager;
+import cc.jumpkick.cli.tui.ModuleScopeHint;
+import cc.jumpkick.command.CwdModuleScope;
+import cc.jumpkick.command.ModuleSelectors;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.WorkspaceLocator;
+import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.wire.EnginePaths;
+import cc.jumpkick.wire.protocol.EngineWireException;
+import cc.jumpkick.wire.runtime.WorkspaceResult;
+import java.io.IOException;
+import java.nio.file.Path;
+import java.util.List;
+import org.jspecify.annotations.Nullable;
+
+/**
+ * One compile, read in the vocabulary the engine will answer it in. A workspace root or member is
+ * forked to the workspace orchestrator and settles {@code workspace-finish}; a standalone project
+ * runs one plan and settles {@code plan-finish}. {@code jk compile} and the dev loop both compile
+ * through here, so the two never choose differently.
+ */
+final class CompileRun {
+
+    /** The words on the chrome: wedge/region name, the success word, the failure phrase. */
+    record Labels(String name, String done, String failed) {
+        static final Labels COMPILE = new Labels("Compile", "Compiled", "Compilation failed");
+    }
+
+    /**
+     * Where a compile enters and how the engine answers it. {@code workspaceRoot} is the root that
+     * owns {@code dir} — {@code dir} itself for a root — or null for a standalone project. The same
+     * question the engine asks before it forks, so the client reads the stream the engine writes.
+     */
+    record Entry(Path dir, @Nullable Path workspaceRoot) {
+
+        static Entry of(Path dir) throws IOException {
+            Path normalized = dir.toAbsolutePath().normalize();
+            return new Entry(normalized, WorkspaceLocator.owningRoot(normalized).orElse(null));
+        }
+
+        boolean workspace() {
+            return workspaceRoot != null;
+        }
+
+        /** True when {@code dir} is a listed module of {@link #workspaceRoot}, not the root itself. */
+        boolean member() {
+            return workspaceRoot != null && !workspaceRoot.equals(dir);
+        }
+
+        /** The directory the engine request names: the root for a workspace, {@code dir} otherwise. */
+        Path requestDir() {
+            return workspaceRoot != null ? workspaceRoot : dir;
+        }
+    }
+
+    private final Entry entry;
+    private final @Nullable String profile;
+    private final List<String> selectors;
+    private final List<String> scopeNames;
+    private final @Nullable String error;
+    private final boolean nothingSelected;
+
+    private CompileRun(
+            Entry entry,
+            @Nullable String profile,
+            List<String> selectors,
+            List<String> scopeNames,
+            @Nullable String error,
+            boolean nothingSelected) {
+        this.entry = entry;
+        this.profile = profile;
+        this.selectors = selectors;
+        this.scopeNames = scopeNames;
+        this.error = error;
+        this.nothingSelected = nothingSelected;
+    }
+
+    /**
+     * Resolve the compile for {@code dir}. A member directory without {@code -m} compiles that
+     * member; selectors that match nothing make a no-op run rather than the whole graph, because
+     * the wire reads an empty selection as "everything".
+     */
+    static CompileRun resolve(
+            Path dir,
+            @Nullable String modulesSpec,
+            @Nullable String affectedSince,
+            boolean affectedWip,
+            @Nullable String profile)
+            throws IOException {
+        Entry entry = Entry.of(dir);
+        String memberRoot = entry.member() ? String.valueOf(entry.workspaceRoot()) : "";
+        CwdModuleScope.Resolved scope = CwdModuleScope.resolve(entry.dir(), modulesSpec, false, memberRoot, null);
+        if (scope.inferredFromCwd()) modulesSpec = scope.modulesSpec();
+        List<String> selectors = ModuleSelectors.tokens(modulesSpec, affectedSince, affectedWip);
+        var info = ProjectInfos.orError(entry.requestDir(), modulesSpec, affectedSince, affectedWip);
+        if (info.error() != null) {
+            return new CompileRun(entry, profile, selectors, List.of(), info.error(), false);
+        }
+        boolean nothingSelected = !selectors.isEmpty() && info.moduleDirs().isEmpty();
+        List<String> scopeNames =
+                entry.workspace() && !selectors.isEmpty() ? ModuleScopeHint.namesFrom(info) : List.of();
+        return new CompileRun(entry, profile, selectors, scopeNames, null, nothingSelected);
+    }
+
+    Entry entry() {
+        return entry;
+    }
+
+    /** Run the compile against the engine and render it under {@code labels}; returns the exit code. */
+    int run(Labels labels, GlobalOptions global, Path cache) throws IOException {
+        if (error != null) {
+            CommandWedge.printFail(labels.name(), error);
+            return Exit.CONFIG;
+        }
+        if (nothingSelected) {
+            CommandWedge.printOk(labels.name(), "nothing selected to compile");
+            return 0;
+        }
+        var session = SessionContext.current();
+        var req = new EngineRequests.CompileRequest(
+                entry.requestDir(), cache, profile, session.offline(), session.force(), global.verbose, selectors);
+        BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
+        if (!entry.workspace()) return runSingle(req, labels, mode);
+        boolean live = mode == BuildPlanConsole.Mode.AUTO || mode == BuildPlanConsole.Mode.QUIET;
+        return live ? runWorkspaceLive(req, labels, mode) : runWorkspaceHeadless(req, labels, global);
+    }
+
+    /** One plan; the console listener is chosen when the step list arrives over the socket. */
+    private int runSingle(EngineRequests.CompileRequest req, Labels labels, BuildPlanConsole.Mode mode) {
+        ConsoleSpec spec = new ConsoleSpec(
+                labels.name(), r -> Theme.paint(labels.done(), Theme.active().focused()), r -> labels.failed());
+        String target = ProjectInfos.buildTarget(entry.dir().resolve(ManifestPaths.MANIFEST), entry.dir());
+        BuildPlanResult result;
+        try {
+            result = EngineClient.runCompile(
+                    EnginePaths.current(),
+                    req,
+                    steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, target));
+        } catch (EngineWireException e) {
+            CommandWedge.printFail(labels.name(), e.getMessage());
+            return Exit.CONFIG;
+        } catch (IOException e) {
+            CommandWedge.printFail(labels.name(), e.getMessage());
+            return Exit.SOFTWARE;
+        }
+        return result.success() ? 0 : 1;
+    }
+
+    /** Workspace compile in a live region: the aggregate view build/native/image use. */
+    private int runWorkspaceLive(EngineRequests.CompileRequest req, Labels labels, BuildPlanConsole.Mode mode) {
+        boolean animate = mode == BuildPlanConsole.Mode.AUTO && BuildPlanConsole.isInteractiveTerminal();
+        Path entryDir = entry.requestDir();
+        JkManager view = JkManager.plan(CliOutput.stdout(), labels.name(), animate);
+        view.setPlanCoord(BuildCommand.projectGaLabel(entryDir));
+        ModuleScopeHint.show("compiling", scopeNames, false, view);
+        AggregateContext agg = new AggregateContext(view);
+        long start = Clock.SYSTEM.nanos();
+        // Not buffered: the live region owns every line, so nothing is written above it.
+        var run = new WorkspaceRunView(new WorkspaceRunView.Chrome(labels.name(), false), entryDir, null, false);
+        WorkspaceResult result;
+        try {
+            result = EngineClient.runCompileWorkspace(EnginePaths.current(), req, run.live(view, agg));
+        } catch (EngineWireException e) {
+            run.finishEvent(false, BuildTails.elapsedMsSince(start));
+            view.finishBuildPlanFailure(String.valueOf(e.getMessage()));
+            return Exit.CONFIG;
+        } catch (IOException e) {
+            run.finishEvent(false, BuildTails.elapsedMsSince(start));
+            view.finishBuildPlanFailure(String.valueOf(e.getMessage()));
+            return Exit.SOFTWARE;
+        }
+        if (result.cancelled()) {
+            run.finishEvent(false, BuildTails.elapsedMsSince(start));
+            view.finishBuildPlanCancelled(List.of());
+            return 1;
+        }
+        if (!result.success()) {
+            String detail = result.errors().isEmpty()
+                    ? labels.failed() + " " + BuildTails.elapsedSince(start)
+                    : result.errors().getFirst();
+            run.finishEvent(false, BuildTails.elapsedMsSince(start));
+            view.finishBuildPlanFailure(detail);
+            return result.exitCode() == 0 ? 1 : result.exitCode();
+        }
+        run.finishEvent(true, BuildTails.elapsedMsSince(start));
+        view.finishBuildPlanSuccess(
+                Theme.colorize(labels.done(), Theme.active().focused()) + " " + BuildTails.elapsedSince(start));
+        return 0;
+    }
+
+    /**
+     * Workspace compile without a region ({@code --output json} / {@code --verbose}): the same
+     * events and per-module block {@code jk build} renders through {@link WorkspaceRunView#headless}.
+     */
+    private int runWorkspaceHeadless(EngineRequests.CompileRequest req, Labels labels, GlobalOptions global) {
+        boolean json = global.outputIsJson();
+        Path entryDir = entry.requestDir();
+        ModuleScopeHint.print("compiling", scopeNames, json);
+        var run = new WorkspaceRunView(new WorkspaceRunView.Chrome(labels.name(), false), entryDir, null, json);
+        long start = Clock.SYSTEM.nanos();
+        WorkspaceResult result;
+        try {
+            result = EngineClient.runCompileWorkspace(EnginePaths.current(), req, run.headless());
+        } catch (EngineWireException e) {
+            run.finishEvent(false, BuildTails.elapsedMsSince(start));
+            if (!json) CommandWedge.printFail(labels.name(), e.getMessage());
+            return Exit.CONFIG;
+        } catch (IOException e) {
+            run.finishEvent(false, BuildTails.elapsedMsSince(start));
+            if (!json) CommandWedge.printFail(labels.name(), e.getMessage());
+            return Exit.SOFTWARE;
+        }
+        long elapsed = BuildTails.elapsedMsSince(start);
+        if (result.cancelled()) {
+            run.finishEvent(false, elapsed);
+            if (!json) CommandWedge.printFail(labels.name(), "Compile job was cancelled");
+            return 1;
+        }
+        if (!result.success()) {
+            run.finishEvent(false, elapsed);
+            if (!json) {
+                for (String err : result.errors()) CliOutput.err(ConsoleSpec.errorLine("composite", err));
+                CommandWedge.printFail(labels.name(), labels.failed());
+            }
+            return result.exitCode() == 0 ? 1 : result.exitCode();
+        }
+        run.finishEvent(true, elapsed);
+        if (!json) CommandWedge.printOk(labels.name(), labels.done() + " " + BuildTails.elapsedSince(start));
+        return 0;
+    }
+}

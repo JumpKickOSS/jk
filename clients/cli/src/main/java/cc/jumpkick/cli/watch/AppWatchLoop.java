@@ -38,10 +38,17 @@ import org.jspecify.annotations.Nullable;
 @RequiredArgsConstructor
 public final class AppWatchLoop {
 
+    /** Recompiles the watched project; the caller decides whether that is one plan or the workspace. */
+    @FunctionalInterface
+    public interface Compiler {
+        boolean compile(Path projectDir, Path cache) throws IOException, InterruptedException;
+    }
+
     private final GlobalOptions global;
     private final @Nullable Path jdksDir;
     private final String logPrefix;
     private final boolean noSidecars;
+    private final Compiler compiler;
 
     public int run(Path projectDir, Path cache, List<String> appArgs) throws IOException, InterruptedException {
         if (!build(projectDir, cache)) return 1;
@@ -229,17 +236,7 @@ public final class AppWatchLoop {
     }
 
     private boolean compile(Path projectDir, Path cache) throws IOException, InterruptedException {
-        String target = ProjectInfos.buildTarget(projectDir.resolve(ManifestPaths.MANIFEST), projectDir);
-        ConsoleSpec spec = new ConsoleSpec(
-                "Watch", r -> Theme.paint("Recompiled", Theme.active().focused()), r -> "Compile failed");
-        BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
-        var session = SessionContext.current();
-        BuildPlanResult result = EngineClient.runCompile(
-                EnginePaths.current(),
-                new EngineRequests.CompileRequest(
-                        projectDir, cache, null, session.offline(), session.force(), global.verbose),
-                steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, target));
-        return result.success();
+        return compiler.compile(projectDir, cache);
     }
 
     private ExecPlan devPlan(Path projectDir, Path cache) throws IOException {

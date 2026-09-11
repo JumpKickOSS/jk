@@ -107,9 +107,9 @@ final class EnginePluginAdapter {
     }
 
     /**
-     * The single-plan reader every hosted verb shares. It ends on the plan's own terminal or on a
-     * workspace terminal — the engine answers a member's compile in the workspace vocabulary — and
-     * refuses on the engine's error frame.
+     * The single-plan reader every hosted verb shares. It ends on the plan's terminal and refuses
+     * on the engine's error frame or on a workspace terminal, which means the caller chose the
+     * wrong reader.
      */
     static WireStream.Decoder<HostedFinish> hostedDecoder(
             String planName,
@@ -142,10 +142,7 @@ final class EnginePluginAdapter {
                                 false);
                         return finish(result, line);
                     }
-                    case EngineProtocol.WORKSPACE_FINISH -> {
-                        return finish(
-                                EngineEventDecoder.planResultOf(line, planName, Duration.ZERO, diagnostics), line);
-                    }
+                    case EngineProtocol.WORKSPACE_FINISH -> throw EngineEventDecoder.notASinglePlan();
                     case EngineProtocol.ERROR ->
                         throw EngineWireException.fromJsonLine(line, "jk engine: run failed: ");
                     default -> EngineEventDecoder.dispatch(type, line, listener, diagnostics::add);

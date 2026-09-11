@@ -118,7 +118,8 @@ public final class WatchCommand implements CliCommand {
                                 global,
                                 jdksDir,
                                 "jk watch run",
-                                in.flag("no-sidecars").orElse(false))
+                                in.flag("no-sidecars").orElse(false),
+                                recompiler(global))
                         .run(projectDir, AppWatchLoop.cache(cacheOverride), rest);
             case "compile", "test", "build" -> verbLoop(verb, projectDir, global, debounceMs);
             default -> {
@@ -126,6 +127,13 @@ public final class WatchCommand implements CliCommand {
                 yield Exit.USAGE;
             }
         };
+    }
+
+    /** The dev loop's recompile: the same single-plan-or-workspace choice as {@code jk compile}. */
+    private static AppWatchLoop.Compiler recompiler(GlobalOptions global) {
+        var labels = new CompileRun.Labels("Watch", "Recompiled", "Compile failed");
+        return (projectDir, cache) ->
+                CompileRun.resolve(projectDir, null, null, false, null).run(labels, global, cache) == 0;
     }
 
     private static int verbLoop(String verb, Path projectDir, GlobalOptions global, long debounceMs) throws Exception {

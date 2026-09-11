@@ -152,12 +152,7 @@ final class EngineEventDecoder {
                         if (listener != null) listener.planFinish(result);
                         return result;
                     }
-                    case EngineProtocol.WORKSPACE_FINISH -> {
-                        BuildPlanResult result = planResultOf(
-                                line, "test", Duration.ofNanos(System.nanoTime() - startNanos), diagnostics);
-                        if (listener != null) listener.planFinish(result);
-                        return result;
-                    }
+                    case EngineProtocol.WORKSPACE_FINISH -> throw notASinglePlan();
                     case EngineProtocol.ERROR ->
                         throw EngineWireException.fromJsonLine(line, "jk engine: run failed: ");
                     default -> dispatch(type, line, listener, diagnostics::add);
@@ -168,25 +163,15 @@ final class EngineEventDecoder {
     }
 
     /**
-     * A workspace terminal read by a single-plan reader. The engine answers a compile on a
-     * workspace member in the workspace vocabulary — prerequisites packaged, the member compiled,
-     * one {@code workspace-finish} — while {@code jk watch run} and every other hosted single-plan
-     * caller asked for one plan. The outcome is the same kind of fact either way, so it ends the
-     * read instead of leaving the caller to report a closed connection on a job the engine
-     * recorded green.
+     * A single-plan reader met {@code workspace-finish}: the engine forked the request to the
+     * workspace orchestrator, so the caller should have read it as a workspace. A client bug, never
+     * a result — the plan events already folded into one step list belong to several modules.
      */
-    static BuildPlanResult planResultOf(
-            String workspaceFinishLine, String planName, Duration took, List<BuildPlanResult.Diagnostic> diagnostics) {
-        WorkspaceFinishEvent e = WorkspaceFinishEvent.decode(workspaceFinishLine);
-        return new BuildPlanResult(
-                planName,
-                e.success() && !e.cancelled(),
-                took,
-                List.of(),
-                List.of(),
-                diagnostics,
-                e.cancelled(),
-                e.cancelled());
+    static EngineWireException notASinglePlan() {
+        return new EngineWireException(
+                EngineProtocol.ERR_PROTOCOL,
+                "jk read a workspace result as a single plan (this is a jk bug): the engine answered in the"
+                        + " workspace vocabulary because the working directory is a workspace root or member");
     }
 
     /**

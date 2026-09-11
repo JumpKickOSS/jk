@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.BuildPlanListener;
@@ -9,6 +10,7 @@ import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
+import cc.jumpkick.wire.protocol.EngineWireException;
 import cc.jumpkick.wire.protocol.ProtoEvents;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
 import cc.jumpkick.wire.protocol.TimelineEvent;
@@ -84,67 +86,30 @@ class EngineEventDecoderStreamTest {
     }
 
     /**
-     * A compile on a workspace member comes back in the workspace vocabulary. The single-plan
-     * readers end on that terminal too, instead of reading to EOF and reporting a closed connection
-     * on a job the engine recorded green.
+     * A workspace terminal on a single-plan read is a client bug: the caller chose the single-plan
+     * reader for a workspace root or member. Both single-plan readers refuse it loudly rather than
+     * folding several modules' plans into one green result.
      */
     @Test
-    void a_workspace_terminal_ends_the_single_plan_read() throws Exception {
-        BufferedReader reader = stream(
-                ProtoLifecycle.jobStart(43, "compile", "/ws/app", 9),
-                new WorkspaceFinishEvent(true, 0, List.of(), false).encode(),
-                ProtoLifecycle.jobFinish(9));
+    void a_workspace_terminal_on_a_single_plan_read_is_refused_by_both_readers() {
+        String terminal = new WorkspaceFinishEvent(true, 0, List.of(), false).encode();
 
-        BuildPlanResult result =
-                EngineEventDecoder.streamSingleBuildPlanEvents(reader, steps -> new BuildPlanListener() {}, null, null);
-
-        assertThat(result.success()).isTrue();
-        assertThat(result.cancelled()).isFalse();
+        assertThatThrownBy(() -> EngineEventDecoder.streamSingleBuildPlanEvents(
+                        stream(ProtoLifecycle.jobStart(43, "compile", "/ws/app", 9), terminal),
+                        steps -> new BuildPlanListener() {},
+                        null,
+                        null))
+                .isInstanceOf(EngineWireException.class)
+                .hasMessageContaining("workspace vocabulary");
         assertThat(ActiveJobs.snapshot()).isEmpty();
-    }
 
-    @Test
-    void a_failed_or_cancelled_workspace_terminal_is_not_a_green_plan() throws Exception {
-        BuildPlanResult failed = EngineEventDecoder.streamSingleBuildPlanEvents(
-                stream(new WorkspaceFinishEvent(false, 1, List.of("javac: 1 error"), false).encode()),
-                steps -> new BuildPlanListener() {},
-                null,
-                null);
-        assertThat(failed.success()).isFalse();
-        assertThat(failed.cancelled()).isFalse();
-
-        BuildPlanResult cancelled = EngineEventDecoder.streamSingleBuildPlanEvents(
-                stream(new WorkspaceFinishEvent(true, 0, List.of(), true).encode()),
-                steps -> new BuildPlanListener() {},
-                null,
-                null);
-        assertThat(cancelled.success()).isFalse();
-        assertThat(cancelled.cancelled()).isTrue();
-    }
-
-    @Test
-    void the_hosted_decoder_ends_on_a_workspace_terminal_and_hands_the_listener_the_result() throws Exception {
-        BuildPlanResult[] seen = new BuildPlanResult[1];
-        BufferedReader reader =
-                stream(ProtoEvents.planDone(0), new WorkspaceFinishEvent(true, 0, List.of(), false).encode());
-
-        var finish = WireStream.pumpJob(
-                reader,
-                null,
-                EnginePluginAdapter.hostedDecoder(
-                        "compile",
-                        steps -> new BuildPlanListener() {
-                            @Override
-                            public void planFinish(BuildPlanResult result) {
-                                seen[0] = result;
-                            }
-                        },
-                        (type, line) -> {},
-                        null));
-
-        assertThat(finish.result().success()).isTrue();
-        assertThat(finish.result().planName()).isEqualTo("compile");
-        assertThat(seen[0]).isSameAs(finish.result());
+        assertThatThrownBy(() -> WireStream.pumpJob(
+                        stream(ProtoEvents.planDone(0), terminal),
+                        null,
+                        EnginePluginAdapter.hostedDecoder(
+                                "compile", steps -> new BuildPlanListener() {}, (type, line) -> {}, null)))
+                .isInstanceOf(EngineWireException.class)
+                .hasMessageContaining("workspace vocabulary");
     }
 
     @Test
