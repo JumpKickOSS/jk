@@ -5,6 +5,7 @@ import static cc.jumpkick.engine.http.JsonFields.number;
 import static cc.jumpkick.engine.http.JsonFields.object;
 import static cc.jumpkick.engine.http.JsonFields.objects;
 import static cc.jumpkick.engine.http.JsonFields.string;
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.jobs.JobSpec;
@@ -70,7 +71,7 @@ class McpGuardsResourceTest {
 
     @SuppressWarnings("unchecked")
     private static Map<String, Object> resp(String body) {
-        return (Map<String, Object>) MiniJson.parse(body);
+        return (Map<String, Object>) requireNonNull(MiniJson.parse(body));
     }
 
     private static String text(String body) {
@@ -99,7 +100,8 @@ class McpGuardsResourceTest {
                         + root.toString().replace("\\", "\\\\") + "\"}}}");
 
         @SuppressWarnings("unchecked")
-        Map<String, Object> catalog = (Map<String, Object>) MiniJson.parse(text(read(mcp, 4, "jk://guards")));
+        Map<String, Object> catalog =
+                (Map<String, Object>) requireNonNull(MiniJson.parse(text(read(mcp, 4, "jk://guards"))));
         List<Map<String, Object>> rules = objects(catalog, "rules");
         assertThat(rules).singleElement().satisfies(r -> {
             assertThat(r.get("id")).isEqualTo("no-todo");
@@ -111,7 +113,8 @@ class McpGuardsResourceTest {
         assertThat(catalog).containsKeys("rulesSha", "baselineSha");
 
         @SuppressWarnings("unchecked")
-        Map<String, Object> card = (Map<String, Object>) MiniJson.parse(text(read(mcp, 5, "jk://guards/no-todo")));
+        Map<String, Object> card =
+                (Map<String, Object>) requireNonNull(MiniJson.parse(text(read(mcp, 5, "jk://guards/no-todo"))));
         List<Map<String, Object>> one = objects(card, "rules");
         assertThat(one).singleElement().satisfies(r -> assertThat(r.get("id")).isEqualTo("no-todo"));
 

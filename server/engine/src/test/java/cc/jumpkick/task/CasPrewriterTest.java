@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.task;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
@@ -54,8 +55,10 @@ class CasPrewriterTest {
             assertThat(outputs.get("A.class")).isEqualTo(Hashing.sha256Hex("AAAAAA".getBytes()));
             assertThat(outputs.get("B.class")).isEqualTo(Hashing.sha256Hex("BBBBBB".getBytes()));
             // Both shas should be hard-linked into the CAS.
-            assertThat(Files.exists(cas.pathFor(outputs.get("A.class")))).isTrue();
-            assertThat(Files.exists(cas.pathFor(outputs.get("B.class")))).isTrue();
+            assertThat(Files.exists(cas.pathFor(requireNonNull(outputs.get("A.class")))))
+                    .isTrue();
+            assertThat(Files.exists(cas.pathFor(requireNonNull(outputs.get("B.class")))))
+                    .isTrue();
         }
     }
 
@@ -73,7 +76,8 @@ class CasPrewriterTest {
         Map<String, String> outputs = prewriter.finish();
 
         assertThat(outputs).containsEntry("Late.class", Hashing.sha256Hex("late-content".getBytes()));
-        assertThat(Files.exists(cas.pathFor(outputs.get("Late.class")))).isTrue();
+        assertThat(Files.exists(cas.pathFor(requireNonNull(outputs.get("Late.class")))))
+                .isTrue();
     }
 
     @Test

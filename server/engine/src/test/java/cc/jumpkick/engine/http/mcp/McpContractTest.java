@@ -184,7 +184,7 @@ class McpContractTest {
     void initialize_capabilities_match_the_implemented_method_set() {
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}");
         @SuppressWarnings("unchecked")
-        Map<String, Object> resp = (Map<String, Object>) MiniJson.parse(body);
+        Map<String, Object> resp = (Map<String, Object>) requireNonNull(MiniJson.parse(body));
         Map<String, Object> result = object(resp, "result");
         Map<String, Object> caps = object(result, "capabilities");
         assertThat(caps).containsKeys("tools", "resources", "prompts", "logging");
@@ -232,7 +232,7 @@ class McpContractTest {
     void initialized_with_an_id_gets_an_empty_result_while_the_notification_form_stays_silent() {
         String withId = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"notifications/initialized\"}");
         @SuppressWarnings("unchecked")
-        Map<String, Object> resp = (Map<String, Object>) MiniJson.parse(withId);
+        Map<String, Object> resp = (Map<String, Object>) requireNonNull(MiniJson.parse(withId));
         assertThat(resp.get("id")).isEqualTo(7.0);
         assertThat(resp.get("result")).isEqualTo(Map.of());
         assertThat(mcp.handleBody("{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}"))
@@ -245,7 +245,7 @@ class McpContractTest {
     void empty_batch_is_a_single_invalid_request_error_object() {
         String body = mcp.handleBody("[]");
         @SuppressWarnings("unchecked")
-        Map<String, Object> resp = (Map<String, Object>) MiniJson.parse(body);
+        Map<String, Object> resp = (Map<String, Object>) requireNonNull(MiniJson.parse(body));
         Map<String, Object> err = object(resp, "error");
         assertThat(err.get("code")).isEqualTo(-32600.0);
         assertThat(resp.get("id")).isNull();
@@ -264,7 +264,7 @@ class McpContractTest {
         Object parsed = MiniJson.parse(body);
         assertThat(parsed).isInstanceOf(List.class);
         @SuppressWarnings("unchecked")
-        List<Map<String, Object>> rows = (List<Map<String, Object>>) parsed;
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) requireNonNull(parsed);
         assertThat(rows).hasSize(2);
         for (Map<String, Object> row : rows) {
             assertThat(row.get("id")).isNull();
@@ -294,7 +294,7 @@ class McpContractTest {
         String failing = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\","
                 + "\"params\":{\"name\":\"jk_jdk\",\"arguments\":{\"action\":\"install\",\"spec\":\"\"}}}");
         @SuppressWarnings("unchecked")
-        Map<String, Object> resp = (Map<String, Object>) MiniJson.parse(failing);
+        Map<String, Object> resp = (Map<String, Object>) requireNonNull(MiniJson.parse(failing));
         Map<String, Object> result = object(resp, "result");
         assertThat(result.get("isError")).isEqualTo(true);
         String okBody = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\","
@@ -324,7 +324,7 @@ class McpContractTest {
                 + "\",\"arguments\":"
                 + argsJson
                 + "}}");
-        Map<String, Object> resp = (Map<String, Object>) MiniJson.parse(body);
+        Map<String, Object> resp = (Map<String, Object>) requireNonNull(MiniJson.parse(body));
         Map<String, Object> result = object(resp, "result");
         return object(result, "structuredContent");
     }

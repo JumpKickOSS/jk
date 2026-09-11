@@ -515,7 +515,7 @@ class EngineServerRequestTest extends EngineServerHarness {
             assertThat(planFinish).isNotNull();
             assertThat(Jsonl.bool(planFinish, "success", false)).isTrue();
             assertThat(Jsonl.str(planFinish, "toolMainClass")).isEqualTo("com.example.Main");
-            List<String> classpath = Jsonl.strArray(planFinish, "toolClasspath");
+            List<String> classpath = Jsonl.strArray(requireNonNull(planFinish), "toolClasspath");
             assertThat(classpath).hasSize(1);
             // The engine (not the client) fetched the jar — the classpath entry exists on disk.
             assertThat(Files.isRegularFile(Path.of(classpath.get(0)))).isTrue();

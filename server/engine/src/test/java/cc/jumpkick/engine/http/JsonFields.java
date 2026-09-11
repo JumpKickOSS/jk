@@ -20,7 +20,7 @@ public final class JsonFields {
     /** The top-level object a JSON document decodes to. */
     @SuppressWarnings("unchecked")
     public static Map<String, Object> parseObject(String json) {
-        return (Map<String, Object>) MiniJson.parse(json);
+        return (Map<String, Object>) requireNonNull(MiniJson.parse(json));
     }
 
     /** The member {@code key}, which must be present. */

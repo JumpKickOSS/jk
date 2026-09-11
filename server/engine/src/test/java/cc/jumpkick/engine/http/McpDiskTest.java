@@ -3,6 +3,7 @@ package cc.jumpkick.engine.http;
 
 import static cc.jumpkick.engine.http.JsonFields.number;
 import static cc.jumpkick.engine.http.JsonFields.object;
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.jobs.JobSpec;
@@ -86,7 +87,7 @@ class McpDiskTest {
 
     @SuppressWarnings("unchecked")
     private static Map<String, Object> structured(String body) {
-        Map<String, Object> resp = (Map<String, Object>) MiniJson.parse(body);
+        Map<String, Object> resp = (Map<String, Object>) requireNonNull(MiniJson.parse(body));
         Map<String, Object> result = object(resp, "result");
         return object(result, "structuredContent");
     }

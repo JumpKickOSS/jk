@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http.mcp;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.api.JsonOut;
@@ -49,7 +50,7 @@ class McpTestCountShapeTest {
 
     @SuppressWarnings("unchecked")
     private static Map<String, Object> record(String json) {
-        return (Map<String, Object>) MiniJson.parse(json);
+        return (Map<String, Object>) requireNonNull(MiniJson.parse(json));
     }
 
     @Test

@@ -5,6 +5,7 @@ import static cc.jumpkick.engine.http.JsonFields.number;
 import static cc.jumpkick.engine.http.JsonFields.object;
 import static cc.jumpkick.engine.http.JsonFields.objects;
 import static cc.jumpkick.engine.http.JsonFields.string;
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.api.HttpLive;
@@ -68,7 +69,7 @@ class McpHandlerTest {
     void initialize_returns_server_info() {
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}");
         @SuppressWarnings("unchecked")
-        Map<String, Object> resp = (Map<String, Object>) MiniJson.parse(body);
+        Map<String, Object> resp = (Map<String, Object>) requireNonNull(MiniJson.parse(body));
         assertThat(resp.get("jsonrpc")).isEqualTo("2.0");
         assertThat(resp.get("id")).isEqualTo(1.0); // MiniJson numbers are doubles
         Map<String, Object> result = object(resp, "result");
@@ -88,7 +89,7 @@ class McpHandlerTest {
     void tools_list_includes_status_and_build() {
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}");
         @SuppressWarnings("unchecked")
-        Map<String, Object> resp = (Map<String, Object>) MiniJson.parse(body);
+        Map<String, Object> resp = (Map<String, Object>) requireNonNull(MiniJson.parse(body));
         Map<String, Object> result = object(resp, "result");
         List<Map<String, Object>> tools = objects(result, "tools");
         assertThat(tools.stream().map(t -> t.get("name")).toList())
@@ -108,7 +109,7 @@ class McpHandlerTest {
         String body = mcp.handleBody(
                 "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"jk_status\",\"arguments\":{}}}");
         @SuppressWarnings("unchecked")
-        Map<String, Object> resp = (Map<String, Object>) MiniJson.parse(body);
+        Map<String, Object> resp = (Map<String, Object>) requireNonNull(MiniJson.parse(body));
         Map<String, Object> result = object(resp, "result");
         List<Map<String, Object>> content = objects(result, "content");
         String text = string(content.getFirst(), "text");
@@ -134,7 +135,7 @@ class McpHandlerTest {
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"tools/call\","
                 + "\"params\":{\"name\":\"jk_build\",\"arguments\":{\"dir\":\"/tmp/demo\"}}}");
         @SuppressWarnings("unchecked")
-        Map<String, Object> resp = (Map<String, Object>) MiniJson.parse(body);
+        Map<String, Object> resp = (Map<String, Object>) requireNonNull(MiniJson.parse(body));
         Map<String, Object> result = object(resp, "result");
         String text = (String) objects(result, "content").getFirst().get("text");
         assertThat(text).isEqualTo("build accepted"); // summary only; payload is structured
@@ -215,7 +216,7 @@ class McpHandlerTest {
         String body = withLive.handleBody(
                 "{\"jsonrpc\":\"2.0\",\"id\":12,\"method\":\"tools/call\",\"params\":{\"name\":\"jk_status\",\"arguments\":{}}}");
         @SuppressWarnings("unchecked")
-        Map<String, Object> resp = (Map<String, Object>) MiniJson.parse(body);
+        Map<String, Object> resp = (Map<String, Object>) requireNonNull(MiniJson.parse(body));
         Map<String, Object> result = object(resp, "result");
         Map<String, Object> structured = object(result, "structuredContent");
         List<Map<String, Object>> jobRows = objects(structured, "jobs");
@@ -307,7 +308,7 @@ class McpHandlerTest {
     void tools_list_includes_the_agent_followup_tools() {
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":20,\"method\":\"tools/list\"}");
         @SuppressWarnings("unchecked")
-        Map<String, Object> resp = (Map<String, Object>) MiniJson.parse(body);
+        Map<String, Object> resp = (Map<String, Object>) requireNonNull(MiniJson.parse(body));
         Map<String, Object> result = object(resp, "result");
         List<Map<String, Object>> tools = objects(result, "tools");
         assertThat(tools.stream().map(t -> t.get("name")).toList())
@@ -561,7 +562,7 @@ class McpHandlerTest {
     void unknown_method_is_json_rpc_error() {
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"nope\"}");
         @SuppressWarnings("unchecked")
-        Map<String, Object> resp = (Map<String, Object>) MiniJson.parse(body);
+        Map<String, Object> resp = (Map<String, Object>) requireNonNull(MiniJson.parse(body));
         assertThat(resp.get("error")).isNotNull();
         Map<String, Object> err = object(resp, "error");
         assertThat(err.get("code")).isEqualTo(-32601.0);

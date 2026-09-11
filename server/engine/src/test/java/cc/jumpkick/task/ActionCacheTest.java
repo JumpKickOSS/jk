@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.task;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -260,7 +261,8 @@ class ActionCacheTest {
         Path restored = tempDir.resolve("restored");
         cache.restore(cache.lookup("key1").orElseThrow(), restored);
 
-        Path casBlob = cas.pathFor(cache.lookup("key1").orElseThrow().outputs().get("a.class"));
+        Path casBlob = cas.pathFor(
+                requireNonNull(cache.lookup("key1").orElseThrow().outputs().get("a.class")));
         Path live = restored.resolve("a.class");
         assertThat(Files.isSameFile(casBlob, live)).isFalse();
 
