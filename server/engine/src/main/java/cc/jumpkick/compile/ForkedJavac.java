@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compile;
 
+import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.PluginAot;
 import cc.jumpkick.engine.plugin.PluginClient;
@@ -238,6 +239,12 @@ public final class ForkedJavac {
                 .op(PluginProtocol.OP_COMPILE, null, "jk-java-compiler")
                 .configInt("release", req.release())
                 .layout(layout);
+        // A diagnostic the shell that ran jk asked for reaches the worker through the spec: the
+        // worker's own environment is the engine's, which that shell never sees.
+        String phasesLog = BuildEnv.ambient().apply(PluginProtocol.COMPILE_PHASES_ENV);
+        if (phasesLog != null && !phasesLog.isBlank()) {
+            sw.configString(PluginProtocol.CONFIG_PHASES_LOG, phasesLog.trim());
+        }
         if (req.scalaVersion() != null && !req.scalaVersion().isBlank()) {
             sw.configString("scalaVersion", req.scalaVersion());
         }

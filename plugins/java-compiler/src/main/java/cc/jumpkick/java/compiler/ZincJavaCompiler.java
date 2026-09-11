@@ -170,7 +170,7 @@ public final class ZincJavaCompiler {
         List<Path> processorPath = job.processorPath();
         RecordingJavaCompiler javac = null;
         ProcessorLoad processors = ProcessorLoad.none();
-        CompilePhases phases = CompilePhases.open();
+        CompilePhases phases = CompilePhases.open(job.phasesLog());
         try {
             Files.createDirectories(classOutput);
             Files.createDirectories(workdir);

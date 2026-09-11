@@ -5,6 +5,7 @@ import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginManifest;
+import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.PluginReply;
 import cc.jumpkick.plugin.protocol.PluginSpec;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
@@ -135,7 +136,11 @@ public final class JavaIncrementalCompiler implements Plugin {
                 spec.sourceOutput(),
                 release,
                 spec.args(),
-                spec.processorClasspath());
+                spec.processorClasspath(),
+                spec.config()
+                        .stringOpt(PluginProtocol.CONFIG_PHASES_LOG)
+                        .map(Path::of)
+                        .orElse(null));
     }
 
     static int planSpec(Path specFile, ProtocolWriter out) throws Exception {

@@ -20,7 +20,21 @@ public record JavaCompileJob(
         @Nullable Path sourceOutput,
         int release,
         List<String> extraOptions,
-        List<Path> processorPath) {
+        List<Path> processorPath,
+        @Nullable Path phasesLog) {
+
+    /** A job that records no phase timings. */
+    public JavaCompileJob(
+            List<Path> sources,
+            List<Path> classpath,
+            Path classOutput,
+            @Nullable Path workdir,
+            @Nullable Path sourceOutput,
+            int release,
+            List<String> extraOptions,
+            List<Path> processorPath) {
+        this(sources, classpath, classOutput, workdir, sourceOutput, release, extraOptions, processorPath, null);
+    }
 
     public JavaCompileJob {
         sources = List.copyOf(sources);

@@ -109,4 +109,14 @@ public final class PluginProtocol {
     public static final String SEVERITY = "sev";
     public static final String COL = "col";
     public static final String STATUS = "status";
+
+    /**
+     * Set in the shell that runs {@code jk}, names a file the compiler worker appends one line of
+     * phase timings to per module. The engine forwards it to the worker as the {@link
+     * #CONFIG_PHASES_LOG} config value, because the worker's own environment is the engine's.
+     */
+    public static final String COMPILE_PHASES_ENV = "JK_COMPILE_PHASES";
+
+    /** Compile-spec config key carrying {@link #COMPILE_PHASES_ENV}'s value. */
+    public static final String CONFIG_PHASES_LOG = "phasesLog";
 }

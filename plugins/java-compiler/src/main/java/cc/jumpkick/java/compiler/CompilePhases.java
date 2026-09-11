@@ -12,7 +12,7 @@ import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Where one compile's wall time went, when {@code JK_COMPILE_PHASES} names a file to append to.
+ * Where one compile's wall time went, when the job names a file to append to.
  *
  * <p>A module's {@code compile-java} is a Zinc invocation wrapped in setup: loading annotation
  * processors, converting sources and classpath to Zinc's virtual files, reading the previous
@@ -20,14 +20,12 @@ import org.jspecify.annotations.Nullable;
  * files and persisting the analysis. From outside the worker all of that is one duration, which is
  * why a platform difference in it cannot be attributed to anything.
  *
- * <p>Off unless the variable is set: the timing costs a handful of clock reads, but the file it
- * writes is a measurement artifact and no build should produce one it was not asked for. The worker
- * inherits the engine's environment, so the variable must be set in the shell the engine starts
- * from — {@code jk engine stop}, then build with it exported.
+ * <p>Off unless the job carries a sink: the timing costs a handful of clock reads, but the file it
+ * writes is a measurement artifact and no build should produce one it was not asked for. The sink
+ * comes from the shell that ran {@code jk} ({@code JK_COMPILE_PHASES}), forwarded by the engine in
+ * the compile spec; the worker's own environment is the engine's and is not consulted.
  */
 final class CompilePhases {
-
-    private static final String ENV = "JK_COMPILE_PHASES";
 
     private final @Nullable Path sink;
     private final Clock clock;
@@ -40,11 +38,9 @@ final class CompilePhases {
         this.mark = clock.nanos();
     }
 
-    /** A recorder that writes where {@code JK_COMPILE_PHASES} points, or one that does nothing. */
-    static CompilePhases open() {
-        String path = System.getenv(ENV);
-        if (path == null || path.isBlank()) return new CompilePhases(null, Clock.SYSTEM);
-        return new CompilePhases(Path.of(path.trim()), Clock.SYSTEM);
+    /** A recorder that appends to {@code sink}, or one that does nothing when there is none. */
+    static CompilePhases open(@Nullable Path sink) {
+        return new CompilePhases(sink, Clock.SYSTEM);
     }
 
     /** Close the phase named {@code name} and open the next. */
