@@ -34,7 +34,7 @@ public final class PluginMain {
         // A worker's stderr is merged into its protocol stream, where the engine keeps a bounded
         // tail of non-protocol lines: one line per record, no redaction (a worker holds no
         // declarations), at the same shape the engine log uses.
-        Log.install(System.err, System.Logger.Level.INFO, UnaryOperator.identity());
+        Log.install(System.Logger.Level.INFO, UnaryOperator.identity());
         List<Plugin> plugins = new ArrayList<>();
         for (Plugin p : ServiceLoader.load(Plugin.class)) {
             plugins.add(p);

@@ -1029,3 +1029,40 @@ per      = "file"
 cap      = 0
 baseline = true
 why      = "a hand-built JSON line spells its own separator and escaping, and every second speller has drifted from the first"
+
+# G96. A jk process writes its diagnostics through one leveled logger. A print has no level to
+# filter on, misses the size cap the engine log rolls at, and skips the redaction every logged line
+# passes through; Log is the one class that binds the stream. The CLI's presentation is out of
+# scope — it owns the terminal.
+[guards.engine-log-owner]
+kind       = "forbid"
+signatures = ["@jdk-system-out"]
+scope      = ["server/*", "shared/*"]
+owner      = "cc.jumpkick.host.Log"
+instead    = "cc.jumpkick.host.Log.debug / info / warn / error, with Log.detail(key, value, …) for structure"
+why        = "a print has no level, misses the engine log's size cap and skips its redaction; the logger is the one sink"
+
+# G97. A catch of Exception, Throwable or RuntimeException whose body is only a comment has written
+# down its intent and dropped its evidence. This rule measures the sites; the ratchet below holds
+# the count — `owner` is the whole main tree because a match is tolerated wherever the ratchet still
+# lists it, never legal anywhere in particular.
+[guards.swallowed-broad-catch]
+kind     = "text"
+files    = ["**/src/main/java/**/*.java"]
+blank    = "comments"
+pattern  = 'catch\((?:final )?(?:[\w.]+\|)*(?:Exception|Throwable|RuntimeException)(?:\|[\w.]+)*(?: \w+)?\)\{\}'
+owner    = ["**/src/main/java/**/*.java"]
+hit      = 'try { x(); } catch (Exception e) { /* best-effort */ }'
+miss     = 'try { x(); } catch (Exception e) { Log.debug("x: best-effort", e); }'
+instead  = "Log.debug(\"<method>: <why it is tolerated>\", e), or narrow the catch to the exception the body expects"
+why      = "a broad catch that only comments has written down its intent and dropped its evidence"
+
+# G98. The ratchet over swallowed-broad-catch: per file, the count of comment-only broad catches,
+# baselined at the swept count — zero, once every one got a debug line — and only ever lower.
+[guards.swallowed-broad-catch-ratchet]
+kind     = "metric"
+measure  = "matches:swallowed-broad-catch"
+per      = "file"
+cap      = 0
+baseline = true
+why      = "a broad catch that only comments has written down its intent and dropped its evidence"

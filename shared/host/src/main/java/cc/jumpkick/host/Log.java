@@ -100,6 +100,11 @@ public final class Log {
         };
     }
 
+    /** {@link #install(PrintStream, System.Logger.Level, UnaryOperator)} on this process's {@code System.err}. */
+    public static void install(System.Logger.Level level, UnaryOperator<String> redact) {
+        install(System.err, level, redact);
+    }
+
     /**
      * Bind the JDK logging backend to {@code out}: every record on this process's root logger at
      * {@code level} or above is written as one {@code HH:mm:ss.SSS LEVEL message} line (a cause

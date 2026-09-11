@@ -130,7 +130,7 @@ public final class EngineMain {
      * logs in one shape, and again in {@link #run} once the capped sink owns the stream.
      */
     private static void installLogging(JkEngineConfig config) {
-        Log.install(System.err, config.logThreshold(), SecretRedactor::redactKnown);
+        Log.install(config.logThreshold(), SecretRedactor::redactKnown);
     }
 
     /**

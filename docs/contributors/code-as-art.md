@@ -969,6 +969,9 @@ letter — is the Gradle-side follow-up recorded in `guard-parity.txt`.
 | G93 | `json-concat-ratchet` (jk-guards.toml, `metric`) | a file's count of hand-built JSON fragments growing past its baseline — the count only falls, until the pattern is a ban | metric, `matches:json-concat` per file, baselined and tightened on every build | `json-concat-ratchet` (metric) |
 | G94 | `schema-compared-to-its-constant` (jk-guards.toml, `text`) | a schema field compared to an integer literal (`schema >= 3`) instead of to its `SCHEMA` constant — G85 pins the constant, this pins every comparison against it | text, no match tree-wide | `schema-compared-to-its-constant` (text) |
 | G95 | `git-writes-are-pinned` (jk-guards.toml, `text`) | a git verb after `-C <dir>` that is not a known read — the write searches upward and lands in whatever repository encloses the path, not the one meant | text, no match tree-wide | `git-writes-are-pinned` (text) |
+| G96 | `engine-log-owner` (jk-guards.toml, `forbid`) | a write to System.out / System.err, printStackTrace() or dumpStack() in server or shared main code outside `cc.jumpkick.host.Log` — a print has no level, misses the engine log's size cap and skips its redaction | forbid, `@jdk-system-out`, scope `server/*` and `shared/*` | `engine-log-owner` (forbid) |
+| G97 | `swallowed-broad-catch` (jk-guards.toml, `text`) | a catch of Exception, Throwable or RuntimeException whose body is only a comment, in main code; measured here, held by G98 | text, `**/src/main/java`, comments blanked; measured only (the owner is the tree) | `swallowed-broad-catch` (text) |
+| G98 | `swallowed-broad-catch-ratchet` (jk-guards.toml, `metric`) | a file's count of comment-only broad catches growing past its baseline — zero since every one got a debug line carrying the exception | metric, `matches:swallowed-broad-catch` per file, baselined and tightened on every build | `swallowed-broad-catch-ratchet` (metric) |
 <!-- guards:end -->
 
 `checkCliRuntimeClasspath` and `checkCliNoParseTypes` predate the letters.
@@ -1011,6 +1014,7 @@ by id, kind and why. This block is a `generated` guard's rendering
 | cli-runtime-classpath | depend | the CLI runtime is the native image; a test or build-time library there is a mis-scoped dependency |
 | cli-runtime-modules | layers | a CLI edge to an engine-side module puts engine code in the native image; shared/ide is client-side by construction (the IDE file generators the CLI and the engine both link) |
 | clock-owner | forbid | a wall-clock read the caller cannot move is a test that has to sleep, and a sleep asserts a duration instead of a condition |
+| engine-log-owner | forbid | a print has no level, misses the engine log's size cap and skips its redaction; the logger is the one sink |
 | file-size | metric | a file that no longer fits a context window no longer fits a reviewer |
 | git-writes-are-pinned | text | a write that searches upward mutates whichever repository encloses the path, not the one meant |
 | guard-kinds-doc | generated | a kind the docs describe and the loader does not know is a rule nobody can write |
@@ -1056,6 +1060,8 @@ by id, kind and why. This block is a `generated` guard's rendering
 | ship-layout-installer-jk | parity | install.sh reads <dir-of-binary>/<name>/; a dist that writes another name is one the installer walks past |
 | single-home-root | text | jk has one home; a layout it does not have, named anywhere, misleads the reader |
 | spa-no-class-key | text | the dashboard hand-types every key it reads, so a retired key there is silent |
+| swallowed-broad-catch | text | a broad catch that only comments has written down its intent and dropped its evidence |
+| swallowed-broad-catch-ratchet | metric | a broad catch that only comments has written down its intent and dropped its evidence |
 | target-dir | vocabulary | the output directory is named once; renaming it must not miss a spelling |
 | task-names | vocabulary | a step name typed by hand is an edge that quietly does not exist |
 | test-fixtures-stay-out-of-production | text | a testFixtures variant on a production configuration ships test code in a worker POM and the native image |
