@@ -7,6 +7,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.model.JkBuild;
+import java.util.List;
+import org.assertj.core.groups.Tuple;
 import org.junit.jupiter.api.Test;
 
 class JkBuildParserRepositoryTest {
@@ -61,6 +63,85 @@ class JkBuildParserRepositoryTest {
                 """))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("repositories.jk-local is reserved");
+    }
+
+    @Test
+    void a_plaintext_http_repository_is_refused_by_name_unless_it_allows_insecure() {
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+                [repositories.mirror]
+                url = "http://nexus.corp.example/maven"
+                """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("repositories.mirror uses plaintext http:// (http://nexus.corp.example/maven)")
+                .hasMessageContaining("allow-insecure = true");
+        // The string form has nowhere to put the key, so it is refused the same way.
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+                [repositories]
+                mirror = "http://nexus.corp.example/maven"
+                """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("repositories.mirror uses plaintext http://");
+
+        JkBuild parsed = JkBuildParser.parse(PROJECT + """
+                [repositories.mirror]
+                url = "http://nexus.corp.example/maven"
+                allow-insecure = true
+                """);
+        assertThat(parsed.repositories().get(0).allowInsecure()).isTrue();
+        assertThat(parsed.repositories().get(0).allowUnverified()).isFalse();
+    }
+
+    @Test
+    void allow_unverified_is_parsed_and_defaults_to_false() {
+        JkBuild parsed = JkBuildParser.parse(PROJECT + """
+                [repositories.legacy]
+                url = "https://old.example/maven"
+                allow-unverified = true
+
+                [repositories.plain]
+                url = "https://repo.example/maven"
+                """);
+        assertThat(parsed.repositories())
+                .extracting(r -> r.name(), r -> r.allowUnverified())
+                .containsExactly(Tuple.tuple("legacy", true), Tuple.tuple("plain", false));
+    }
+
+    @Test
+    void the_trust_keys_are_refused_on_central() {
+        for (String key : List.of("allow-insecure", "allow-unverified")) {
+            assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+                    [repositories.central]
+                    url = "https://repo.maven.apache.org/maven2/"
+                    %s = true
+                    """.formatted(key)))
+                    .as(key)
+                    .isInstanceOf(JkBuildParseException.class)
+                    .hasMessageContaining("repositories.central is Maven Central")
+                    .hasMessageContaining("allow-insecure and allow-unverified are not accepted on it");
+        }
+    }
+
+    @Test
+    void a_trust_key_must_be_a_boolean() {
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+                [repositories.mirror]
+                url = "https://repo.example/maven"
+                allow-unverified = "yes"
+                """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("repositories.mirror.allow-unverified must be true or false");
+    }
+
+    @Test
+    void an_unknown_repository_key_fails_the_parse() {
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+                [repositories.mirror]
+                url = "https://repo.example/maven"
+                allow-insecrue = true
+                """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("repositories.mirror unknown key `allow-insecrue`")
+                .hasMessageContaining("allow-insecure");
     }
 
     @Test

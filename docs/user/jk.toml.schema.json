@@ -122,7 +122,26 @@
     },
     "repositories": {
       "type": "object",
-      "description": "[repositories] table; keys are documented in docs/user."
+      "description": "[repositories] table: one entry per remote, keyed by the name jk-lock.toml records as the source. An entry is a URL string or a table.",
+      "additionalProperties": {
+        "type": ["string", "object"],
+        "properties": {
+          "url": { "type": "string", "description": "Base URL: https://, s3://, gs://, or file://. Plaintext http:// needs allow-insecure." },
+          "token": { "type": "string", "description": "Bearer token; ${VAR} expands when the repository is used." },
+          "username": { "type": "string", "description": "Basic-auth user; ${VAR} expands when the repository is used." },
+          "password": { "type": "string", "description": "Basic-auth password; ${VAR} expands when the repository is used." },
+          "region": { "type": "string", "description": "Object-store region (s3://)." },
+          "endpoint": { "type": "string", "description": "Object-store endpoint override (MinIO, GCS interop)." },
+          "access-key": { "type": "string", "description": "Object-store access key; ${VAR} expands when the repository is used." },
+          "secret-key": { "type": "string", "description": "Object-store secret key; ${VAR} expands when the repository is used." },
+          "session-token": { "type": "string", "description": "Object-store session token; ${VAR} expands when the repository is used." },
+          "groups": { "type": "array", "items": { "type": "string" }, "description": "Exclusive Maven groups: exact or prefix.* patterns that resolve only from this repository." },
+          "allow-insecure": { "type": "boolean", "description": "Accept a plaintext http:// URL for this repository. Refused on central." },
+          "allow-unverified": { "type": "boolean", "description": "Pin an artifact this repository publishes no .sha256/.sha1 sidecar for; the lock summary counts them. Refused on central." }
+        },
+        "required": ["url"],
+        "additionalProperties": false
+      }
     },
     "profiles": {
       "type": "object",

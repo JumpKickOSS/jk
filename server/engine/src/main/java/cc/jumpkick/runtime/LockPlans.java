@@ -16,6 +16,7 @@ import cc.jumpkick.model.Variants;
 import cc.jumpkick.model.WorkspaceMerge;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.repo.LibraryRegistrySync;
+import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.resolver.pubgrub.UnsatisfiableException;
 import cc.jumpkick.run.BuildPlan;
@@ -61,6 +62,10 @@ public final class LockPlans {
      * of re-reading live files, so a manifest edited mid-resolution leaves a stale-reading lock.
      */
     public static final BuildPlanKey<String> MANIFESTS_SHA = BuildPlanKey.scalar("manifests-sha", String.class);
+
+    /** What the resolve step's downloads were checked against, for the lock summary line. */
+    public static final BuildPlanKey<RepoGroup.TrustSummary> TRUST =
+            BuildPlanKey.scalar("trust", RepoGroup.TrustSummary.class);
 
     /**
      * Build the default {@code jk lock} plan for one project directory: {@code parse-build} →
@@ -192,6 +197,7 @@ public final class LockPlans {
                                         LockPipeline.readIfPresent(dir),
                                         barObserver(ctx, observer, resolveEstimate, coordLabel),
                                         LockPipeline.of(ctx)));
+                        ctx.put(TRUST, pipeline.trust());
                     } catch (UnsatisfiableException e) {
                         ctx.error("verbatim", Errors.text(e));
                         throw new RuntimeException(e);
@@ -234,7 +240,7 @@ public final class LockPlans {
                 .build();
 
         return BuildPlan.builder(shape.planName())
-                .stateKeys(LOCKFILE, MANIFESTS_SHA)
+                .stateKeys(LOCKFILE, MANIFESTS_SHA, TRUST)
                 .addTask(parseBuild)
                 .addTask(resolve)
                 .addTask(lockPlugins)

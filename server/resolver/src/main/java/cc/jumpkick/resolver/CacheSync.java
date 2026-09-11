@@ -213,7 +213,8 @@ public final class CacheSync {
         Coordinate sourcesCoord =
                 new Coordinate(p.pkg.moduleGroup(), p.pkg.moduleArtifact(), p.pkg.version(), "sources", "jar");
         try {
-            MavenRepo.Fetched f = p.repo.fetchArtifact(sourcesCoord);
+            // Pinned: the lock's sources checksum is the authority, as for the main artifact.
+            MavenRepo.Fetched f = p.repo.fetchArtifact(sourcesCoord, p.expectedHex, () -> false);
             if (!f.sha256().equals(p.expectedHex)) {
                 return FetchResult.failure(p.pkg.name() + " sources: checksum mismatch");
             }

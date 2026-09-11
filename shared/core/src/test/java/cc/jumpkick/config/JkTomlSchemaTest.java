@@ -96,6 +96,17 @@ class JkTomlSchemaTest {
     }
 
     @Test
+    void repository_entry_properties_are_exactly_the_parser_s_repository_keys() throws Exception {
+        String schema = Files.readString(SCHEMA);
+        String entry = table(table(table(schema, "properties"), "repositories"), "additionalProperties");
+        assertThat(keysOf(table(entry, "properties")))
+                .containsExactlyInAnyOrderElementsOf(RepositoryToml.REPOSITORY_KEYS);
+        assertThat(Jsonl.bool(entry, "additionalProperties", true))
+                .as("an unknown key under [repositories.<name>] is what an editor should flag")
+                .isFalse();
+    }
+
+    @Test
     void the_schema_names_the_dependency_scope_tables_the_parser_reads() throws Exception {
         String schema = Files.readString(SCHEMA);
         for (Scope s : Scope.values()) {

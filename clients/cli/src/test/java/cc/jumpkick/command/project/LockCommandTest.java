@@ -45,6 +45,23 @@ class LockCommandTest {
     }
 
     @Test
+    void the_summary_names_what_the_downloads_were_not_checked_against(@TempDir Path tempDir) {
+        String plain = strip(LockCommand.lockSuccessTail(12, 0, List.of(), System.nanoTime(), tempDir));
+        assertThat(plain)
+                .startsWith("Lock successful. Resolved 12 dependencies ")
+                .doesNotContain("·");
+
+        String opted = strip(LockCommand.lockSuccessTail(12, 2, List.of("mirror"), System.nanoTime(), tempDir));
+        assertThat(opted)
+                .contains("Resolved 12 dependencies · 2 unverified (allowed) · insecure (allowed): mirror ")
+                .contains("took");
+    }
+
+    private static String strip(String ansi) {
+        return ansi.replaceAll("\u001b\\[[\\d;]*m", "");
+    }
+
+    @Test
     void init_add_lock_full_pipeline(@TempDir Path tempDir) throws Exception {
         // Set up a tiny graph: root -> leaf.
         maven.registerMetadata("com.foo", "leaf", "1.0");

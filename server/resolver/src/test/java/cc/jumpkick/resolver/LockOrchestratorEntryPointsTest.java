@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Dependency;
@@ -241,7 +242,9 @@ class LockOrchestratorEntryPointsTest {
     }
 
     private RepoGroup repos(Path dir) {
-        return RepoGroup.of(new MavenRepo("maven-stub", http.base(), new Http(), new Cas(dir.resolve("cache"))));
+        // No ~/.m2 adoption: the download legs are what these tests observe.
+        return RepoGroup.of(new MavenRepo(
+                "maven-stub", http.base(), new Http(), new Cas(dir.resolve("cache")), RepoCredential.ANONYMOUS, false));
     }
 
     private static JkBuild project(Map<Scope, List<Dependency>> byScope) {

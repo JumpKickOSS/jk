@@ -192,7 +192,7 @@ class EngineProtocolTest {
         assertThat(Jsonl.str(ProtoEvents.planFinish("/w", true), "kind")).isEqualTo("build");
         assertThat(Jsonl.str(ProtoEvents.planFinishSync("/w", true, 3, 4), "kind"))
                 .isEqualTo("sync");
-        assertThat(Jsonl.str(ProtoEvents.planFinishLock("/w", true, 1, 2, 3), "kind"))
+        assertThat(Jsonl.str(ProtoEvents.planFinishLock("/w", true, 1, 2, 3, 0, List.of()), "kind"))
                 .isEqualTo("lock");
     }
 
@@ -317,12 +317,15 @@ class EngineProtocolTest {
 
     @Test
     void goal_finish_lock_variant_carries_the_lockfile_counts() {
-        String json = ProtoEvents.planFinishLock("", true, 13, 2, 1);
+        String json = ProtoEvents.planFinishLock("", true, 13, 2, 1, 4, List.of("mirror"));
         assertThat(EngineProtocol.typeOf(json)).isEqualTo(EngineProtocol.BUILDPLAN_FINISH);
         assertThat(Jsonl.bool(json, "success", false)).isTrue();
         assertThat(Jsonl.longValue(json, "lockPackages", -1)).isEqualTo(13);
         assertThat(Jsonl.longValue(json, "lockSources", -1)).isEqualTo(2);
         assertThat(Jsonl.longValue(json, "lockPlugins", -1)).isEqualTo(1);
+        PlanFinishLockEvent decoded = PlanFinishLockEvent.decode(json);
+        assertThat(decoded.unverified()).isEqualTo(4);
+        assertThat(decoded.insecureRepos()).containsExactly("mirror");
     }
 
     @Test

@@ -274,7 +274,9 @@ final class EngineResolveAdapter {
                                     new EngineRequests.LockCounts(
                                             Jsonl.has(line, "lockPackages") ? e.packages() : -1,
                                             Jsonl.has(line, "lockSources") ? e.sources() : -1,
-                                            Jsonl.has(line, "lockPlugins") ? e.plugins() : -1));
+                                            Jsonl.has(line, "lockPlugins") ? e.plugins() : -1,
+                                            e.unverified(),
+                                            e.insecureRepos()));
                         }
                         case EngineProtocol.LOCK_FINISH -> {
                             LockFinishEvent e = LockFinishEvent.decode(line);

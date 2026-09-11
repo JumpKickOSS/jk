@@ -60,6 +60,36 @@ groups = ["com.acme", "com.acme.*"]
 `jk repo refresh <coord>` re-fetches a coordinate (lock-time checksum mismatch is
 fail-closed; this is the intentional redo).
 
+## Transport and checksum trust
+
+`jk lock` is where a checksum becomes law, so the bytes it pins must arrive over a channel
+nobody can rewrite and match a checksum the repository itself publishes. A repository that
+cannot offer one of those is refused until its table says so:
+
+```toml
+[repositories.mirror]
+url = "http://nexus.corp.example/maven"   # refused without the next line
+allow-insecure = true
+
+[repositories.legacy]
+url = "https://old.example/maven"          # publishes no .sha256 / .sha1 sidecars
+allow-unverified = true
+```
+
+| Key | Default | What it accepts | The threat it accepts |
+|-----|---------|-----------------|-----------------------|
+| `allow-insecure` | `false` | A plaintext `http://` URL. Without it the manifest fails to load, naming the repository and URL. | Anyone on the network path can replace the bytes jk pins, and the lockfile then faithfully protects the tampered jar. |
+| `allow-unverified` | `false` | Pinning an artifact the repository publishes neither `.sha256` nor `.sha1` for. Without it `jk lock` / `jk update` fail, naming the artifact and repository. | The pin is taken from whatever the wire delivered, with nothing from the publisher vouching for it. |
+
+Both are refused on `central`: Maven Central serves https and publishes a checksum for every
+artifact, so the opt-in would only ever hide an attack. `file://` repositories are local disk
+with no network path, so neither key applies to them.
+
+When a repository has opted out, the lock summary says so — `Resolved 42 dependencies ·
+2 unverified (allowed) · insecure (allowed): mirror` — so the count is visible on every lock
+instead of scrolling past as a warning. After the lock, builds enforce the pinned sha256 as
+usual.
+
 ## Related
 
 [Lockfile](lockfile.md) · [Publish](publish.md) · [Dependencies](dependencies.md)

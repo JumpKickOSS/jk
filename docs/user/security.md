@@ -36,6 +36,7 @@ These are current facts, not a promise that they will never change.
 | **Credentials** | `~/.jk/creds` is a separate root from cache, store, and state. POSIX writes are owner-only. `jk self nuke` does not delete creds. |
 | **Releases** | Remote installers, wrappers, engine fetch, and `jk self update` verify RSA/SHA-256 over the exact `SHA256SUMS` bytes, then the selected artifact hash, before installation. |
 | **Lockfile** | Checksums are law. `jk audit` queries OSV for the locked graph. |
+| **Repositories** | Lock-time fetches go over https and are checked against the repository's published `.sha256`/`.sha1`; a plaintext `http://` URL or a missing sidecar is refused unless the repository table says `allow-insecure` / `allow-unverified`, never on `central`. The lock summary counts what was allowed. [Repositories](repositories.md#transport-and-checksum-trust). |
 | **Plugins** | No public marketplace. A private jar needs a `sha256`. MCP `jk_publish` is always a dry-run so tokens stay on the CLI. |
 
 `[http] host` / `JK_HTTP_HOST` can bind off loopback (`0.0.0.0`). Token gating still applies.

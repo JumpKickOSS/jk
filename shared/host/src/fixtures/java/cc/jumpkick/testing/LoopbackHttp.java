@@ -6,7 +6,10 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Collections;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -46,6 +49,12 @@ import org.junit.jupiter.api.extension.ExtensionContext;
  * reader and the round trip would still pass. So {@code MockMavenServer} keeps every Maven document
  * shape and inherits only the plumbing.
  *
+ * <p>One piece of content is synthesized: a request for {@code <path>.sha1} whose {@code <path>}
+ * is served, and for which no sidecar was seeded, answers with that body's SHA-1. Every Maven
+ * repository publishes that file beside every artifact, and a lock refuses to pin bytes no
+ * checksum vouches for, so a stub that impersonates a repository must publish it too; {@link
+ * #withoutChecksums()} models the repository that does not.
+ *
  * <p>Nothing here reaches the public internet and nothing binds a fixed port, so a suite using it
  * belongs in the fast tier.
  */
@@ -63,6 +72,7 @@ public class LoopbackHttp implements BeforeEachCallback, AfterEachCallback {
 
     private volatile @Nullable Consumer<String> beforeServe;
     private volatile @Nullable Consumer<String> beforeMiss;
+    private volatile boolean checksums = true;
     private boolean concurrent;
     private @Nullable HttpServer server;
     private @Nullable ExecutorService pool;
@@ -78,6 +88,12 @@ public class LoopbackHttp implements BeforeEachCallback, AfterEachCallback {
      */
     public LoopbackHttp concurrent() {
         this.concurrent = true;
+        return this;
+    }
+
+    /** Stop answering {@code <path>.sha1} for served paths: a repository that publishes no checksums. */
+    public LoopbackHttp withoutChecksums() {
+        this.checksums = false;
         return this;
     }
 
@@ -121,6 +137,10 @@ public class LoopbackHttp implements BeforeEachCallback, AfterEachCallback {
             String path = exchange.getRequestURI().getPath();
             requested.add(path);
             byte[] body = served.get(path);
+            if (body == null && checksums && path.endsWith(".sha1")) {
+                byte[] artifact = served.get(path.substring(0, path.length() - ".sha1".length()));
+                if (artifact != null) body = sha1Hex(artifact).getBytes(StandardCharsets.UTF_8);
+            }
             if (body == null) {
                 Consumer<String> gate = beforeMiss;
                 if (gate != null) gate.accept(path);
@@ -152,6 +172,14 @@ public class LoopbackHttp implements BeforeEachCallback, AfterEachCallback {
         if (threads != null) {
             threads.shutdownNow();
             pool = null;
+        }
+    }
+
+    private static String sha1Hex(byte[] body) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-1").digest(body));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
         }
     }
 

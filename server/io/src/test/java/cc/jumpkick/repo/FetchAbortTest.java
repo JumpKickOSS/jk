@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.testing.LoopbackHttp;
@@ -34,7 +35,8 @@ class FetchAbortTest {
     void aborted_fetch_never_starts_the_network_leg(@TempDir Path tempDir) {
         String jarPath = "/com/example/widget/1.0/widget-1.0.jar";
         http.served().put(jarPath, "jar-bytes".getBytes(StandardCharsets.UTF_8));
-        RepoGroup repos = RepoGroup.of(new MavenRepo("test", http.base(), new Http(), new Cas(tempDir)));
+        RepoGroup repos = RepoGroup.of(
+                new MavenRepo("test", http.base(), new Http(), new Cas(tempDir), RepoCredential.ANONYMOUS, false));
 
         assertThatThrownBy(() -> repos.tryFetchArtifact(Coordinate.of("com.example", "widget", "1.0"), () -> true))
                 .isInstanceOf(MavenRepo.FetchAbortedException.class);
@@ -49,13 +51,15 @@ class FetchAbortTest {
         Coordinate coord = Coordinate.of("com.example", "widget", "1.0");
 
         // Warm the named repo store online with no abort.
-        RepoGroup warmed = RepoGroup.of(new MavenRepo("test", http.base(), new Http(), cas));
+        RepoGroup warmed =
+                RepoGroup.of(new MavenRepo("test", http.base(), new Http(), cas, RepoCredential.ANONYMOUS, false));
         assertThat(warmed.tryFetchArtifact(coord)).isPresent();
 
         // Same coordinate with abort raised: the local-probe leg answers without network.
         RepoGroup.clearProcessFetchCache();
         http.clearRequests();
-        RepoGroup again = RepoGroup.of(new MavenRepo("test", http.base(), new Http(), cas));
+        RepoGroup again =
+                RepoGroup.of(new MavenRepo("test", http.base(), new Http(), cas, RepoCredential.ANONYMOUS, false));
         assertThat(again.tryFetchArtifact(coord, () -> true)).isPresent();
         assertThat(http.requested()).as("warm hit needs no network").isEmpty();
     }
@@ -64,7 +68,8 @@ class FetchAbortTest {
     void unaborted_fetch_is_unaffected(@TempDir Path tempDir) throws Exception {
         String jarPath = "/com/example/widget/1.0/widget-1.0.jar";
         http.served().put(jarPath, "jar-bytes".getBytes(StandardCharsets.UTF_8));
-        RepoGroup repos = RepoGroup.of(new MavenRepo("test", http.base(), new Http(), new Cas(tempDir)));
+        RepoGroup repos = RepoGroup.of(
+                new MavenRepo("test", http.base(), new Http(), new Cas(tempDir), RepoCredential.ANONYMOUS, false));
 
         var hit = repos.tryFetchArtifact(Coordinate.of("com.example", "widget", "1.0"), () -> false);
         assertThat(hit).isPresent();
@@ -75,7 +80,8 @@ class FetchAbortTest {
     void abort_wins_over_not_found_reporting(@TempDir Path tempDir) {
         // Nothing http.served(): without abort this would be an empty Optional (full miss); with abort
         // the fetch stops at the boundary instead of concluding "not found" from a skipped leg.
-        RepoGroup repos = RepoGroup.of(new MavenRepo("test", http.base(), new Http(), new Cas(tempDir)));
+        RepoGroup repos = RepoGroup.of(
+                new MavenRepo("test", http.base(), new Http(), new Cas(tempDir), RepoCredential.ANONYMOUS, false));
         assertThatThrownBy(() -> repos.tryFetchArtifact(Coordinate.of("com.example", "absent", "1.0"), () -> true))
                 .isInstanceOf(MavenRepo.FetchAbortedException.class);
         assertThat(http.requested()).isEmpty();

@@ -2,9 +2,22 @@
 package cc.jumpkick.wire.protocol;
 
 import cc.jumpkick.jsonl.Jsonl;
+import java.util.List;
 
-/** A lock/update module's terminal with its written-lockfile counts (see {@link EngineProtocol#BUILDPLAN_FINISH}). */
-public record PlanFinishLockEvent(String dir, boolean success, long packages, long sources, long plugins) {
+/**
+ * A lock/update module's terminal with its written-lockfile counts and what the run's downloads
+ * were checked against: {@code unverified} artifacts pinned without a published checksum under
+ * {@code allow-unverified}, and the plaintext {@code http://} repositories asked (see {@link
+ * EngineProtocol#BUILDPLAN_FINISH}).
+ */
+public record PlanFinishLockEvent(
+        String dir,
+        boolean success,
+        long packages,
+        long sources,
+        long plugins,
+        long unverified,
+        List<String> insecureRepos) {
     public String encode() {
         return RequestJson.request(EngineProtocol.BUILDPLAN_FINISH)
                 .string("kind", "lock")
@@ -13,6 +26,8 @@ public record PlanFinishLockEvent(String dir, boolean success, long packages, lo
                 .number("lockPackages", packages)
                 .number("lockSources", sources)
                 .number("lockPlugins", plugins)
+                .number("lockUnverified", unverified)
+                .array("lockInsecure", insecureRepos)
                 .finish();
     }
 
@@ -22,6 +37,8 @@ public record PlanFinishLockEvent(String dir, boolean success, long packages, lo
                 Jsonl.bool(json, "success", false),
                 Jsonl.longValue(json, "lockPackages", 0),
                 Jsonl.longValue(json, "lockSources", 0),
-                Jsonl.longValue(json, "lockPlugins", 0));
+                Jsonl.longValue(json, "lockPlugins", 0),
+                Jsonl.longValue(json, "lockUnverified", 0),
+                Jsonl.strArray(json, "lockInsecure"));
     }
 }

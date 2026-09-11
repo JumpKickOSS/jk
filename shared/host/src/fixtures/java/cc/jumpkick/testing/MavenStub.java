@@ -4,11 +4,15 @@ package cc.jumpkick.testing;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A stub Maven repository laid over a {@link LoopbackHttp}: metadata, POMs, empty jars and sources
  * jars under the standard layout, so a lock test declares what upstream publishes in one line per
  * artifact. Paths are the repository-relative layout paths; the host and port come from the server.
+ *
+ * <p>The {@link LoopbackHttp} underneath answers every artifact's {@code .sha1}, as Maven Central
+ * does; {@link #withoutChecksums()} models a repository that publishes none.
  */
 public final class MavenStub {
 
@@ -17,14 +21,24 @@ public final class MavenStub {
     };
 
     private final Map<String, byte[]> served;
+    private final @Nullable LoopbackHttp http;
 
     public MavenStub(LoopbackHttp http) {
-        this(http.served());
+        this.served = http.served();
+        this.http = http;
     }
 
     /** Over any path-to-body map a stub server reads from. */
     public MavenStub(Map<String, byte[]> served) {
         this.served = served;
+        this.http = null;
+    }
+
+    /** This repository publishes no checksum sidecar beside its artifacts. */
+    public MavenStub withoutChecksums() {
+        if (http == null) throw new IllegalStateException("withoutChecksums needs the stub's LoopbackHttp");
+        http.withoutChecksums();
+        return this;
     }
 
     /** Metadata listing exactly {@code version}, an empty POM, and an empty jar. */

@@ -132,10 +132,13 @@ managed GAs while the platform is active. Unpinned `latest` still prefers the ne
 
 1. Streams bytes, computes SHA-256 locally, and stores a Maven-layout `*.jar` (Maven
    local repo when `[m2] integration` is on and the slot is empty or already equal).
-2. Fetches the repository’s published sidecar (`.sha256`, else `.sha1`) when present and
-   **fails closed** on mismatch.
-3. If no sidecar exists, pins TOFU-style and may report how many artifacts lacked a checksum.
-4. Warns once per repository that still uses plaintext `http://`.
+2. Fetches the repository’s published sidecar (`.sha256`, else `.sha1`) and **fails closed**
+   on mismatch.
+3. Refuses to pin when no sidecar exists, unless the repository table says
+   `allow-unverified = true`; the lock summary then counts those rows as `unverified (allowed)`.
+4. Refuses a plaintext `http://` repository when the manifest is read, unless its table says
+   `allow-insecure = true`; the summary then names it as `insecure (allowed)`. Neither key is
+   accepted on `central`. See [Repositories](repositories.md#transport-and-checksum-trust).
 
 After the lock exists, `jk sync` / builds enforce the **pinned hashes only** — they do not
 re-check upstream sidecars. A digest mismatch against the lock is a cache miss / refetch,

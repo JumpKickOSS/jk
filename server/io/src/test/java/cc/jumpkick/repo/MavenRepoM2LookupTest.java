@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.Coordinate;
@@ -65,6 +66,20 @@ class MavenRepoM2LookupTest {
 
     private static String sha1Of(byte[] data) {
         return Hashing.hashHex("SHA-1", data);
+    }
+
+    /** The repository under test with {@code allow-unverified = true} on its table. */
+    private MavenRepo allowingUnverified(Path store) {
+        Http http = new Http();
+        return MavenRepo.overTransport(
+                "test",
+                base,
+                RepoTransports.forUrl(base, http),
+                new Cas(store),
+                RepoCredential.ANONYMOUS,
+                http,
+                true,
+                true);
     }
 
     /** Put {@code bytes} at the coordinate's Maven-layout path inside a throwaway {@code ~/.m2}. */
@@ -144,15 +159,17 @@ class MavenRepoM2LookupTest {
 
     @Test
     void a_missing_sidecar_means_no_authority_so_the_local_file_is_unused(@TempDir Path tmp) throws Exception {
-        // No.sha1 to confirm against — even though the local bytes happen to be correct, there is
-        // nothing vouching for them, so they are not used.
+        // No .sha1 to confirm against — even though the local bytes happen to be correct, there is
+        // nothing vouching for them, so they are not used. The download that follows has nothing to
+        // check against either, so only a repository that allows unverified bytes gets this far.
         seedM2(tmp.resolve("m2"), REAL);
         serve("/" + REL, 200, REAL);
-        MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(tmp.resolve("store")));
+        MavenRepo repo = allowingUnverified(tmp.resolve("store"));
 
         repo.fetchArtifact(coord());
 
         assertThat(hits).contains("/" + REL);
+        assertThat(repo.unverifiedAllowed()).isEqualTo(1);
     }
 
     @Test
@@ -161,11 +178,12 @@ class MavenRepoM2LookupTest {
         seedM2(tmp.resolve("m2"), REAL);
         serve("/" + REL + ".sha1", 200, "<html>Not Found</html>".getBytes(StandardCharsets.UTF_8));
         serve("/" + REL, 200, REAL);
-        MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(tmp.resolve("store")));
+        MavenRepo repo = allowingUnverified(tmp.resolve("store"));
 
         repo.fetchArtifact(coord());
 
         assertThat(hits).contains("/" + REL);
+        assertThat(repo.unverifiedAllowed()).as("an HTML page is no checksum").isEqualTo(1);
     }
 
     @Test
@@ -186,6 +204,7 @@ class MavenRepoM2LookupTest {
     void nothing_in_m2_costs_one_stat_and_falls_through(@TempDir Path tmp) throws Exception {
         System.setProperty("jk.m2.local", tmp.resolve("empty-m2").toString());
         serve("/" + REL, 200, REAL);
+        serve("/" + REL + ".sha1", 200, sha1Of(REAL).getBytes(StandardCharsets.UTF_8));
         MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(tmp.resolve("store")));
 
         MavenRepo.Fetched fetched = repo.fetchArtifact(coord());

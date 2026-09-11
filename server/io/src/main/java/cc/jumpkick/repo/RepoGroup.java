@@ -145,6 +145,33 @@ public final class RepoGroup {
     }
 
     /**
+     * What this run's downloads were checked against, summed over the repositories asked: the
+     * artifacts whose bytes matched a published checksum, the ones pinned without one under
+     * {@code allow-unverified}, and the names of the plaintext {@code http://} repositories. A warm
+     * re-lock downloads nothing, so both counts are then zero.
+     */
+    public TrustSummary trust() {
+        int verified = 0;
+        int unverified = 0;
+        List<String> insecure = new ArrayList<>();
+        for (MavenRepo repo : repos) {
+            verified += repo.verifiedUpstream();
+            unverified += repo.unverifiedAllowed();
+            if (repo.isPlaintext()) insecure.add(repo.name());
+        }
+        return new TrustSummary(verified, unverified, List.copyOf(insecure));
+    }
+
+    /** See {@link #trust()}. {@link #NONE} is the summary of a lock that downloaded nothing. */
+    public record TrustSummary(int verified, int unverifiedAllowed, List<String> insecureRepos) {
+        public static final TrustSummary NONE = new TrustSummary(0, 0, List.of());
+
+        public TrustSummary {
+            insecureRepos = List.copyOf(insecureRepos);
+        }
+    }
+
+    /**
      * Stable identity of the repositories this group asks. Part of every process-wide fetch /
      * versions / effective-POM memo key so one group's answer cannot stand in for another's.
      */

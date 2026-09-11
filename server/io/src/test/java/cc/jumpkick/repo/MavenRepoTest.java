@@ -12,7 +12,9 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.Coordinate;
 import com.sun.net.httpserver.HttpServer;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -64,7 +66,7 @@ class MavenRepoTest {
                 </project>
                 """.getBytes(StandardCharsets.UTF_8);
 
-        serve("/com/example/widget/1.0/widget-1.0.pom", 200, pom);
+        serveArtifact("/com/example/widget/1.0/widget-1.0.pom", pom);
 
         MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(tempDir));
         MavenRepo.Fetched fetched = repo.fetchPom(Coordinate.of("com.example", "widget", "1.0"));
@@ -77,7 +79,7 @@ class MavenRepoTest {
     @Test
     void fetches_jar_into_cas(@TempDir Path tempDir) throws Exception {
         byte[] jar = "fake-jar-bytes".getBytes(StandardCharsets.UTF_8);
-        serve("/com/example/widget/1.0/widget-1.0.jar", 200, jar);
+        serveArtifact("/com/example/widget/1.0/widget-1.0.jar", jar);
 
         MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(tempDir));
         MavenRepo.Fetched fetched = repo.fetchArtifact(Coordinate.of("com.example", "widget", "1.0"));
@@ -101,7 +103,7 @@ class MavenRepoTest {
 
         // The repo now serves new bytes.
         byte[] newBytes = "new-widget-bytes".getBytes(StandardCharsets.UTF_8);
-        serve("/" + relPath, 200, newBytes);
+        serveArtifact("/" + relPath, newBytes);
         String newSha = Hashing.sha256Hex(newBytes);
 
         // m2 off so only the store mirror is in play.
@@ -142,7 +144,7 @@ class MavenRepoTest {
     @Test
     void online_fetch_mirrors_into_named_repo_store(@TempDir Path tempDir) throws Exception {
         byte[] pom = "<project/>".getBytes(StandardCharsets.UTF_8);
-        serve("/com/example/widget/1.0/widget-1.0.pom", 200, pom);
+        serveArtifact("/com/example/widget/1.0/widget-1.0.pom", pom);
         MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(tempDir));
 
         Coordinate coord = Coordinate.of("com.example", "widget", "1.0");
@@ -158,7 +160,7 @@ class MavenRepoTest {
         String previous = System.setProperty("jk.m2.local", m2.toString());
         try {
             byte[] jar = "fake-jar-bytes".getBytes(StandardCharsets.UTF_8);
-            serve("/com/example/widget/1.0/widget-1.0.jar", 200, jar);
+            serveArtifact("/com/example/widget/1.0/widget-1.0.jar", jar);
             MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(tempDir), RepoCredential.ANONYMOUS, false);
 
             Coordinate coord = Coordinate.of("com.example", "widget", "1.0");
@@ -177,7 +179,7 @@ class MavenRepoTest {
         String previous = System.setProperty("jk.m2.local", m2.toString());
         try {
             byte[] jar = "fake-jar-bytes".getBytes(StandardCharsets.UTF_8);
-            serve("/com/example/widget/1.0/widget-1.0.jar", 200, jar);
+            serveArtifact("/com/example/widget/1.0/widget-1.0.jar", jar);
             MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(tempDir), RepoCredential.ANONYMOUS, true);
 
             Coordinate coord = Coordinate.of("com.example", "widget", "1.0");
@@ -207,7 +209,7 @@ class MavenRepoTest {
     @Test
     void offline_fetch_is_served_from_the_named_repo_store(@TempDir Path tempDir) throws Exception {
         byte[] pom = "<project/>".getBytes(StandardCharsets.UTF_8);
-        serve("/com/example/widget/1.0/widget-1.0.pom", 200, pom);
+        serveArtifact("/com/example/widget/1.0/widget-1.0.pom", pom);
         Cas cas = new Cas(tempDir);
         Coordinate coord = Coordinate.of("com.example", "widget", "1.0");
 
@@ -228,7 +230,7 @@ class MavenRepoTest {
     void online_warm_fetch_uses_local_store_without_network(@TempDir Path tempDir) throws Exception {
         // second online fetch of the same GAV should not re-HTTP.
         byte[] pom = "<project><modelVersion>4.0.0</modelVersion></project>".getBytes(StandardCharsets.UTF_8);
-        serve("/com/example/widget/1.0/widget-1.0.pom", 200, pom);
+        serveArtifact("/com/example/widget/1.0/widget-1.0.pom", pom);
         // Checksum sidecars (optional) — miss is OK for TOFU
         Cas cas = new Cas(tempDir);
         Coordinate coord = Coordinate.of("com.example", "widget", "1.0");
@@ -306,7 +308,7 @@ class MavenRepoTest {
     }
 
     @Test
-    void matching_sha256_sidecar_allows_fetch(@TempDir Path tempDir) throws Exception {
+    void matching_sha256_sidecar_allows_fetch_and_counts_it_verified(@TempDir Path tempDir) throws Exception {
         byte[] jar = "good-bytes".getBytes(StandardCharsets.UTF_8);
         String hex = Hashing.sha256Hex(jar);
         serve("/com/example/widget/1.0/widget-1.0.jar", 200, jar);
@@ -317,17 +319,109 @@ class MavenRepoTest {
         MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(tempDir));
         MavenRepo.Fetched f = repo.fetchArtifact(Coordinate.of("com.example", "widget", "1.0"));
         assertThat(f.sha256()).isEqualTo(hex);
-        assertThat(repo.missingUpstreamChecksums()).isEqualTo(0);
+        assertThat(repo.verifiedUpstream()).isEqualTo(1);
+        assertThat(repo.unverifiedAllowed()).isZero();
     }
 
     @Test
-    void missing_sidecar_proceeds_and_is_counted(@TempDir Path tempDir) throws Exception {
+    void a_missing_sidecar_refuses_the_fetch_and_names_the_opt_in(@TempDir Path tempDir) {
         byte[] jar = "no-sidecar".getBytes(StandardCharsets.UTF_8);
         serve("/com/example/widget/1.0/widget-1.0.jar", 200, jar);
-        // No.sha256 /.sha1 handlers → 404 → TOFU count
-        MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(tempDir));
-        repo.fetchArtifact(Coordinate.of("com.example", "widget", "1.0"));
-        assertThat(repo.missingUpstreamChecksums()).isEqualTo(1);
+        MavenRepo repo = new MavenRepo("mirror", base, new Http(), new Cas(tempDir));
+        assertThatThrownBy(() -> repo.fetchArtifact(Coordinate.of("com.example", "widget", "1.0")))
+                .isInstanceOf(MavenRepo.MissingChecksumException.class)
+                .hasMessageContaining("no upstream checksum for com.example:widget:1.0 from mirror")
+                .hasMessageContaining("neither a .sha256 nor a .sha1 sidecar")
+                .hasMessageContaining("allow-unverified = true on [repositories.mirror]");
+        assertThat(repo.unverifiedAllowed()).isZero();
+        assertThat(tempDir.resolve("repos").resolve("mirror"))
+                .as("refused bytes are not left in the store")
+                .satisfiesAnyOf(dir -> assertThat(dir).doesNotExist(), dir -> assertThat(
+                                Files.list(dir).filter(Files::isRegularFile))
+                        .isEmpty());
+    }
+
+    @Test
+    void allow_unverified_pins_a_sidecarless_artifact_and_counts_it(@TempDir Path tempDir) throws Exception {
+        byte[] jar = "no-sidecar".getBytes(StandardCharsets.UTF_8);
+        serve("/com/example/widget/1.0/widget-1.0.jar", 200, jar);
+        MavenRepo repo = allowingUnverified("legacy", tempDir);
+        MavenRepo.Fetched f = repo.fetchArtifact(Coordinate.of("com.example", "widget", "1.0"));
+        assertThat(f.sha256()).isEqualTo(Hashing.sha256Hex(jar));
+        assertThat(repo.unverifiedAllowed()).isEqualTo(1);
+        assertThat(repo.verifiedUpstream()).isZero();
+    }
+
+    @Test
+    void a_lock_pin_vouches_for_a_sidecarless_artifact_after_the_lock(@TempDir Path tempDir) throws Exception {
+        byte[] jar = "pinned-bytes".getBytes(StandardCharsets.UTF_8);
+        serve("/com/example/widget/1.0/widget-1.0.jar", 200, jar);
+        MavenRepo repo = new MavenRepo("mirror", base, new Http(), new Cas(tempDir));
+        Coordinate coord = Coordinate.of("com.example", "widget", "1.0");
+
+        MavenRepo.Fetched f = repo.fetchArtifact(coord, Hashing.sha256Hex(jar), () -> false);
+        assertThat(f.sha256()).isEqualTo(Hashing.sha256Hex(jar));
+        assertThat(repo.unverifiedAllowed()).isZero();
+
+        SessionContext.installConfig(JkConfig.empty().withForce(true));
+        assertThatThrownBy(() -> repo.fetchArtifact(coord, "0".repeat(64), () -> false))
+                .isInstanceOf(MavenRepo.ChecksumMismatchException.class)
+                .hasMessageContaining("jk-lock.toml pins sha256");
+    }
+
+    @Test
+    void a_file_repository_needs_no_sidecar(@TempDir Path tempDir) throws Exception {
+        Path repoDir = tempDir.resolve("repo");
+        Path jar = repoDir.resolve(MavenLayout.artifactPath(Coordinate.of("com.example", "widget", "1.0")));
+        Files.createDirectories(jar.getParent());
+        Files.write(jar, "local-bytes".getBytes(StandardCharsets.UTF_8));
+        MavenRepo repo = new MavenRepo("local", repoDir.toUri(), new Http(), new Cas(tempDir.resolve("cas")));
+        MavenRepo.Fetched f = repo.fetchArtifact(Coordinate.of("com.example", "widget", "1.0"));
+        assertThat(f.sha256()).isEqualTo(Hashing.sha256Hex(jar));
+        assertThat(repo.unverifiedAllowed()).isZero();
+        assertThat(repo.isPlaintext()).isFalse();
+    }
+
+    @Test
+    void a_plaintext_repository_reports_itself_and_prints_no_warning(@TempDir Path tempDir) throws Exception {
+        byte[] jar = "bytes".getBytes(StandardCharsets.UTF_8);
+        serve("/com/example/widget/1.0/widget-1.0.jar", 200, jar);
+        serve(
+                "/com/example/widget/1.0/widget-1.0.jar.sha256",
+                200,
+                Hashing.sha256Hex(jar).getBytes(StandardCharsets.UTF_8));
+        MavenRepo repo = new MavenRepo("mirror", base, new Http(), new Cas(tempDir));
+        var err = new ByteArrayOutputStream();
+        var original = System.err;
+        System.setErr(new PrintStream(err, true, StandardCharsets.UTF_8));
+        try {
+            repo.fetchArtifact(Coordinate.of("com.example", "widget", "1.0"));
+        } finally {
+            System.setErr(original);
+        }
+        assertThat(repo.isPlaintext()).isTrue();
+        assertThat(err.toString(StandardCharsets.UTF_8))
+                .as("the manifest already refused or allowed http://; the fetch says nothing")
+                .isEmpty();
+    }
+
+    private MavenRepo allowingUnverified(String name, Path cas) {
+        Http http = new Http();
+        return MavenRepo.overTransport(
+                name,
+                base,
+                RepoTransports.forUrl(base, http),
+                new Cas(cas),
+                RepoCredential.ANONYMOUS,
+                http,
+                false,
+                true);
+    }
+
+    /** An artifact and the {@code .sha1} every repository publishes beside it. */
+    private void serveArtifact(String path, byte[] body) {
+        serve(path, 200, body);
+        serve(path + ".sha1", 200, Hashing.hashHex("SHA-1", body).getBytes(StandardCharsets.UTF_8));
     }
 
     private void serve(String path, int status, byte[] body) {

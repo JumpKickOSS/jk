@@ -18,6 +18,7 @@ import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -35,12 +36,16 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -160,6 +165,9 @@ public final class LockCommand implements CliCommand {
         // count). The engine restarts totalSeen per module, so the workspace total is the SUM
         // of per-module counts — folding with max reported only the largest module.
         Map<String, Integer> lockedByDir = new ConcurrentHashMap<>();
+        // What the downloads were checked against, summed over modules for the Lock chip.
+        AtomicLong unverified = new AtomicLong();
+        Set<String> insecureRepos = Collections.synchronizedSet(new LinkedHashSet<>());
         List<String> errorLines = new ArrayList<>();
         Map<String, String> coordByDir = new HashMap<>();
 
@@ -217,6 +225,10 @@ public final class LockCommand implements CliCommand {
                             .sum();
                     globalLocked.set(Math.max(globalLocked.get(), sum));
                 }
+                if (counts != null) {
+                    unverified.addAndGet(Math.max(0, counts.unverified()));
+                    insecureRepos.addAll(counts.insecureRepos());
+                }
                 if (!result.success()) {
                     ConsoleSpec.appendErrors(errorLines, result.errors());
                 }
@@ -235,7 +247,8 @@ public final class LockCommand implements CliCommand {
             view.finishBuildPlanFailure(lockFailTail(), errorLines);
             return outcome.exitCode();
         }
-        view.finishBuildPlanSuccess(lockSuccessTail(globalLocked.get(), start, dir));
+        view.finishBuildPlanSuccess(
+                lockSuccessTail(globalLocked.get(), unverified.get(), List.copyOf(insecureRepos), start, dir));
         return 0;
     }
 
@@ -281,15 +294,34 @@ public final class LockCommand implements CliCommand {
 
     /**
      * Success chip tail: {@code Lock successful. Resolved N dependencies took T}, or {@code Workspace
-     * lock successful.…} when the project is a workspace root or member.
+     * lock successful.…} when the project is a workspace root or member. Two segments appear only
+     * when a repository opted out of a check: {@code · N unverified (allowed)} counts the artifacts
+     * pinned without a published checksum, and {@code · insecure (allowed): mirror} names the
+     * plaintext repositories asked.
      */
-    static String lockSuccessTail(int pkgs, long startNanos, Path projectDir) {
+    static String lockSuccessTail(
+            int pkgs, long unverified, List<String> insecureRepos, long startNanos, Path projectDir) {
         boolean workspace = LockPaths.isWorkspaceLock(projectDir);
         String title = workspace ? "Workspace lock successful" : "Lock successful";
-        return Theme.colorize(title, Theme.active().success())
-                + ". Resolved "
-                + Theme.colorize(String.valueOf(pkgs), Theme.active().focused())
-                + " dependenc" + (pkgs == 1 ? "y" : "ies") + " "
-                + ConsoleSpec.took(Duration.ofMillis((System.nanoTime() - startNanos) / 1_000_000));
+        Theme t = Theme.active();
+        StringBuilder tail = new StringBuilder(Theme.colorize(title, t.success()))
+                .append(". Resolved ")
+                .append(Theme.colorize(String.valueOf(pkgs), t.focused()))
+                .append(" dependenc")
+                .append(pkgs == 1 ? "y" : "ies");
+        if (unverified > 0) {
+            tail.append(" · ")
+                    .append(Theme.colorize(String.valueOf(unverified), t.warning()))
+                    .append(" unverified (allowed)");
+        }
+        if (!insecureRepos.isEmpty()) {
+            tail.append(" · ")
+                    .append(Theme.colorize("insecure (allowed)", t.warning()))
+                    .append(": ")
+                    .append(String.join(", ", insecureRepos));
+        }
+        return tail.append(' ')
+                .append(ConsoleSpec.took(Duration.ofMillis((Clock.SYSTEM.nanos() - startNanos) / 1_000_000)))
+                .toString();
     }
 }

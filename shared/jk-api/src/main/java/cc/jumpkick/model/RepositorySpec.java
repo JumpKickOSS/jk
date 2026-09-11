@@ -9,8 +9,9 @@ import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Declared repository: name, URL, optional inline credential, object-store config, and optional
- * exclusive Maven group bindings dependency-confusion defense).
+ * Declared repository: name, URL, optional inline credential, object-store config, optional
+ * exclusive Maven group bindings (dependency-confusion defense), and the two trust opt-ins a
+ * repository table may carry.
  */
 public record RepositorySpec(
         String name,
@@ -19,7 +20,14 @@ public record RepositorySpec(
         @Nullable ObjectStoreConfig objectStore,
         /** When non-empty, matching {@code groupId}s resolve only from this repo (and other repos
          * that also bind the same group). Patterns: exact, {@code prefix.*} (group or subpackages). */
-        List<String> groups) {
+        List<String> groups,
+        /** {@code allow-insecure = true}: a plaintext {@code http://} URL is accepted for this repository. */
+        boolean allowInsecure,
+        /**
+         * {@code allow-unverified = true}: an artifact this repository publishes no checksum sidecar
+         * for may still be pinned at lock time.
+         */
+        boolean allowUnverified) {
 
     /**
      * The one name Maven Central answers to inside jk — the {@code repos/<name>/} store directory,
@@ -149,6 +157,16 @@ public record RepositorySpec(
     public RepositorySpec(
             String name, URI url, @Nullable RepoCredential credential, @Nullable ObjectStoreConfig objectStore) {
         this(name, url, credential, objectStore, List.of());
+    }
+
+    /** Convenience: neither trust opt-in — the default for every built-in and imported repository. */
+    public RepositorySpec(
+            String name,
+            URI url,
+            @Nullable RepoCredential credential,
+            @Nullable ObjectStoreConfig objectStore,
+            List<String> groups) {
+        this(name, url, credential, objectStore, groups, false, false);
     }
 
     public Optional<RepoCredential> credentialOpt() {

@@ -174,6 +174,9 @@ public final class LockPipeline {
     private final String jkVersion;
     private final Policy policy;
 
+    /** What the last {@link #resolve} checked its downloads against; {@code NONE} until it ran. */
+    private volatile RepoGroup.TrustSummary trust = RepoGroup.TrustSummary.NONE;
+
     /**
      * @param lockDir the directory that owns the lockfile — a workspace root for a member, else the
      *     project itself (see {@link LockPlans#lockScope})
@@ -324,7 +327,13 @@ public final class LockPipeline {
             ResolveProfile.phasePost(System.nanoTime() - postT0);
             System.err.println("jk: " + ResolveProfile.report());
         }
+        trust = pathPrep.repos().trust();
         return lock;
+    }
+
+    /** See {@link RepoGroup#trust()}: the verified / unverified-allowed counts and plaintext repositories of the last resolve. */
+    public RepoGroup.TrustSummary trust() {
+        return trust;
     }
 
     private Lockfile solve(

@@ -7,6 +7,7 @@ import cc.jumpkick.config.JkM2Config;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.http.CentralMirror;
 import cc.jumpkick.http.HostRateLimiter;
 import cc.jumpkick.http.Http;
@@ -24,7 +25,6 @@ import java.security.MessageDigest;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import org.jspecify.annotations.Nullable;
@@ -62,11 +62,21 @@ public final class MavenRepo {
      */
     private final @Nullable Http http;
 
-    /** Artifacts pinned this run without an upstream checksum sidecar. */
-    private final AtomicInteger missingUpstreamChecksums = new AtomicInteger();
+    /**
+     * {@code allow-unverified} on the declaring repository table: an artifact this repository
+     * publishes no checksum sidecar for may be pinned unverified. Off for every repository that is
+     * not declared that way, including the built-ins.
+     */
+    private final boolean allowUnverified;
 
-    /** Once-per-instance warn for plaintext http:// base URLs. */
-    private final AtomicBoolean httpWarned = new AtomicBoolean();
+    /**
+     * Artifacts this run whose bytes the repository's published checksum confirmed — downloads and
+     * Maven-local adoptions alike.
+     */
+    private final AtomicInteger verifiedUpstream = new AtomicInteger();
+
+    /** Artifact downloads this run pinned without a published checksum because the repository allows it. */
+    private final AtomicInteger unverifiedAllowed = new AtomicInteger();
 
     public MavenRepo(String name, URI baseUrl, Http http, Cas cas) {
         this(name, baseUrl, http, cas, RepoCredential.ANONYMOUS);
@@ -91,7 +101,8 @@ public final class MavenRepo {
                 cas,
                 credential,
                 http,
-                m2integration);
+                m2integration,
+                false);
     }
 
     /**
@@ -100,7 +111,7 @@ public final class MavenRepo {
      * status/headers to revalidate against). {@code m2integration} defaults to {@code true}.
      */
     public MavenRepo(String name, URI baseUrl, RepoTransport transport, Cas cas, RepoCredential credential) {
-        this(name, baseUrl, transport, cas, credential, null, true);
+        this(name, baseUrl, transport, cas, credential, null, true, false);
     }
 
     /** As above, with an explicit {@code m2integration}. */
@@ -111,7 +122,7 @@ public final class MavenRepo {
             Cas cas,
             RepoCredential credential,
             boolean m2integration) {
-        this(name, baseUrl, transport, cas, credential, null, m2integration);
+        this(name, baseUrl, transport, cas, credential, null, m2integration, false);
     }
 
     /**
@@ -125,7 +136,10 @@ public final class MavenRepo {
      * test pinning an override URL took the client-carrying path, which is why the metadata cache looked
      * healthy in tests while never running in practice.
      */
-    /** Transport + HTTP client for an http(s) repo. See the note above on why this is separate. */
+    /**
+     * Transport + HTTP client for an http(s) repo, with the repository's {@code allow-unverified}
+     * opt-in. See the note above on why this is separate.
+     */
     public static MavenRepo overTransport(
             String name,
             URI baseUrl,
@@ -133,14 +147,16 @@ public final class MavenRepo {
             Cas cas,
             RepoCredential credential,
             @Nullable Http httpOrNull,
-            boolean m2integration) {
-        return new MavenRepo(name, baseUrl, transport, cas, credential, httpOrNull, m2integration);
+            boolean m2integration,
+            boolean allowUnverified) {
+        return new MavenRepo(name, baseUrl, transport, cas, credential, httpOrNull, m2integration, allowUnverified);
     }
 
     /**
      * Field-setting constructor. {@code httpOrNull} is the HTTP client when the repo is http(s)
      * (enabling the metadata cache), or {@code null} for a non-HTTP transport. {@code m2integration}
-     * is the resolving project's {@code m2integration} value.
+     * is the resolving project's {@code m2integration} value; {@code allowUnverified} is the
+     * repository table's opt-in.
      */
     private MavenRepo(
             String name,
@@ -149,7 +165,8 @@ public final class MavenRepo {
             Cas cas,
             RepoCredential credential,
             @Nullable Http httpOrNull,
-            boolean m2integration) {
+            boolean m2integration,
+            boolean allowUnverified) {
         this.name = Objects.requireNonNull(name, "name");
         this.baseUrl = normalize(Objects.requireNonNull(baseUrl, "baseUrl"));
         this.transport = Objects.requireNonNull(transport, "transport");
@@ -158,6 +175,7 @@ public final class MavenRepo {
         this.repoStore = RepoArtifactStore.forRepoName(cas.root(), name);
         this.credential = Objects.requireNonNull(credential, "credential");
         this.m2integration = m2integration;
+        this.allowUnverified = allowUnverified;
         this.http = httpOrNull;
         // The metadata cache speaks HTTP directly (conditional GET), so it only
         // applies to http(s) repos — a file:// (or other) baseUrl can be paired
@@ -187,6 +205,15 @@ public final class MavenRepo {
 
     public URI baseUrl() {
         return baseUrl;
+    }
+
+    /**
+     * True for a plaintext {@code http://} base URL. Such a repository only reaches here when its
+     * table said {@code allow-insecure = true} (or a test pinned it), so this is what the lock
+     * summary reports as {@code insecure (allowed)}.
+     */
+    public boolean isPlaintext() {
+        return "http".equalsIgnoreCase(baseUrl.getScheme());
     }
 
     public Fetched fetchPom(Coordinate coord) throws IOException, InterruptedException {
@@ -308,7 +335,6 @@ public final class MavenRepo {
                 repoStore.evict(relativePath);
             }
         }
-        warnPlaintextHttpOnce();
         URI uri = baseUrl.resolve(relativePath);
         // Pinned bytes prefer the mirror; enumeration stays on Central (see Leg).
         URI primary = leg == Leg.ARTIFACT ? CENTRAL_MIRROR.routeForDownload(uri) : uri;
@@ -316,7 +342,7 @@ public final class MavenRepo {
         // . Confirmed against a checksum fetched from THIS repository, so ~/.m2 is only ever a
         // candidate for bytes the remote vouches for.
         if (mirror && !force) {
-            Optional<Fetched> fromM2 = tryM2(coord, relativePath, uri);
+            Optional<Fetched> fromM2 = tryM2(coord, relativePath, uri, leg);
             if (fromM2.isPresent()) return fromM2.get();
         }
         // Per-host cap around the NETWORK leg only. Warm mirror hits short-circuit
@@ -334,7 +360,7 @@ public final class MavenRepo {
             try {
                 stored = rateLimited(primary, () -> {
                     checkAbort(abort, coord);
-                    return downloadAndVerify(coord, primary, relativePath, mirror);
+                    return downloadAndVerify(coord, primary, relativePath, mirror, leg, expectedSha256);
                 });
             } catch (FetchAbortedException e) {
                 throw e;
@@ -345,7 +371,7 @@ public final class MavenRepo {
                 checkAbort(abort, coord);
                 stored = rateLimited(uri, () -> {
                     checkAbort(abort, coord);
-                    return downloadAndVerify(coord, uri, relativePath, mirror);
+                    return downloadAndVerify(coord, uri, relativePath, mirror, leg, expectedSha256);
                 });
             }
             SessionContext.current().io().remoteDown(stored.size());
@@ -418,9 +444,10 @@ public final class MavenRepo {
      *
      * <p>Empty on any doubt whatsoever: lookup disabled, no local file, no HTTP client, sidecar missing
      * or unparseable, or bytes that do not match. Every one of those falls through to the ordinary
-     * download, so the worst case is one wasted small GET.
+     * download, so the worst case is one wasted small GET. An adopted artifact counts as verified:
+     * the repository's own checksum vouched for it, exactly as it would for a download.
      */
-    private Optional<Fetched> tryM2(Coordinate coord, String relativePath, URI uri) {
+    private Optional<Fetched> tryM2(Coordinate coord, String relativePath, URI uri, Leg leg) {
         if (!m2integration || !JkM2Config.resolve().integration()) return Optional.empty();
         if (http == null || !isHttp(baseUrl)) return Optional.empty();
         try {
@@ -448,6 +475,7 @@ public final class MavenRepo {
 
             String sha256 = Hashing.sha256Hex(candidate);
             repoStore.writeMemo(relativePath, candidate, sha256);
+            if (leg == Leg.ARTIFACT) verifiedUpstream.incrementAndGet();
             if (SessionContext.current().config().verboseOr(false)) {
                 System.err.println("jk: adopted " + relativePath + " from Maven local repo (" + vouchAlgo
                         + " confirmed by " + name + ")");
@@ -487,9 +515,10 @@ public final class MavenRepo {
         return limitHost ? HostRateLimiter.shared().run(host, work) : work.get();
     }
 
-    private Downloaded downloadAndVerify(Coordinate coord, URI uri, String relativePath, boolean mirror)
+    private Downloaded downloadAndVerify(
+            Coordinate coord, URI uri, String relativePath, boolean mirror, Leg leg, @Nullable String expectedSha256)
             throws IOException, InterruptedException {
-        long t0 = System.nanoTime();
+        long t0 = Clock.SYSTEM.nanos();
         Path shard = cas.root().resolve("repos").resolve(name);
         Files.createDirectories(shard);
         Path tmp = Files.createTempFile(shard, ".put-", ".tmp");
@@ -512,10 +541,10 @@ public final class MavenRepo {
         }
         String hex = Hashing.hex(digest.digest());
         Downloaded stored = new Downloaded(tmp, hex, size);
-        long ms = (System.nanoTime() - t0) / 1_000_000L;
+        long ms = (Clock.SYSTEM.nanos() - t0) / 1_000_000L;
         if (mirror) {
             try {
-                verifyUpstreamChecksum(coord, uri, relativePath, stored.sha256(), stored.path());
+                verifyUpstreamChecksum(coord, uri, relativePath, stored, leg, expectedSha256);
             } catch (IOException e) {
                 Files.deleteIfExists(tmp);
                 throw e;
@@ -579,29 +608,33 @@ public final class MavenRepo {
         }
     }
 
-    /** How many mirrored artifacts were pinned without an upstream .sha256/.sha1 this run. */
-    public int missingUpstreamChecksums() {
-        return missingUpstreamChecksums.get();
+    /** Artifacts this run confirmed by the checksum this repository publishes (downloads and adoptions). */
+    public int verifiedUpstream() {
+        return verifiedUpstream.get();
     }
 
-    private void warnPlaintextHttpOnce() {
-        String scheme = baseUrl.getScheme();
-        if (scheme == null || !"http".equalsIgnoreCase(scheme)) return;
-        if (!httpWarned.compareAndSet(false, true)) return;
-        System.err.println("jk: warning: repository `"
-                + name
-                + "` uses plaintext http:// ("
-                + baseUrl
-                + ") — lock-time fetches can be MITM'd; prefer https");
+    /** Artifact downloads this run pinned with no published checksum, under {@code allow-unverified}. */
+    public int unverifiedAllowed() {
+        return unverifiedAllowed.get();
     }
 
     /**
-     * Fetch {@code .sha256} then {@code .sha1} sidecar; mismatch fails closed. Missing sidecar is
-     * allowed (TOFU) and counted for the summary line.
+     * Check the download against the checksum this repository publishes beside it: {@code .sha256}
+     * first, else {@code .sha1}; a mismatch fails closed. With no sidecar at all the bytes are
+     * accepted only when a lock pin vouches for them, when the repository is on local disk
+     * ({@code file://} has no network path to tamper with), or when the repository table says
+     * {@code allow-unverified = true}; otherwise the fetch is refused, because a pin taken from
+     * unverified bytes would protect every later build with a checksum of whatever arrived.
      */
     private void verifyUpstreamChecksum(
-            Coordinate coord, URI artifactUri, String relativePath, String actualSha256, Path blob)
+            Coordinate coord,
+            URI artifactUri,
+            String relativePath,
+            Downloaded stored,
+            Leg leg,
+            @Nullable String expectedSha256)
             throws IOException, InterruptedException {
+        String actualSha256 = stored.sha256();
         Optional<byte[]> sha256Side = transport.fetch(sidecarUri(artifactUri, ".sha256"), credential);
         if (sha256Side.isPresent()) {
             Optional<String> parsed =
@@ -620,6 +653,7 @@ public final class MavenRepo {
                             + " but got "
                             + actualSha256);
                 }
+                if (leg == Leg.ARTIFACT) verifiedUpstream.incrementAndGet();
                 return;
             }
             // Non-hex body (e.g. test servers that path-prefix-match the artifact) → treat as missing.
@@ -631,7 +665,7 @@ public final class MavenRepo {
             if (parsed.isPresent()) {
                 String expected = parsed.get();
                 // SHA-1 because that is the sidecar Central publishes; the format names the algorithm.
-                String actualSha1 = Hashing.fileHex("SHA-1", blob);
+                String actualSha1 = Hashing.fileHex("SHA-1", stored.path());
                 if (!expected.equalsIgnoreCase(actualSha1)) {
                     throw new ChecksumMismatchException("upstream checksum mismatch for "
                             + coord
@@ -644,10 +678,26 @@ public final class MavenRepo {
                             + " but got "
                             + actualSha1);
                 }
+                if (leg == Leg.ARTIFACT) verifiedUpstream.incrementAndGet();
                 return;
             }
         }
-        missingUpstreamChecksums.incrementAndGet();
+        if (expectedSha256 != null) {
+            // Post-lock: the pin is the authority, and it was taken when the sidecar was checked.
+            if (!expectedSha256.equalsIgnoreCase(actualSha256)) {
+                throw new ChecksumMismatchException("checksum mismatch for " + coord + " from " + name + " ("
+                        + relativePath + "): jk-lock.toml pins sha256 " + expectedSha256 + " but got " + actualSha256);
+            }
+            return;
+        }
+        if ("file".equalsIgnoreCase(baseUrl.getScheme())) return;
+        if (!allowUnverified) {
+            throw new MissingChecksumException("no upstream checksum for " + coord + " from " + name + " ("
+                    + relativePath + "): the repository publishes neither a .sha256 nor a .sha1 sidecar, so the"
+                    + " bytes cannot be verified before they are pinned. Set allow-unverified = true on"
+                    + " [repositories." + name + "] to pin them anyway.");
+        }
+        if (leg == Leg.ARTIFACT) unverifiedAllowed.incrementAndGet();
     }
 
     private static URI sidecarUri(URI artifactUri, String suffix) {
@@ -690,6 +740,16 @@ public final class MavenRepo {
     }
 
     public record Fetched(URI url, Path cachePath, String sha256, long size) {}
+
+    /**
+     * Thrown at lock time when a repository publishes no checksum sidecar for an artifact and its
+     * table does not say {@code allow-unverified = true}.
+     */
+    public static final class MissingChecksumException extends IOException {
+        public MissingChecksumException(String message) {
+            super(message);
+        }
+    }
 
     /** Thrown when the requested artifact returns 404 from this repo. */
     public static final class ArtifactNotFoundException extends IOException {

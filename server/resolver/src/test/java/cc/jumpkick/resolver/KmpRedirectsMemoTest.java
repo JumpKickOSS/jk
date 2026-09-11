@@ -5,6 +5,8 @@ import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.repo.GradleModuleMetadata;
 import cc.jumpkick.repo.MavenRepo;
@@ -180,7 +182,8 @@ class KmpRedirectsMemoTest {
 
     private RepoGroup repoGroup(Path tmp) {
         Cas cas = new Cas(tmp.resolve("cas"));
-        return RepoGroup.of(new MavenRepo("test", base, new Http(), cas));
+        // No ~/.m2 adoption: these tests count requests, so every byte must come over the wire.
+        return RepoGroup.of(new MavenRepo("test", base, new Http(), cas, RepoCredential.ANONYMOUS, false));
     }
 
     private void registerKmpRoot(String group, String artifact, String version) {
@@ -217,7 +220,13 @@ class KmpRedirectsMemoTest {
                   ]
                 }
                 """.formatted(group, artifact, version, artifact, version, artifact, version, group, artifact, version);
-        served.put(dir + artifact + "-" + version + ".pom", pom.getBytes(StandardCharsets.UTF_8));
-        served.put(dir + artifact + "-" + version + ".module", module.getBytes(StandardCharsets.UTF_8));
+        publish(dir + artifact + "-" + version + ".pom", pom.getBytes(StandardCharsets.UTF_8));
+        publish(dir + artifact + "-" + version + ".module", module.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /** A file and the {@code .sha1} beside it, as a repository publishes them. */
+    private void publish(String path, byte[] body) {
+        served.put(path, body);
+        served.put(path + ".sha1", Hashing.hashHex("SHA-1", body).getBytes(StandardCharsets.UTF_8));
     }
 }

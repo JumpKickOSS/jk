@@ -247,6 +247,29 @@ class GlobalConfigTest {
                 .hasMessageContaining("repositories.bad");
     }
 
+    /** A plaintext repository without its opt-in is a malformed entry under both policies. */
+    @Test
+    void a_plaintext_repository_without_allow_insecure_is_refused_or_skipped_like_any_bad_entry(@TempDir Path dir)
+            throws IOException {
+        String table = """
+                [repositories.mirror]
+                url = "http://nexus.example.com/repo"
+
+                [repositories.allowed]
+                url = "http://mirror.example.com/repo"
+                allow-insecure = true
+                """;
+        Path config = dir.resolve("config.toml");
+        Files.writeString(config, table);
+        assertThat(GlobalConfig.repositories(config))
+                .extracting(RepositorySpec::name)
+                .containsExactly("allowed");
+
+        assertThatThrownBy(() -> JkBuildParser.parse("name = \"demo\"\n" + table))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("repositories.mirror uses plaintext http://");
+    }
+
     /** {@code jk-local} is the first-party install store: reserved in a manifest, ignored globally. */
     @Test
     void the_reserved_name_is_rejected_by_the_manifest_and_skipped_by_the_user_config(@TempDir Path dir)

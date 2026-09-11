@@ -132,7 +132,8 @@ public final class RepoGroupBuilder {
                 // Hand the client through, not just the transport: the transport-only constructor nulls it,
                 // which silently disabled the metadata TTL cache and the ~/.m2 probe for every real
                 // build.
-                repos.add(MavenRepo.overTransport(spec.name(), spec.url(), transport, cas, cred, http, mirrorToM2));
+                repos.add(MavenRepo.overTransport(
+                        spec.name(), spec.url(), transport, cas, cred, http, mirrorToM2, spec.allowUnverified()));
                 exclusiveGroups.add(exclusiveGroupsFor(spec));
             }
             maybeWarnMultiRepoWithoutBindings(effective, exclusiveGroups);

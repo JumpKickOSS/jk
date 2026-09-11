@@ -269,8 +269,15 @@ public final class ProtoEvents {
         return new PlanFinishOutcomeEvent(dir, success, buildOutcome, total, succeeded, failed, skipped).encode();
     }
 
-    public static String planFinishLock(String dir, boolean success, long packages, long sources, long plugins) {
-        return new PlanFinishLockEvent(dir, success, packages, sources, plugins).encode();
+    public static String planFinishLock(
+            String dir,
+            boolean success,
+            long packages,
+            long sources,
+            long plugins,
+            long unverified,
+            List<String> insecureRepos) {
+        return new PlanFinishLockEvent(dir, success, packages, sources, plugins, unverified, insecureRepos).encode();
     }
 
     public static String planFinishSync(String dir, boolean success, long fetched, long upToDate) {

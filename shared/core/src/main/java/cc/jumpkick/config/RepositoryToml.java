@@ -86,40 +86,89 @@ public final class RepositoryToml {
         return result;
     }
 
+    /** Every key a {@code [repositories.<name>]} table may carry; any other key fails the entry. */
+    public static final List<String> REPOSITORY_KEYS = List.of(
+            "url",
+            "token",
+            "username",
+            "password",
+            "region",
+            "endpoint",
+            "access-key",
+            "secret-key",
+            "session-token",
+            "groups",
+            "allow-insecure",
+            "allow-unverified");
+
     /** One entry; {@code null} when it is malformed and the layer skips rather than rejects. */
     private static @Nullable RepositorySpec entry(String name, @Nullable Object value, VarPolicy vars, OnBad onBad) {
+        String where = "repositories." + name;
         String url;
         Optional<RepoCredential> credential = Optional.empty();
         Optional<ObjectStoreConfig> objectStore = Optional.empty();
         List<String> groups = List.of();
+        boolean allowInsecure = false;
+        boolean allowUnverified = false;
         if (value instanceof String s) {
             url = s;
         } else if (value instanceof TomlTable t) {
+            for (String key : t.keySet()) {
+                if (!REPOSITORY_KEYS.contains(key)) {
+                    if (onBad == OnBad.SKIP) return null;
+                    throw new JkBuildParseException(where + " unknown key `" + key + "` — expected one of: "
+                            + String.join(", ", REPOSITORY_KEYS));
+                }
+            }
             url = t.getString("url");
             if (url == null) {
                 if (onBad == OnBad.SKIP) return null;
-                throw new JkBuildParseException("repositories." + name + " requires a string `url` field");
+                throw new JkBuildParseException(where + " requires a string `url` field");
             }
-            Function<@Nullable String, @Nullable String> interp = raw -> interpolate(raw, vars, "repositories." + name);
+            Function<@Nullable String, @Nullable String> interp = raw -> interpolate(raw, vars, where);
             credential = credential(t, interp);
             objectStore = objectStore(t, interp);
             try {
-                groups = groups(t, "repositories." + name);
+                groups = groups(t, where);
+                allowInsecure = flag(t, "allow-insecure", where);
+                allowUnverified = flag(t, "allow-unverified", where);
             } catch (IllegalArgumentException e) {
-                if (onBad == OnBad.SKIP) groups = List.of();
-                else throw new JkBuildParseException(e.getMessage(), e);
+                if (onBad == OnBad.SKIP) return null;
+                throw new JkBuildParseException(e.getMessage(), e);
             }
         } else {
             if (onBad == OnBad.SKIP) return null;
-            throw new JkBuildParseException(
-                    "repositories." + name + " must be a URL string or an inline table with `url`");
+            throw new JkBuildParseException(where + " must be a URL string or an inline table with `url`");
         }
+        if (RepositorySpec.CENTRAL.equals(name) && (allowInsecure || allowUnverified)) {
+            if (onBad == OnBad.SKIP) return null;
+            throw new JkBuildParseException(where
+                    + " is Maven Central, which serves https and publishes a checksum for every artifact:"
+                    + " allow-insecure and allow-unverified are not accepted on it");
+        }
+        URI uri;
         try {
-            return new RepositorySpec(name, URI.create(url), credential.orElse(null), objectStore.orElse(null), groups);
+            uri = URI.create(url);
         } catch (IllegalArgumentException e) {
             if (onBad == OnBad.SKIP) return null;
-            throw new JkBuildParseException("repositories." + name + " has malformed URL: " + url, e);
+            throw new JkBuildParseException(where + " has malformed URL: " + url, e);
         }
+        if ("http".equalsIgnoreCase(uri.getScheme()) && !allowInsecure) {
+            if (onBad == OnBad.SKIP) return null;
+            throw new JkBuildParseException(where + " uses plaintext http:// (" + url
+                    + "): anyone on the network path can replace the bytes jk pins into jk-lock.toml."
+                    + " Use https, or set allow-insecure = true on [" + where + "] to accept that.");
+        }
+        return new RepositorySpec(
+                name, uri, credential.orElse(null), objectStore.orElse(null), groups, allowInsecure, allowUnverified);
+    }
+
+    /** The boolean at {@code key}, {@code false} when absent; any other type is an error naming the position. */
+    private static boolean flag(TomlTable t, String key, String where) {
+        Object raw = t.get(key);
+        if (raw == null) return false;
+        if (raw instanceof Boolean b) return b;
+        throw new IllegalArgumentException(where + "." + key + " must be true or false");
     }
 
     /** Expand {@code raw} under {@code policy} against the process environment; {@code where} names the position. */

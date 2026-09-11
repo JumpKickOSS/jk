@@ -9,6 +9,7 @@ import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
@@ -100,6 +101,7 @@ final class LockCascade {
                 lockPkgs.flush();
                 lockPkgs.close();
                 Lockfile lock = plan.get(LockPlans.LOCKFILE).orElse(null);
+                RepoGroup.TrustSummary trust = plan.get(LockPlans.TRUST).orElse(RepoGroup.TrustSummary.NONE);
                 return ProtoEvents.planFinishLock(
                         dirTag,
                         result.success(),
@@ -109,7 +111,9 @@ final class LockCascade {
                                         .filter(a -> a.sourcesChecksum() != null)
                                         .count()
                                 : -1,
-                        lock != null ? lock.plugins().size() : -1);
+                        lock != null ? lock.plugins().size() : -1,
+                        trust.unverifiedAllowed(),
+                        trust.insecureRepos());
             }));
 
             BuildPlanResult result = plan.run();

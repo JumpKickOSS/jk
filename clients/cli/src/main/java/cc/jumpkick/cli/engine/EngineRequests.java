@@ -317,8 +317,12 @@ public final class EngineRequests {
         default void onModuleFinish(String dir, BuildPlanResult result, LockCounts counts) {}
     }
 
-    /** A finished lock/update module's written-lockfile counts ({@code -1} when the plan failed before writing). */
-    public record LockCounts(long packages, long sources, long plugins) {}
+    /**
+     * A finished lock/update module's written-lockfile counts ({@code -1} when the plan failed
+     * before writing), the artifacts it pinned without a published checksum under
+     * {@code allow-unverified}, and the plaintext {@code http://} repositories it asked.
+     */
+    public record LockCounts(long packages, long sources, long plugins, long unverified, List<String> insecureRepos) {}
 
     /**
      * A lock/update request's terminal outcome. {@code errors} carries pre-plan failures (manifest
