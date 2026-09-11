@@ -7,13 +7,12 @@ import io.ktor.server.response.respond
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
-import org.jetbrains.exposed.sql.Database
-import org.jetbrains.exposed.sql.SchemaUtils
-import org.jetbrains.exposed.sql.Table
-import org.jetbrains.exposed.sql.insertAndGetId
-import org.jetbrains.exposed.sql.selectAll
-import org.jetbrains.exposed.sql.transactions.transaction
-import org.jetbrains.exposed.dao.id.LongIdTable
+import org.jetbrains.exposed.v1.core.dao.id.LongIdTable
+import org.jetbrains.exposed.v1.jdbc.Database
+import org.jetbrains.exposed.v1.jdbc.SchemaUtils
+import org.jetbrains.exposed.v1.jdbc.insertAndGetId
+import org.jetbrains.exposed.v1.jdbc.selectAll
+import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 
 data class Note(val id: Long, val text: String)
 
@@ -43,9 +42,7 @@ class NoteRepository {
 
 fun Application.noteRoutes(notes: NoteRepository) {
     routing {
-        get("/api/notes") {
-            call.respond(notes.all())
-        }
+        get("/api/notes") { call.respond(notes.all()) }
         post("/api/notes") {
             val incoming = call.receive<NewNote>()
             if (incoming.text.isBlank()) {
