@@ -298,11 +298,6 @@ public final class Jsonl {
     }
 
     /**
-     * Extract the raw JSON for a nested object field ({@code "key":{...}}). Returns the {@code {...}}
-     * string (suitable for passing back to other {@code Jsonl} methods), or {@code null} when
-     * absent.
-     */
-    /**
      * The elements of {@code "key":[{…},{…}]}, each as its own object text, in order. Empty when the
      * key is absent or the array holds no objects. Braces inside strings do not count.
      */
@@ -343,6 +338,11 @@ public final class Jsonl {
         return out;
     }
 
+    /**
+     * Extract the raw JSON for a nested object field ({@code "key":{...}}). Returns the {@code {...}}
+     * string (suitable for passing back to other {@code Jsonl} methods), or {@code null} when
+     * absent.
+     */
     public static String nested(String json, String key) {
         if (json == null) return null;
         String needle = "\"" + key + "\":{";
