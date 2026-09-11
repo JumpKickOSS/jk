@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Renders a test-event payload as JSON. Serialization and escaping are {@link MiniJson}'s — this
@@ -23,18 +24,18 @@ final class JsonOut {
     private JsonOut() {}
 
     /** {@code value} as compact JSON. */
-    static String string(Object value) {
+    static String string(@Nullable Object value) {
         return MiniJson.write(normalize(value));
     }
 
     /**
      * {@code value} in {@link MiniJson}'s value domain: null, String, Boolean, Number, Map or List.
      */
-    private static Object normalize(Object value) {
+    private static @Nullable Object normalize(@Nullable Object value) {
         if (value == null || value instanceof Boolean || value instanceof Number) return value;
         if (value instanceof CharSequence cs) return cs.toString();
         if (value instanceof Map<?, ?> map) {
-            Map<String, Object> out = new LinkedHashMap<>();
+            Map<String, @Nullable Object> out = new LinkedHashMap<>();
             for (Map.Entry<?, ?> e : map.entrySet()) out.put(String.valueOf(e.getKey()), normalize(e.getValue()));
             return out;
         }
@@ -43,7 +44,7 @@ final class JsonOut {
         // location on an event payload is one string.
         if (value instanceof Path path) return path.toString();
         if (value instanceof Iterable<?> it) {
-            List<Object> out = new ArrayList<>();
+            List<@Nullable Object> out = new ArrayList<>();
             for (Object v : it) out.add(normalize(v));
             return out;
         }

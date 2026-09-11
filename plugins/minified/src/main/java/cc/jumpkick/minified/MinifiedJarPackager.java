@@ -36,6 +36,7 @@ import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code minified-jar} packager: R8 {@code --classfile} full mode over classes + runtime closure →
@@ -124,8 +125,7 @@ final class MinifiedJarPackager {
             DynamicSurface surface = ByNameIndex.surface(derived).merge(composed);
             // Optional train observations from `jk train` (target/train/merged/dynamic-surface.json).
             Path trainSurface = io.artifactPath()
-                    .getParent()
-                    .resolve(TrainLayout.ROOT)
+                    .resolveSibling(TrainLayout.ROOT)
                     .resolve("merged")
                     .resolve(TrainLayout.SURFACE_JSON);
             DynamicSurface trained = DynamicSurface.empty();
@@ -268,7 +268,8 @@ final class MinifiedJarPackager {
     }
 
     /** One class's generic-signature drift: what the inputs carried, what the output kept. */
-    record SignatureDrift(String className, String before, String after) {}
+    record SignatureDrift(
+            String className, String before, @Nullable String after) {}
 
     /** {@code compared} = classes present in both inputs and output that carried a signature. */
     record SignatureAudit(int compared, List<SignatureDrift> degraded) {}
@@ -466,7 +467,7 @@ final class MinifiedJarPackager {
      * resolve them that way.
      */
     // Package-private for MinifiedJarPackagerTest.
-    static void writeOutputJar(Path shrunk, Path artifact, String mainClass) throws IOException {
+    static void writeOutputJar(Path shrunk, Path artifact, @Nullable String mainClass) throws IOException {
         Files.createDirectories(artifact.getParent());
         Manifest manifest = new Manifest();
         manifest.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");

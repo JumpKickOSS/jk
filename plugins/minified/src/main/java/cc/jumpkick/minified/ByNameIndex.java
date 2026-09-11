@@ -17,6 +17,7 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Classes a jar names <em>as text</em> rather than referencing from bytecode, in the two
@@ -127,7 +128,7 @@ final class ByNameIndex {
     }
 
     /** How many distinct classes R8 reported absent from the program inputs. */
-    static int countMissingClasses(String r8Output) {
+    static int countMissingClasses(@Nullable String r8Output) {
         if (r8Output == null || r8Output.isEmpty()) return 0;
         Set<String> seen = new LinkedHashSet<>();
         for (String line : r8Output.split("\n")) {
@@ -169,7 +170,7 @@ final class ByNameIndex {
      * positive becomes a keep rule for a class that does not exist (harmless) or an audit failure
      * for one that never existed (not harmless).
      */
-    static boolean isClassName(String candidate) {
+    static boolean isClassName(@Nullable String candidate) {
         if (candidate == null || candidate.isEmpty() || candidate.indexOf('.') < 0) return false;
         for (String suffix : NON_CLASS_SUFFIXES) {
             if (candidate.endsWith(suffix)) return false;

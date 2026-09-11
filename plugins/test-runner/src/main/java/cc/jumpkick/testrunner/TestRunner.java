@@ -11,6 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk test} child JVM: argument parsing and the three run modes — one-shot, list-only
@@ -135,7 +136,7 @@ public final class TestRunner implements Plugin {
 
     record Args(
             Path scanClasspath,
-            String filter,
+            @Nullable String filter,
             boolean listOnly,
             boolean pull,
             int workerId,

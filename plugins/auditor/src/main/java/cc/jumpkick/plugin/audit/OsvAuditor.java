@@ -78,7 +78,8 @@ public final class OsvAuditor {
             for (int i = 0; i < pkgs.size(); i++) {
                 Lockfile.Artifact pkg = pkgs.get(i);
                 for (String vulnId : results.get(i).vulnIds()) {
-                    OsvClient.Vulnerability v = futures.get(vulnId).get();
+                    OsvClient.Vulnerability v =
+                            Objects.requireNonNull(futures.get(vulnId), vulnId).get();
                     String ga = PackageId.parse(pkg.name()).ga();
                     findings.add(new AuditReport.Finding(
                             ga,

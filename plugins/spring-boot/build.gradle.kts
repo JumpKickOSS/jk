@@ -2,6 +2,7 @@
 
 plugins {
     id("jk.plugin-conventions")
+    id("jk.nullmarked-conventions")
 }
 
 description = "jk-spring-boot: the built-in Spring Boot build plugin's code layer — the " +

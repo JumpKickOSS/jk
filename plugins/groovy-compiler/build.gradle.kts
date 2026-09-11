@@ -2,6 +2,7 @@
 
 plugins {
     id("jk.plugin-conventions")
+    id("jk.nullmarked-conventions")
 }
 
 description = "jk-groovy-compiler: child-JVM worker that drives the Groovy 5 compiler " +

@@ -48,7 +48,7 @@ class BootJarPackagerTest {
                         "4.0.0",
                         Map.of("Implementation-Title", "app"),
                         Map.of(),
-                        null,
+                        new byte[0],
                         List.of(),
                         0L));
 
@@ -121,7 +121,7 @@ class BootJarPackagerTest {
                         "4.0.0",
                         Map.of(),
                         Map.of(),
-                        null,
+                        new byte[0],
                         List.of(),
                         0L));
 
@@ -165,7 +165,7 @@ class BootJarPackagerTest {
                         "4.0.0",
                         Map.of(),
                         Map.of(),
-                        null,
+                        new byte[0],
                         List.of(),
                         0L));
 
@@ -208,7 +208,7 @@ class BootJarPackagerTest {
                             selector,
                             Map.of(),
                             Map.of(),
-                            null,
+                            new byte[0],
                             List.of(),
                             0L))
                     .as("selector %s", selector)
@@ -300,7 +300,7 @@ class BootJarPackagerTest {
                                 "built by", "dev=ops:team \\ crew",
                                 "notes", " leading space and #hash",
                                 "revision", "line1\nline2"),
-                        null,
+                        new byte[0],
                         List.of(),
                         0L));
 

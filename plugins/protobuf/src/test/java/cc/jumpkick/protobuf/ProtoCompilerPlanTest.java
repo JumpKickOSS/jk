@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -64,14 +65,14 @@ class ProtoCompilerPlanTest {
                 .isEqualTo(1);
     }
 
-    private static Optional<String> protocTask(Path dir, String src) throws Exception {
+    private static Optional<String> protocTask(Path dir, @Nullable String src) throws Exception {
         return describe(dir, src).stream()
                 .filter(l -> l.contains("\"t\":\"task\"") && l.contains("\"name\":\"protoc\""))
                 .findFirst();
     }
 
     /** Run the plugin's describe op over a spec with the given `src` (absent when null). */
-    private static List<String> describe(Path dir, String src) throws Exception {
+    private static List<String> describe(Path dir, @Nullable String src) throws Exception {
         Path spec = dir.resolve("describe.spec");
         List<String> lines = new ArrayList<>(List.of(
                 "{\"t\":\"op\",\"op\":\"describe\",\"plugin\":\"jk-protobuf\"}",

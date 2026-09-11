@@ -8,6 +8,7 @@ import cc.jumpkick.plugin.build.PackageIo;
 import cc.jumpkick.plugin.testing.FakeBuildIo;
 import java.io.IOException;
 import java.nio.file.Path;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -86,7 +87,7 @@ class BootJarInputsTest {
         assertThatThrownBy(() -> BootJarInputs.read(io)).isInstanceOf(IOException.class);
     }
 
-    private static FakeBuildIo fake(Path tmp, String mainClass) throws IOException {
+    private static FakeBuildIo fake(Path tmp, @Nullable String mainClass) throws IOException {
         FakeBuildIo io = new FakeBuildIo(tmp, "spring-boot").project("com.example", "app", "1.0.0", mainClass);
         return io.extra(
                 "spring-boot-loader",

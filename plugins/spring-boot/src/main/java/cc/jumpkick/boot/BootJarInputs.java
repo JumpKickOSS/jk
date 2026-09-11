@@ -52,7 +52,9 @@ public record BootJarInputs(String bootVersion, String startClass, Path loaderJa
         List<BootJarPackager.Lib> libs = new ArrayList<>();
         String bootVersion = "";
         for (PackageIo.RuntimeEntry entry : io.runtimeEntries()) {
-            libs.add(new BootJarPackager.Lib(entry.fileName(), entry.jar(), entry.snapshot(), entry.group()));
+            // A container entry with no classes.jar has nothing to nest under BOOT-INF/lib.
+            Path jar = entry.jar();
+            if (jar != null) libs.add(new BootJarPackager.Lib(entry.fileName(), jar, entry.snapshot(), entry.group()));
             if (BOOT_GROUP.equals(entry.group()) && BOOT_ARTIFACT.equals(entry.artifact())) {
                 bootVersion = entry.version();
             }

@@ -2,6 +2,7 @@
 
 plugins {
     id("jk.plugin-conventions")
+    id("jk.nullmarked-conventions")
 }
 
 description = "jk-micronaut: Micronaut build plugin worker (AOT step). Declarative BOM/scaffold in jk-plugin.toml."

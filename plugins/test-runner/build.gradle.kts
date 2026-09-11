@@ -2,6 +2,7 @@
 
 plugins {
     id("jk.plugin-conventions")
+    id("jk.nullmarked-conventions")
 }
 
 description = "jk-test-runner: child-JVM entry point that drives JUnit Platform and " +

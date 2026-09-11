@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -72,7 +73,7 @@ class MicronautAotInputsTest {
     }
 
     /** The `micronaut-aot` task line from a describe run with aot forced on. */
-    private static String describe(Path dir, String aotConfig) throws Exception {
+    private static String describe(Path dir, @Nullable String aotConfig) throws Exception {
         return aotTaskLine(dir, true, false, aotConfig)
                 .orElseThrow(() -> new AssertionError("no micronaut-aot task line"));
     }
@@ -82,8 +83,8 @@ class MicronautAotInputsTest {
      * contributed one. {@code aot} null means the key is absent — the only shape in which
      * {@code nativeDeclared} gets to decide.
      */
-    private static Optional<String> aotTaskLine(Path dir, Boolean aot, boolean nativeDeclared, String aotConfig)
-            throws Exception {
+    private static Optional<String> aotTaskLine(
+            Path dir, @Nullable Boolean aot, boolean nativeDeclared, @Nullable String aotConfig) throws Exception {
         Path spec = dir.resolve("describe.spec");
         List<String> lines = new ArrayList<>(List.of(
                 "{\"t\":\"op\",\"op\":\"describe\",\"plugin\":\"jk-micronaut\"}",

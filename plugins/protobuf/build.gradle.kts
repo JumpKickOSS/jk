@@ -2,6 +2,7 @@
 
 plugins {
     id("jk.plugin-conventions")
+    id("jk.nullmarked-conventions")
 }
 
 description = "jk-protobuf: the built-in protobuf build plugin's code layer — runs the " +

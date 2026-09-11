@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -83,7 +84,7 @@ class SpringBootPlanTest {
     }
 
     /** Run the plugin's describe op; `aot` null means the key is absent. */
-    private static List<String> describe(Path dir, Boolean aot, boolean nativeDeclared) throws Exception {
+    private static List<String> describe(Path dir, @Nullable Boolean aot, boolean nativeDeclared) throws Exception {
         Path spec = dir.resolve("describe.spec");
         List<String> lines = new ArrayList<>(List.of(
                 "{\"t\":\"op\",\"op\":\"describe\",\"plugin\":\"jk-spring-boot\"}",

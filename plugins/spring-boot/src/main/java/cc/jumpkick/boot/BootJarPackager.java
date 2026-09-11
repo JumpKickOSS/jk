@@ -87,7 +87,7 @@ public final class BootJarPackager {
                 zip.writeParentDirs(jos, BUILD_INFO_ENTRY, dirsWritten);
                 zip.writeEntry(jos, BUILD_INFO_ENTRY, buildInfoProperties(request.buildInfo()));
             }
-            if (request.sbom() != null) {
+            if (request.sbom().length > 0) {
                 zip.writeParentDirs(jos, SBOM_ENTRY, dirsWritten);
                 zip.writeEntry(jos, SBOM_ENTRY, request.sbom());
             }
@@ -183,7 +183,7 @@ public final class BootJarPackager {
         attrs.put(new Attributes.Name("Spring-Boot-Lib"), LIB_PREFIX);
         attrs.put(new Attributes.Name("Spring-Boot-Classpath-Index"), CLASSPATH_IDX);
         attrs.put(new Attributes.Name("Spring-Boot-Layers-Index"), LAYERS_IDX);
-        if (request.sbom() != null) {
+        if (request.sbom().length > 0) {
             attrs.put(new Attributes.Name("Sbom-Format"), "CycloneDX");
             attrs.put(new Attributes.Name("Sbom-Location"), SBOM_ENTRY);
         }
@@ -225,7 +225,7 @@ public final class BootJarPackager {
      *
      * @param buildInfo {@code build-info.properties} keys (without the {@code build.} prefix);
      *     empty map = no entry
-     * @param sbom CycloneDX JSON bytes (see the engine's {@code CycloneDxSbom}); {@code null} = no SBOM
+     * @param sbom CycloneDX JSON bytes (see the engine's {@code CycloneDxSbom}); empty = no SBOM
      * @param aotDirs Spring AOT output roots (generated classes / hint resources) merged into
      *     {@code BOOT-INF/classes} after the app's own files
      */

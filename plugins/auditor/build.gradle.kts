@@ -2,6 +2,7 @@
 
 plugins {
     id("jk.plugin-conventions")
+    id("jk.nullmarked-conventions")
 }
 
 description = "jk-audit-runner: child-JVM worker that queries the OSV vulnerability API and " +

@@ -76,7 +76,7 @@ public final class Auditor implements Plugin {
         try {
             lock = LockfileReader.read(Path.of(lockfile.get()));
         } catch (IOException e) {
-            out.emit(PluginReply.error("lockfile", e.getMessage()));
+            out.emit(PluginReply.error("lockfile", String.valueOf(e.getMessage())));
             return 1;
         }
 
@@ -91,7 +91,7 @@ public final class Auditor implements Plugin {
             report = new OsvAuditor(client).audit(lock);
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
-            out.emit(PluginReply.error("osv", e.getMessage()));
+            out.emit(PluginReply.error("osv", String.valueOf(e.getMessage())));
             return 1;
         }
 

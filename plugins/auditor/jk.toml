@@ -5,6 +5,29 @@ description = "JumpKick's OSV audit plugin"
 jk-core.workspace = true
 jk-plugin-sdk.workspace = true
 
+[processor-dependencies]
+error_prone_core = { group = "com.google.errorprone", version = "latest" }
+nullaway = { group = "com.uber.nullaway", version = "latest" }
+
+# Nullness is enforced here: every production package is @NullMarked (JSpecify) and NullAway
+# checks it at error severity, the same flags the Gradle convention `jk.nullmarked-conventions`
+# passes, so a regression is red under both builds. The pins are `latest`; the catalog-lock
+# check keeps them equal to gradle/libs.versions.toml.
+[javac]
+args = ["-XDcompilePolicy=simple", "--should-stop=ifError=FLOW", "-Xmaxerrs", "10000"]
+
+[javac.plugins.ErrorProne]
+options = [
+  "-XepDisableAllChecks",
+  "-Xep:RequireExplicitNullMarking:ERROR",
+  "-Xep:NullAway:ERROR",
+  "-XepOpt:NullAway:OnlyNullMarked=true",
+  "-XepOpt:NullAway:JSpecifyMode=true",
+  # A CLI command's fields are its parsed invocation: run(Invocation) assigns them and nothing
+  # reads them before it. Identical across the enforced modules so the block is one block.
+  "-XepOpt:NullAway:KnownInitializers=cc.jumpkick.model.command.CliCommand.run",
+]
+
 [test-dependencies]
 assertj-core = "latest"
 junit-jupiter = "latest"

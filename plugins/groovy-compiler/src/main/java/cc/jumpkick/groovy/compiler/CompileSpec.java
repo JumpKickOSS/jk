@@ -7,6 +7,8 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Groovy compile request decoded from the unified JSONL plugin spec. Sources mix {@code .groovy}
@@ -14,10 +16,15 @@ import java.util.Locale;
  */
 final class CompileSpec {
 
-    File outputDir;
+    final File outputDir;
+    final String jvmTarget;
+
+    @Nullable
     File workDir; // null ⇒ worker-managed temp scratch (discard javac output, temp stubs)
+
+    @Nullable
     File stubsOut; // null ⇒ joint-mode stubs go to a temp dir and are not retained
-    String jvmTarget;
+
     final List<File> sources = new ArrayList<>();
     final List<File> classpath = new ArrayList<>();
     final List<File> processorPath = new ArrayList<>();
@@ -40,12 +47,17 @@ final class CompileSpec {
         return f.getName().toLowerCase(Locale.ROOT).endsWith(".java");
     }
 
+    private CompileSpec(File outputDir, String jvmTarget) {
+        this.outputDir = outputDir;
+        this.jvmTarget = jvmTarget;
+    }
+
     static CompileSpec from(PluginSpec spec) {
-        CompileSpec s = new CompileSpec();
-        var c = spec.config();
-        s.jvmTarget = spec.requireCompileInputs();
-        s.outputDir = spec.classesDir().toFile();
-        if (spec.workdir() != null) s.workDir = spec.workdir().toFile();
+        String jvmTarget = spec.requireCompileInputs();
+        CompileSpec s =
+                new CompileSpec(Objects.requireNonNull(spec.classesDir()).toFile(), jvmTarget);
+        Path workdir = spec.workdir();
+        if (workdir != null) s.workDir = workdir.toFile();
         spec.extra("stubsOut").ifPresent(p -> s.stubsOut = p.toFile());
         for (Path p : spec.sources()) s.sources.add(p.toFile());
         for (Path p : spec.compileClasspath()) s.classpath.add(p.toFile());

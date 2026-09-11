@@ -26,6 +26,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Micronaut build plugin: optional {@code micronaut-aot} step. Packaging stays
@@ -219,7 +220,7 @@ public final class MicronautPlugin implements Plugin, BuildExtension {
                 .orElse(DEFAULT_AOT_CONFIG);
     }
 
-    static Path userConfigFile(Path moduleDir, String configured) throws IOException {
+    static @Nullable Path userConfigFile(Path moduleDir, @Nullable String configured) throws IOException {
         String spec = configured == null ? "" : configured.trim();
         if (spec.isEmpty()) {
             Path conventional = moduleDir.resolve(DEFAULT_AOT_CONFIG);

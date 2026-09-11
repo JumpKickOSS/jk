@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -118,8 +119,8 @@ class LauncherPathTest {
         // Emoji straddling the cut: the high surrogate sits at index CAP-1, so the cut must back
         // off by one rather than emit a lone code unit the parent's JSON decoder would mangle.
         String message = "z".repeat(CAP - 1) + "😀" + "z".repeat(100);
-        String capped = (String)
-                LauncherPath.throwableMap(new IllegalStateException(message)).get("message");
+        String capped = (String) Objects.requireNonNull(
+                LauncherPath.throwableMap(new IllegalStateException(message)).get("message"));
         assertThat(Character.isHighSurrogate(capped.charAt(CAP - 2))).isFalse();
         assertThat(capped).startsWith("z".repeat(CAP - 1)).contains(MARKER);
         assertThat(capped.indexOf(MARKER)).isEqualTo(CAP - 1);

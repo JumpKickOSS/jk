@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Client for the <a href="https://api.osv.dev/v1/querybatch">OSV v1 batch query API</a>. One
@@ -211,7 +212,7 @@ public final class OsvClient {
      * peer: a field that should hold an object can arrive as {@code null}, a string, or be absent,
      * and every one of those means "nothing to read here" rather than a crash.
      */
-    private static Map<?, ?> object(Object value) {
+    private static Map<?, ?> object(@Nullable Object value) {
         return value instanceof Map<?, ?> m ? m : Map.of();
     }
 }

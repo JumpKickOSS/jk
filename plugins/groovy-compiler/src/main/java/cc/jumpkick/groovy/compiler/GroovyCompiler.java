@@ -123,7 +123,7 @@ public final class GroovyCompiler implements Plugin {
             return CompilerProtocol.COMPILER_FAULT;
         } catch (CompilationFailedException e) {
             if (!emitDiagnostics(unit.getErrorCollector(), proto)) {
-                proto.diagnostic("ERROR", e.getMessage());
+                proto.diagnostic("ERROR", String.valueOf(e.getMessage()));
             }
             proto.result("COMPILATION_ERROR");
             return Exit.FAILURE;

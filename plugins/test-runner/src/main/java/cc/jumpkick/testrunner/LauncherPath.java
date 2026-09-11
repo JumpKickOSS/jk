@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.jspecify.annotations.Nullable;
 import org.junit.platform.engine.TestExecutionResult;
 import org.junit.platform.engine.discovery.ClassNameFilter;
 import org.junit.platform.engine.discovery.DiscoverySelectors;
@@ -54,7 +55,7 @@ final class LauncherPath {
 
     static int runOneShot(
             Path scanClasspath,
-            String filter,
+            @Nullable String filter,
             List<String> includeTags,
             List<String> excludeTags,
             int workerId,
@@ -89,7 +90,7 @@ final class LauncherPath {
 
     static void runListOnly(
             Path scanClasspath,
-            String filter,
+            @Nullable String filter,
             List<String> includeTags,
             List<String> excludeTags,
             int workerId,
@@ -274,7 +275,7 @@ final class LauncherPath {
      * class/method segments (Spock spec/feature, Cucumber feature/scenario) — without it, progress
      * and FAILED labels regress to the raw bracketed uniqueId.
      */
-    static void putIdentity(String uniqueId, String displayName, Map<String, Object> payload) {
+    static void putIdentity(String uniqueId, @Nullable String displayName, Map<String, Object> payload) {
         JUnitUniqueId.parse(uniqueId).putIdentity(payload);
         if (payload.containsKey("testClass") || payload.containsKey("testMethod")) return;
         if (displayName != null && !displayName.isBlank()) payload.put("display", displayName);

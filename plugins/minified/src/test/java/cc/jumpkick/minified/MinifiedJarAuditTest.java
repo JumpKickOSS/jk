@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -157,7 +158,7 @@ class MinifiedJarAuditTest {
         assertThat(warning).doesNotContain("assembly = true");
     }
 
-    private static byte[] classBytes(String fqcn, String signature) {
+    private static byte[] classBytes(String fqcn, @Nullable String signature) {
         return ClassFile.of().build(ClassDesc.of(fqcn), cb -> {
             cb.withSuperclass(ConstantDescs.CD_Object);
             if (signature != null) {
