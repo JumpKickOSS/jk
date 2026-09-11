@@ -376,7 +376,6 @@ final class EngineEventDecoder {
     private static void dispatchError(BuildPlanListener listener, String line) {
         ErrorLineEvent e = ErrorLineEvent.decode(line);
         TestFailureInfo failure = testFailureOf(
-                line,
                 e.code(),
                 e.message(),
                 e.test(),
@@ -401,7 +400,6 @@ final class EngineEventDecoder {
     private static BuildPlanResult.Diagnostic diagnosticFromWire(String line) {
         PlanDiagnosticEvent e = PlanDiagnosticEvent.decode(line);
         TestFailureInfo f = testFailureOf(
-                line,
                 e.code(),
                 e.message(),
                 e.test(),
@@ -424,12 +422,9 @@ final class EngineEventDecoder {
 
     /**
      * The enriched test-failure identity of an error/diagnostic line, from the decoded fields. Null
-     * when no structured test identity is present (plain javac/resolve errors). The record reads
-     * absent strings as empty; the legacy nested {@code throwable.stack} — written by no current
-     * engine — is the one field still read off the raw line.
+     * when no structured test identity is present (plain javac/resolve errors).
      */
     private static @Nullable TestFailureInfo testFailureOf(
-            String line,
             String code,
             String message,
             String test,
@@ -445,10 +440,6 @@ final class EngineEventDecoder {
             int snippetStart,
             List<String> snippet) {
         if (method.isEmpty()) method = test;
-        if (stack.isEmpty()) {
-            String th = Jsonl.nested(line, "throwable");
-            if (th != null) stack = nz(Jsonl.str(th, "stack"));
-        }
         boolean anyIdentity = !module.isEmpty()
                 || !engine.isEmpty()
                 || !className.isEmpty()
@@ -495,12 +486,8 @@ final class EngineEventDecoder {
 
     private static ModuleOutcome readOutcome(String dir, String line) {
         ModuleFinishEvent e = ModuleFinishEvent.decode(line);
-        // Older engines that omit the fields: didWork fails open ("built") and a missing exit code is
-        // a failure — the record reads both as their zero.
-        boolean didWork = Jsonl.has(line, "didWork") ? e.didWork() : true;
-        int exitCode = Jsonl.has(line, "exitCode") ? e.exitCode() : 1;
-        ModuleOutcome outcome =
-                new ModuleOutcome(e.coord(), Path.of(dir), e.success(), exitCode, e.millis(), didWork, e.cancelled());
+        ModuleOutcome outcome = new ModuleOutcome(
+                e.coord(), Path.of(dir), e.success(), e.exitCode(), e.millis(), e.didWork(), e.cancelled());
         return e.image() == null ? outcome : outcome.withImage(e.image());
     }
 
@@ -530,10 +517,6 @@ final class EngineEventDecoder {
                 .label(e.label())
                 .group(wireGroup(e.stage()))
                 .build();
-    }
-
-    private static String nz(String s) {
-        return s == null ? "" : s;
     }
 
     private static List<ModulePlan> buildModulePlans(Map<String, ModuleMeta> planByDir, Path cache) {

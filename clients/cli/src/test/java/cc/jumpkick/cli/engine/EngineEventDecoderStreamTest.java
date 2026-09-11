@@ -206,7 +206,7 @@ class EngineEventDecoderStreamTest {
     }
 
     @Test
-    void test_failure_does_not_take_class_from_nested_throwable() throws Exception {
+    void a_test_failure_without_a_class_keeps_it_empty() throws Exception {
         var info = new TestFailureInfo(
                 "",
                 "junit-jupiter",
