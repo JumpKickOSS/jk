@@ -12,6 +12,7 @@ import cc.jumpkick.wire.protocol.ExplainModuleEvent;
 import cc.jumpkick.wire.protocol.ExplainRequest;
 import cc.jumpkick.wire.protocol.ExplainTaskEvent;
 import cc.jumpkick.wire.protocol.PreflightEvent;
+import cc.jumpkick.wire.protocol.ProtoSession;
 import cc.jumpkick.wire.runtime.ExplainPlan;
 import cc.jumpkick.wire.runtime.TaskForecast;
 import java.io.IOException;
@@ -73,7 +74,20 @@ final class EngineExplainDecoder {
                         // re-run for every module in the tree.
                         SessionContext.current().testSelection())
                 .encode();
-        return EngineWire.stream(paths, request, (reader, ch) -> {
+        // The same session envelope every build line carries — variant, client env, worker-JVM
+        // tuning, toolchain — so the engine decodes the explain and the build to one Session.
+        var session = SessionContext.current();
+        String enveloped = ProtoSession.withToolchain(
+                ProtoSession.withSession(
+                        request,
+                        session.variant(),
+                        session.clientEnv(),
+                        session.jvm(),
+                        session.config().rebuildOr(false)),
+                session.jdkSpec(),
+                session.graalSpec(),
+                session.graalHome() == null ? null : session.graalHome().toString());
+        return EngineWire.stream(paths, enveloped, (reader, ch) -> {
             List<TaskForecast.Module> modules = new ArrayList<>();
             Map<String, List<TaskForecast.Task>> stepsByDir = new LinkedHashMap<>();
             Map<String, String> coordByDir = new LinkedHashMap<>();
