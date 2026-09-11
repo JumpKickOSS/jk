@@ -574,11 +574,25 @@ public final class MavenPackageSource implements PackageSource {
         return exclusions.contains(g + ":*") || exclusions.contains("*:" + a) || exclusions.contains("*:*");
     }
 
-    /** Solver package key for a POM dependency ({@code g:a:type:classifier}). */
+    /**
+     * Solver package key for a POM dependency ({@code g:a:type:classifier}). The type names the
+     * artifact's packaging, not a different library: an edge that says {@code aar} and one that
+     * says nothing are the same package, so both converge on one version. The assembler recovers
+     * the packaging from the POM when it materialises the artifact.
+     */
     static String packageKey(Pom.Dep dep) {
-        String type = dep.type() == null || dep.type().isBlank() ? PackageId.DEFAULT_TYPE : dep.type();
+        String type = solverType(dep.type());
         String classifier = dep.classifier() == null ? "" : dep.classifier();
         return PackageId.of(dep.groupId(), dep.artifactId(), type, classifier).key();
+    }
+
+    /** A packaging that is still one library on the classpath keys as the default type. */
+    static String solverType(@Nullable String declared) {
+        if (declared == null || declared.isBlank()) return PackageId.DEFAULT_TYPE;
+        return switch (declared) {
+            case "aar", "bundle" -> PackageId.DEFAULT_TYPE;
+            default -> declared;
+        };
     }
 
     static Set<String> modulesOf(List<Pom.Dep.Exclusion> exclusions) {

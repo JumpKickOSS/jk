@@ -170,22 +170,6 @@ final class LockfileAssembler {
 
         String packageName = mod.module();
         String artifactFile = null;
-        // only probe packaging when the solver package type is not already a plain jar.
-        // Building EffectivePom for every package on materialize dominated warm re-lock wall time
-        // (hundreds of POM expansions for Quarkus-sized graphs).
-        try {
-            PackageId id = PackageId.isMavenPackageKey(mod.module()) ? PackageId.parse(mod.module()) : null;
-            boolean maybeAar = id != null && "aar".equals(id.type());
-            if (!kmpAlias && maybeAar && "aar".equals(pomBuilder.build(coord).packaging())) {
-                coord = new Coordinate(coord.group(), coord.artifact(), coord.version(), null, "aar");
-                packageName =
-                        PackageId.of(coord.group(), coord.artifact(), "aar", "").key();
-                artifactFile = coord.artifact() + "-" + coord.version() + ".aar";
-            }
-        } catch (Exception ignored) {
-            // no POM / unparseable
-        }
-
         String source = fallbackSource;
         String checksum = null;
         RepoGroup.RepoFetched hit =

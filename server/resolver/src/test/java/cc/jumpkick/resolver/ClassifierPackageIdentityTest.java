@@ -44,6 +44,21 @@ class ClassifierPackageIdentityTest {
     }
 
     @Test
+    void an_aar_edge_and_a_bare_edge_are_one_solver_package() {
+        // One artifact, one version: the packaging an edge names is not another library. Two
+        // packages here let a manifest pin and a transitive aar land two versions of core-ktx.
+        Pom.Dep bare = new Pom.Dep("androidx.core", "core-ktx", "1.16.0", null, false, null, null, List.of());
+        Pom.Dep aar = new Pom.Dep("androidx.core", "core-ktx", "1.19.0", null, false, null, "aar", List.of());
+        assertThat(MavenPackageSource.packageKey(aar))
+                .isEqualTo(MavenPackageSource.packageKey(bare))
+                .isEqualTo(PackageId.ofGa("androidx.core:core-ktx").key());
+        Pom.Dep testJar = new Pom.Dep("androidx.core", "core-ktx", "1.19.0", null, false, null, "test-jar", List.of());
+        assertThat(MavenPackageSource.packageKey(testJar))
+                .as("a secondary artifact type is still its own package")
+                .isNotEqualTo(MavenPackageSource.packageKey(bare));
+    }
+
+    @Test
     void bare_ga_lock_name_normalizes_to_default_jar_package_key() {
         assertThat(PackageId.parse("com.google.guava:guava").key()).isEqualTo("com.google.guava:guava:jar:");
         var art = new Lockfile.Artifact(
