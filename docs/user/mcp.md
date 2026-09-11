@@ -20,7 +20,20 @@ Fix a failing build: [Troubleshooting](troubleshooting.md).
 | CLI | `jk engine status` shows **MCP**; JSON includes `mcpUrl` |
 
 Token: `jk engine status` / `jk web` URL fragment, or the file under the state directory
-(`http-token`). Same token as the dashboard.
+(`~/.jk/state/engine/<key>.http-token`). Same token as the dashboard.
+
+Register the engine once with an MCP client that speaks Streamable HTTP, passing the token as a
+header. With Claude Code:
+
+```bash
+URL=$(jk engine status --output json | jq -r .mcpUrl)
+TOKEN=$(cat ~/.jk/state/engine/*.http-token)
+claude mcp add --transport http jk "$URL" --header "Authorization: Bearer $TOKEN"
+```
+
+Other clients take the same three facts (a Streamable-HTTP server, its URL, one bearer header) in
+their own configuration file. The engine's port is stable across restarts unless `[http] port`
+is `0`, so the registration outlives the engine process.
 
 Disable MCP only: `[mcp] enabled = false` in `~/.jk/config.toml` (or
 `JK_MCP_ENABLED=false`) — `/mcp` 404s; dashboard stays up; `mcpUrl` is `null`.
@@ -40,7 +53,7 @@ Bind once (`jk_bind`), then omit `dir` on later calls.
 | **`jk_bind`** | Set default workspace; returns a project card |
 | **`jk_status`** | Engine vitals (pid, version, heap, active jobs) |
 | **`jk_project`** | Project card (coord, java, members, last run) |
-| **`jk_run`** | Start a job: `build` \| `test` \| `lock` \| `update` \| `format` \| `native` \| `image` \| `assemble` \| `compile` \| `clean` \| `publish` \| `install` \| `import`. **`wait` defaults true**. Publish is **always a dry-run**. Optional modules/tags/suites/`skip_tests`/`timeout_s`. `kind=test` defaults to the **unit** suite — do not pass every suite as a habit |
+| **`jk_run`** | Start a job: `build` \| `test` \| `guard` \| `lock` \| `update` \| `format` \| `native` \| `image` \| `assemble` \| `compile` \| `clean` \| `publish` \| `install` \| `import`. **`wait` defaults true**. Publish is **always a dry-run**. Optional modules/tags/suites/`skip_tests`/`timeout_s`. `kind=test` defaults to the **unit** suite — do not pass every suite as a habit |
 | **`jk_build`** / **`jk_test`** / **`jk_lock`** | Async convenience aliases (return `jid` immediately) |
 | **`jk_job`** | `get` \| `wait` \| `cancel`; omit `jid` → latest live job for bound dir |
 | **`jk_cancel`** | Cancel by **`jid`**, or every live job for a `dir` |
