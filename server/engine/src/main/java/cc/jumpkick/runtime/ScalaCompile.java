@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.repo.RepoGroup;
@@ -39,7 +40,7 @@ public final class ScalaCompile {
             // the bundled default, possibly outside the requested range.
             var selector = project == null ? null : project.project().scala();
             if (selector != null) {
-                System.err.println("jk: warning: no resolved Scala version in the lock for selector `"
+                Log.warn("jk: warning: no resolved Scala version in the lock for selector `"
                         + selector.raw() + "` — falling back to " + version
                         + "; run `jk lock` online to pin the intended version.");
             }

@@ -2,6 +2,7 @@
 package cc.jumpkick.repo;
 
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -192,7 +193,7 @@ public final class RepoArtifactStore {
             // Best-effort store write: the caller re-checks presence and fails loudly if nothing
             // landed. Surface the cause so a disk-full/permissions failure is diagnosable
             // rather than silent.
-            System.err.println("jk: warning: could not store " + relativePath + " under " + root + ": " + e);
+            Log.warn("jk: warning: could not store " + relativePath + " under " + root + ": " + e);
         }
     }
 

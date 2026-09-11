@@ -14,6 +14,7 @@ import cc.jumpkick.engine.plugin.BuiltInPluginJars;
 import cc.jumpkick.guard.rules.GuardPacks;
 import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.jdk.ToolchainLockStamp;
@@ -325,7 +326,7 @@ public final class LockPipeline {
                 pathPrep.project().graal() != null));
         if (profile) {
             ResolveProfile.phasePost(System.nanoTime() - postT0);
-            System.err.println("jk: " + ResolveProfile.report());
+            Log.info("jk: " + ResolveProfile.report());
         }
         trust = pathPrep.repos().trust();
         return lock;
@@ -717,7 +718,7 @@ public final class LockPipeline {
             if (checksum == null) {
                 // Nothing to materialize for POM-only rows. Still say so — a checksum-less jar row
                 // must not be silently treated as present.
-                System.err.println("jk: note: lock row " + pkg.name() + "@" + pkg.version()
+                Log.info("jk: note: lock row " + pkg.name() + "@" + pkg.version()
                         + " has no checksum — offline check skipped it (POM-only alias, or incomplete lock)");
                 continue;
             }

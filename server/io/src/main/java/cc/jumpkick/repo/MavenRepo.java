@@ -7,6 +7,7 @@ import cc.jumpkick.config.JkM2Config;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.http.CentralMirror;
 import cc.jumpkick.http.HostRateLimiter;
@@ -477,8 +478,8 @@ public final class MavenRepo {
             repoStore.writeMemo(relativePath, candidate, sha256);
             if (leg == Leg.ARTIFACT) verifiedUpstream.incrementAndGet();
             if (SessionContext.current().config().verboseOr(false)) {
-                System.err.println("jk: adopted " + relativePath + " from Maven local repo (" + vouchAlgo
-                        + " confirmed by " + name + ")");
+                Log.info("jk: adopted " + relativePath + " from Maven local repo (" + vouchAlgo + " confirmed by "
+                        + name + ")");
             }
             return Optional.of(new Fetched(uri, candidate, sha256, Files.size(candidate)));
         } catch (IOException | RuntimeException e) {

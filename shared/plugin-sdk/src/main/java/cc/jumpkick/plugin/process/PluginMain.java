@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.process;
 
+import cc.jumpkick.host.Log;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
@@ -12,6 +13,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.ServiceLoader;
+import java.util.function.UnaryOperator;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -29,13 +31,16 @@ public final class PluginMain {
     private PluginMain() {}
 
     public static void main(String[] args) {
-
+        // A worker's stderr is merged into its protocol stream, where the engine keeps a bounded
+        // tail of non-protocol lines: one line per record, no redaction (a worker holds no
+        // declarations), at the same shape the engine log uses.
+        Log.install(System.err, System.Logger.Level.INFO, UnaryOperator.identity());
         List<Plugin> plugins = new ArrayList<>();
         for (Plugin p : ServiceLoader.load(Plugin.class)) {
             plugins.add(p);
         }
         if (plugins.isEmpty()) {
-            System.err.println("jk-plugin-host: no cc.jumpkick.plugin.Plugin found on the classpath");
+            Log.error("jk-plugin-host: no cc.jumpkick.plugin.Plugin found on the classpath");
             System.exit(Exit.SOFTWARE);
             return;
         }
@@ -59,7 +64,7 @@ public final class PluginMain {
         try {
             System.exit(plugin.run(List.of(args), writer));
         } catch (Exception e) {
-            System.err.println(plugin.manifest().id() + ": " + e.getMessage());
+            Log.error(plugin.manifest().id() + ": " + e.getMessage(), e);
             System.exit(Exit.FAILURE);
         }
     }
@@ -82,8 +87,7 @@ public final class PluginMain {
             for (Plugin p : plugins) {
                 if (wanted.equals(p.getClass().getName())) return p;
             }
-            System.err.println(
-                    "jk-plugin-host: requested plugin " + wanted + " not found among " + classNames(plugins));
+            Log.error("jk-plugin-host: requested plugin " + wanted + " not found among " + classNames(plugins));
             return null;
         }
         // A worker lib dir may carry a sibling plugin jar as a plain dependency (grails ships the
@@ -94,12 +98,11 @@ public final class PluginMain {
             for (Plugin p : plugins) {
                 if (prefix.equals(p.manifest().protocolPrefix())) return p;
             }
-            System.err.println(
-                    "jk-plugin-host: no plugin with protocol prefix " + prefix + " among " + classNames(plugins));
+            Log.error("jk-plugin-host: no plugin with protocol prefix " + prefix + " among " + classNames(plugins));
             return null;
         }
         if (plugins.size() == 1) return plugins.get(0);
-        System.err.println("jk-plugin-host: expected exactly one Plugin, found "
+        Log.error("jk-plugin-host: expected exactly one Plugin, found "
                 + plugins.size()
                 + " "
                 + classNames(plugins)

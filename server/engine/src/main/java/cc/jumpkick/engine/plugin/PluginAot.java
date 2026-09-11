@@ -3,6 +3,7 @@ package cc.jumpkick.engine.plugin;
 
 import cc.jumpkick.host.AotCacheFiles;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.JdkVendor;
 import cc.jumpkick.model.JkVersion;
@@ -447,10 +448,10 @@ public final class PluginAot {
             // the window is the fork itself rather than the whole train.
             if (StoreWriteGate.wipedSinceStart()) {
                 p.destroyForcibly().waitFor(10, TimeUnit.SECONDS);
-                System.err.println("jk engine: AOT training for " + what + " abandoned — the store was wiped");
+                Log.warn("jk engine: AOT training for " + what + " abandoned — the store was wiped");
                 return;
             }
-            System.err.println("jk engine: AOT-training " + what + " in the background (pid " + p.pid() + ")");
+            Log.info("jk engine: AOT-training " + what + " in the background (pid " + p.pid() + ")");
             if (!p.waitFor(trainingTimeoutMillis, TimeUnit.MILLISECONDS)) {
                 // NO sticky marker: an overrun is usually transient (first Kotlin compile on a
                 // loaded machine), and a sticky .noaot here would disable AOT for the key
@@ -458,7 +459,7 @@ public final class PluginAot {
                 // block retrains until CLAIM_STALE_MILLIS, a bounded backoff, not a life sentence.
                 touch(claim);
                 keepClaim = true;
-                System.err.println("jk engine: AOT training for " + what + " overran; killed (will retry later)");
+                Log.warn("jk engine: AOT training for " + what + " overran; killed (will retry later)");
                 // Reap before the finally cleanup: destroyForcibly is asynchronous, and leaving
                 // TRAINING is the fixture-quiescence signal — a still-dying trainer must not hold
                 // (or re-create) files under paths the cleanup is about to delete.
@@ -470,14 +471,13 @@ public final class PluginAot {
                 if (meta != null) recordReady(cache, meta, false);
                 else recordReadyBare(cache);
                 sweepTool(cache);
-                System.err.println("jk engine: AOT cache ready for " + what + " (" + cache.getFileName() + ")");
+                Log.info("jk engine: AOT cache ready for " + what + " (" + cache.getFileName() + ")");
             } else {
                 markNoAot(cache, meta); // sticky per key — a JDK/Kotlin/GC bump mints a new key and retries
-                System.err.println(
-                        "jk engine: AOT training for " + what + " produced no cache (exit " + p.exitValue() + ")");
+                Log.warn("jk engine: AOT training for " + what + " produced no cache (exit " + p.exitValue() + ")");
             }
         } catch (IOException e) {
-            System.err.println("jk engine: AOT training for " + what + " skipped: " + e.getMessage());
+            Log.warn("jk engine: AOT training for " + what + " skipped: " + e.getMessage());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } finally {

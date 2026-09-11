@@ -4,6 +4,7 @@ package cc.jumpkick.engine.plugin;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.UserPlugins;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.PluginDeclaration;
 import cc.jumpkick.plugin.manifest.PluginDescriptors;
@@ -44,7 +45,7 @@ public final class BuiltInPluginJars {
                 // Store jars are managed artifacts: one garbled or version-incompatible manifest
                 // must not kill the engine machine-wide. Skip it loudly — a build referencing
                 // its table retries through the lazy fetcher and surfaces this cause there.
-                System.err.println("jk engine: skipping plugin jar " + located.path() + ": " + e.getMessage());
+                Log.warn("jk engine: skipping plugin jar " + located.path() + ": " + e.getMessage());
             }
         }
     }

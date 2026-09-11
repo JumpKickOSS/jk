@@ -2,6 +2,7 @@
 package cc.jumpkick.resolver;
 
 import cc.jumpkick.config.EnvValues;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.PackageId;
@@ -218,7 +219,7 @@ public final class PubGrubResolver implements Resolver {
                     // leaves jk.toml naming a dead artifact forever. Once per lock.
                     if (reportedRelocations.add(e.getKey() + "->" + toPkg)) {
                         String msg = moved.message();
-                        System.err.println("jk: " + e.getKey() + "@" + e.getValue() + " has been relocated to "
+                        Log.warn("jk: " + e.getKey() + "@" + e.getValue() + " has been relocated to "
                                 + to.group() + ":" + to.artifact()
                                 + (msg == null || msg.isBlank() ? "" : " — " + msg.trim()));
                     }

@@ -4,6 +4,7 @@ package cc.jumpkick.runtime.workspace;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.HeapPlan;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.Task;
@@ -133,7 +134,7 @@ public final class BuildEta {
             return new BuildService.EtaModel(seed.etaMs(), costs, concurrency, serialEta, seed.rawScheduleMs());
         } catch (RuntimeException e) {
             // Never fail explain/build over the estimate — but do not silently advertise 0s/empty.
-            System.err.println("jk: ETA estimate failed: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+            Log.warn("jk: ETA estimate failed: " + e.getClass().getSimpleName() + ": " + e.getMessage());
             return BuildService.EtaModel.empty();
         }
     }
@@ -676,9 +677,9 @@ public final class BuildEta {
         // Always note serious misses so they show up in engine logs without env.
         boolean serious = relErr >= 0.35 && actualExecuteMs >= 5_000L;
         if (!verbose && !serious) return;
-        System.err.printf(
-                "jk: eta-seed quality R0=%dms actual=%dms ratio=%.2f relErr=%.0f%% dirty=%d%n",
-                seedMs, actualExecuteMs, ratio, relErr * 100.0, dirtyModules);
+        Log.info(String.format(
+                "jk: eta-seed quality R0=%dms actual=%dms ratio=%.2f relErr=%.0f%% dirty=%d",
+                seedMs, actualExecuteMs, ratio, relErr * 100.0, dirtyModules));
     }
 
     /** History key with known dirty-module count so explain and build share the same prior tier. */

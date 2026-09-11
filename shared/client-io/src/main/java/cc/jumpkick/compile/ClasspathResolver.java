@@ -4,6 +4,7 @@ package cc.jumpkick.compile;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.ExplodedArchives;
 import cc.jumpkick.config.JkM2Config;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
@@ -308,7 +309,7 @@ public final class ClasspathResolver {
                 // POM-only aliases (KMP roots, packaging=pom) legitimately have none — they are
                 // not classpath jars. Soft-skip either way; requirePresent only enforces rows
                 // that claim a sha256 (a miss there is a sync/store bug).
-                System.err.println("jk: warning: lock row "
+                Log.warn("jk: warning: lock row "
                         + pkg.name()
                         + "@"
                         + pkg.version()
@@ -322,7 +323,7 @@ public final class ClasspathResolver {
                     throw new IllegalStateException(
                             "dependency " + pkg.displayCoord() + " is not on disk after sync — run `jk sync -F`");
                 }
-                System.err.println("jk: warning: lock row "
+                Log.warn("jk: warning: lock row "
                         + pkg.name()
                         + "@"
                         + pkg.version()

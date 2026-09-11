@@ -66,14 +66,14 @@ public final class EngineMain {
      */
     static int runInflateXz(String[] args) {
         if (args.length != 3) {
-            System.err.println("usage: EngineMain --inflate-xz <in.xz> <out>");
+            Log.error("usage: EngineMain --inflate-xz <in.xz> <out>");
             return Exit.USAGE;
         }
         try {
             Xz.inflate(Path.of(args[1]), Path.of(args[2]));
             return 0;
         } catch (IOException e) {
-            System.err.println("jk engine (inflate-xz): " + e.getMessage());
+            Log.error("jk engine (inflate-xz): " + e.getMessage());
             return 1;
         }
     }
@@ -81,8 +81,8 @@ public final class EngineMain {
     /**
      * The engine server's whole life: resolve identity/config from the same env this process
      * inherited from its spawner, serve until shutdown, then return. All engine-lifecycle logging
-     * goes to {@code System.err} — the spawner already redirected this process's stdout/stderr to
-     * the engine's log file, so nothing here writes to a real terminal.
+     * goes through {@link Log} onto {@code System.err} — the spawner already redirected this
+     * process's stdout/stderr to the engine's log file, so nothing here writes to a real terminal.
      */
     public static int run() {
         // Survive the spawner's terminal: detach into our own POSIX session, then ignore
@@ -102,11 +102,11 @@ public final class EngineMain {
             } catch (RuntimeException badConfig) {
                 // A user-config plugin pin (or config parse) error is explicit user intent we
                 // cannot honor — refuse to start with the message, never a raw stack.
-                System.err.println("jk engine: " + badConfig.getMessage());
+                Log.error("jk engine: " + badConfig.getMessage());
                 return 1;
             }
             JkHttpConfig httpConfig = JkHttpConfig.resolve().orElse(null);
-            EngineServer server = new EngineServer(paths, config, httpConfig, JkVersion.VERSION, System.err::println);
+            EngineServer server = new EngineServer(paths, config, httpConfig, JkVersion.VERSION, Log::info);
             if (logSink != null) server.logSink(logSink);
             // The spawner asks for an AOT cache with -Djk.aot.train.output=<path> when none exists
             // yet (see EngineClient.spawn). The server invokes the factory only after WINNING its
@@ -115,11 +115,11 @@ public final class EngineMain {
             if (aotOut != null && !aotOut.isBlank() && !Files.exists(Path.of(aotOut))) {
                 server.aotTrainerSpawner(() -> spawnAotTrainer(aotOut));
             }
-            OwnerWatchdog.start(System.getProperty(OwnerWatchdog.PROPERTY), server::close, System.err::println);
+            OwnerWatchdog.start(System.getProperty(OwnerWatchdog.PROPERTY), server::close, Log::info);
             server.run();
             return 0;
         } catch (IOException e) {
-            System.err.println("jk engine: failed to start: " + e.getMessage());
+            Log.error("jk engine: failed to start: " + e.getMessage());
             return 1;
         }
     }
@@ -143,7 +143,7 @@ public final class EngineMain {
         try {
             return EngineLogSink.install(log, config.logMaxBytes());
         } catch (IOException e) {
-            System.err.println("jk engine: log size cap is off — could not open " + log + ": " + e.getMessage());
+            Log.warn("jk engine: log size cap is off — could not open " + log + ": " + e.getMessage());
             return null;
         }
     }
@@ -178,7 +178,7 @@ public final class EngineMain {
             p.onExit().thenAccept(proc -> promoteTrainedCache(tmp, finalPath, proc.exitValue()));
             return p;
         } catch (IOException e) {
-            System.err.println("jk engine: could not spawn the AOT training sidecar: " + e.getMessage());
+            Log.warn("jk engine: could not spawn the AOT training sidecar: " + e.getMessage());
             return null;
         }
     }
@@ -230,7 +230,7 @@ public final class EngineMain {
                 return;
             }
         } catch (IOException e) {
-            System.err.println("jk engine: could not publish the AOT cache: " + e.getMessage());
+            Log.warn("jk engine: could not publish the AOT cache: " + e.getMessage());
         }
         deleteQuietly(tmp);
         deleteQuietly(AotCacheFiles.configOf(tmp)); // interrupted recording
@@ -279,7 +279,7 @@ public final class EngineMain {
                     } catch (InterruptedException e) {
                         return; // trainer finished first
                     }
-                    System.err.println("jk engine (aot-training): exceeded " + (limitMs / 1000)
+                    Log.error("jk engine (aot-training): exceeded " + (limitMs / 1000)
                             + "s — halting; a normal recording takes about "
                             + (AOT_TRAINING_UPTIME_MS / 1000) + "s");
                     // Not a cancellation and not bad config: the trainer wedged. EX_SOFTWARE.
@@ -324,14 +324,13 @@ public final class EngineMain {
         try {
             tmp = Files.createTempDirectory("jk-aot-train-");
             EnginePaths.Paths paths = EnginePaths.resolve(tmp);
-            EngineServer server =
-                    new EngineServer(paths, JkEngineConfig.resolve(), null, JkVersion.VERSION, System.err::println);
+            EngineServer server = new EngineServer(paths, JkEngineConfig.resolve(), null, JkVersion.VERSION, Log::info);
             Thread serving = new Thread(
                     () -> {
                         try {
                             server.run();
                         } catch (IOException e) {
-                            System.err.println("jk engine (aot-training): " + e.getMessage());
+                            Log.error("jk engine (aot-training): " + e.getMessage());
                         }
                     },
                     "jk-aot-training");
@@ -346,7 +345,7 @@ public final class EngineMain {
             serving.join(Duration.ofSeconds(30).toMillis());
             return 0;
         } catch (Exception e) {
-            System.err.println("jk engine (aot-training): " + e.getMessage());
+            Log.error("jk engine (aot-training): " + e.getMessage());
             return 1;
         } finally {
             if (tmp != null) PathUtil.deleteRecursively(tmp);

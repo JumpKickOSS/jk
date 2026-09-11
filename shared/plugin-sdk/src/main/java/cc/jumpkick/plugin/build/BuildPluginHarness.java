@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.build;
 
+import cc.jumpkick.host.Log;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginConfig;
@@ -93,12 +94,12 @@ public final class BuildPluginHarness {
     // tests may drive a bare BuildPlugin fixture directly.
     static int run(BuildPlugin plugin, List<String> args, ProtocolWriter out) throws Exception {
         if (args.isEmpty()) {
-            System.err.println("build-plugin worker: expected spec file path as first argument");
+            Log.error("build-plugin worker: expected spec file path as first argument");
             return 64;
         }
         Path specFile = Path.of(args.get(0));
         if (!Files.isRegularFile(specFile)) {
-            System.err.println("build-plugin worker: spec file not found: " + specFile);
+            Log.error("build-plugin worker: spec file not found: " + specFile);
             return 66;
         }
         Spec spec = Spec.read(specFile);

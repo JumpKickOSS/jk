@@ -12,6 +12,7 @@ import cc.jumpkick.guard.api.OwnerMissing;
 import cc.jumpkick.guard.api.Scope;
 import cc.jumpkick.guard.api.Text;
 import cc.jumpkick.guard.api.Violations;
+import cc.jumpkick.host.Log;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
@@ -135,7 +136,7 @@ public final class GuardExtension
                 collector(ctx));
         GuardRuntime rt = GuardRuntime.current();
         if (rt != null) Report.append(rt.reportFile(), line);
-        else System.err.println("jk guard: " + line.toJson());
+        else Log.info("jk guard: " + line.toJson());
     }
 
     private static Report.Collector collector(ExtensionContext ctx) {

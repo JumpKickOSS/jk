@@ -2,6 +2,7 @@
 package cc.jumpkick.androidsdk;
 
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
@@ -84,7 +85,7 @@ public final class AndroidSdkInstaller {
         }
 
         if (pinnedRevision != null && !pinnedRevision.equals(component.revision())) {
-            System.err.println("jk: Android SDK component " + componentPath + " is pinned to revision "
+            Log.warn("jk: Android SDK component " + componentPath + " is pinned to revision "
                     + pinnedRevision + " in jk-lock.toml but Google's feed now offers " + component.revision()
                     + " — installing the offered revision; run `jk lock` to refresh the pin");
         }
@@ -102,7 +103,7 @@ public final class AndroidSdkInstaller {
         if (pinnedRevision == null) return;
         String installed = sdk.installedRevision(componentPath);
         if (installed != null && !installed.equals(pinnedRevision)) {
-            System.err.println("jk: Android SDK component " + componentPath + " is installed at revision "
+            Log.warn("jk: Android SDK component " + componentPath + " is installed at revision "
                     + installed + " but jk-lock.toml pins " + pinnedRevision
                     + " — building with the installed one; run `jk lock` to refresh the pin");
         }

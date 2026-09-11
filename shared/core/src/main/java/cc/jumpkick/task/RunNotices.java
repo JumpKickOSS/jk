@@ -2,6 +2,7 @@
 package cc.jumpkick.task;
 
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.Log;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
@@ -37,12 +38,12 @@ import java.util.function.Supplier;
  *
  * <h2>Where a note goes</h2>
  *
- * To the run's registered {@link Sink} when the engine opened one, and to standard error
- * otherwise. The engine opens a sink around every enveloped request — registered beside {@link
+ * To the run's registered {@link Sink} when the engine opened one, and to the process
+ * {@link Log} at warn otherwise. The engine opens a sink around every enveloped request — registered beside {@link
  * IoLedger#open} and removed in the same {@code finally} — and its sink turns a note into a WARN
  * wire line the CLI already prints, so the warning reaches the user who can act on it rather than
- * only the engine log. Standard error remains for everything outside a request: CLI-process
- * callers, engine housekeeping, tests.
+ * only the engine log. The log remains for everything outside a request: engine housekeeping
+ * and tests.
  */
 public final class RunNotices {
 
@@ -70,7 +71,7 @@ public final class RunNotices {
         SINKS.put(run, sink);
     }
 
-    /** Stop routing this run's notices; later notes fall back to standard error. */
+    /** Stop routing this run's notices; later notes fall back to the log. */
     public static void closeSink(IoLedger run) {
         if (run == null) return;
         SINKS.remove(run);
@@ -78,7 +79,7 @@ public final class RunNotices {
 
     /**
      * Say {@code message} if this run has not already said {@code key}; otherwise do nothing. The
-     * note goes to the run's {@link Sink} when one is open, else to standard error.
+     * note goes to the run's {@link Sink} when one is open, else to the log.
      *
      * <p>{@code message} is a supplier so a repeat costs nothing to build — the caller that has
      * already decided it has something to say is usually the one doing the formatting work.
@@ -94,9 +95,9 @@ public final class RunNotices {
             if (text == null || text.isEmpty()) return;
             Sink sink = SINKS.get(run);
             if (sink != null) sink.notice(key, text);
-            else System.err.println(text);
+            else Log.warn(text);
         } catch (RuntimeException e) {
-            // Unreadable session, unwritable stderr, throwing sink: say nothing rather than fail
+            // Unreadable session, unwritable log, throwing sink: say nothing rather than fail
             // the build.
         }
     }

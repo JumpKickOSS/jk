@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.protocol;
 
+import cc.jumpkick.host.Log;
 import cc.jumpkick.model.command.Exit;
 import java.nio.file.Path;
 import java.util.List;
@@ -58,7 +59,7 @@ public final class CompilerProtocol {
 
     /**
      * The worker entry point: validate the single {@code @spec} argument, decode it, and run
-     * {@code body}. An escaping throwable is printed to stderr (the host keeps a bounded tail of
+     * {@code body}. An escaping throwable is logged with its stack (the host keeps a bounded tail of
      * non-protocol output and surfaces it when a worker dies before speaking protocol) and mapped
      * to {@link Exit#SOFTWARE}; a wrong argument count is {@link Exit#USAGE}.
      *
@@ -68,15 +69,14 @@ public final class CompilerProtocol {
         CompilerProtocol proto = new CompilerProtocol(out);
         try {
             if (args.size() != 1) {
-                System.err.println("usage: " + pluginId + " <spec-file>|@<spec-file>");
+                Log.error("usage: " + pluginId + " <spec-file>|@<spec-file>");
                 return Exit.USAGE;
             }
             String arg = args.get(0);
             PluginSpec spec = PluginSpec.read(Path.of(arg.startsWith("@") ? arg.substring(1) : arg));
             return body.compile(spec, proto);
         } catch (Throwable t) {
-            System.err.println(pluginId + ": " + t.getClass().getName() + ": " + t.getMessage());
-            t.printStackTrace(System.err);
+            Log.error(pluginId + ": " + t.getClass().getName() + ": " + t.getMessage(), t);
             return Exit.SOFTWARE;
         }
     }
