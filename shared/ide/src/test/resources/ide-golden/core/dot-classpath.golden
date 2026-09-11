@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<classpath>
+  <classpathentry kind="src" path="src/main/java" output="target/jdt/classes/main"/>
+  <classpathentry kind="src" path="src/main/resources" output="target/jdt/classes/main"/>
+  <classpathentry kind="src" path="src/test/java" output="target/jdt/classes/test" test="true"/>
+  <classpathentry kind="src" path="src/test/resources" output="target/jdt/classes/test" test="true"/>
+  <classpathentry kind="src" path="src/integration/java" output="target/jdt/classes/test" test="true"/>
+  <classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-17"/>
+  <classpathentry kind="lib" path="${WS}/store/org/slf4j/slf4j-api/2.0.17/slf4j-api-2.0.17.jar" sourcepath="${WS}/store/org/slf4j/slf4j-api/2.0.17/slf4j-api-2.0.17-sources.jar"/>
+  <classpathentry kind="lib" path="${WS}/store/org/junit/jupiter/junit-jupiter/5.13.4/junit-jupiter-5.13.4.jar">
+    <attributes>
+      <attribute name="test" value="true"/>
+    </attributes>
+  </classpathentry>
+  <classpathentry kind="output" path="target/jdt/classes/main"/>
+</classpath>

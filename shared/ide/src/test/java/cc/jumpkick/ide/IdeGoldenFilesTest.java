@@ -22,9 +22,10 @@ import org.junit.jupiter.api.io.TempDir;
  * generated file re-captures the golden ({@code IDE_GOLDEN_CAPTURE=<resources dir> ./gradlew
  * :ide:test --tests IdeGoldenFilesTest}); an accidental one fails here.
  *
- * <p>Generated directories whose names start with a dot ({@code .idea}, {@code .vscode}) are stored
- * as {@code dot-idea}, {@code dot-vscode}: the repository ignores dot-directories everywhere, and a
- * golden that git never sees is a test that passes only on the machine that captured it.
+ * <p>Goldens are stored with every dot-segment spelled {@code dot-} and a {@code .golden} suffix
+ * ({@code dot-idea/compiler.xml.golden}, {@code app/dot-classpath.golden}): the repository ignores
+ * IDE files everywhere, and a golden that git never sees is a test that passes only on the machine
+ * that captured it.
  */
 class IdeGoldenFilesTest {
 
@@ -93,9 +94,18 @@ class IdeGoldenFilesTest {
         return out;
     }
 
-    /** Where a generated file's golden lives: a leading dot-directory is spelled {@code dot-}. */
+    /**
+     * Where a generated file's golden lives: every dot-segment is spelled {@code dot-} and the file
+     * carries a {@code .golden} suffix, so no ignore pattern for IDE files ({@code .idea/},
+     * {@code *.iml}, {@code .classpath}) can swallow it.
+     */
     private static String stored(String generated) {
-        return generated.startsWith(".") ? "dot-" + generated.substring(1) : generated;
+        StringBuilder out = new StringBuilder();
+        for (String segment : generated.split("/")) {
+            if (!out.isEmpty()) out.append('/');
+            out.append(segment.startsWith(".") ? "dot-" + segment.substring(1) : segment);
+        }
+        return out.append(".golden").toString();
     }
 
     /** Re-capture: write every generated file and the index under {@code resources}, then stop. */
