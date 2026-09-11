@@ -3,6 +3,7 @@ package cc.jumpkick.command.system;
 
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.GlobalOptions;
+import cc.jumpkick.cli.engine.EngineHeapDump;
 import cc.jumpkick.cli.engine.EngineProbe;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
@@ -71,7 +72,7 @@ public final class DoctorCommand implements CliCommand {
         // Collect checks first so JSON and human share the same facts. Tools are scanned (and
         // repaired — broken links unlinked, fingerprints written) exactly once, here, so
         // `--output json` performs the same repair the human view does instead of only reporting it.
-        Check engine = checkEngine();
+        Check engine = withHeapDump(checkEngine(), EngineHeapDump.find(EnginePaths.current()));
         Check cache = checkDirs();
         Check state = checkStateMode();
         Check jdk = checkJdk();
@@ -255,6 +256,16 @@ public final class DoctorCommand implements CliCommand {
             return new Check(Status.WARN, "engine", detail + " · http: " + s.httpError());
         }
         return new Check(Status.OK, "engine", detail);
+    }
+
+    /**
+     * A heap dump beside the engine log means an earlier engine of this identity exited on
+     * OutOfMemoryError; the finding names it and the remedy, and an OK engine row becomes a WARN.
+     */
+    static Check withHeapDump(Check engine, Optional<Path> dump) {
+        if (dump.isEmpty()) return engine;
+        Status status = engine.status() == Status.FAIL ? Status.FAIL : Status.WARN;
+        return new Check(status, engine.label(), engine.detail() + " · " + EngineHeapDump.finding(dump.get()));
     }
 
     private static Check checkDirs() {

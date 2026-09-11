@@ -178,6 +178,9 @@ public final class EngineSpawn {
      */
     private static EngineProbe.Handshake startOnce(EnginePaths.Paths paths, String clientVersion, EngineTarget target)
             throws IOException {
+        // The log about to be rotated is the previous engine's; if it ends in an OutOfMemoryError
+        // exit, say so once, here, before the fresh start truncates the evidence.
+        EngineHeapDump.reportExit(paths);
         for (int attempt = 0; attempt < 2; attempt++) {
             AotMode mode = chooseAotMode(target);
             StartResult r = awaitStartup(

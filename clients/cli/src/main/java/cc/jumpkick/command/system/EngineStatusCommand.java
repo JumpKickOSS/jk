@@ -4,6 +4,7 @@ package cc.jumpkick.command.system;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineFleet;
+import cc.jumpkick.cli.engine.EngineHeapDump;
 import cc.jumpkick.cli.engine.EngineProbe;
 import cc.jumpkick.cli.engine.EngineProcessControl;
 import cc.jumpkick.cli.theme.Theme;
@@ -79,6 +80,7 @@ public final class EngineStatusCommand implements CliCommand {
                             + (others.size() == 1 ? " other is" : " others are") + " running)";
                 }
                 CliOutput.out(JkWedge.chipLine(Glyphs.STOP, "Engine", GlobalConfig.nerdFont(), headline));
+                heapDumpRow(paths);
                 printFleet(others);
             }
             return Exit.FAILURE;
@@ -95,6 +97,7 @@ public final class EngineStatusCommand implements CliCommand {
         detail("Version", s.version());
         detail("Uptime", formatUptime(uptimeSeconds));
         detail("Live Jobs", String.valueOf(s.activeBuildPlans()));
+        heapDumpRow(paths);
         // Transient by design: the sidecar trainer lives ~15s after a fresh install/upgrade, then
         // this line disappears — steady state stays four/five detail rows (+ memory bar).
         if (s.aotTrainingPid() > 0) {
@@ -119,6 +122,11 @@ public final class EngineStatusCommand implements CliCommand {
         List<EngineFleet.Member> fleet = EngineFleet.list();
         if (fleet.size() > 1) printFleet(fleet);
         return Exit.SUCCESS;
+    }
+
+    /** The heap dump a previous engine of this identity left when it exited on OutOfMemoryError, if any. */
+    private static void heapDumpRow(EnginePaths.Paths paths) {
+        EngineHeapDump.find(paths).ifPresent(dump -> detail("Heap Dump", EngineHeapDump.finding(dump)));
     }
 
     /**
