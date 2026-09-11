@@ -242,7 +242,8 @@ public final class BuildPlan {
                             // at a time, exactly as the wave executor ran it. Admission stalls for
                             // its duration, which is why SYNC is reserved for near-zero steps
                             // (parse-build, write-stamp, joins) and every heavy step is IO/CPU.
-                            TaskStatus s = Objects.requireNonNull(startStep(p, initialTicks, weights, null, null, null));
+                            TaskStatus s =
+                                    Objects.requireNonNull(startStep(p, initialTicks, weights, null, null, null));
                             if (isOk(s)) {
                                 completedOk.add(p.name());
                                 admittedInline = true;

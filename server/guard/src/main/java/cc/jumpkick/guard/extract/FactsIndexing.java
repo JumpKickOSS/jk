@@ -140,8 +140,7 @@ public final class FactsIndexing {
      * step graph.
      */
     static IOException readFailure(String rel, Path classesDir, IOException cause, boolean onWindows) {
-        if (cause instanceof NoSuchFileException
-                || (onWindows && cause instanceof AccessDeniedException)) {
+        if (cause instanceof NoSuchFileException || (onWindows && cause instanceof AccessDeniedException)) {
             return new IOException(
                     "class file " + rel + " vanished from " + classesDir
                             + " between listing and reading — the classes directory changed under the guard step, "
