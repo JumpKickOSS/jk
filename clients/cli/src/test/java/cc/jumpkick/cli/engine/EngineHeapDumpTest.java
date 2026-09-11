@@ -64,4 +64,15 @@ class EngineHeapDumpTest {
         Files.writeString(EnginePaths.heapDump(paths), "HPROF");
         assertThat(EngineHeapDump.find(paths)).contains(paths.dir().resolve(paths.key() + ".hprof"));
     }
+
+    @Test
+    void the_engine_s_own_exit_flag_in_the_log_is_not_an_exit(@TempDir Path dir) throws Exception {
+        Path log = dir.resolve("k.log");
+        Files.writeString(
+                log,
+                "Picked up JAVA_TOOL_OPTIONS: -XX:+ExitOnOutOfMemoryError -XX:+HeapDumpOnOutOfMemoryError\n"
+                        + "engine: listening\n"
+                        + "engine: stopped on request\n");
+        assertThat(EngineHeapDump.exitedOnOutOfMemory(log)).isFalse();
+    }
 }

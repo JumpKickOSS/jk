@@ -57,7 +57,11 @@ public final class EngineHeapDump {
         return Optional.of("the build engine exited on OutOfMemoryError; " + where + "; " + REMEDY);
     }
 
-    /** Whether the last {@value #TAIL_BYTES} bytes of {@code log} report an {@code OutOfMemoryError}. */
+    /**
+     * Whether the last {@value #TAIL_BYTES} bytes of {@code log} report an {@code OutOfMemoryError}.
+     * The match is the exception's qualified name: the log also echoes the engine's own JVM flags,
+     * and {@code -XX:+ExitOnOutOfMemoryError} is on every engine's line, exit or no exit.
+     */
     static boolean exitedOnOutOfMemory(Path log) {
         if (!Files.isRegularFile(log)) return false;
         try (RandomAccessFile f = new RandomAccessFile(log.toFile(), "r")) {
@@ -66,7 +70,7 @@ public final class EngineHeapDump {
             byte[] tail = new byte[size];
             f.seek(length - size);
             f.readFully(tail);
-            return new String(tail, StandardCharsets.UTF_8).contains("OutOfMemoryError");
+            return new String(tail, StandardCharsets.UTF_8).contains("java.lang.OutOfMemoryError");
         } catch (IOException e) {
             return false;
         }
