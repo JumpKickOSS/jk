@@ -65,6 +65,10 @@ class JkTomlSchemaTest {
         String javac = Jsonl.nested(Jsonl.nested(schema, "properties"), "javac");
         assertThat(keysOf(Jsonl.nested(javac, "properties")))
                 .containsExactlyInAnyOrderElementsOf(ManifestBuild.JAVAC_KEYS);
+        String test = Jsonl.nested(Jsonl.nested(javac, "properties"), "test");
+        assertThat(keysOf(Jsonl.nested(test, "properties")))
+                .as("[javac.test] is the same shape one level down, and cannot nest")
+                .containsExactlyInAnyOrderElementsOf(ManifestBuild.JAVAC_TEST_KEYS);
         String plugin =
                 Jsonl.nested(Jsonl.nested(Jsonl.nested(javac, "properties"), "plugins"), "additionalProperties");
         assertThat(keysOf(Jsonl.nested(plugin, "properties")))

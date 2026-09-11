@@ -60,7 +60,9 @@ The table is named `javac`, not `java`: `java = 25` is the release, and a TOML k
 both a value and a table.
 
 `compile-main` and `compile-test` run the same plugins, and every plugin and option is part
-of the compile action key — bumping a severity recompiles. `jk explain --verbose` names the
+of the compile action key — bumping a severity recompiles. A `[javac.test]` table with the
+same two keys replaces `[javac]` for `compile-test` alone; an empty one (`plugins = {}`) turns
+the plugins off for a suite that hands null to parsers on purpose while production stays checked. `jk explain --verbose` names the
 plugins a compile step invokes. Unknown keys under `[javac]` fail the parse. Lint
 (`[build] lint`), plugin-contributed and profile `javac` args come first in the argv, then the
 plugins, then `args`.

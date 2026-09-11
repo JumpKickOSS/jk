@@ -284,7 +284,25 @@
             "additionalProperties": false
           }
         },
-        "args": { "type": "array", "items": { "type": "string" }, "description": "Verbatim javac arguments, appended after every plugin." }
+        "args": { "type": "array", "items": { "type": "string" }, "description": "Verbatim javac arguments, appended after every plugin." },
+        "test": {
+          "type": "object",
+          "description": "[javac.test]: the same two keys; when present this table replaces [javac] for compile-test (an empty table turns the plugins off for the suite).",
+          "properties": {
+            "plugins": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "options": { "type": "array", "items": { "type": "string" } }
+                },
+                "additionalProperties": false
+              }
+            },
+            "args": { "type": "array", "items": { "type": "string" } }
+          },
+          "additionalProperties": false
+        }
       },
       "additionalProperties": false
     },

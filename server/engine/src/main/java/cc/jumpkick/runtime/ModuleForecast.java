@@ -506,7 +506,7 @@ final class ModuleForecast {
                     testOut,
                     release,
                     javacArgs,
-                    project.build().javac(),
+                    project.build().javac().forTests(),
                     javaHome,
                     testScala));
             String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_TEST, testOut);

@@ -54,7 +54,7 @@ class JkBuildParserJavacTest {
                         plugin = { ErrorProne = {} }
                         """))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessage("[javac] unknown key `plugin` — expected one of: plugins, args");
+                .hasMessage("[javac] unknown key `plugin` — expected one of: plugins, args, test");
         assertThatThrownBy(() -> JkBuildParser.parse(JkBuildParserFixtures.PROJECT + """
 
                         [javac.plugins.ErrorProne]
@@ -62,6 +62,49 @@ class JkBuildParserJavacTest {
                         """))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessage("[javac.plugins.ErrorProne] unknown key `opts` — expected one of: options");
+    }
+
+    @Test
+    void the_test_table_replaces_the_main_one_for_compile_test_only() {
+        JkBuild b = JkBuildParser.parse(JkBuildParserFixtures.PROJECT + """
+                [javac]
+                plugins = { ErrorProne = { options = ["-Xep:NullAway:ERROR"] } }
+                args    = ["-XDcompilePolicy=simple"]
+
+                [javac.test]
+                plugins = {}
+                """);
+        JkBuild.JavacConfig javac = b.build().javac();
+        assertThat(javac.plugins()).containsOnlyKeys("ErrorProne");
+        assertThat(javac.forTests().isEmpty())
+                .as("the suite compiles without the plugins")
+                .isTrue();
+        assertThat(javac.forTests().args()).isEmpty();
+    }
+
+    @Test
+    void without_a_test_table_compile_test_runs_the_main_one() {
+        JkBuild b = JkBuildParser.parse(JkBuildParserFixtures.PROJECT + """
+                [javac]
+                plugins = { ErrorProne = {} }
+                """);
+        assertThat(b.build().javac().forTests()).isSameAs(b.build().javac());
+    }
+
+    @Test
+    void the_test_table_cannot_nest_and_names_its_own_keys() {
+        assertThatThrownBy(() -> JkBuildParser.parse(JkBuildParserFixtures.PROJECT + """
+                        [javac.test]
+                        test = {}
+                        """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessage("[javac.test] unknown key `test` — expected one of: plugins, args");
+        assertThatThrownBy(() -> JkBuildParser.parse(JkBuildParserFixtures.PROJECT + """
+                        [javac.test.plugins.ErrorProne]
+                        opts = []
+                        """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessage("[javac.test.plugins.ErrorProne] unknown key `opts` — expected one of: options");
     }
 
     @Test

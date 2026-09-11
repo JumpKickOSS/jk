@@ -704,7 +704,10 @@ public final class ManifestBuild {
     }
 
     /** The keys {@code [javac]} may carry. */
-    public static final List<String> JAVAC_KEYS = List.of("plugins", "args");
+    public static final List<String> JAVAC_KEYS = List.of("plugins", "args", "test");
+
+    /** The keys {@code [javac.test]} may carry: the same shape, one level only. */
+    public static final List<String> JAVAC_TEST_KEYS = List.of("plugins", "args");
 
     /** The keys one {@code [javac.plugins.<Name>]} table may carry. */
     public static final List<String> JAVAC_PLUGIN_KEYS = List.of("options");
@@ -720,6 +723,9 @@ public final class ManifestBuild {
      *
      * A plugin's key is its registered javac name, passed through as {@code -Xplugin:<key>}; its
      * jar is a {@code [processor-dependencies]} entry. Unknown keys fail the parse.
+     *
+     * <p>{@code [javac.test]} carries the same two keys and, when present, replaces the table for
+     * compile-test — an empty one turns the plugins off for the suite.
      */
     static JkBuild.JavacConfig parseJavac(TomlTable root) {
         Object raw = root.get(List.of("javac"));
@@ -728,22 +734,34 @@ public final class ManifestBuild {
             throw new JkBuildParseException(
                     "[javac] must be a table: [javac] plugins = { ErrorProne = { options = […] } }");
         }
+        JkBuild.JavacConfig test = null;
+        Object rawTest = javac.get(List.of("test"));
+        if (rawTest != null) {
+            if (!(rawTest instanceof TomlTable table)) {
+                throw new JkBuildParseException("[javac.test] must be a table: [javac.test] plugins = { … }");
+            }
+            test = parseJavacTable(table, "[javac.test]", JAVAC_TEST_KEYS, null);
+        }
+        return parseJavacTable(javac, "[javac]", JAVAC_KEYS, test);
+    }
+
+    private static JkBuild.JavacConfig parseJavacTable(
+            TomlTable javac, String at, List<String> known, JkBuild.@Nullable JavacConfig test) {
         for (String key : javac.keySet()) {
-            if (!JAVAC_KEYS.contains(key)) {
+            if (!known.contains(key)) {
                 throw new JkBuildParseException(
-                        "[javac] unknown key `" + key + "` — expected one of: " + String.join(", ", JAVAC_KEYS));
+                        at + " unknown key `" + key + "` — expected one of: " + String.join(", ", known));
             }
         }
         Map<String, List<String>> plugins = new LinkedHashMap<>();
         Object rawPlugins = javac.get(List.of("plugins"));
         if (rawPlugins != null) {
             if (!(rawPlugins instanceof TomlTable table)) {
-                throw new JkBuildParseException(
-                        "[javac].plugins must be a table keyed by plugin name: plugins = { ErrorProne = { options ="
-                                + " […] } }");
+                throw new JkBuildParseException(at + ".plugins must be a table keyed by plugin name: plugins = {"
+                        + " ErrorProne = { options = […] } }");
             }
             for (String name : table.keySet()) {
-                String where = "[javac.plugins." + name + "]";
+                String where = at.substring(0, at.length() - 1) + ".plugins." + name + "]";
                 if (!(table.get(List.of(name)) instanceof TomlTable plugin)) {
                     throw new JkBuildParseException(where + " must be a table: { options = […] }");
                 }
@@ -756,8 +774,8 @@ public final class ManifestBuild {
                 plugins.put(name, stringArray(plugin.get(List.of("options")), where + ".options"));
             }
         }
-        List<String> args = stringArray(javac.get(List.of("args")), "[javac].args");
-        return new JkBuild.JavacConfig(plugins, args);
+        List<String> args = stringArray(javac.get(List.of("args")), at + ".args");
+        return new JkBuild.JavacConfig(plugins, args, test);
     }
 
     /** {@code raw} as an array of strings; absent is empty. */
