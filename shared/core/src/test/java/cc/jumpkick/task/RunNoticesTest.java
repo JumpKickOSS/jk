@@ -5,12 +5,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.Log;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.UnaryOperator;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,12 +29,12 @@ class RunNoticesTest {
     /** One run, scoped the way the engine scopes one: a fresh session carries a fresh ledger. */
     private static String inOneRun(Runnable body) {
         var err = new ByteArrayOutputStream();
-        var original = System.err;
-        System.setErr(new PrintStream(err, true, StandardCharsets.UTF_8));
+        Log.install(
+                new PrintStream(err, true, StandardCharsets.UTF_8), System.Logger.Level.INFO, UnaryOperator.identity());
         try {
             SessionContext.runWhere(Session.defaults(), body);
         } finally {
-            System.setErr(original);
+            Log.install(System.err, System.Logger.Level.INFO, UnaryOperator.identity());
         }
         return err.toString(StandardCharsets.UTF_8);
     }
@@ -94,8 +96,8 @@ class RunNoticesTest {
             for (int i = 0; i < 5; i++) RunNotices.warnOnce("k", () -> "the note");
         };
         var err = new ByteArrayOutputStream();
-        var original = System.err;
-        System.setErr(new PrintStream(err, true, StandardCharsets.UTF_8));
+        Log.install(
+                new PrintStream(err, true, StandardCharsets.UTF_8), System.Logger.Level.INFO, UnaryOperator.identity());
         try {
             Thread ta = new Thread(() -> SessionContext.runWhere(Session.defaults(), body), "run-a");
             Thread tb = new Thread(() -> SessionContext.runWhere(Session.defaults(), body), "run-b");
@@ -104,7 +106,7 @@ class RunNoticesTest {
             ta.join();
             tb.join();
         } finally {
-            System.setErr(original);
+            Log.install(System.err, System.Logger.Level.INFO, UnaryOperator.identity());
         }
         assertThat(occurrences(err.toString(StandardCharsets.UTF_8), "the note"))
                 .isEqualTo(2);
@@ -113,19 +115,19 @@ class RunNoticesTest {
     /** One specific run, so a sink can be opened for its ledger before the body enters it. */
     private static String inRun(Session run, Runnable body) {
         var err = new ByteArrayOutputStream();
-        var original = System.err;
-        System.setErr(new PrintStream(err, true, StandardCharsets.UTF_8));
+        Log.install(
+                new PrintStream(err, true, StandardCharsets.UTF_8), System.Logger.Level.INFO, UnaryOperator.identity());
         try {
             SessionContext.runWhere(run, body);
         } finally {
-            System.setErr(original);
+            Log.install(System.err, System.Logger.Level.INFO, UnaryOperator.identity());
         }
         return err.toString(StandardCharsets.UTF_8);
     }
 
-    /** With a sink open for the run, a note rides the sink — once — and stderr stays silent. */
+    /** With a sink open for the run, a note rides the sink — once — and the log stays silent. */
     @Test
-    void a_run_with_a_sink_sends_notes_there_and_not_to_stderr() {
+    void a_run_with_a_sink_sends_notes_there_and_not_to_the_log() {
         Session run = Session.defaults();
         List<String> delivered = new ArrayList<>();
         RunNotices.openSink(run.io(), (code, message) -> delivered.add(code + ": " + message));
@@ -136,9 +138,9 @@ class RunNoticesTest {
         assertThat(err).isEmpty();
     }
 
-    /** After {@link RunNotices#closeSink} the run's notes fall back to stderr. */
+    /** After {@link RunNotices#closeSink} the run's notes fall back to the log. */
     @Test
-    void a_closed_sink_falls_back_to_stderr() {
+    void a_closed_sink_falls_back_to_the_log() {
         Session run = Session.defaults();
         List<String> delivered = new ArrayList<>();
         RunNotices.openSink(run.io(), (code, message) -> delivered.add(message));
@@ -148,7 +150,7 @@ class RunNoticesTest {
         assertThat(err).contains("the note");
     }
 
-    /** A sink is scoped to its run: another run's notes still go to stderr. */
+    /** A sink is scoped to its run: another run's notes still go to the log. */
     @Test
     void a_sink_hears_only_its_own_run() {
         Session sunk = Session.defaults();
