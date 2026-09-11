@@ -30,7 +30,8 @@ coordinate = "io.micronaut.platform:micronaut-platform:${config.version}"
 javac  = ["-parameters"]
 kotlin = ["-java-parameters"]
 
-# AOT tool classpath: cli + api + std-optimizers (always materialize; step body gated in code).
+# AOT tool classpath: cli + api + std-optimizers. Fetched by the micronaut-aot step, which is
+# registered only when AOT is on — with AOT off no step exists, so nothing is fetched.
 [[contribute.step-dependency]]
 artifact   = "micronaut-aot-cli"
 coordinate = "io.micronaut.aot:micronaut-aot-cli:${config.aot-version}"
