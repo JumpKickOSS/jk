@@ -70,7 +70,8 @@ public interface TaskExec {
     default Path requireExtra(String name) {
         return extra(name)
                 .orElseThrow(() -> new IllegalStateException("step-dependency `" + name
-                        + "` was not supplied — declare it under [[contribute.step-dependency]]"));
+                        + "` was not supplied — declare it under [[contribute.step-dependency]]; one that"
+                        + " carries for-step reaches only the steps and packagers it names"));
     }
 
     /** Resolve (and create) a declared output dir under {@link #scratch()}. */

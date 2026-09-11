@@ -40,7 +40,8 @@ class ClasspathAfterSyncTest {
         Files.createDirectories(store);
         Fixture f = fixture(tmp, store, /* materializeLib */ false);
 
-        assertThatThrownBy(() -> PlannerSetup.publishClasspaths(f.ctx, f.in, new Cas(store)))
+        assertThatThrownBy(
+                        () -> PlannerSetup.publishClasspaths(f.ctx, f.in, new Cas(store), new PluginBuild.StepTools()))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("com.foo:lib")
                 .hasMessageContaining("not on disk after sync");
@@ -51,7 +52,7 @@ class ClasspathAfterSyncTest {
         Path store = tmp.resolve("store");
         Fixture f = fixture(tmp, store, /* materializeLib */ true);
 
-        PlannerSetup.publishClasspaths(f.ctx, f.in, new Cas(store));
+        PlannerSetup.publishClasspaths(f.ctx, f.in, new Cas(store), new PluginBuild.StepTools());
 
         List<Path> cp = f.ctx.require(BuildPlanner.CLASSPATH);
         assertThat(cp).contains(f.libJar.toAbsolutePath().normalize());
@@ -118,7 +119,7 @@ class ClasspathAfterSyncTest {
                 Set.of(),
                 SessionContext.current());
 
-        assertThatThrownBy(() -> PlannerSetup.publishClasspaths(ctx, in, new Cas(store)))
+        assertThatThrownBy(() -> PlannerSetup.publishClasspaths(ctx, in, new Cas(store), new PluginBuild.StepTools()))
                 .hasMessageContaining("missing workspace siblings");
         assertThat(ctx.errors)
                 .as("the written diagnostic reaches the failure report")
@@ -189,7 +190,7 @@ class ClasspathAfterSyncTest {
                 Set.of(),
                 SessionContext.current());
 
-        PlannerSetup.publishClasspaths(ctx, in, new Cas(store));
+        PlannerSetup.publishClasspaths(ctx, in, new Cas(store), new PluginBuild.StepTools());
         assertThat(ctx.errors).isEmpty();
         assertThat(ctx.values).containsKey(BuildPlanner.CLASSPATH);
         assertThat(ctx.values).containsKey(BuildPlanner.COMPILE_TEST_CP);
@@ -211,7 +212,8 @@ class ClasspathAfterSyncTest {
                 false,
                 Set.of(),
                 SessionContext.current());
-        assertThatThrownBy(() -> PlannerSetup.publishClasspaths(ctx, withTests, new Cas(store)))
+        assertThatThrownBy(() ->
+                        PlannerSetup.publishClasspaths(ctx, withTests, new Cas(store), new PluginBuild.StepTools()))
                 .hasMessageContaining("missing workspace siblings");
         assertThat(ctx.errors).anyMatch(e -> e.contains("test sibling not built") && e.contains("fixtures"));
     }

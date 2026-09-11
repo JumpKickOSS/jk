@@ -257,7 +257,7 @@ public final class PlannerSetup {
                     // even though resolve-deps then fetched everything successfully.
                     ctx.label("resolve classpath");
                     try {
-                        publishClasspaths(ctx, in, cas);
+                        publishClasspaths(ctx, in, cas, cx.tools());
                     } catch (RuntimeException e) {
                         ctx.error("classpath", Errors.text(e));
                         throw e;
@@ -273,7 +273,8 @@ public final class PlannerSetup {
      * Lock + workspace sibling classpaths for compile / test / processors. Called only after
      * {@code resolve-deps} sync so every checksummed lock row is on disk ({@code requirePresent}).
      */
-    static void publishClasspaths(TaskContext ctx, BuildPlanner.Inputs in, Cas cas) throws Exception {
+    static void publishClasspaths(TaskContext ctx, BuildPlanner.Inputs in, Cas cas, PluginBuild.StepTools tools)
+            throws Exception {
         Lockfile lock = ctx.require(LOCKFILE);
         JkBuild project = ctx.require(PROJECT);
         ClasspathResolver resolver = new ClasspathResolver(cas);
@@ -287,7 +288,7 @@ public final class PlannerSetup {
         // Plugin-contributed PROVIDED classpath (an Android platform jar): javac
         // sees it, runtime/packaging never do. Resolved through the same engine
         // fetch the steps use, so the compile action key fingerprints it.
-        List<Path> contributedProvided = contributedProvidedClasspath(project, in, cas);
+        List<Path> contributedProvided = contributedProvidedClasspath(project, in, cas, tools);
         mainCp.addAll(contributedProvided);
         ctx.put(CLASSPATH, mainCp);
 

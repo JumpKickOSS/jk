@@ -80,14 +80,16 @@ public final class PlannerSupport {
 
     /**
      * The resolved paths of {@code [[contribute.provided-classpath]]} entries — declared
-     * step-dependency artifacts (an SDK platform jar) that join the COMPILE classpaths only.
+     * step-dependency artifacts (an SDK platform jar) that join the COMPILE classpaths only. The
+     * entry names its tool itself, so only the named tools are fetched, whatever their scope.
      */
-    static List<Path> contributedProvidedClasspath(JkBuild project, BuildPlanner.Inputs in, Cas cas) {
+    static List<Path> contributedProvidedClasspath(
+            JkBuild project, BuildPlanner.Inputs in, Cas cas, PluginBuild.StepTools tools) {
         List<String> names = PluginContributions.providedClasspath(project, in.dir());
         if (names.isEmpty()) return List.of();
         try {
-            Map<String, Path> fetched =
-                    PluginBuild.fetchStepDependencies(project, in.dir(), cas, PluginBuild.sdkPins(in.lockFile()));
+            Map<String, Path> fetched = tools.fetch(
+                    tools.named(project, in.dir(), names), project, cas, PluginBuild.sdkPins(in.lockFile()));
             List<Path> out = new ArrayList<>();
             for (String name : names) {
                 Path path = fetched.get(name);

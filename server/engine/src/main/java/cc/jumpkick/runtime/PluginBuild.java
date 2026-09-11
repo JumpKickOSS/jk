@@ -51,6 +51,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -60,6 +61,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
@@ -326,27 +328,80 @@ public final class PluginBuild {
         return out;
     }
 
-    /** Fetch {@code [[contribute.step-dependency]]} tool jars into the CAS by coordinate. */
-    public static Map<String, Path> fetchStepDependencies(JkBuild project, Path moduleDir, Cas cas)
-            throws IOException, InterruptedException {
-        return fetchStepDependencies(project, moduleDir, cas, Map.of());
-    }
-
-    /** As above, with {@code [[sdk]]} revision pins (drift is reported, never ignored). */
-    public static Map<String, Path> fetchStepDependencies(
-            JkBuild project, Path moduleDir, Cas cas, Map<String, String> sdkPins)
-            throws IOException, InterruptedException {
-        return fetchStepDependencies(project, moduleDir, cas, sdkPins, false);
-    }
-
     /**
-     * As above; {@code lenient} omits failed provisions from the map (callers that need them fail
-     * themselves — e.g. {@code jk android licenses} before any license is accepted).
+     * The whole {@code [[contribute.step-dependency]]} lane, fetched into the CAS — what a plugin
+     * command receives beside its own lane. A build never calls this: its steps, packager and
+     * compile classpath each take their slice through {@link StepTools}. {@code lenient} omits
+     * failed provisions from the map (callers that need them fail themselves — e.g. {@code jk
+     * android licenses} before any license is accepted).
      */
     public static Map<String, Path> fetchStepDependencies(
             JkBuild project, Path moduleDir, Cas cas, Map<String, String> sdkPins, boolean lenient)
             throws IOException, InterruptedException {
         return fetchTools(PluginContributions.stepDependencies(project, moduleDir), project, cas, sdkPins, lenient);
+    }
+
+    /**
+     * One module build's step-lane tools: the declared lane, derived once, partitioned by the
+     * step or packager that reads each tool ({@code for-step}), plus every path fetched so far.
+     * A step body, the packager and the compile classpath share one instance, so a tool two of
+     * them read resolves once and a tool none of them read is never touched.
+     */
+    public static final class StepTools {
+        private @Nullable List<PluginContributions.StepDep> lane;
+        private final Map<String, Path> fetched = new ConcurrentHashMap<>();
+
+        private synchronized List<PluginContributions.StepDep> lane(JkBuild project, Path moduleDir) {
+            List<PluginContributions.StepDep> l = lane;
+            if (l == null) {
+                l = PluginContributions.stepDependencies(project, moduleDir);
+                lane = l;
+            }
+            return l;
+        }
+
+        /**
+         * The tools {@code consumer} — a step or packager name — reads: every unscoped tool plus
+         * the ones whose {@code for-step} names it, in declaration order.
+         */
+        public List<PluginContributions.StepDep> forConsumer(JkBuild project, Path moduleDir, String consumer) {
+            List<PluginContributions.StepDep> out = new ArrayList<>();
+            for (PluginContributions.StepDep dep : lane(project, moduleDir)) {
+                if (dep.reaches(consumer)) out.add(dep);
+            }
+            return out;
+        }
+
+        /**
+         * The declared tools under {@code names}, whatever their scope — a consumer that names its
+         * tools itself ({@code [[contribute.provided-classpath]]}). Unknown names are left out.
+         */
+        public List<PluginContributions.StepDep> named(JkBuild project, Path moduleDir, Collection<String> names) {
+            List<PluginContributions.StepDep> out = new ArrayList<>();
+            for (PluginContributions.StepDep dep : lane(project, moduleDir)) {
+                if (names.contains(dep.artifact())) out.add(dep);
+            }
+            return out;
+        }
+
+        /**
+         * Fetch {@code deps} into the CAS, strictly: artifact name to path, in {@code deps} order.
+         * A tool this build fetched earlier is handed back without a second resolve.
+         */
+        public Map<String, Path> fetch(
+                List<PluginContributions.StepDep> deps, JkBuild project, Cas cas, Map<String, String> sdkPins)
+                throws IOException, InterruptedException {
+            List<PluginContributions.StepDep> missing = new ArrayList<>();
+            for (PluginContributions.StepDep dep : deps) {
+                if (!fetched.containsKey(dep.artifact())) missing.add(dep);
+            }
+            fetched.putAll(fetchTools(missing, project, cas, sdkPins, false));
+            Map<String, Path> out = new LinkedHashMap<>();
+            for (PluginContributions.StepDep dep : deps) {
+                out.put(dep.artifact(), Objects.requireNonNull(fetched.get(dep.artifact()), dep.artifact()));
+            }
+            return out;
+        }
     }
 
     /**

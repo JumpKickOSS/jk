@@ -206,6 +206,7 @@ class ThirdPartyPackagerForecastTest {
                         cache,
                         lockFile,
                         cas,
+                        new PluginBuild.StepTools(),
                         layout,
                         layout.classesDir(),
                         artifact,

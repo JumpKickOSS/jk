@@ -4,6 +4,7 @@ package cc.jumpkick.plugin.manifest;
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.model.JkVersion;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -486,15 +487,46 @@ public final class PluginDescriptors {
                 throw new JkBuildParseException(where + ": with requires transitive = true"
                         + " (extra roots join the same tool closure graph)");
             }
+            List<String> forSteps = parseForStep(t, key, where);
             PluginDescriptor.Condition when = parseCondition(t, where);
             if (when instanceof PluginDescriptor.Condition.ClasspathHas) {
                 throw new JkBuildParseException(where + ": classpath-has cannot gate a " + key
                         + " (tool fetches are decided from config/facts, not the resolved classpath)");
             }
             deps.add(new PluginDescriptor.StepDependency(
-                    artifact, coordinate, transitive, sdkComponent, sdkPath, managedBy, with, when));
+                    artifact, coordinate, transitive, sdkComponent, sdkPath, managedBy, with, forSteps, when));
         }
         return deps;
+    }
+
+    /**
+     * {@code for-step}: one step or packager name, or an array of them. Step-lane only — a command
+     * tool is fetched when its command runs and keys nothing, so there is no step to scope it to.
+     */
+    private static List<String> parseForStep(TomlTable t, String key, String where) {
+        if (!t.contains("for-step")) return List.of();
+        if (!key.equals("step-dependency")) {
+            throw new JkBuildParseException(where + ": for-step applies to a [[contribute.step-dependency]] only"
+                    + " — a command tool reaches every command and no step");
+        }
+        if (!t.isString("for-step") && !t.isArray("for-step")) {
+            throw new JkBuildParseException(where + ".for-step must be a step name or an array of step names");
+        }
+        List<String> names =
+                t.isString("for-step") ? List.of(t.getString("for-step")) : stringList(t, "for-step", where);
+        if (names.isEmpty()) {
+            throw new JkBuildParseException(where + ".for-step must name at least one step or packager");
+        }
+        Set<String> seen = new HashSet<>();
+        for (String name : names) {
+            if (name.isBlank()) {
+                throw new JkBuildParseException(where + ".for-step must not contain a blank name");
+            }
+            if (!seen.add(name)) {
+                throw new JkBuildParseException(where + ".for-step names `" + name + "` twice");
+            }
+        }
+        return names;
     }
 
     /**

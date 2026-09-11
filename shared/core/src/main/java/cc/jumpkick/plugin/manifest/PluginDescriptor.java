@@ -204,6 +204,9 @@ public record PluginDescriptor(
      * <p>{@code with} adds extra roots into the <em>same</em> resolve graph (one version per GA).
      * {@code managedBy} is a BOM GAV whose managed pins apply during that resolve — Maven-like
      * tool classpath alignment (no freestyle dual trees).
+     *
+     * <p>{@code forSteps} ({@code for-step}) names the steps or packagers that read the tool; only
+     * those fetch it and key on it. Empty means every step and packager the plugin registers.
      */
     public record StepDependency(
             String artifact,
@@ -213,14 +216,16 @@ public record PluginDescriptor(
             @Nullable String sdkPath,
             @Nullable String managedBy,
             List<String> with,
+            List<String> forSteps,
             @Nullable Condition when) {
 
         public StepDependency {
             with = with == null ? List.of() : List.copyOf(with);
+            forSteps = forSteps == null ? List.of() : List.copyOf(forSteps);
         }
 
         public StepDependency(String artifact, @Nullable String coordinate, @Nullable Condition when) {
-            this(artifact, coordinate, false, null, null, null, List.of(), when);
+            this(artifact, coordinate, false, null, null, null, List.of(), List.of(), when);
         }
     }
 

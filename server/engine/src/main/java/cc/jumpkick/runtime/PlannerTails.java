@@ -180,6 +180,7 @@ public final class PlannerTails {
                             ctx,
                             in,
                             JkStores.storeCas(),
+                            new PluginBuild.StepTools(),
                             project,
                             ctx.require(MAIN_CLASSES),
                             layout.minifiedJar(),

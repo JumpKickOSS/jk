@@ -220,6 +220,7 @@ public final class PluginContributions {
      * or a provisioned SDK component ({@code sdkComponent}/{@code sdkPath}).
      *
      * <p>{@code managedBy} / {@code with} mirror the manifest: BOM-aligned multi-root tool graphs.
+     * {@code forSteps} names the steps or packagers that read the tool; empty means all of them.
      */
     public record StepDep(
             String artifact,
@@ -228,14 +229,16 @@ public final class PluginContributions {
             @Nullable String sdkComponent,
             @Nullable String sdkPath,
             @Nullable String managedBy,
-            List<String> with) {
+            List<String> with,
+            List<String> forSteps) {
 
         public StepDep {
             with = with == null ? List.of() : List.copyOf(with);
+            forSteps = forSteps == null ? List.of() : List.copyOf(forSteps);
         }
 
         public StepDep(String artifact, @Nullable String coordinateSpec) {
-            this(artifact, coordinateSpec, false, null, null, null, List.of());
+            this(artifact, coordinateSpec, false, null, null, null, List.of(), List.of());
         }
 
         public StepDep(
@@ -244,7 +247,12 @@ public final class PluginContributions {
                 boolean transitive,
                 @Nullable String sdkComponent,
                 @Nullable String sdkPath) {
-            this(artifact, coordinateSpec, transitive, sdkComponent, sdkPath, null, List.of());
+            this(artifact, coordinateSpec, transitive, sdkComponent, sdkPath, null, List.of(), List.of());
+        }
+
+        /** True when {@code consumer} — a step or packager name — receives this tool. */
+        public boolean reaches(String consumer) {
+            return forSteps.isEmpty() || forSteps.contains(consumer);
         }
     }
 
@@ -290,7 +298,8 @@ public final class PluginContributions {
                 }
                 if (sd.sdkComponent() != null) {
                     String component = Interpolation.resolve(sd.sdkComponent(), config, build.project(), null);
-                    out.add(new StepDep(sd.artifact(), null, false, component, sd.sdkPath(), null, List.of()));
+                    out.add(new StepDep(
+                            sd.artifact(), null, false, component, sd.sdkPath(), null, List.of(), sd.forSteps()));
                     continue;
                 }
                 String coordinate = Interpolation.resolve(sd.coordinate(), config, build.project(), null);
@@ -312,7 +321,8 @@ public final class PluginContributions {
                     }
                     with.add(resolved);
                 }
-                out.add(new StepDep(sd.artifact(), coordinate, sd.transitive(), null, null, managedBy, with));
+                out.add(new StepDep(
+                        sd.artifact(), coordinate, sd.transitive(), null, null, managedBy, with, sd.forSteps()));
             }
         }
         return out;

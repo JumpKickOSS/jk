@@ -194,6 +194,7 @@ public final class PackagingKeys {
             Path cache,
             Path lockFile,
             Cas cas,
+            PluginBuild.StepTools tools,
             BuildLayout layout,
             Path classes,
             Path artifact,
@@ -226,24 +227,24 @@ public final class PackagingKeys {
         for (PluginBuild.ProdEntry e : entries) {
             if (e.jar() != null) entryJars.add(e.jar());
         }
-        // Packagers get the packager-dependency artifacts AND the step-dependency tools (the same
-        // artifacts commands receive — an AAB packager forks bundletool exactly like a step forks
-        // aapt2). A packager-dependency wins a name collision.
+        // Packagers get the packager-dependency artifacts AND the step-dependency tools that reach
+        // them — the unscoped ones plus those whose for-step names this packager (an AAB packager
+        // forks bundletool exactly like a step forks aapt2). A packager-dependency wins a name
+        // collision.
+        PluginBuild.PackagerDecl packager = Objects.requireNonNull(p.decls().packager(), "packager");
         Map<String, String> sdkPins = PluginBuild.sdkPins(p.lockFile());
-        Map<String, Path> extras =
-                new LinkedHashMap<>(PluginBuild.fetchStepDependencies(p.project(), p.moduleDir(), p.cas(), sdkPins));
+        List<PluginContributions.StepDep> tools = p.tools().forConsumer(p.project(), p.moduleDir(), packager.name());
+        Map<String, Path> extras = new LinkedHashMap<>(p.tools().fetch(tools, p.project(), p.cas(), sdkPins));
         extras.putAll(PluginBuild.fetchPackagerDependencies(p.project(), p.moduleDir(), p.cas()));
 
         ProjectFacts facts =
                 PluginBuild.facts(p.project(), PlannerPlugin.resolvedMain(p.project(), p.moduleDir(), p.classes()));
-        PluginBuild.PackagerDecl packager = Objects.requireNonNull(p.decls().packager(), "packager");
         PluginBuild.Active active = Objects.requireNonNull(p.active(), "active");
         List<String> tokens = new ArrayList<>(PlannerPlugin.declaredInputTokens(
                 packager.inputs(),
                 new PlannerPlugin.InputSources(
                         p.classes(), entryJars, entries, active.config(), p.layout(), p.moduleDir())));
-        tokens.addAll(PlannerPlugin.toolTokens(
-                PluginContributions.stepDependencies(p.project(), p.moduleDir()), extras, sdkPins));
+        tokens.addAll(PlannerPlugin.toolTokens(tools, extras, sdkPins));
         if (!p.secrets().isEmpty()) {
             // A changed signing credential re-signs (the signature is part of the artifact); the
             // key carries only a digest — a secret value never appears anywhere readable.
@@ -383,6 +384,7 @@ public final class PackagingKeys {
                             cache,
                             lockFile,
                             cas,
+                            new PluginBuild.StepTools(),
                             layout,
                             layout.classesDir(),
                             artifact,

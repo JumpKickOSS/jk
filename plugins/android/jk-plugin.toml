@@ -103,17 +103,24 @@ ksp  = ["dagger.hilt.android.internal.disableAndroidSuperclassValidation=true"]
 when = { config = "hilt", equals = "true" }
 
 # ---- Tool artifacts (fetched engine-side into the cache, handed to steps by name) ----
+#
+# Each tool is scoped (for-step) to the steps or packager that read it: only those fetch it
+# and key on it, so a debug build never materializes bundletool and an r8 bump leaves the
+# manifest and resource steps' keys alone. Commands receive the whole lane regardless.
 
 # aapt2 ships as a per-OS binary wrapped in a Maven jar; ${host.os} picks the classifier.
 # Keep on the latest stable AGP tools line (not alpha) — bump with AGP/aapt2 releases.
 [[contribute.step-dependency]]
 artifact   = "aapt2"
 coordinate = "com.android.tools.build:aapt2:9.3.1-15703166:${host.os}"
+for-step   = "android-res"
 
-# d8 lives in the r8 jar (com.android.tools.r8.D8) — a plain JVM tool.
+# d8 lives in the r8 jar (com.android.tools.r8.D8) — a plain JVM tool. One of the two dex
+# steps is registered per build (R8 when minifying, d8 otherwise).
 [[contribute.step-dependency]]
 artifact   = "r8"
 coordinate = "com.android.tools:r8:9.2.23"
+for-step   = ["android-dex", "android-r8"]
 
 # manifest-merger is a JVM library with a real dependency graph — the transitive closure
 # materializes as a lib dir the step forks `java -cp` over. Align with AGP 9.3 tools (32.3.x).
@@ -121,14 +128,17 @@ coordinate = "com.android.tools:r8:9.2.23"
 artifact   = "manifest-merger"
 coordinate = "com.android.tools.build:manifest-merger:32.3.1"
 transitive = true
+for-step   = "android-manifest"
 
-# The platform jar: aapt2 -I (framework resources), javac (via provided-classpath below),
-# d8 --lib. Provisioned from Google's repository2 feed into the managed SDK root — reusing
-# an existing $ANDROID_HOME/Studio SDK when one is discovered (android-plan §3.2).
+# The platform jar: aapt2 -I (framework resources), javac (via provided-classpath below,
+# which names it and is not scoped), d8 --lib. Provisioned from Google's repository2 feed
+# into the managed SDK root — reusing an existing $ANDROID_HOME/Studio SDK when one is
+# discovered (android-plan §3.2).
 [[contribute.step-dependency]]
 artifact      = "android-jar"
 sdk-component = "platforms;android-${config.compile-sdk}"
 sdk-path      = "android.jar"
+for-step      = ["android-res", "android-dex", "android-r8"]
 
 # javac/kotlinc compile against the platform (PROVIDED posture: the runtime, dex inputs,
 # and packaging never see it — dex takes it explicitly via --lib from the extra above).
@@ -146,6 +156,7 @@ dependency = "android-jar"
 artifact   = "bundletool"
 coordinate = "com.android.tools.build:bundletool:1.17.2"
 transitive = true
+for-step   = "aab"
 
 # ---- Command-only tools (fetched when a command runs; in no step or packager key) ----
 

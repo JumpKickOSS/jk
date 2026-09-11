@@ -90,7 +90,16 @@ public final class PlannerPackage {
                         jarPath = PluginBuild.mainArtifactPath(layout, owner);
                         Files.createDirectories(jarPath.getParent());
                         packagePlugin(
-                                ctx, in, cas, project, classes, jarPath, pluginActive, pluginDecls, variantSecrets);
+                                ctx,
+                                in,
+                                cas,
+                                cx.tools(),
+                                project,
+                                classes,
+                                jarPath,
+                                pluginActive,
+                                pluginDecls,
+                                variantSecrets);
                         return;
                     }
                     // Plain/assembly packaging merges plugin contributesClasses (Micronaut AOT, …);

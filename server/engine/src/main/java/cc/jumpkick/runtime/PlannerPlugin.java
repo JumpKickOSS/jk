@@ -351,11 +351,12 @@ public final class PlannerPlugin {
                             ? PluginBuild.productionEntries(in.dir(), in.cache(), in.lockFile(), project)
                             : List.of();
 
-                    // Manifest-contributed tool artifacts (aapt2, r8, a platform jar) — fetched
-                    // into the cache, handed to the body by artifact name, keyed like any input.
+                    // Manifest-contributed tool artifacts (aapt2, r8, a platform jar) — the ones
+                    // this step reads, fetched into the cache, handed to the body by artifact
+                    // name, keyed like any input.
                     Map<String, String> sdkPins = PluginBuild.sdkPins(in.lockFile());
-                    Map<String, Path> toolExtras =
-                            PluginBuild.fetchStepDependencies(project, in.dir(), cx.cas(), sdkPins);
+                    List<PluginContributions.StepDep> tools = cx.tools().forConsumer(project, in.dir(), step.name());
+                    Map<String, Path> toolExtras = cx.tools().fetch(tools, project, cx.cas(), sdkPins);
 
                     // Action key: exactly the declared inputs, plus the very facts the body sees —
                     // the same ProjectFacts instance rides the spec below, so no fact can reach the
@@ -364,8 +365,7 @@ public final class PlannerPlugin {
                     List<String> tokens = new ArrayList<>(declaredInputTokens(
                             step.inputs(),
                             new InputSources(classes, classpath, prodEntries, active.config(), layout, in.dir())));
-                    tokens.addAll(
-                            toolTokens(PluginContributions.stepDependencies(project, in.dir()), toolExtras, sdkPins));
+                    tokens.addAll(toolTokens(tools, toolExtras, sdkPins));
                     tokens.add("facts:" + facts.token());
                     // The JDK is handed to the body as spec.javaHome and is what its forked tools
                     // (d8, aapt2, a compiler plugin) run on and compile against — ProjectFacts
@@ -458,6 +458,7 @@ public final class PlannerPlugin {
             TaskContext ctx,
             BuildPlanner.Inputs in,
             Cas cas,
+            PluginBuild.StepTools tools,
             JkBuild project,
             Path classes,
             Path jarPath,
@@ -481,6 +482,7 @@ public final class PlannerPlugin {
                 in.cache(),
                 in.lockFile(),
                 cas,
+                tools,
                 layout,
                 classes,
                 jarPath,

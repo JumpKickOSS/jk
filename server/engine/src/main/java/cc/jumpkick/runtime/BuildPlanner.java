@@ -391,7 +391,8 @@ public final class BuildPlanner {
             boolean mixedWithJava,
             String mainCompile,
             boolean ksp,
-            PlannerGuards.GuardsPlan guards) {}
+            PlannerGuards.GuardsPlan guards,
+            PluginBuild.StepTools tools) {}
 
     /** One processor-authored KSP diagnostic: the reporting severity plus the bare message. */
     record KspDiagnostic(String severity, String message) {}

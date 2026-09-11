@@ -269,7 +269,8 @@ final class CorePlan {
                 mixedWithJava,
                 mainCompile,
                 kspEnabled,
-                PlannerGuards.detect(in));
+                PlannerGuards.detect(in),
+                new PluginBuild.StepTools());
     }
 
     // ---- steps ---------------------------------------------------------------------------
