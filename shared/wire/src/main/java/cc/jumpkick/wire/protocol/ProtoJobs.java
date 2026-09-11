@@ -36,7 +36,8 @@ public final class ProtoJobs {
                 Jsonl.bool(json, "tagsResolved", false),
                 Jsonl.bool(json, "guard", false),
                 Jsonl.bool(json, "scriptsOnly", false),
-                Jsonl.bool(json, "noScripts", false));
+                Jsonl.bool(json, "noScripts", false),
+                Jsonl.strArray(json, "classes"));
     }
 
     /** The requested JDWP listener, or {@code null} when the line carries none. */

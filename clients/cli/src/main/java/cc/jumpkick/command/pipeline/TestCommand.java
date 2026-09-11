@@ -105,6 +105,8 @@ public final class TestCommand implements CliCommand {
                 .splitOn(","));
         opts.add(Opt.value("<tags>", "JUnit tags to exclude (CSV)", "--exclude-tags")
                 .splitOn(","));
+        opts.add(Opt.value("<name>", "Only test classes matching (FQCN, simple name, *; repeatable)", "--class")
+                .repeat());
         opts.add(Opt.value(
                         "<[host:]port[,suspend=n]>",
                         "Debug the test JVM over JDWP (default localhost:5005, suspended; 0 picks a free port)",
@@ -379,6 +381,7 @@ public final class TestCommand implements CliCommand {
             argv.add("--workers");
             argv.add(w);
         });
+        for (String c : in.values("class")) argv.add("--class=" + c);
         in.value(DebugAttach.OPTION).ifPresent(d -> argv.add(d.isEmpty() ? "--debug-jvm" : "--debug-jvm=" + d));
         return argv;
     }
@@ -702,6 +705,7 @@ public final class TestCommand implements CliCommand {
                 suites = new ArrayList<>(TestSuites.GUARD_SUITES);
             }
         }
-        return TestSelection.of(suites, all, include, exclude, spoke, applyGuard, scriptsOnly, noScripts);
+        return TestSelection.of(
+                suites, all, include, exclude, spoke, applyGuard, scriptsOnly, noScripts, in.values("class"));
     }
 }

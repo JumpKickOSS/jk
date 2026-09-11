@@ -128,7 +128,8 @@ final class RequestJson {
                 .bool("tagsResolved", value.tagsResolved())
                 .optionalTrue("guard", value.guard())
                 .optionalTrue("scriptsOnly", value.scriptsOnly())
-                .optionalTrue("noScripts", value.noScripts());
+                .optionalTrue("noScripts", value.noScripts())
+                .optionalArray("classes", value.classes());
     }
 
     String finish() {

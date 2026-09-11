@@ -84,6 +84,24 @@ public final class JUnitLauncher {
         return this;
     }
 
+    /** {@code --class} patterns as one class-name regex for the runner, or null for every class. */
+    private @Nullable String classFilter;
+
+    /** The patterns {@link #classFilter} was built from, for the no-match failure line. */
+    private List<String> classPatterns = List.of();
+
+    /**
+     * {@code --class}: run only classes matching these names (fully qualified, simple, or with
+     * {@code *} wildcards). Discovery and the one-shot runner both apply the filter, so a sharded
+     * run dispatches exactly the classes a single JVM would have run. Ignored when {@link
+     * #withClassNames} named exact classes.
+     */
+    public JUnitLauncher withClassPatterns(List<String> patterns) {
+        this.classPatterns = patterns == null ? List.of() : List.copyOf(patterns);
+        this.classFilter = classPatterns.isEmpty() ? null : JUnitClassFilter.patternRegex(classPatterns);
+        return this;
+    }
+
     /** JDWP listener for the suite JVM ({@code --debug-jvm}); null for an ordinary run. */
     private @Nullable DebugJvm debug;
 
@@ -270,6 +288,7 @@ public final class JUnitLauncher {
 
     private List<String> withTagArgs(List<String> base) {
         var out = new ArrayList<>(base);
+        if (classFilter != null && classNames.isEmpty()) out.add("--filter=" + classFilter);
         if (!includeTags.isEmpty()) out.add("--include-tags=" + String.join(",", includeTags));
         if (!excludeTags.isEmpty()) out.add("--exclude-tags=" + String.join(",", excludeTags));
         return out;
@@ -405,8 +424,8 @@ public final class JUnitLauncher {
         // it per-path recorded the concurrency for 2 modules out of 29, which is worse than not at
         // all — a forecast rescales the modules it has a count for and not the rest.
         if (resolvedWorkers <= 1) {
-            return runSingle(javaBinary, classpath, testClassesDir, listener, testResultsDir)
-                    .withWorkers(1);
+            return noMatchAsFailure(runSingle(javaBinary, classpath, testClassesDir, listener, testResultsDir)
+                    .withWorkers(1));
         }
         // W>1 + Jupiter in-process parallel is a known double-parallelism footgun.
         List<Path> cpForDetect = new ArrayList<>();
@@ -415,9 +434,21 @@ public final class JUnitLauncher {
         if (JupiterParallelDetect.enabled(cpForDetect)) {
             listener.onWarning("jupiter-parallel", JupiterParallelDetect.stackWarning(resolvedWorkers));
         }
-        return runParallel(
+        return noMatchAsFailure(runParallel(
                         javaBinary, classpath, testClassesDir, resolvedWorkers, listener, testResultsDir, preDiscovered)
-                .withWorkers(resolvedWorkers);
+                .withWorkers(resolvedWorkers));
+    }
+
+    /**
+     * A {@code --class} that matched nothing is a failure naming the patterns, not a green "No
+     * tests": the usual cause is a typo, and a typo that passes is the one outcome the flag must
+     * never produce.
+     */
+    private TestSummary noMatchAsFailure(TestSummary result) {
+        if (classFilter == null || !classNames.isEmpty() || result.total() != 0 || result.failed() != 0) return result;
+        String why = "no test classes matched --class " + String.join(", ", classPatterns);
+        return new TestSummary(
+                1, 0, 1, 0, List.of(new TestFailureInfo(moduleLabel, "", "", "(test run)", "", why, "")));
     }
 
     // -------- single-worker ---------------------------------------------

@@ -524,6 +524,7 @@ public final class BspServer {
      * "suites": ["test","integration"],
      * "includeTags": ["smoke"],
      * "excludeTags": ["slow"],
+     * "classes": ["com.acme.FooTest"],
      * "debug": { "port": 0, "suspend": true }
      * }
      * </pre>
@@ -668,10 +669,11 @@ public final class BspServer {
             Map<?, ?> src = params.get("data") instanceof Map<?, ?> d ? d : params;
             boolean all = Boolean.TRUE.equals(src.get("allSuites"));
             return TestSelection.of(
-                    stringList(src.get("suites")),
-                    all,
-                    stringList(src.get("includeTags")),
-                    stringList(src.get("excludeTags")));
+                            stringList(src.get("suites")),
+                            all,
+                            stringList(src.get("includeTags")),
+                            stringList(src.get("excludeTags")))
+                    .withClasses(stringList(src.get("classes")));
         } catch (RuntimeException e) {
             return TestSelection.DEFAULT;
         }

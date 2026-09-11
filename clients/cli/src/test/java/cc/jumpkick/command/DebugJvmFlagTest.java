@@ -95,6 +95,21 @@ class DebugJvmFlagTest {
     }
 
     @Test
+    void class_patterns_land_on_the_selection(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), """
+                name = "demo"
+                group = "t"
+                version = "0.0.1"
+                java = 25
+                """);
+        var sel = TestCommand.resolveTestSelection(
+                test("-C", dir.toString(), "--class", "FooTest", "--class=com.acme.*IT"));
+        assertThat(sel.classes()).containsExactly("FooTest", "com.acme.*IT");
+        assertThat(TestCommand.resolveTestSelection(test("-C", dir.toString())).classes())
+                .isEmpty();
+    }
+
+    @Test
     void an_explicit_port_is_kept_and_a_zero_becomes_a_free_bound_port() throws IOException {
         DebugJvm explicit = DebugJvm.parse("6006");
         assertThat(DebugAttach.bind(explicit)).isSameAs(explicit);

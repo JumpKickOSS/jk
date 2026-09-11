@@ -61,6 +61,17 @@ class ProtoJobsTagArrayTest {
     }
 
     @Test
+    void class_patterns_survive_the_round_trip_and_stay_out_of_a_plain_line() {
+        TestSelection sent = TestSelection.DEFAULT.withClasses(List.of("com.acme.FooTest", "*IT"));
+        String line = "{" + ProtoJobs.testSelectionFields(sent) + "}";
+        TestSelection back = ProtoJobs.testSelectionOf(line);
+        assertThat(back.classes()).containsExactly("com.acme.FooTest", "*IT");
+        assertThat(back.identityToken()).isEqualTo(sent.identityToken()).contains(";class=");
+        assertThat(ProtoJobs.testSelectionFields(TestSelection.DEFAULT)).doesNotContain("classes");
+        assertThat(TestSelection.DEFAULT.identityToken()).doesNotContain("class=");
+    }
+
+    @Test
     void scripts_flags_survive_the_round_trip() {
         TestSelection sent = TestSelection.of(List.of(), false, List.of(), List.of(), false, false, true, false);
         TestSelection back = ProtoJobs.testSelectionOf("{" + ProtoJobs.testSelectionFields(sent) + "}");

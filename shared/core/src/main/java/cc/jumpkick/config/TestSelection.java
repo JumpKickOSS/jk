@@ -37,15 +37,22 @@ public record TestSelection(
         /** {@code --scripts-only}: run guard scripts, skip JUnit. */
         boolean scriptsOnly,
         /** {@code --no-scripts}: skip guard scripts even when {@link #guard} is set. */
-        boolean noScripts) {
+        boolean noScripts,
+        /**
+         * {@code --class}: run only test classes matching these names — a fully qualified name, a
+         * simple name (matched in any package), or either with {@code *} wildcards. Empty means every
+         * class the suites and tags select.
+         */
+        List<String> classes) {
 
     public static final TestSelection DEFAULT =
-            new TestSelection(List.of(), false, List.of(), List.of(), false, false, false, false);
+            new TestSelection(List.of(), false, List.of(), List.of(), false, false, false, false, List.of());
 
     public TestSelection {
         suites = normalizeNames(suites);
         includeTags = normalizeNames(includeTags);
         excludeTags = normalizeNames(excludeTags);
+        classes = normalizeNames(classes);
     }
 
     public static TestSelection of(
@@ -81,6 +88,19 @@ public record TestSelection(
             boolean guard,
             boolean scriptsOnly,
             boolean noScripts) {
+        return of(suites, allSuites, includeTags, excludeTags, tagsResolved, guard, scriptsOnly, noScripts, List.of());
+    }
+
+    public static TestSelection of(
+            List<String> suites,
+            boolean allSuites,
+            List<String> includeTags,
+            List<String> excludeTags,
+            boolean tagsResolved,
+            boolean guard,
+            boolean scriptsOnly,
+            boolean noScripts,
+            List<String> classes) {
         return new TestSelection(
                 suites == null ? List.of() : suites,
                 allSuites,
@@ -89,7 +109,8 @@ public record TestSelection(
                 tagsResolved,
                 guard,
                 scriptsOnly,
-                noScripts);
+                noScripts,
+                classes == null ? List.of() : classes);
     }
 
     /** Guard scripts run with {@code --guard} unless {@link #noScripts}, or with {@link #scriptsOnly}. */
@@ -133,7 +154,21 @@ public record TestSelection(
                 + ";+tag="
                 + String.join(",", includeTags)
                 + ";-tag="
-                + String.join(",", excludeTags);
+                + String.join(",", excludeTags)
+                + (classes.isEmpty() ? "" : ";class=" + String.join(",", classes));
+    }
+
+    public TestSelection withClasses(List<String> names) {
+        return new TestSelection(
+                suites,
+                allSuites,
+                includeTags,
+                excludeTags,
+                tagsResolved,
+                guard,
+                scriptsOnly,
+                noScripts,
+                names == null ? List.of() : names);
     }
 
     public TestSelection withExcludeTags(List<String> more) {
@@ -141,7 +176,15 @@ public record TestSelection(
         LinkedHashSet<String> merged = new LinkedHashSet<>(excludeTags);
         merged.addAll(normalizeNames(more));
         return new TestSelection(
-                suites, allSuites, includeTags, List.copyOf(merged), tagsResolved, guard, scriptsOnly, noScripts);
+                suites,
+                allSuites,
+                includeTags,
+                List.copyOf(merged),
+                tagsResolved,
+                guard,
+                scriptsOnly,
+                noScripts,
+                classes);
     }
 
     public TestSelection withIncludeTags(List<String> more) {
@@ -149,7 +192,15 @@ public record TestSelection(
         LinkedHashSet<String> merged = new LinkedHashSet<>(includeTags);
         merged.addAll(normalizeNames(more));
         return new TestSelection(
-                suites, allSuites, List.copyOf(merged), excludeTags, tagsResolved, guard, scriptsOnly, noScripts);
+                suites,
+                allSuites,
+                List.copyOf(merged),
+                excludeTags,
+                tagsResolved,
+                guard,
+                scriptsOnly,
+                noScripts,
+                classes);
     }
 
     private static List<String> normalizeNames(List<String> in) {

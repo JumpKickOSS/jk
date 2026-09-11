@@ -744,7 +744,8 @@ public final class PlannerSupport {
                 false,
                 sel.guard(),
                 sel.scriptsOnly(),
-                sel.noScripts());
+                sel.noScripts(),
+                sel.classes());
     }
 
     /**

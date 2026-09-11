@@ -39,6 +39,14 @@ class BspTestSelectionParseTest {
     }
 
     @Test
+    void classes_ride_the_selection() {
+        String json = """
+                {"data":{"classes":["com.acme.FooTest","*IT"]}}
+                """;
+        assertThat(BspServer.parseTestSelectionData(json).classes()).containsExactly("com.acme.FooTest", "*IT");
+    }
+
+    @Test
     void no_debug_field_is_no_debug_request() {
         assertThat(BspServer.parseDebugData("{}")).isNull();
         assertThat(BspServer.parseDebugData("""
