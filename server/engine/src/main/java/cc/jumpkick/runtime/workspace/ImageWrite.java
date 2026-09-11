@@ -58,8 +58,7 @@ final class ImageWrite {
             ImageConfig config,
             Path cache,
             @Nullable Path tarballPath,
-            List<Path> depJars,
-            List<Path> snapshotJars,
+            ImagePlans.RuntimeJars jars,
             @Nullable Path classesDir,
             @Nullable String chosen,
             Path workerJar,
@@ -94,15 +93,7 @@ final class ImageWrite {
         String imgTask = null, imgKey = null;
         if (tarballPath != null && useCache) {
             List<String> tokens = ImagePlans.imageTokens(
-                    layout.mainJar(),
-                    depJars,
-                    snapshotJars,
-                    classesDir,
-                    chosen,
-                    base,
-                    config,
-                    appTreeToken(project, layout),
-                    workerJar);
+                    layout.mainJar(), jars, classesDir, chosen, base, config, appTreeToken(project, layout), workerJar);
             imgTask = ActionKey.qualifiedTaskId(TaskNames.WRITE_IMAGE, tarballPath);
             imgKey = ActionKey.forArtifact(imgTask, BuildIdentity.cacheKeyVersion(), tokens);
             var hit = ac.lookup(imgKey);

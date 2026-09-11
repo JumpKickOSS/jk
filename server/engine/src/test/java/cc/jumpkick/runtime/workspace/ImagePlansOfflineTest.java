@@ -110,8 +110,7 @@ class ImagePlansOfflineTest {
     private static void seedPackagingCache(Fixture fx) throws Exception {
         List<String> tokens = ImagePlans.imageTokens(
                 fx.layout().mainJar(),
-                List.of(),
-                List.of(),
+                new ImagePlans.RuntimeJars(List.of(), List.of(), List.of(), Map.of()),
                 null,
                 MAIN,
                 fx.config().base(),
@@ -136,8 +135,7 @@ class ImagePlansOfflineTest {
                         fx.config(),
                         fx.cache(),
                         fx.tarball(),
-                        List.of(),
-                        List.of(),
+                        new ImagePlans.RuntimeJars(List.of(), List.of(), List.of(), Map.of()),
                         null,
                         MAIN,
                         fx.workerJar(),

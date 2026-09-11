@@ -50,8 +50,7 @@ class ImageWorkerSpecTest {
                                 true),
                         base,
                         "com.example.Main",
-                        List.of(),
-                        List.of(),
+                        new ImagePlans.RuntimeJars(List.of(), List.of(), List.of(), Map.of()),
                         null,
                         module.resolve("target/app.tar"))
                 .lines();

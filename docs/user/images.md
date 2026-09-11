@@ -21,10 +21,12 @@ base = "docker.io/bellsoft/liberica-runtime-container:jre-25-slim-glibc"
 
 The image is `<registry>/<name>:<tag>`, each part falling back as noted. Layers, from least to most
 volatile: the base, this module's **runtime dependency jars** at `/app/libs/<artifact>-<version>.jar`
-(release and `-SNAPSHOT` in separate layers), then the application jar at `/app/classpath/`. In a
-workspace that closure is the module's own — its declared externals, its sibling modules' externals,
-and the siblings' thin jars — exactly what `jk build`'s fat jar nests, never the whole workspace
-lock. The entrypoint is `java <JAVA_OPTS…> -cp /app/classpath/*:/app/libs/* <main>`.
+— locked releases in one layer, then `-SNAPSHOT` versions and workspace siblings' thin jars in a
+volatile layer, so rebuilding a sibling never rewrites the release layer — then the application jar
+at `/app/classpath/`. In a workspace that closure is the module's own — its declared externals, its
+sibling modules' externals, and the siblings' thin jars — exactly what `jk build`'s fat jar nests,
+never the whole workspace lock. The entrypoint is
+`java <JAVA_OPTS…> -cp /app/classpath/*:/app/libs/* <main>`.
 
 `JAVA_OPTS` is the one JVM-flag hook. Its tokens lead the entrypoint and, when `aot-cache = true`,
 every training run as well: a cache is only valid for the collector and heap shape it was trained

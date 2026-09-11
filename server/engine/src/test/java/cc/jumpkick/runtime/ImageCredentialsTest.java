@@ -122,7 +122,14 @@ class ImageCredentialsTest {
         Path workerJar = Files.writeString(tmp.resolve("worker.jar"), "worker");
 
         List<String> tokens = ImagePlans.imageTokens(
-                mainJar, List.of(), List.of(), null, "com.example.Main", BASE, imageConfig(REGISTRY), "", workerJar);
+                mainJar,
+                new ImagePlans.RuntimeJars(List.of(), List.of(), List.of(), Map.of()),
+                null,
+                "com.example.Main",
+                BASE,
+                imageConfig(REGISTRY),
+                "",
+                workerJar);
 
         assertThat(String.join("\n", tokens))
                 .contains(BASE)
@@ -189,8 +196,7 @@ class ImageCredentialsTest {
                         imageConfig(registry),
                         BASE,
                         "com.example.Main",
-                        List.of(),
-                        List.of(),
+                        new ImagePlans.RuntimeJars(List.of(), List.of(), List.of(), Map.of()),
                         null,
                         registry == null ? module.resolve("target/app.tar") : null)
                 .lines();

@@ -35,7 +35,14 @@ class ImageActionKeyTest {
 
     private List<String> tokens(Path mainJar, String base, Path workerJar) throws IOException {
         return ImagePlans.imageTokens(
-                mainJar, List.of(), List.of(), null, "com.example.Main", base, config(), "", workerJar);
+                mainJar,
+                new ImagePlans.RuntimeJars(List.of(), List.of(), List.of(), Map.of()),
+                null,
+                "com.example.Main",
+                base,
+                config(),
+                "",
+                workerJar);
     }
 
     /**

@@ -73,9 +73,8 @@ public final class ImagePlans {
     public static final BuildPlanKey<ImageConfig> CONFIG = BuildPlanKey.scalar("image-config", ImageConfig.class);
     public static final BuildPlanKey<Path> TARBALL_PATH = BuildPlanKey.scalar("tarball-path", Path.class);
 
-    private static final BuildPlanKey<List<Path>> DEP_JARS = BuildPlanKey.list("dep-jars", Path.class);
-
-    private static final BuildPlanKey<List<Path>> SNAPSHOT_JARS = BuildPlanKey.list("snapshot-jars", Path.class);
+    private static final BuildPlanKey<RuntimeJars> RUNTIME_JARS =
+            BuildPlanKey.scalar("runtime-jars", RuntimeJars.class);
 
     public static final BuildPlanKey<String> IMAGE_REF = BuildPlanKey.scalar("image-ref", String.class);
 
@@ -157,7 +156,7 @@ public final class ImagePlans {
         if (decorate != null) inputs = decorate.apply(inputs);
 
         BuildPlan.Builder builder = BuildPlanner.coreBuilder(inputs);
-        builder.stateKeys(CONFIG, TARBALL_PATH, DEP_JARS, SNAPSHOT_JARS, IMAGE_REF)
+        builder.stateKeys(CONFIG, TARBALL_PATH, RUNTIME_JARS, IMAGE_REF)
                 .addTask(imagePlanStep(
                         projectDir, cache, jkBuildPath, mainClass, registry, tag, tarballArg, dockerExecutableArg))
                 .addTask(writeImageStep(projectDir, cache, mainClass));
@@ -196,13 +195,12 @@ public final class ImagePlans {
                             throw new RuntimeException("missing main class");
                         }
                         // This module's production runtime closure — the same set the fat jar
-                        // nests — with SNAPSHOT versions split into their own layer, because they
-                        // churn while releases do not. Never the whole workspace lock, and never
-                        // the CAS alone: with [m2] integration on, the jars live in ~/.m2.
-                        RuntimeJars jars =
-                                runtimeJars(layout.moduleRoot(), project, LockPaths.lockFile(layout.moduleRoot()));
-                        ctx.put(DEP_JARS, jars.releases());
-                        ctx.put(SNAPSHOT_JARS, jars.snapshots());
+                        // nests — layered by how often each part churns. Never the whole workspace
+                        // lock, and never the CAS alone: with [m2] integration on, the jars live
+                        // in ~/.m2.
+                        ctx.put(
+                                RUNTIME_JARS,
+                                runtimeJars(layout.moduleRoot(), project, LockPaths.lockFile(layout.moduleRoot())));
                     }
                     ctx.progress(1);
                 })
@@ -242,8 +240,7 @@ public final class ImagePlans {
                         return;
                     }
 
-                    List<Path> depJars = ctx.require(DEP_JARS);
-                    List<Path> snapshotJars = ctx.get(SNAPSHOT_JARS).orElse(List.of());
+                    RuntimeJars jars = ctx.require(RUNTIME_JARS);
                     Path classesDir = PluginBuild.shape(project, projectDir)
                                     .map(sh -> sh.layeredImage())
                                     .orElse(false)
@@ -263,8 +260,7 @@ public final class ImagePlans {
                             config,
                             cache,
                             tarballPath,
-                            depJars,
-                            snapshotJars,
+                            jars,
                             classesDir,
                             chosen,
                             workerJar,
@@ -276,8 +272,7 @@ public final class ImagePlans {
                                     config,
                                     base,
                                     chosen,
-                                    depJars,
-                                    snapshotJars,
+                                    jars,
                                     classesDir,
                                     tarballPath));
                 })
@@ -354,8 +349,7 @@ public final class ImagePlans {
             ImageConfig config,
             String base,
             @Nullable String chosen,
-            List<Path> depJars,
-            List<Path> snapshotJars,
+            RuntimeJars jars,
             @Nullable Path classesDir,
             @Nullable Path tarballPath)
             throws IOException {
@@ -400,16 +394,15 @@ public final class ImagePlans {
         }
         if (!config.platforms().isEmpty()) sw.configList("platforms", config.platforms());
         sw.artifact(layout.mainJar());
-        // Name each jar by its coordinate. The path is a CAS digest, so shipping that name
-        // into the image leaves a lib/ directory neither a human nor a scanner can read.
-        Map<Path, String> names = jarNames(lockRows(LockPaths.lockFile(layout.moduleRoot())));
-        for (Path dep : depJars) sw.entry(jarName(names, dep), dep, false, null);
-        for (Path dep : snapshotJars) sw.entry(jarName(names, dep), dep, true, null);
+        // Releases ship as the stable layer; snapshots and workspace siblings as the volatile one.
+        for (Path dep : jars.releases()) sw.entry(jars.name(dep), dep, false, null);
+        for (Path dep : jars.snapshots()) sw.entry(jars.name(dep), dep, true, null);
+        for (Path dep : jars.siblings()) sw.entry(jars.name(dep), dep, true, null);
         if (classesDir != null) sw.layout(Map.of("classesDir", classesDir));
         // A packager that produced a complete runnable tree: ship that, not a lock-derived
         // classpath. Declared but missing is a hard error — falling back to the lock classpath
-        // is exactly the broken image  fixed (Quarkus needs quarkus-run.jar, not
-        // Application on a 200-jar lock classpath).
+        // ships a broken image (Quarkus needs quarkus-run.jar, not Application on a 200-jar lock
+        // classpath).
         var shape = PluginBuild.shape(project, layout.moduleRoot());
         String appDir = shape.map(sh -> sh.appDir()).orElse("");
         String appJar = shape.map(sh -> sh.appJar()).orElse("");
@@ -448,13 +441,12 @@ public final class ImagePlans {
             ImageConfig config,
             String base,
             @Nullable String chosen,
-            List<Path> depJars,
-            List<Path> snapshotJars,
+            RuntimeJars jars,
             @Nullable Path classesDir,
             @Nullable Path tarballPath) {
         try {
-            SpecWriter sw = imageWorkerSpec(
-                    cache, project, layout, config, base, chosen, depJars, snapshotJars, classesDir, tarballPath);
+            SpecWriter sw =
+                    imageWorkerSpec(cache, project, layout, config, base, chosen, jars, classesDir, tarballPath);
             Path spec = ImageCredentials.newSpecFile();
             try {
                 Files.write(spec, sw.lines(), StandardCharsets.UTF_8);
@@ -575,8 +567,7 @@ public final class ImagePlans {
      */
     public static List<String> imageTokens(
             Path mainJar,
-            List<Path> depJars,
-            List<Path> snapshotJars,
+            RuntimeJars jars,
             @Nullable Path classesDir,
             @Nullable String mainClass,
             @Nullable String base,
@@ -586,8 +577,9 @@ public final class ImagePlans {
             throws IOException {
         return List.of(
                 "mainjar:" + ClasspathFingerprint.entry(mainJar),
-                "deps:" + ClasspathFingerprint.of(depJars),
-                "snapshots:" + ClasspathFingerprint.of(snapshotJars),
+                "deps:" + ClasspathFingerprint.of(jars.releases()),
+                "snapshots:" + ClasspathFingerprint.of(jars.snapshots()),
+                "siblings:" + ClasspathFingerprint.of(jars.siblings()),
                 "classes:" + (classesDir == null ? "" : ClasspathFingerprint.entry(classesDir)),
                 "main:" + mainClass,
                 "base:" + base,
@@ -664,13 +656,25 @@ public final class ImagePlans {
         return null;
     }
 
-    /** A module's runtime jars for the image, release and SNAPSHOT versions apart. */
-    record RuntimeJars(List<Path> releases, List<Path> snapshots) {}
+    /**
+     * A module's runtime jars for the image, in layers from least to most volatile: locked release
+     * versions, locked {@code -SNAPSHOT} versions, and workspace siblings' thin jars, which have no
+     * lock row and change on every rebuild of that module. {@code names} is each locked jar's
+     * coordinate file name (see {@link #jarNames}); a sibling keeps its own file name.
+     */
+    public record RuntimeJars(List<Path> releases, List<Path> snapshots, List<Path> siblings, Map<Path, String> names) {
+
+        /** The file name {@code jar} ships under in {@code /app/libs}. */
+        String name(Path jar) {
+            String named = names.get(jar);
+            return named != null ? named : jar.getFileName().toString();
+        }
+    }
 
     /**
      * The module's production runtime closure: its declared externals and its workspace siblings'
      * transitive closure through the lock, plus the siblings' own thin jars. Located the way every
-     * other classpath is (the store, or {@code ~/.m2} when integration is on), so the layer holds
+     * other classpath is (the store, or {@code ~/.m2} when integration is on), so the layers hold
      * exactly what the fat jar would nest.
      */
     static RuntimeJars runtimeJars(Path moduleDir, JkBuild project, Path lockFile) throws IOException {
@@ -678,15 +682,18 @@ public final class ImagePlans {
                 ModuleRuntimeClasspath.jars(moduleDir, project, lockFile, JkStores.storeCas()), lockRows(lockFile));
     }
 
-    /** Pure half of {@link #runtimeJars}: a sibling's thin jar has no lock row and is a release. */
-    static RuntimeJars split(List<Path> jars, Map<Path, Lockfile.Artifact> rows) {
+    /** Pure half of {@link #runtimeJars}: layer by lock row, and name every locked jar. */
+    static RuntimeJars split(List<Path> jars, Map<Path, Lockfile.Artifact> rows) throws IOException {
         List<Path> releases = new ArrayList<>();
         List<Path> snapshots = new ArrayList<>();
+        List<Path> siblings = new ArrayList<>();
         for (Path jar : jars) {
             Lockfile.Artifact row = rows.get(jar);
-            (row != null && row.version().contains("SNAPSHOT") ? snapshots : releases).add(jar);
+            if (row == null) siblings.add(jar);
+            else if (row.version().contains("SNAPSHOT")) snapshots.add(jar);
+            else releases.add(jar);
         }
-        return new RuntimeJars(releases, snapshots);
+        return new RuntimeJars(releases, snapshots, siblings, jarNames(rows));
     }
 
     /** Every lock row by the path its jar resolves to, whatever scope it is in. */
@@ -738,10 +745,5 @@ public final class ImagePlans {
             if (c != null) classifier = c;
         }
         return pkg.moduleArtifact() + "-" + pkg.version() + (classifier.isEmpty() ? "" : "-" + classifier) + ".jar";
-    }
-
-    private static String jarName(Map<Path, String> names, Path jar) {
-        String named = names.get(jar);
-        return named != null ? named : jar.getFileName().toString();
     }
 }
