@@ -11,8 +11,6 @@ import cc.jumpkick.engine.http.StatusSnapshot;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.Scope;
-import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -58,7 +56,7 @@ class McpManifestTest {
     }
 
     @Test
-    void applied_manifest_edits_carry_the_relock_hint() {
+    void applied_manifest_edits_carry_the_relock_hint(@TempDir Path dir) throws Exception {
         EngineHttpJobs jobs = new EngineHttpJobs() {
             @Override
             public long trigger(JobSpec spec) {
@@ -81,7 +79,7 @@ class McpManifestTest {
                 d -> Map.of(),
                 List::of,
                 "0.12.0");
-        Path dir = tempProject();
+        Files.writeString(dir.resolve("jk.toml"), TABLE_TERMINATED, StandardCharsets.UTF_8);
         String applied = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\","
                 + "\"params\":{\"name\":\"jk_manifest\",\"arguments\":{\"dir\":"
                 + Jsonl.quote(dir.toString())
@@ -92,17 +90,6 @@ class McpManifestTest {
                 + Jsonl.quote(dir.toString())
                 + ",\"java\":25,\"apply\":false}}}");
         assertThat(preview).doesNotContain("jk_run kind=lock");
-    }
-
-    private static Path tempProject() {
-        try {
-            Path dir = Files.createTempDirectory("mcp-manifest-hint");
-            dir.toFile().deleteOnExit();
-            Files.writeString(dir.resolve("jk.toml"), TABLE_TERMINATED, StandardCharsets.UTF_8);
-            return dir;
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
     }
 
     /**
