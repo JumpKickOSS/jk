@@ -40,6 +40,9 @@ class TestWorkersTest {
     void outside_a_job_scope_the_plan_share_stands() {
         assertThat(TestWorkers.liveShare(1, 20, 0)).isEqualTo(1);
         assertThat(TestWorkers.liveShare(4, 20, 0)).isEqualTo(4);
+        // A standalone jk test / jk build has no job scope; its auto share must stay auto, or the
+        // launcher takes the 1 as a pin and runs the whole suite on one JVM.
+        assertThat(TestWorkers.liveShare(0, 20, 0)).isEqualTo(0);
     }
 
     @Test

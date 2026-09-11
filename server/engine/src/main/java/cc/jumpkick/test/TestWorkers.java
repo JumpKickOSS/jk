@@ -90,11 +90,13 @@ public final class TestWorkers {
      * compile lanes, which cost more at the front than the tail gained at the back.
      *
      * <p>The plan share is the floor, so this never makes a suite narrower than planned, and the jobs
-     * budget the ceiling. {@code unitsRunning <= 0} means no job scope to measure, so the plan stands.
+     * budget the ceiling. {@code unitsRunning <= 0} means no job scope to measure, so the plan stands
+     * as given — including {@code 0}, which is still "auto" and must reach the launcher as such, not
+     * as a one-runner pin.
      */
     public static int liveShare(int planShare, int jobsBudget, int unitsRunning) {
+        if (unitsRunning <= 0) return Math.max(0, planShare);
         int floor = Math.max(1, planShare);
-        if (unitsRunning <= 0) return floor;
         int live = Math.max(1, jobsBudget) / unitsRunning;
         return Math.clamp(live, floor, Math.max(floor, jobsBudget));
     }
