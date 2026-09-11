@@ -21,17 +21,15 @@ class JUnitLauncherDebugFlagsTest {
     void only_the_suite_jvm_carries_the_agent() {
         JUnitLauncher launcher = new JUnitLauncher().withDebug(DEBUG);
 
-        assertThat(launcher.jvmFlags(JUnitLauncher.JvmRole.SUITE, 1, null)).contains(DEBUG.agentArg());
-        assertThat(launcher.jvmFlags(JUnitLauncher.JvmRole.DISCOVERY, 1, null))
-                .noneMatch(JUnitLauncherDebugFlagsTest::jdwp);
-        assertThat(launcher.jvmFlags(JUnitLauncher.JvmRole.PULL_WORKER, 4, null))
-                .noneMatch(JUnitLauncherDebugFlagsTest::jdwp);
+        assertThat(launcher.jvmFlags(JvmRole.SUITE, 1, null)).contains(DEBUG.agentArg());
+        assertThat(launcher.jvmFlags(JvmRole.DISCOVERY, 1, null)).noneMatch(JUnitLauncherDebugFlagsTest::jdwp);
+        assertThat(launcher.jvmFlags(JvmRole.PULL_WORKER, 4, null)).noneMatch(JUnitLauncherDebugFlagsTest::jdwp);
     }
 
     @Test
     void the_agent_is_added_once_and_leaves_the_runner_flags_intact() {
-        List<String> plain = new JUnitLauncher().jvmFlags(JUnitLauncher.JvmRole.SUITE, 1, null);
-        List<String> debugged = new JUnitLauncher().withDebug(DEBUG).jvmFlags(JUnitLauncher.JvmRole.SUITE, 1, null);
+        List<String> plain = new JUnitLauncher().jvmFlags(JvmRole.SUITE, 1, null);
+        List<String> debugged = new JUnitLauncher().withDebug(DEBUG).jvmFlags(JvmRole.SUITE, 1, null);
 
         assertThat(plain).noneMatch(JUnitLauncherDebugFlagsTest::jdwp);
         assertThat(debugged).hasSize(plain.size() + 1).containsAll(plain);
@@ -41,7 +39,7 @@ class JUnitLauncherDebugFlagsTest {
     @Test
     void no_debug_request_means_no_agent_anywhere() {
         JUnitLauncher launcher = new JUnitLauncher().withDebug(null);
-        for (JUnitLauncher.JvmRole role : JUnitLauncher.JvmRole.values()) {
+        for (JvmRole role : JvmRole.values()) {
             assertThat(launcher.jvmFlags(role, 2, null)).as(role.name()).noneMatch(JUnitLauncherDebugFlagsTest::jdwp);
         }
     }

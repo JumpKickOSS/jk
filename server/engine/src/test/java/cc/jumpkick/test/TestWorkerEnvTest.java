@@ -12,14 +12,14 @@ import org.junit.jupiter.api.Test;
  * for nested-engine suites — its own {@code JK_STATE_DIR}, so engine identity (keyed on state +
  * store) differs per worker and one worker's engine stop cannot abort a sibling's request.
  */
-class JUnitLauncherWorkerEnvTest {
+class TestWorkerEnvTest {
 
     @Test
     void each_worker_gets_its_own_state_dir_under_the_run_s_own() {
         Map<String, String> base = Map.of("JK_STATE_DIR", "/tmp/jk-cli-abc", "JK_HOME", "/x/test-jk-home");
 
-        Map<String, String> w0 = JUnitLauncher.workerEnv(base, 0, Path.of("/tmp/t0"));
-        Map<String, String> w1 = JUnitLauncher.workerEnv(base, 1, Path.of("/tmp/t1"));
+        Map<String, String> w0 = TestWorkerEnv.forWorker(base, 0, Path.of("/tmp/t0"));
+        Map<String, String> w1 = TestWorkerEnv.forWorker(base, 1, Path.of("/tmp/t1"));
 
         // Children, not siblings. `<base>-w0` sat outside the directory the run deletes, so every
         // worker's state survived cleanup and piled up under /tmp.
@@ -39,7 +39,7 @@ class JUnitLauncherWorkerEnvTest {
 
     @Test
     void suites_without_a_state_dir_are_untouched() {
-        Map<String, String> env = JUnitLauncher.workerEnv(Map.of("FOO", "bar"), 3, Path.of("/tmp/t3"));
+        Map<String, String> env = TestWorkerEnv.forWorker(Map.of("FOO", "bar"), 3, Path.of("/tmp/t3"));
         assertThat(env).doesNotContainKey("JK_STATE_DIR");
         assertThat(env.get("FOO")).isEqualTo("bar");
     }

@@ -115,16 +115,6 @@ public final class JUnitLauncher {
         return this;
     }
 
-    /** Which forked JVM a flag list is for; only {@link #SUITE} may carry the debug agent. */
-    enum JvmRole {
-        /** {@code --list-only} discovery: names classes, runs nothing. */
-        DISCOVERY,
-        /** A pull-mode shard worker. */
-        PULL_WORKER,
-        /** The one JVM that runs the tests in single-worker mode. */
-        SUITE
-    }
-
     /** {@link #runnerFlags} for {@code role}, plus the JDWP agent when the suite JVM is under debug. */
     List<String> jvmFlags(JvmRole role, int concurrency, @Nullable Path tmpDir) {
         List<String> flags = new ArrayList<>(runnerFlags(concurrency, tmpDir));
@@ -439,16 +429,9 @@ public final class JUnitLauncher {
                 .withWorkers(resolvedWorkers));
     }
 
-    /**
-     * A {@code --class} that matched nothing is a failure naming the patterns, not a green "No
-     * tests": the usual cause is a typo, and a typo that passes is the one outcome the flag must
-     * never produce.
-     */
     private TestSummary noMatchAsFailure(TestSummary result) {
-        if (classFilter == null || !classNames.isEmpty() || result.total() != 0 || result.failed() != 0) return result;
-        String why = "no test classes matched --class " + String.join(", ", classPatterns);
-        return new TestSummary(
-                1, 0, 1, 0, List.of(new TestFailureInfo(moduleLabel, "", "", "(test run)", "", why, "")));
+        boolean filtered = classFilter != null && classNames.isEmpty();
+        return filtered ? JUnitClassFilter.noMatchAsFailure(result, moduleLabel, classPatterns) : result;
     }
 
     // -------- single-worker ---------------------------------------------
@@ -709,48 +692,6 @@ public final class JUnitLauncher {
      * writing one line to the child's stdin. Non-protocol lines are user test output — passed through
      * to the parent's stdout, tagged with the worker id.
      */
-    /**
-     * Per-worker env when {@code W > 1}: private temp root, and for nested-engine suites a
-     * per-worker {@code JK_STATE_DIR}. Engine identity is keyed on (state, store), so a shared
-     * state dir means one socket for every worker — and one worker's engine force-stop aborts
-     * its siblings mid-request. The suffix stays short: the state dir holds Unix domain sockets,
-     * and the JDK stops binding past 102 characters (the budget is
-     * {@code UnixSocketPaths.MAX_PATH_LENGTH}, proven there by binding).
-     */
-    static Map<String, String> workerEnv(Map<String, String> base, int workerId, Path tmp) {
-        Map<String, String> env = new LinkedHashMap<>(base);
-        env.put("TMPDIR", tmp.toString());
-        env.put("TMP", tmp.toString());
-        env.put("TEMP", tmp.toString());
-        // A CHILD of the run's state dir, not a sibling of it. The sibling spelling
-        // (`<base>-w0`) put every worker's state outside the one directory the run cleans, so
-        // deleting `<base>` recursively never reached them and they accumulated under /tmp
-        // forever. TestTmpDir.forWorker already splits the temp root this way; one idea deserves
-        // one spelling, and this is the one that cannot leak.
-        env.computeIfPresent(
-                "JK_STATE_DIR", (k, dir) -> Path.of(dir).resolve("w" + workerId).toString());
-        return env;
-    }
-
-    /**
-     * Inactivity window for pull-mode test workers. Generous: single tests are legitimately
-     * slow (the Android ladder runs minutes per class), but the runner emits an event per test
-     * start/finish, so a silent worker is a hung one — a JLine tty probe once stalled a worker
-     * (and the whole suite) for 3.5h with zero output. Override:
-     * {@code -Djk.test.worker.idle.ms} / {@code JK_TEST_WORKER_IDLE_MS}; {@code 0} disables.
-     */
-    static long workerIdleTimeoutMs() {
-        String prop = System.getProperty("jk.test.worker.idle.ms", System.getenv("JK_TEST_WORKER_IDLE_MS"));
-        if (prop != null && !prop.isBlank()) {
-            try {
-                return Long.parseLong(prop.trim());
-            } catch (NumberFormatException ignored) {
-                // fall through to default
-            }
-        }
-        return 10 * 60_000L;
-    }
-
     private int driveWorker(
             Path javaBinary,
             String classpath,
@@ -785,7 +726,8 @@ public final class JUnitLauncher {
 
         try {
             Path tmp = TestTmpDir.forWorker(testTmpDir, workerId, totalWorkers);
-            Map<String, String> env = totalWorkers > 1 && tmp != null ? workerEnv(testEnv, workerId, tmp) : testEnv;
+            Map<String, String> env =
+                    totalWorkers > 1 && tmp != null ? TestWorkerEnv.forWorker(testEnv, workerId, tmp) : testEnv;
             List<String> flags = jvmFlags(JvmRole.PULL_WORKER, totalWorkers, tmp);
             return PluginLoader.converse(
                     javaBinary,
@@ -798,7 +740,7 @@ public final class JUnitLauncher {
                     inferredModuleDir,
                     handler,
                     passthrough,
-                    workerIdleTimeoutMs());
+                    TestWorkerEnv.idleTimeoutMs());
         } catch (IOException e) {
             listener.onUserOutput(workerId, "reader error: " + e.getMessage());
             return -1;

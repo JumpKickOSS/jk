@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.test;
 
+import cc.jumpkick.run.TestFailureInfo;
+import cc.jumpkick.run.TestSummary;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -52,5 +54,17 @@ final class JUnitClassFilter {
         re.append(")$");
         args.add("--filter=" + re);
         return args;
+    }
+
+    /**
+     * A {@code --class} that matched nothing is a failure naming the patterns, not a green "No
+     * tests": the usual cause is a typo, and a typo that passes is the one outcome the flag must
+     * never produce. A result with tests, or with failures of its own, is returned as is.
+     */
+    static TestSummary noMatchAsFailure(TestSummary result, String moduleLabel, List<String> patterns) {
+        if (result.total() != 0 || result.failed() != 0) return result;
+        String why = "no test classes matched --class " + String.join(", ", patterns);
+        return new TestSummary(
+                1, 0, 1, 0, List.of(new TestFailureInfo(moduleLabel, "", "", "(test run)", "", why, "")));
     }
 }
