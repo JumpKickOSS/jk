@@ -77,6 +77,21 @@ public final class ForkedJavac {
         }
     }
 
+    /**
+     * The JDK the compiler worker runs on: jk's own runtime, or the project's JDK when the
+     * project's {@code java} level is above what the runtime's javac can emit. A javac cannot
+     * target a release newer than itself, so a {@code java = 26} project on an engine running
+     * JDK 25 compiles on the JDK its manifest resolved.
+     */
+    static Path workerJavaHome(Request req) {
+        Path host = JavaHomes.runningJavaHome();
+        Path project = req.javaHome();
+        if (project == null || req.release() <= 0) return host;
+        int hostFeature = JvmOptions.hostFeature(host);
+        if (req.release() <= hostFeature) return host;
+        return JvmOptions.hostFeature(project) >= req.release() ? project : host;
+    }
+
     public record Request(
             @Nullable Path javaHome,
             Path workerJar,
@@ -179,12 +194,13 @@ public final class ForkedJavac {
             List<Path> compiledSources = new ArrayList<>();
             String[] status = {null};
 
-            // Fork the java-compiler plugin on jk's OWN runtime — the same rule as every
-            // plugin (requirements.md "plugin host"). All compilation goes through this forked
-            // Zinc worker (there is no in-engine javac path); --release supplies the project's
-            // target semantics. It's a thin, JDK-only plugin (the compile classpath travels in
-            // the spec, not on the plugin's classpath), so its own jar is the whole classpath.
-            Path hostJavaHome = JavaHomes.runningJavaHome();
+            // Fork the java-compiler plugin on jk's own runtime, like every plugin, with
+            // --release carrying the project's target semantics — unless the project's level is
+            // above what this runtime's javac can emit, in which case the worker runs on the
+            // project's JDK (workerJavaHome). It's a thin, JDK-only plugin (the compile classpath
+            // travels in the spec, not on the plugin's classpath), so its own jar is the whole
+            // classpath.
+            Path hostJavaHome = workerJavaHome(req);
             Path javaExe = JdkFingerprint.java(hostJavaHome);
             // Thin worker + Maven runtime closure from its POM.
             String workerCp = workerClasspath(req);

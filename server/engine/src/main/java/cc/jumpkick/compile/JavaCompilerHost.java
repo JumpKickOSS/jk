@@ -10,7 +10,6 @@ import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.engine.plugin.PluginProcess;
 import cc.jumpkick.engine.plugin.PluginSlots;
 import cc.jumpkick.host.time.Clock;
-import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
@@ -48,7 +47,9 @@ import org.jspecify.annotations.Nullable;
  */
 public final class JavaCompilerHost {
 
-    private static final ConcurrentHashMap<Long, Lanes> POOLS = new ConcurrentHashMap<>();
+    /** Pools keyed by job and by the JDK their workers run on: one job may compile modules at two levels. */
+    private static final ConcurrentHashMap<String, Lanes> POOLS = new ConcurrentHashMap<>();
+
     private static final AtomicLong EPHEMERAL = new AtomicLong(-1L);
 
     /** Monotonic readings: a work item's queue wait, and the teardown join deadline. */
@@ -81,8 +82,12 @@ public final class JavaCompilerHost {
 
     /** Send {@code DONE} to every lane and drop the pool for {@code requestId}. Process kill is {@link JobWorkers}. */
     public static void end(long requestId) {
-        Lanes pool = POOLS.remove(requestId);
-        if (pool != null) pool.close();
+        String prefix = requestId + "|";
+        for (String key : List.copyOf(POOLS.keySet())) {
+            if (!key.startsWith(prefix)) continue;
+            Lanes pool = POOLS.remove(key);
+            if (pool != null) pool.close();
+        }
     }
 
     static ForkedJavac.Result compile(ForkedJavac.Request req) {
@@ -98,13 +103,18 @@ public final class JavaCompilerHost {
     }
 
     private static Lanes pool(long id, ForkedJavac.Request req) {
-        return POOLS.computeIfAbsent(id, k -> new Lanes(k, req));
+        Path home = ForkedJavac.workerJavaHome(req);
+        return POOLS.computeIfAbsent(id + "|" + home, k -> new Lanes(id, req, home));
     }
 
-    /** Test seam: live lanes for {@code requestId}, or 0 when the job has no pool. */
+    /** Test seam: live lanes for {@code requestId} across its pools, or 0 when the job has none. */
     static int laneCount(long requestId) {
-        Lanes pool = POOLS.get(requestId);
-        return pool == null ? 0 : pool.liveLanes();
+        String prefix = requestId + "|";
+        int lanes = 0;
+        for (var e : POOLS.entrySet()) {
+            if (e.getKey().startsWith(prefix)) lanes += e.getValue().liveLanes();
+        }
+        return lanes;
     }
 
     /** Surface a worker failure to the caller as the cause it actually was, not as a wrapper. */
@@ -261,10 +271,10 @@ public final class JavaCompilerHost {
 
         private boolean closed;
 
-        Lanes(long id, ForkedJavac.Request template) {
+        Lanes(long id, ForkedJavac.Request template, Path workerJavaHome) {
             this(
                     laneBudget(),
-                    (owner, index) -> new Session(owner, id, index, self -> self.converse(template)),
+                    (owner, index) -> new Session(owner, id, index, self -> self.converse(template, workerJavaHome)),
                     ForkedJavac::writeSpec);
         }
 
@@ -479,9 +489,11 @@ public final class JavaCompilerHost {
             }
         }
 
-        /** Fork the worker JVM and drive its READY / COMPILE / RESULT conversation until it exits. */
-        private void converse(ForkedJavac.Request template) throws Exception {
-            Path hostJavaHome = JavaHomes.runningJavaHome();
+        /**
+         * Fork the worker JVM on {@code hostJavaHome} and drive its READY / COMPILE / RESULT
+         * conversation until it exits.
+         */
+        private void converse(ForkedJavac.Request template, Path hostJavaHome) throws Exception {
             Path javaExe = JdkFingerprint.java(hostJavaHome);
             String workerCp = ForkedJavac.workerClasspath(template);
             List<String> jvmFlags = new ArrayList<>(PluginAot.javaCompilerFlags(
