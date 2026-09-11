@@ -92,6 +92,13 @@ a resident engine that warns in a loop for weeks cannot fill the disk. One previ
 is kept. `jk engine status` prints a `Log` row with the current size and when this engine last
 rolled it; `--output json` carries `logBytes` and `logRolledAt` (epoch millis, `-1` = never).
 
+Every line is leveled: `HH:mm:ss.SSS LEVEL message key=value …`, with `LEVEL` one of `DEBUG`,
+`INFO`, `WARN`, `ERROR`. `log-level` (or `JK_LOG_LEVEL`) sets the threshold, default `info`; it
+is read at engine start, so `jk engine stop` first, then `JK_LOG_LEVEL=debug jk build` starts an
+engine that also writes the perf probes (`perf <label> ms=<n>`) and the cause of every
+fail-open path it took. Secrets a `.env` file declares, and repository credentials jk resolved,
+are masked as `***` at every level.
+
 ### Idle connections
 
 A client that connects and never sends a request is closed after 10 seconds; one that has sent

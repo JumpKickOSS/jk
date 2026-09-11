@@ -92,11 +92,45 @@ How jk is structured today. For day-to-day usage see [user documentation](../use
 | **Ensure** | Handshake must succeed | Silent peer (connect works, no reply) → hard-kill once + respawn |
 | **Stop** | Process death, not only `bye` | Force-stop waits for pid exit (~1.5s) then escalates |
 | **Out of memory** | The engine JVM runs with `-XX:+ExitOnOutOfMemoryError` and `-XX:+HeapDumpOnOutOfMemoryError`: the first `OutOfMemoryError` writes `<state>/engine/java_pid<pid>.hprof` and ends the process, however it was caught. The next client spawns a fresh engine and reports the exit once; `jk engine status` and `jk doctor` name the dump while it exists | Dump ≤ `max-heap-mb`; the idle boundary deletes dumps older than 7 days |
-| **Engine log** | The spawner redirects the engine's stderr to `<state>/engine/<key>.log` and rotates it to `.1` at each spawn; the engine writes through a byte-counting sink on the same file and rolls it to `.1` itself when it reaches the cap, so a warning loop cannot fill the disk. One generation is kept. `jk engine status` shows the size and the last roll | `[engine] log-max-mb` / `JK_ENGINE_LOG_MAX_MB` (default **16** MiB; `0` = no cap) |
+| **Engine log** | The spawner redirects the engine's stderr to `<state>/engine/<key>.log` and rotates it to `.1` at each spawn; the engine writes through a byte-counting sink on the same file and rolls it to `.1` itself when it reaches the cap, so a warning loop cannot fill the disk. One generation is kept. `jk engine status` shows the size and the last roll. Lines are leveled and redacted — see [Logging](#logging) | `[engine] log-max-mb` / `JK_ENGINE_LOG_MAX_MB` (default **16** MiB; `0` = no cap); `[engine] log-level` / `JK_LOG_LEVEL` (default **info**) |
 
 If a stream goes idle, the client fails closed with a clear error (tune with `JK_STREAM_IDLE_MS`;
 recover with `jk engine stop --force`). Heartbeats keep long quiet compiles honest against the
 idle timer. Huge monorepos leave `JK_ENGINE_JOB_DEADLINE_MS` at `0`; CI can set a wall cap.
+
+### Logging
+
+One logger, no framework. `cc.jumpkick.host.Log` is a facade over the JDK's `System.Logger`
+with four levels — `debug`, `info`, `warn`, `error` — and a `Log.detail(key, value, …)` suffix
+for structured facts (`units=3 dir="a b"`). Nothing else on the engine classpath logs: SLF4J,
+Logback and their configuration files are absent by design, and the guard `engine-log-owner`
+forbids `System.out` / `System.err` / `printStackTrace()` in `server/*` and `shared/*` main
+code (the CLI owns the terminal and is out of scope).
+
+- **Where lines go.** `Log.install` binds the JDK backend to one stream with one formatter. The
+  engine binds `System.err` at entry and again once `EngineLogSink` has taken the stream over,
+  so every record lands in `<state>/engine/<key>.log` under the same size cap. A plugin worker
+  binds its own stderr, which the engine merges into the worker's protocol stream and keeps a
+  bounded tail of. The CLI never binds anything: it reaches `Log.level` to parse a name and no
+  further, so the native image carries no logging state.
+- **Shape.** `HH:mm:ss.SSS LEVEL message key=value …`, one line per record; a cause follows as
+  its stack. Messages keep the `jk engine:` / `jk:` prefixes they had as prints.
+- **Threshold.** `[engine] log-level` / `JK_LOG_LEVEL`, default `info`, read at engine start —
+  `JK_LOG_LEVEL=debug jk build` takes effect on the engine that shell starts, so run
+  `jk engine stop` first. `debug` adds the perf probes and every swallowed-exception line.
+- **Redaction.** The formatter passes each formatted record — stack included — through
+  `SecretRedactor.known()`, the union of every secret value the process has built a redactor
+  from (`.env` declarations, resolved repository credentials). A declared secret does not reach
+  the log at any level.
+- **Perf probes.** `cc.jumpkick.runtime.base.Perf` writes `perf <label> ms=<n>` and
+  `perf <label> key=value …` at debug; there is no separate switch. Reading them:
+  `JK_LOG_LEVEL=debug`, restart the engine, then `grep ' perf ' ~/.jk/state/engine/*.log`.
+- **Swallowed exceptions.** A catch of `Exception`, `Throwable` or `RuntimeException` whose body
+  would otherwise be a comment logs `Log.debug("<method>: <why it is tolerated>", e)`; the
+  `swallowed-broad-catch-ratchet` guard holds the count of comment-only ones at zero. What the
+  preflight could not read is not a log line but a typed outcome: `PreflightMemo.Uncertain`,
+  which schedules the module and reaches `jk explain` as "rebuilt because the preflight could
+  not read <path> (<cause>)".
 
 **Worker cancel contract:**
 
