@@ -6,7 +6,6 @@ import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.api.CommonOpts;
 import cc.jumpkick.cli.api.EnsureFreshLock;
 import cc.jumpkick.cli.api.GlobalOptions;
-import cc.jumpkick.cli.api.ParallelTestsOpts;
 import cc.jumpkick.cli.api.PlanOptions;
 import cc.jumpkick.cli.api.ProjectContext;
 import cc.jumpkick.cli.engine.EngineClient;
@@ -80,30 +79,8 @@ public final class ExplainCommand implements CliCommand {
     public List<Opt> options() {
         var opts = new ArrayList<Opt>();
         opts.add(Opt.flag("Build the plan instead of printing it", "--run"));
-        opts.addAll(ParallelTestsOpts.options());
-        // The plan-affecting options `jk build` accepts — forecasting `jk build <flags>`
-        // means feeding the same inputs to the shared estimate (and, with --run, to build).
-        // Module concurrency: global -j/--jobs.
-        opts.add(Opt.value("<name>", "Forecast with a build profile", "--profile"));
-        opts.add(Opt.value("<N>", "Test JVMs per module (0=auto)", "-w", "--workers"));
-        opts.add(CommonOpts.skipTests());
-        // Suite/tag widening, the same vocabulary and the same resolver `jk build` uses. Explain
-        // has to accept these because the resolved selection is an input to every module's
-        // run-tests stamp key: an explain that could not express the selection forecast against
-        // keys the build never computes, and reported every module in the tree as dirty.
-        opts.add(Opt.value("<name>", "Test suite directory (repeatable)", "-s", "--suite")
-                .repeat());
-        opts.add(Opt.flag("Run every test suite (tags included)", "--all"));
-        opts.add(CommonOpts.guard());
-        opts.add(Opt.flag("Guard scripts, no JUnit", "--scripts-only"));
-        opts.add(Opt.flag("Skip guard scripts", "--no-scripts"));
-        opts.add(Opt.value("<tags>", "JUnit tags to include (CSV)", "--include-tags")
-                .splitOn(","));
-        opts.add(Opt.value("<tags>", "JUnit tags to exclude (CSV)", "--exclude-tags")
-                .splitOn(","));
-        opts.add(Opt.flag("Skip profile tag filters", "--no-profile"));
-        // -r/--redo is a global flag (same as `jk build --redo`); see GlobalOptions.
-        opts.add(CommonOpts.jdksDir());
+        // Forecasting `jk build <flags>` means accepting the flags the build does.
+        opts.addAll(PlanOptions.options());
         opts.add(CommonOpts.cacheDir());
         opts.addAll(CommonOpts.moduleSelection());
         opts.add(Opt.value("<fmt>", "Emit module DAG as dot or mermaid", "--graph"));

@@ -3,23 +3,17 @@ package cc.jumpkick.cli.api;
 
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.Opt;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The plan-affecting options {@code jk build} and {@code jk explain} must marshal identically.
- *
- * <p><b>Why this exists.</b> The ETA <em>math</em> cannot diverge — {@code
- * BuildEta.estimateEtaMillis} is one function and {@code ExplainBuildEtaParityTest} pins it. What
- * used to diverge is what each command <em>fed</em> that function: the two derived the same eight
- * values from the same {@link Invocation} in two places, and drifted. {@code jk build} floored a
- * negative {@code --workers=-N} to {@code 0} and {@code jk explain} passed it through; {@code jk build}
- * turned {@code --scripts-only} into {@code skipTests} and {@code jk explain} did not, so {@code
- * jk explain --scripts-only} priced test suites the build would never run.
- *
- * <p>One derivation, one place. See {@code docs/contributors/progress-contract.md} and
- * {@code BuildExplainPlanOptionsParityTest}, which parses one argv against both commands' option
- * sets and asserts the two results are equal.
+ * The plan-affecting options {@code jk build} and {@code jk explain} must marshal identically: one
+ * option list ({@link #options()}) and one derivation ({@link #from}), so a forecast prices exactly
+ * what the build would run. {@code BuildExplainPlanOptionsParityTest} parses every option here
+ * against both commands and asserts the two records are equal.
  */
 public record PlanOptions(
         /** Within-module test JVMs; {@code 0} = auto. Never negative. */
@@ -32,6 +26,31 @@ public record PlanOptions(
         int jobs,
         boolean verbose,
         boolean rebuild) {
+
+    /** The options both commands declare; each {@code options()} adds these, then its own. */
+    public static List<Opt> options() {
+        List<Opt> opts = new ArrayList<>();
+        opts.add(Opt.value("<name>", "Build profile (default auto)", "--profile"));
+        opts.add(Opt.value("<N>", "Test JVMs per module (0=auto)", "-w", "--workers"));
+        opts.add(CommonOpts.skipTests());
+        // Suite/tag widening, the same vocabulary and resolver as `jk test`: the resolved selection
+        // is an input to every module's run-tests key, so a forecast has to be able to state it.
+        opts.add(Opt.value("<name>", "Test suite directory (repeatable)", "-s", "--suite")
+                .repeat());
+        opts.add(Opt.flag("Run every test suite (tags included)", "--all"));
+        opts.add(CommonOpts.guard());
+        opts.add(Opt.flag("Guard scripts, no JUnit", "--scripts-only"));
+        opts.add(Opt.flag("Skip guard scripts", "--no-scripts"));
+        opts.add(Opt.value("<tags>", "JUnit tags to include (CSV)", "--include-tags")
+                .splitOn(","));
+        opts.add(Opt.value("<tags>", "JUnit tags to exclude (CSV)", "--exclude-tags")
+                .splitOn(","));
+        opts.add(Opt.flag("Skip profile tag filters", "--no-profile"));
+        // Module concurrency is the global -j/--jobs; cross-module tests default on.
+        opts.addAll(ParallelTestsOpts.options());
+        opts.add(CommonOpts.jdksDir());
+        return opts;
+    }
 
     /**
      * Derive the set from one parsed invocation. {@code selection} is the resolved test selection
@@ -48,7 +67,6 @@ public record PlanOptions(
                 in.isSet("skip-tests") || selection.scriptsOnly(),
                 in.value("profile").orElse(null),
                 CommonOpts.jdksDirValue(in),
-                // C2: cross-module tests parallel by default; --serial-tests opts out (TEST_GATE).
                 ParallelTestsOpts.enabled(in),
                 global.jobsEffective(),
                 global.verbose,

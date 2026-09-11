@@ -14,6 +14,7 @@ import cc.jumpkick.command.project.ExplainCommand;
 import cc.jumpkick.config.BuildLogicToml;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.Opt;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -24,24 +25,10 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
 /**
- * HARD INVARIANT, client half: {@code jk build} and {@code jk explain} feed the shared ETA/forecast
- * the same plan-affecting options.
- *
- * <p>{@code ExplainBuildEtaParityTest} over in {@code :engine} pins the shared <em>function</em>,
- * and says in its own comment that it cannot reach this half — {@code BuildCommand} and {@code
- * ExplainCommand} live here. This is that half. It catches both ways the two can drift:
- *
- * <ul>
- *   <li><b>Declaration drift</b> — a plan-affecting flag added to one command's {@code options()}
- *       and not the other. The other command's parse then rejects the argv outright.
- *   <li><b>Derivation drift</b> — the same flag read into a different value. Both commands go
- *       through {@link PlanOptions#from}, and this asserts they land on the same record.
- * </ul>
- *
- * <p>Two real regressions this locks down: {@code jk build} floored a negative {@code -w} to
- * {@code 0} while {@code jk explain} passed it straight through, and {@code jk build} turned
- * {@code --scripts-only} into {@code skipTests} while {@code jk explain} did not — so
- * {@code jk explain --scripts-only} priced test suites the build would never run.
+ * {@code jk build} and {@code jk explain} feed the shared forecast the same plan-affecting options.
+ * The argv under test is derived from {@link PlanOptions#options()} itself — every name of every
+ * option, valued ones in both spellings — so a flag added there is exercised against both commands
+ * without anyone remembering to list it here.
  */
 class BuildExplainPlanOptionsParityTest {
 
@@ -58,31 +45,43 @@ class BuildExplainPlanOptionsParityTest {
         Files.writeString(
                 project.resolve(BuildLogicToml.VISIBLE_DIR).resolve("guard.kts"),
                 "// a guard script, so --scripts-only resolves\n");
-        return Stream.of(
-                List.of(),
-                List.of("--skip-tests"),
-                List.of("--scripts-only"),
-                List.of("--no-scripts"),
-                List.of("--guard"),
-                List.of("-w", "4"),
-                List.of("-w", "0"),
-                // Reachable only through the `=` form (bare `-w -3` parses -3 as an option), and
-                // `jk build` floored it while `jk explain` passed it straight through.
-                List.of("--workers=-3"),
-                List.of("--serial-tests"),
-                List.of("--profile", "ci"),
-                List.of("--no-profile"),
-                List.of("-j", "1"),
-                List.of("-j", "8"),
-                List.of("--redo"),
-                List.of("--force"),
-                List.of("--verbose"),
-                List.of("--all"),
-                List.of("--include-tags", "fast"),
-                List.of("--exclude-tags", "slow"),
-                List.of("--suite", "integration"),
-                // The combination a real invocation looks like.
-                List.of("-j", "4", "-w", "2", "--profile", "ci", "--serial-tests", "--exclude-tags", "slow"));
+        List<List<String>> cases = new ArrayList<>();
+        cases.add(List.of());
+        for (Opt opt : PlanOptions.options()) {
+            for (String name : opt.allNames()) {
+                if (!opt.takesValue()) {
+                    cases.add(List.of(name));
+                    continue;
+                }
+                String value = sampleValue(opt.canonicalName());
+                cases.add(List.of(name, value));
+                if (name.startsWith("--")) cases.add(List.of(name + "=" + value));
+            }
+        }
+        // Reachable only through the `=` form (bare `-w -3` parses -3 as an option); both floor it.
+        cases.add(List.of("--workers=-3"));
+        // The globals PlanOptions.from reads.
+        cases.add(List.of("-j", "1"));
+        cases.add(List.of("-j", "8"));
+        cases.add(List.of("--redo"));
+        cases.add(List.of("--force"));
+        cases.add(List.of("--verbose"));
+        // The combination a real invocation looks like.
+        cases.add(List.of("-j", "4", "-w", "2", "--profile", "ci", "--serial-tests", "--exclude-tags", "slow"));
+        return cases.stream();
+    }
+
+    /** One value per valued option; a new one must be given a sample here or the derivation fails loudly. */
+    private static String sampleValue(String option) {
+        return switch (option) {
+            case "profile" -> "ci";
+            case "workers" -> "4";
+            case "suite" -> "integration";
+            case "include-tags" -> "fast";
+            case "exclude-tags" -> "slow";
+            case "jdks-dir" -> project.resolve("jdks").toString();
+            default -> throw new AssertionError("no sample value for --" + option);
+        };
     }
 
     @ParameterizedTest(name = "jk {0}")
@@ -93,7 +92,7 @@ class BuildExplainPlanOptionsParityTest {
                 .isEqualTo(planOptions(new BuildCommand(), argv));
     }
 
-    /** Every flag above is one both commands accept — a flag on only one of them fails here. */
+    /** Every derived argv is one both commands accept — an option on only one of them fails here. */
     @ParameterizedTest(name = "jk {0}")
     @MethodSource("plan_affecting_argv")
     void both_commands_accept_every_plan_affecting_flag(List<String> argv) {

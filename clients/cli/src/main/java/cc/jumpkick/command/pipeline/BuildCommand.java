@@ -7,7 +7,6 @@ import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.api.CommonOpts;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.api.GraalResolver;
-import cc.jumpkick.cli.api.ParallelTestsOpts;
 import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.cli.api.PlanOptions;
 import cc.jumpkick.cli.engine.EngineClient;
@@ -72,29 +71,10 @@ public final class BuildCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        List<Opt> opts = new ArrayList<>();
-        opts.add(Opt.value("<name>", "Build profile (default auto)", "--profile"));
-        opts.add(Opt.value("<N>", "Test JVMs per module (0=auto)", "-w", "--workers"));
+        List<Opt> opts = new ArrayList<>(PlanOptions.options());
         opts.add(CommonOpts.cacheDir());
-        opts.add(CommonOpts.jdksDir());
-        opts.add(CommonOpts.skipTests());
         opts.add(CommonOpts.keepGoing());
-        // Suite/tag widening, same vocabulary as `jk test`: --all = every suite
-        // AND no config tag excludes — the "build + run everything" gate.
-        opts.add(Opt.value("<name>", "Test suite directory (repeatable)", "-s", "--suite")
-                .repeat());
-        opts.add(Opt.flag("Run every test suite (tags included)", "--all"));
-        opts.add(CommonOpts.guard());
-        opts.add(Opt.flag("Guard scripts, no JUnit", "--scripts-only"));
-        opts.add(Opt.flag("Skip guard scripts", "--no-scripts"));
-        opts.add(Opt.value("<tags>", "JUnit tags to include (CSV)", "--include-tags")
-                .splitOn(","));
-        opts.add(Opt.value("<tags>", "JUnit tags to exclude (CSV)", "--exclude-tags")
-                .splitOn(","));
-        opts.add(Opt.flag("Skip profile tag filters", "--no-profile"));
         opts.add(Opt.flag("Package with JVM startup AOT cache", "--aot-cache"));
-        // Module concurrency is global -j/--jobs. Cross-module tests default on (C2).
-        opts.addAll(ParallelTestsOpts.options());
         opts.addAll(CommonOpts.moduleSelection());
         opts.addAll(VariantSelection.options());
         return opts;
