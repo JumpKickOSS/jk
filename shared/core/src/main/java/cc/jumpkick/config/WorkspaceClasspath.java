@@ -48,8 +48,10 @@ public final class WorkspaceClasspath {
      * outside a module can read its test compilation.
      *
      * <p>Direct edges only, because a tests kind never rides transitively: {@code workspaceClosure}
-     * seeds {@code testsKinds} from the module's own declarations and never from a sibling's. Refs come back exactly as written — a {@code workspace:<name>} placeholder or a
-     * full coord — because the caller is the one holding a sibling index to resolve them against.
+     * seeds {@code testsKinds} from the module's own declarations and never from a sibling's.
+     *
+     * <p>Refs come back exactly as written — a {@code workspace:<name>} placeholder or a full coord
+     * — because the caller is the one holding a sibling index to resolve them against.
      *
      * <p>Every scope is scanned even though {@code ManifestDeps} rejects a tests kind outside
      * {@code [test-dependencies]} and {@code [test-dev-dependencies]}. That rule is why the narrow

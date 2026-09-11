@@ -26,9 +26,9 @@ import org.junit.jupiter.api.io.TempDir;
  * <p>{@link IsolatedState} because {@code aotCachePath} keys off the @TempDir {@code paths} but
  * resolves the cache dir from the ambient {@code JkDirs.state()} — by design, one AOT home per
  * machine — and then sweeps every {@code engine-<version>-<16hex>} key that is not the one it just
- * derived. Against the tier's shared {@code test-jk-home} that meant each run leaked a manifest row
- * per synthetic jar (268 by the time was filed), deleted the tier's real 29&nbsp;MB engine
- * AOT cache, and raced sibling forks that had planted a fixture of the same shape.
+ * derived. Against the tier's shared {@code test-jk-home} that would leak a manifest row per
+ * synthetic jar, delete the tier's real engine AOT cache, and race sibling forks that planted a
+ * fixture of the same shape.
  */
 @IsolatedState
 class EngineAotCacheTest {

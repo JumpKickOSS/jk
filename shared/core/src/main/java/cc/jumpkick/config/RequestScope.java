@@ -97,10 +97,9 @@ public final class RequestScope {
 
     /**
      * Ends the ambient request's scope: its facts are gone before the next request begins. The weak
-     * key alone did not do this — the ledger is an inheritable thread-local, so every pooled thread
-     * born or borrowed during the job still held it, and with it the scope and every input-tree
-     * listing the job memoised (about 40 MB a job on jk's own tree, until the engine ran out of heap).
-     * Called once, where the ledger is closed.
+     * key alone cannot do this — the ledger is an inheritable thread-local, so every pooled thread
+     * born or borrowed during the job still holds it, and with it the scope and every input-tree
+     * listing the job memoised. Called once, where the ledger is closed.
      */
     public static void release() {
         IoLedger ledger = ambientLedger();

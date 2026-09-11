@@ -409,8 +409,7 @@ final class CorePlan {
             if (cx.mixed() || cx.mixedGroovy()) after.add(TaskNames.ASSEMBLE_CLASSES);
             if (s.hasGuardSuite()) after.add(TaskNames.COMPILE_GUARD);
             // The lane indexes the test classes too, so it waits for compile-test whenever the plan
-            // has one; without the edge a --redo rewrote classes/test under the indexer and a class
-            // it had just listed was gone by the read.
+            // has one; without the edge a rebuild rewrites classes/test under the indexer.
             boolean afterTests = !in.compileOnly() && !PlannerResources.skipJUnit(in);
             if (afterTests) after.add(TaskNames.COMPILE_TEST);
             BuildStage guardStage = afterTests ? BuildStage.TEST : BuildStage.COMPILE;

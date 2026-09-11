@@ -187,9 +187,8 @@ public final class EngineSpawn {
             switch (r.outcome()) {
                 case UP -> {
                     if (mode == AotMode.USE && scanLogForAotError(paths.log())) {
-                        deleteQuietly(target.aotCache());
-                        writeNoAotMarker(target.aotCache());
-                        logReason(paths, "AOT cache was ignored by the engine JVM; skipping it for this key");
+                        dropAotCache(
+                                paths, target, "AOT cache was ignored by the engine JVM; skipping it for this key");
                     }
                     // EngineServer wipes state/aot after claiming the endpoint. Do not
                     // wipe again here — the sidecar may already be training into a fresh file.
@@ -217,11 +216,17 @@ public final class EngineSpawn {
      * dying the same way and reporting "could not start".
      */
     static void dropCacheAfterEarlyExit(EnginePaths.Paths paths, EngineTarget target) {
+        dropAotCache(
+                paths,
+                target,
+                "engine exited before serving while mapping its AOT cache; dropped the cache for this key, retrying without it");
+    }
+
+    /** Delete the cache, refuse its key for the marker's TTL, and say why in the engine log. */
+    private static void dropAotCache(EnginePaths.Paths paths, EngineTarget target, String reason) {
         deleteQuietly(target.aotCache());
         writeNoAotMarker(target.aotCache());
-        logReason(
-                paths,
-                "engine exited before serving while mapping its AOT cache; dropped the cache for this key, retrying without it");
+        logReason(paths, reason);
     }
 
     private static IOException notStarted(EnginePaths.Paths paths) {
@@ -442,10 +447,9 @@ public final class EngineSpawn {
      * silently ignored by {@code AOTMode=auto} and never retrained, so folding the JDK into the key
      * means a jar upgrade, a JDK build bump (Temurin 25.0.3→25.0.4), or a vendor swap all yield a
      * fresh key that trains cleanly. The heap is in the key because a cache recorded under one
-     * {@code -Xmx} is not merely ignored under another: JDK 25 segfaults mapping it, which the client
-     * used to report as "could not start the build engine" (140 crash reports in one hour of a
-     * measurement that raised the heap to the CI default). Stale {@code .aot}/{@code .noaot} files
-     * from previous keys are deleted best-effort here.
+     * {@code -Xmx} is not merely ignored under another: JDK 25 segfaults mapping it, and the client
+     * cannot tell that crash from an engine that failed to start. Stale {@code .aot}/{@code .noaot}
+     * files from previous keys are deleted best-effort here.
      */
     static Path aotCachePath(EnginePaths.Paths paths, Path engineJar, EngineJdk jdk) {
         return aotCachePath(paths, engineJar, jdk, JkVersion.VERSION, heapKey(JkEngineConfig.resolve()));

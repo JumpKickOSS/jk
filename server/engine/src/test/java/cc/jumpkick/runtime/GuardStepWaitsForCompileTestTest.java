@@ -16,9 +16,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * The module guard lane indexes the test classes as well as the main ones, so its step must follow
- * compile-test. Without the edge a {@code --redo} rewrote {@code classes/test} under the indexer
- * and a class it had just listed was gone by the read (three consecutive full rebuilds, a different
- * module each time).
+ * compile-test. Without the edge a rebuild rewrites {@code classes/test} under the indexer and a
+ * class it has just listed is gone by the read.
  */
 class GuardStepWaitsForCompileTestTest {
 
