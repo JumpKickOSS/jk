@@ -64,6 +64,7 @@ and `auto-warmup` do not follow CI.
 | `vfs-max-mb` | `JK_ENGINE_VFS_MAX_MB` | 32 | engine start | Per-job input-tree retain in MiB. 0 = off. CI does not bump this. |
 | `auto-warmup` | `JK_AUTO_WARMUP` | true | each idle cycle | Idle AOT train and host calibration. false skips the whole pass. |
 | `log-max-mb` | `JK_ENGINE_LOG_MAX_MB` | 16 | engine start | Engine log size cap in MiB; at the cap the log rolls to .1 (one generation kept). 0 = no cap. |
+| `log-level` | `JK_LOG_LEVEL` | info | engine start | Engine log threshold: debug, info, warn or error. debug adds the perf probes. |
 <!-- engine-config:end -->
 
 Short-lived CI engines should set `JK_AOT_TRAIN=off` (skip train-on-miss; still use

@@ -145,6 +145,27 @@ class JkEngineConfigTest {
     }
 
     @Test
+    void log_level_defaults_to_info_and_env_overrides_file(@TempDir Path tempDir) throws IOException {
+        assertThat(JkEngineConfig.DEFAULTS.logLevel()).isEqualTo("info");
+        assertThat(JkEngineConfig.DEFAULTS.logThreshold()).isEqualTo(System.Logger.Level.INFO);
+        Path toml = tempDir.resolve("config.toml");
+        Files.writeString(toml, "[engine]\nlog-level = \"warn\"\n");
+        assertThat(JkEngineConfig.fromToml(toml).logThreshold()).isEqualTo(System.Logger.Level.WARNING);
+        JkEngineConfig c = JkEngineConfig.resolve(toml, Map.of("JK_LOG_LEVEL", "DEBUG")::get);
+        assertThat(c.logLevel()).isEqualTo("DEBUG");
+        assertThat(c.logThreshold()).isEqualTo(System.Logger.Level.DEBUG);
+    }
+
+    @Test
+    void unknown_log_level_falls_back_to_default(@TempDir Path tempDir) throws IOException {
+        Path toml = tempDir.resolve("config.toml");
+        Files.writeString(toml, "[engine]\nlog-level = \"chatty\"\n");
+        assertThat(JkEngineConfig.fromToml(toml).logLevel()).isEqualTo(JkEngineConfig.DEFAULT_LOG_LEVEL);
+        JkEngineConfig c = JkEngineConfig.resolve(toml, Map.of("JK_LOG_LEVEL", "loud")::get);
+        assertThat(c.logThreshold()).isEqualTo(System.Logger.Level.INFO);
+    }
+
+    @Test
     void negative_log_max_mb_falls_back_to_default(@TempDir Path tempDir) throws IOException {
         Path toml = tempDir.resolve("config.toml");
         Files.writeString(toml, "[engine]\nlog-max-mb = -1\n");

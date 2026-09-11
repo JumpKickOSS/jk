@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.host.Log;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Path;
 import java.util.function.Function;
@@ -30,7 +31,8 @@ public record JkEngineConfig(
         int vfsMaxMb,
         boolean autoWarmup,
         JobLimits jobLimits,
-        int logMaxMb) {
+        int logMaxMb,
+        String logLevel) {
 
     /** Default engine-process heap ceiling ({@code -Xmx}) when not on CI. */
     public static final int DEFAULT_MAX_HEAP_MB = 256;
@@ -47,12 +49,22 @@ public record JkEngineConfig(
     /** Engine log size cap, in MiB; the log rolls to {@code .1} at the cap. {@code 0} = no cap. */
     public static final int DEFAULT_LOG_MAX_MB = 16;
 
+    /** Engine log threshold; {@code debug} adds the perf probes and swallowed-exception detail. */
+    public static final String DEFAULT_LOG_LEVEL = "info";
+
     /**
      * Logical non-CI defaults (256 MiB heap, fail-fast, 32 MiB VFS, warmup on, default job limits,
-     * 16 MiB log cap). Prefer {@link #resolve()} for effective policy.
+     * 16 MiB log cap, info log level). Prefer {@link #resolve()} for effective policy.
      */
     public static final JkEngineConfig DEFAULTS = new JkEngineConfig(
-            DEFAULT_MAX_HEAP_MB, null, false, DEFAULT_VFS_MAX_MB, true, JobLimits.DEFAULTS, DEFAULT_LOG_MAX_MB);
+            DEFAULT_MAX_HEAP_MB,
+            null,
+            false,
+            DEFAULT_VFS_MAX_MB,
+            true,
+            JobLimits.DEFAULTS,
+            DEFAULT_LOG_MAX_MB,
+            DEFAULT_LOG_LEVEL);
 
     /** {@code max-heap-mb} / {@code JK_ENGINE_MAX_HEAP_MB}: negatives are not a heap, 0 = uncapped. */
     private static final MachineConfig<Integer> MAX_HEAP_MB =
@@ -73,24 +85,44 @@ public record JkEngineConfig(
     /** {@code log-max-mb} / {@code JK_ENGINE_LOG_MAX_MB}: {@code 0} = no cap, negatives fall through. */
     private static final MachineConfig<Integer> LOG_MAX_MB = MachineConfig.of(DEFAULT_LOG_MAX_MB, v -> v >= 0);
 
+    /** {@code log-level} / {@code JK_LOG_LEVEL}: a name {@link Log#level} knows, else the default. */
+    private static final MachineConfig<String> LOG_LEVEL =
+            MachineConfig.of(DEFAULT_LOG_LEVEL, v -> Log.level(v).isPresent());
+
     /** Heap-only config; everything else at its default. */
     public JkEngineConfig(int maxHeapMb) {
-        this(maxHeapMb, null, false, DEFAULT_VFS_MAX_MB, true, JobLimits.DEFAULTS, DEFAULT_LOG_MAX_MB);
+        this(
+                maxHeapMb,
+                null,
+                false,
+                DEFAULT_VFS_MAX_MB,
+                true,
+                JobLimits.DEFAULTS,
+                DEFAULT_LOG_MAX_MB,
+                DEFAULT_LOG_LEVEL);
     }
 
     /** Heap + jobs + continue; everything else at its default. */
     public JkEngineConfig(int maxHeapMb, @Nullable Integer jobs, boolean keepGoing) {
-        this(maxHeapMb, jobs, keepGoing, DEFAULT_VFS_MAX_MB, true, JobLimits.DEFAULTS, DEFAULT_LOG_MAX_MB);
+        this(
+                maxHeapMb,
+                jobs,
+                keepGoing,
+                DEFAULT_VFS_MAX_MB,
+                true,
+                JobLimits.DEFAULTS,
+                DEFAULT_LOG_MAX_MB,
+                DEFAULT_LOG_LEVEL);
     }
 
     /** Heap + jobs + continue + VFS; everything else at its default. */
     public JkEngineConfig(int maxHeapMb, @Nullable Integer jobs, boolean keepGoing, int vfsMaxMb) {
-        this(maxHeapMb, jobs, keepGoing, vfsMaxMb, true, JobLimits.DEFAULTS, DEFAULT_LOG_MAX_MB);
+        this(maxHeapMb, jobs, keepGoing, vfsMaxMb, true, JobLimits.DEFAULTS, DEFAULT_LOG_MAX_MB, DEFAULT_LOG_LEVEL);
     }
 
     /** This config with different job limits — how a test gives a live engine a millisecond deadline. */
     public JkEngineConfig withJobLimits(JobLimits limits) {
-        return new JkEngineConfig(maxHeapMb, jobs, keepGoing, vfsMaxMb, autoWarmup, limits, logMaxMb);
+        return new JkEngineConfig(maxHeapMb, jobs, keepGoing, vfsMaxMb, autoWarmup, limits, logMaxMb, logLevel);
     }
 
     /** Effective machine config: user-global file + {@code JK_ENGINE_MAX_HEAP_MB} / {@code JK_JOBS}. */
@@ -122,7 +154,8 @@ public record JkEngineConfig(
                 JobLimits.resolve(env),
                 LOG_MAX_MB.layer(
                         EnvValues.intValue(env, "JK_ENGINE_LOG_MAX_MB").orElse(null),
-                        scanInt(scan, "engine.log-max-mb")));
+                        scanInt(scan, "engine.log-max-mb")),
+                LOG_LEVEL.layer(EnvValues.string(env, "JK_LOG_LEVEL").orElse(null), scan.get("engine.log-level")));
     }
 
     /** Machine defaults only (CI-aware heap and continue, no file/env override). */
@@ -134,7 +167,8 @@ public record JkEngineConfig(
                 DEFAULT_VFS_MAX_MB,
                 true,
                 JobLimits.DEFAULTS,
-                DEFAULT_LOG_MAX_MB);
+                DEFAULT_LOG_MAX_MB,
+                DEFAULT_LOG_LEVEL);
     }
 
     /** Unset heap default: 512 MiB on CI, else 256 MiB. */
@@ -160,7 +194,8 @@ public record JkEngineConfig(
                 VFS_MAX_MB.layer(scanInt(scan, "engine.vfs-max-mb")),
                 AUTO_WARMUP.layer(scanBool(scan, "engine.auto-warmup")),
                 JobLimits.DEFAULTS,
-                LOG_MAX_MB.layer(scanInt(scan, "engine.log-max-mb")));
+                LOG_MAX_MB.layer(scanInt(scan, "engine.log-max-mb")),
+                LOG_LEVEL.layer(scan.get("engine.log-level")));
     }
 
     private static TomlScan scan(Path file) {
@@ -194,6 +229,11 @@ public record JkEngineConfig(
     /** The {@code -Xms} the spawner should request: {@link #MIN_HEAP_MB}, never above the cap. */
     public int minHeapMb() {
         return heapCapped() ? Math.min(MIN_HEAP_MB, maxHeapMb) : MIN_HEAP_MB;
+    }
+
+    /** {@link #logLevel} as the logger's level; the record only ever holds a name {@link Log#level} knows. */
+    public System.Logger.Level logThreshold() {
+        return Log.level(logLevel).orElseThrow();
     }
 
     /** {@link #logMaxMb} in bytes; {@code 0} when the log is uncapped. */

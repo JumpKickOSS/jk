@@ -114,6 +114,7 @@ public final class EffectiveUserConfig {
         add(out, "engine.vfs-max-mb", d.vfsMaxMb(), e.vfsMaxMb());
         add(out, "engine.auto-warmup", d.autoWarmup(), e.autoWarmup());
         add(out, "engine.log-max-mb", d.logMaxMb(), e.logMaxMb());
+        add(out, "engine.log-level", d.logLevel(), e.logLevel());
     }
 
     private static void addCache(

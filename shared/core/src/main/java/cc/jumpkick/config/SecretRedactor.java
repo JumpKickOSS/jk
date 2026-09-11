@@ -99,6 +99,44 @@ public final class SecretRedactor {
     private static final ConcurrentHashMap<Set<String>, SecretRedactor> MEMO = new ConcurrentHashMap<>();
 
     /**
+     * Every secret value this process has been told about, across workspaces and builds. The
+     * engine log is one file shared by every request, so the redactor that guards it must know
+     * every declaration the process has seen, not the current request's. Bounded: past the cap a
+     * new value is not learned, which is the failure a diagnostic sink should pick over unbounded
+     * growth in a resident process.
+     */
+    private static final Set<String> KNOWN = ConcurrentHashMap.newKeySet();
+
+    private static final int MAX_KNOWN = 4096;
+    private static volatile SecretRedactor known = NONE;
+
+    /** A redactor over every secret value this process has ever built a redactor from. */
+    public static SecretRedactor known() {
+        return known;
+    }
+
+    /** {@link #known()} applied to {@code text} — the shape a log installer takes. */
+    public static String redactKnown(String text) {
+        return known.redact(text);
+    }
+
+    private static void learn(List<String> values) {
+        boolean grew = false;
+        for (String v : values) {
+            if (KNOWN.size() >= MAX_KNOWN) break;
+            grew |= KNOWN.add(v);
+        }
+        if (grew) known = new SecretRedactor(sorted(KNOWN));
+    }
+
+    private static List<String> sorted(Collection<String> values) {
+        List<String> list = new ArrayList<>(values);
+        // Longest first: replacing a shorter substring first can leave pieces of a longer secret.
+        list.sort(Comparator.comparingInt(String::length).reversed().thenComparing(s -> s));
+        return list;
+    }
+
+    /**
      * Build a redactor from an {@link EnvLookup}: the effective value of every name a {@code .env}
      * file declares, whether the file or the real environment supplied it.
      */
@@ -122,9 +160,8 @@ public final class SecretRedactor {
             if (v != null && v.length() >= MIN_SECRET_LENGTH) list.add(v);
         }
         if (list.isEmpty()) return NONE;
-        // Longest first: replacing a shorter substring first can leave pieces of a longer secret.
-        list.sort(Comparator.comparingInt(String::length).reversed().thenComparing(s -> s));
-        return new SecretRedactor(list);
+        learn(list);
+        return new SecretRedactor(sorted(list));
     }
 
     /**

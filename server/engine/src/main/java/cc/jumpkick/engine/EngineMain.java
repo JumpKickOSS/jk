@@ -3,8 +3,10 @@ package cc.jumpkick.engine;
 
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.JkHttpConfig;
+import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.engine.plugin.BuiltInPluginJars;
 import cc.jumpkick.host.AotCacheFiles;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
@@ -38,6 +40,7 @@ public final class EngineMain {
      * appends leaves them harmlessly inert here — better an unsized engine than a dead one.
      */
     public static void main(String[] args) {
+        installLogging(JkEngineConfig.resolve());
         // IPv4-only sockets (WSL localhost forwarding) ride the spawn line as
         // EngineJvmFlags.AOT_SENSITIVE — never a runtime setProperty, which leaves the JDK's
         // loopback selection incoherent (PreferIpv4). A JK_ENGINE_EXE wrapper passes it itself.
@@ -91,6 +94,7 @@ public final class EngineMain {
             EnginePaths.Paths paths = EnginePaths.current();
             JkEngineConfig config = JkEngineConfig.resolve();
             EngineLogSink logSink = installLogSink(paths.log(), config);
+            installLogging(config); // re-bind: System.err is now the capped sink
             BuiltInPluginJars.registerMissingBuiltInFetcher();
             BuiltInPluginJars.install();
             try {
@@ -118,6 +122,15 @@ public final class EngineMain {
             System.err.println("jk engine: failed to start: " + e.getMessage());
             return 1;
         }
+    }
+
+    /**
+     * Bind {@link Log} to this process's current {@code System.err} at the configured threshold,
+     * redacting every secret the process has been told about. Called once at entry so every role
+     * logs in one shape, and again in {@link #run} once the capped sink owns the stream.
+     */
+    private static void installLogging(JkEngineConfig config) {
+        Log.install(System.err, config.logThreshold(), SecretRedactor::redactKnown);
     }
 
     /**
