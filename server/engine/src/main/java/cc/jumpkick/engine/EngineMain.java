@@ -90,7 +90,7 @@ public final class EngineMain {
             JkDirs.current().secureRoots();
             EnginePaths.Paths paths = EnginePaths.current();
             JkEngineConfig config = JkEngineConfig.resolve();
-            installLogSink(paths.log(), config);
+            EngineLogSink logSink = installLogSink(paths.log(), config);
             BuiltInPluginJars.registerMissingBuiltInFetcher();
             BuiltInPluginJars.install();
             try {
@@ -103,6 +103,7 @@ public final class EngineMain {
             }
             JkHttpConfig httpConfig = JkHttpConfig.resolve().orElse(null);
             EngineServer server = new EngineServer(paths, config, httpConfig, JkVersion.VERSION, System.err::println);
+            if (logSink != null) server.logSink(logSink);
             // The spawner asks for an AOT cache with -Djk.aot.train.output=<path> when none exists
             // yet (see EngineClient.spawn). The server invokes the factory only after WINNING its
             // election — a losing redundant spawn never trains — and owns the child end-to-end.

@@ -95,6 +95,9 @@ public final class EngineServer implements AutoCloseable {
     /** Connections closed by the reader's idle timer since start (never spoke, or went quiet). */
     private final AtomicLong idleDropped = new AtomicLong();
 
+    /** The size-capped log this process writes through; {@code null} when it kept the inherited stderr. */
+    private volatile @Nullable EngineLogSink logSink;
+
     /**
      * Sidecar AOT trainer spawner/process. Spawned only after winning election; reaped on exit.
      * Clients never talk to it.
@@ -423,7 +426,19 @@ public final class EngineServer implements AutoCloseable {
                 activeBuildPlans,
                 this::httpServer,
                 aot::pid,
-                idleDropped::get);
+                idleDropped::get,
+                () -> EngineLogSink.sizeOf(paths.log()),
+                this::logRolledAtMillis);
+    }
+
+    private long logRolledAtMillis() {
+        EngineLogSink sink = logSink;
+        return sink == null ? -1 : sink.lastRolledAtMillis();
+    }
+
+    /** Let status report the log's last roll; the sink is installed by the entrypoint before {@link #run}. */
+    public void logSink(EngineLogSink sink) {
+        this.logSink = sink;
     }
 
     /**

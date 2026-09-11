@@ -57,7 +57,11 @@ public record StatusSnapshot(
          * Connections the engine closed because they went idle since start: a peer that never sent
          * a request inside the hello window, or one that stayed quiet past the stream-idle bound.
          */
-        long idleDropped) {
+        long idleDropped,
+        /** Size of the engine log on disk in bytes; {@code -1} when unobservable. */
+        long logBytes,
+        /** Epoch millis of the log's last in-process roll to {@code .1}; {@code -1} when it has not rolled. */
+        long logRolledAt) {
 
     /** Compact constructor for tests that omit memory headroom / load / epoch / peaks. */
     public StatusSnapshot(
@@ -92,7 +96,9 @@ public record StatusSnapshot(
                 /* engineEpoch */ version + "@" + startedAtMillis,
                 activeRequests,
                 activeBuildPlans,
-                /* idleDropped */ 0L);
+                /* idleDropped */ 0L,
+                /* logBytes */ -1L,
+                /* logRolledAt */ -1L);
     }
 
     /**
@@ -137,6 +143,8 @@ public record StatusSnapshot(
         m.put("systemCpuLoad", systemCpuLoad);
         m.put("systemLoadAverage", systemLoadAverage);
         m.put("engineEpoch", engineEpoch);
+        m.put("logBytes", logBytes);
+        m.put("logRolledAt", logRolledAt);
         return m;
     }
 }

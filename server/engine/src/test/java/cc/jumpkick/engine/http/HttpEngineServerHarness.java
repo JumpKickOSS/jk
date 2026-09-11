@@ -57,7 +57,9 @@ abstract class HttpEngineServerHarness {
             "9.9.9-test@1000",
             1,
             0,
-            0L);
+            0L,
+            -1L,
+            -1L);
 
     @TempDir
     Path webRoot;

@@ -86,7 +86,8 @@ public final class EngineStatusCommand implements CliCommand {
             return Exit.FAILURE;
         }
         EngineProbe.Status s = status.get();
-        long uptimeSeconds = Math.max(0, (System.currentTimeMillis() - s.startedAtMillis()) / 1000);
+        long now = System.currentTimeMillis();
+        long uptimeSeconds = Math.max(0, (now - s.startedAtMillis()) / 1000);
         if (global.outputIsJson()) {
             CliOutput.out(runningJson(s, uptimeSeconds, EngineFleet.list()));
             return Exit.SUCCESS;
@@ -100,6 +101,7 @@ public final class EngineStatusCommand implements CliCommand {
         if (s.idleDropped() >= 0) {
             detail("Dropped", s.idleDropped() + (s.idleDropped() == 1 ? " idle connection" : " idle connections"));
         }
+        if (s.logBytes() >= 0) detail("Log", describeLog(s, now));
         heapDumpRow(paths);
         // Transient by design: the sidecar trainer lives ~15s after a fresh install/upgrade, then
         // this line disappears — steady state stays four/five detail rows (+ memory bar).
@@ -194,6 +196,8 @@ public final class EngineStatusCommand implements CliCommand {
                 .token("systemCpuLoad", Double.toString(s.systemCpuLoad()))
                 .token("systemLoadAverage", Double.toString(s.systemLoadAverage()))
                 .string("engineEpoch", s.engineEpoch())
+                .number("logBytes", s.logBytes())
+                .number("logRolledAt", s.logRolledAt())
                 .string("httpUrl", s.httpUrl())
                 .string("httpError", s.httpError())
                 .string("mcpUrl", s.mcpUrl());
@@ -308,6 +312,14 @@ public final class EngineStatusCommand implements CliCommand {
 
     private static String mib(long bytes) {
         return (bytes + (1 << 19)) / (1 << 20) + "M"; // round to nearest MiB
+    }
+
+    /** The engine log's size and when this engine last rolled it, e.g. {@code 3M, rolled 2h 5m 0s ago}. */
+    static String describeLog(EngineProbe.Status s, long nowMillis) {
+        String size = s.logBytes() < (1 << 20) ? (s.logBytes() + 512) / 1024 + "K" : mib(s.logBytes());
+        if (s.logRolledAt() < 0) return size + ", never rolled";
+        long ago = Math.max(0, (nowMillis - s.logRolledAt()) / 1000);
+        return size + ", rolled " + formatUptime(ago) + " ago";
     }
 
     /**

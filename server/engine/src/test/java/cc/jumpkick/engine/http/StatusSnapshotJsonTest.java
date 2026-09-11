@@ -65,7 +65,9 @@ class StatusSnapshotJsonTest {
             "9.9.9-test@1000",
             5,
             4,
-            6L);
+            6L,
+            7_000L,
+            8_000L);
 
     /**
      * The one wire name that is not its component name. Every other field is serialized under the
@@ -128,6 +130,8 @@ class StatusSnapshotJsonTest {
                 .contains("\"peakActiveRequests\":5")
                 .contains("\"peakActiveBuildPlans\":4")
                 .contains("\"idleDropped\":6")
+                .contains("\"logBytes\":7000")
+                .contains("\"logRolledAt\":8000")
                 .contains("\"rssBytes\":4000")
                 .contains("\"aotTrainingPid\":77")
                 .contains("\"cores\":8")

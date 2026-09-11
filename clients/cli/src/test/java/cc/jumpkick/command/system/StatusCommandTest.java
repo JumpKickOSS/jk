@@ -79,6 +79,8 @@ class StatusCommandTest {
                 -1,
                 -1,
                 null,
+                -1,
+                -1,
                 -1);
         String up = TestAnsi.strip(StatusCommand.engineStatusMessage(Optional.of(s)));
         assertThat(up).isEqualTo("JumpKick Engine v" + JkVersion.VERSION + " is running (pid 403279)");

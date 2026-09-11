@@ -26,6 +26,8 @@ public final class EngineVitals {
     private final Supplier<HttpEngineServer> httpServer;
     private final LongSupplier aotTrainingPid;
     private final LongSupplier idleDropped;
+    private final LongSupplier logBytes;
+    private final LongSupplier logRolledAtMillis;
 
     public StatusSnapshot snapshot() {
         Runtime rt = Runtime.getRuntime();
@@ -52,7 +54,9 @@ public final class EngineVitals {
                 engineEpoch,
                 peakActiveConnections.get(),
                 peakActiveBuildPlans.get(),
-                idleDropped.getAsLong());
+                idleDropped.getAsLong(),
+                logBytes.getAsLong(),
+                logRolledAtMillis.getAsLong());
     }
 
     public int liveConnectionCount() {
