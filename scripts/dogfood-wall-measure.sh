@@ -167,6 +167,9 @@ timed() {
 MANIFEST_BACKUP="$OUT_DIR/jk.toml.orig"
 LOCK_BACKUP="$OUT_DIR/jk-lock.toml.orig"
 guards_off() {
+  # Backups are this run's only: one left behind by an earlier run would be restored over a tree
+  # that had no lock, or a different one.
+  rm -f "$MANIFEST_BACKUP" "$LOCK_BACKUP"
   cp jk.toml "$MANIFEST_BACKUP"
   # The lock records the manifests' hash; the edited jk.toml makes jk rewrite that line, so the
   # lock goes back with the manifest or the tree is left dirty by one hash.
@@ -176,6 +179,7 @@ guards_off() {
 guards_restore() {
   [[ -f "$MANIFEST_BACKUP" ]] && cp "$MANIFEST_BACKUP" jk.toml
   [[ -f "$LOCK_BACKUP" ]] && cp "$LOCK_BACKUP" jk-lock.toml
+  rm -f "$MANIFEST_BACKUP" "$LOCK_BACKUP"
   return 0
 }
 has_guards() { [[ -f jk-guards.toml ]]; }
@@ -299,8 +303,9 @@ for row in "${ROWS[@]}"; do
       # Restore the file's exact bytes however this exits — a measurement script must not leave
       # an edit behind in the tree it measured.
       TOUCH_BACKUP="$OUT_DIR/$(basename "$TOUCH").orig"
+      rm -f "$TOUCH_BACKUP"
       cp "$TOUCH" "$TOUCH_BACKUP"
-      restore_touched() { [[ -f "$TOUCH_BACKUP" ]] && cp "$TOUCH_BACKUP" "$TOUCH"; }
+      restore_touched() { [[ -f "$TOUCH_BACKUP" ]] && cp "$TOUCH_BACKUP" "$TOUCH" && rm -f "$TOUCH_BACKUP"; return 0; }
       trap restore_touched EXIT
       if want_gradle; then
         walls=()
