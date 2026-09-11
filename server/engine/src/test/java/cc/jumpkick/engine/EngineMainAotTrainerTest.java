@@ -7,6 +7,7 @@ import cc.jumpkick.host.EngineJvmFlags;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -30,14 +31,36 @@ class EngineMainAotTrainerTest {
         assertThat(tmpOut.getFileName().toString())
                 .startsWith(finalPath.getFileName().toString() + ".tmp-");
 
-        List<String> cmd = EngineMain.aotTrainerCommand("/opt/jdk/bin/java", "engine.jar", tmpOut);
+        List<String> serving = new ArrayList<>(EngineJvmFlags.AOT_SENSITIVE);
+        serving.addAll(List.of(
+                "-XX:MaxMetaspaceSize=256m",
+                "-Xss512k",
+                "-Djk.aot.train.output=" + finalPath,
+                "-Xms32m",
+                "-Xmx256m",
+                "-Djk.home=/home/x/.jk"));
+        List<String> cmd = EngineMain.aotTrainerCommand("/opt/jdk/bin/java", serving, "engine.jar", tmpOut);
         assertThat(cmd).contains("-XX:AOTCacheOutput=" + tmpOut);
         assertThat(cmd).doesNotContain("-XX:AOTCacheOutput=" + finalPath);
-        // Derived from the shared constant, not a spot-check flag: JEP 514 refuses to map when
-        // the trainer's and serving line's property sets differ, so the whole list must ride.
+        // The cache is mapped only under the flag set it was recorded under, heap included, so the
+        // trainer runs the serving JVM's own flags — all of them — with only the AOT ones swapped.
         assertThat(cmd).containsAll(EngineJvmFlags.AOT_SENSITIVE);
+        assertThat(cmd)
+                .contains("-Xms32m", "-Xmx256m", "-XX:MaxMetaspaceSize=256m", "-Xss512k", "-Djk.home=/home/x/.jk");
+        assertThat(cmd).noneMatch(a -> a.startsWith("-Djk.aot.train.output="));
         assertThat(cmd).containsSubsequence("-cp", "engine.jar");
         assertThat(cmd.getLast()).isEqualTo("--aot-training");
+    }
+
+    @Test
+    void the_trainer_drops_every_aot_flag_of_the_serving_line() {
+        List<String> args = EngineMain.trainerJvmArgs(List.of(
+                "-XX:+UseSerialGC",
+                "-XX:AOTCache=/x/e.aot",
+                "-XX:AOTMode=auto",
+                "-XX:AOTCacheOutput=/x/o.aot",
+                "-Xmx256m"));
+        assertThat(args).containsExactly("-XX:+UseSerialGC", "-Xmx256m");
     }
 
     @Test

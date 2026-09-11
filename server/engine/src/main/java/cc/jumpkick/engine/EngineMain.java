@@ -5,7 +5,6 @@ import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.engine.plugin.BuiltInPluginJars;
 import cc.jumpkick.host.AotCacheFiles;
-import cc.jumpkick.host.EngineJvmFlags;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
@@ -14,6 +13,7 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.wire.EnginePaths;
 import java.io.IOException;
+import java.lang.management.ManagementFactory;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -119,8 +119,8 @@ public final class EngineMain {
     /**
      * Launch the sidecar AOT trainer: this engine's own JVM and classpath, re-entered at {@code
      * --aot-training}, with {@code -XX:AOTCacheOutput} so the recording assembles at its clean
-     * exit. {@code -XX:+UseSerialGC} matches the serving spawn line (EngineClient.spawn) — the
-     * assembled cache must be recorded under the same GC it will later be mapped under.
+     * exit. It runs under this JVM's own flags, because the cache is mapped only under the flag set
+     * it was recorded under.
      *
      * <p>The trainer assembles to a <em>temp sibling</em>, promoted to the final path only on a
      * clean exit ({@link #promoteTrainedCache}). The watchdog kills an overrunning trainer with
@@ -135,8 +135,11 @@ public final class EngineMain {
             String javaExe = ProcessHandle.current().info().command().orElseGet(() -> JdkFingerprint.java(
                             JavaHomes.runningJavaHome())
                     .toString());
-            ProcessBuilder pb =
-                    new ProcessBuilder(aotTrainerCommand(javaExe, System.getProperty("java.class.path"), tmp));
+            ProcessBuilder pb = new ProcessBuilder(aotTrainerCommand(
+                    javaExe,
+                    ManagementFactory.getRuntimeMXBean().getInputArguments(),
+                    System.getProperty("java.class.path"),
+                    tmp));
             pb.redirectOutput(ProcessBuilder.Redirect.INHERIT);
             pb.redirectError(ProcessBuilder.Redirect.INHERIT);
             Process p = pb.start();
@@ -153,19 +156,34 @@ public final class EngineMain {
         return AotCacheFiles.tmpFor(finalPath, ProcessHandle.current().pid());
     }
 
-    /** The sidecar command line; {@code tmpOut} — never the final cache path — receives the cache. */
-    static List<String> aotTrainerCommand(String javaExe, String classpath, Path tmpOut) {
+    /**
+     * The trainer's command line: this JVM's own flags — heap, metaspace, GC, everything the
+     * spawner chose — minus any AOT flag, plus {@code -XX:AOTCacheOutput}. A cache is mapped only
+     * under the flag set it was recorded under, and the heap is part of that set, so the trainer
+     * copies the serving line rather than keeping a second list of it.
+     */
+    static List<String> aotTrainerCommand(String javaExe, List<String> servingJvmArgs, String classpath, Path tmpOut) {
         List<String> cmd = new ArrayList<>();
         cmd.add(javaExe);
-        // One flag list with the serving spawn line (EngineSpawn): JEP 514 rejects mapping when
-        // dump-time and runtime property sets differ.
-        cmd.addAll(EngineJvmFlags.AOT_SENSITIVE);
+        cmd.addAll(trainerJvmArgs(servingJvmArgs));
         cmd.add("-XX:AOTCacheOutput=" + tmpOut);
         cmd.add("-cp");
         cmd.add(classpath);
         cmd.add(EngineMain.class.getName());
         cmd.add("--aot-training");
         return List.copyOf(cmd);
+    }
+
+    /** The serving JVM's arguments with the AOT flags and the training switch left out. */
+    static List<String> trainerJvmArgs(List<String> servingJvmArgs) {
+        List<String> out = new ArrayList<>();
+        for (String arg : servingJvmArgs) {
+            if (arg.startsWith("-XX:AOTCache")
+                    || arg.startsWith("-XX:AOTMode")
+                    || arg.startsWith("-Djk.aot.train.output=")) continue;
+            out.add(arg);
+        }
+        return out;
     }
 
     /**
