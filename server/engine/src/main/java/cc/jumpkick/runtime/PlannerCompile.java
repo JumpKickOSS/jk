@@ -70,10 +70,10 @@ public final class PlannerCompile {
     // this one request: scalaVersion, compilerClasspath and the Groovy stubs --source-path,
     // joined by javaHome the moment forJavac started hashing it.
     //
-    // A text guard can compare which FIELDS each side sets (checkForecastKeyParity arm B) but not
-    // which VALUES it puts in them, so the field list is only half the problem. These four methods
-    // are the other half: both sides call them, so the request is derived once and the question of
-    // whether the copies agree stops existing.
+    // A text guard can compare which FIELDS each side sets but not which VALUES it puts in them,
+    // so the field list is only half the problem. These methods are the other half: both sides
+    // call them, so the request is derived once and the question of whether the copies agree
+    // stops existing.
 
     /**
      * The {@code [build] extra-src} overlay roots plus plugin-contributed source roots
@@ -212,14 +212,54 @@ public final class PlannerCompile {
                 .extraOptions(options)
                 .javaHome(in.javaHome())
                 .processorPath(in.processorPath());
+        return withScala(req, in.scala()).build();
+    }
+
+    /**
+     * Every fact compile-test's {@link CompileRequest} is derived from. {@code sources} is {@link
+     * PlannerTest.TestSources#javacSources}; {@code classpath} is the base test compile classpath,
+     * to which {@link #testCompileRequest} adds the Scala toolchain's library jars.
+     */
+    public record TestCompile(
+            List<Path> sources,
+            List<Path> classpath,
+            List<Path> processorPath,
+            Path outputDir,
+            int release,
+            List<String> javacArgs,
+            Path javaHome,
+            ScalaCompile.@Nullable Setup scala) {}
+
+    /** compile-test's request — the build's javac invocation and the forecast's key, from one body. */
+    public static CompileRequest testCompileRequest(TestCompile in) {
+        List<Path> classpath = in.classpath();
         if (in.scala() != null) {
-            req.scalaVersion(in.scala().version())
-                    .compilerClasspath(in.scala().compilerClasspath())
-                    .scalaLibraryJar(in.scala().libraryJar())
-                    .scalaCompilerJar(in.scala().compilerJar())
-                    .scalaBridgeJar(in.scala().bridgeJar());
+            classpath = new ArrayList<>(classpath);
+            for (Path lib : in.scala().libraryJars()) {
+                if (!classpath.contains(lib)) classpath.add(lib);
+            }
         }
-        return req.build();
+        CompileRequest.CompileRequestBuilder req = CompileRequest.builder()
+                .sources(in.sources())
+                .classpath(classpath)
+                .outputDir(in.outputDir())
+                .release(in.release())
+                .extraOptions(in.javacArgs())
+                .javaHome(in.javaHome())
+                .processorPath(in.processorPath());
+        return withScala(req, in.scala()).build();
+    }
+
+    private static CompileRequest.CompileRequestBuilder withScala(
+            CompileRequest.CompileRequestBuilder req, ScalaCompile.@Nullable Setup scala) {
+        if (scala != null) {
+            req.scalaVersion(scala.version())
+                    .compilerClasspath(scala.compilerClasspath())
+                    .scalaLibraryJar(scala.libraryJar())
+                    .scalaCompilerJar(scala.compilerJar())
+                    .scalaBridgeJar(scala.bridgeJar());
+        }
+        return req;
     }
 
     /**

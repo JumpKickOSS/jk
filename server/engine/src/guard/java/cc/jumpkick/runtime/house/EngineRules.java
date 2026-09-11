@@ -68,18 +68,17 @@ final class EngineRules {
 
     private static final List<String> STEP_INDIRECTIONS = List.of("String name", "name");
 
-    private static final List<String[]> REQUEST_PAIRS = List.<String[]>of(new String[] {
-        "compile-test",
-        "TestSupport.java|qualifiedTaskId(taskId, outputDir)",
-        "ModuleForecast.java|TaskNames.COMPILE_TEST, testOut)"
-    });
-
     private static final Map<String, List<String>> REQUEST_SHARED = Map.of(
             "PlannerCompile.java|public static CompileRequest mainCompileRequest(",
             List.of(
                     "compile-main",
                     "PlannerCompile.java|mainCompileRequest(new MainCompile(",
                     "ModuleForecast.java|PlannerCompile.mainCompileRequest("),
+            "PlannerCompile.java|public static CompileRequest testCompileRequest(",
+            List.of(
+                    "compile-test",
+                    "TestSupport.java|PlannerCompile.testCompileRequest(compile)",
+                    "ModuleForecast.java|PlannerCompile.testCompileRequest("),
             "PlannerFixtures.java|public static CompileRequest fixturesCompileRequest(",
             List.of(
                     "compile-test-fixtures",
@@ -92,11 +91,9 @@ final class EngineRules {
                     "PlannerGuardSuite.java|CompileRequest req = guardCompileRequest("));
 
     private static final Map<String, Integer> REQUEST_SITES = Map.of(
-            "PlannerCompile.java", 1,
+            "PlannerCompile.java", 2,
             "PlannerFixtures.java", 1,
             "PlannerGuardSuite.java", 1,
-            "TestSupport.java", 1,
-            "ModuleForecast.java", 1,
             "LocalProjectBuilder.java", 1,
             "ScriptPlans.java", 1);
 
@@ -360,16 +357,7 @@ final class EngineRules {
                                 + "` step; stated reason: " + e.getValue()[2]);
             }
         }
-        // keyed compile requests set the same javac fields on both sides
-        String actionKey = src.read("ActionKey.java");
-        int at = actionKey.indexOf("public static String forJavac(");
-        if (at < 0) throw new IllegalStateException("ActionKey.forJavac is gone; this has nothing to key off");
-        String body = balancedFrom(actionKey, '{', '}', actionKey.indexOf('{', at));
-        TreeSet<String> keyed = new TreeSet<>();
-        Matcher km = Pattern.compile("request\\.([a-zA-Z][A-Za-z0-9]*)\\(\\)").matcher(body);
-        while (km.find()) keyed.add(km.group(1));
-        if (keyed.isEmpty())
-            throw new IllegalStateException("forJavac reads no CompileRequest field; the scan has rotted");
+        // every keyed CompileRequest is built by one shared owner that both sides call
         Map<String, Integer> found2 = new HashMap<>();
         for (String rel : src.all) {
             int n = 0;
@@ -384,19 +372,6 @@ final class EngineRules {
                     "CompileRequest.builder() sites",
                     "every CompileRequest.builder() chain must be declared as keyed or unkeyed; found "
                             + new TreeSet<>(found2.keySet()) + ", declared " + new TreeSet<>(REQUEST_SITES.keySet()));
-        for (String[] p : REQUEST_PAIRS) {
-            TreeSet<String> build = keyedSetters(src, p[1], v);
-            TreeSet<String> forecast = keyedSetters(src, p[2], v);
-            build.retainAll(keyed);
-            forecast.retainAll(keyed);
-            if (!build.equals(forecast))
-                fault(
-                        v,
-                        src.path(p[2].substring(0, p[2].indexOf('|'))),
-                        p[0],
-                        p[0] + ": the build's CompileRequest sets " + build + " and the forecast's " + forecast
-                                + " of the fields forJavac hashes (" + keyed + ")");
-        }
         for (var e : REQUEST_SHARED.entrySet()) {
             String ownerFile = e.getKey().substring(0, e.getKey().indexOf('|'));
             String ownerMarker = e.getKey().substring(e.getKey().indexOf('|') + 1);
@@ -411,79 +386,6 @@ final class EngineRules {
                 assertReaches(src, v, reach, spec.get(0) + " (" + e.getKey() + ")", "CompileRequest");
         }
         v.population(src.all.size());
-    }
-
-    private static TreeSet<String> keyedSetters(Sources src, String siteId, Violations v) {
-        String file = siteId.substring(0, siteId.indexOf('|'));
-        String marker = siteId.substring(siteId.indexOf('|') + 1);
-        String code = src.read(file);
-        TreeSet<String> setters = new TreeSet<>();
-        int markAt = code.indexOf(marker);
-        if (markAt < 0 || code.indexOf(marker, markAt + 1) >= 0) {
-            fault(
-                    v,
-                    src.path(file),
-                    siteId,
-                    "`" + marker + "` must occur exactly once in " + file + " to address a CompileRequest chain");
-            return setters;
-        }
-        List<Integer> builders = new ArrayList<>();
-        Matcher b = Pattern.compile("CompileRequest\\.builder\\(\\)").matcher(code);
-        while (b.find()) builders.add(b.start());
-        if (builders.isEmpty()) {
-            fault(v, src.path(file), siteId, "no CompileRequest.builder() in " + file);
-            return setters;
-        }
-        int start = builders.stream()
-                .min((x, y) -> Integer.compare(Math.abs(x - markAt), Math.abs(y - markAt)))
-                .orElseThrow();
-        walkChain(code, start, setters);
-        if (!setters.contains("build")) {
-            Matcher assign = Pattern.compile("([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*$")
-                    .matcher(code.substring(Math.max(0, start - 200), start));
-            if (!assign.find()) {
-                fault(
-                        v,
-                        src.path(file),
-                        siteId,
-                        "the CompileRequest chain in " + file
-                                + " is not terminated by .build() and is not assigned to a variable");
-                return setters;
-            }
-            String var = assign.group(1);
-            String rest = code.substring(start);
-            Matcher buildAt = Pattern.compile("\\b" + Pattern.quote(var) + "\\s*\\.\\s*build\\s*\\(")
-                    .matcher(rest);
-            if (!buildAt.find()) {
-                fault(v, src.path(file), siteId, "`" + var + "` in " + file + " never reaches .build()");
-                return setters;
-            }
-            Matcher more = Pattern.compile("\\b" + Pattern.quote(var) + "\\s*\\.\\s*([a-zA-Z][A-Za-z0-9]*)\\s*\\(")
-                    .matcher(rest.substring(0, buildAt.start()));
-            while (more.find()) setters.add(more.group(1));
-        }
-        return setters;
-    }
-
-    private static void walkChain(String src, int start, TreeSet<String> setters) {
-        int i = start;
-        while (i < src.length()) {
-            int dot = src.indexOf('.', i);
-            if (dot < 0) return;
-            int j = dot + 1;
-            while (j < src.length() && Character.isWhitespace(src.charAt(j))) j++;
-            int k = j;
-            while (k < src.length() && (Character.isLetterOrDigit(src.charAt(k)) || src.charAt(k) == '_')) k++;
-            if (k == j || k >= src.length() || src.charAt(k) != '(') return;
-            String name = src.substring(j, k);
-            setters.add(name);
-            String args = balancedFrom(src, '(', ')', k);
-            i = k + args.length() + 2;
-            if (name.equals("build")) return;
-            int n = i;
-            while (n < src.length() && Character.isWhitespace(src.charAt(n))) n++;
-            if (n >= src.length() || src.charAt(n) != '.') return;
-        }
     }
 
     @Guard(

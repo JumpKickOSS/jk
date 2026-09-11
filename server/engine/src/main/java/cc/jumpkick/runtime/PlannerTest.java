@@ -53,6 +53,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
@@ -101,7 +102,7 @@ public final class PlannerTest {
                 .execute(ctx -> {
                     List<String> suiteNames = selectedSuites(ctx, in, compact);
                     if (suiteNames == null) return;
-                    TestSources src = TestSources.collect(ctx, in, compact, suiteNames);
+                    TestSources src = TestSources.collect(ctx.require(PROJECT), in.dir(), compact, suiteNames);
                     if (src.isEmpty()) {
                         ctx.label("no test sources");
                         ctx.put(NO_TEST_SOURCES, true);
@@ -169,35 +170,25 @@ public final class PlannerTest {
     }
 
     /**
-     * The selected suites' sources by language. {@code javaTestExtra} — [test] extra-src: roots in
-     * the test tier that belong to no suite, shared helpers a sibling reaches through a {@code kind
-     * = "tests"} edge. They compile with whichever suites were selected rather than being
-     * selectable themselves, because there is nothing in them to run. Held separately from {@code
-     * javaTest} (which also carries them) because javac is driven from the primary root plus an
-     * explicit extra list, and that list is what {@code CompileRequest.sources} hashes — so these
-     * roots land in the compile-test action key without a second key to keep in step.
+     * The selected suites' sources by language, derived once for the build and the forecast so the
+     * compile-test key and the run-tests stamp hash the same files on both sides. {@code javaTest}
+     * carries every selected {@code .java} — the suites' roots and {@code [test] extra-src}, roots in
+     * the test tier that belong to no suite and compile with whichever suites were selected because
+     * there is nothing in them to run. {@code javaTestSrc} is the primary suite root, which a mixed
+     * Kotlin test compile reads Java from. Each list holds each path once.
      */
-    record TestSources(
-            Path javaTestSrc,
-            List<Path> javaTest,
-            List<Path> javaTestExtra,
-            List<Path> ktTest,
-            List<Path> gvTest,
-            List<Path> scTest) {
+    record TestSources(Path javaTestSrc, List<Path> javaTest, List<Path> ktTest, List<Path> gvTest, List<Path> scTest) {
 
-        static TestSources collect(TaskContext ctx, BuildPlanner.Inputs in, boolean compact, List<String> suiteNames)
-                throws Exception {
-            Path javaTestSrc = TestSuites.primaryJavaRoot(in.dir(), compact, suiteNames);
-            List<Path> javaTest = new ArrayList<>(TestSuites.collectJavaSources(in.dir(), compact, suiteNames));
-            List<Path> javaTestExtra = TestSupport.testExtraSources(ctx.require(PROJECT), in.dir(), ".java");
-            javaTest.addAll(javaTestExtra);
+        static TestSources collect(JkBuild project, Path dir, boolean compact, List<String> suiteNames)
+                throws IOException {
+            LinkedHashSet<Path> javaTest = new LinkedHashSet<>(TestSuites.collectJavaSources(dir, compact, suiteNames));
+            javaTest.addAll(TestSupport.testExtraSources(project, dir, ".java"));
             return new TestSources(
-                    javaTestSrc,
-                    javaTest,
-                    javaTestExtra,
-                    TestSuites.collectKotlinSources(in.dir(), compact, suiteNames),
-                    TestSuites.collectGroovySources(in.dir(), compact, suiteNames),
-                    TestSuites.collectScalaSources(in.dir(), compact, suiteNames));
+                    TestSuites.primaryJavaRoot(dir, compact, suiteNames),
+                    List.copyOf(javaTest),
+                    TestSuites.collectKotlinSources(dir, compact, suiteNames),
+                    TestSuites.collectGroovySources(dir, compact, suiteNames),
+                    TestSuites.collectScalaSources(dir, compact, suiteNames));
         }
 
         boolean isEmpty() {
@@ -205,19 +196,11 @@ public final class PlannerTest {
         }
 
         /**
-         * javac is driven from the primary root plus an explicit file list, so every selected Java
-         * source that does not live under that root — the other suites' roots and {@code [test]
-         * extra-src} — has to be named. Selecting {@code test} and {@code integration} together
-         * once compiled {@code src/test/java} alone: the integration classes never existed, the
-         * runner found nothing to run, and {@code --guard} reported green.
+         * What compile-test hands javac: every selected Java source and, through the one Zinc
+         * session, the Scala ones. This list is what the compile-test action key hashes.
          */
-        List<Path> javaOutsidePrimaryRoot() {
-            Path primary = javaTestSrc.toAbsolutePath().normalize();
-            List<Path> out = new ArrayList<>();
-            for (Path p : javaTest) {
-                if (!p.toAbsolutePath().normalize().startsWith(primary) && !out.contains(p)) out.add(p);
-            }
-            return out;
+        List<Path> javacSources() {
+            return CompileSupport.concatDistinct(javaTest, scTest);
         }
 
         /** Every selected source, for the TestStamp in run-tests. */
@@ -376,29 +359,23 @@ public final class PlannerTest {
         List<Path> processorCp = ctx.get(JAVAC_PROCESSOR_CP).orElseGet(() -> ctx.require(PROCESSOR_CP));
         Path genDir = ctx.require(LAYOUT).generatedSourcesDir("annotations", "test");
         Files.createDirectories(genDir);
-        ScalaCompile.Setup scalaSetup = null;
-        if (!src.scTest().isEmpty()) {
-            scalaSetup = ScalaCompile.prepare(ctx.require(PROJECT), ctx.require(LOCKFILE), cas);
-            javaCp = new ArrayList<>(javaCp);
-            for (Path lib : scalaSetup.libraryJars()) {
-                if (!javaCp.contains(lib)) javaCp.add(lib);
-            }
-        }
+        ScalaCompile.Setup scalaSetup =
+                src.scTest().isEmpty() ? null : ScalaCompile.prepare(ctx.require(PROJECT), ctx.require(LOCKFILE), cas);
         boolean ok = TestSupport.compileWithCache(
                 ctx,
                 TaskNames.COMPILE_TEST,
-                src.javaTestSrc(),
-                javaTestOut,
-                javaCp,
-                processorCp,
-                ctx.require(RELEASE),
-                javacArgs,
-                ctx.require(JAVA_HOME),
+                new PlannerCompile.TestCompile(
+                        src.javacSources(),
+                        javaCp,
+                        processorCp,
+                        javaTestOut,
+                        ctx.require(RELEASE),
+                        javacArgs,
+                        ctx.require(JAVA_HOME),
+                        scalaSetup),
                 genDir,
                 cas,
-                in.cache(),
-                CompileSupport.concatDistinct(src.scTest(), src.javaOutsidePrimaryRoot()),
-                scalaSetup);
+                in.cache());
         if (!ok) throw new RuntimeException("test compile failed");
     }
 

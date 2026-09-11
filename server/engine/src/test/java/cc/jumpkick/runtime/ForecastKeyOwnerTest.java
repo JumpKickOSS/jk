@@ -105,6 +105,35 @@ class ForecastKeyOwnerTest {
     }
 
     @Test
+    void compile_test_request_carries_every_field_forJavac_hashes(@TempDir Path tmp) throws Exception {
+        // The same shape for compile-test: the toolchain and the Scala fields are part of the
+        // derivation, so a request built without them keys differently — and both the build and
+        // the forecast get theirs from this one body.
+        Path src = Files.writeString(tmp.resolve("ATest.java"), "class ATest {}");
+        Path stdlib = Files.writeString(tmp.resolve("scala-library.jar"), "stdlib");
+        Path compiler = Files.writeString(tmp.resolve("scala3-compiler.jar"), "compiler");
+        Path jdk = Files.createDirectories(tmp.resolve("jdk21"));
+        Files.writeString(jdk.resolve("release"), "JAVA_VERSION=\"21.0.5+11\"\n");
+        Path out = tmp.resolve("classes/test");
+        var scala = new ScalaCompile.Setup("3.8.4", List.of(compiler), List.of(stdlib), compiler, compiler);
+
+        CompileRequest full = PlannerCompile.testCompileRequest(new PlannerCompile.TestCompile(
+                List.of(src), List.of(), List.of(), out, 25, List.of("-Xlint:all"), jdk, scala));
+
+        assertThat(full.javaHome()).isEqualTo(jdk);
+        assertThat(full.scalaVersion()).isEqualTo("3.8.4");
+        assertThat(full.compilerClasspath()).containsExactly(compiler);
+        assertThat(full.classpath())
+                .as("the Scala stdlib joins the classpath here, not at a caller")
+                .contains(stdlib);
+
+        CompileRequest bare = PlannerCompile.testCompileRequest(new PlannerCompile.TestCompile(
+                List.of(src), List.of(), List.of(), out, 25, List.of("-Xlint:all"), jdk, null));
+        assertThat(ActionKey.forJavac("compile-test", full, "0.1.0"))
+                .isNotEqualTo(ActionKey.forJavac("compile-test", bare, "0.1.0"));
+    }
+
+    @Test
     void compile_main_sources_are_the_union_the_build_compiles(@TempDir Path tmp) throws Exception {
         // The other half of the same key: the forecast walked src/main/java only, so a Scala module
         // (whose .scala files ride javac's request through Zinc) and any module with a [build]

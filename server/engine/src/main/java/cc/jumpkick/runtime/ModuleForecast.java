@@ -64,16 +64,12 @@ final class ModuleForecast {
     private final Set<Path> terminalDirs;
     private final @Nullable Path workerJar;
 
-    private List<Path> allTestSrc = List.of();
     private boolean compileDepDirty;
     private boolean compileDirty;
     private @Nullable String compileMainKey;
     private final Path dir;
     private boolean haveTests;
-    private List<Path> javaTest = List.of();
-    private List<Path> javaTestExtra = List.of();
     private @Nullable Boolean knownResourceDrift;
-    private List<Path> ktTest = List.of();
     private final Path lockFile;
     private boolean mainResourceDrift;
     private boolean nativeOnBuild;
@@ -81,7 +77,6 @@ final class ModuleForecast {
     private boolean producesImage;
     private boolean producesJar;
     private final JkBuild project;
-    private List<Path> scTest = List.of();
     private int sourceCount;
     private List<TaskForecast.Task> steps = new ArrayList<>();
     private List<Path> testCompileCp = List.of();
@@ -89,6 +84,8 @@ final class ModuleForecast {
     private boolean testDepDirty;
     private boolean testDirty;
     private boolean testResourceDrift;
+    private PlannerTest.TestSources testSources =
+            new PlannerTest.TestSources(Path.of(""), List.of(), List.of(), List.of(), List.of());
 
     ModuleForecast(
             BuildGraph.BuildUnit u,
@@ -426,36 +423,24 @@ final class ModuleForecast {
         List<Path> ktSrc = prepared.ktSrc();
         List<Path> gvSrc = prepared.gvSrc();
         // ---- compile-test (the suites this session selected) ----
-        // The selection, not every suite on disk: the build compiles what the session asked for, so
-        // hashing every discovered suite here forecast a phantom compile-test on each default build
-        // of a multi-suite module. The run-tests stamp has keyed on the selection all along.
-        allTestSrc = List.of();
+        // The same source lists the build derives, for the selection it compiles — not every suite
+        // on disk, which would forecast a phantom compile-test on each default build of a
+        // multi-suite module.
         try {
-            allTestSrc = TestSupport.collectSelectedSuiteTestSources(
-                    dir, compact, SessionContext.current().testSelection());
+            testSources = PlannerTest.TestSources.collect(
+                    project,
+                    dir,
+                    compact,
+                    TestSupport.selectedSuites(
+                            dir, compact, SessionContext.current().testSelection()));
         } catch (IOException ignored) {
             // forecast degrades
         }
-        javaTest = allTestSrc.stream()
-                .filter(p -> p.getFileName().toString().endsWith(".java"))
-                .toList();
-        ktTest = allTestSrc.stream()
-                .filter(p -> p.getFileName().toString().endsWith(".kt"))
-                .toList();
-        // Scala test sources ride the same javac/Zinc session as the Java ones (PlannerTest
-        // hands them to TestSupport as extraSources), so they are part of compile-test's
-        // request — not a separate step.
-        scTest = allTestSrc.stream()
-                .filter(p -> p.getFileName().toString().endsWith(".scala"))
-                .toList();
-        // No suite owns a `[test] extra-src` root, but compile-test hashes one.
-        javaTestExtra = TestSupport.forecastTestExtraSources(project, dir);
-        haveTests = !allTestSrc.isEmpty() || !javaTestExtra.isEmpty();
+        haveTests = !testSources.isEmpty();
         sourceCount = mainSrc.size()
                 + ktSrc.size()
                 + gvSrc.size()
-                + allTestSrc.size()
-                + javaTestExtra.size()
+                + testSources.all().size()
                 + PlannerFixtures.forecastSources(project, dir).size();
         testDirty = false;
         // --skip-tests composes no compile-test/run-tests steps, so don't forecast
@@ -504,42 +489,17 @@ final class ModuleForecast {
             steps.add(new TaskForecast.Task(
                     TaskNames.COMPILE_TEST, TaskForecast.Status.RUN, "recompile · main changed", null));
             testDirty = true;
-        } else if (!javaTest.isEmpty() || !scTest.isEmpty() || !javaTestExtra.isEmpty()) {
+        } else if (!testSources.javacSources().isEmpty()) {
             List<Path> baseCp = new ArrayList<>();
             baseCp.add(layout.classesDir());
             baseCp.addAll(testCompileCp);
             baseCp = PlannerFixtures.withOwnFixtures(project, layout, baseCp);
             Path testOut = layout.testClassesDir();
-            ScalaCompile.Setup testScala = scTest.isEmpty() ? null : ScalaCompile.prepare(project, lock, cas);
-            if (testScala != null) {
-                for (Path lib : testScala.libraryJars()) {
-                    if (!baseCp.contains(lib)) baseCp.add(lib);
-                }
-            }
-            List<Path> testSrc = new ArrayList<>(javaTest);
-            testSrc.addAll(CompileSupport.concatDistinct(scTest, javaTestExtra));
-            // Mirror TestSupport.compileWithCache EXACTLY: the processor path (the build
-            // runs declared annotation processors over test sources, so the key hashes the
-            // same `pp:` lines), the project JDK, and the Scala toolchain. Any field
-            // forJavac reads that only one side sets is a key the two can never match —
-            // checkForecastKeyParity arm B compares this chain against TestSupport's,
-            // continuations included.
-            CompileRequest.CompileRequestBuilder builder = CompileRequest.builder()
-                    .sources(testSrc)
-                    .classpath(baseCp)
-                    .outputDir(testOut)
-                    .release(release)
-                    .extraOptions(javacArgs)
-                    .javaHome(javaHome)
-                    .processorPath(processorCp);
-            if (testScala != null) {
-                builder.scalaVersion(testScala.version())
-                        .compilerClasspath(testScala.compilerClasspath())
-                        .scalaLibraryJar(testScala.libraryJar())
-                        .scalaCompilerJar(testScala.compilerJar())
-                        .scalaBridgeJar(testScala.bridgeJar());
-            }
-            CompileRequest req = builder.build();
+            ScalaCompile.Setup testScala =
+                    testSources.scTest().isEmpty() ? null : ScalaCompile.prepare(project, lock, cas);
+            List<Path> testSrc = testSources.javacSources();
+            CompileRequest req = PlannerCompile.testCompileRequest(new PlannerCompile.TestCompile(
+                    testSrc, baseCp, processorCp, testOut, release, javacArgs, javaHome, testScala));
             String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_TEST, testOut);
             Path actions = CacheTree.ACTIONS.under(cache);
             Path stateDir = ActionTree.INCREMENTAL_JAVA.under(actions).resolve(taskId);

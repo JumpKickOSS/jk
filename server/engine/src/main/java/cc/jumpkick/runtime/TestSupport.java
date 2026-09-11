@@ -18,7 +18,6 @@ import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
-import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.runtime.base.TestFailureSource;
 import cc.jumpkick.task.ActionCache;
@@ -45,19 +44,8 @@ import org.jspecify.annotations.Nullable;
 public final class TestSupport {
 
     /**
-     * Sources under {@code [test] extra-src}, by extension. These roots belong to the test tier but
-     * to no suite: there is nothing in them to run, so they compile with whichever suites were
-     * selected rather than being selectable themselves. Sibling-consumed helpers use
-     * {@code [test] fixtures} instead.
-     * /**
      * {@link #testExtraSources} for a forecast: {@code .java} only, and degrading to empty rather
      * than throwing, because a forecast reports on a build instead of being one.
-     *
-     * <p>It lives here, beside the collector the build uses, on purpose. {@code TaskForecaster}'s
-     * standing invariant is that a forecast key derived <em>there</em> rather than shared with
-     * the build is the defect class that file keeps reintroducing — and this is another instance of
-     * it: these roots are in {@code compile-test}'s hashed request, so a forecast that cannot see
-     * them keys off a smaller source set than the build and reports a phantom rebuild.
      */
     static List<Path> forecastTestExtraSources(JkBuild project, Path moduleDir) {
         try {
@@ -67,6 +55,12 @@ public final class TestSupport {
         }
     }
 
+    /**
+     * Sources under {@code [test] extra-src}, by extension. These roots belong to the test tier but
+     * to no suite: there is nothing in them to run, so they compile with whichever suites were
+     * selected rather than being selectable themselves. Sibling-consumed helpers use
+     * {@code [test] fixtures} instead.
+     */
     static List<Path> testExtraSources(JkBuild project, Path moduleDir, String ext) throws IOException {
         List<String> roots = project.build().testExtraSrc();
         if (roots.isEmpty()) return List.of();
@@ -112,8 +106,8 @@ public final class TestSupport {
     }
 
     /**
-     * Count test methods across every discovered suitenot default-suite only.
-     * Dedupes when java/kotlin roots share a directory (SIMPLE layout).
+     * Count test methods across every discovered suite, not the default suite only. Dedupes when
+     * java/kotlin roots share a directory (SIMPLE layout).
      */
     public static int estimateAllSuiteTestCount(Path moduleDir, boolean compact) {
         int total = 0;
@@ -129,20 +123,14 @@ public final class TestSupport {
     }
 
     /**
-     * Count test methods for the suites a SELECTION will actually runsizing the
-     * bar/ETA with every discovered suite made plain `jk test` under-fill and snap to 100 when
-     * an integration suite existed. Unresolvable selections fall back to all discovered suites.
+     * Count test methods for the suites a SELECTION will actually run ({@link #selectedSuites}):
+     * sizing the bar/ETA with every discovered suite makes a plain {@code jk test} under-fill and
+     * snap to 100 when an integration suite exists.
      */
     public static int estimateSelectedSuiteTestCount(Path moduleDir, boolean compact, TestSelection selection) {
-        List<String> discovered = TestSuites.discover(moduleDir, compact);
-        List<String> suites = discovered;
-        if (selection != null) {
-            var resolved = selection.resolve(discovered);
-            if (resolved.ok()) suites = resolved.suites();
-        }
         int total = 0;
         LinkedHashSet<Path> roots = new LinkedHashSet<>();
-        for (String suite : suites) {
+        for (String suite : selectedSuites(moduleDir, compact, selection)) {
             roots.addAll(TestSuites.javaRoots(moduleDir, compact, suite));
             roots.addAll(TestSuites.kotlinRoots(moduleDir, compact, suite));
             roots.addAll(TestSuites.groovyRoots(moduleDir, compact, suite));
@@ -195,24 +183,22 @@ public final class TestSupport {
     }
 
     /**
-     * The sources of the suites a SELECTION will actually run — the set compile-test's key hashes.
+     * The suites a SELECTION will actually run in {@code moduleDir} — the set compile-test's key is
+     * derived from, via {@link PlannerTest.TestSources#collect}.
      *
      * <p>{@link #collectAllSuiteTestSources} is the estimate-side answer, every suite on disk, which
-     * is right for a count and wrong for a key. The build compiles the selection and nothing else, so
-     * a forecast over every discovered suite hashes a strictly larger list than the build did and
-     * reports a phantom compile-test on every default build of a module that has more than one suite
-     * — {@link TestSelection#DEFAULT} is the {@code test} suite alone. Unresolvable selections fall
-     * back to all discovered suites, the same rule {@link #estimateSelectedSuiteTestCount} uses.
+     * is right for a count and wrong for a key: the build compiles the selection and nothing else,
+     * and {@link TestSelection#DEFAULT} is the {@code test} suite alone. An unresolvable selection
+     * falls back to every discovered suite, the same rule {@link #estimateSelectedSuiteTestCount}
+     * uses.
      */
-    public static List<Path> collectSelectedSuiteTestSources(
-            Path moduleDir, boolean compact, @Nullable TestSelection selection) throws IOException {
+    public static List<String> selectedSuites(Path moduleDir, boolean compact, @Nullable TestSelection selection) {
         List<String> discovered = TestSuites.discover(moduleDir, compact);
-        List<String> suites = discovered;
         if (selection != null) {
             var resolved = selection.resolve(discovered);
-            if (resolved.ok()) suites = resolved.suites();
+            if (resolved.ok()) return resolved.suites();
         }
-        return collectSuiteTestSources(moduleDir, compact, suites);
+        return discovered;
     }
 
     private static List<Path> collectSuiteTestSources(Path moduleDir, boolean compact, List<String> suites)
@@ -648,62 +634,19 @@ public final class TestSupport {
     /**
      * Compile test sources with action-cache lookup. Mirrors the compile-main step: same task ID /
      * classpath / output-dir shape, and the same {@code processorPath} + Zinc worker, so annotation
-     * processors (Lombok, Immutables, …) run over test sources too.
+     * processors (Lombok, Immutables, …) run over test sources too. The request is {@link
+     * PlannerCompile#testCompileRequest}'s, the same body the forecast keys from.
      */
     public static boolean compileWithCache(
             TaskContext ctx,
             String taskId,
-            Path srcDir,
-            Path outputDir,
-            List<Path> classpath,
-            List<Path> processorPath,
-            int release,
-            List<String> javacArgs,
-            Path javaHome,
+            PlannerCompile.TestCompile compile,
             Path generatedSourceDir,
             Cas cas,
             Path cacheRoot)
             throws IOException {
-        return compileWithCache(
-                ctx,
-                taskId,
-                srcDir,
-                outputDir,
-                classpath,
-                processorPath,
-                release,
-                javacArgs,
-                javaHome,
-                generatedSourceDir,
-                cas,
-                cacheRoot,
-                List.of(),
-                null);
-    }
-
-    public static boolean compileWithCache(
-            TaskContext ctx,
-            String taskId,
-            Path srcDir,
-            Path outputDir,
-            List<Path> classpath,
-            List<Path> processorPath,
-            int release,
-            List<String> javacArgs,
-            Path javaHome,
-            Path generatedSourceDir,
-            Cas cas,
-            Path cacheRoot,
-            List<Path> extraSources,
-            ScalaCompile.@Nullable Setup scala)
-            throws IOException {
-
-        List<Path> sources = new ArrayList<>(CompileSupport.collectJavaSources(srcDir));
-        if (extraSources != null) {
-            for (Path p : extraSources) {
-                if (!sources.contains(p)) sources.add(p);
-            }
-        }
+        List<Path> sources = compile.sources();
+        Path outputDir = compile.outputDir();
         if (sources.isEmpty()) {
             Files.createDirectories(outputDir);
             return true;
@@ -712,22 +655,7 @@ public final class TestSupport {
         // Project-qualify so the `tasks/<taskId>` pointer is unique per module
         // (display labels keep the plain base name).
         String cacheTaskId = ActionKey.qualifiedTaskId(taskId, outputDir);
-        CompileRequest.CompileRequestBuilder req = CompileRequest.builder()
-                .sources(sources)
-                .classpath(classpath)
-                .outputDir(outputDir)
-                .release(release)
-                .extraOptions(javacArgs)
-                .javaHome(javaHome)
-                .processorPath(processorPath);
-        if (scala != null) {
-            req.scalaVersion(scala.version())
-                    .compilerClasspath(scala.compilerClasspath())
-                    .scalaLibraryJar(scala.libraryJar())
-                    .scalaCompilerJar(scala.compilerJar())
-                    .scalaBridgeJar(scala.bridgeJar());
-        }
-        CompileRequest request = req.build();
+        CompileRequest request = PlannerCompile.testCompileRequest(compile);
         // Action payloads live in the cache CAS; callers may pass the artifact CAS for classpath.
         ActionCache actionCache = new ActionCache(JkStores.cacheCas(cacheRoot), CacheTree.ACTIONS.under(cacheRoot));
         boolean useCache = !SessionContext.current().config().rebuildOr(false);
@@ -749,9 +677,9 @@ public final class TestSupport {
         if (Perf.ENABLED && TaskNames.COMPILE_TEST.equals(taskId)) {
             System.err.println("[jk-perf] live-compile-test " + outputDir
                     + " key=" + ActionKey.forJavac(cacheTaskId, request, BuildIdentity.cacheKeyVersion())
-                    + " cp=" + classpath.size() + " src=" + sources.size()
-                    + " pp=" + (processorPath == null ? -1 : processorPath.size()) + " release=" + release
-                    + " javaHome=" + javaHome + " out=" + outputDir);
+                    + " cp=" + request.classpath().size() + " src=" + sources.size()
+                    + " pp=" + compile.processorPath().size() + " release=" + compile.release()
+                    + " javaHome=" + compile.javaHome() + " out=" + outputDir);
         }
         ctx.label(taskId + ": " + sources.size() + " sources");
         Path gen = generatedSourceDir != null

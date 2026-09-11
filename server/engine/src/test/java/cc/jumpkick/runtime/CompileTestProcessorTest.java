@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.TaskContext;
+import cc.jumpkick.runtime.base.CompileSupport;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -41,13 +42,15 @@ class CompileTestProcessorTest {
         boolean ok = TestSupport.compileWithCache(
                 new NoopContext(),
                 "compile-test",
-                testSrc,
-                out,
-                List.of(procDir),
-                List.of(procDir), // processor jar on cp AND processorpath
-                21,
-                List.of(),
-                Path.of(System.getProperty("java.home")),
+                new PlannerCompile.TestCompile(
+                        CompileSupport.collectJavaSources(testSrc),
+                        List.of(procDir),
+                        List.of(procDir), // processor jar on cp AND processorpath
+                        out,
+                        21,
+                        List.of(),
+                        Path.of(System.getProperty("java.home")),
+                        null),
                 dir.resolve("gen"),
                 new Cas(dir.resolve("cas")),
                 dir.resolve("cache"));
@@ -73,13 +76,15 @@ class CompileTestProcessorTest {
         boolean ok = TestSupport.compileWithCache(
                 new NoopContext(),
                 "compile-test",
-                testSrc,
-                out,
-                List.of(procDir),
-                List.of(), // NO processor path — the regression
-                21,
-                List.of(),
-                Path.of(System.getProperty("java.home")),
+                new PlannerCompile.TestCompile(
+                        CompileSupport.collectJavaSources(testSrc),
+                        List.of(procDir),
+                        List.of(), // NO processor path — the regression
+                        out,
+                        21,
+                        List.of(),
+                        Path.of(System.getProperty("java.home")),
+                        null),
                 dir.resolve("gen"),
                 new Cas(dir.resolve("cas")),
                 dir.resolve("cache"));
