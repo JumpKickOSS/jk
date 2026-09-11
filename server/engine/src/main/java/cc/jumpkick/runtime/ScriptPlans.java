@@ -363,7 +363,8 @@ public final class ScriptPlans {
                             .sources(ktSources)
                             .classpath(compileCp)
                             .outputDir(classesDir)
-                            .jvmTarget(CompileSupport.kotlinJvmTarget(jvmTarget))
+                            .jvmTarget(CompileSupport.kotlinJvmTarget(
+                                    jvmTarget, Runtime.version().feature()))
                             .workerClasspath(workerCp)
                             .javaHome(JavaHomes.resolveJavaHome(
                                     script.toAbsolutePath().getParent()))

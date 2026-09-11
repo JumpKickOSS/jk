@@ -7,6 +7,7 @@ import static cc.jumpkick.runtime.PlannerSupport.lockModules;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.GroovycRequest;
 import cc.jumpkick.compile.KotlincRequest;
+import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.kotlin.KotlinResolver;
@@ -120,7 +121,9 @@ public final class PlannerLang {
         // BTA's IC sees "no source changes" after an args/plugins/module-name change and would
         // emit nothing into a clean output dir. Key the working dir by a config hash so any
         // config change starts fresh IC state (stale dirs age out with the cache).
-        String configToken = Hashing.sha256Hex((CompileSupport.kotlinJvmTarget(ctx.require(RELEASE))
+        int jvmTarget =
+                CompileSupport.kotlinJvmTarget(ctx.require(RELEASE), JvmOptions.hostFeature(ctx.require(JAVA_HOME)));
+        String configToken = Hashing.sha256Hex((jvmTarget
                                 + "|" + moduleName + "|" + String.join(",", ktArgs) + "|"
                                 + ktPlugins.stream()
                                         .map(p -> p.id() + "=" + p.options())
@@ -133,7 +136,7 @@ public final class PlannerLang {
                 .sources(sources)
                 .classpath(compileCp)
                 .outputDir(outputDir)
-                .jvmTarget(CompileSupport.kotlinJvmTarget(ctx.require(RELEASE)))
+                .jvmTarget(jvmTarget)
                 .workerClasspath(kt.workerClasspath())
                 .javaHome(ctx.require(JAVA_HOME))
                 .workingDir(icWorkingDir)
@@ -223,7 +226,8 @@ public final class PlannerLang {
                 .processorPath(processorCp)
                 .outputDir(outputDir)
                 .stubsOut(stubsOut)
-                .jvmTarget(ctx.require(RELEASE))
+                .jvmTarget(CompileSupport.effectiveRelease(
+                        ctx.require(RELEASE), JvmOptions.hostFeature(ctx.require(JAVA_HOME))))
                 .workerClasspath(gv.workerClasspath())
                 .extraArgs(gvArgs)
                 .build();

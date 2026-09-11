@@ -336,7 +336,8 @@ public final class PlannerKsp {
         cmd.add("-resource-output-dir=" + outBase.resolve("resources").toAbsolutePath());
         cmd.add("-language-version=" + languageVersion);
         cmd.add("-api-version=" + languageVersion);
-        cmd.add("-jvm-target=" + CompileSupport.kotlinJvmTarget(ctx.require(RELEASE)));
+        cmd.add("-jvm-target="
+                + CompileSupport.kotlinJvmTarget(ctx.require(RELEASE), JvmOptions.hostFeature(javaHome)));
         cmd.add("-jdk-home=" + javaHome.toAbsolutePath());
         cmd.add("-libraries=" + Classpaths.join(libs));
         // Processor options: plugin-contributed ([[contribute.compiler-args]] ksp

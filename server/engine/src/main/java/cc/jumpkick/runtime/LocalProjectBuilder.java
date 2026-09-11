@@ -10,6 +10,7 @@ import cc.jumpkick.compile.JavacRunner;
 import cc.jumpkick.compile.KotlincRequest;
 import cc.jumpkick.compile.WorkerCompileDriver;
 import cc.jumpkick.config.WorkspaceResolve;
+import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.Languages;
@@ -122,8 +123,8 @@ public final class LocalProjectBuilder {
                         .sources(ktSources)
                         .classpath(ktCp)
                         .outputDir(ktOut)
-                        .jvmTarget(
-                                CompileSupport.kotlinJvmTarget(project.project().javaRelease()))
+                        .jvmTarget(CompileSupport.kotlinJvmTarget(
+                                project.project().javaRelease(), JvmOptions.hostFeature(javaHome)))
                         .workerClasspath(kt.workerClasspath())
                         .javaHome(javaHome)
                         .workingDir(layout.buildDir().resolve("kotlin-work"))

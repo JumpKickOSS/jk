@@ -189,8 +189,21 @@ public final class CompileSupport {
      * The {@code -jvm-target} kotlinc should use for a given Java release. Kotlin tops out at 21
      * today; targeting a newer JDK is fine because Java is bytecode-backward-compatible.
      */
-    public static int kotlinJvmTarget(int release) {
-        return Math.min(release, 21);
+    /** The newest {@code -jvm-target} the Kotlin compiler accepts. */
+    public static final int KOTLIN_MAX_JVM_TARGET = 21;
+
+    /**
+     * The Kotlin {@code -jvm-target} for a project at {@code release}, where {@code 0} means the
+     * manifest declares no level and the JDK the build runs on ({@code hostFeature}) is the level —
+     * the same reading javac gives an absent {@code --release}.
+     */
+    public static int kotlinJvmTarget(int release, int hostFeature) {
+        return Math.min(effectiveRelease(release, hostFeature), KOTLIN_MAX_JVM_TARGET);
+    }
+
+    /** {@code release} when the manifest declares one, else the build JDK's feature major. */
+    public static int effectiveRelease(int release, int hostFeature) {
+        return release > 0 ? release : hostFeature;
     }
 
     /**
