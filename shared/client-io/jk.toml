@@ -32,5 +32,6 @@ options = [
 ]
 
 [test-dependencies]
+jk-host = { workspace = true, fixtures = true }
 assertj-core = "latest"
 junit-jupiter = "latest"

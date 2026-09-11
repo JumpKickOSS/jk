@@ -2441,7 +2441,7 @@ scopes   = ["main"]
 [[plugin]]
 coordinate = "cc.jumpkick:jk-guards-junit"
 version    = "0.13.2"
-checksum   = "sha256:7e3f20c12f3dd0793a2a8d429e46c1f8bcad73fb1702fbc824f73a0644781667"
+checksum   = "sha256:530d9778ecd6cdc55a5ea39b9d7a98f5b4a140d385a558e55f084405063feda4"
 
 [[module]]
 path    = "."
