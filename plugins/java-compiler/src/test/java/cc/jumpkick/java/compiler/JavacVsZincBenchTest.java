@@ -20,12 +20,9 @@ import org.junit.jupiter.api.io.TempDir;
  * The same sources through plain {@code javac} and through Zinc, so the two can be compared on one
  * host and across hosts.
  *
- * <p>A module's {@code compile-java} runs about 2.2x slower on Windows than on Linux on the same
- * machine, while {@code guard} — also a forked worker JVM doing CPU over the same trees — runs at
- * parity. Phase timing inside the worker put 97% of that in {@code zinc.compile}, which is javac plus
- * Zinc's incremental machinery in one number. This splits the two: if plain javac carries the whole
- * ratio then the cost is javac's, and if Zinc's wrapper adds it then it is the analysis, the stamping
- * or the file conversion around it.
+ * <p>{@code zinc.compile} is javac plus Zinc's incremental machinery in one number. This splits the
+ * two: if plain javac carries a platform's whole ratio then the cost is javac's, and if Zinc's
+ * wrapper adds it then it is the analysis, the stamping or the file conversion around it.
  *
  * <p>Not a gate. It prints and asserts only that both compilers produced the same classes, so it can
  * run anywhere without a wall-clock budget that would fail on a slow or busy host.
@@ -44,14 +41,20 @@ class JavacVsZincBenchTest {
         Path src = dir.resolve("src");
         List<Path> sources = generate(src, FILES);
 
-        long javac = best(RUNS, WARMUPS, () -> runJavac(dir, sources, false));
-        long analysis = best(RUNS, WARMUPS, () -> runJavac(dir, sources, true));
-        long zinc = best(RUNS, WARMUPS, () -> runZinc(dir, sources));
+        Arm javac = best(RUNS, WARMUPS, () -> runJavac(dir, sources, false));
+        Arm analysis = best(RUNS, WARMUPS, () -> runJavac(dir, sources, true));
+        Arm zinc = best(RUNS, WARMUPS, () -> runZinc(dir, sources));
 
         System.out.printf(
                 "%njavac-vs-zinc  files=%d  javac=%d ms  analysis-only=%d ms  codegen+write=%d ms"
                         + "  zinc=%d ms  zinc/javac=%.2fx  os=%s%n",
-                FILES, javac, analysis, javac - analysis, zinc, zinc / (double) javac, System.getProperty("os.name"));
+                FILES,
+                javac.bestMs(),
+                analysis.bestMs(),
+                javac.bestMs() - analysis.bestMs(),
+                zinc.bestMs(),
+                zinc.bestMs() / (double) javac.bestMs(),
+                System.getProperty("os.name"));
         System.out.printf(
                 "javac-vs-zinc  host: cpus=%d maxHeap=%d MB jdk=%s (%s) gc=%s%n",
                 Runtime.getRuntime().availableProcessors(),
@@ -62,14 +65,18 @@ class JavacVsZincBenchTest {
                         .map(GarbageCollectorMXBean::getName)
                         .reduce((x, y) -> x + "+" + y)
                         .orElse("?"));
+        // Per arm over its measured runs, not cumulative since the JVM started: the question is
+        // which compiler collects, not how much this test process has collected in total.
         System.out.printf(
-                "javac-vs-zinc  gc: collections=%d totalPaused=%d ms%n",
-                ManagementFactory.getGarbageCollectorMXBeans().stream()
-                        .mapToLong(GarbageCollectorMXBean::getCollectionCount)
-                        .sum(),
-                ManagementFactory.getGarbageCollectorMXBeans().stream()
-                        .mapToLong(GarbageCollectorMXBean::getCollectionTime)
-                        .sum());
+                "javac-vs-zinc  gc over %d runs: javac=%d/%d ms  analysis-only=%d/%d ms  zinc=%d/%d ms"
+                        + "  (collections/paused)%n",
+                RUNS,
+                javac.gcCount(),
+                javac.gcPausedMs(),
+                analysis.gcCount(),
+                analysis.gcPausedMs(),
+                zinc.gcCount(),
+                zinc.gcPausedMs());
 
         assertThat(countClasses(dir.resolve("out-javac"))).isEqualTo(FILES);
         assertThat(countClasses(dir.resolve("out-zinc"))).isEqualTo(FILES);
@@ -124,11 +131,10 @@ class JavacVsZincBenchTest {
      */
     private static long runJavac(Path dir, List<Path> sources, boolean analysisOnly) throws IOException {
         Path out = fresh(dir.resolve(analysisOnly ? "out-analysis" : "out-javac"));
-        List<String> args = new ArrayList<>(List.of("-nowarn", "-d", out.toString()));
-        if (analysisOnly) {
-            args.add("-proc:none");
-            args.add("-XDshould-stop.ifNoError=FLOW");
-        }
+        // -proc:none on both arms, so their difference is code generation and output, not
+        // processor discovery.
+        List<String> args = new ArrayList<>(List.of("-nowarn", "-proc:none", "-d", out.toString()));
+        if (analysisOnly) args.add("-XDshould-stop.ifNoError=FLOW");
         for (Path s : sources) args.add(s.toString());
         long t0 = System.nanoTime();
         int rc = ToolProvider.getSystemJavaCompiler().run(null, null, null, args.toArray(new String[0]));
@@ -150,11 +156,29 @@ class JavacVsZincBenchTest {
     }
 
     /** Best of {@code runs} after {@code warmups}: the floor is the least noisy statistic here. */
-    private static long best(int runs, int warmups, Bench body) throws Exception {
+    /** One arm's best wall over its measured runs, and the collector's work across those runs. */
+    private record Arm(long bestMs, long gcCount, long gcPausedMs) {}
+
+    private static Arm best(int runs, int warmups, Bench body) throws Exception {
         for (int i = 0; i < warmups; i++) body.run();
+        long count0 = gcCount();
+        long paused0 = gcPausedMs();
         long best = Long.MAX_VALUE;
         for (int i = 0; i < runs; i++) best = Math.min(best, body.run());
-        return best;
+        return new Arm(best, gcCount() - count0, gcPausedMs() - paused0);
+    }
+
+    private static long gcCount() {
+        return ManagementFactory.getGarbageCollectorMXBeans().stream()
+                .mapToLong(b -> Math.max(0, b.getCollectionCount()))
+                .sum();
+    }
+
+    /** A collector that does not report pause time answers -1; count that as nothing, not a debit. */
+    private static long gcPausedMs() {
+        return ManagementFactory.getGarbageCollectorMXBeans().stream()
+                .mapToLong(b -> Math.max(0, b.getCollectionTime()))
+                .sum();
     }
 
     private interface Bench {
