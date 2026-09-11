@@ -113,23 +113,34 @@ public final class BuildEta {
                     cache,
                     jdksDir,
                     historyShapeForCosts(costs.size()));
-            if (Perf.ENABLED) {
+            if (Perf.enabled()) {
                 // The three numbers per module that decide the whole estimate: WorkSchedule admits
                 // a dependent at `weight - test - tail`, so a collapsed split serializes the graph.
-                // Printed here rather than reconstructed from a synthetic plan — a hand-built
+                // Logged here rather than reconstructed from a synthetic plan — a hand-built
                 // ExplainPlan prices nothing like a real one and sends readers after the wrong
                 // suspect.
                 for (EffortWeights.ModuleCost c : costs) {
-                    System.err.println("[jk-perf] eta-cost " + c.dir()
-                            + " weight=" + c.weight()
-                            + " test=" + c.testWeight()
-                            + " tail=" + c.tailWeight());
+                    Perf.note(
+                            "eta-cost " + c.dir(),
+                            "weight",
+                            c.weight(),
+                            "test",
+                            c.testWeight(),
+                            "tail",
+                            c.tailWeight());
                 }
-                System.err.println("[jk-perf] eta raw=" + seed.rawScheduleMs()
-                        + " final=" + seed.etaMs()
-                        + " concurrency=" + concurrency
-                        + " serial=" + serialEta
-                        + " bias=" + ScheduleBias.current(entryDir, costs.size()));
+                Perf.note(
+                        "eta",
+                        "raw",
+                        seed.rawScheduleMs(),
+                        "final",
+                        seed.etaMs(),
+                        "concurrency",
+                        concurrency,
+                        "serial",
+                        serialEta,
+                        "bias",
+                        ScheduleBias.current(entryDir, costs.size()));
             }
             return new BuildService.EtaModel(seed.etaMs(), costs, concurrency, serialEta, seed.rawScheduleMs());
         } catch (RuntimeException e) {
@@ -277,10 +288,16 @@ public final class BuildEta {
         // The live countdown arrives with the share already resolved (workers > 0); explain
         // resolves it here, through the executor's own function.
         int share = workers > 0 ? workers : TestWorkers.autoShare(jobsBudget, dirtyWidth);
-        if (Perf.ENABLED) {
-            System.err.println("[jk-perf] eta-width dirtyModules=" + dirtyDirs.size() + " dirtyWidth=" + dirtyWidth
-                    + " jobs=" + jobsBudget + " share=" + share);
-        }
+        Perf.note(
+                "eta-width",
+                "dirtyModules",
+                dirtyDirs.size(),
+                "dirtyWidth",
+                dirtyWidth,
+                "jobs",
+                jobsBudget,
+                "share",
+                share);
         List<EffortWeights.ModuleCost> costs = new ArrayList<>();
         for (TaskForecast.Module m : plan.modules()) {
             if (!distrust && !m.dirty()) continue;
@@ -546,10 +563,12 @@ public final class BuildEta {
         // Whole-build history floor only for true full rebuilds — not merely "many modules are
         // dirty." Require substantial scheduled weight breadth, or an explicit --force/--rebuild.
         boolean fullWork = isFullWorkShape(hist, costs);
-        if (Perf.ENABLED) {
-            System.err.println("[jk-perf] eta-seed fullWork=" + fullWork + " okHist="
-                    + (okHist == null ? "none" : okHist.count() + "x avg=" + okHist.avgMillis()));
-        }
+        Perf.note(
+                "eta-seed",
+                "fullWork",
+                fullWork,
+                "okHist",
+                okHist == null ? "none" : okHist.count() + "x avg=" + okHist.avgMillis());
         boolean coldFull = fullWork && (okHist == null || okHist.count() == 0);
         int etaConcurrency = concurrency;
         if (coldFull && !serial && concurrency > 1) {
@@ -599,11 +618,20 @@ public final class BuildEta {
                 // ones). Cap its uplift at 1.5x the simulated schedule; as post-change
                 // builds land, avg/max converge and the cap stops binding.
                 floor = Math.min(floor, Math.round(base * 1.5));
-                if (Perf.ENABLED) {
-                    System.err.println("[jk-perf] eta-seed base=" + base + "ms floor=" + floor + "ms hist(count="
-                            + floorSrc.count() + " avg=" + floorSrc.avgMillis() + " max=" + floorSrc.maxMillis()
-                            + ") coldFull=" + coldFull);
-                }
+                Perf.note(
+                        "eta-seed",
+                        "base",
+                        base + "ms",
+                        "floor",
+                        floor + "ms",
+                        "histCount",
+                        floorSrc.count(),
+                        "histAvg",
+                        floorSrc.avgMillis(),
+                        "histMax",
+                        floorSrc.maxMillis(),
+                        "coldFull",
+                        coldFull);
                 if (floor > base) base = floor;
             }
         }
@@ -673,7 +701,7 @@ public final class BuildEta {
         if (seedMs <= 0 || actualExecuteMs <= 0) return;
         double ratio = (double) seedMs / (double) actualExecuteMs;
         double relErr = Math.abs(seedMs - actualExecuteMs) / (double) actualExecuteMs;
-        boolean verbose = EnvValues.bool(System::getenv, "JK_ETA_SEED_LOG").orElse(false) || Perf.ENABLED;
+        boolean verbose = EnvValues.bool(System::getenv, "JK_ETA_SEED_LOG").orElse(false) || Perf.enabled();
         // Always note serious misses so they show up in engine logs without env.
         boolean serious = relErr >= 0.35 && actualExecuteMs >= 5_000L;
         if (!verbose && !serious) return;

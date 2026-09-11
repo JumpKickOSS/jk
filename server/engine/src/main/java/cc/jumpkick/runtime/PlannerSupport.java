@@ -856,21 +856,31 @@ public final class PlannerSupport {
         List<Path> stampRes = ModuleLayout.suiteResourceDirs(dir, compact, suites);
         String key = TestStamp.computeKey(
                 stampSrcs, mainClasses, mainClassesFingerprint, stampRes, lockFile, stampRt, stampExtras);
-        if (Perf.ENABLED) {
+        if (Perf.enabled()) {
             // The key itself, not just its inputs: when this disagrees with `live-test-stamp` for
             // the same module, the forecast is predicting a suite re-run the build will skip. That
             // is how `jk explain`'s missing test selection was found — every input printed here
             // matched and only the key differed, which narrowed it to the one input not printed.
-            System.err.println("[jk-perf] fstamp " + dir
-                    + " key=" + key
-                    + " src=" + stampSrcs.size() + " res=" + stampRes.size()
-                    + " rt=" + stampRt.size() + " extras=" + stampExtras.size()
-                    + " X=" + stampExtras + " suites=" + suites
-                    + " cpFp=" + ClasspathFingerprint.of(stampRt)
-                    + " mainFp="
-                    + (mainClassesFingerprint != null
-                            ? mainClassesFingerprint
-                            : ClasspathFingerprint.entry(mainClasses)));
+            Perf.note(
+                    "fstamp " + dir,
+                    "key",
+                    key,
+                    "src",
+                    stampSrcs.size(),
+                    "res",
+                    stampRes.size(),
+                    "rt",
+                    stampRt.size(),
+                    "extras",
+                    stampExtras.size(),
+                    "X",
+                    stampExtras,
+                    "suites",
+                    suites,
+                    "cpFp",
+                    ClasspathFingerprint.of(stampRt),
+                    "mainFp",
+                    mainClassesFingerprint != null ? mainClassesFingerprint : ClasspathFingerprint.entry(mainClasses));
         }
         return key;
     }

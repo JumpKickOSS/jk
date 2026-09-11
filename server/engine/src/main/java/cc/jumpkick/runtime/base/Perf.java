@@ -1,25 +1,37 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.base;
 
+import cc.jumpkick.host.Log;
+import org.jspecify.annotations.Nullable;
+
 /**
- * Dev-only wall-clock probe, enabled by {@code JK_PERF=1} in the environment; writes {@code
- * [jk-perf] <label> <ms>} lines to stderr. Zero overhead when disabled (a single static boolean).
- * Temporary diagnostic scaffolding for build-latency work — keep call sites coarse (one per
- * plan stage), never per-file.
+ * Wall-clock probes for build-latency work, written to the log at debug with a leading {@code
+ * perf} marker: {@code perf <label> ms=<n>}, or {@code perf <label> key=value …} for an
+ * observation beside the timings. Costs one level check when the log is above debug. Keep call
+ * sites coarse (one per plan stage), never per-file.
  */
 public final class Perf {
 
-    public static final boolean ENABLED = System.getenv("JK_PERF") != null;
-
     private Perf() {}
 
+    /** True when probes are written: the log threshold is debug. */
+    public static boolean enabled() {
+        return Log.debugEnabled();
+    }
+
     public static long start() {
-        return ENABLED ? System.nanoTime() : 0;
+        return enabled() ? System.nanoTime() : 0;
     }
 
     public static void end(String label, long startNanos) {
-        if (!ENABLED) return;
+        if (!enabled()) return;
         long ms = (System.nanoTime() - startNanos) / 1_000_000;
-        System.err.println("[jk-perf] " + label + " " + ms + "ms");
+        Log.debug("perf " + label, "ms", ms);
+    }
+
+    /** An observation beside the timings: {@code perf <label> key=value …}. */
+    public static void note(String label, @Nullable Object... detail) {
+        if (!enabled()) return;
+        Log.debug("perf " + label, detail);
     }
 }

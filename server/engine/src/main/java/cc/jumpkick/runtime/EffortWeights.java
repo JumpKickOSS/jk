@@ -504,16 +504,27 @@ public final class EffortWeights {
                 // Class walls when complete; else method product only if count known (never invent).
                 int methods = stepCounts.getOrDefault(step, stepCounts.getOrDefault(raw, 0));
                 Map<String, Long> walls = loadClassWalls(mod);
-                if (Perf.ENABLED) {
+                if (Perf.enabled()) {
                     long wsum = walls.values().stream()
                             .filter(v -> v != null && v > 0)
                             .mapToLong(Long::longValue)
                             .sum();
-                    System.err.println("[jk-perf] suite-src " + mod + " classWalls=" + walls.size()
-                            + " sumMs=" + wsum + " methods=" + methods + " workers=" + wWorkers
-                            + " ownMs=" + stepOkAvgMillisOwn(metrics, mod, TaskNames.RUN_TESTS)
-                            + " wall1=" + metrics.stepWall1Millis(mod, TaskNames.RUN_TESTS)
-                            + " rate=" + (timings == null ? "none" : timings.perUnit(mod, TaskNames.RUN_TESTS)));
+                    Perf.note(
+                            "suite-src " + mod,
+                            "classWalls",
+                            walls.size(),
+                            "sumMs",
+                            wsum,
+                            "methods",
+                            methods,
+                            "workers",
+                            wWorkers,
+                            "ownMs",
+                            stepOkAvgMillisOwn(metrics, mod, TaskNames.RUN_TESTS),
+                            "wall1",
+                            metrics.stepWall1Millis(mod, TaskNames.RUN_TESTS),
+                            "rate",
+                            timings == null ? "none" : timings.perUnit(mod, TaskNames.RUN_TESTS));
                 }
                 // classesToRun unknown at plan time → empty; TestEffort falls through to walls-own/method path
                 w = TestEffort.weight(mod, walls, List.of(), methods, timings, projectDirs, metrics, wWorkers);

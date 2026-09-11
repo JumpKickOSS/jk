@@ -140,10 +140,7 @@ public final class BuildGraph {
         // try memo first — skip WorkspaceLoader membership walk when structure is warm.
         var memo = PreflightMemo.tryLoadGraph(entryDir);
         if (memo.isPresent()) {
-            if (Perf.ENABLED) {
-                System.err.println("[jk-perf] graph-memo hit units="
-                        + memo.get().topoOrder().size());
-            }
+            Perf.note("graph-memo hit", "units", memo.get().topoOrder().size());
             return memo.get();
         }
         Builder b = new Builder();

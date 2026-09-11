@@ -81,9 +81,7 @@ public final class WorkspacePreflightPhase {
         List<BuildGraph.BuildUnit> units = graph.topoOrder();
         boolean graphMemoHit = PreflightMemo.graphStructureMatches(request.entryDir(), graph);
         PreflightMemo.storeGraph(request.entryDir(), graph);
-        if (Perf.ENABLED && graphMemoHit) {
-            System.err.println("[jk-perf] preflight-graph-memo structure-match units=" + units.size());
-        }
+        if (graphMemoHit) Perf.note("preflight-graph-memo structure-match", "units", units.size());
         listener.onPreflight("graph", 1, 1, units.size() + " modules" + (graphMemoHit ? " (memo)" : ""));
         if (units.isEmpty()) {
             return completed(true, 0, List.of());

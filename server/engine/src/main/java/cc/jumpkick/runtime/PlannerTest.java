@@ -590,12 +590,25 @@ public final class PlannerTest {
             throws Exception {
         String stampKey =
                 TestStamp.computeKey(testSrcs, ctx.require(MAIN_CLASSES), testResDirs, in.lockFile(), testRtCp, extras);
-        if (Perf.ENABLED) {
-            System.err.println("[jk-perf] live-test-stamp " + in.dir() + " key=" + stampKey
-                    + " src=" + testSrcs.size() + " res=" + testResDirs.size()
-                    + " rt=" + testRtCp.size() + " extras=" + extras.size() + " X=" + extras
-                    + " cpFp=" + ClasspathFingerprint.of(testRtCp)
-                    + " mainFp=" + ClasspathFingerprint.entry(ctx.require(MAIN_CLASSES)));
+        if (Perf.enabled()) {
+            Perf.note(
+                    "live-test-stamp " + in.dir(),
+                    "key",
+                    stampKey,
+                    "src",
+                    testSrcs.size(),
+                    "res",
+                    testResDirs.size(),
+                    "rt",
+                    testRtCp.size(),
+                    "extras",
+                    extras.size(),
+                    "X",
+                    extras,
+                    "cpFp",
+                    ClasspathFingerprint.of(testRtCp),
+                    "mainFp",
+                    ClasspathFingerprint.entry(ctx.require(MAIN_CLASSES)));
         }
         return stampKey;
     }

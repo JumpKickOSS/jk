@@ -202,9 +202,7 @@ final class WorkspacePreparePhase {
             var shape = PreflightMemo.tryLoadShape(request.entryDir(), dir, request.skipTests());
             if (shape.isPresent()) {
                 weight = shape.orElseThrow().weight();
-                if (Perf.ENABLED) {
-                    System.err.println("[jk-perf] shape-memo hit " + unit.coord() + " weight=" + weight);
-                }
+                Perf.note("shape-memo hit " + unit.coord(), "weight", weight);
             } else {
                 PreflightMemo.storeShape(
                         request.entryDir(), dir, request.skipTests(), PreflightMemo.shapeOf(plan, weight));

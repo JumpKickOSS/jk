@@ -664,12 +664,23 @@ public final class TestSupport {
                 /* keep the up-front estimate */
             }
         }
-        if (Perf.ENABLED && TaskNames.COMPILE_TEST.equals(taskId)) {
-            System.err.println("[jk-perf] live-compile-test " + outputDir
-                    + " key=" + ActionKey.forJavac(cacheTaskId, request, BuildIdentity.cacheKeyVersion())
-                    + " cp=" + request.classpath().size() + " src=" + sources.size()
-                    + " pp=" + compile.processorPath().size() + " release=" + compile.release()
-                    + " javaHome=" + compile.javaHome() + " out=" + outputDir);
+        if (Perf.enabled() && TaskNames.COMPILE_TEST.equals(taskId)) {
+            Perf.note(
+                    "live-compile-test " + outputDir,
+                    "key",
+                    ActionKey.forJavac(cacheTaskId, request, BuildIdentity.cacheKeyVersion()),
+                    "cp",
+                    request.classpath().size(),
+                    "src",
+                    sources.size(),
+                    "pp",
+                    compile.processorPath().size(),
+                    "release",
+                    compile.release(),
+                    "javaHome",
+                    compile.javaHome(),
+                    "out",
+                    outputDir);
         }
         ctx.label(taskId + ": " + sources.size() + " sources");
         Path gen = generatedSourceDir != null

@@ -43,7 +43,7 @@ public final class Log {
         return Backend.LOGGER.isLoggable(System.Logger.Level.DEBUG);
     }
 
-    public static void debug(String message, Object... detail) {
+    public static void debug(String message, @Nullable Object... detail) {
         log(System.Logger.Level.DEBUG, message, null, detail);
     }
 
@@ -51,11 +51,11 @@ public final class Log {
         log(System.Logger.Level.DEBUG, message, cause);
     }
 
-    public static void info(String message, Object... detail) {
+    public static void info(String message, @Nullable Object... detail) {
         log(System.Logger.Level.INFO, message, null, detail);
     }
 
-    public static void warn(String message, Object... detail) {
+    public static void warn(String message, @Nullable Object... detail) {
         log(System.Logger.Level.WARNING, message, null, detail);
     }
 
@@ -63,7 +63,7 @@ public final class Log {
         log(System.Logger.Level.WARNING, message, cause);
     }
 
-    public static void error(String message, Object... detail) {
+    public static void error(String message, @Nullable Object... detail) {
         log(System.Logger.Level.ERROR, message, null, detail);
     }
 
@@ -75,7 +75,7 @@ public final class Log {
      * Structured detail as a {@code " key=value key=value"} suffix from alternating keys and
      * values; a value with whitespace is quoted so a line stays splittable on spaces.
      */
-    public static String detail(Object... pairs) {
+    public static String detail(@Nullable Object... pairs) {
         if (pairs.length == 0) return "";
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < pairs.length; i += 2) {
@@ -130,7 +130,8 @@ public final class Log {
         root.setLevel(julLevel(level));
     }
 
-    private static void log(System.Logger.Level level, String message, @Nullable Throwable cause, Object... detail) {
+    private static void log(
+            System.Logger.Level level, String message, @Nullable Throwable cause, @Nullable Object... detail) {
         if (!Backend.LOGGER.isLoggable(level)) return;
         String line = detail.length == 0 ? message : message + detail(detail);
         if (cause == null) Backend.LOGGER.log(level, line);

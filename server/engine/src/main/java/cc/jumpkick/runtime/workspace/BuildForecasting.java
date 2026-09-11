@@ -165,15 +165,14 @@ public final class BuildForecasting {
         if (entryDir != null && memoSafe) {
             var memo = PreflightMemo.tryLoadDirty(entryDir, graph, skipTests);
             if (memo.isPresent()) {
-                if (Perf.ENABLED) {
-                    System.err.println("[jk-perf] preflight-memo hit dirty="
-                            + memo.get().dirty().size()
-                            + " restore="
-                            + memo.get().restoreNeeded().size()
-                            + (memo.get().restoreNeeded().isEmpty()
-                                    ? ""
-                                    : " " + memo.get().restoreNeeded()));
-                }
+                Perf.note(
+                        "preflight-memo hit",
+                        "dirty",
+                        memo.get().dirty().size(),
+                        "restore",
+                        memo.get().restoreNeeded().size(),
+                        "restoreDirs",
+                        memo.get().restoreNeeded());
                 // Memo hit: inputs validated. Empty dirty+restore → skip TaskForecaster.
                 // restoreNeeded alone → restore path (no full rebuild forecast).
                 // Non-empty dirty still needs a forecast for ETA step lists; caller walks once.
@@ -200,10 +199,9 @@ public final class BuildForecasting {
                 } else {
                     dirty.add(m.dir());
                 }
-                if (Perf.ENABLED) {
+                if (Perf.enabled()) {
                     for (TaskForecast.Task p : m.steps()) {
-                        if (!p.cached())
-                            System.err.println("[jk-perf] dirty " + m.coord() + " " + p.name() + " (" + p.text() + ")");
+                        if (!p.cached()) Perf.note("dirty " + m.coord() + " " + p.name(), "text", p.text());
                     }
                 }
             }
@@ -307,10 +305,10 @@ public final class BuildForecasting {
                 && !SessionContext.current().config().forceOr(false)) {
             var memo = PreflightMemo.tryLoadDirty(entryDir, graph, skipTests);
             if (memo.isPresent() && memo.get().dirty().isEmpty()) {
-                if (Perf.ENABLED) {
-                    System.err.println("[jk-perf] explain preflight-memo hit fully-cached units="
-                            + graph.topoOrder().size());
-                }
+                Perf.note(
+                        "explain preflight-memo hit fully-cached",
+                        "units",
+                        graph.topoOrder().size());
                 return fullyCachedExplainPlan(graph);
             }
         }

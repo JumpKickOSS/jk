@@ -525,13 +525,26 @@ final class ModuleForecast {
                     layout.generatedSourcesDir("annotations", "test"),
                     WorkerEnv.forModule(project.build().env(), layout.moduleRoot(), layout.moduleTargetDir()));
             Perf.end("  predict-compile-test", tt);
-            if (Perf.ENABLED) {
-                System.err.println("[jk-perf] forecast-compile-test " + dir
-                        + " key=" + pred.actionKey() + " outcome=" + pred.outcome() + " reason=" + pred.reason()
-                        + " cp=" + baseCp.size() + " src=" + testSrc.size()
-                        + " pp=" + processorCp.size() + " release=" + release
-                        + " javaHome=" + javaHome + " out=" + testOut);
-            }
+            Perf.note(
+                    "forecast-compile-test " + dir,
+                    "key",
+                    pred.actionKey(),
+                    "outcome",
+                    pred.outcome(),
+                    "reason",
+                    pred.reason(),
+                    "cp",
+                    baseCp.size(),
+                    "src",
+                    testSrc.size(),
+                    "pp",
+                    processorCp.size(),
+                    "release",
+                    release,
+                    "javaHome",
+                    javaHome,
+                    "out",
+                    testOut);
             TaskForecast.Task p = TaskForecaster.compileStep(TaskNames.COMPILE_TEST, pred, false, req);
             steps.add(p);
             if (!p.cached()) testDirty = true;
@@ -579,10 +592,7 @@ final class ModuleForecast {
             // The same key with a red record is the one shape a live run never skips:
             // say so, or the ETA reads "only the suite is dirty" as stamp drift.
             boolean red = marker.isPresent() && !hit;
-            if (Perf.ENABLED) {
-                System.err.println(
-                        "[jk-perf] forecast-test-stamp " + dir + " key=" + stampKey + " hit=" + hit + " red=" + red);
-            }
+            Perf.note("forecast-test-stamp " + dir, "key", stampKey, "hit", hit, "red", red);
             steps.add(
                     hit
                             ? new TaskForecast.Task(TaskNames.RUN_TESTS, TaskForecast.Status.CACHED, "· " + tests, null)
