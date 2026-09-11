@@ -15,6 +15,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -25,7 +26,7 @@ public final class ProjectImport {
 
     private ProjectImport() {}
 
-    public record Outcome(int exit, int warnings, String error, List<Path> wrote) {
+    public record Outcome(int exit, int warnings, @Nullable String error, List<Path> wrote) {
         public Outcome {
             wrote = wrote == null ? List.of() : List.copyOf(wrote);
         }
@@ -69,7 +70,7 @@ public final class ProjectImport {
             Files.writeString(out, JkBuildRenderer.render(root), StandardCharsets.UTF_8);
             wrote.add(out);
 
-            Path effectiveBaseDir = baseDir != null ? baseDir : source.getParent();
+            Path effectiveBaseDir = baseDir != null ? baseDir : Objects.requireNonNull(source.getParent());
             for (Map.Entry<String, JkBuild> e : modules.entrySet()) {
                 Path moduleJkBuild = effectiveBaseDir.resolve(e.getKey()).resolve(ManifestPaths.MANIFEST);
                 if (Files.exists(moduleJkBuild) && !force) {

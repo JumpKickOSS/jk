@@ -9,6 +9,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 import org.tomlj.Toml;
 import org.tomlj.TomlArray;
 import org.tomlj.TomlParseResult;
@@ -187,7 +188,7 @@ public final class GradleVersionCatalog {
         }
     }
 
-    private static String coordFromTable(
+    private static @Nullable String coordFromTable(
             TomlTable lib, Map<String, String> versions, String accessorPath, List<String> notes) {
         String group;
         String name;
@@ -233,7 +234,7 @@ public final class GradleVersionCatalog {
     }
 
     /** A version value: a plain string, or a rich {@code {strictly|require|prefer}} table. */
-    private static String readVersion(Object value) {
+    private static @Nullable String readVersion(@Nullable Object value) {
         if (value instanceof String s) {
             return s.isBlank() ? null : s.trim();
         }

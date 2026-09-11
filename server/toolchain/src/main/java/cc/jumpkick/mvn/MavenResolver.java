@@ -48,7 +48,7 @@ public final class MavenResolver {
         return new ToolDistribution(BuildTool.MAVEN, v, uri, "zip");
     }
 
-    static ToolDistribution fromWrapperProperties(Path file) throws IOException {
+    static @Nullable ToolDistribution fromWrapperProperties(Path file) throws IOException {
         Properties props = new Properties();
         try (var in = Files.newInputStream(file)) {
             props.load(in);

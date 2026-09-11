@@ -46,7 +46,7 @@ public final class GradleResolver {
         return new ToolDistribution(BuildTool.GRADLE, v, uri, "zip");
     }
 
-    static ToolDistribution fromWrapperProperties(Path file) throws IOException {
+    static @Nullable ToolDistribution fromWrapperProperties(Path file) throws IOException {
         Properties props = new Properties();
         try (var in = Files.newInputStream(file)) {
             props.load(in);

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.mvn;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -113,10 +114,9 @@ class PomImporterTest {
 
         PomImporter.WorkspaceImportResult result = PomImporter.importWorkspace(root.resolve("pom.xml"));
         assertThat(result.root().isWorkspaceRoot()).isTrue();
-        assertThat(result.root().workspace().modules()).containsExactly("lib", "app");
+        assertThat(requireNonNull(result.root().workspace()).modules()).containsExactly("lib", "app");
 
-        JkBuild app = result.modules().get("app");
-        assertThat(app).isNotNull();
+        JkBuild app = requireNonNull(result.modules().get("app"));
 
         List<Dependency> main = app.dependencies().of(Scope.MAIN);
         assertThat(main).hasSize(1);

@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.TreeMap;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Renders a {@link JkBuild} as name-as-key {@code jk.toml}. Dep keys within a scope are alphabetized.
@@ -62,12 +63,16 @@ public final class JkBuildRenderer {
             sb.append("jdk      = ").append(quote(p.jdk())).append('\n');
         }
         if (p.isKotlin()) {
-            sb.append("kotlin   = ").append(quote(versionLiteral(p.kotlin()))).append('\n');
+            sb.append("kotlin   = ")
+                    .append(quote(versionLiteral(Objects.requireNonNull(p.kotlin()))))
+                    .append('\n');
         } else if (p.java() > 0) {
             sb.append("java     = ").append(p.java()).append('\n');
         }
         if (p.isScala()) {
-            sb.append("scala    = ").append(quote(versionLiteral(p.scala()))).append('\n');
+            sb.append("scala    = ")
+                    .append(quote(versionLiteral(Objects.requireNonNull(p.scala()))))
+                    .append('\n');
         }
         if (!p.m2integration() || !p.m2install()) {
             sb.append("\n[m2]\n");
@@ -110,7 +115,7 @@ public final class JkBuildRenderer {
     }
 
     /** {@code [application]} table — its presence alone marks the project as an application. */
-    private static void renderApplication(StringBuilder sb, JkBuild.Application app) {
+    private static void renderApplication(StringBuilder sb, JkBuild.@Nullable Application app) {
         if (app == null) return;
         sb.append("\n[application]\n");
         if (app.main() != null)
@@ -123,7 +128,7 @@ public final class JkBuildRenderer {
     }
 
     /** {@code [native]} table — {@code enabled} defaults true when the table is present. */
-    private static void renderNative(StringBuilder sb, JkBuild.NativeConfig nc) {
+    private static void renderNative(StringBuilder sb, JkBuild.@Nullable NativeConfig nc) {
         if (nc == null) return;
         sb.append("\n[native]\n");
         // Omit enabled when SUPPORTED (table presence == enabled true). Emit false / "always".
@@ -165,7 +170,7 @@ public final class JkBuildRenderer {
         sb.append('\n');
         sb.append("[workspace]\n");
         sb.append("modules = [");
-        List<String> modules = jkBuild.workspace().modules();
+        List<String> modules = Objects.requireNonNull(jkBuild.workspace()).modules();
         for (int i = 0; i < modules.size(); i++) {
             if (i > 0) sb.append(", ");
             sb.append(quote(modules.get(i)));
@@ -231,7 +236,7 @@ public final class JkBuildRenderer {
         if (d.isGit()) {
             // Pure discovery: JkBuildParser rejects `group`/`name` alongside `git` — the
             // coordinate and version always come from the cloned repo's own jk.toml.
-            GitSource s = d.gitSource();
+            GitSource s = Objects.requireNonNull(d.gitSource());
             sb.append("git = ").append(quote(s.originalUrl()));
             switch (s.ref()) {
                 case GitRefSpec.Tag t -> sb.append(", tag = ").append(quote(t.name()));

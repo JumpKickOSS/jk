@@ -6,6 +6,7 @@ import java.util.Arrays;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import org.jspecify.annotations.Nullable;
 
 /**
  * External tools for {@code jk mvn}/{@code jk gradle} passthroughs: cache slug and bin names.
@@ -49,7 +50,7 @@ public enum BuildTool {
      * prints, and the directories the registry writes are all the same list. A fourth tool is an
      * enum constant.
      */
-    public static Optional<BuildTool> bySlug(String slug) {
+    public static Optional<BuildTool> bySlug(@Nullable String slug) {
         if (slug == null) return Optional.empty();
         String s = slug.trim().toLowerCase(Locale.ROOT);
         return Arrays.stream(values()).filter(t -> t.slug.equals(s)).findFirst();

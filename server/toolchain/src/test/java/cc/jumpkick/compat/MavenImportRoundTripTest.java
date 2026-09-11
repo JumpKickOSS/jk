@@ -9,6 +9,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.mvn.PomImporter;
 import java.nio.charset.StandardCharsets;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -106,7 +107,7 @@ class MavenImportRoundTripTest {
         }
     }
 
-    private static String pom(String scope, String classifier, String type) {
+    private static String pom(String scope, @Nullable String classifier, @Nullable String type) {
         StringBuilder dep = new StringBuilder("""
                     <dependency>
                       <groupId>com.acme</groupId>

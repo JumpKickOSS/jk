@@ -23,6 +23,7 @@ import java.util.jar.Attributes;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 import java.util.zip.ZipEntry;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -202,7 +203,8 @@ class ToolResolverTest {
         return new ToolResolver(RepoGroup.of(new MavenRepo("central", http.base(), new Http(), cas)));
     }
 
-    private void servePomAndJar(String group, String artifact, String version, String mainClass) throws IOException {
+    private void servePomAndJar(String group, String artifact, String version, @Nullable String mainClass)
+            throws IOException {
         servePom(group, artifact, version, "");
         serveJar(group, artifact, version, mainClass);
     }
@@ -232,7 +234,8 @@ class ToolResolverTest {
         http.served().put(path, pom.getBytes());
     }
 
-    private void serveJar(String group, String artifact, String version, String mainClass) throws IOException {
+    private void serveJar(String group, String artifact, String version, @Nullable String mainClass)
+            throws IOException {
         Manifest mf = new Manifest();
         mf.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
         if (mainClass != null) {

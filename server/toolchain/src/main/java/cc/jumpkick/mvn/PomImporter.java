@@ -16,6 +16,7 @@ import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.model.Workspace;
 import cc.jumpkick.repo.Pom;
+import cc.jumpkick.repo.Pom.Parent;
 import cc.jumpkick.repo.PomParseException;
 import cc.jumpkick.repo.PomParser;
 import java.io.IOException;
@@ -31,6 +32,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
@@ -64,7 +66,7 @@ public final class PomImporter {
         return importFromBytes(xml, null);
     }
 
-    private static Result importFromBytes(byte[] xml, Pom.Parent suppressParentMatching) {
+    private static Result importFromBytes(byte[] xml, @Nullable Parent suppressParentMatching) {
         Document doc = PomParser.parseXml(xml);
         Pom pom = PomParser.parse(doc);
         ImportReport.Builder report = ImportReport.builder();
@@ -143,7 +145,7 @@ public final class PomImporter {
                 .build();
 
         Map<String, JkBuild> moduleBuilds = new LinkedHashMap<>();
-        Path projectDir = rootPom.toAbsolutePath().getParent();
+        Path projectDir = Objects.requireNonNull(rootPom.toAbsolutePath().getParent());
         for (String module : modules) {
             Path childPom = projectDir.resolve(module).resolve("pom.xml");
             if (!Files.exists(childPom)) {
@@ -251,7 +253,7 @@ public final class PomImporter {
     // --- project ------------------------------------------------------------
 
     private static Project mapProject(
-            Pom pom, Document doc, ImportReport.Builder report, Pom.Parent suppressParentMatching) {
+            Pom pom, Document doc, ImportReport.Builder report, @Nullable Parent suppressParentMatching) {
         String group = pom.groupId();
         String version = pom.version();
         if (pom.parent() != null) {
@@ -299,7 +301,7 @@ public final class PomImporter {
      * KotlinResolver#DEFAULT_VERSION} (pinned later by {@code jk lock}). Returns {@code null} when
      * the plugin is absent (a Java project).
      */
-    private static VersionSelector kotlinFromPom(Document doc, ImportReport.Builder report) {
+    private static @Nullable VersionSelector kotlinFromPom(Document doc, ImportReport.Builder report) {
         Element root = doc.getDocumentElement();
         Element properties = childElement(root, "properties");
         String propVersion = null;
@@ -340,7 +342,7 @@ public final class PomImporter {
      * (jar/assembly/shade/exec plugin configs), or a {@code start-class}/{@code
      * exec.mainClass}/{@code main.class} property.
      */
-    private static String mainClassFromPom(Document doc) {
+    private static @Nullable String mainClassFromPom(Document doc) {
         NodeList nodes = doc.getElementsByTagName("mainClass");
         for (int i = 0; i < nodes.getLength(); i++) {
             String v = nodes.item(i).getTextContent();
@@ -357,6 +359,7 @@ public final class PomImporter {
     }
 
     private static Optional<Integer> parseInt(@Nullable String s) {
+        if (s == null) return Optional.empty();
         try {
             return Optional.of(Integer.parseInt(s.trim()));
         } catch (NumberFormatException e) {
@@ -495,7 +498,7 @@ public final class PomImporter {
         }
     }
 
-    private static Scope mapScope(String mavenScope) {
+    private static Scope mapScope(@Nullable String mavenScope) {
         if (mavenScope == null || mavenScope.isBlank() || "compile".equalsIgnoreCase(mavenScope)) {
             return Scope.MAIN;
         }
@@ -679,7 +682,7 @@ public final class PomImporter {
         report.warning(summary.toString());
     }
 
-    private static String describeActivation(Element activation) {
+    private static @Nullable String describeActivation(@Nullable Element activation) {
         if (activation == null) return null;
         List<String> kinds = new ArrayList<>();
         if ("true".equalsIgnoreCase(childText(activation, "activeByDefault"))) {

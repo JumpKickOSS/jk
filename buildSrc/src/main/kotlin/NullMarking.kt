@@ -20,6 +20,7 @@ object NullMarking {
             "shared/toolchain-jdk/src/main/java",
             "server/io/src/main/java",
             "server/resolver/src/main/java",
+            "server/toolchain/src/main/java",
             "clients/cli/src/main/java",
             "shared/guard-api/src/main/java",
             "server/guard/src/main/java",
@@ -62,7 +63,6 @@ object NullMarking {
      */
     val unenforcedModules: Map<String, String> =
         mapOf(
-            "server/toolchain" to "41 findings in production, 19 in the suite; waits on toolchain-jdk and resolver",
             "shared/dynamic-surface" to "30 findings in production, 1 in the suite",
             "clients/cli-terminal" to "59 findings in production, none in the suite",
             "clients/intellij" to

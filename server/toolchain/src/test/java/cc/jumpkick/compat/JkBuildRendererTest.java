@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compat;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
@@ -271,7 +272,7 @@ class JkBuildRendererTest {
 
         JkBuild reparsed = JkBuildParser.parse(out);
         assertThat(reparsed.isWorkspaceRoot()).isTrue();
-        assertThat(reparsed.workspace().modules()).containsExactly("core", "app");
+        assertThat(requireNonNull(reparsed.workspace()).modules()).containsExactly("core", "app");
     }
 
     @Test

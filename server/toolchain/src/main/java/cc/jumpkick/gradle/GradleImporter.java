@@ -23,6 +23,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -61,7 +62,10 @@ public final class GradleImporter {
             Pattern.compile("id\\s*\\(\\s*[\"']org\\.jetbrains\\.kotlin[^\"']*[\"']\\s*\\)\\s*version\\s*" + STR);
 
     /** One installed plugin's Gradle-import mapping: which table + config key a plugin id feeds. */
-    private record PluginImportRule(String manifestId, String versionTo, String missingVersionWarning) {}
+    private record PluginImportRule(
+            String manifestId,
+            @Nullable String versionTo,
+            @Nullable String missingVersionWarning) {}
 
     /** Gradle plugin id → import rule, from every installed manifest's [[import.gradle-plugin]]. */
     private static Map<String, PluginImportRule> pluginImportRules() {
@@ -89,13 +93,15 @@ public final class GradleImporter {
         for (Map.Entry<String, PluginImportRule> e : rules.entrySet()) {
             if (!pluginsBody.contains(e.getKey())) continue;
             PluginImportRule rule = e.getValue();
-            if (rule.versionTo() == null) continue; // recognition-only
+            String versionTo = rule.versionTo();
+            if (versionTo == null) continue; // recognition-only
             Pattern versionPattern = Pattern.compile(
                     "id\\s*\\(?\\s*[\"']" + Pattern.quote(e.getKey()) + "[\"']\\s*\\)?\\s*version\\s*" + STR);
             Matcher m = versionPattern.matcher(pluginsBody);
             if (m.find()) {
                 out.add(new PluginConfig(
-                        rule.manifestId(), Map.of(rule.versionTo(), firstNonNull(m.group(1), m.group(2)))));
+                        rule.manifestId(),
+                        Map.of(versionTo, Objects.requireNonNull(firstNonNull(m.group(1), m.group(2))))));
             } else if (rule.missingVersionWarning() != null) {
                 report.warning(rule.missingVersionWarning());
             }
@@ -144,7 +150,7 @@ public final class GradleImporter {
     public static Result importFrom(Path script) throws IOException {
         String text = Files.readString(script);
         String defaultArtifact = defaultArtifactFor(script);
-        Path projectDir = script.toAbsolutePath().getParent();
+        Path projectDir = Objects.requireNonNull(script.toAbsolutePath().getParent());
         GradleVersionCatalog catalog =
                 GradleVersionCatalog.forProject(projectDir).orElse(null);
         return importFromString(text, defaultArtifact, catalog);
@@ -154,7 +160,7 @@ public final class GradleImporter {
         return importFromString(text, defaultArtifact, null);
     }
 
-    public static Result importFromString(String text, String defaultArtifact, GradleVersionCatalog catalog) {
+    public static Result importFromString(String text, String defaultArtifact, @Nullable GradleVersionCatalog catalog) {
         String stripped = stripComments(text);
         ImportReport.Builder report = ImportReport.builder();
         // Surface catalog parse notes (unresolved version.ref, …) before mapping deps.
@@ -275,7 +281,8 @@ public final class GradleImporter {
     }
 
     /** Resolve common Gradle property expressions used in manifest values; null if unknown. */
-    private static String resolveGradleExpr(String expr, String group, String artifact, String version) {
+    private static @Nullable String resolveGradleExpr(
+            @Nullable String expr, String group, String artifact, String version) {
         if (expr == null) return null;
         String lower = expr.toLowerCase(Locale.ROOT);
         if (lower.endsWith("version")) return version;
@@ -291,14 +298,14 @@ public final class GradleImporter {
      * KotlinResolver#DEFAULT_VERSION} (pinned later by {@code jk lock}). Returns {@code null} for a
      * non-Kotlin (Java) project.
      */
-    private static VersionSelector detectKotlinVersion(String pluginsBody, ImportReport.Builder report) {
+    private static @Nullable VersionSelector detectKotlinVersion(String pluginsBody, ImportReport.Builder report) {
         Matcher m = KOTLIN_PLUGIN_VERSION.matcher(pluginsBody);
         if (m.find()) {
-            return VersionSelector.parseFloating(firstNonNull(m.group(3), m.group(4)));
+            return VersionSelector.parseFloating(Objects.requireNonNull(firstNonNull(m.group(3), m.group(4))));
         }
         Matcher mid = KOTLIN_ID_VERSION.matcher(pluginsBody);
         if (mid.find()) {
-            return VersionSelector.parseFloating(firstNonNull(mid.group(1), mid.group(2)));
+            return VersionSelector.parseFloating(Objects.requireNonNull(firstNonNull(mid.group(1), mid.group(2))));
         }
         boolean kotlinApplied = PLUGIN_KOTLIN.matcher(pluginsBody).find()
                 || KOTLIN_ID.matcher(pluginsBody).find();
@@ -318,7 +325,7 @@ public final class GradleImporter {
      * mainClass = "X"} (Kotlin DSL) or a top-level {@code mainClassName = "X"} (Groovy). Returns
      * {@code null} when none is declared.
      */
-    private static String detectMainClass(String text) {
+    private static @Nullable String detectMainClass(String text) {
         String appBody = extractBlock(text, "application").orElse(null);
         if (appBody != null) {
             Matcher m = APPLICATION_MAIN_CLASS.matcher(appBody);
@@ -351,7 +358,7 @@ public final class GradleImporter {
     // --- dependency block ---------------------------------------------------
 
     private static Map<Scope, List<Dependency>> parseDependencies(
-            String text, GradleVersionCatalog catalog, ImportReport.Builder report) {
+            String text, @Nullable GradleVersionCatalog catalog, ImportReport.Builder report) {
         Map<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
         String body = extractBlock(text, "dependencies").orElse(null);
         if (body == null) return byScope;
@@ -402,7 +409,7 @@ public final class GradleImporter {
                 Matcher platform =
                         Pattern.compile("platform\\s*\\(\\s*" + STR + "\\s*\\)").matcher(paren);
                 if (platform.find()) {
-                    String coord = firstNonNull(platform.group(1), platform.group(2));
+                    String coord = Objects.requireNonNull(firstNonNull(platform.group(1), platform.group(2)));
                     addDependency(byScope, Scope.PLATFORM, coord, report);
                     continue;
                 }
@@ -432,7 +439,7 @@ public final class GradleImporter {
                 }
                 Matcher bareString = Pattern.compile("^\\s*" + STR + "\\s*$").matcher(paren);
                 if (bareString.find()) {
-                    String coord = firstNonNull(bareString.group(1), bareString.group(2));
+                    String coord = Objects.requireNonNull(firstNonNull(bareString.group(1), bareString.group(2)));
                     addDependency(byScope, scope, coord, report);
                     continue;
                 }
@@ -522,7 +529,7 @@ public final class GradleImporter {
             String accessor,
             Scope scope,
             Map<Scope, List<Dependency>> byScope,
-            GradleVersionCatalog catalog,
+            @Nullable GradleVersionCatalog catalog,
             ImportReport.Builder report) {
         if (catalog == null) {
             report.error("dependency `"
@@ -578,7 +585,7 @@ public final class GradleImporter {
         addDependency(byScope, scope, coord.get(), report);
     }
 
-    private static Scope mapConfiguration(String configuration) {
+    private static @Nullable Scope mapConfiguration(String configuration) {
         return switch (configuration) {
             case "implementation", "api", "compile" -> Scope.MAIN;
             case "runtimeOnly", "runtime" -> Scope.RUNTIME;
@@ -729,6 +736,7 @@ public final class GradleImporter {
     }
 
     private static Optional<Integer> parseInt(@Nullable String s) {
+        if (s == null) return Optional.empty();
         try {
             return Optional.of(Integer.parseInt(s.trim()));
         } catch (NumberFormatException e) {
@@ -763,7 +771,7 @@ public final class GradleImporter {
         return Optional.empty();
     }
 
-    private static String firstNonNull(String... values) {
+    private static @Nullable String firstNonNull(@Nullable String... values) {
         for (String v : values) {
             if (v != null && !v.isBlank()) return v;
         }
