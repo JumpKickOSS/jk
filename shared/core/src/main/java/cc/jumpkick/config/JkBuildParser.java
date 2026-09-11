@@ -366,6 +366,7 @@ public final class JkBuildParser {
                     build.lint(),
                     kotlinPlugins,
                     build.kspOptions(),
+                    build.javac(),
                     build.extraSrc(),
                     build.testExtraSrc(),
                     build.fixtures(),
@@ -376,6 +377,8 @@ public final class JkBuildParser {
                     build.testEnv(),
                     build.devSidecars());
         }
+        // [javac] is a compile input: compile-main and compile-test both lower it into javac's argv.
+        build = build.withJavac(ManifestBuild.parseJavac(result));
         // [test] is its own top-level table (test settings are not build inputs), but it folds into
         // the Build block, which already carries the other test-scoped setting, test-plugin-jars.
         List<JkBuild.TestEnvDecl> testEnv = ManifestBuild.parseTestEnv(result);
@@ -386,6 +389,7 @@ public final class JkBuildParser {
                     build.lint(),
                     build.kotlinPlugins(),
                     build.kspOptions(),
+                    build.javac(),
                     build.extraSrc(),
                     build.testExtraSrc(),
                     build.fixtures(),
@@ -405,6 +409,7 @@ public final class JkBuildParser {
                     build.lint(),
                     build.kotlinPlugins(),
                     build.kspOptions(),
+                    build.javac(),
                     build.extraSrc(),
                     build.testExtraSrc(),
                     build.fixtures(),

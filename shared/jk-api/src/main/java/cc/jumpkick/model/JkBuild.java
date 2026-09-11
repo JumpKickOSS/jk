@@ -700,8 +700,8 @@ public record JkBuild(
 
     /**
      * Optional {@code [build]} block: order-only deps, test plugin jars, lint, Kotlin plugins,
-     * KSP options, extra source roots, and per-module test worker pin — never on a classpath or
-     * lockfile.
+     * KSP options, javac plugins, extra source roots, and per-module test worker pin — never on a
+     * classpath or lockfile.
      */
     public record Build(
             List<String> orderAfter,
@@ -709,6 +709,8 @@ public record JkBuild(
             boolean lint,
             List<KotlinPluginDecl> kotlinPlugins,
             List<String> kspOptions,
+            /** {@code [javac]}: the javac plugins compile-main and compile-test invoke, and verbatim args. */
+            JavacConfig javac,
             List<String> extraSrc,
             /**
              * {@code [test] extra-src}: extra module-relative source roots (or single files) compiled
@@ -769,6 +771,7 @@ public record JkBuild(
                 true,
                 List.of(),
                 List.of(),
+                JavacConfig.EMPTY,
                 List.of(),
                 List.of(),
                 null,
@@ -784,6 +787,7 @@ public record JkBuild(
             testPluginJars = testPluginJars == null ? List.of() : List.copyOf(testPluginJars);
             kotlinPlugins = kotlinPlugins == null ? List.of() : List.copyOf(kotlinPlugins);
             kspOptions = kspOptions == null ? List.of() : List.copyOf(kspOptions);
+            javac = javac == null ? JavacConfig.EMPTY : javac;
             extraSrc = extraSrc == null ? List.of() : List.copyOf(new LinkedHashSet<>(extraSrc));
             testExtraSrc = testExtraSrc == null ? List.of() : List.copyOf(testExtraSrc);
             if (fixtures != null && fixtures.isBlank()) fixtures = null;
@@ -811,6 +815,7 @@ public record JkBuild(
                     lint,
                     kotlinPlugins,
                     kspOptions,
+                    javac,
                     all,
                     testExtraSrc,
                     fixtures,
@@ -829,12 +834,33 @@ public record JkBuild(
                     lint,
                     kotlinPlugins,
                     kspOptions,
+                    javac,
                     extraSrc,
                     testExtraSrc,
                     fixtures,
                     testWorkers,
                     testSerialTags,
                     policy == null ? PlatformPolicy.ENFORCED : policy,
+                    unmappedPolicy,
+                    testEnv,
+                    devSidecars);
+        }
+
+        /** The same block with {@code [javac]} set. */
+        public Build withJavac(JavacConfig config) {
+            return new Build(
+                    orderAfter,
+                    testPluginJars,
+                    lint,
+                    kotlinPlugins,
+                    kspOptions,
+                    config,
+                    extraSrc,
+                    testExtraSrc,
+                    fixtures,
+                    testWorkers,
+                    testSerialTags,
+                    platformPolicy,
                     unmappedPolicy,
                     testEnv,
                     devSidecars);
@@ -950,6 +976,28 @@ public record JkBuild(
          * silently emptied is how a build authenticates anonymously and calls it success.
          */
         record Set(String name, String value) implements TestEnvDecl {}
+    }
+
+    /**
+     * {@code [javac]}: {@code plugins} maps a javac plugin's registered name (the {@code -Xplugin:}
+     * argument, case-sensitive: {@code ErrorProne}) to its options, in manifest order; {@code args}
+     * are verbatim javac arguments appended after every plugin. The plugin jars themselves come
+     * from {@code [processor-dependencies]} — javac looks plugins up on the processor path.
+     */
+    public record JavacConfig(Map<String, List<String>> plugins, List<String> args) {
+
+        public static final JavacConfig EMPTY = new JavacConfig(Map.of(), List.of());
+
+        public JavacConfig {
+            Map<String, List<String>> ordered = new LinkedHashMap<>();
+            if (plugins != null) plugins.forEach((name, options) -> ordered.put(name, List.copyOf(options)));
+            plugins = Collections.unmodifiableMap(ordered);
+            args = args == null ? List.of() : List.copyOf(args);
+        }
+
+        public boolean isEmpty() {
+            return plugins.isEmpty() && args.isEmpty();
+        }
     }
 
     public record KotlinPluginDecl(String id, String coordinate, List<String> options) {

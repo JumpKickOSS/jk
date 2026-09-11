@@ -70,6 +70,7 @@ public final class ManifestBuild {
                 "config",
                 "forge",
                 "kotlin-plugins",
+                "javac",
                 "m2",
                 "install",
                 "guards"));
@@ -286,6 +287,7 @@ public final class ManifestBuild {
                     true,
                     List.of(),
                     List.of(),
+                    JkBuild.JavacConfig.EMPTY,
                     List.of(),
                     List.of(),
                     null,
@@ -306,6 +308,7 @@ public final class ManifestBuild {
                 s.lint,
                 List.of(),
                 s.kspOptions,
+                JkBuild.JavacConfig.EMPTY,
                 s.extraSrc,
                 List.copyOf(s.testExtraSrc),
                 s.fixtures,
@@ -698,6 +701,77 @@ public final class ManifestBuild {
             return String.valueOf(value);
         }
         throw new JkBuildParseException(where + " must be a string (or a bare boolean/number)");
+    }
+
+    /** The keys {@code [javac]} may carry. */
+    public static final List<String> JAVAC_KEYS = List.of("plugins", "args");
+
+    /** The keys one {@code [javac.plugins.<Name>]} table may carry. */
+    public static final List<String> JAVAC_PLUGIN_KEYS = List.of("options");
+
+    /**
+     * {@code [javac]} — which javac plugins compile-main and compile-test invoke, and verbatim args:
+     *
+     * <pre>
+     * [javac]
+     * plugins = { ErrorProne = { options = ["-Xep:NullAway:ERROR"] } }
+     * args    = ["-Xlint:all"]
+     * </pre>
+     *
+     * A plugin's key is its registered javac name, passed through as {@code -Xplugin:<key>}; its
+     * jar is a {@code [processor-dependencies]} entry. Unknown keys fail the parse.
+     */
+    static JkBuild.JavacConfig parseJavac(TomlTable root) {
+        Object raw = root.get(List.of("javac"));
+        if (raw == null) return JkBuild.JavacConfig.EMPTY;
+        if (!(raw instanceof TomlTable javac)) {
+            throw new JkBuildParseException(
+                    "[javac] must be a table: [javac] plugins = { ErrorProne = { options = […] } }");
+        }
+        for (String key : javac.keySet()) {
+            if (!JAVAC_KEYS.contains(key)) {
+                throw new JkBuildParseException(
+                        "[javac] unknown key `" + key + "` — expected one of: " + String.join(", ", JAVAC_KEYS));
+            }
+        }
+        Map<String, List<String>> plugins = new LinkedHashMap<>();
+        Object rawPlugins = javac.get(List.of("plugins"));
+        if (rawPlugins != null) {
+            if (!(rawPlugins instanceof TomlTable table)) {
+                throw new JkBuildParseException(
+                        "[javac].plugins must be a table keyed by plugin name: plugins = { ErrorProne = { options ="
+                                + " […] } }");
+            }
+            for (String name : table.keySet()) {
+                String where = "[javac.plugins." + name + "]";
+                if (!(table.get(List.of(name)) instanceof TomlTable plugin)) {
+                    throw new JkBuildParseException(where + " must be a table: { options = […] }");
+                }
+                for (String key : plugin.keySet()) {
+                    if (!JAVAC_PLUGIN_KEYS.contains(key)) {
+                        throw new JkBuildParseException(where + " unknown key `" + key + "` — expected one of: "
+                                + String.join(", ", JAVAC_PLUGIN_KEYS));
+                    }
+                }
+                plugins.put(name, stringArray(plugin.get(List.of("options")), where + ".options"));
+            }
+        }
+        List<String> args = stringArray(javac.get(List.of("args")), "[javac].args");
+        return new JkBuild.JavacConfig(plugins, args);
+    }
+
+    /** {@code raw} as an array of strings; absent is empty. */
+    private static List<String> stringArray(@Nullable Object raw, String where) {
+        if (raw == null) return List.of();
+        if (!(raw instanceof TomlArray arr)) throw new JkBuildParseException(where + " must be an array of strings");
+        List<String> out = new ArrayList<>();
+        for (int i = 0; i < arr.size(); i++) {
+            if (!(arr.get(i) instanceof String s)) {
+                throw new JkBuildParseException(where + " must be an array of strings");
+            }
+            out.add(s);
+        }
+        return out;
     }
 
     /**

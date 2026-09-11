@@ -60,6 +60,24 @@ class JkTomlSchemaTest {
     }
 
     @Test
+    void javac_properties_are_exactly_the_parser_s_javac_keys() throws Exception {
+        String schema = Files.readString(SCHEMA);
+        String javac = Jsonl.nested(Jsonl.nested(schema, "properties"), "javac");
+        assertThat(keysOf(Jsonl.nested(javac, "properties")))
+                .containsExactlyInAnyOrderElementsOf(ManifestBuild.JAVAC_KEYS);
+        String plugin =
+                Jsonl.nested(Jsonl.nested(Jsonl.nested(javac, "properties"), "plugins"), "additionalProperties");
+        assertThat(keysOf(Jsonl.nested(plugin, "properties")))
+                .containsExactlyInAnyOrderElementsOf(ManifestBuild.JAVAC_PLUGIN_KEYS);
+        assertThat(Jsonl.bool(plugin, "additionalProperties", true))
+                .as("an unknown key under [javac.plugins.<Name>] is what an editor should flag")
+                .isFalse();
+        // the table's own additionalProperties is its last one; plugins' nested one comes first
+        int last = javac.lastIndexOf("\"additionalProperties\"");
+        assertThat(javac.substring(last).replaceAll("\\s", "")).startsWith("\"additionalProperties\":false");
+    }
+
+    @Test
     void the_schema_names_the_dependency_scope_tables_the_parser_reads() throws Exception {
         String schema = Files.readString(SCHEMA);
         for (Scope s : Scope.values()) {

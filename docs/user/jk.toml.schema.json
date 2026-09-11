@@ -269,6 +269,25 @@
       "type": "object",
       "description": "[kotlin-plugins] table; keys are documented in docs/user."
     },
+    "javac": {
+      "type": "object",
+      "description": "[javac] table: the javac plugins compile-main and compile-test invoke, and verbatim javac args. A compile input — part of the compile action key.",
+      "properties": {
+        "plugins": {
+          "type": "object",
+          "description": "One table per plugin, keyed by the plugin's registered javac name (case-sensitive; passed as -Xplugin:<name>). The jar is a [processor-dependencies] entry.",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "options": { "type": "array", "items": { "type": "string" }, "description": "Options handed to the plugin after its name." }
+            },
+            "additionalProperties": false
+          }
+        },
+        "args": { "type": "array", "items": { "type": "string" }, "description": "Verbatim javac arguments, appended after every plugin." }
+      },
+      "additionalProperties": false
+    },
     "m2": {
       "type": "object",
       "description": "[m2] table; keys are documented in docs/user."
