@@ -17,7 +17,7 @@ public final class ExportTool implements McpTool {
         return new Spec(
                 "jk_export",
                 "Export the full model as maven | gradle | bom files (same generators as jk export). "
-                        + "Returns written paths; read them yourself. IDE files: jk ide (CLI).",
+                        + "Returns written paths; read them yourself. IDE files: jk_ide.",
                 McpSchemas.object(
                         Map.of(
                                 "format",

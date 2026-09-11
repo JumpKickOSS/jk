@@ -10,7 +10,9 @@ jk ide --print-model         # ide-model JSON on stdout (no writes)
 
 `jk ide` / `jk idea` / `jk vscode` always refresh `.bsp/jk.json` so Metals and JetBrains
 BSP can discover JumpKick. IDE launches use `jk bsp serve` (stdio BSP — **no engine jars
-in the IDE process**). Requires `jk` on PATH (or `JK_BIN`).
+in the IDE process**). Requires `jk` on PATH (or `JK_BIN`). Coding agents get the same
+files from the MCP tool `jk_ide` (`preview=true` lists them without writing) — see
+[MCP](mcp.md).
 
 ## Test suites in the IDE
 

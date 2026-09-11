@@ -15,6 +15,7 @@ import cc.jumpkick.engine.http.mcp.tools.ExplainTool;
 import cc.jumpkick.engine.http.mcp.tools.ExportTool;
 import cc.jumpkick.engine.http.mcp.tools.GraphTool;
 import cc.jumpkick.engine.http.mcp.tools.HistoryTool;
+import cc.jumpkick.engine.http.mcp.tools.IdeTool;
 import cc.jumpkick.engine.http.mcp.tools.InstallTool;
 import cc.jumpkick.engine.http.mcp.tools.JdkTool;
 import cc.jumpkick.engine.http.mcp.tools.JobTool;
@@ -66,6 +67,7 @@ public final class McpTools {
             + "never edit the baseline — the playbook's Guards page. Read jk://guards before large edits; "
             + "jk://guards/<id> is one rule's card (= jk guard explain <id>). "
             + "Scaffold → jk_new (preview first). Export maven/gradle/bom → jk_export. "
+            + "IDE files (.idea / .vscode / .bsp) → jk_ide (preview first). "
             + "Add/remove deps → jk_deps. Git/path as workspace member → jk_workspace. "
             + "java= → jk_manifest. Heap / nerd-font / CI → jk_config. "
             + "Disk → jk_disk. Host health → jk_doctor. "
@@ -137,6 +139,7 @@ public final class McpTools {
                                 + "build.gradle / pom.xml). Same importer as jk import.",
                         "Checkout with the foreign build (default: bound dir)"),
                 new ExportTool(),
+                new IdeTool(),
                 new GraphTool(),
                 new DoctorTool()));
     }

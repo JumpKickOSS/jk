@@ -22,6 +22,7 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**MCP JSON-RPC tools without a full HTTP bind. */
 class McpHandlerTest {
@@ -319,13 +320,34 @@ class McpHandlerTest {
                         "jk_install",
                         "jk_import",
                         "jk_export",
+                        "jk_ide",
                         "jk_results",
                         "jk_details",
                         "jk_graph");
     }
 
     @Test
-    void publish_import_and_install_ride_jk_run(@org.junit.jupiter.api.io.TempDir Path dir) throws Exception {
+    void ide_without_a_manifest_is_an_error_envelope(@TempDir Path dir) {
+        String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":22,\"method\":\"tools/call\","
+                + "\"params\":{\"name\":\"jk_ide\",\"arguments\":{\"dir\":"
+                + Jsonl.quote(dir.toString())
+                + ",\"preview\":true}}}");
+        assertThat(body).contains("\"isError\":true");
+        assertThat(body).contains("no jk.toml");
+    }
+
+    @Test
+    void ide_rejects_an_unknown_kind(@TempDir Path dir) {
+        String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":23,\"method\":\"tools/call\","
+                + "\"params\":{\"name\":\"jk_ide\",\"arguments\":{\"dir\":"
+                + Jsonl.quote(dir.toString())
+                + ",\"kind\":\"eclipse\"}}}");
+        assertThat(body).contains("-32602");
+        assertThat(body).contains("kind must be idea | vscode | all");
+    }
+
+    @Test
+    void publish_import_and_install_ride_jk_run(@TempDir Path dir) throws Exception {
         // The thin aliases pin the kind and go through the one runResult path.
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":21,\"method\":\"tools/call\","
                 + "\"params\":{\"name\":\"jk_publish\",\"arguments\":{\"dir\":"
@@ -350,7 +372,7 @@ class McpHandlerTest {
     }
 
     @Test
-    void graph_returns_members_and_declared_deps(@org.junit.jupiter.api.io.TempDir Path dir) throws Exception {
+    void graph_returns_members_and_declared_deps(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
                 group = "t"
                 name = "app"
@@ -426,7 +448,7 @@ class McpHandlerTest {
     }
 
     @Test
-    void results_reads_sibling_markdown(@org.junit.jupiter.api.io.TempDir Path dir) throws Exception {
+    void results_reads_sibling_markdown(@TempDir Path dir) throws Exception {
         Path run = dir.resolve("runs").resolve("1");
         Files.createDirectories(run);
         Files.writeString(run.resolve("jk-results.md"), "# jk results — FAIL\ncompile boom\n");
@@ -481,7 +503,7 @@ class McpHandlerTest {
     }
 
     @Test
-    void details_resource_returns_budgeted_json(@org.junit.jupiter.api.io.TempDir Path dir) throws Exception {
+    void details_resource_returns_budgeted_json(@TempDir Path dir) throws Exception {
         Path run = dir.resolve("runs").resolve("1");
         Files.createDirectories(run);
         Files.writeString(
@@ -543,7 +565,7 @@ class McpHandlerTest {
     }
 
     @Test
-    void new_templates_and_preview_write_nothing(@org.junit.jupiter.api.io.TempDir Path parent) throws Exception {
+    void new_templates_and_preview_write_nothing(@TempDir Path parent) throws Exception {
         String templates = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":26,\"method\":\"tools/call\","
                 + "\"params\":{\"name\":\"jk_new\",\"arguments\":{\"action\":\"templates\"}}}");
         assertThat(templates).contains("builtinLayouts");

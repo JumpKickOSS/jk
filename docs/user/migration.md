@@ -24,8 +24,8 @@ Gradle.
 
 Single-file scripts: `jk tool run script.java` / `jkx` — [Tools](tools.md).
 
-MCP: `jk_import` auto-detects the build file; `jk_export` writes maven/gradle/bom (IDE
-files stay `jk ide`).
+MCP: `jk_import` auto-detects the build file; `jk_export` writes maven/gradle/bom; `jk_ide`
+writes the IDE project files.
 
 ## Related
 

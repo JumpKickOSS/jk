@@ -76,7 +76,8 @@ Bind once (`jk_bind`), then omit `dir` on later calls.
 | **`jk_publish`** | Validate the publish bundle — **always a dry-run** |
 | **`jk_install`** | Install the project into the local Maven repo; `action=list` shows jkx tools (tool installs stay CLI-side) |
 | **`jk_import`** | Import Maven/Gradle into `jk.toml` |
-| **`jk_export`** | Write `maven` \| `gradle` \| `bom` files; IDE files stay `jk ide` |
+| **`jk_export`** | Write `maven` \| `gradle` \| `bom` files |
+| **`jk_ide`** | Write IDE project files (`kind=idea` \| `vscode` \| `all`) plus `.bsp/jk.json`, same generators as `jk ide`; `preview=true` lists without writing |
 | **`jk_graph`** | Compact module/dep graph (transitive expansion opt-in and budget-capped) |
 
 Start with **`jk_results`** or **`jk_diagnostics`**. Do not dump full journal records.
