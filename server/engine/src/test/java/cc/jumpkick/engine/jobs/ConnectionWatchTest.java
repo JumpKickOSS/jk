@@ -75,7 +75,14 @@ class ConnectionWatchTest {
         AtomicInteger kills = new AtomicInteger();
         long start = System.nanoTime();
         watch.awaitRunner(
-                7L, new CountDownLatch(1), JobLimits.DEFAULTS, 50L, 0L, true, () -> {}, kills::incrementAndGet);
+                7L,
+                new CountDownLatch(1),
+                JobLimits.DEFAULTS,
+                50L,
+                0L,
+                new CountDownLatch(0),
+                () -> {},
+                kills::incrementAndGet);
         assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(Duration.ofSeconds(5));
         assertThat(kills).hasValue(1);
         assertThat(log).singleElement().asString().contains("still running after cancel+550ms");
@@ -93,7 +100,7 @@ class ConnectionWatchTest {
                 new JobLimits(0L, 50L, 100L, 500L),
                 0L,
                 System.currentTimeMillis(),
-                false,
+                new CountDownLatch(1),
                 enforced::incrementAndGet,
                 () -> {});
         assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(Duration.ofSeconds(5));
@@ -114,7 +121,7 @@ class ConnectionWatchTest {
             }
             done.countDown();
         });
-        watch.awaitRunner(9L, done, JobLimits.DEFAULTS, 0L, 0L, false, () -> {}, () -> {});
+        watch.awaitRunner(9L, done, JobLimits.DEFAULTS, 0L, 0L, new CountDownLatch(1), () -> {}, () -> {});
         assertThat(done.getCount()).isZero();
     }
 }

@@ -108,6 +108,9 @@ public final class JobEnvelope {
         if (plan ? !claimedBuildPlanSlot : host.draining()) return refuseDraining(detached, writer);
         Session.CancelToken cancelToken = Session.CancelToken.live();
         CountDownLatch done = new CountDownLatch(1);
+        // Released by the first user cancel: the joiner parks on the runner's end and on this,
+        // so a cancel that reaches a body wedged past its interrupt still ends in a bounded join.
+        CountDownLatch cancelSignal = new CountDownLatch(1);
         long eventRequestId = host.nextRequestId();
         // The requesting shell's JK_PROGRESS_MODE rides the request — the resident engine's own
         // startup env is not the client's.
@@ -161,6 +164,7 @@ public final class JobEnvelope {
                 writer,
                 channel,
                 detached ? null : connectionThread,
+                cancelSignal,
                 eventDir,
                 eventKind,
                 workspaceStream);
@@ -176,6 +180,7 @@ public final class JobEnvelope {
                 workspaceStream,
                 cancelToken,
                 done,
+                cancelSignal,
                 runnerRef,
                 writer,
                 channel,
@@ -250,6 +255,7 @@ public final class JobEnvelope {
             boolean workspaceStream,
             Session.CancelToken cancelToken,
             CountDownLatch done,
+            CountDownLatch cancelSignal,
             AtomicReference<Thread> runnerRef,
             @Nullable BufferedWriter writer,
             @Nullable SocketChannel channel,
@@ -369,7 +375,7 @@ public final class JobEnvelope {
                     limits,
                     cancelGraceMs,
                     eventStartMillis,
-                    cancelToken.cancelled(),
+                    a.cancelSignal(),
                     () -> watchdogs.enforceDeadline(eventRequestId, cancelToken, runnerRef.get(), writer),
                     () -> {
                         JobWorkers.shutdownForRequest(eventRequestId, 0L);

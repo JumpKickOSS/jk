@@ -13,6 +13,7 @@ import java.nio.channels.SocketChannel;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -53,7 +54,8 @@ public final class LiveJobRegistry {
      * grace→force window on a helper thread so the connection reader is not blocked. Idempotent.
      *
      * <p>Stamps the accumulator as user-cancelled immediately so a force-killed runner that never
-     * emits userCancelled is journaled as cancelled, not as a truncated success/failure.
+     * emits userCancelled is journaled as cancelled, not as a truncated success/failure, and
+     * releases the job's {@link LiveJob#cancelSignal()} so its joiner bounds the rest of the wait.
      */
     public void beginUserCancel(
             long eventRequestId,
@@ -63,6 +65,8 @@ public final class LiveJobRegistry {
             boolean explicit) {
         cancelToken.cancel();
         markUserCancelled(eventRequestId, explicit);
+        LiveJob job = liveJobs.get(eventRequestId);
+        if (job != null) job.cancelSignal().countDown();
         Thread.ofVirtual().name("jk-cancel-" + eventRequestId, 0).start(() -> {
             // Workers first (SIGTERM → grace → SIGKILL), then interrupt the runner so
             // the scheduler does not join the rest of the DAG.
@@ -87,10 +91,14 @@ public final class LiveJobRegistry {
             @Nullable BufferedWriter writer,
             @Nullable SocketChannel channel,
             @Nullable Thread connectionThread,
+            CountDownLatch cancelSignal,
             String dir,
             String kind,
             boolean workspaceStream) {
-        liveJobs.put(jid, new LiveJob(token, runnerRef, writer, channel, connectionThread, dir, kind, workspaceStream));
+        liveJobs.put(
+                jid,
+                new LiveJob(
+                        token, runnerRef, writer, channel, connectionThread, cancelSignal, dir, kind, workspaceStream));
     }
 
     public void unregisterLiveJob(long jid) {

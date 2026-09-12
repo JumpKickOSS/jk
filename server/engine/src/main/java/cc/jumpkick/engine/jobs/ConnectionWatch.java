@@ -71,10 +71,11 @@ final class ConnectionWatch {
     }
 
     /**
-     * Wait for the runner with one of three budgets so a wedged runner can never hang the
+     * Wait for the runner with one of two budgets so a wedged runner can never hang the
      * connection: under a wall deadline, until deadline plus grace and then one last chance after
-     * enforcing it; after a cancel with no deadline, a short cancel grace and then a force kill;
-     * otherwise unbounded, because the runner's own finally ends the wait.
+     * enforcing it; otherwise until the runner's own finally ends the wait or a cancel begins —
+     * {@code cancelled} is released by the first user cancel, however it arrived — and from a
+     * cancel, a short cancel grace and then a force kill.
      */
     void awaitRunner(
             long jid,
@@ -82,19 +83,31 @@ final class ConnectionWatch {
             JobLimits limits,
             long cancelGraceMs,
             long startMillis,
-            boolean cancelled,
+            CountDownLatch cancelled,
             Runnable enforceDeadline,
             Runnable forceKill) {
         try {
             if (limits.deadlineMs() > 0) {
                 joinUnderDeadline(jid, done, limits, cancelGraceMs, startMillis, enforceDeadline);
-            } else if (cancelled && done.getCount() > 0) {
-                joinAfterCancel(jid, done, cancelGraceMs, forceKill);
             } else {
-                done.await();
+                awaitRunnerOrCancel(done, cancelled);
+                if (done.getCount() > 0) joinAfterCancel(jid, done, cancelGraceMs, forceKill);
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+        }
+    }
+
+    /**
+     * How often the open-ended join looks for a cancel. Two latches, one waiter: the runner's
+     * finally releases the first, a user cancel the second, and a park on either alone would miss
+     * the other. The tick is a fraction of the cancel grace, so it does not stretch the join.
+     */
+    private static final long CANCEL_LOOK_MS = 100L;
+
+    private static void awaitRunnerOrCancel(CountDownLatch done, CountDownLatch cancelled) throws InterruptedException {
+        while (done.getCount() > 0 && cancelled.getCount() > 0) {
+            done.await(CANCEL_LOOK_MS, TimeUnit.MILLISECONDS);
         }
     }
 

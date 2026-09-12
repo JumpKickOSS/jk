@@ -295,6 +295,55 @@ class JobEnvelopeTest {
     }
 
     /**
+     * A detached (HTTP/MCP) job has no connection thread to read EOF, so a later cancel is the
+     * only thing that can bound its join. A body wedged in a wait that swallows interrupts must
+     * still be settled within the cancel grace: request-finish published, the journal row closed,
+     * and the project fingerprint released so the next same-project build is not refused.
+     */
+    @Test
+    void a_cancelled_detached_job_whose_body_ignores_interrupts_is_settled_within_the_grace() throws Exception {
+        FakeHost host = new FakeHost();
+        host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "web");
+        JobEnvelope env = new JobEnvelope(host, new JobLimits(0L, 0L, 0L, 100L));
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+
+        long jid = env.submit(
+                "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
+                JobRequest.workspace("build", "jk-test-", (line, tok, w) -> {
+                    started.countDown();
+                    // The shape of a body parked in a non-interruptible section: the interrupt
+                    // the cancel delivers is swallowed and the wait resumes.
+                    while (release.getCount() > 0) {
+                        try {
+                            release.await();
+                        } catch (InterruptedException e) {
+                            // keeps waiting
+                        }
+                    }
+                    return JobOutcome.declined();
+                }),
+                new JobTransport.FireAndForget());
+        try {
+            assertThat(started.await(10, TimeUnit.SECONDS)).isTrue();
+            assertThat(host.inFlight.get(jid))
+                    .as("the job holds its fingerprint while it runs")
+                    .isPresent();
+
+            assertThat(env.cancelJob(jid)).isTrue();
+
+            Await.until(Duration.ofSeconds(5), () -> host.journalWritten, () -> "the detached joiner never settled");
+            assertThat(host.journalCancelled).isTrue();
+            assertThat(host.inFlight.get(jid))
+                    .as("the fingerprint is released although the body is still wedged")
+                    .isEmpty();
+            assertThat(host.events).anyMatch(e -> e.contains("request-finish") && e.contains("\"cancelled\":true"));
+        } finally {
+            release.countDown();
+        }
+    }
+
+    /**
      * Two cancels, one flag: both rows say {@code cancelled} and both carry the interrupt code, so
      * the only thing that can tell a user's Ctrl-C from a wall deadline is the reason.
      */
