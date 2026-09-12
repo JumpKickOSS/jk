@@ -51,12 +51,14 @@ case "$ARCH" in
   * ) arch=unknown;;
 esac
 
-if [[ -f "$DIST/jk" ]]; then
-  name="jk-${os}-${arch}-${VERSION}"
-  src="$DIST/jk"
-elif [[ -f "$DIST/jk.exe" ]]; then
+# jk.exe first: bash on Windows answers `-f jk` with yes when only jk.exe exists, so the Unix
+# branch would name a file that is not there.
+if [[ -f "$DIST/jk.exe" ]]; then
   name="jk-windows-x86_64-${VERSION}"
   src="$DIST/jk.exe"
+elif [[ -f "$DIST/jk" ]]; then
+  name="jk-${os}-${arch}-${VERSION}"
+  src="$DIST/jk"
 else
   echo "assemble-release-dir: no native jk binary in $DIST" >&2
   exit 2
