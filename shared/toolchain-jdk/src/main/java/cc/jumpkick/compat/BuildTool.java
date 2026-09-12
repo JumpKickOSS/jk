@@ -12,18 +12,29 @@ import org.jspecify.annotations.Nullable;
  * External tools for {@code jk mvn}/{@code jk gradle} passthroughs: cache slug and bin names.
  */
 public enum BuildTool {
-    MAVEN("maven", "mvn", "mvn.cmd"),
-    GRADLE("gradle", "gradle", "gradle.bat"),
-    KOTLIN("kotlin", "kotlinc", "kotlinc.bat");
+    MAVEN("maven", "mvn", "mvn.cmd", PublishedChecksum.SHA512),
+    GRADLE("gradle", "gradle", "gradle.bat", PublishedChecksum.SHA256),
+    KOTLIN("kotlin", "kotlinc", "kotlinc.bat", PublishedChecksum.SHA256);
 
     private final String slug;
     private final String posixBinary;
     private final String windowsBinary;
+    private final PublishedChecksum publishedChecksum;
 
-    BuildTool(String slug, String posixBinary, String windowsBinary) {
+    BuildTool(String slug, String posixBinary, String windowsBinary, PublishedChecksum publishedChecksum) {
         this.slug = slug;
         this.posixBinary = posixBinary;
         this.windowsBinary = windowsBinary;
+        this.publishedChecksum = publishedChecksum;
+    }
+
+    /**
+     * The checksum sidecar this tool's publisher puts beside each archive — Apache Maven ships
+     * {@code .sha512} on Central, Gradle and JetBrains ship {@code .sha256}. An unpinned
+     * distribution is verified against it.
+     */
+    public PublishedChecksum publishedChecksum() {
+        return publishedChecksum;
     }
 
     /** Directory name under the provisioned-tools root, {@code $JK_STORE_DIR/tools/}. */

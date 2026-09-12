@@ -3,6 +3,7 @@ package cc.jumpkick.gradle;
 
 import cc.jumpkick.compat.BuildTool;
 import cc.jumpkick.compat.ToolDistribution;
+import cc.jumpkick.compat.WrapperDistribution;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
@@ -53,7 +54,7 @@ public final class GradleResolver {
         }
         String url = props.getProperty("distributionUrl");
         if (url == null || url.isBlank()) return null;
-        URI uri = URI.create(url.trim());
+        URI uri = WrapperDistribution.secureUrl(url, file);
         String version = parseVersion(uri).orElse("wrapper");
         String sha256 = props.getProperty("distributionSha256Sum");
         return new ToolDistribution(

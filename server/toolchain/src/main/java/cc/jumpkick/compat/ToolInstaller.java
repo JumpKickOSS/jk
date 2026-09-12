@@ -10,7 +10,9 @@ import cc.jumpkick.util.JkOwnership;
 import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URI;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -26,7 +28,13 @@ import java.util.zip.ZipInputStream;
 
 /**
  * Download/extract a {@link ToolDistribution} under {@code $JK_STORE_DIR/tools/<slug>/<version>/}
- * (zip/tar.gz; optional SHA-256; fail cleans partial install).
+ * (zip/tar.gz; fail cleans partial install).
+ *
+ * <p>Every archive is verified before it is unpacked: against the distribution's own pin when it
+ * has one, otherwise against the {@link PublishedChecksum} sidecar its publisher puts beside it.
+ * The sidecar is fetched first, so a distribution that cannot be verified is refused before the
+ * archive is downloaded at all; an archive with neither is never installed. What arrives here is
+ * executed — the Kotlin compiler on every {@code .kt} build — so TLS alone is not enough.
  */
 public final class ToolInstaller {
 
@@ -45,6 +53,7 @@ public final class ToolInstaller {
         }
         Files.createDirectories(target.getParent());
 
+        ExpectedDigest expected = expectedDigest(dist);
         Path archive = Files.createTempFile("jk-tool-", "-" + dist.archiveType());
         try {
             // Streamed to disk, never held whole. The engine runs under a memory cap (248 MiB by
@@ -62,16 +71,17 @@ public final class ToolInstaller {
                 }
                 Files.copy(body, archive, StandardCopyOption.REPLACE_EXISTING);
             }
-            if (dist.sha256() != null && !dist.sha256().isEmpty()) {
-                String actual = Hashing.sha256Hex(archive);
-                if (!actual.equalsIgnoreCase(dist.sha256())) {
-                    throw new IOException("sha256 mismatch for "
-                            + dist.downloadUri()
-                            + " — expected "
-                            + dist.sha256()
-                            + ", got "
-                            + actual);
-                }
+            String actual = Hashing.fileHex(expected.algorithm(), archive);
+            if (!actual.equalsIgnoreCase(expected.hex())) {
+                throw new IOException(expected.label()
+                        + " mismatch for "
+                        + dist.downloadUri()
+                        + " — expected "
+                        + expected.hex()
+                        + " ("
+                        + expected.source()
+                        + "), got "
+                        + actual);
             }
             SessionContext.current().io().remoteDown(archive);
 
@@ -101,6 +111,48 @@ public final class ToolInstaller {
             Files.deleteIfExists(archive);
         }
         return new InstalledTool(dist.tool(), dist.version(), target);
+    }
+
+    /** What the archive must hash to, and where that expectation came from. */
+    private record ExpectedDigest(String label, String algorithm, String hex, String source) {}
+
+    /**
+     * The distribution's pin when it has one, else the digest its publisher's sidecar advertises.
+     * Refuses — before any archive bytes move — when the sidecar is absent or is not a digest of
+     * the expected width (a repository that answers a missing file with an HTML page under 200).
+     */
+    private ExpectedDigest expectedDigest(ToolDistribution dist) throws IOException, InterruptedException {
+        String pinned = dist.sha256();
+        if (pinned != null && !pinned.isBlank()) {
+            return new ExpectedDigest("sha256", "SHA-256", pinned.trim(), "pinned by the distribution");
+        }
+        PublishedChecksum sidecar = dist.tool().publishedChecksum();
+        URI sidecarUri = sidecar.beside(dist.downloadUri());
+        HttpResponse<byte[]> response = http.get(sidecarUri);
+        if (response.statusCode() != 200) {
+            throw new IOException(dist.tool().slug()
+                    + " distribution "
+                    + dist.downloadUri()
+                    + " cannot be verified: no "
+                    + sidecar.suffix()
+                    + " checksum is published beside it ("
+                    + sidecarUri
+                    + " returned "
+                    + response.statusCode()
+                    + "). Refusing to install an archive nothing vouches for; pin its SHA-256"
+                    + " (wrapper distributionSha256Sum) or publish the checksum beside it.");
+        }
+        String body = new String(response.body(), StandardCharsets.UTF_8);
+        String hex = Hashing.checksumFromSidecar(body, sidecar.hexLength())
+                .orElseThrow(() -> new IOException(dist.tool().slug()
+                        + " distribution "
+                        + dist.downloadUri()
+                        + " cannot be verified: "
+                        + sidecarUri
+                        + " is not a "
+                        + sidecar.label()
+                        + " digest. Refusing to install an archive nothing vouches for."));
+        return new ExpectedDigest(sidecar.label(), sidecar.algorithm(), hex, "published at " + sidecarUri);
     }
 
     private static void extract(Path archive, Path destDir, String archiveType) throws IOException {

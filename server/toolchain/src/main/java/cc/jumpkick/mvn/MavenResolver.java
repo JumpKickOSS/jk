@@ -3,6 +3,7 @@ package cc.jumpkick.mvn;
 
 import cc.jumpkick.compat.BuildTool;
 import cc.jumpkick.compat.ToolDistribution;
+import cc.jumpkick.compat.WrapperDistribution;
 import cc.jumpkick.model.RepositorySpec;
 import java.io.IOException;
 import java.net.URI;
@@ -55,7 +56,7 @@ public final class MavenResolver {
         }
         String url = props.getProperty("distributionUrl");
         if (url == null || url.isBlank()) return null;
-        URI uri = URI.create(url.trim());
+        URI uri = WrapperDistribution.secureUrl(url, file);
         String archiveType = url.endsWith(".tar.gz") ? "tar.gz" : "zip";
         String version = parseVersion(uri).orElse("wrapper");
         String sha256 = props.getProperty("distributionSha256Sum");

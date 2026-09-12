@@ -9,8 +9,9 @@ import org.jspecify.annotations.Nullable;
  * Metadata for a downloadable Maven or Gradle distribution. The {@code MavenResolver} / {@code
  * GradleResolver} produces these; the {@code ToolInstaller} consumes them.
  *
- * <p>{@link #sha256} is optional: wrapper-properties-derived distributions may not carry one (Maven
- * Wrapper does, Gradle Wrapper sometimes does). The installer skips verification when null/blank.
+ * <p>{@link #sha256} is the pin a wrapper's {@code distributionSha256Sum} supplies; when it is
+ * absent the installer verifies the archive against the {@link BuildTool#publishedChecksum()
+ * sidecar} the tool's publisher puts beside it, and refuses the archive when neither is available.
  */
 public record ToolDistribution(
         BuildTool tool,
