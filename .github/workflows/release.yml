@@ -45,6 +45,9 @@ jobs:
           - os: windows-latest
             arch_label: windows-x86_64
     runs-on: ${{ matrix.os }}
+    env:
+      JK_HOME: ${{ github.workspace }}/.ci-jk-home
+      JK_AOT_TRAIN: 'off'
     steps:
       - uses: actions/checkout@v4
 
@@ -54,6 +57,10 @@ jobs:
           distribution: 'graalvm'
           github-token: ${{ secrets.GITHUB_TOKEN }}
           cache: 'gradle'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
 
       - name: Resolve version
         shell: bash
@@ -66,18 +73,40 @@ jobs:
           echo "JK_VERSION=$VER" >> "$GITHUB_ENV"
           echo "Building release $VER (${{ matrix.arch_label }})"
 
-      - name: Dist (native + engine)
+      # The shipped artifacts are what jk builds of itself. Until a release built this way is
+      # hosted, the jk that builds them is bootstrapped from this commit's Gradle artifacts; once
+      # one is, this step becomes `curl install.sh | JK_VERSION=<pinned> bash`.
+      - name: Bootstrap jk from Gradle artifacts
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew dist installLocal --no-daemon
+          ./install.sh build/dist/jk
+          echo "$JK_HOME/bin" >> "$GITHUB_PATH"
+
+      - name: Dist (native client + engine), built by jk
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          jk build --skip-tests
+          ls -la target/dist target/dist/lib
+
+      # Windows still ships from Gradle: the self-host lane is not green there yet.
+      - name: Dist (native client + engine), built by Gradle
+        if: runner.os == 'Windows'
         shell: bash
         run: |
           set -euo pipefail
           ./gradlew clean dist --no-daemon
-          ls -la build/dist
-          ls -la build/dist/lib || true
+          ls -la build/dist build/dist/lib
 
       - name: Assemble + sign release dir
         shell: bash
         env:
           JK_RELEASE_RSA_SIGNING_KEY: ${{ secrets.JK_RELEASE_RSA_SIGNING_KEY }}
+          DIST_DIR: ${{ runner.os == 'Windows' && 'build/dist' || 'target/dist' }}
         run: |
           set -euo pipefail
           chmod +x scripts/sign-release.sh scripts/assemble-release-dir.sh

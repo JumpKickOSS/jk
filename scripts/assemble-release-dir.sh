@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Assemble a versioned release directory from build/dist layout for
 # jumpkick.build via GCS + Firebase CDN).
-# Expects a prior `./gradlew clean dist` (native client + engine jar under build/dist).
+# Expects a dist layout (native client + engine jar): `jk build` writes it under target/dist,
+# `./gradlew dist` under build/dist. DIST_DIR names which one (default build/dist).
 # Usage:
 # scripts/assemble-release-dir.sh [out-dir]
 # Env:
@@ -28,7 +29,7 @@ OUT="${1:-build/release/$VERSION}"
 DIST="${DIST_DIR:-build/dist}"
 
 if [[ ! -d "$DIST" ]]; then
-  echo "assemble-release-dir: missing $DIST — run ./gradlew dist first" >&2
+  echo "assemble-release-dir: missing $DIST — run jk build (target/dist) or ./gradlew dist (build/dist) first" >&2
   exit 2
 fi
 

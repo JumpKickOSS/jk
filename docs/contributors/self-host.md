@@ -275,7 +275,8 @@ target/dist/
 ```
 
 Gradle produces the same layout under `build/dist/` (`./gradlew dist`), which is what CI's
-self-host lane still bootstraps from until a release built by jk is hosted.
+self-host lane and the release workflow still bootstrap *from* until a release built by jk is
+hosted; the release itself already ships the `target/dist` jk builds (Windows excepted).
 
 ## AOT during self-host / CI
 

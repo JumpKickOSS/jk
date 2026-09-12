@@ -51,9 +51,9 @@ User documentation (exclusive groups + custom internal repos): [repositories](..
 ## Publish (with a binary release)
 
 ```bash
-./gradlew clean dist installLocal
+jk build --skip-tests && jk install --skip-tests
 export JK_RELEASE_RSA_SIGNING_KEY_FILE=/owner-only/path/release-key.pem
-scripts/assemble-release-dir.sh build/release/0.13.0
+DIST_DIR=target/dist scripts/assemble-release-dir.sh build/release/0.13.0
 # upload releases/
 gsutil -m rsync -r build/release/0.13.0/ gs://jumpkick/releases/0.13.0/
 # upload first-party Maven modules

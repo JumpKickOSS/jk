@@ -90,8 +90,11 @@ bytes. Local file installs remain an explicit unsigned development path.
 Workflow: [`.github/workflows/release.yml`](../../.github/workflows/release.yml)
 
 1. Push tag `v0.13.2` (must match `JkVersion` without the `v` prefix, or set `JK_VERSION`).
-2. Matrix builds native client + engine jar per OS/arch.
-3. `scripts/assemble-release-dir.sh` produces per-platform dirs + `SHA256SUMS` + `.sig`.
+2. Matrix builds native client + engine jar per OS/arch — with jk itself (`jk build`, the layout
+   under `target/dist`), bootstrapped from that commit's Gradle artifacts until a release built this
+   way is hosted. Windows still ships from `./gradlew dist` (its self-host lane is not green yet).
+3. `scripts/assemble-release-dir.sh` (with `DIST_DIR` naming the dist) produces per-platform dirs +
+   `SHA256SUMS` + `.sig`.
 4. Merge job re-signs the combined tree, then **`gsutil rsync`** to GCS when secrets are set.
 5. Update `releases/latest/VERSION` (no-cache headers).
 
@@ -118,9 +121,9 @@ echo 0.13.2 | gsutil -h "Cache-Control:no-cache,max-age=0" cp - \
 ## Local dry-run
 
 ```bash
-./gradlew clean dist
+jk build --skip-tests                      # target/dist/jk + target/dist/lib/jk-engine-<ver>.jar
 export JK_RELEASE_RSA_SIGNING_KEY_FILE=/owner-only/path/release-key.pem
-scripts/assemble-release-dir.sh
+DIST_DIR=target/dist scripts/assemble-release-dir.sh
 # inspect build/release/0.13.2/
 ```
 
