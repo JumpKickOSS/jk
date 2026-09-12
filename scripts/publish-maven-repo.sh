@@ -26,7 +26,11 @@
 # CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE SA key for CI
 #
 # The upload is additive: older versions already in the bucket stay, so a runner that holds one
-# version in its store publishes that version without deleting the rest.
+# version in its store publishes that version without deleting the rest. Each maven-metadata.xml
+# is additive too: the bucket's current version list is fetched and merged with the staged one, so
+# a fresh checkout that holds one version does not shorten the list consumers use for ranges, and
+# <latest>/<release> name the merged maximum. An artifact the store does not hold at JK_VERSION
+# is staged (its jars are additive) but its metadata is left as the bucket has it.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -46,12 +50,20 @@ if [[ ! -d "$LOCAL" ]]; then
 fi
 
 STAGE_ONLY="${JK_MAVEN_STAGE_ONLY:-}"
+# Fetched metadata lives in its own temp dir, gone on exit; a stage the caller named or asked to keep stays.
+FETCHED="$(mktemp -d "${TMPDIR:-/tmp}/jk-maven-meta.XXXXXX")"
+SCRATCH_STAGE=""
 if [[ -n "${JK_MAVEN_STAGE_DIR:-}" ]]; then
   STAGE="$(mkdir -p "$JK_MAVEN_STAGE_DIR" && cd "$JK_MAVEN_STAGE_DIR" && pwd)"
 else
   STAGE="$(mktemp -d "${TMPDIR:-/tmp}/jk-maven-repo.XXXXXX")"
-  [[ -n "$STAGE_ONLY" ]] || trap 'rm -rf "$STAGE"' EXIT
+  [[ -n "$STAGE_ONLY" ]] || SCRATCH_STAGE="$STAGE"
 fi
+cleanup() {
+  rm -rf "$FETCHED"
+  [[ -z "$SCRATCH_STAGE" ]] || rm -rf "$SCRATCH_STAGE"
+}
+trap cleanup EXIT
 
 sha256_of() {
   if command -v shasum >/dev/null; then
@@ -100,30 +112,67 @@ if [[ "$count" -eq 0 ]]; then
   exit 2
 fi
 
-# maven-metadata.xml per artifact (versions list): an artifact directory is one whose children are
-# version directories holding a jar, at any depth under cc/jumpkick (the guard packs are one deeper).
+# The repository's current maven-metadata.xml for an artifact directory (relative to the repo
+# root), written to $2; "absent" on stdout when the repository has none (HTTP 404). Any other
+# failure is fatal: a version list rebuilt without the repository's answer is the drop this merge
+# prevents. The read goes over the public origin, so it needs no credentials and behaves the same
+# on the staging runner and the publishing one; only the upload needs gsutil.
+fetch_metadata() {
+  local rel="$1" out="$2" url code
+  url="https://storage.googleapis.com/${BUCKET}/${PREFIX}/$rel/maven-metadata.xml"
+  code="$(curl -sS -o "$out" -w '%{http_code}' "$url")" || {
+    echo "publish-maven-repo: cannot read $url (curl exit $?)" >&2
+    exit 2
+  }
+  case "$code" in
+    200) ;;
+    404) echo absent ;;
+    *) echo "publish-maven-repo: cannot read $url: HTTP $code" >&2; exit 2 ;;
+  esac
+}
+
+# maven-metadata.xml per artifact published at $VERSION: an artifact directory is one whose
+# children are version directories holding a jar, at any depth under cc/jumpkick (the guard packs
+# are one deeper). Its version list is the union of what the repository already lists and what is
+# staged; <latest> is the maximum, <release> the maximum that is not a snapshot.
 while IFS= read -r -d '' pom; do
   echo "$(dirname "$(dirname "$pom")")"
 done < <(find "$STAGE/cc/jumpkick" -type f -name "*.pom" -print0) | sort -u | while IFS= read -r meta_dir; do
   art="$(basename "$meta_dir")"
-  group_rel="$(dirname "${meta_dir#"$STAGE"/}")"          # cc/jumpkick or cc/jumpkick/guards
+  art_rel="${meta_dir#"$STAGE"/}"                          # cc/jumpkick/<art> or cc/jumpkick/guards/<art>
+  group_rel="$(dirname "$art_rel")"                        # cc/jumpkick or cc/jumpkick/guards
   group_id="${group_rel//\//.}"
-  versions="$(find "$meta_dir" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | sort -V | while read -r v; do echo "    <version>$v</version>"; done)"
-  cat >"$meta_dir/maven-metadata.xml" <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<metadata>
-  <groupId>$group_id</groupId>
-  <artifactId>$art</artifactId>
-  <versioning>
-    <latest>$VERSION</latest>
-    <release>$VERSION</release>
-    <versions>
-$versions
-    </versions>
-    <lastUpdated>$(date -u +%Y%m%d%H%M%S)</lastUpdated>
-  </versioning>
-</metadata>
-EOF
+  if [[ ! -d "$meta_dir/$VERSION" ]]; then
+    echo "metadata $group_id:$art unchanged (not staged at $VERSION)"
+    continue
+  fi
+  existing="$FETCHED/${art_rel//\//_}.xml"
+  fetched="$(fetch_metadata "$art_rel" "$existing")"
+  known=""
+  if [[ "$fetched" != absent ]]; then
+    known="$(grep -oE '<version>[^<]+</version>' "$existing" | sed -E 's|</?version>||g' || true)"
+  fi
+  versions="$( { printf '%s\n' "$known"; find "$meta_dir" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; ; } \
+    | grep -v '^$' | sort -u | sort -V)"                    # dotted numeric order: 0.13.10 after 0.13.3
+  latest="$(tail -n 1 <<<"$versions")"
+  release="$(grep -v -- '-SNAPSHOT$' <<<"$versions" | tail -n 1 || true)"
+  release="${release:-$latest}"
+  {
+    echo '<?xml version="1.0" encoding="UTF-8"?>'
+    echo '<metadata>'
+    echo "  <groupId>$group_id</groupId>"
+    echo "  <artifactId>$art</artifactId>"
+    echo '  <versioning>'
+    echo "    <latest>$latest</latest>"
+    echo "    <release>$release</release>"
+    echo '    <versions>'
+    while IFS= read -r v; do echo "      <version>$v</version>"; done <<<"$versions"
+    echo '    </versions>'
+    echo "    <lastUpdated>$(date -u +%Y%m%d%H%M%S)</lastUpdated>"
+    echo '  </versioning>'
+    echo '</metadata>'
+  } >"$meta_dir/maven-metadata.xml"
+  echo "metadata $group_id:$art -> latest $latest ($(wc -l <<<"$versions" | tr -d ' ') versions, $( [[ "$fetched" == absent ]] && echo new || echo merged))"
 done
 
 if [[ -n "$STAGE_ONLY" ]]; then

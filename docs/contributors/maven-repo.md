@@ -63,6 +63,12 @@ scripts/publish-maven-repo.sh
 CI (when Actions billing works) should call `publish-maven-repo.sh` after `installLocal` in the
 same tag job that uploads `releases/`.
 
+Every `maven-metadata.xml` the script writes is a merge: it fetches the artifact's current
+metadata from the repository over the public origin (no credentials needed to read), unions
+the version list with what is staged, and names the merged maximum as `<latest>` (`<release>`
+skips snapshots). An artifact the store holds only at other versions keeps the repository's
+metadata. `scripts/test-publish-maven-repo.sh` runs the merge against a fixture, network-free.
+
 `jk-guards-junit` (the guard-test library a project's `src/guard` suite compiles against) rides the
 same path as the worker jars: `:guard-api:installLocal` stages `cc/jumpkick/jk-guards-junit/<ver>/`
 (jar + POM) into `store/repos/jk-local`, the engine copies it from `~/.m2` when the store lacks it
