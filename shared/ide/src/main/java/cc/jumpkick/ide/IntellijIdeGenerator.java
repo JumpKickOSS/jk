@@ -115,9 +115,9 @@ public final class IntellijIdeGenerator implements IdeGenerator {
             Path iml = me.getKey().resolve(me.getValue().name() + ".iml");
             String rel = "$PROJECT_DIR$/" + wsRoot.relativize(iml).toString().replace('\\', '/');
             sb.append("      <module fileurl=\"file://")
-                    .append(rel)
+                    .append(esc(rel))
                     .append("\" filepath=\"")
-                    .append(rel)
+                    .append(esc(rel))
                     .append("\" />\n");
         }
         sb.append("    </modules>\n  </component>\n</project>\n");
@@ -189,7 +189,7 @@ public final class IntellijIdeGenerator implements IdeGenerator {
                 sb.append("        <processorPath useClasspath=\"false\">\n");
                 for (Path jar : procs) {
                     sb.append("          <entry name=\"")
-                            .append(repoJarUrl(jar))
+                            .append(esc(repoJarUrl(jar)))
                             .append("\" />\n");
                 }
                 sb.append("        </processorPath>\n");
@@ -202,18 +202,18 @@ public final class IntellijIdeGenerator implements IdeGenerator {
         out.file(ideaDir.resolve("compiler.xml"), sb.toString());
     }
 
-    private static String libraryXml(LibDef lib) {
+    static String libraryXml(LibDef lib) {
         StringBuilder sb = xmlHeader();
         sb.append("<component name=\"libraryTable\">\n");
         sb.append("  <library name=\"").append(esc(lib.name())).append("\">\n");
         sb.append("    <CLASSES>\n");
-        sb.append("      <root url=\"").append(repoJarUrl(lib.jarPath())).append("\" />\n");
+        sb.append("      <root url=\"").append(esc(repoJarUrl(lib.jarPath()))).append("\" />\n");
         sb.append("    </CLASSES>\n");
         sb.append("    <JAVADOC />\n");
         sb.append("    <SOURCES>\n");
         if (lib.sourcesPath() != null) {
             sb.append("      <root url=\"")
-                    .append(repoJarUrl(lib.sourcesPath()))
+                    .append(esc(repoJarUrl(lib.sourcesPath())))
                     .append("\" />\n");
         }
         sb.append("    </SOURCES>\n");
@@ -243,10 +243,11 @@ public final class IntellijIdeGenerator implements IdeGenerator {
         sb.append(">\n");
 
         sb.append("    <output url=\"file://$MODULE_DIR$/")
-                .append(moduleDir.relativize(module.classesDir()).toString().replace('\\', '/'))
+                .append(esc(moduleDir.relativize(module.classesDir()).toString().replace('\\', '/')))
                 .append("\" />\n");
         sb.append("    <output-test url=\"file://$MODULE_DIR$/")
-                .append(moduleDir.relativize(module.testClassesDir()).toString().replace('\\', '/'))
+                .append(esc(
+                        moduleDir.relativize(module.testClassesDir()).toString().replace('\\', '/')))
                 .append("\" />\n");
         sb.append("    <exclude-output />\n");
 
@@ -314,7 +315,7 @@ public final class IntellijIdeGenerator implements IdeGenerator {
                     .append(esc(lr.name()))
                     .append("\" level=\"project\"");
             if (!"COMPILE".equals(lr.scope()))
-                sb.append(" scope=\"").append(lr.scope()).append("\"");
+                sb.append(" scope=\"").append(esc(lr.scope())).append("\"");
             sb.append(" />\n");
         }
 
@@ -423,7 +424,7 @@ public final class IntellijIdeGenerator implements IdeGenerator {
         Path dir = moduleDir.resolve(relative);
         if (!Files.isDirectory(dir)) return;
         sb.append("      <sourceFolder url=\"file://$MODULE_DIR$/")
-                .append(relative)
+                .append(esc(relative))
                 .append("\" isTestSource=\"")
                 .append(test)
                 .append("\" />\n");
@@ -433,7 +434,7 @@ public final class IntellijIdeGenerator implements IdeGenerator {
         Path dir = moduleDir.resolve(relative);
         if (!Files.isDirectory(dir)) return;
         sb.append("      <sourceFolder url=\"file://$MODULE_DIR$/")
-                .append(relative)
+                .append(esc(relative))
                 .append("\" type=\"")
                 .append(test ? "java-test-resource" : "java-resource")
                 .append("\" />\n");
