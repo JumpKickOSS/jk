@@ -37,7 +37,6 @@ import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
@@ -702,9 +701,9 @@ public final class EngineSpawn {
                     case EXE -> exeCommand(paths, engine, config);
                 };
         ProcessBuilder pb = new ProcessBuilder(command);
-        // Forward resolve budgets into the engine process: PubGrubSolver reads them from its own
-        // env, so a client-only export must reach the resident engine here.
-        forwardResolveEnv(pb.environment());
+        // The allow-list of this shell's environment, never the whole of it: the daemon serves
+        // every later terminal with whatever it started with (EngineEnvironment says what and why).
+        EngineEnvironment.seed(pb.environment(), System.getenv());
         // Anchor the detached daemon's working directory to its own state dir (created just above),
         // never the spawning client's CWD. A resident engine outlives the shell that started it, and
         // if it inherited an ephemeral CWD (a /tmp scratch dir, a git worktree, a since-deleted
@@ -726,32 +725,6 @@ public final class EngineSpawn {
         Process p = pb.start();
         p.getOutputStream().close(); // EOF immediately; the engine doesn't read stdin
         return new Spawned(p);
-    }
-
-    /** Copy PubGrub budget env vars from this process into the engine spawn environment. */
-    /**
-     * Hand the spawned engine the environment it cannot otherwise.
-     *
-     * <p>A daemon does not inherit the client's environment, so anything set only in the caller's shell
-     * is invisible to it. That is why {@code JK_STORE_DIR} did nothing beforethe engine
-     * resolved its own {@code ~/.jk/store} regardless. Paired with the store being part of the engine
-     * identity ({@link cc.jumpkick.wire.EnginePaths}), a different store now both spawns its own
-     * engine and reaches it.
-     */
-    private static void forwardResolveEnv(Map<String, String> env) {
-        for (String key : List.of(
-                "JK_RESOLVE_TIMEOUT_MS",
-                "JK_RESOLVE_MAX_DECISIONS",
-                "JK_STORE_DIR",
-                "JK_CACHE_DIR",
-                "JK_M2_LOCAL",
-                "JK_M2_INTEGRATION",
-                "JK_M2_LOOKUP",
-                "JK_M2_INSTALL",
-                "JK_CENTRAL_MIRROR")) {
-            String v = System.getenv(key);
-            if (v != null && !v.isBlank()) env.put(key, v);
-        }
     }
 
     /**
