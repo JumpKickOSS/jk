@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.groups.Tuple.tuple;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.lock.Lockfile;
@@ -88,7 +89,7 @@ class PlannerLangKotlinConfigTest {
         PlannerLang.KotlinConfig config = PlannerLang.kotlinConfig(project, lock, module, 25, javaHome, null);
         assertThat(config.plugins())
                 .extracting(PlannerLang.KotlinPluginUse::id, PlannerLang.KotlinPluginUse::version)
-                .containsExactly(org.assertj.core.groups.Tuple.tuple("com.example.opener", "2.4.10"));
+                .containsExactly(tuple("com.example.opener", "2.4.10"));
         assertThat(config.plugins().getFirst().options()).containsExactly("preset=demo");
         assertThat(config.args()).contains("-Xopener-flag");
 
