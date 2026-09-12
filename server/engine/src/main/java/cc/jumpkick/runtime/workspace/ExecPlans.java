@@ -635,8 +635,27 @@ public final class ExecPlans {
         }
 
         var p = project.project();
-        Path javaHome = projectJavaHome(dir);
         Path binDir = binDirOverride != null ? binDirOverride : JkDirs.binDir();
+        String productBin =
+                project.installOpt().map(JkBuild.Install::productBin).orElse(null);
+        if (productBin != null) {
+            // jk's own client. The built native binary replaces the PATH client under <home>/bin —
+            // the one name LauncherName refuses to every other install, because a tool launcher
+            // there would truncate the product. No launcher script and no lib dir: the binary is
+            // the whole install, and the client applies the link with the same parking as a
+            // release update.
+            Path nativeBin = layout.nativeBinary();
+            if (!InstallPlans.installsNativeBinary(project, layout)) {
+                return ExecPlan.error(
+                        "install",
+                        "[install] product-bin needs the native client binary at " + nativeBin
+                                + " — the module must build native (`[native] enabled = \"always\"`)");
+            }
+            Path dest = binDir.resolve(BuildLayout.nativeExecutableFileName(productBin));
+            return installAck(
+                    List.of(nativeBin.toAbsolutePath().toString()), List.of(dest.toString()), "", "", dest.toString());
+        }
+        Path javaHome = projectJavaHome(dir);
         Path libRoot = libDirOverride != null ? libDirOverride : JkDirs.productLib();
         String nativeName =
                 project.nativeConfigOpt().map(JkBuild.NativeConfig::name).orElse(null);

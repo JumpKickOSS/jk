@@ -216,7 +216,7 @@ build rather than silently never running.
 |---|---|
 | Full `./gradlew test` | Parity oracle + bootstrap CI source of truth |
 | `./gradlew dist` / `nativeCompile` | Bootstrap binary when no prior `jk` install exists |
-| `./gradlew installLocal` | Workers + engine materialize/bounce; or `jk install` after pure-jk build |
+| `./gradlew installLocal` | Parity path for workers + engine; `jk install` on the tree does the same and the client too |
 | `checkNoDisabledCompile` (G64), `checkGuardParity`, `checkGuardRegistry` | The one letter only Gradle's task graph can see, and the registry's two tasks — see [House-rule gate](#house-rule-gate) |
 
 ### Future cut-over (backlog)
@@ -233,38 +233,47 @@ five criteria in [Which build is the oracle](#when-self-host-can-replace-gradle-
 Until then: pure-jk dogfood is required for product work that touches runtime; Gradle remains
 valid for bootstrap and comparison.
 
-## Install workers (no Gradle)
+## Install jk with jk (no Gradle)
 
-After `jk build` produces thin PluginMain jars under `plugins/*/target/` (or
-`target/plugins/…`):
+One command installs everything the tree builds:
 
 ```bash
-jk install
+jk install            # or --skip-tests; install runs the suite like `jk build`
 ```
 
-Each worker's thin jar and POM land in
-`~/.jk/store/repos/jk-local/cc/jumpkick/jk-<name>/<ver>/` (Maven layout;
-same as Gradle `installLocal`). Launch rebuilds the runtime classpath from that POM
-and the jars already in the local repo.
+| Module kind | What `jk install` does with it |
+|---|---|
+| Library (`shared/*`, `server/*`, rule packs) | Thin jar + POM onto the shelf, `~/.jk/store/repos/jk-local/<g>/<a>/<v>/` |
+| Plugin worker (`plugins/*`) | Same shelf entry; launch rebuilds the runtime classpath from that POM |
+| `server/engine` — declares `[install] product-lib = "jk-engine"` | Assembly jar materialized into `~/.jk/lib/jk-engine/`, pointer stamped by sha; the next client invocation takes over the resident engine |
+| `clients/cli` — declares `[install] product-bin = "jk"` | Native binary replaces `~/.jk/bin/jk` (previous client parked as `.old`, `jkx` re-linked), the same swap `jk self update` performs |
+
+The shelf always holds the full entry; with the machine default `[m2] install` on, the same bytes
+are also copied into `~/.m2` for Maven and Gradle builds beside jk. The two `[install]` keys exist
+only because jk installs itself — no other project should declare them.
+
+A module the forecast finds clean is still checked against its destination: a shelf entry, engine
+jar or PATH client holding other bytes than the build output is reinstalled.
 
 ## Ship layout
 
-JumpKick’s ship shape is **native CLI** + **JVM engine** jar + PluginMain workers.
-Until a dedicated command replaces the old `jk release` name, produce that layout
-with Gradle and install workers with `jk install`:
+JumpKick’s ship shape is **native CLI** + **JVM engine** jar + PluginMain workers. The pure-jk
+build writes it under `target/dist/`, and `install.sh` installs it on a machine with no jk yet:
 
 ```bash
-./gradlew dist installLocal
-./install.sh build/dist/jk
-jk install   # after a pure-jk build, refreshes repos/jk-local workers
+jk build --skip-tests
+./install.sh target/dist/jk
 ```
 
 ```text
-build/dist/
+target/dist/
   jk                         # native CLI
   lib/
     jk-engine-<version>.jar  # JVM engine assembly (includes web SPA)
 ```
+
+Gradle produces the same layout under `build/dist/` (`./gradlew dist`), which is what CI's
+self-host lane still bootstraps from until a release built by jk is hosted.
 
 ## AOT during self-host / CI
 

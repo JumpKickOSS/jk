@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.pipeline;
 
+import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cli.api.BuildOptions;
@@ -20,6 +21,7 @@ import cc.jumpkick.command.ToolTargets;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.jdk.JavaHomes;
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.command.Exit;
@@ -66,7 +68,9 @@ import org.jspecify.annotations.Nullable;
  * coordinate, or git URL (optional {@code @}/{@code #} ref; {@code gh:owner/repo} shorthands).
  * Cache-installs the thin jar and POM into {@code repos/jk-local}; applications also get a launcher
  * under {@code ~/.jk/bin}. Plugin workers are those same repo jars — launch reconstructs the
- * classpath from the POM.
+ * classpath from the POM. jk's own modules declare {@code [install] product-lib} (the engine jar
+ * into jk's product library) and {@code [install] product-bin} (the native client over the PATH
+ * entry), so installing the product tree with jk is one {@code jk install}.
  */
 public final class InstallCommand {
 
@@ -383,15 +387,17 @@ public final class InstallCommand {
         // EngineInstall (downgrade refusal, pointer stamping) no matter which entry point ran the
         // install — the generic copy below provides none of that.
         boolean productLib = !proj.productLib().isBlank();
-        if (productLib || (!isPluginWorker(proj, projectDir) && proj.application())) {
+        boolean productBin = !proj.productBin().isBlank();
+        if (productLib || productBin || (!isPluginWorker(proj, projectDir) && proj.application())) {
             try {
-                launcher = applyInstallPlan(projectDir, cacheDir, proj.productLib());
+                launcher = applyInstallPlan(projectDir, cacheDir, proj.productLib(), proj.productBin());
             } catch (IOException e) {
                 CommandWedge.printFail("Install", "make install failed: " + e.getMessage());
                 return 1;
             }
         }
         if (productLib) announceProductLibInstall(Coords.gav(coord), proj.productLib());
+        else if (productBin) announceProductBinInstall(Coords.gav(coord), launcher);
         else announceProjectInstall(Coords.gav(coord), launcher, binDir);
         return 0;
     }
@@ -483,7 +489,8 @@ public final class InstallCommand {
         }
         for (Path mod : moduleDirs) {
             if (installed.contains(mod)) continue;
-            if (productLibStale(infoByDir.get(mod))) installed.add(mod);
+            ProjectInfo info = infoByDir.get(mod);
+            if (productLibStale(info) || productBinStale(info)) installed.add(mod);
         }
         if (installed.isEmpty() && !json) {
             // Keep a no-op distinguishable from a skipped install check in human output.
@@ -498,9 +505,10 @@ public final class InstallCommand {
             if (info.coordinatorOnly()) continue;
             Path launcher = null;
             boolean productLib = !info.productLib().isBlank();
-            if (productLib || (!isPluginWorker(info, mod) && info.application())) {
+            boolean productBin = !info.productBin().isBlank();
+            if (productLib || productBin || (!isPluginWorker(info, mod) && info.application())) {
                 try {
-                    launcher = applyInstallPlan(mod, cacheDir, info.productLib());
+                    launcher = applyInstallPlan(mod, cacheDir, info.productLib(), info.productBin());
                 } catch (IOException e) {
                     CommandWedge.printFail("Install", "make install failed: " + e.getMessage());
                     return 1;
@@ -508,6 +516,7 @@ public final class InstallCommand {
             }
             String coord = Coords.gav(Coordinate.of(info.group(), info.name(), info.version()));
             if (productLib) announceProductLibInstall(coord, info.productLib());
+            else if (productBin) announceProductBinInstall(coord, launcher);
             else announceProjectInstall(coord, launcher, binDir);
         }
         return 0;
@@ -561,6 +570,29 @@ public final class InstallCommand {
         }
     }
 
+    /**
+     * Whether {@code info}'s declared PATH client is missing or holds other bytes than the native
+     * binary this tree built. False for every module that declares none.
+     */
+    public static boolean productBinStale(@Nullable ProjectInfo info) {
+        if (info == null || info.error() != null || info.productBin().isBlank()) return false;
+        return productBinStale(info, JkDirs.binDir());
+    }
+
+    public static boolean productBinStale(ProjectInfo info, Path binDir) {
+        String builtPath = info.nativeBinPath();
+        if (builtPath == null || builtPath.isBlank()) return false;
+        Path built = Path.of(builtPath);
+        if (!Files.isRegularFile(built)) return false; // nothing built to install
+        Path live = binDir.resolve(BuildLayout.nativeExecutableFileName(info.productBin()));
+        if (!Files.isRegularFile(live)) return true;
+        try {
+            return !Hashing.sha256Hex(live).equalsIgnoreCase(Hashing.sha256Hex(built));
+        } catch (IOException | RuntimeException unreadable) {
+            return true; // cannot prove it current — install
+        }
+    }
+
     private static boolean isPluginWorker(ProjectInfo proj, Path projectDir) {
         return PluginModule.isWorker(projectDir) || "cc.jumpkick.plugin.process.PluginMain".equals(proj.mainClass());
     }
@@ -577,7 +609,8 @@ public final class InstallCommand {
      * that declares {@code [install] product-lib} is materialized into jk's own product library
      * instead of linked into {@code ~/.jk/bin}.
      */
-    private @Nullable Path applyInstallPlan(Path projectDir, Path cacheDir, String productLib) throws IOException {
+    private @Nullable Path applyInstallPlan(Path projectDir, Path cacheDir, String productLib, String productBin)
+            throws IOException {
         ExecPlan plan = EngineClient.execPlan(
                 EnginePaths.current(),
                 projectDir,
@@ -606,6 +639,10 @@ public final class InstallCommand {
             new EngineInstall(JkDirs.productLib()).materializeFromFiles(version, JkStores.storeCas(), src);
             return null; // a jar the client launches — no launcher/bin to link
         }
+        if (!productBin.isBlank()) {
+            if (plan.linkSrcs().isEmpty()) return null;
+            return installProductBin(Path.of(plan.linkSrcs().get(0)), binDir(), JkStores.storeCas());
+        }
         for (int i = 0; i < plan.linkSrcs().size(); i++) {
             Path src = Path.of(plan.linkSrcs().get(i));
             Path dest = Path.of(plan.linkDests().get(i));
@@ -626,6 +663,20 @@ public final class InstallCommand {
         Path bin = Path.of(plan.binPath());
         markExecutable(bin);
         return bin;
+    }
+
+    /**
+     * jk's own client replaces the PATH client. The built binary is ingested into the CAS and the
+     * {@code bin/} entry linked from that immutable blob, exactly as {@code jk self update} installs
+     * a release — a link straight into {@code target/} would make the installed client an alias of
+     * whatever the next build writes there. The previous client is parked as {@code .old}, so the
+     * process running this install keeps its inode; {@code jkx} is re-linked to the new binary.
+     */
+    public static Path installProductBin(Path builtBinary, Path binDir, Cas cas) throws IOException {
+        String sha = Hashing.sha256Hex(builtBinary);
+        cas.putFile(builtBinary, sha);
+        EngineInstall.installBinaries(cas.pathFor(sha), binDir);
+        return binDir.resolve(BuildLayout.nativeExecutableFileName("jk"));
     }
 
     private static @Nullable Integer rejectInvalidLauncherName(String name) {
@@ -752,6 +803,13 @@ public final class InstallCommand {
         if (global.outputIsJson()) return;
         CliOutput.out("Installed " + coord + " → "
                 + PathDisplay.styledRaw(JkDirs.productLib().resolve(productLib)));
+    }
+
+    /** The PATH client was replaced; the path is the answer to "which jk am I running now". */
+    private void announceProductBinInstall(String coord, @Nullable Path bin) {
+        if (global.outputIsJson()) return;
+        CliOutput.out(
+                "Installed " + coord + " → " + (bin == null ? "(no native binary built)" : PathDisplay.styledRaw(bin)));
     }
 
     /** Announce a project install: launcher path for an app, cache-only for a library. */

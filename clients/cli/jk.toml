@@ -4,6 +4,12 @@ description = "The CLI (and primary) client for interacting with the JumpKick bu
 [application]
 main = "cc.jumpkick.cli.Jk"
 
+# jk installing jk: this module's native binary is the PATH client. `jk install` on the product
+# tree replaces <home>/bin/jk (parking the previous one, re-linking jkx), the way a release
+# update does; the engine module declares the matching `product-lib`.
+[install]
+product-bin = "jk"
+
 [dependencies]
 jk-model.workspace = true
 jk-core.workspace = true

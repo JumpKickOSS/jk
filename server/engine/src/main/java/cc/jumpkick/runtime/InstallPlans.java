@@ -24,7 +24,6 @@ import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.plugin.manifest.PluginModule;
 import cc.jumpkick.publish.PublishablePom;
-import cc.jumpkick.repo.ArtifactMemo;
 import cc.jumpkick.repo.M2CompatWriter;
 import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.repo.MavenLayout;
@@ -266,9 +265,12 @@ public final class InstallPlans {
     }
 
     /**
-     * Install the built JAR and POM into {@code repos/jk-local/}; when {@code [m2] install} (and the
-     * machine {@code JK_M2_INSTALL} policy) is on, also write the Maven local repo with checksum
-     * sidecars. Independent of {@code [m2] integration}.
+     * Install the built JAR and POM into {@code repos/jk-local/} — always, in full: that shelf is
+     * where jk's own resolvers and the worker launcher read, and a memo pointing elsewhere is a
+     * jar the launcher cannot find. When {@code [m2] install} (and the machine {@code
+     * JK_M2_INSTALL} policy) is on, the same bytes also go to the Maven local repo with Maven's
+     * checksum sidecars, for Maven and Gradle builds beside jk. Independent of {@code [m2]
+     * integration}.
      */
     private static void cacheInstallArtifact(JkBuild project, BuildLayout layout, Path cacheDir, Path m2Dir)
             throws IOException {
@@ -279,8 +281,11 @@ public final class InstallPlans {
         String pomRelPath = MavenLayout.pomPath(coord);
         byte[] pomBytes = renderedPom(project, layout);
 
+        writeToLocalStore(cacheDir, jarRelPath, jar);
+        writeBytesToLocalStore(cacheDir, pomRelPath, pomBytes);
+
         if (installToMavenLocal(p)) {
-            // The local Maven repo is primary. m2Dir is caller-resolved (--m2-dir redirects it).
+            // m2Dir is caller-resolved (--m2-dir redirects it).
             Path m2Root = m2Dir.resolve("repository");
 
             Path m2Jar = m2Root.resolve(jarRelPath);
@@ -294,13 +299,6 @@ public final class InstallPlans {
             Path m2Pom = m2Root.resolve(pomRelPath);
             M2CompatWriter.MavenHashes pomH = M2CompatWriter.writeBytesToM2(pomBytes, m2Pom);
             M2CompatWriter.writeMavenSidecars(m2Pom, pomH.sha1(), pomH.md5());
-
-            RepoArtifactStore local = localStore(cacheDir);
-            local.writeMemo(jarRelPath, m2Jar, Hashing.sha256Hex(jar));
-            local.writeMemo(pomRelPath, m2Pom, Hashing.sha256Hex(pomBytes));
-        } else {
-            writeToLocalStore(cacheDir, jarRelPath, jar);
-            writeBytesToLocalStore(cacheDir, pomRelPath, pomBytes);
         }
     }
 
@@ -310,8 +308,8 @@ public final class InstallPlans {
     }
 
     /**
-     * True when this module's thin jar and POM are already installed at the same SHA-256
-     * ({@code repos/jk-local}, or the Maven local repo when {@code [m2] install} is on).
+     * True when this module's thin jar and POM are on the shelf at the same SHA-256 — and, when
+     * {@code [m2] install} is on, in the Maven local repo too.
      */
     public static boolean alreadyInstalled(JkBuild project, BuildLayout layout, Path cacheDir) {
         if (project == null || layout == null) return false;
@@ -324,20 +322,19 @@ public final class InstallPlans {
         try {
             String jarHex = Hashing.sha256Hex(jar);
             String pomHex = Hashing.sha256Hex(renderedPom(project, layout));
-            if (installToMavenLocal(p)) {
-                Path storeLocal = JkStores.store().resolve("repos").resolve(RepoArtifactResolver.JK_LOCAL);
-                Path m2 = M2Dirs.localRepository();
-                return ArtifactMemo.verify(
-                                m2.resolve(jarRel), ArtifactMemo.jkPath(storeLocal, jarRel), coord.toGav(), jarHex)
-                        && ArtifactMemo.verify(
-                                m2.resolve(pomRel), ArtifactMemo.jkPath(storeLocal, pomRel), coord.toGav(), pomHex);
-            }
             RepoArtifactStore local = localStore(cacheDir);
-            return local.locate(jarRel, jarHex).isPresent()
-                    && local.locate(pomRel, pomHex).isPresent();
+            if (local.locate(jarRel, jarHex).isEmpty()
+                    || local.locate(pomRel, pomHex).isEmpty()) return false;
+            if (!installToMavenLocal(p)) return true;
+            Path m2 = M2Dirs.localRepository();
+            return sameBytes(m2.resolve(jarRel), jarHex) && sameBytes(m2.resolve(pomRel), pomHex);
         } catch (RuntimeException | IOException e) {
             return false;
         }
+    }
+
+    private static boolean sameBytes(Path file, String sha256Hex) throws IOException {
+        return Files.isRegularFile(file) && Hashing.sha256Hex(file).equalsIgnoreCase(sha256Hex);
     }
 
     static byte[] renderedPomBytes(JkBuild project, BuildLayout layout) {

@@ -689,12 +689,19 @@ public record JkBuild(
      * record of that fact was a path-pattern match in the CLI — which meant the engine's freshness
      * check asked about the wrong artifact and a missing engine install read as "already done".
      *
-     * <p>Nothing else in the tree sets it, and nothing else should need to: a project that installs
-     * into a user's product layout is jk installing jk.
+     * <p>{@code productBin} names the PATH client under jk's own {@code bin/} that the module's
+     * native binary replaces — the one name every other install is refused there, because a tool
+     * launcher called {@code jk} would truncate the product. The previous client is parked beside
+     * it so the process running the install keeps its inode.
+     *
+     * <p>Nothing else in the tree sets either, and nothing else should need to: a project that
+     * installs into a user's product layout is jk installing jk.
      */
-    public record Install(@Nullable String productLib) {
+    public record Install(
+            @Nullable String productLib, @Nullable String productBin) {
         public Install {
             if (productLib != null && productLib.isBlank()) productLib = null;
+            if (productBin != null && productBin.isBlank()) productBin = null;
         }
     }
 

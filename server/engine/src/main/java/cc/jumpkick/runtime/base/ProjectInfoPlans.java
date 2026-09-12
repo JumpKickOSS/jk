@@ -274,7 +274,8 @@ public final class ProjectInfoPlans {
                 build.project().isScala(),
                 build.project().scala() == null ? "" : build.project().scala().raw(),
                 CompileSupport.coordinatorOnly(build, dir),
-                build.installOpt().map(JkBuild.Install::productLib).orElse(""));
+                build.installOpt().map(JkBuild.Install::productLib).orElse(""),
+                build.installOpt().map(JkBuild.Install::productBin).orElse(""));
     }
 
     private static String sanitizeIdentity(String value) {

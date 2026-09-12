@@ -18,7 +18,9 @@ import org.jspecify.annotations.Nullable;
  * <p>{@code productLib} is {@code [install] product-lib} — the directory under jk's own product
  * library that this module's packaged artifact is materialized into. Empty for every ordinary
  * target. It is on the wire because the CLI owns that destination and must decide whether it needs
- * refreshing, and a thin client cannot read a manifest to find out.
+ * refreshing, and a thin client cannot read a manifest to find out. {@code productBin} is
+ * {@code [install] product-bin}, the PATH client under jk's own {@code bin/} that this module's
+ * native binary replaces; on the wire for the same reason.
  *
  * <p>{@code coordinatorOnly} is a workspace root that carries no sources of its own. It builds as
  * a unit (it runs the workspace's build logic) but compiles, packages and publishes nothing, so
@@ -79,7 +81,8 @@ public record ProjectInfo(
         boolean scala,
         String scalaVersion,
         boolean coordinatorOnly,
-        String productLib) {
+        String productLib,
+        String productBin) {
 
     /** The {@code group:name} display coordinate. */
     public String coord() {
@@ -141,6 +144,7 @@ public record ProjectInfo(
                 false,
                 "",
                 false,
+                "",
                 "");
     }
 
@@ -199,6 +203,7 @@ public record ProjectInfo(
                 .string("scalaVersion", scalaVersion)
                 .bool("coordinatorOnly", coordinatorOnly)
                 .string("productLib", productLib)
+                .string("productBin", productBin)
                 .finish();
     }
 
@@ -258,7 +263,8 @@ public record ProjectInfo(
                 Jsonl.bool(line, "scala", false),
                 orEmpty(Jsonl.str(line, "scalaVersion")),
                 Jsonl.bool(line, "coordinatorOnly", false),
-                orEmpty(Jsonl.str(line, "productLib")));
+                orEmpty(Jsonl.str(line, "productLib")),
+                orEmpty(Jsonl.str(line, "productBin")));
     }
 
     /** {@code ,"key":true|false} when set; empty string when unset (tri-state). */

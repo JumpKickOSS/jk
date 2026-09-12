@@ -150,7 +150,8 @@ public final class ManifestTables {
      *
      * <p>Absent for every ordinary target, which is the point: a library, an executable, a native
      * binary, a script and an external jar are complete shapes already and declare nothing. The one
-     * key today is {@code product-lib}, which is jk installing jk — see {@link JkBuild.Install}.
+     * keys are {@code product-lib} and {@code product-bin}, which are jk installing jk — see
+     * {@link JkBuild.Install}.
      */
     static Optional<JkBuild.Install> parseInstall(TomlTable root) {
         if (root.contains("install") && !root.isTable("install")) {
@@ -159,11 +160,13 @@ public final class ManifestTables {
         TomlTable install = root.getTable("install");
         if (install == null) return Optional.empty();
         for (String key : install.keySet()) {
-            if (!"product-lib".equals(key)) {
-                throw new JkBuildParseException("[install] unknown key `" + key + "` — expected product-lib");
+            if (!"product-lib".equals(key) && !"product-bin".equals(key)) {
+                throw new JkBuildParseException(
+                        "[install] unknown key `" + key + "` — expected product-lib or product-bin");
             }
         }
         String productLib = stringOrThrow(install, "product-lib", "install.product-lib");
+        String productBin = stringOrThrow(install, "product-bin", "install.product-bin");
         // The destination is not configurable: EngineInstall hardcodes the jk-engine home, the
         // pointer name and the jar naming, so any other value would be freshness-checked and
         // installed under jk-engine/ while announcing a directory nothing wrote to. (A client-io
@@ -172,7 +175,15 @@ public final class ManifestTables {
             throw new JkBuildParseException("[install] product-lib must be \"jk-engine\" — installing into jk's own"
                     + " product layout is jk installing jk, and the engine home is not configurable");
         }
-        return productLib == null ? Optional.empty() : Optional.of(new JkBuild.Install(productLib));
+        // The PATH client's name is not configurable either: EngineInstall writes `jk` (and its
+        // `jkx` twin) under <home>/bin, and that is the one name LauncherName refuses to every
+        // other install.
+        if (productBin != null && !productBin.equals("jk")) {
+            throw new JkBuildParseException("[install] product-bin must be \"jk\" — the PATH client under jk's own"
+                    + " bin/ is the one binary an install may replace there");
+        }
+        if (productLib == null && productBin == null) return Optional.empty();
+        return Optional.of(new JkBuild.Install(productLib, productBin));
     }
 
     /** Present boolean key → its value; absent → null (caller applies the default). */

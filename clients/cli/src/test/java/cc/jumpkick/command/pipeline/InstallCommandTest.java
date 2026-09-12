@@ -201,5 +201,10 @@ class InstallCommandTest {
         Path repo = m2.resolve("repository/com/example/lib-only/0.1.0");
         assertThat(repo.resolve("lib-only-0.1.0.jar")).exists();
         assertThat(repo.resolve("lib-only-0.1.0.pom")).exists();
+        // The Maven copy is in addition to the shelf, never instead of it: jk's own resolvers and
+        // the worker launcher read repos/jk-local and follow no memo into ~/.m2.
+        Path shelf = JkStores.resolve("repos").resolve("jk-local/com/example/lib-only/0.1.0");
+        assertThat(shelf.resolve("lib-only-0.1.0.jar")).hasSameBinaryContentAs(repo.resolve("lib-only-0.1.0.jar"));
+        assertThat(shelf.resolve("lib-only-0.1.0.pom")).hasSameBinaryContentAs(repo.resolve("lib-only-0.1.0.pom"));
     }
 }

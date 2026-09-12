@@ -55,6 +55,23 @@ class ManifestInstallTest {
     }
 
     @Test
+    void product_bin_is_read() throws Exception {
+        assertThat(parse("[install]\nproduct-bin = \"jk\"\n").installOpt()).hasValueSatisfying(i -> {
+            assertThat(i.productBin()).isEqualTo("jk");
+            assertThat(i.productLib()).isNull();
+        });
+    }
+
+    @Test
+    void product_bin_accepts_only_the_path_client_name() throws Exception {
+        // EngineInstall writes `jk` and `jkx` under <home>/bin; any other name is a tool launcher,
+        // which the ordinary install shape already provides.
+        assertThatThrownBy(() -> parse("[install]\nproduct-bin = \"jkx\"\n"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("\"jk\"");
+    }
+
+    @Test
     void install_must_be_a_table() throws Exception {
         assertThatThrownBy(() -> parse("install = \"jk-engine\"\n"))
                 .isInstanceOf(JkBuildParseException.class)

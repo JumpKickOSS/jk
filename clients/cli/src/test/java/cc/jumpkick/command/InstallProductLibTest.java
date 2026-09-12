@@ -73,7 +73,8 @@ class InstallProductLibTest {
                 base.scala(),
                 base.scalaVersion(),
                 base.coordinatorOnly(),
-                productLib);
+                productLib,
+                "");
     }
 
     @Test
