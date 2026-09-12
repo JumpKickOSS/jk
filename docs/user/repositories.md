@@ -5,8 +5,9 @@ jk auth login                  # GitHub / GitLab / Gitea / Bitbucket
 jk repo login | logout | search | refresh
 ```
 
-Credentials: env, OS keychain, or Maven `settings.xml`. Prefer `auth = "env:TOKEN"` over
-secrets in TOML. Corporate mirrors, forge package registries, S3/MinIO, and GCS are
+Credentials: env, `jk repo login`, or Maven `settings.xml` — see [Credentials](#credentials) for
+the order and for why a credential only travels to the origin its name is bound to. Prefer
+`${VAR}` references over secrets in TOML. Corporate mirrors, forge package registries, S3/MinIO, and GCS are
 supported. After lock, a digest-matching file in the Maven local repository is used in
 place; otherwise `JK_STORE_DIR/repos/<name>/`. Set `[m2] integration = false` to keep
 third-party jars only under the jk store. `jk install` writes the Maven local repo
@@ -89,6 +90,50 @@ When a repository has opted out, the lock summary says so — `Resolved 42 depen
 2 unverified (allowed) · insecure (allowed): mirror` — so the count is visible on every lock
 instead of scrolling past as a warning. After the lock, builds enforce the pinned sha256 as
 usual.
+
+## Credentials
+
+Sources, in order — the first that yields a credential wins:
+
+1. inline in the `[repositories.<id>]` table: `token`, or `username` + `password`, normally as
+   `${VAR}` references expanded when the repository is used
+2. `JK_REPO_<ID>_TOKEN`, or `JK_REPO_<ID>_USERNAME` + `JK_REPO_<ID>_PASSWORD` — `<ID>` is the id
+   upper-cased with every non-alphanumeric as `_` (`corp-nexus` → `CORP_NEXUS`)
+3. `jk repo login <id>` (stored under `~/.jk/creds/repo/`, owner-only)
+4. the `<server>` with that `<id>` in `~/.m2/settings.xml`
+5. a `jk auth login` forge token, for forge package registries (matched by host)
+
+### A name is not a destination
+
+Sources 2–4 are keyed by the repository *id*, and the project's `jk.toml` chooses which URL that
+id points at. Left alone, a cloned project declaring `[repositories.ossrh] url =
+"https://attacker.example/m2/"` would receive whatever your machine holds under `ossrh` on its
+first resolve. So a name-keyed credential is sent only to an origin (scheme, host, port) that
+something the project cannot edit binds the name to:
+
+| Binding | Where it comes from |
+|---------|---------------------|
+| the URL `jk repo login <id>` recorded | the login itself. Run inside a project it binds to the URL `~/.jk/config.toml` or that project's `jk.toml` declares for the id (printed on login); `--url <url>` binds explicitly; a host-shaped id (`ghcr.io`, `127.0.0.1:5000`) binds to `https://<id>` |
+| `[repositories.<id>]` in `~/.jk/config.toml` | your own config; its origin must match the project's |
+| `JK_REPO_<ID>_HOST=<host[:port]>` (or a full URL) | your shell or CI variables. A project's `.env` cannot supply it |
+| the id *is* the host | container registries and other repositories addressed by host |
+
+A user-config declaration outranks the rest: if it names another origin than the project does, the
+credential stays home even when a `JK_REPO_<ID>_HOST` agrees with the project.
+
+When a credential exists but nothing binds it — or something binds it elsewhere — the repository
+is accessed anonymously and jk warns once per run, naming the repository, the origin it declares,
+the source that was held back and what would send it:
+
+```
+jk: warning: repository `ossrh` at https://attacker.example is accessed anonymously: a credential
+for that name exists in the `jk repo login ossrh` store, but `jk repo login ossrh` stored it for
+https://s01.oss.sonatype.org, not https://attacker.example; …
+```
+
+CI that exports `JK_REPO_INTERNAL_TOKEN` for a repository the project declares exports
+`JK_REPO_INTERNAL_HOST=repo.acme.com` beside it. Inline `${VAR}` credentials are not name-keyed
+and need no binding: the manifest that declares the URL declares the credential with it.
 
 ## Related
 

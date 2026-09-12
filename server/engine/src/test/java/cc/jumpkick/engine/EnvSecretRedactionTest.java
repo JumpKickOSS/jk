@@ -54,8 +54,11 @@ class EnvSecretRedactionTest {
         ResolvedSecrets.clear();
     }
 
-    /** The real resolver, with every collaborator but the environment pointed at a scratch dir. */
-    private static RepoCredentialResolver resolver(Path scratch, String tokenValue) {
+    /**
+     * The real resolver, with every collaborator but the environment pointed at a scratch dir. The
+     * shell binds the name to {@code host}, as CI does beside the token, so the credential is sent.
+     */
+    private static RepoCredentialResolver resolver(Path scratch, String tokenValue, String host) {
         Function<String, @Nullable String> env = name -> "JK_REPO_NEXUS_TOKEN".equals(name) ? tokenValue : null;
         Function<String, @Nullable String> noEnv = k -> null;
         return new RepoCredentialResolver(
@@ -63,7 +66,9 @@ class EnvSecretRedactionTest {
                 MavenSettings.empty(),
                 new RepoCredentialStore(scratch.resolve("creds")),
                 new ForgeAuth(new TokenStore(scratch.resolve("tokens")), noEnv, argv -> Optional.empty()),
-                (endpoint, field, token) -> Optional.empty());
+                (endpoint, field, token) -> Optional.empty(),
+                name -> "JK_REPO_NEXUS_HOST".equals(name) ? host : null,
+                List::of);
     }
 
     @Test
@@ -188,8 +193,8 @@ class EnvSecretRedactionTest {
                 .as("nothing in this tree declares the credential")
                 .isFalse();
 
-        RepoCredential resolved =
-                SessionContext.where(Session.defaults().withWorkingDir(project), () -> resolver(tmp, REPO_TOKEN)
+        RepoCredential resolved = SessionContext.where(
+                Session.defaults().withWorkingDir(project), () -> resolver(tmp, REPO_TOKEN, "nexus.example.com")
                         .resolve("nexus", URI.create("https://nexus.example.com/repo/"), Optional.empty()));
         assertThat(resolved).isEqualTo(new RepoCredential.Bearer(REPO_TOKEN));
 
@@ -250,11 +255,11 @@ class EnvSecretRedactionTest {
         AtomicReference<@Nullable String> aSawItsOwn = new AtomicReference<>();
         AtomicReference<@Nullable String> bSawSessionAs = new AtomicReference<>();
         Runnable inA = () -> {
-            resolver(a, tokenA).resolve("nexus", URI.create("https://a.example/repo/"), Optional.empty());
+            resolver(a, tokenA, "a.example").resolve("nexus", URI.create("https://a.example/repo/"), Optional.empty());
             aSawItsOwn.set(EventRedaction.redactEnv(a.toString(), "401 for " + tokenA));
         };
         Runnable inB = () -> {
-            resolver(b, tokenB).resolve("nexus", URI.create("https://b.example/repo/"), Optional.empty());
+            resolver(b, tokenB, "b.example").resolve("nexus", URI.create("https://b.example/repo/"), Optional.empty());
             bSawSessionAs.set(EventRedaction.redactEnv(b.toString(), "401 for " + tokenA));
         };
         Thread ta = new Thread(() -> SessionContext.runWhere(Session.defaults().withWorkingDir(a), inA), "session-a");

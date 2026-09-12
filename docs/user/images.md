@@ -44,7 +44,8 @@ export JK_REPO_GHCR_IO_USERNAME=… JK_REPO_GHCR_IO_PASSWORD=…   # or JK_REPO_
 ```
 
 Order: environment → `jk repo login` store → `~/.m2/settings.xml` server of that id → forge
-token. Whatever that finds is tried first; an existing **`docker login`** is the fallback, so
+token. The id being the host is what binds the credential to that registry (see
+[Repositories § Credentials](repositories.md#credentials)). Whatever that finds is tried first; an existing **`docker login`** is the fallback, so
 `~/.docker/config.json`, its `credHelpers`, and the well-known cloud helpers (`gcloud`,
 `ecr-login`, ACR) keep working with no jk-side setup.
 

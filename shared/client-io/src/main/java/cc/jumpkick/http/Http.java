@@ -385,7 +385,7 @@ public final class Http {
     }
 
     /** Same scheme, host and effective port — the boundary a credential is scoped to. */
-    static boolean sameOrigin(URI a, URI b) {
+    public static boolean sameOrigin(URI a, URI b) {
         return a.getScheme() != null
                 && a.getScheme().equalsIgnoreCase(b.getScheme())
                 && a.getHost() != null
