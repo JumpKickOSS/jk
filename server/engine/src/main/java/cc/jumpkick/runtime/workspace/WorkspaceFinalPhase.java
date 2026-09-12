@@ -104,6 +104,7 @@ final class WorkspaceFinalPhase {
                     request.entryDir(),
                     graph,
                     request.skipTests(),
+                    request.profile(),
                     resources.preflight().forecast());
         }
     }
@@ -118,13 +119,17 @@ final class WorkspaceFinalPhase {
      * rebuild skips the walk — falls back to a snapshot, the same one the restore path takes.
      */
     static void certifyClean(
-            Path entryDir, BuildGraph.Result graph, boolean skipTests, Optional<BuildForecasting.Preflight> forecast) {
+            Path entryDir,
+            BuildGraph.Result graph,
+            boolean skipTests,
+            @Nullable String profile,
+            Optional<BuildForecasting.Preflight> forecast) {
         Map<Path, String> fingerprints = forecast.map(BuildForecasting.Preflight::fingerprints)
                 .filter(captured -> !captured.isEmpty())
                 .orElseGet(() ->
                         PreflightMemo.snapshotFingerprints(graph, skipTests).fingerprints());
         if (fingerprints.isEmpty()) return;
-        PreflightMemo.storeDirty(entryDir, graph, skipTests, Set.of(), fingerprints);
+        PreflightMemo.storeDirty(entryDir, graph, skipTests, profile, Set.of(), fingerprints);
         // One set of fingerprints, two records: the memo says these inputs are clean, and this
         // says the outputs on disk are the ones they produce. The second is what lets preflight
         // tell "nothing to do" from "the artifacts here are from another run".

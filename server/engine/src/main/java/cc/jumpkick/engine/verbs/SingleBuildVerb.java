@@ -146,7 +146,7 @@ public final class SingleBuildVerb implements HostedVerb {
                 host.maybeEnqueuePrune(cache);
             }
             if (result.success() && preGraph != null && preFps != null) {
-                PreflightMemo.storeDirty(entryDir, preGraph, skipTests, Set.of(), preFps);
+                PreflightMemo.storeDirty(entryDir, preGraph, skipTests, profile, Set.of(), preFps);
                 PreflightMemo.storeGraph(entryDir, preGraph);
                 ModuleInputProvenance.record(entryDir, preGraph, preFps);
             }

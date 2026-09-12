@@ -144,7 +144,7 @@ public final class BuildForecasting {
             @Nullable Path entryDir,
             WorkspaceTarget target,
             Set<Path> terminalDirs) {
-        return forecastWithFingerprints(graph, cache, skipTests, entryDir, target, terminalDirs, true);
+        return forecastWithFingerprints(graph, cache, skipTests, entryDir, target, terminalDirs, true, null);
     }
 
     /** {@code persistMemo=false}: consult but never store — read-only estimates. */
@@ -156,6 +156,23 @@ public final class BuildForecasting {
             WorkspaceTarget target,
             Set<Path> terminalDirs,
             boolean persistMemo) {
+        return forecastWithFingerprints(graph, cache, skipTests, entryDir, target, terminalDirs, persistMemo, null);
+    }
+
+    /**
+     * As above under the request's {@code --profile}. The profile's javac args key every compile
+     * step, so the walk forecasts against them and the dirty memo is stored and consulted under
+     * the profile's name: a default build's clean memo says nothing about a profile build.
+     */
+    static Preflight forecastWithFingerprints(
+            BuildGraph.Result graph,
+            Path cache,
+            boolean skipTests,
+            @Nullable Path entryDir,
+            WorkspaceTarget target,
+            Set<Path> terminalDirs,
+            boolean persistMemo,
+            @Nullable String profile) {
         WorkspaceTarget t = target == null ? WorkspaceTarget.PACKAGE : target;
         // The dirty memo's clean claim covers package outputs only (it checks the module target
         // dir, not terminal artifacts). NATIVE/IMAGE/COMPILE/INSTALL must always run the
@@ -179,7 +196,7 @@ public final class BuildForecasting {
         Map<Path, String> fps;
         Map<Path, PreflightMemo.Uncertain> uncertain = Map.of();
         if (entryDir != null && memoSafe) {
-            var memo = PreflightMemo.tryLoadDirty(entryDir, graph, skipTests);
+            var memo = PreflightMemo.tryLoadDirty(entryDir, graph, skipTests, profile);
             if (memo.isPresent()) {
                 Perf.note(
                         "preflight-memo hit",
@@ -207,7 +224,7 @@ public final class BuildForecasting {
             Cas cas = JkStores.storeCas(); // artifact CAS for classpath fingerprints
             ActionCache ac = new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache));
             List<TaskForecast.Module> modules = TaskForecaster.of(
-                    graph, cas, ac, cache, skipTests, t, terminalDirs == null ? Set.of() : terminalDirs);
+                    graph, cas, ac, cache, skipTests, t, terminalDirs == null ? Set.of() : terminalDirs, profile);
             Set<Path> dirty = new HashSet<>();
             Set<Path> restoreNeeded = new HashSet<>();
             for (TaskForecast.Module m : modules) {
@@ -241,7 +258,7 @@ public final class BuildForecasting {
             }
             if (entryDir != null && memoSafe && persistMemo) {
                 // Store input-dirty only — restoreNeeded is re-derived from missing outputs on load.
-                PreflightMemo.storeDirty(entryDir, graph, skipTests, dirty, fps);
+                PreflightMemo.storeDirty(entryDir, graph, skipTests, profile, dirty, fps);
             }
             return new Preflight(dirty, restoreNeeded, fps, modules, reasons);
         } catch (RuntimeException e) {
@@ -324,6 +341,12 @@ public final class BuildForecasting {
      */
     public static ExplainPlan explainFromGraph(
             BuildGraph.Result graph, Path cache, boolean skipTests, @Nullable Path entryDir) {
+        return explainFromGraph(graph, cache, skipTests, entryDir, null);
+    }
+
+    /** As above under the request's {@code --profile}, which keys the compile steps and the memo. */
+    public static ExplainPlan explainFromGraph(
+            BuildGraph.Result graph, Path cache, boolean skipTests, @Nullable Path entryDir, @Nullable String profile) {
         if (graph.hasErrors()) {
             return new ExplainPlan(List.of(), Map.of(), 1, List.copyOf(graph.errors()));
         }
@@ -331,7 +354,7 @@ public final class BuildForecasting {
         if (entryDir != null
                 && !SessionContext.current().config().rebuildOr(false)
                 && !SessionContext.current().config().forceOr(false)) {
-            var memo = PreflightMemo.tryLoadDirty(entryDir, graph, skipTests);
+            var memo = PreflightMemo.tryLoadDirty(entryDir, graph, skipTests, profile);
             if (memo.isPresent() && memo.get().dirty().isEmpty()) {
                 Perf.note(
                         "explain preflight-memo hit fully-cached",
@@ -351,7 +374,14 @@ public final class BuildForecasting {
         // scheduled 7 and never touched them. Both statements were true; only one is the plan for
         // the command the user is about to run.
         Preflight pf = forecastWithFingerprints(
-                graph, cache, skipTests, entryDir, WorkspaceTarget.PACKAGE, Set.of(), /* persistMemo= */ false);
+                graph,
+                cache,
+                skipTests,
+                entryDir,
+                WorkspaceTarget.PACKAGE,
+                Set.of(),
+                /* persistMemo= */ false,
+                profile);
         Set<Path> scheduled = new HashSet<>(pf.dirty());
         scheduled.addAll(pf.restoreNeeded());
         if (scheduled.isEmpty()) return fullyCachedExplainPlan(graph);
@@ -360,7 +390,8 @@ public final class BuildForecasting {
             // Memo hit, or --force/--redo: no walk happened, so the step lists come from one here.
             Cas cas = JkStores.storeCas(); // artifact CAS for classpath fingerprints
             ActionCache actionCache = new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache));
-            modules = TaskForecaster.of(graph, cas, actionCache, cache, skipTests);
+            modules = TaskForecaster.of(
+                    graph, cas, actionCache, cache, skipTests, WorkspaceTarget.PACKAGE, Set.of(), profile);
         }
         return new ExplainPlan(
                 withReasons(onlyScheduled(modules, scheduled), pf.reasons()),

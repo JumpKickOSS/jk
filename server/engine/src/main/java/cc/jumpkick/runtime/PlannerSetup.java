@@ -145,19 +145,10 @@ public final class PlannerSetup {
 
                     Lockfile lock = ctx.require(LOCKFILE);
 
-                    Profile profile = CompileSupport.resolveProfile(project.profiles(), in.profileName());
-                    // Debug info and default lint (deprecation/unchecked) per [build]; the
-                    // profile's own javac args win (appended after). Shared by the
-                    // main- and test-compile steps (both read JAVAC_ARGS).
+                    // Shared by the main- and test-compile steps (both read JAVAC_ARGS).
                     // Classpaths are published in resolve-deps AFTER sync — same reason
                     // JAVA_HOME is published in ensure-jdk, not here.
-                    ctx.put(
-                            JAVAC_ARGS,
-                            JavacDefaults.effectiveArgs(
-                                    project.build().lint(),
-                                    project.build().debug(),
-                                    PluginContributions.javacArgs(project, in.dir(), lockModules(lock)),
-                                    profile == null ? List.of() : profile.javacArgs()));
+                    ctx.put(JAVAC_ARGS, effectiveJavacArgs(project, in.dir(), lock, in.profileName()));
                     // Reuse source lists that the tick suppliers may have already walked.
                     // If the ticks haven't fired yet (unusual ordering), populate and cache now.
                     InputTrees.coverModule(in.dir());
@@ -194,6 +185,22 @@ public final class PlannerSetup {
                     ctx.progress(1);
                 })
                 .build();
+    }
+
+    /**
+     * The javac args every compile step of this module runs with: debug info and default lint per
+     * {@code [build]}, the plugin contributions the lock resolves, then the selected profile's own
+     * args, which win by coming last. The forecast derives its compile keys from this same body,
+     * so a {@code --profile} that changes the args changes the forecast's key exactly as it
+     * changes the build's.
+     */
+    static List<String> effectiveJavacArgs(JkBuild project, Path dir, Lockfile lock, @Nullable String profileName) {
+        Profile profile = CompileSupport.resolveProfile(project.profiles(), profileName);
+        return JavacDefaults.effectiveArgs(
+                project.build().lint(),
+                project.build().debug(),
+                PluginContributions.javacArgs(project, dir, lockModules(lock)),
+                profile == null ? List.of() : profile.javacArgs());
     }
 
     static Task syncDepsStep(BuildPlanner.Ctx cx) {

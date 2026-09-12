@@ -4,7 +4,6 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CompileRequest;
-import cc.jumpkick.compile.JavacDefaults;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceClasspath;
@@ -24,7 +23,6 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
-import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.CompileToolchain;
@@ -82,6 +80,7 @@ final class ModuleForecast {
     private int sourceCount;
     private List<TaskForecast.Task> steps = new ArrayList<>();
     private List<Path> testCompileCp = List.of();
+    private final @Nullable String profileName;
     private int testCount;
     private boolean testDepDirty;
     private boolean testDirty;
@@ -101,7 +100,8 @@ final class ModuleForecast {
             Map<Path, String> restoredJarShas,
             WorkspaceTarget target,
             Set<Path> terminalDirs,
-            @Nullable Path workerJar) {
+            @Nullable Path workerJar,
+            @Nullable String profileName) {
         this.u = u;
         this.dep = dep;
         this.force = force;
@@ -114,6 +114,7 @@ final class ModuleForecast {
         this.target = target;
         this.terminalDirs = terminalDirs;
         this.workerJar = workerJar;
+        this.profileName = profileName;
         this.project = u.manifest();
         this.dir = u.dir();
         this.lockFile = LockPaths.lockFile(dir);
@@ -191,13 +192,10 @@ final class ModuleForecast {
         // download a JDK is not read-only, and an unresolvable JDK throws out of this block
         // and is reported as a step that will run, which is the pessimistic answer.
         Path javaHome = TaskForecaster.forecastJavaHome(dir, project, lock);
-        // Same contributed-args evaluation as the real compile step, against the same
-        // lock — forecast action keys must match the keys the build will actually use.
-        List<String> javacArgs = JavacDefaults.effectiveArgs(
-                project.build().lint(),
-                project.build().debug(),
-                PluginContributions.javacArgs(project, dir, PlannerSupport.lockModules(lock)),
-                List.of());
+        // The build's own derivation, against the same lock and the same --profile: forecast
+        // action keys must match the keys the build will actually use, and a profile whose
+        // javac args differ from the default's keys a different compile.
+        List<String> javacArgs = PlannerSetup.effectiveJavacArgs(project, dir, lock, profileName);
         // Must mirror BuildPlanner' processor classpath exactly — workspace siblings
         // included — or the forecast hashes a different -processorpath than the
         // build and every KSP module forecasts a phantom rebuild.

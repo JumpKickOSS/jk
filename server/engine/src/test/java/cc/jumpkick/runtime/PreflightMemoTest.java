@@ -23,6 +23,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.UnaryOperator;
@@ -73,6 +74,26 @@ class PreflightMemoTest {
         // A rule edit must re-plan every module: the salt is an input, so the memo misses.
         Files.writeString(tmp.resolve("jk-guards.toml"), "# rules, edited\n");
         assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false)).isEmpty();
+    }
+
+    /**
+     * A profile's javac args key every compile step, so a memo certified clean by a default build
+     * must not answer a {@code --profile} build, nor the other way round.
+     */
+    @Test
+    void a_memo_stored_under_one_profile_is_a_miss_under_another(@TempDir Path tmp) throws Exception {
+        writeProject(tmp);
+        BuildGraph.Result graph =
+                BuildGraph.resolve(tmp, JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml"))));
+        Map<Path, String> fps = PreflightMemo.snapshotFingerprints(graph, false).fingerprints();
+
+        PreflightMemo.storeDirty(tmp, graph, false, null, Set.of(), fps);
+        assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false, null)).isPresent();
+        assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false, "strict")).isEmpty();
+
+        PreflightMemo.storeDirty(tmp, graph, false, "strict", Set.of(), fps);
+        assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false, "strict")).isPresent();
+        assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false, null)).isEmpty();
     }
 
     @Test

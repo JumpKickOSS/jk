@@ -10,6 +10,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.DebugInfo;
 import cc.jumpkick.model.JavacConfig;
@@ -395,5 +396,34 @@ class ForecastKeyOwnerTest {
                 """);
         JkBuild appBuild = JkBuildParser.parse(app.resolve("jk.toml"));
         assertThat(PackagingKeys.mainClass(app, appBuild)).isEqualTo("t.Main");
+    }
+
+    /**
+     * The javac args the build and the forecast key their compile steps with come from one body,
+     * and the request's {@code --profile} is one of its inputs: a profile whose args differ from
+     * the default's yields different args, so a profile build after a default build keys a
+     * different compile instead of forecasting the default record as a hit.
+     */
+    @Test
+    void javac_args_owner_appends_the_selected_profiles_args(@TempDir Path tmp) throws Exception {
+        Path module = Files.createDirectories(tmp.resolve("m"));
+        Files.writeString(module.resolve("jk.toml"), """
+                group = "t"
+                name = "m"
+                version = "0.1.0"
+                java = 25
+
+                [profiles.strict]
+                javac = ["-Werror"]
+                """);
+        JkBuild project = JkBuildParser.parse(module.resolve("jk.toml"));
+        Lockfile lock = new Lockfile(
+                Lockfile.CURRENT_VERSION, "test", Lockfile.RESOLUTION_ALGORITHM, null, null, List.of(), List.of());
+
+        List<String> defaults = PlannerSetup.effectiveJavacArgs(project, module, lock, null);
+        List<String> strict = PlannerSetup.effectiveJavacArgs(project, module, lock, "strict");
+
+        assertThat(defaults).doesNotContain("-Werror");
+        assertThat(strict).endsWith("-Werror").containsAll(defaults);
     }
 }

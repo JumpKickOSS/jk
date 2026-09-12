@@ -189,7 +189,18 @@ public final class PreflightMemo {
         }
     }
 
+    /** The memo of a build with no {@code --profile}. */
     public static Optional<DirtyMemo> tryLoadDirty(Path entryDir, BuildGraph.Result graph, boolean skipTests) {
+        return tryLoadDirty(entryDir, graph, skipTests, null);
+    }
+
+    /**
+     * The memo stored under {@code profile}, or empty. A profile's javac args key every compile
+     * step, so a memo certified clean under one profile says nothing about a build under another:
+     * the header names the profile and a different one is a miss.
+     */
+    public static Optional<DirtyMemo> tryLoadDirty(
+            Path entryDir, BuildGraph.Result graph, boolean skipTests, @Nullable String profile) {
         Path file = resolveDirtyMemoFile(entryDir);
         if (file == null || !Files.isRegularFile(file)) return Optional.empty();
         try {
@@ -198,9 +209,11 @@ public final class PreflightMemo {
             String wantVersion = BuildIdentity.cacheKeyVersion();
             String wantSkip = skipTests ? "1" : "0";
             String wantMode = fingerprintMode();
+            String wantProfile = profileHeader(profile);
             String gotVersion = null;
             String gotSkip = null;
             String gotMode = null;
+            String gotProfile = null;
             Map<String, MemoRow> rows = new LinkedHashMap<>();
             for (String line : lines) {
                 if (line.isBlank() || line.startsWith("#")) continue;
@@ -217,12 +230,17 @@ public final class PreflightMemo {
                     gotMode = line.substring("fpMode=".length());
                     continue;
                 }
+                if (line.startsWith("profile=")) {
+                    gotProfile = line.substring("profile=".length());
+                    continue;
+                }
                 String[] parts = line.split("\t", 3);
                 if (parts.length != 3) return Optional.empty();
                 rows.put(parts[0], new MemoRow(parts[1], "1".equals(parts[2])));
             }
             if (!wantVersion.equals(gotVersion) || !wantSkip.equals(gotSkip)) return Optional.empty();
             if (gotMode != null && !wantMode.equals(gotMode)) return Optional.empty();
+            if (!wantProfile.equals(gotProfile)) return Optional.empty();
 
             Path root = entryDir.toAbsolutePath().normalize();
             List<BuildGraph.BuildUnit> units = graph.topoOrder();
@@ -317,10 +335,22 @@ public final class PreflightMemo {
         }
     }
 
+    /** Store the memo of a build with no {@code --profile}. */
     public static void storeDirty(
             Path entryDir,
             BuildGraph.Result graph,
             boolean skipTests,
+            Set<Path> dirty,
+            Map<Path, String> fingerprints) {
+        storeDirty(entryDir, graph, skipTests, null, dirty, fingerprints);
+    }
+
+    /** Store the memo under {@code profile}; {@link #tryLoadDirty} hands it back only to that profile. */
+    public static void storeDirty(
+            Path entryDir,
+            BuildGraph.Result graph,
+            boolean skipTests,
+            @Nullable String profile,
             Set<Path> dirty,
             Map<Path, String> fingerprints) {
         try {
@@ -332,6 +362,7 @@ public final class PreflightMemo {
                     .append('\n');
             sb.append("skipTests=").append(skipTests ? "1" : "0").append('\n');
             sb.append("fpMode=").append(fingerprintMode()).append('\n');
+            sb.append("profile=").append(profileHeader(profile)).append('\n');
             Set<Path> dirtyNorm = new LinkedHashSet<>();
             for (Path d : dirty) dirtyNorm.add(d.toAbsolutePath().normalize());
             for (BuildGraph.BuildUnit u : graph.topoOrder()) {
@@ -360,6 +391,11 @@ public final class PreflightMemo {
             // fail-open
             Log.debug("storeDirty: fail-open", e);
         }
+    }
+
+    /** The header's spelling of a request profile: its name, or empty for the default build. */
+    private static String profileHeader(@Nullable String profile) {
+        return profile == null ? "" : profile.strip();
     }
 
     /**

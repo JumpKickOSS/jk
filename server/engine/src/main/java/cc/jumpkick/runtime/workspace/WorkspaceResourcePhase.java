@@ -110,7 +110,8 @@ final class WorkspaceResourcePhase {
         } else if (dirtyUnits.isEmpty() && !distrust) {
             plan = BuildForecasting.fullyCachedExplainPlan(preflight.graph());
         } else {
-            plan = BuildForecasting.explainFromGraph(preflight.graph(), request.cache(), request.skipTests());
+            plan = BuildForecasting.explainFromGraph(
+                    preflight.graph(), request.cache(), request.skipTests(), null, request.profile());
         }
         return BuildForecasting.restrictToSelection(plan, preflight.dirty());
     }

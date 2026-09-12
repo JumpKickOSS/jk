@@ -55,7 +55,7 @@ class WorkspaceFinalPhaseTest {
         // The build read App.java as it was; this save lands before the build finishes.
         Files.writeString(tmp.resolve("src/main/java/App.java"), "class App { int edited; }\n");
 
-        WorkspaceFinalPhase.certifyClean(tmp, graph, false, Optional.of(forecast));
+        WorkspaceFinalPhase.certifyClean(tmp, graph, false, null, Optional.of(forecast));
 
         assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false))
                 .as("the memo cannot vouch for a tree it never fingerprinted")
@@ -78,7 +78,7 @@ class WorkspaceFinalPhaseTest {
     void without_captured_fingerprints_the_memo_falls_back_to_a_snapshot(@TempDir Path tmp) throws Exception {
         BuildGraph.Result graph = project(tmp);
 
-        WorkspaceFinalPhase.certifyClean(tmp, graph, false, Optional.empty());
+        WorkspaceFinalPhase.certifyClean(tmp, graph, false, null, Optional.empty());
 
         var memo = PreflightMemo.tryLoadDirty(tmp, graph, false);
         assertThat(memo).isPresent();

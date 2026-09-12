@@ -91,6 +91,23 @@ public final class TaskForecaster {
             boolean skipTests,
             WorkspaceTarget target,
             Set<Path> terminalDirs) {
+        return of(graph, cas, actionCache, cache, skipTests, target, terminalDirs, null);
+    }
+
+    /**
+     * As above with the request's {@code --profile}: the build compiles with that profile's javac
+     * args appended, so the forecast must key its compile steps the same way or a profile build
+     * after a default build forecasts every compile as cached and schedules nothing.
+     */
+    public static List<TaskForecast.Module> of(
+            BuildGraph.Result graph,
+            Cas cas,
+            ActionCache actionCache,
+            Path cache,
+            boolean skipTests,
+            WorkspaceTarget target,
+            Set<Path> terminalDirs,
+            @Nullable String profile) {
         // One resolver for the whole walk: every module resolves its classpath against the same
         // lock and store, so its per-artifact resolve memo is only useful if it outlives a module.
         ClasspathResolver resolver = new ClasspathResolver(cas);
@@ -103,7 +120,7 @@ public final class TaskForecaster {
         }
         try (JavaCompilerHost.Scope ignored = JavaCompilerHost.open()) {
             return forecastModules(
-                    graph, cas, resolver, actionCache, cache, skipTests, target, terminalDirs, workerJar);
+                    graph, cas, resolver, actionCache, cache, skipTests, target, terminalDirs, workerJar, profile);
         }
     }
 
@@ -116,7 +133,8 @@ public final class TaskForecaster {
             boolean skipTests,
             WorkspaceTarget target,
             Set<Path> terminalDirs,
-            @Nullable Path workerJar) {
+            @Nullable Path workerJar,
+            @Nullable String profile) {
         List<TaskForecast.Module> out = new ArrayList<>();
         // --force/--rerun bypasses jk's build caches, so every step runs — the forecast must say
         // so too (otherwise the plan tree renders "Fully Cached" while the ETA, which honors force,
@@ -157,7 +175,8 @@ public final class TaskForecaster {
                     restoredJarShas,
                     target,
                     terminalDirs,
-                    workerJar);
+                    workerJar,
+                    profile);
             Perf.end("forecast " + u.coord(), t0);
             // Seed main-output dirtiness for *compile* consumers only when this module's
             // consumed jar/classes will change — not when only test-scope work is dirty.
@@ -328,7 +347,8 @@ public final class TaskForecaster {
             Map<Path, String> restoredJarShas,
             WorkspaceTarget target,
             Set<Path> terminalDirs,
-            @Nullable Path workerJar) {
+            @Nullable Path workerJar,
+            @Nullable String profile) {
         return new ModuleForecast(
                         u,
                         dep,
@@ -341,7 +361,8 @@ public final class TaskForecaster {
                         restoredJarShas,
                         target,
                         terminalDirs,
-                        workerJar)
+                        workerJar,
+                        profile)
                 .run();
     }
 

@@ -185,7 +185,9 @@ public final class WorkspacePreflightPhase {
                     request.skipTests(),
                     request.entryDir(),
                     request.target(),
-                    terminalTargetDirs(units, request));
+                    terminalTargetDirs(units, request),
+                    true,
+                    request.profile());
             preflight = Optional.of(computed);
             dirty = computed.dirty();
             restoreNeeded = computed.restoreNeeded();
@@ -236,7 +238,8 @@ public final class WorkspacePreflightPhase {
                     .orElseGet(() -> PreflightMemo.snapshotFingerprints(graph, request.skipTests())
                             .fingerprints());
             if (!fingerprints.isEmpty()) {
-                PreflightMemo.storeDirty(request.entryDir(), graph, request.skipTests(), Set.of(), fingerprints);
+                PreflightMemo.storeDirty(
+                        request.entryDir(), graph, request.skipTests(), request.profile(), Set.of(), fingerprints);
             }
         }
         listener.onEtaEstimate(0);
