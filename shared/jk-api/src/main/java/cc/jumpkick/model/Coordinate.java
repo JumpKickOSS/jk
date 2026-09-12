@@ -25,6 +25,30 @@ public record Coordinate(
         if (group.isBlank()) throw new IllegalArgumentException("group must not be blank");
         if (artifact.isBlank()) throw new IllegalArgumentException("artifact must not be blank");
         if (version.isBlank()) throw new IllegalArgumentException("version must not be blank");
+        // Every field becomes a path segment under a store or ~/.m2 root, and the values arrive
+        // from a cloned project's lockfile: a segment that could climb out of the layout is refused
+        // here, once, instead of at each of the resolves downstream.
+        for (String segment : group.split("\\.", -1)) requireSafeSegment(segment, "group");
+        requireSafeSegment(artifact, "artifact");
+        requireSafeSegment(version, "version");
+        if (classifier != null) requireSafeSegment(classifier, "classifier");
+        requireSafeSegment(type, "type");
+    }
+
+    /**
+     * Reject a value that cannot stand as one Maven-layout path segment: blank, a path separator,
+     * a null byte, {@code .} / {@code ..}, or a leading {@code ~}.
+     */
+    private static void requireSafeSegment(String segment, String what) {
+        if (segment.isBlank()
+                || segment.indexOf('/') >= 0
+                || segment.indexOf('\\') >= 0
+                || segment.indexOf('\0') >= 0
+                || segment.equals(".")
+                || segment.equals("..")
+                || segment.startsWith("~")) {
+            throw new IllegalArgumentException("unsafe " + what + " in coordinate: '" + segment + "'");
+        }
     }
 
     public static Coordinate of(String group, String artifact, String version) {

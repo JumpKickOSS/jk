@@ -62,4 +62,42 @@ class CoordinateTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("!");
     }
+
+    /**
+     * Every field becomes a path segment under a store or {@code ~/.m2} root, and the values come
+     * from a cloned project's lockfile; a segment that could climb out of the layout is refused at
+     * construction so no later resolve has to remember to check.
+     */
+    @Test
+    void rejects_segments_that_escape_a_maven_layout() {
+        assertThatThrownBy(() -> Coordinate.of("com.foo", "a", "../../evil"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("version");
+        assertThatThrownBy(() -> Coordinate.of("com.foo", "..", "1.0"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("artifact");
+        assertThatThrownBy(() -> Coordinate.of("com.foo", "a/b", "1.0"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("artifact");
+        assertThatThrownBy(() -> Coordinate.of("com..foo", "a", "1.0"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("group");
+        assertThatThrownBy(() -> Coordinate.of("com/foo", "a", "1.0"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("group");
+        assertThatThrownBy(() -> new Coordinate("com.foo", "a", "1.0", "../x", "jar"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("classifier");
+        assertThatThrownBy(() -> new Coordinate("com.foo", "a", "1.0", null, "jar/../x"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("type");
+    }
+
+    @Test
+    void ordinary_maven_versions_and_ranges_are_accepted() {
+        assertThat(Coordinate.of("com.foo", "a", "1.0-SNAPSHOT").version()).isEqualTo("1.0-SNAPSHOT");
+        assertThat(Coordinate.of("com.foo", "a", "[1.0,2.0)").version()).isEqualTo("[1.0,2.0)");
+        assertThat(Coordinate.of("com.foo", "a", "2.0.0.Final").version()).isEqualTo("2.0.0.Final");
+        assertThat(Coordinate.of("org.foo-bar.x_y", "a.b-c", "1").group()).isEqualTo("org.foo-bar.x_y");
+    }
 }

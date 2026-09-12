@@ -2,6 +2,7 @@
 package cc.jumpkick.repo;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.host.Hashing;
 import java.nio.file.Files;
@@ -19,6 +20,13 @@ class ArtifactMemoTest {
                         .getFileName()
                         .toString())
                 .isEqualTo("bar-1.0.pom.jk");
+    }
+
+    @Test
+    void a_memo_path_never_leaves_the_store_root(@TempDir Path dir) {
+        assertThatThrownBy(() -> ArtifactMemo.jkPath(dir, "../outside/bar-1.0.jar"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("escapes");
     }
 
     @Test

@@ -27,9 +27,13 @@ public record ArtifactMemo(String coordinate, long mtimeMillis, long size, Strin
         sha256 = sha256.strip().toLowerCase(Locale.ROOT);
     }
 
-    /** Memo path for a Maven-relative artifact path. */
+    /**
+     * Memo path for a Maven-relative artifact path. The path comes from a lock row, so it is
+     * resolved through {@link MavenLayout#safeResolve}: a memo is a write, and a write sink
+     * never takes a path that escapes its root.
+     */
     public static Path jkPath(Path storeRoot, String relativePath) {
-        Path artifact = storeRoot.resolve(relativePath);
+        Path artifact = MavenLayout.safeResolve(storeRoot, relativePath);
         return artifact.resolveSibling(jkFileName(artifact.getFileName().toString()));
     }
 

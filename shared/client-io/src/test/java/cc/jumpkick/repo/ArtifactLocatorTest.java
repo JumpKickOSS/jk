@@ -2,6 +2,7 @@
 package cc.jumpkick.repo;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.lock.Lockfile;
@@ -79,5 +80,52 @@ class ArtifactLocatorTest {
                         .toAbsolutePath()
                         .normalize());
         assertThat(Files.readString(m2Jar)).isEqualTo("poison");
+    }
+
+    /**
+     * A lock row is a cloned project's text. A version carrying {@code ..} would resolve the m2
+     * probe and its memo outside both roots, and a file planted there that matches the row's own
+     * checksum would come back as a classpath entry; the row is refused before any path is built.
+     */
+    @Test
+    void a_lock_row_with_dot_dot_in_the_version_is_refused(@TempDir Path dir) throws Exception {
+        Path store = dir.resolve("store");
+        Path m2 = dir.resolve("m2");
+        Path planted = dir.resolve("evil.jar");
+        Files.writeString(planted, "planted");
+        String hex = Hashing.sha256Hex(planted);
+        Lockfile.Artifact pkg = new Lockfile.Artifact(
+                "com.foo:a",
+                "../../../../evil.jar/x",
+                "central+https://repo.maven.apache.org/maven2/",
+                "sha256:" + hex,
+                null,
+                List.of(Scope.MAIN),
+                List.of());
+
+        ArtifactLocator locator = new ArtifactLocator(store, m2, true);
+        assertThatThrownBy(() -> locator.locate(pkg))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("version");
+        assertThat(dir.resolve("evil.m2.jk")).doesNotExist();
+    }
+
+    @Test
+    void a_relative_path_that_escapes_the_m2_root_is_refused_and_leaves_no_memo(@TempDir Path dir) throws Exception {
+        Path store = dir.resolve("store");
+        Path m2 = Files.createDirectories(dir.resolve("m2"));
+        Path planted = dir.resolve("evil.jar");
+        Files.writeString(planted, "planted");
+        String hex = Hashing.sha256Hex(planted);
+
+        ArtifactLocator locator = new ArtifactLocator(store, m2, true);
+        assertThatThrownBy(() -> locator.locate("central", "../evil.jar", hex, "com.foo:a:1.0"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("escapes");
+        try (var files = Files.walk(dir)) {
+            assertThat(files.filter(p -> p.getFileName().toString().endsWith(".jk")))
+                    .as("no memo is written anywhere for a refused path")
+                    .isEmpty();
+        }
     }
 }

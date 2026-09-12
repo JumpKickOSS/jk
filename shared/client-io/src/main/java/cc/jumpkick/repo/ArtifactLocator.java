@@ -46,7 +46,8 @@ public final class ArtifactLocator {
         boolean storeOnly = !RepoArtifactResolver.isNamedRemote(repoName);
         Path m2 = m2Root;
         if (m2integration && m2 != null && !storeOnly) {
-            Path m2File = m2.resolve(relativePath);
+            // The lock row names the path; ~/.m2 is a root the row must not climb out of.
+            Path m2File = MavenLayout.safeResolve(m2, relativePath);
             if (Files.isRegularFile(m2File)
                     && verified(m2File, m2MemoPath(repoName, relativePath), gav, expectedSha256)) {
                 return Optional.of(m2File.toAbsolutePath().normalize());
@@ -71,7 +72,9 @@ public final class ArtifactLocator {
      * every resolve when they diverged (a stale ~/.m2 after a re-lock).
      */
     private Path m2MemoPath(@Nullable String repoName, String relativePath) {
-        String name = repoName == null || repoName.isBlank() ? RepoArtifactResolver.JK_LOCAL : repoName;
+        String name = repoName == null || repoName.isBlank()
+                ? RepoArtifactResolver.JK_LOCAL
+                : MavenLayout.requireSafeSegment(repoName, "repository name");
         Path store = ArtifactMemo.jkPath(storeRoot.resolve("repos").resolve(name), relativePath);
         String n = store.getFileName().toString();
         String m2n = (n.endsWith(".jk") ? n.substring(0, n.length() - 3) : n) + ".m2.jk";
