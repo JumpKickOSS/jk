@@ -5,6 +5,7 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -212,24 +213,54 @@ final class LauncherPath {
     }
 
     private static void emitDiscovery(TestPlan plan, Adapter adapter) {
-        int[] counts = new int[] {0, 0};
-        for (TestIdentifier root : plan.getRoots()) {
-            walkPlan(plan, root, adapter, counts);
-        }
-        adapter.emitDiscoveryTotal(counts[0], counts[1]);
+        List<String> classes = discoveredClasses(plan);
+        for (String className : classes) adapter.emitDiscovered(className);
+        adapter.emitDiscoveryTotal(classes.size(), countTests(plan));
     }
 
-    private static void walkPlan(TestPlan plan, TestIdentifier node, Adapter adapter, int[] counts) {
-        if (node.isContainer()
+    /**
+     * The test classes a plan runs, top-level classes only, in plan order. A {@code @Nested} class
+     * is a child of its enclosing class and runs as part of it; announcing it as a class of its own
+     * had the pull workers run its tests twice — once inside the outer class, once on their own —
+     * and report both.
+     */
+    /** {@link #discoveredClasses(TestPlan)} over the plan of one selected class. */
+    static List<String> discoveredClassesOf(Class<?> testClass) {
+        return discoveredClasses(LauncherFactory.create()
+                .discover(LauncherDiscoveryRequestBuilder.request()
+                        .selectors(DiscoverySelectors.selectClass(testClass))
+                        .build()));
+    }
+
+    static List<String> discoveredClasses(TestPlan plan) {
+        List<String> out = new ArrayList<>();
+        for (TestIdentifier root : plan.getRoots()) collectClasses(plan, root, out);
+        return out;
+    }
+
+    private static void collectClasses(TestPlan plan, TestIdentifier node, List<String> out) {
+        if (isClassContainer(node)
+                && !plan.getParent(node).map(LauncherPath::isClassContainer).orElse(false)) {
+            out.add(((ClassSource) node.getSource().orElseThrow()).getClassName());
+        }
+        for (TestIdentifier child : plan.getChildren(node)) collectClasses(plan, child, out);
+    }
+
+    private static int countTests(TestPlan plan) {
+        int[] tests = {0};
+        for (TestIdentifier root : plan.getRoots()) countTests(plan, root, tests);
+        return tests[0];
+    }
+
+    private static void countTests(TestPlan plan, TestIdentifier node, int[] tests) {
+        if (node.isTest()) tests[0]++;
+        for (TestIdentifier child : plan.getChildren(node)) countTests(plan, child, tests);
+    }
+
+    private static boolean isClassContainer(TestIdentifier node) {
+        return node.isContainer()
                 && node.getSource().isPresent()
-                && node.getSource().get() instanceof ClassSource cs) {
-            adapter.emitDiscovered(cs.getClassName());
-            counts[0]++;
-        }
-        if (node.isTest()) counts[1]++;
-        for (TestIdentifier child : plan.getChildren(node)) {
-            walkPlan(plan, child, adapter, counts);
-        }
+                && node.getSource().get() instanceof ClassSource;
     }
 
     /**

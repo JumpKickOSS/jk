@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -59,6 +60,12 @@ class LauncherPathTest {
     @Test
     void no_filters_runs_everything() {
         assertThat(run(List.of(), List.of())).containsExactlyInAnyOrder("plain()", "slowOne()", "bracketed()");
+    }
+
+    // --- discovery ---------------------------------------------------------------
+    @Test
+    void discovery_announces_a_nested_class_through_its_enclosing_class_only() {
+        assertThat(LauncherPath.discoveredClassesOf(WithNested.class)).containsExactly(WithNested.class.getName());
     }
 
     // --- the one emitter -----------------------------------------------------
@@ -194,6 +201,19 @@ class LauncherPathTest {
                 }
             }
             return out;
+        }
+    }
+
+    /** A class with a {@code @Nested} child: one class to the pull workers, not two. */
+    static class WithNested {
+
+        @Test
+        void outer() {}
+
+        @Nested
+        class Inner {
+            @Test
+            void inner() {}
         }
     }
 
