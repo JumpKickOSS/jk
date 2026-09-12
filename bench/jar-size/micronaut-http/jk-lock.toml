@@ -1,5 +1,5 @@
 version = 1
-generated-by = "jk 0.13.2"
+generated-by = "jk 0.13.3"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.10"
 manifests-sha256 = "4f2d69f61e9c0187b214710c9803aead7f6e58ba7208995897d25cc308b54dba"
@@ -752,7 +752,7 @@ deps = [
 
 [[plugin]]
 coordinate = "cc.jumpkick:jk-micronaut"
-version    = "0.13.2"
+version    = "0.13.3"
 checksum   = "sha256:dc4a968d2373761d5982daed377b63dcf046f58e30f3ffa90ac40c7ea6926c51"
 
 [[module]]

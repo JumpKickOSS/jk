@@ -1,5 +1,5 @@
 version = 1
-generated-by = "jk 0.13.2"
+generated-by = "jk 0.13.3"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.10"
 manifests-sha256 = "e0258243f1593eee255a0df5b6c8c547b293b5460097a73721417e6e861afe85"
@@ -558,7 +558,7 @@ deps = [
 
 [[plugin]]
 coordinate = "cc.jumpkick:jk-spring-boot"
-version    = "0.13.2"
+version    = "0.13.3"
 checksum   = "sha256:76be1337d9ed830d6e24091a7ffd26ad636b927f7201b2a61d8de2d489ff153f"
 
 [[module]]

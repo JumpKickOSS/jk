@@ -1,5 +1,5 @@
 version = 1
-generated-by = "jk 0.13.2"
+generated-by = "jk 0.13.3"
 resolution-algorithm = "pubgrub-v1"
 kotlin = "2.4.20"
 jk-min = "0.12.0"

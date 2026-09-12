@@ -1,5 +1,5 @@
 version = 1
-generated-by = "jk 0.13.2"
+generated-by = "jk 0.13.3"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
 manifests-sha256 = "46ed0f5c939031550afd100c1c94bad3ad364e8e2d769ce598acab7bb201f6f4"
