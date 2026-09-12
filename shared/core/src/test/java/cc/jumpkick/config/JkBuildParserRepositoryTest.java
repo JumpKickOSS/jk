@@ -243,4 +243,19 @@ class JkBuildParserRepositoryTest {
         assertThat(parsed.repositories().get(0).credentialOpt())
                 .contains(new RepoCredential.Bearer("${JK_DEFINITELY_UNSET_VAR_XYZ}"));
     }
+
+    @Test
+    void a_plaintext_repository_on_loopback_needs_no_opt_in() {
+        JkBuild b = JkBuildParser.parse(JkBuildParserFixtures.PROJECT + """
+                [repositories.local]
+                url = "http://127.0.0.1:8081/maven"
+                [repositories.tunnel]
+                url = "http://localhost:8082/maven"
+                [repositories.six]
+                url = "http://[::1]:8083/maven"
+                """);
+        assertThat(b.repositories()).extracting(r -> r.name()).contains("local", "tunnel", "six");
+        assertThat(RepositoryToml.loopback("10.0.0.7")).isFalse();
+        assertThat(RepositoryToml.loopback("nexus.corp.example")).isFalse();
+    }
 }

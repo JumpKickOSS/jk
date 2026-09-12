@@ -2,6 +2,9 @@
 package cc.jumpkick.testing;
 
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
@@ -21,6 +24,7 @@ public final class MavenStub {
     };
 
     private final Map<String, byte[]> served;
+    private boolean checksums = true;
     private final @Nullable LoopbackHttp http;
 
     public MavenStub(LoopbackHttp http) {
@@ -36,8 +40,9 @@ public final class MavenStub {
 
     /** This repository publishes no checksum sidecar beside its artifacts. */
     public MavenStub withoutChecksums() {
-        if (http == null) throw new IllegalStateException("withoutChecksums needs the stub's LoopbackHttp");
-        http.withoutChecksums();
+        checksums = false;
+        for (String k : List.copyOf(served.keySet())) if (k.endsWith(".sha1")) served.remove(k);
+        if (http != null) http.withoutChecksums();
         return this;
     }
 
@@ -90,7 +95,20 @@ public final class MavenStub {
 
     public MavenStub bytes(String path, byte[] body) {
         served.put(path, body);
+        // A real repository publishes a checksum beside every artifact; a raw map served by a test's
+        // own HttpServer would otherwise answer 404 for the sidecar and be refused as unverified.
+        if (checksums && !path.endsWith(".sha1") && !path.endsWith(".sha256") && !path.endsWith(".md5")) {
+            served.put(path + ".sha1", sha1Hex(body).getBytes(StandardCharsets.UTF_8));
+        }
         return this;
+    }
+
+    private static String sha1Hex(byte[] body) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-1").digest(body));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     /** {@code /g/r/o/u/p/artifact/version/artifact-version<suffix>}. */

@@ -322,8 +322,7 @@ public final class RepoGroup {
                 if (firstFailure == null) firstFailure = transport;
                 RunNotices.warnOnce(
                         "repo-unreachable:" + repo.name(),
-                        () -> "jk: warning: repository " + repo.name() + " is unreachable ("
-                                + transport.getClass().getSimpleName() + ": " + transport.getMessage()
+                        () -> "jk: warning: repository " + repo.name() + " is unreachable (" + describe(transport)
                                 + "); trying the remaining repositories");
                 continue;
             }
@@ -487,5 +486,12 @@ public final class RepoGroup {
 
     private interface LocalProbe {
         Optional<MavenRepo.Fetched> probe(MavenRepo repo, Coordinate coord);
+    }
+    /** The failure and the root cause it wraps, because "failed after 6 attempts" alone names no fault. */
+    static String describe(Throwable failure) {
+        Throwable root = failure;
+        while (root.getCause() != null && root.getCause() != root) root = root.getCause();
+        String head = failure.getClass().getSimpleName() + ": " + failure.getMessage();
+        return root == failure ? head : head + " — " + root.getClass().getSimpleName() + ": " + root.getMessage();
     }
 }
