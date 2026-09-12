@@ -679,6 +679,8 @@ public final class PlannerCompile {
                             .resolve(taskId);
                     // Mixed module: Kotlin reads the Java declarations from source
                     // (analysis only — it emits no Java bytecode; javac does next).
+                    List<Path> javaRoots =
+                            kotlinJavaSourceRoots(mixedWithJava, compact, in.dir(), ctx.require(LAYOUT), pluginDecls);
                     LangCompile.Result kr = compileKotlinSources(
                             ctx,
                             in,
@@ -689,7 +691,7 @@ public final class PlannerCompile {
                             ktOut,
                             taskId,
                             workingDir,
-                            kotlinJavaSourceRoots(mixedWithJava, compact, in.dir(), ctx.require(LAYOUT), pluginDecls));
+                            PlannerLang.kotlinConfig(ctx, in.dir(), javaRoots));
                     if (!kr.success()) {
                         PlannerSupport.forwardWorkerDiagnostics(
                                 ctx, "kotlinc", kr.diagnostics(), "kotlinc failed without diagnostics");

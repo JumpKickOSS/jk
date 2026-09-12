@@ -13,8 +13,10 @@ import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.kotlin.KotlinResolver;
+import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.run.TaskContext;
@@ -42,6 +44,105 @@ public final class PlannerLang {
 
     private PlannerLang() {}
 
+    /**
+     * One Kotlin compiler plugin the module compiles with, by coordinate. The jar is fetched when
+     * the compile actually runs; naming the coordinate is enough to decide whether it has to.
+     */
+    record KotlinPluginUse(String id, String group, String artifact, String version, List<String> options) {
+        KotlinPluginUse {
+            options = List.copyOf(options);
+        }
+    }
+
+    /**
+     * The option-bearing inputs of a module's kotlinc invocation, resolved from the manifest and
+     * the installed plugins' contributions without fetching anything: the free args, the compiler
+     * plugins by coordinate, the JVM target and the module name. {@link #compileKotlinSources}
+     * builds its request from exactly this, so what is resolved here is what the compiler sees.
+     */
+    record KotlinConfig(
+            @Nullable String kotlinVersion,
+            List<String> args,
+            List<KotlinPluginUse> plugins,
+            int jvmTarget,
+            String moduleName,
+            Path javaHome) {
+        KotlinConfig {
+            args = List.copyOf(args);
+            plugins = List.copyOf(plugins);
+        }
+    }
+
+    /**
+     * Resolve {@link KotlinConfig} for the module at {@code moduleDir}. Plugin contributions are
+     * looked up against the module dir — that is where the lock that pins the installed plugins
+     * and their materialized manifests live, and a lookup keyed anywhere else finds no
+     * third-party plugin at all.
+     *
+     * @param javaSourceRoots mixed module: the Java roots kotlinc reads declarations from, or null
+     */
+    static KotlinConfig kotlinConfig(
+            JkBuild project,
+            Lockfile lock,
+            Path moduleDir,
+            int release,
+            Path javaHome,
+            @Nullable List<Path> javaSourceRoots) {
+        String kotlinVersion = CompileToolchain.kotlinVersionFor(lock, project);
+        // A plugin without a version of its own resolves to the compiler's: the only version
+        // that can load into this kotlinc anyway. Same null-defaulting as KotlinPluginSetup.
+        String pluginVersion =
+                (kotlinVersion == null || kotlinVersion.isBlank()) ? KotlinResolver.DEFAULT_VERSION : kotlinVersion;
+        Set<String> lockModules = lockModules(lock);
+        List<KotlinPluginUse> plugins = new ArrayList<>();
+        // The installed plugins' [[contribute.kotlin-plugin]] entries (e.g. spring-boot's
+        // all-open, and no-arg gated on jakarta.persistence via classpath-has) — evaluated
+        // from the manifest, version-locked to the compiler actually used. The embeddable
+        // variants match the BTA plugin's embeddable compiler.
+        for (var use : PluginContributions.kotlinPlugins(project, moduleDir, pluginVersion, lockModules)) {
+            plugins.add(new KotlinPluginUse(use.id(), use.group(), use.artifact(), use.version(), use.options()));
+        }
+        // Project-declared [[kotlin-plugins]] (serialization et al.) ride the same lane; an
+        // omitted coordinate version means "match the compiler" — the org.jetbrains.kotlin
+        // plugin convention.
+        for (var decl : project.build().kotlinPlugins()) {
+            String[] parts = decl.coordinate().split(":");
+            String version = parts.length == 3 ? parts[2] : pluginVersion;
+            plugins.add(new KotlinPluginUse(decl.id(), parts[0], parts[1], version, decl.options()));
+        }
+        List<String> args = new ArrayList<>();
+        // The in-process plugin has no kotlin-home to auto-supply the stdlib; it rides the
+        // classpath instead.
+        args.add("-no-stdlib");
+        // Contributed kotlinc args (e.g. spring-boot's -java-parameters, mirroring its javac
+        // -parameters — Boot reflects on parameter names), deduped.
+        for (String arg : PluginContributions.kotlinArgs(project, moduleDir, lockModules)) {
+            if (!args.contains(arg)) args.add(arg);
+        }
+        if (javaSourceRoots != null && !javaSourceRoots.isEmpty()) {
+            StringBuilder roots = new StringBuilder();
+            for (Path root : javaSourceRoots) {
+                if (roots.length() > 0) roots.append(',');
+                roots.append(root.toAbsolutePath());
+            }
+            args.add("-Xjava-source-roots=" + roots);
+        }
+        int jvmTarget = CompileSupport.kotlinJvmTarget(release, JvmOptions.hostFeature(javaHome));
+        return new KotlinConfig(
+                kotlinVersion, args, plugins, jvmTarget, project.project().name(), javaHome);
+    }
+
+    /** {@link #kotlinConfig} from the running step's published state, for the module being built. */
+    static KotlinConfig kotlinConfig(TaskContext ctx, Path moduleDir, @Nullable List<Path> javaSourceRoots) {
+        return kotlinConfig(
+                ctx.require(PROJECT),
+                ctx.require(LOCKFILE),
+                moduleDir,
+                ctx.require(RELEASE),
+                ctx.require(JAVA_HOME),
+                javaSourceRoots);
+    }
+
     static LangCompile.Result compileKotlinSources(
             TaskContext ctx,
             BuildPlanner.Inputs in,
@@ -52,44 +153,20 @@ public final class PlannerLang {
             Path outputDir,
             String taskId,
             Path workingDir,
-            @Nullable List<Path> javaSourceRoots)
+            KotlinConfig config)
             throws IOException {
-        String kotlinVersion = CompileToolchain.kotlinVersionFor(ctx.require(LOCKFILE), ctx.require(PROJECT));
         KotlinPluginSetup.Prepared kt;
-        // The installed plugins' [[contribute.kotlin-plugin]] entries (e.g. spring-boot's
-        // all-open, and no-arg gated on jakarta.persistence via classpath-has) — evaluated
-        // from the manifest, fetched version-locked to the compiler actually used. The
-        // embeddable variants match the BTA plugin's embeddable compiler.
-        Set<String> lockModules = lockModules(ctx.require(LOCKFILE));
         List<KotlincRequest.Plugin> ktPlugins = new ArrayList<>();
         try {
             RepoGroup repos = RepoGroupBuilder.buildFor(ctx.require(PROJECT), null, cas);
-            kt = KotlinPluginSetup.prepare(repos, cas, kotlinVersion);
-            // Same null-defaulting as KotlinPluginSetup.prepare — a contributed plugin must
-            // match the compiler actually used.
-            String pluginVersion =
-                    (kotlinVersion == null || kotlinVersion.isBlank()) ? KotlinResolver.DEFAULT_VERSION : kotlinVersion;
-            for (var use :
-                    PluginContributions.kotlinPlugins(ctx.require(PROJECT), workingDir, pluginVersion, lockModules)) {
+            kt = KotlinPluginSetup.prepare(repos, cas, config.kotlinVersion());
+            for (KotlinPluginUse use : config.plugins()) {
                 Path jar = repos.tryFetchArtifact(Coordinate.of(use.group(), use.artifact(), use.version()))
                         .map(hit -> hit.fetched().cachePath())
                         .orElseThrow(() -> new RuntimeException("cannot fetch the " + use.id()
                                 + " Kotlin compiler plugin (" + use.group() + ":" + use.artifact() + ":"
-                                + use.version() + ") — a plugin contribution requires it"));
+                                + use.version() + ") — the module compiles with it"));
                 ktPlugins.add(new KotlincRequest.Plugin(use.id(), jar, use.options()));
-            }
-            // Project-declared [[kotlin-plugins]] (serialization et al.) ride the same lane;
-            // an omitted coordinate version means "match the compiler" — the org.jetbrains.kotlin
-            // plugin convention, and the only version that can load into this kotlinc anyway.
-            for (var decl : ctx.require(PROJECT).build().kotlinPlugins()) {
-                String[] parts = decl.coordinate().split(":");
-                String version = parts.length == 3 ? parts[2] : pluginVersion;
-                Path jar = repos.tryFetchArtifact(Coordinate.of(parts[0], parts[1], version))
-                        .map(hit -> hit.fetched().cachePath())
-                        .orElseThrow(() -> new RuntimeException("cannot fetch the " + decl.id()
-                                + " Kotlin compiler plugin (" + parts[0] + ":" + parts[1] + ":" + version
-                                + ") — declared under [[kotlin-plugins]]"));
-                ktPlugins.add(new KotlincRequest.Plugin(decl.id(), jar, decl.options()));
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -99,32 +176,16 @@ public final class PlannerLang {
         // in-process plugin has no kotlin-home to auto-supply it; -no-stdlib).
         List<Path> compileCp = new ArrayList<>(classpath);
         compileCp.add(kt.stdlib());
-        List<String> ktArgs = new ArrayList<>();
-        ktArgs.add("-no-stdlib");
-        // Contributed kotlinc args (e.g. spring-boot's -java-parameters, mirroring its javac
-        // -parameters — Boot reflects on parameter names). User-position args still win: these
-        // sit before the extraArgs additions.
-        for (String arg : PluginContributions.kotlinArgs(ctx.require(PROJECT), workingDir, lockModules)) {
-            if (!ktArgs.contains(arg)) ktArgs.add(arg);
-        }
         // Compiler plugins ride the typed BTA COMPILER_PLUGINS argument — raw -Xplugin/-P
         // strings in extraArgs are silently ignored by the BTA execution path.
-        if (javaSourceRoots != null && !javaSourceRoots.isEmpty()) {
-            StringBuilder roots = new StringBuilder();
-            for (Path root : javaSourceRoots) {
-                if (roots.length() > 0) roots.append(',');
-                roots.append(root.toAbsolutePath());
-            }
-            ktArgs.add("-Xjava-source-roots=" + roots);
-        }
+        List<String> ktArgs = config.args();
         Files.createDirectories(outputDir);
-        String moduleName = ctx.require(PROJECT).project().name();
+        String moduleName = config.moduleName();
         // The incremental state is only valid for the exact compile CONFIG that produced it:
         // BTA's IC sees "no source changes" after an args/plugins/module-name change and would
         // emit nothing into a clean output dir. Key the working dir by a config hash so any
         // config change starts fresh IC state (stale dirs age out with the cache).
-        int jvmTarget =
-                CompileSupport.kotlinJvmTarget(ctx.require(RELEASE), JvmOptions.hostFeature(ctx.require(JAVA_HOME)));
+        int jvmTarget = config.jvmTarget();
         String configToken = Hashing.sha256Hex((jvmTarget
                                 + "|" + moduleName + "|" + String.join(",", ktArgs) + "|"
                                 + ktPlugins.stream()
@@ -140,7 +201,7 @@ public final class PlannerLang {
                 .outputDir(outputDir)
                 .jvmTarget(jvmTarget)
                 .workerClasspath(kt.workerClasspath())
-                .javaHome(ctx.require(JAVA_HOME))
+                .javaHome(config.javaHome())
                 .workingDir(icWorkingDir)
                 .snapshotDir(CacheTree.KOTLIN_CP_SNAPSHOTS.under(in.cache()))
                 .extraArgs(ktArgs)
