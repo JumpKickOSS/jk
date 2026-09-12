@@ -5,11 +5,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.CompileRequest;
+import cc.jumpkick.compile.JavacDefaults;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.BuildIdentity;
+import cc.jumpkick.model.DebugInfo;
+import cc.jumpkick.model.JavacConfig;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.manifest.PluginModule;
 import cc.jumpkick.run.TaskNames;
@@ -69,7 +72,7 @@ class ForecastKeyOwnerTest {
                 layout.classesDir(),
                 25,
                 List.of("-Xlint:all"),
-                JkBuild.JavacConfig.EMPTY,
+                JavacConfig.EMPTY,
                 jdk,
                 true,
                 true,
@@ -96,7 +99,7 @@ class ForecastKeyOwnerTest {
                 layout.classesDir(),
                 25,
                 List.of("-Xlint:all"),
-                JkBuild.JavacConfig.EMPTY,
+                JavacConfig.EMPTY,
                 jdk,
                 false,
                 false,
@@ -120,15 +123,7 @@ class ForecastKeyOwnerTest {
         var scala = new ScalaCompile.Setup("3.8.4", List.of(compiler), List.of(stdlib), compiler, compiler);
 
         CompileRequest full = PlannerCompile.testCompileRequest(new PlannerCompile.TestCompile(
-                List.of(src),
-                List.of(),
-                List.of(),
-                out,
-                25,
-                List.of("-Xlint:all"),
-                JkBuild.JavacConfig.EMPTY,
-                jdk,
-                scala));
+                List.of(src), List.of(), List.of(), out, 25, List.of("-Xlint:all"), JavacConfig.EMPTY, jdk, scala));
 
         assertThat(full.javaHome()).isEqualTo(jdk);
         assertThat(full.scalaVersion()).isEqualTo("3.8.4");
@@ -138,15 +133,7 @@ class ForecastKeyOwnerTest {
                 .contains(stdlib);
 
         CompileRequest bare = PlannerCompile.testCompileRequest(new PlannerCompile.TestCompile(
-                List.of(src),
-                List.of(),
-                List.of(),
-                out,
-                25,
-                List.of("-Xlint:all"),
-                JkBuild.JavacConfig.EMPTY,
-                jdk,
-                null));
+                List.of(src), List.of(), List.of(), out, 25, List.of("-Xlint:all"), JavacConfig.EMPTY, jdk, null));
         assertThat(ActionKey.forJavac("compile-test", full, "0.1.0"))
                 .isNotEqualTo(ActionKey.forJavac("compile-test", bare, "0.1.0"));
     }
@@ -205,7 +192,7 @@ class ForecastKeyOwnerTest {
                 null));
         assertThat(test.extraOptions()).as("compile-test runs the same plugins").isEqualTo(main.extraOptions());
 
-        JkBuild.JavacConfig warn = new JkBuild.JavacConfig(
+        JavacConfig warn = new JavacConfig(
                 Map.of("ErrorProne", List.of("-Xep:NullAway:WARN", "-XepOpt:NullAway:AnnotatedPackages=t")),
                 project.build().javac().args());
         CompileRequest relaxed = PlannerCompile.mainCompileRequest(new PlannerCompile.MainCompile(
@@ -224,6 +211,51 @@ class ForecastKeyOwnerTest {
                 null));
         assertThat(ActionKey.forJavac("compile-main", main, "0.1.0"))
                 .isNotEqualTo(ActionKey.forJavac("compile-main", relaxed, "0.1.0"));
+    }
+
+    /** The debug-info level rides the javac argv, so changing it is a compile-main key move. */
+    @Test
+    void the_debug_info_level_is_a_compile_input(@TempDir Path tmp) throws Exception {
+        Path module = Files.createDirectories(tmp.resolve("m"));
+        Files.writeString(module.resolve("jk.toml"), """
+                group = "t"
+                name = "m"
+                version = "0.1.0"
+                java = 25
+                """);
+        JkBuild project = JkBuildParser.parse(module.resolve("jk.toml"));
+        BuildLayout layout = BuildLayout.of(module, project);
+        Path src = Files.writeString(module.resolve("A.java"), "class A {}");
+        Path jdk = Files.createDirectories(tmp.resolve("jdk25"));
+        Files.writeString(jdk.resolve("release"), "JAVA_VERSION=\"25.0.1+9\"\n");
+
+        CompileRequest full =
+                debugRequest(project, layout, src, jdk, project.build().debug());
+        CompileRequest none = debugRequest(project, layout, src, jdk, DebugInfo.NONE);
+        assertThat(full.extraOptions())
+                .as("the default is full debug info, as Gradle and Maven compile")
+                .startsWith("-g");
+        assertThat(none.extraOptions()).startsWith("-g:none");
+        assertThat(ActionKey.forJavac("compile-main", full, "0.1.0"))
+                .isNotEqualTo(ActionKey.forJavac("compile-main", none, "0.1.0"));
+    }
+
+    private static CompileRequest debugRequest(
+            JkBuild project, BuildLayout layout, Path src, Path jdk, DebugInfo debug) {
+        return PlannerCompile.mainCompileRequest(new PlannerCompile.MainCompile(
+                List.of(src),
+                List.of(),
+                List.of(),
+                layout,
+                layout.classesDir(),
+                25,
+                JavacDefaults.effectiveArgs(project.build().lint(), debug, List.of(), List.of()),
+                project.build().javac(),
+                jdk,
+                false,
+                false,
+                null,
+                null));
     }
 
     @Test

@@ -3,9 +3,11 @@ package cc.jumpkick.config;
 
 import static cc.jumpkick.config.JkBuildParser.*;
 
+import cc.jumpkick.model.DebugInfo;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.EnvConfig;
 import cc.jumpkick.model.EnvDecl;
+import cc.jumpkick.model.JavacConfig;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PlatformPolicy;
 import cc.jumpkick.model.PluginConfig;
@@ -292,9 +294,10 @@ public final class ManifestBuild {
                     List.of(),
                     List.of(),
                     true,
+                    DebugInfo.FULL,
                     List.of(),
                     List.of(),
-                    JkBuild.JavacConfig.EMPTY,
+                    JavacConfig.EMPTY,
                     List.of(),
                     List.of(),
                     null,
@@ -307,17 +310,15 @@ public final class ManifestBuild {
                     List.of(),
                     EnvConfig.EMPTY);
         }
-        BuildSettings s = new BuildSettings();
-        if (build != null) readBuildTable(build, s);
-        // Optional [test] table (Mill-shaped): workers / parallel override [build] pins when set.
-        if (test != null) readTestTable(test, s);
+        ManifestBuildTable.Settings s = ManifestBuildTable.read(build, test);
         return new JkBuild.Build(
                 s.orderAfter,
                 s.testPluginJars,
                 s.lint,
+                s.debug,
                 List.of(),
                 s.kspOptions,
-                JkBuild.JavacConfig.EMPTY,
+                JavacConfig.EMPTY,
                 s.extraSrc,
                 List.copyOf(s.testExtraSrc),
                 s.fixtures,
@@ -360,140 +361,6 @@ public final class ManifestBuild {
             }
         }
         return new ResolvePolicies(platformPolicy, unmappedPolicy);
-    }
-
-    /** The {@code [build]} / {@code [test]} settings as the two tables fill them in, in that order. */
-    private static final class BuildSettings {
-        final List<String> orderAfter = new ArrayList<>();
-        final List<String> testPluginJars = new ArrayList<>();
-        boolean lint = true;
-        final List<String> kspOptions = new ArrayList<>();
-        final List<String> extraSrc = new ArrayList<>();
-        final List<String> testExtraSrc = new ArrayList<>();
-
-        @Nullable
-        String fixtures;
-
-        @Nullable
-        Integer testWorkers;
-
-        final List<String> testSerialTags = new ArrayList<>();
-    }
-
-    private static void readBuildTable(TomlTable build, BuildSettings s) {
-        if (build.contains("extra-resources")) {
-            throw new JkBuildParseException("[build].extra-resources is not a setting — a plugin"
-                    + " worker ships its own jk-plugin.toml at the jar root (module-root"
-                    + " jk-plugin.toml is copied there automatically; src/main/resources/"
-                    + "jk-plugin.toml already is). Modules cannot pull files from other modules.");
-        }
-        TomlArray arr = build.getArray("order-after");
-        if (arr != null) {
-            for (int i = 0; i < arr.size(); i++) {
-                Object val = arr.get(i);
-                if (!(val instanceof String str))
-                    throw new JkBuildParseException("[build].order-after must be an array of strings");
-                if (!str.isBlank()) s.orderAfter.add(str);
-            }
-        }
-        TomlArray twj = build.getArray("test-plugin-jars");
-        if (twj != null) {
-            for (int i = 0; i < twj.size(); i++) {
-                Object val = twj.get(i);
-                if (!(val instanceof String str))
-                    throw new JkBuildParseException("[build].test-plugin-jars must be an array of strings");
-                if (!str.isBlank()) s.testPluginJars.add(str);
-            }
-        }
-        // `lint` defaults on (surface deprecation/unchecked); `lint = false`
-        // suppresses jk's default javac lint flags for users who don't want it.
-        s.lint = !Boolean.FALSE.equals(build.getBoolean("lint"));
-        // [build] ksp-options — project-declared KSP processor options (`key=value`; Room's
-        // room.schemaLocation is the canonical consumer). Plugin manifests contribute theirs
-        // via [[contribute.compiler-args]] ksp; this is the project-owned lane.
-        TomlArray kspOpts = build.getArray("ksp-options");
-        if (kspOpts != null) {
-            for (int i = 0; i < kspOpts.size(); i++) {
-                Object val = kspOpts.get(i);
-                if (!(val instanceof String str) || str.isBlank() || !str.contains("=")) {
-                    throw new JkBuildParseException("[build].ksp-options must be an array of key=value strings");
-                }
-                s.kspOptions.add(str);
-            }
-        }
-        // [build] extra-src — additional module-relative source roots (variant overlays append).
-        TomlArray es = build.getArray("extra-src");
-        if (es != null) {
-            for (int i = 0; i < es.size(); i++) {
-                Object val = es.get(i);
-                if (!(val instanceof String str) || str.isBlank())
-                    throw new JkBuildParseException("[build].extra-src must be an array of directory strings");
-                s.extraSrc.add(str);
-            }
-        }
-        // [build] test-workers — pin within-module test JVMs (1 = serial; 0 = same as omitting: the
-        // build's auto share).
-        // [build] test-parallel = false is an alias for test-workers = 1 (Mill testParallelism=false).
-        if (build.contains("test-workers")) {
-            Long n = build.getLong("test-workers");
-            if (n == null) throw new JkBuildParseException("[build].test-workers must be an integer >= 0");
-            if (n < 0) throw new JkBuildParseException("[build].test-workers must be >= 0");
-            s.testWorkers = n.intValue();
-        }
-        if (Boolean.FALSE.equals(build.getBoolean("test-parallel"))) {
-            s.testWorkers = 1;
-        }
-    }
-
-    private static void readTestTable(TomlTable test, BuildSettings s) {
-        if (test.contains("workers")) {
-            Long n = test.getLong("workers");
-            if (n == null) throw new JkBuildParseException("[test].workers must be an integer >= 0");
-            if (n < 0) throw new JkBuildParseException("[test].workers must be >= 0");
-            s.testWorkers = n.intValue();
-        }
-        if (Boolean.FALSE.equals(test.getBoolean("parallel"))) {
-            s.testWorkers = 1;
-        }
-        // [test] extra-src — extra test-tier sources compiled into test classes. A single file
-        // is legal where a directory would over-reach (clients/cli compiling one IntelliJ
-        // parser type). Shared helpers a sibling consumes belong in [test] fixtures.
-        TomlArray tes = test.getArray("extra-src");
-        if (tes != null) {
-            for (int i = 0; i < tes.size(); i++) {
-                Object val = tes.get(i);
-                if (!(val instanceof String str) || str.isBlank())
-                    throw new JkBuildParseException("[test].extra-src must be an array of directory or file paths");
-                s.testExtraSrc.add(str);
-            }
-        }
-        // [test] fixtures — a source root compiled to target/test-fixtures/classes, never an
-        // artifact. `true` means src/fixtures/java; a string names the root.
-        if (test.contains("fixtures")) {
-            Object raw = test.get("fixtures");
-            if (raw instanceof Boolean flag) {
-                s.fixtures = flag ? JkBuild.Build.DEFAULT_FIXTURES : null;
-            } else if (raw instanceof String path) {
-                if (path.isBlank()) {
-                    throw new JkBuildParseException(
-                            "[test].fixtures must be `true` or a non-empty module-relative directory");
-                }
-                s.fixtures = path;
-            } else {
-                throw new JkBuildParseException(
-                        "[test].fixtures must be `true` or a non-empty module-relative directory");
-            }
-        }
-        // [test] serial-tags — class-level tags that never share the sharded worker pool.
-        TomlArray st = test.getArray("serial-tags");
-        if (st != null) {
-            for (int i = 0; i < st.size(); i++) {
-                Object val = st.get(i);
-                if (!(val instanceof String str))
-                    throw new JkBuildParseException("[test].serial-tags must be an array of tag strings");
-                if (!str.isBlank()) s.testSerialTags.add(str);
-            }
-        }
     }
 
     /** The keys one {@code [dev.sidecars.<name>]} table may carry; the schema names exactly these. */
@@ -784,14 +651,14 @@ public final class ManifestBuild {
      * <p>{@code [javac.test]} carries the same two keys and, when present, replaces the table for
      * compile-test — an empty one turns the plugins off for the suite.
      */
-    static JkBuild.JavacConfig parseJavac(TomlTable root) {
+    static JavacConfig parseJavac(TomlTable root) {
         Object raw = root.get(List.of("javac"));
-        if (raw == null) return JkBuild.JavacConfig.EMPTY;
+        if (raw == null) return JavacConfig.EMPTY;
         if (!(raw instanceof TomlTable javac)) {
             throw new JkBuildParseException(
                     "[javac] must be a table: [javac] plugins = { ErrorProne = { options = […] } }");
         }
-        JkBuild.JavacConfig test = null;
+        JavacConfig test = null;
         Object rawTest = javac.get(List.of("test"));
         if (rawTest != null) {
             if (!(rawTest instanceof TomlTable table)) {
@@ -802,8 +669,8 @@ public final class ManifestBuild {
         return parseJavacTable(javac, "[javac]", JAVAC_KEYS, test);
     }
 
-    private static JkBuild.JavacConfig parseJavacTable(
-            TomlTable javac, String at, List<String> known, JkBuild.@Nullable JavacConfig test) {
+    private static JavacConfig parseJavacTable(
+            TomlTable javac, String at, List<String> known, @Nullable JavacConfig test) {
         for (String key : javac.keySet()) {
             if (!known.contains(key)) {
                 throw new JkBuildParseException(
@@ -832,7 +699,7 @@ public final class ManifestBuild {
             }
         }
         List<String> args = stringArray(javac.get(List.of("args")), at + ".args");
-        return new JkBuild.JavacConfig(plugins, args, test);
+        return new JavacConfig(plugins, args, test);
     }
 
     /** {@code raw} as an array of strings; absent is empty. */

@@ -8,7 +8,7 @@ import static cc.jumpkick.runtime.PlannerSupport.unresolvedProcessorDeps;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathResolver;
-import cc.jumpkick.compile.JavacLint;
+import cc.jumpkick.compile.JavacDefaults;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.host.Errors;
@@ -146,15 +146,16 @@ public final class PlannerSetup {
                     Lockfile lock = ctx.require(LOCKFILE);
 
                     Profile profile = CompileSupport.resolveProfile(project.profiles(), in.profileName());
-                    // Default lint (deprecation/unchecked) unless [build] lint = false;
-                    // the profile's own javac args win (appended after). Shared by the
+                    // Debug info and default lint (deprecation/unchecked) per [build]; the
+                    // profile's own javac args win (appended after). Shared by the
                     // main- and test-compile steps (both read JAVAC_ARGS).
                     // Classpaths are published in resolve-deps AFTER sync — same reason
                     // JAVA_HOME is published in ensure-jdk, not here.
                     ctx.put(
                             JAVAC_ARGS,
-                            JavacLint.effectiveArgs(
+                            JavacDefaults.effectiveArgs(
                                     project.build().lint(),
+                                    project.build().debug(),
                                     PluginContributions.javacArgs(project, in.dir(), lockModules(lock)),
                                     profile == null ? List.of() : profile.javacArgs()));
                     // Reuse source lists that the tick suppliers may have already walked.

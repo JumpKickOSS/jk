@@ -6,7 +6,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.engine.plugin.WorkerEnv;
-import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.JavacConfig;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.runtime.base.CompileSupport;
@@ -52,7 +52,7 @@ class CompileTestProcessorTest {
                         out,
                         21,
                         List.of(),
-                        JkBuild.JavacConfig.EMPTY,
+                        JavacConfig.EMPTY,
                         Path.of(System.getProperty("java.home")),
                         null),
                 dir.resolve("gen"),
@@ -88,7 +88,7 @@ class CompileTestProcessorTest {
                         out,
                         21,
                         List.of(),
-                        JkBuild.JavacConfig.EMPTY,
+                        JavacConfig.EMPTY,
                         Path.of(System.getProperty("java.home")),
                         null),
                 dir.resolve("gen"),

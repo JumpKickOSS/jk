@@ -22,6 +22,7 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.BuildIdentity;
+import cc.jumpkick.model.JavacConfig;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.Task;
@@ -94,7 +95,7 @@ public final class PlannerFixtures {
             Path outputDir,
             int release,
             List<String> javacArgs,
-            JkBuild.JavacConfig javac,
+            JavacConfig javac,
             Path javaHome) {
         return CompileRequest.builder()
                 .sources(sources)

@@ -212,7 +212,52 @@
     },
     "build": {
       "type": "object",
-      "description": "[build] table; keys are documented in docs/user."
+      "description": "[build] table: how this module compiles and tests. Keys are documented in docs/user/build.md.",
+      "properties": {
+        "order-after": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Modules this one builds after, without a classpath edge."
+        },
+        "test-plugin-jars": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Plugin jars placed on the test worker's classpath."
+        },
+        "lint": {
+          "type": "boolean",
+          "description": "Whether javac runs with -Xlint:deprecation,unchecked (default true)."
+        },
+        "debug": {
+          "type": "string",
+          "enum": ["full", "lines", "none"],
+          "description": "Debug information javac writes: full (-g: source, lines, local variables; the default, as Gradle and Maven compile), lines (-g:source,lines) or none (-g:none). A compile input."
+        },
+        "ksp-options": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "KSP processor options as key=value strings."
+        },
+        "extra-src": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Extra module-relative source roots compiled with the main sources."
+        },
+        "test-workers": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Test JVMs for this module: 0 = the build's auto share, 1 = serial."
+        },
+        "test-parallel": {
+          "type": "boolean",
+          "description": "false is the same as test-workers = 1."
+        },
+        "logic": {
+          "type": "string",
+          "description": "Build-logic directory (default jk/ or .jk/), or \"off\"."
+        }
+      },
+      "additionalProperties": false
     },
     "test": {
       "type": "object",

@@ -4,7 +4,7 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CompileRequest;
-import cc.jumpkick.compile.JavacLint;
+import cc.jumpkick.compile.JavacDefaults;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceClasspath;
@@ -193,8 +193,9 @@ final class ModuleForecast {
         Path javaHome = TaskForecaster.forecastJavaHome(dir, project, lock);
         // Same contributed-args evaluation as the real compile step, against the same
         // lock — forecast action keys must match the keys the build will actually use.
-        List<String> javacArgs = JavacLint.effectiveArgs(
+        List<String> javacArgs = JavacDefaults.effectiveArgs(
                 project.build().lint(),
+                project.build().debug(),
                 PluginContributions.javacArgs(project, dir, PlannerSupport.lockModules(lock)),
                 List.of());
         // Must mirror BuildPlanner' processor classpath exactly — workspace siblings

@@ -4,6 +4,7 @@ package cc.jumpkick.config;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.model.JavacConfig;
 import cc.jumpkick.model.JkBuild;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -19,7 +20,7 @@ class JkBuildParserJavacTest {
                 plugins = { ErrorProne = { options = ["-Xep:NullAway:ERROR", "-XepOpt:NullAway:AnnotatedPackages=com.example"] }, Manifold = {} }
                 args    = ["-XDcompilePolicy=simple", "--should-stop=ifError=FLOW"]
                 """);
-        JkBuild.JavacConfig javac = b.build().javac();
+        JavacConfig javac = b.build().javac();
         assertThat(javac.plugins().keySet()).containsExactly("ErrorProne", "Manifold");
         assertThat(javac.plugins().get("ErrorProne"))
                 .containsExactly("-Xep:NullAway:ERROR", "-XepOpt:NullAway:AnnotatedPackages=com.example");
@@ -41,7 +42,7 @@ class JkBuildParserJavacTest {
     @Test
     void an_absent_table_is_the_empty_config_and_the_release_key_is_untouched() {
         JkBuild b = JkBuildParser.parse(JkBuildParserFixtures.PROJECT);
-        assertThat(b.build().javac()).isSameAs(JkBuild.JavacConfig.EMPTY);
+        assertThat(b.build().javac()).isSameAs(JavacConfig.EMPTY);
         assertThat(b.build().javac().isEmpty()).isTrue();
         assertThat(b.project().javaRelease()).isEqualTo(25);
     }
@@ -74,7 +75,7 @@ class JkBuildParserJavacTest {
                 [javac.test]
                 plugins = {}
                 """);
-        JkBuild.JavacConfig javac = b.build().javac();
+        JavacConfig javac = b.build().javac();
         assertThat(javac.plugins()).containsOnlyKeys("ErrorProne");
         assertThat(javac.forTests().isEmpty())
                 .as("the suite compiles without the plugins")

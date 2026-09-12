@@ -61,6 +61,17 @@ class JkTomlSchemaTest {
     }
 
     @Test
+    void build_properties_are_exactly_the_parser_s_build_keys() throws Exception {
+        String schema = Files.readString(SCHEMA);
+        String build = table(table(schema, "properties"), "build");
+        assertThat(keysOf(table(build, "properties")))
+                .containsExactlyInAnyOrderElementsOf(ManifestBuildTable.BUILD_KEYS);
+        assertThat(Jsonl.bool(build, "additionalProperties", true))
+                .as("an unknown key under [build] is what an editor should flag")
+                .isFalse();
+    }
+
+    @Test
     void javac_properties_are_exactly_the_parser_s_javac_keys() throws Exception {
         String schema = Files.readString(SCHEMA);
         String javac = table(table(schema, "properties"), "javac");

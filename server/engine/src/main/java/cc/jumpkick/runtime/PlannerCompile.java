@@ -28,6 +28,7 @@ import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.Dependency;
+import cc.jumpkick.model.JavacConfig;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.plugin.manifest.PluginContributions;
@@ -171,7 +172,7 @@ public final class PlannerCompile {
             Path outputDir,
             int release,
             List<String> javacArgs,
-            JkBuild.JavacConfig javac,
+            JavacConfig javac,
             Path javaHome,
             boolean mixedKotlin,
             boolean mixedGroovy,
@@ -230,7 +231,7 @@ public final class PlannerCompile {
             Path outputDir,
             int release,
             List<String> javacArgs,
-            JkBuild.JavacConfig javac,
+            JavacConfig javac,
             Path javaHome,
             ScalaCompile.@Nullable Setup scala) {}
 
@@ -262,7 +263,7 @@ public final class PlannerCompile {
      * profile args), then one {@link #PLUGIN_FLAG} element per {@code [javac] plugins} entry, then
      * {@code [javac] args} verbatim. One body, so the build's key and the forecast's agree.
      */
-    static List<String> javacOptions(List<String> base, JkBuild.JavacConfig javac) {
+    static List<String> javacOptions(List<String> base, JavacConfig javac) {
         if (javac.isEmpty()) return base;
         List<String> out = new ArrayList<>(base);
         javac.plugins().forEach((name, options) -> {

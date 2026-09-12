@@ -5,6 +5,7 @@ import static cc.jumpkick.config.JkBuildParserFixtures.PROJECT;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.model.DebugInfo;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PlatformPolicy;
 import cc.jumpkick.model.UnmappedPolicy;
@@ -185,6 +186,44 @@ class JkBuildParserProjectTest {
                 lint = false
                 """);
         assertThat(off.build().lint()).isFalse();
+    }
+
+    @Test
+    void build_debug_defaults_to_full_and_names_a_level() {
+        assertThat(JkBuildParser.parse(PROJECT).build().debug()).isEqualTo(DebugInfo.FULL);
+        JkBuild lines = JkBuildParser.parse(PROJECT + """
+
+                [build]
+                debug = "lines"
+                """);
+        assertThat(lines.build().debug()).isEqualTo(DebugInfo.LINES);
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+
+                        [build]
+                        debug = "vars"
+                        """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[build].debug")
+                .hasMessageContaining("full, lines or none");
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+
+                        [build]
+                        debug = true
+                        """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[build].debug must be a string");
+    }
+
+    @Test
+    void build_rejects_an_unknown_key() {
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+
+                        [build]
+                        debbug = "full"
+                        """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[build] unknown key `debbug`")
+                .hasMessageContaining("debug");
     }
 
     @Test

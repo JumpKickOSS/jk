@@ -82,6 +82,21 @@ Widget.java:7: error: [NullAway] dereferenced expression 'label' is @Nullable
 
 Kotlin compiler plugins are `[[kotlin-plugins]]`, a separate table.
 
+## Debug info
+
+Every javac compile carries full debug information (`-g`: source file, line numbers and
+local variable names), the same as Gradle and Maven, so a debugger attached through
+`--debug-jvm` shows locals, not `slot_1`. javac alone would default to `-g:source,lines`.
+`[build] debug` picks the level — `"full"` (the default), `"lines"` (`-g:source,lines`:
+stack traces still resolve, locals are unnamed) or `"none"` (`-g:none`: the smallest class
+files, no line numbers in stack traces). It is a compile input: changing it recompiles the
+module. Full debug info makes class files roughly 15% larger and costs nothing at run time.
+
+```toml
+[build]
+debug = "lines"                # drop LocalVariableTable; keep line numbers
+```
+
 ## Worker environment (`[env]`)
 
 Every worker jk forks for a module — the compiler, each test JVM, a plugin step — starts from
