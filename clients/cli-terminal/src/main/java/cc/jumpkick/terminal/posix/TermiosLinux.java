@@ -32,6 +32,9 @@ public final class TermiosLinux {
     public static final int TCSANOW = 0;
     public static final int POLLIN = 0x0001;
     public static final int POLLOUT = 0x0004;
+    public static final int POLLERR = 0x0008;
+    public static final int POLLHUP = 0x0010;
+    public static final int POLLNVAL = 0x0020;
     public static final int CLOCK_MONOTONIC = 1;
     public static final int EINTR = 4;
     public static final int EAGAIN = 11;

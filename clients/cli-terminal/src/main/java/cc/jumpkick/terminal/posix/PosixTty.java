@@ -30,7 +30,12 @@ public final class PosixTty implements AutoCloseable {
     private final boolean darwin;
     private volatile boolean open = true;
 
-    private PosixTty(int fd, byte[] original, boolean darwin) {
+    /**
+     * Over an already-open descriptor whose termios to restore is {@code original}. Package-private
+     * so the poll/read loop can be driven over a pipe, which shows a pty's readable, idle and
+     * hung-up states without a terminal; production goes through {@link #openControlling}.
+     */
+    PosixTty(int fd, byte[] original, boolean darwin) {
         this.fd = fd;
         this.original = original;
         this.darwin = darwin;
@@ -150,7 +155,7 @@ public final class PosixTty implements AutoCloseable {
     }
 
     /**
-     * Clock-driven wait. Returns a byte, or -1 on timeout / dead.
+     * Clock-driven wait. Returns a byte, -1 on timeout, or -2 when the terminal is dead.
      * {@code timeout.isZero()} is forever.
      */
     public int readByte(Duration timeout, BooleanSupplier live) {
@@ -179,27 +184,33 @@ public final class PosixTty implements AutoCloseable {
                 rc = poll(state, fds, timeoutMs);
                 err = rc < 0 ? errno(state) : 0;
                 if (rc > 0) {
+                    // Hang-up, error or a closed descriptor with nothing left to read: the peer
+                    // is gone. Reading anyway answers 0 bytes and poll answers again at once, so
+                    // a prompt waiting forever spins at full CPU and never learns it is dead.
+                    int revents = Short.toUnsignedInt(fds.get(ValueLayout.JAVA_SHORT, 6));
+                    if ((revents & pollin()) == 0 && (revents & pollDead()) != 0) {
+                        return -2;
+                    }
                     MemorySegment buf = arena.allocate(1);
                     int n = readOne(state, buf);
                     if (n > 0) {
                         return Byte.toUnsignedInt(buf.get(ValueLayout.JAVA_BYTE, 0));
                     }
-                    if (n < 0) {
-                        err = errno(state);
-                        if (err == eintr()) {
-                            continue;
-                        }
-                        if (err == eagain()) {
-                            long elapsed = System.nanoTime() - t0;
-                            if (elapsed < 1_000_000L) {
-                                sleepSlice(
-                                        forever ? SLICE_MS * 1_000_000L : Math.min(remaining, SLICE_MS * 1_000_000L));
-                            }
-                            continue;
-                        }
-                        return -2; // dead
+                    if (n == 0) {
+                        return -2; // EOF: a closed pty master reads as zero bytes on macOS
                     }
-                    continue;
+                    err = errno(state);
+                    if (err == eintr()) {
+                        continue;
+                    }
+                    if (err == eagain()) {
+                        long elapsed = System.nanoTime() - t0;
+                        if (elapsed < 1_000_000L) {
+                            sleepSlice(forever ? SLICE_MS * 1_000_000L : Math.min(remaining, SLICE_MS * 1_000_000L));
+                        }
+                        continue;
+                    }
+                    return -2; // dead
                 }
             } catch (Throwable t) {
                 return -2;
@@ -279,6 +290,13 @@ public final class PosixTty implements AutoCloseable {
 
     private int pollout() {
         return darwin ? TermiosDarwin.POLLOUT : TermiosLinux.POLLOUT;
+    }
+
+    /** The revents that mean the descriptor has no future: hang-up, error, or not open. */
+    private int pollDead() {
+        return darwin
+                ? TermiosDarwin.POLLHUP | TermiosDarwin.POLLERR | TermiosDarwin.POLLNVAL
+                : TermiosLinux.POLLHUP | TermiosLinux.POLLERR | TermiosLinux.POLLNVAL;
     }
 
     private int eintr() {
