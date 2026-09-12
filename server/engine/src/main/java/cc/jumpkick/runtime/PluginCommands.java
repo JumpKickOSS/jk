@@ -86,10 +86,10 @@ public final class PluginCommands {
             // `jk android licenses` must run BEFORE licenses gate provisioning, so an
             // unprovisionable tool is absent and only a command that needs it complains.
             var cas = JkStores.storeCas();
-            Map<String, String> sdkPins = PluginBuild.sdkPins(LockPaths.lockFile(dir));
+            Path lockFile = LockPaths.lockFile(dir);
             Map<String, Path> tools =
-                    new LinkedHashMap<>(PluginBuild.fetchStepDependencies(project, dir, cas, sdkPins, true));
-            tools.putAll(PluginBuild.fetchCommandDependencies(project, dir, cas, sdkPins, true));
+                    new LinkedHashMap<>(PluginBuild.fetchStepDependencies(project, dir, cas, lockFile, true));
+            tools.putAll(PluginBuild.fetchCommandDependencies(project, dir, cas, lockFile, true));
             for (var tool : tools.entrySet()) {
                 specWriter.extra(tool.getKey(), tool.getValue());
             }

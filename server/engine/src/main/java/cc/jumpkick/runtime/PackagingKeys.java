@@ -233,9 +233,10 @@ public final class PackagingKeys {
         // collision.
         PluginBuild.PackagerDecl packager = Objects.requireNonNull(p.decls().packager(), "packager");
         Map<String, String> sdkPins = PluginBuild.sdkPins(p.lockFile());
-        List<PluginContributions.StepDep> tools = p.tools().forConsumer(p.project(), p.moduleDir(), packager.name());
+        List<PluginContributions.StepDep> tools =
+                p.tools().forConsumer(p.project(), p.moduleDir(), p.lockFile(), packager.name());
         Map<String, Path> extras = new LinkedHashMap<>(p.tools().fetch(tools, p.project(), p.cas(), sdkPins));
-        extras.putAll(PluginBuild.fetchPackagerDependencies(p.project(), p.moduleDir(), p.cas()));
+        extras.putAll(PluginBuild.fetchPackagerDependencies(p.project(), p.moduleDir(), p.cas(), p.lockFile()));
 
         ProjectFacts facts =
                 PluginBuild.facts(p.project(), PlannerPlugin.resolvedMain(p.project(), p.moduleDir(), p.classes()));

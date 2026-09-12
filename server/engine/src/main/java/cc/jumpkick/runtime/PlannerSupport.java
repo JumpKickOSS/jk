@@ -89,7 +89,10 @@ public final class PlannerSupport {
         if (names.isEmpty()) return List.of();
         try {
             Map<String, Path> fetched = tools.fetch(
-                    tools.named(project, in.dir(), names), project, cas, PluginBuild.sdkPins(in.lockFile()));
+                    tools.named(project, in.dir(), in.lockFile(), names),
+                    project,
+                    cas,
+                    PluginBuild.sdkPins(in.lockFile()));
             List<Path> out = new ArrayList<>();
             for (String name : names) {
                 Path path = fetched.get(name);

@@ -3,6 +3,7 @@ package cc.jumpkick.plugin.manifest;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.groups.Tuple.tuple;
 
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.JkBuildParser;
@@ -11,10 +12,12 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
+import org.tomlj.Toml;
 
 /** The declarative-contribution layer (build-plugins P2), driven through the real spring-boot manifest. */
 class PluginContributionsTest {
@@ -38,8 +41,7 @@ class PluginContributionsTest {
         JkBuild build = boot("");
         assertThat(build.dependencies().of(Scope.PLATFORM))
                 .extracting(Dependency::module, d -> d.version().raw())
-                .containsExactly(org.assertj.core.groups.Tuple.tuple(
-                        "org.springframework.boot:spring-boot-dependencies", "4.0.0"));
+                .containsExactly(tuple("org.springframework.boot:spring-boot-dependencies", "4.0.0"));
         // The contribution lands as written, not exactified with a leading `=`, so a
         // `version = "4"` floor floats within the Boot 4 line at lock.
         assertThat(build.dependencies().of(Scope.PLATFORM).getFirst().version())
@@ -124,7 +126,7 @@ class PluginContributionsTest {
         JkBuild build = grails("");
         assertThat(build.dependencies().of(Scope.PLATFORM))
                 .extracting(Dependency::module, d -> d.version().raw())
-                .containsExactly(org.assertj.core.groups.Tuple.tuple("org.apache.grails:grails-bom", "8.0.0-M4"));
+                .containsExactly(tuple("org.apache.grails:grails-bom", "8.0.0-M4"));
         assertThat(PluginContributions.javacArgs(build, null, Set.of())).containsExactly("-parameters");
         assertThat(PluginContributions.groovyArgs(build, null, Set.of())).containsExactly("--parameters");
         assertThat(PluginContributions.kotlinArgs(build, null, Set.of())).isEmpty();
@@ -319,10 +321,10 @@ class PluginContributionsTest {
                 [cmdlane-fixture]
                 """);
 
-        assertThat(PluginContributions.stepDependencies(build, null))
+        assertThat(PluginContributions.stepDependencies(build, null, Map.of()))
                 .extracting(PluginContributions.StepDep::artifact)
                 .containsExactly("aapt2");
-        var commandDeps = PluginContributions.commandDependencies(build, null);
+        var commandDeps = PluginContributions.commandDependencies(build, null, Map.of());
         assertThat(commandDeps)
                 .extracting(PluginContributions.StepDep::artifact)
                 .containsExactly("adb");
@@ -417,7 +419,7 @@ class PluginContributionsTest {
                 coordinate = "com.acme:kt-bom:1.0.0"
                 when = { kotlin-project = true }
                 """, "p.toml");
-        var configs = Map.of("ktextra", PluginTableRegistry.validate(manifest, org.tomlj.Toml.parse("")));
+        var configs = Map.of("ktextra", PluginTableRegistry.validate(manifest, Toml.parse("")));
 
         Project thin = Project.builder("g", "m", "1.0").jdkMajor(25).java(21).build();
         assertThat(PluginContributions.platformDependencies(thin, false, configs, List.of(manifest)))
@@ -535,7 +537,7 @@ class PluginContributionsTest {
                 [forstep-fixture]
                 """);
 
-        List<PluginContributions.StepDep> lane = PluginContributions.stepDependencies(build, null);
+        List<PluginContributions.StepDep> lane = PluginContributions.stepDependencies(build, null, Map.of());
         assertThat(lane)
                 .extracting(PluginContributions.StepDep::forSteps)
                 .containsExactly(List.of("res"), List.of("res", "dex"), List.of());
@@ -543,5 +545,112 @@ class PluginContributionsTest {
                 .containsExactly("android-jar", "everywhere");
         assertThat(lane.stream().filter(d -> d.reaches("manifest")).map(PluginContributions.StepDep::artifact))
                 .containsExactly("everywhere");
+    }
+
+    // ---- tool coordinates read the locked platform version ------------------------------------
+
+    private static JkBuild bootAt(String selector) {
+        return JkBuildParser.parse("""
+                name = "demo"
+                group = "com.example"
+                version = "1.0.0"
+                java = 25
+
+                [spring-boot]
+                version = "%s"
+                """.formatted(selector));
+    }
+
+    private static final Map<String, String> BOOT_LOCKED_AT_4_1_1 =
+            Map.of("org.springframework.boot:spring-boot-dependencies", "4.1.1");
+
+    @Test
+    void an_exact_pin_on_the_platform_reaches_the_packager_as_the_locked_version() {
+        assertThat(PluginContributions.packagerDependencies(bootAt("=4.1.1"), Path.of("."), BOOT_LOCKED_AT_4_1_1))
+                .extracting(PluginContributions.PackagerDep::module, PluginContributions.PackagerDep::version)
+                .containsExactly(
+                        tuple("org.springframework.boot:spring-boot-loader", "4.1.1"),
+                        tuple("org.springframework.boot:spring-boot-jarmode-tools", "4.1.1"));
+    }
+
+    @Test
+    void a_caret_floor_on_the_platform_reaches_the_packager_as_the_locked_version() {
+        assertThat(PluginContributions.packagerDependencies(bootAt("^4.1"), Path.of("."), BOOT_LOCKED_AT_4_1_1))
+                .extracting(PluginContributions.PackagerDep::version)
+                .containsOnly("4.1.1");
+        assertThat(PluginContributions.packagerDependencies(bootAt("latest"), Path.of("."), BOOT_LOCKED_AT_4_1_1))
+                .extracting(PluginContributions.PackagerDep::version)
+                .containsOnly("4.1.1");
+    }
+
+    @Test
+    void without_a_lock_pin_the_selectors_anchor_stands_in() {
+        assertThat(PluginContributions.packagerDependencies(bootAt("=4.1.1"), Path.of("."), Map.of()))
+                .extracting(PluginContributions.PackagerDep::version)
+                .containsOnly("4.1.1");
+        assertThat(PluginContributions.packagerDependencies(bootAt("^4.1"), Path.of("."), Map.of()))
+                .extracting(PluginContributions.PackagerDep::version)
+                .containsOnly("4.1");
+        assertThat(PluginContributions.packagerDependencies(bootAt("latest"), Path.of("."), Map.of()))
+                .extracting(PluginContributions.PackagerDep::version)
+                .containsOnly("latest");
+    }
+
+    /** A manifest that floats from the platform line composes with the locked version, not the selector. */
+    @Test
+    void a_step_tool_floating_from_the_platform_line_composes_with_the_locked_version() {
+        JkBuild build = JkBuildParser.parse("""
+                name = "demo"
+                group = "com.example"
+                version = "1.0.0"
+                java = 25
+
+                [quarkus]
+                version = "=3.30.0"
+                """);
+        Map<String, String> pins = Map.of("io.quarkus.platform:quarkus-bom", "3.30.0");
+
+        assertThat(PluginContributions.stepDependencies(build, null, pins))
+                .extracting(PluginContributions.StepDep::coordinateSpec)
+                .allSatisfy(spec -> assertThat(spec).doesNotContain("=").contains(":^3.30.0"));
+    }
+
+    /** A key that does not select the platform line is interpolated as written. */
+    @Test
+    void a_non_platform_key_is_interpolated_as_written() {
+        PluginTableRegistry.putBuiltIn(PluginDescriptors.parse("""
+                        [plugin]
+                        id = "toolver-fixture"
+                        table = "toolver-fixture"
+
+                        [schema]
+                        version = { type = "string", required = true }
+                        tool = { type = "string", required = true }
+
+                        [[contribute.platform-dependency]]
+                        coordinate = "com.acme:acme-bom:${config.version}"
+
+                        [[contribute.step-dependency]]
+                        artifact = "tool"
+                        coordinate = "com.acme:tool:${config.tool}"
+
+                        [[contribute.step-dependency]]
+                        artifact = "platform-jar"
+                        coordinate = "com.acme:platform-jar:${config.version}"
+                        """, "toolver-fixture.toml"), null);
+        JkBuild build = JkBuildParser.parse("""
+                name = "demo"
+                group = "com.example"
+                version = "1.0.0"
+                java = 25
+
+                [toolver-fixture]
+                version = "^2"
+                tool = "^7.1"
+                """);
+
+        assertThat(PluginContributions.stepDependencies(build, null, Map.of("com.acme:acme-bom", "2.5.0")))
+                .extracting(PluginContributions.StepDep::coordinateSpec)
+                .containsExactly("com.acme:tool:^7.1", "com.acme:platform-jar:2.5.0");
     }
 }

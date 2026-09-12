@@ -616,9 +616,10 @@ public final class LockPipeline {
     public Lockfile pinSdk(Lockfile lock, Progress progress) {
         LinkedHashSet<String> components = new LinkedHashSet<>();
         try {
+            Map<String, String> platformPins = lock.platformPins();
             for (var lane : List.of(
-                    PluginContributions.stepDependencies(effective, lockDir),
-                    PluginContributions.commandDependencies(effective, lockDir))) {
+                    PluginContributions.stepDependencies(effective, lockDir, platformPins),
+                    PluginContributions.commandDependencies(effective, lockDir, platformPins))) {
                 for (var sd : lane) {
                     if (sd.sdkComponent() != null && !"root".equals(sd.sdkComponent())) {
                         components.add(sd.sdkComponent());

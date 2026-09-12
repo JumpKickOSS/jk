@@ -317,15 +317,19 @@ public final class PluginBuild {
 
     // ---- execution -----------------------------------------------------------------------------
 
-    /** The resolved packager-dependency artifacts, fetched into the CAS by coordinate. */
-    public static Map<String, Path> fetchPackagerDependencies(JkBuild project, Path moduleDir, Cas cas)
+    /**
+     * The resolved packager-dependency artifacts, fetched into the CAS by coordinate. The lock at
+     * {@code lockFile} supplies the platform versions a {@code ${config.<key>}} segment reads.
+     */
+    public static Map<String, Path> fetchPackagerDependencies(JkBuild project, Path moduleDir, Cas cas, Path lockFile)
             throws IOException, InterruptedException {
         Map<String, Path> out = new LinkedHashMap<>();
-        List<PluginContributions.PackagerDep> deps = PluginContributions.packagerDependencies(project, moduleDir);
+        List<PluginContributions.PackagerDep> deps =
+                PluginContributions.packagerDependencies(project, moduleDir, platformPins(lockFile));
         if (deps.isEmpty()) return out;
         RepoGroup repos = RepoGroupBuilder.buildFor(project, null, cas);
         for (PluginContributions.PackagerDep dep : deps) {
-            // ${config.version} may be a caret floor ("4"); resolve to a concrete release.
+            // A manifest may float its tool ("^4"); resolve to a concrete release.
             String version = resolveToolVersion(repos, dep.module(), dep.version());
             out.put(dep.artifact(), fetchArtifact(repos, dep.module(), version));
         }
@@ -337,12 +341,15 @@ public final class PluginBuild {
      * command receives beside its own lane. A build never calls this: its steps, packager and
      * compile classpath each take their slice through {@link StepTools}. {@code lenient} omits
      * failed provisions from the map (callers that need them fail themselves — e.g. {@code jk
-     * android licenses} before any license is accepted).
+     * android licenses} before any license is accepted). The lock at {@code lockFile}, when it
+     * exists, supplies the sdk-component and platform pins.
      */
     public static Map<String, Path> fetchStepDependencies(
-            JkBuild project, Path moduleDir, Cas cas, Map<String, String> sdkPins, boolean lenient)
+            JkBuild project, Path moduleDir, Cas cas, Path lockFile, boolean lenient)
             throws IOException, InterruptedException {
-        return fetchTools(PluginContributions.stepDependencies(project, moduleDir), project, cas, sdkPins, lenient);
+        List<PluginContributions.StepDep> lane =
+                PluginContributions.stepDependencies(project, moduleDir, platformPins(lockFile));
+        return fetchTools(lane, project, cas, sdkPins(lockFile), lenient);
     }
 
     /**
@@ -355,10 +362,10 @@ public final class PluginBuild {
         private @Nullable List<PluginContributions.StepDep> lane;
         private final Map<String, Path> fetched = new ConcurrentHashMap<>();
 
-        private synchronized List<PluginContributions.StepDep> lane(JkBuild project, Path moduleDir) {
+        private synchronized List<PluginContributions.StepDep> lane(JkBuild project, Path moduleDir, Path lockFile) {
             List<PluginContributions.StepDep> l = lane;
             if (l == null) {
-                l = PluginContributions.stepDependencies(project, moduleDir);
+                l = PluginContributions.stepDependencies(project, moduleDir, platformPins(lockFile));
                 lane = l;
             }
             return l;
@@ -368,9 +375,10 @@ public final class PluginBuild {
          * The tools {@code consumer} — a step or packager name — reads: every unscoped tool plus
          * the ones whose {@code for-step} names it, in declaration order.
          */
-        public List<PluginContributions.StepDep> forConsumer(JkBuild project, Path moduleDir, String consumer) {
+        public List<PluginContributions.StepDep> forConsumer(
+                JkBuild project, Path moduleDir, Path lockFile, String consumer) {
             List<PluginContributions.StepDep> out = new ArrayList<>();
-            for (PluginContributions.StepDep dep : lane(project, moduleDir)) {
+            for (PluginContributions.StepDep dep : lane(project, moduleDir, lockFile)) {
                 if (dep.reaches(consumer)) out.add(dep);
             }
             return out;
@@ -380,9 +388,10 @@ public final class PluginBuild {
          * The declared tools under {@code names}, whatever their scope — a consumer that names its
          * tools itself ({@code [[contribute.provided-classpath]]}). Unknown names are left out.
          */
-        public List<PluginContributions.StepDep> named(JkBuild project, Path moduleDir, Collection<String> names) {
+        public List<PluginContributions.StepDep> named(
+                JkBuild project, Path moduleDir, Path lockFile, Collection<String> names) {
             List<PluginContributions.StepDep> out = new ArrayList<>();
-            for (PluginContributions.StepDep dep : lane(project, moduleDir)) {
+            for (PluginContributions.StepDep dep : lane(project, moduleDir, lockFile)) {
                 if (names.contains(dep.artifact())) out.add(dep);
             }
             return out;
@@ -414,9 +423,11 @@ public final class PluginBuild {
      * tool is never fetched by a step or packager and joins no action key.
      */
     public static Map<String, Path> fetchCommandDependencies(
-            JkBuild project, Path moduleDir, Cas cas, Map<String, String> sdkPins, boolean lenient)
+            JkBuild project, Path moduleDir, Cas cas, Path lockFile, boolean lenient)
             throws IOException, InterruptedException {
-        return fetchTools(PluginContributions.commandDependencies(project, moduleDir), project, cas, sdkPins, lenient);
+        List<PluginContributions.StepDep> lane =
+                PluginContributions.commandDependencies(project, moduleDir, platformPins(lockFile));
+        return fetchTools(lane, project, cas, sdkPins(lockFile), lenient);
     }
 
     private static Map<String, Path> fetchTools(
@@ -608,15 +619,28 @@ public final class PluginBuild {
 
     /** The {@code [[sdk]]} revision pins of {@code lockFile}, or empty (no lock / none recorded). */
     public static Map<String, String> sdkPins(Path lockFile) {
-        if (lockFile == null || !Files.isRegularFile(lockFile)) return Map.of();
+        Lockfile lock = lockOrNull(lockFile);
+        if (lock == null) return Map.of();
+        Map<String, String> pins = new LinkedHashMap<>();
+        for (var e : lock.sdk()) {
+            pins.put(e.component(), e.revision());
+        }
+        return pins;
+    }
+
+    /** {@link Lockfile#platformPins()} of {@code lockFile}, or empty (no lock / nothing managed). */
+    public static Map<String, String> platformPins(Path lockFile) {
+        Lockfile lock = lockOrNull(lockFile);
+        return lock == null ? Map.of() : lock.platformPins();
+    }
+
+    /** The lock at {@code lockFile}, or null when there is none readable — a pin lookup before the first lock. */
+    private static @Nullable Lockfile lockOrNull(Path lockFile) {
+        if (!Files.isRegularFile(lockFile)) return null;
         try {
-            Map<String, String> pins = new LinkedHashMap<>();
-            for (var e : LockfileReader.read(lockFile).sdk()) {
-                pins.put(e.component(), e.revision());
-            }
-            return pins;
+            return LockfileReader.read(lockFile);
         } catch (Exception e) {
-            return Map.of();
+            return null;
         }
     }
 

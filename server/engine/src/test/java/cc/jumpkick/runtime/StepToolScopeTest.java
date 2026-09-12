@@ -106,11 +106,12 @@ class StepToolScopeTest {
         Cas cas = new Cas(tmp.resolve("cas"));
         PluginBuild.StepTools tools = new PluginBuild.StepTools();
 
-        List<PluginContributions.StepDep> forA = tools.forConsumer(build, tmp, "step-a");
+        List<PluginContributions.StepDep> forA = tools.forConsumer(build, tmp, tmp.resolve("jk-lock.toml"), "step-a");
         assertThat(forA).extracting(PluginContributions.StepDep::artifact).containsExactly("tool-a", "shared");
         assertThat(tools.fetch(forA, build, cas, Map.of())).containsOnlyKeys("tool-a", "shared");
 
-        assertThatThrownBy(() -> tools.fetch(tools.forConsumer(build, tmp, "step-b"), build, cas, Map.of()))
+        assertThatThrownBy(() -> tools.fetch(
+                        tools.forConsumer(build, tmp, tmp.resolve("jk-lock.toml"), "step-b"), build, cas, Map.of()))
                 .as("step-b's own slice is the one that needs the missing file")
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("tool-b");
@@ -140,7 +141,7 @@ class StepToolScopeTest {
     /** The action-key tool tokens one build renders for {@code step}: a fresh build's lane and fetch. */
     private List<String> stepTokens(JkBuild build, Cas cas, String step) throws Exception {
         PluginBuild.StepTools tools = new PluginBuild.StepTools();
-        List<PluginContributions.StepDep> declared = tools.forConsumer(build, tmp, step);
+        List<PluginContributions.StepDep> declared = tools.forConsumer(build, tmp, tmp.resolve("jk-lock.toml"), step);
         return PlannerPlugin.toolTokens(declared, tools.fetch(declared, build, cas, Map.of()), Map.of());
     }
 
@@ -153,11 +154,12 @@ class StepToolScopeTest {
         Cas cas = new Cas(tmp.resolve("cas"));
         PluginBuild.StepTools tools = new PluginBuild.StepTools();
 
-        tools.fetch(tools.forConsumer(build, tmp, "step-a"), build, cas, Map.of());
+        tools.fetch(tools.forConsumer(build, tmp, tmp.resolve("jk-lock.toml"), "step-a"), build, cas, Map.of());
         // Gone from disk: a second resolve of `shared` would now fail. The build already has it.
         Files.delete(shared);
 
-        assertThat(tools.fetch(tools.forConsumer(build, tmp, "step-b"), build, cas, Map.of()))
+        assertThat(tools.fetch(
+                        tools.forConsumer(build, tmp, tmp.resolve("jk-lock.toml"), "step-b"), build, cas, Map.of()))
                 .containsEntry("shared", shared)
                 .containsKey("tool-b");
     }
@@ -167,7 +169,7 @@ class StepToolScopeTest {
         JkBuild build = twoStepBuild();
         PluginBuild.StepTools tools = new PluginBuild.StepTools();
 
-        assertThat(tools.named(build, tmp, List.of("tool-b", "unknown")))
+        assertThat(tools.named(build, tmp, tmp.resolve("jk-lock.toml"), List.of("tool-b", "unknown")))
                 .as("[[contribute.provided-classpath]] names its tool; whose step it is does not matter")
                 .extracting(PluginContributions.StepDep::artifact)
                 .containsExactly("tool-b");
@@ -197,25 +199,27 @@ class StepToolScopeTest {
 
         for (String consumer :
                 List.of("android-manifest", "android-res", "android-test-config", "android-dex", "apk")) {
-            assertThat(tools.forConsumer(build, tmp, consumer))
+            assertThat(tools.forConsumer(build, tmp, tmp.resolve("jk-lock.toml"), consumer))
                     .as("debug consumer %s", consumer)
                     .extracting(PluginContributions.StepDep::artifact)
                     .doesNotContain("bundletool");
         }
-        assertThat(tools.forConsumer(build, tmp, "aab"))
+        assertThat(tools.forConsumer(build, tmp, tmp.resolve("jk-lock.toml"), "aab"))
                 .extracting(PluginContributions.StepDep::artifact)
                 .containsExactly("bundletool");
-        assertThat(tools.forConsumer(build, tmp, "android-manifest"))
+        assertThat(tools.forConsumer(build, tmp, tmp.resolve("jk-lock.toml"), "android-manifest"))
                 .extracting(PluginContributions.StepDep::artifact)
                 .containsExactly("manifest-merger");
-        assertThat(tools.forConsumer(build, tmp, "android-res"))
+        assertThat(tools.forConsumer(build, tmp, tmp.resolve("jk-lock.toml"), "android-res"))
                 .extracting(PluginContributions.StepDep::artifact)
                 .containsExactly("aapt2", "android-jar");
-        assertThat(tools.forConsumer(build, tmp, "android-dex"))
+        assertThat(tools.forConsumer(build, tmp, tmp.resolve("jk-lock.toml"), "android-dex"))
                 .extracting(PluginContributions.StepDep::artifact)
                 .containsExactly("r8", "android-jar");
-        assertThat(tools.forConsumer(build, tmp, "android-test-config")).isEmpty();
-        assertThat(tools.named(build, tmp, PluginContributions.providedClasspath(build, tmp)))
+        assertThat(tools.forConsumer(build, tmp, tmp.resolve("jk-lock.toml"), "android-test-config"))
+                .isEmpty();
+        assertThat(tools.named(
+                        build, tmp, tmp.resolve("jk-lock.toml"), PluginContributions.providedClasspath(build, tmp)))
                 .extracting(PluginContributions.StepDep::artifact)
                 .containsExactly("android-jar");
     }

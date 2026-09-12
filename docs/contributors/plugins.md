@@ -135,10 +135,17 @@ receive the whole lane regardless. Step-lane only — a command tool has no step
 hard pin and costs no network: a tool
 version in a manifest is *your* choice, and a literal usually exists because the tool has to
 match some other line (android's r8 tracks the AGP tools line). Write `^` or `~` when you mean
-float-within-line — `…:^${config.version}` follows the Boot/Quarkus/Grails line the project
-declared, resolving against the tool's own `maven-metadata.xml`. `latest` and open ranges are
-rejected. This is the opposite of the `jk.toml` `[dependencies]` convention, where bare means
-caret; the difference is who wrote the version.
+float-within-line, resolving against the tool's own `maven-metadata.xml`. `latest` and open
+ranges are rejected. This is the opposite of the `jk.toml` `[dependencies]` convention, where
+bare means caret; the difference is who wrote the version.
+
+**The platform line's key is the locked version.** The user writes a *selector* into the key
+your `[[contribute.platform-dependency]]` reads (`[spring-boot] version = "=4.1.1"`, `"^4"`,
+`"latest"`); in a tool coordinate that same `${config.<key>}` is the version the lock pinned
+the platform to, never the selector — no selector is a fetchable version. So Boot's
+`…:spring-boot-loader:${config.version}` is the locked Boot release exactly (no network), and
+Quarkus's `…:^${config.version}` floats within the locked line. Before a lock exists the
+selector's anchor stands in (`=4.1.1` → `4.1.1`, `^4` → `4`).
 
 `[[contribute.platform-dependency]]` is *not* a tool coordinate — it lands in the project's
 `[platform-dependencies]` and follows the `jk.toml` bare-is-caret rule.

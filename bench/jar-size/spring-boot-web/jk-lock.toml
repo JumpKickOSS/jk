@@ -2,7 +2,7 @@ version = 1
 generated-by = "jk 0.13.2"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.10"
-manifests-sha256 = "89ae2a63e65454480a3175f582023f8f167fc49e015c154b4e5677203c78dda2"
+manifests-sha256 = "e0258243f1593eee255a0df5b6c8c547b293b5460097a73721417e6e861afe85"
 project-id = "79d8e32c2a9b5740d27f3a2f3c9d8d30"
 
 [jdk]
@@ -559,7 +559,7 @@ deps = [
 [[plugin]]
 coordinate = "cc.jumpkick:jk-spring-boot"
 version    = "0.13.2"
-checksum   = "sha256:bb4be490c993547f57e0643b7b5892e5c427133e2f35c9c0457da0df21a3658e"
+checksum   = "sha256:5c7a8e518e93176b7836719a0d35fcc9599dad3076dfe303455f260fb0e49f72"
 
 [[module]]
 path    = "."

@@ -69,10 +69,10 @@ class CommandDependencyLaneTest {
     void the_android_command_only_tools_sit_in_the_command_lane() throws Exception {
         JkBuild build = androidBuild();
 
-        assertThat(PluginContributions.stepDependencies(build, null))
+        assertThat(PluginContributions.stepDependencies(build, null, Map.of()))
                 .extracting(PluginContributions.StepDep::artifact)
                 .containsExactlyInAnyOrder("aapt2", "r8", "manifest-merger", "android-jar", "bundletool");
-        assertThat(PluginContributions.commandDependencies(build, null))
+        assertThat(PluginContributions.commandDependencies(build, null, Map.of()))
                 .extracting(PluginContributions.StepDep::artifact)
                 .containsExactlyInAnyOrder("adb", "sdk-root");
     }
@@ -86,7 +86,7 @@ class CommandDependencyLaneTest {
     @Test
     void a_platform_tools_change_moves_no_step_or_packager_token(@TempDir Path tmp) throws Exception {
         JkBuild build = androidBuild();
-        List<PluginContributions.StepDep> declared = PluginContributions.stepDependencies(build, null);
+        List<PluginContributions.StepDep> declared = PluginContributions.stepDependencies(build, null, Map.of());
         Files.writeString(tmp.resolve("adb"), "platform-tools 35.0.2's adb");
 
         List<String> before =
@@ -201,13 +201,14 @@ class CommandDependencyLaneTest {
         String oldRoot = System.getProperty(AndroidSdk.ROOT_PROPERTY);
         System.setProperty(AndroidSdk.ROOT_PROPERTY, tmp.resolve("sdk").toString());
         try {
-            assertThat(PluginBuild.fetchStepDependencies(build, tmp, cas, Map.of(), false))
+            Path noLock = tmp.resolve("jk-lock.toml");
+            assertThat(PluginBuild.fetchStepDependencies(build, tmp, cas, noLock, false))
                     .as("a strict build fetch must not even attempt the command lane")
                     .isEmpty();
-            assertThat(PluginBuild.fetchCommandDependencies(build, tmp, cas, Map.of(), true))
+            assertThat(PluginBuild.fetchCommandDependencies(build, tmp, cas, noLock, true))
                     .as("lenient: the command that needs the tool reports the miss itself")
                     .isEmpty();
-            assertThatThrownBy(() -> PluginBuild.fetchCommandDependencies(build, tmp, cas, Map.of(), false))
+            assertThatThrownBy(() -> PluginBuild.fetchCommandDependencies(build, tmp, cas, noLock, false))
                     .as("the command lane IS fetched — strictly, it surfaces the failure")
                     .isInstanceOf(IOException.class)
                     .hasMessageContaining("not-installed-here");

@@ -355,7 +355,8 @@ public final class PlannerPlugin {
                     // this step reads, fetched into the cache, handed to the body by artifact
                     // name, keyed like any input.
                     Map<String, String> sdkPins = PluginBuild.sdkPins(in.lockFile());
-                    List<PluginContributions.StepDep> tools = cx.tools().forConsumer(project, in.dir(), step.name());
+                    List<PluginContributions.StepDep> tools =
+                            cx.tools().forConsumer(project, in.dir(), in.lockFile(), step.name());
                     Map<String, Path> toolExtras = cx.tools().fetch(tools, project, cx.cas(), sdkPins);
 
                     // Action key: exactly the declared inputs, plus the very facts the body sees —

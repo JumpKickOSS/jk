@@ -6,7 +6,9 @@ import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.Scope;
 import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
@@ -623,6 +625,23 @@ public record Lockfile(
                 manifestsSha256,
                 projectId,
                 nativeMetadata);
+    }
+
+    /**
+     * The platform BOMs this lock resolved: {@code group:artifact} → the version that pinned a
+     * managed artifact, read off the {@code pinned-by} rows. A BOM that manages nothing here is
+     * absent.
+     */
+    public Map<String, String> platformPins() {
+        Map<String, String> out = new LinkedHashMap<>();
+        for (Artifact a : artifacts) {
+            String by = a.pinnedBy();
+            if (by == null) continue;
+            int colon = by.lastIndexOf(':');
+            if (colon <= 0 || colon == by.length() - 1) continue;
+            out.putIfAbsent(by.substring(0, colon), by.substring(colon + 1));
+        }
+        return out;
     }
 
     public static Lockfile empty(String jkVersion) {

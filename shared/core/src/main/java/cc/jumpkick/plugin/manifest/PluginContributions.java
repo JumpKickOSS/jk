@@ -6,9 +6,11 @@ import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.Project;
+import cc.jumpkick.model.VersionSelector;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -260,10 +262,13 @@ public final class PluginContributions {
      * The active plugins' {@code [[contribute.step-dependency]]} entries with conditions evaluated
      * and coordinates interpolated — the engine fetches these into the cache (never into the
      * project's dependency graph) and hands them to the step worker by name. This lane, and only
-     * this lane, is rendered into step and packager action keys.
+     * this lane, is rendered into step and packager action keys. {@code platformPins} is the
+     * lock's {@link cc.jumpkick.lock.Lockfile#platformPins()} — see {@link #toolConfig}.
      */
-    public static List<StepDep> stepDependencies(JkBuild build, @Nullable Path moduleDir) {
-        return toolDependencies(build, moduleDir, "step-dependency", PluginDescriptor.Contributions::stepDependencies);
+    public static List<StepDep> stepDependencies(
+            JkBuild build, @Nullable Path moduleDir, Map<String, String> platformPins) {
+        return toolDependencies(
+                build, moduleDir, platformPins, "step-dependency", PluginDescriptor.Contributions::stepDependencies);
     }
 
     /**
@@ -272,20 +277,27 @@ public final class PluginContributions {
      * these when a command runs; they join no step's or packager's action key and are never
      * provisioned by a build.
      */
-    public static List<StepDep> commandDependencies(JkBuild build, @Nullable Path moduleDir) {
+    public static List<StepDep> commandDependencies(
+            JkBuild build, @Nullable Path moduleDir, Map<String, String> platformPins) {
         return toolDependencies(
-                build, moduleDir, "command-dependency", PluginDescriptor.Contributions::commandDependencies);
+                build,
+                moduleDir,
+                platformPins,
+                "command-dependency",
+                PluginDescriptor.Contributions::commandDependencies);
     }
 
     private static List<StepDep> toolDependencies(
             JkBuild build,
             @Nullable Path moduleDir,
+            Map<String, String> platformPins,
             String kind,
             Function<PluginDescriptor.Contributions, List<PluginDescriptor.StepDependency>> lane) {
         List<StepDep> out = new ArrayList<>();
         for (PluginDescriptor manifest : PluginTableRegistry.manifestsFor(moduleDir, build.plugins())) {
-            PluginConfig config = build.pluginConfig(manifest.id()).orElse(null);
-            if (config == null) continue;
+            PluginConfig declared = build.pluginConfig(manifest.id()).orElse(null);
+            if (declared == null) continue;
+            PluginConfig config = toolConfig(manifest, declared, build, platformPins);
             for (PluginDescriptor.StepDependency sd : lane.apply(manifest.contributions())) {
                 if (!holds(
                         sd.when(),
@@ -405,13 +417,16 @@ public final class PluginContributions {
     /**
      * The active plugins' {@code [[contribute.packager-dependency]]} entries with conditions
      * evaluated and coordinates interpolated — the engine fetches these (never into the project's
-     * dependency graph) and hands them to the packager worker by name.
+     * dependency graph) and hands them to the packager worker by name. {@code platformPins} is
+     * the lock's {@link cc.jumpkick.lock.Lockfile#platformPins()} — see {@link #toolConfig}.
      */
-    public static List<PackagerDep> packagerDependencies(JkBuild build, Path moduleDir) {
+    public static List<PackagerDep> packagerDependencies(
+            JkBuild build, Path moduleDir, Map<String, String> platformPins) {
         List<PackagerDep> out = new ArrayList<>();
         for (PluginDescriptor manifest : PluginTableRegistry.manifestsFor(moduleDir, build.plugins())) {
-            PluginConfig config = build.pluginConfig(manifest.id()).orElse(null);
-            if (config == null) continue;
+            PluginConfig declared = build.pluginConfig(manifest.id()).orElse(null);
+            if (declared == null) continue;
+            PluginConfig config = toolConfig(manifest, declared, build, platformPins);
             for (PluginDescriptor.PackagerDependency pd :
                     manifest.contributions().packagerDependencies()) {
                 if (!holds(
@@ -429,6 +444,56 @@ public final class PluginContributions {
             }
         }
         return out;
+    }
+
+    /**
+     * The plugin's table as a tool coordinate reads it. A key that selects the plugin's platform
+     * line — the {@code ${config.<key>}} version segment of a {@code
+     * [[contribute.platform-dependency]]} — holds a selector ({@code =4.1.1}, {@code ^4},
+     * {@code latest}); no such string is a fetchable version, and the version that matters is
+     * the one the lock resolved the platform to. That locked version replaces the selector here,
+     * so the loader a packager fetches is the Boot the lock pinned. Without a pin for the platform
+     * (no lock yet, or a BOM that manages nothing locked) the selector's anchor version stands in.
+     */
+    private static PluginConfig toolConfig(
+            PluginDescriptor manifest, PluginConfig config, JkBuild build, Map<String, String> platformPins) {
+        Map<String, Object> values = null;
+        for (PluginDescriptor.PlatformDependency dep : manifest.contributions().platformDependencies()) {
+            if (!holds(
+                    dep.when(), config, build.project(), build.nativeConfigOpt().isPresent(), null, manifest.id())) {
+                continue;
+            }
+            String[] parts = dep.coordinate().split(":");
+            if (parts.length != 3) continue;
+            String key = configKey(parts[2]);
+            if (key == null || !(config.values().get(key) instanceof String selector)) continue;
+            String pinned = platformPins.get(parts[0] + ":" + parts[1]);
+            String version = pinned != null ? pinned : anchor(selector);
+            if (version.equals(selector)) continue;
+            if (values == null) values = new LinkedHashMap<>(config.values());
+            values.put(key, version);
+        }
+        return values == null ? config : new PluginConfig(config.id(), values);
+    }
+
+    /** The {@code key} of a segment that is exactly {@code ${config.<key>}}, else null. */
+    private static @Nullable String configKey(String segment) {
+        String open = "${config.";
+        if (!segment.startsWith(open) || !segment.endsWith("}")) return null;
+        return segment.substring(open.length(), segment.length() - 1);
+    }
+
+    /**
+     * The version a selector is anchored on ({@code =4.1.1} → {@code 4.1.1}, {@code ^4} →
+     * {@code 4}); {@code latest} and the other anchorless forms are returned as written.
+     */
+    private static String anchor(String selector) {
+        return switch (VersionSelector.parseFloating(selector)) {
+            case VersionSelector.Exact e -> e.version();
+            case VersionSelector.Caret c -> c.version();
+            case VersionSelector.Tilde t -> t.version();
+            default -> selector;
+        };
     }
 
     /** One predicate, or unconditional when {@code when} is null. */

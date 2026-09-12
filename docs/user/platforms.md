@@ -32,7 +32,8 @@ version = "latest"    # first jk lock pins the current stable BOM
 
 Use `latest`, an exact pin, or a caret/tilde floor on the BOM itself. First `jk lock`
 records the concrete BOM version (and `pinned-by` on managed lock rows). Open ranges on
-the BOM pin are rejected.
+the BOM pin are rejected. The tools a plugin fetches for packaging (Boot's loader, Quarkus's
+bootstrap) follow that locked version, not the selector you wrote.
 
 ```bash
 jk tree -s platform          # BOM under the platform section, tagged (platform)
