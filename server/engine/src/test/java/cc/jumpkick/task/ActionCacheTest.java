@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.host.ActionTree;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -310,6 +311,72 @@ class ActionCacheTest {
         cache.storeVerdict("build-logic-check", "via-verdict", inputs);
         assertThat(cache.lookup("via-verdict")).isPresent();
         assertThat(cache.lookup("via-verdict").orElseThrow().outputs()).isEmpty();
+    }
+
+    @Test
+    void store_refuses_empty_outputs_whatever_the_inputs(@TempDir Path tempDir) throws IOException {
+        // A plugin step stores with no input fingerprints at all; a worker that exits 0 having
+        // written nothing must not become a hit whose restore hands the build an empty tree.
+        Cas cas = new Cas(tempDir.resolve("cas"));
+        ActionCache cache = new ActionCache(cas, tempDir.resolve("actions"));
+        Path emptyOut = tempDir.resolve("scratch");
+        Files.createDirectories(emptyOut.resolve("only-a-dir"));
+
+        cache.store("plugin-gen", "empty-plugin", Map.of(), emptyOut);
+
+        assertThat(cache.lookup("empty-plugin")).isEmpty();
+        assertThat(cache.lastFor("plugin-gen")).isEmpty();
+        // The door for a legitimately output-less action stays open, and stays explicit.
+        cache.storeVerdict("plugin-gen", "verdict", Map.of());
+        assertThat(cache.lookup("verdict")).isPresent();
+    }
+
+    @Test
+    void a_torn_key_record_is_a_miss_and_is_removed(@TempDir Path tempDir) throws IOException {
+        Cas cas = new Cas(tempDir.resolve("cas"));
+        Path actions = tempDir.resolve("actions");
+        ActionCache cache = new ActionCache(cas, actions);
+        Path outputs = tempDir.resolve("outputs");
+        Files.createDirectories(outputs);
+        Files.writeString(outputs.resolve("A.class"), "alpha");
+        Map<String, String> inputs = Map.of("src/A.java", "aaa");
+        cache.store("compile-main", "torn", inputs, outputs);
+        Path keyFile = ActionTree.KEYS.under(actions).resolve("torn");
+        String full = Files.readString(keyFile);
+
+        // Cut short inside the KEY line, the way a killed engine or a full disk leaves it.
+        Files.writeString(keyFile, full.substring(0, full.indexOf("KEY ") + 2));
+        assertThat(cache.lookup("torn"))
+                .as("a torn record is a miss, not an exception")
+                .isEmpty();
+        assertThat(keyFile)
+                .as("the torn file is gone, so the next store owns the key")
+                .doesNotExist();
+        assertThat(cache.lastFor("compile-main"))
+                .as("the tasks/ pointer to it is a miss too")
+                .isEmpty();
+
+        // A line whose shape the parser cannot split is the same case.
+        Files.writeString(keyFile, "TASK compile-main\nKEY torn\nINPUT no-space-here\n");
+        assertThat(cache.lookup("torn")).isEmpty();
+        assertThat(keyFile).doesNotExist();
+
+        // The next real run repairs it.
+        cache.store("compile-main", "torn", inputs, outputs);
+        assertThat(cache.lookup("torn")).isPresent();
+        assertThat(cache.lastFor("compile-main")).isPresent();
+    }
+
+    @Test
+    void a_blank_task_pointer_is_a_miss(@TempDir Path tempDir) throws IOException {
+        Cas cas = new Cas(tempDir.resolve("cas"));
+        Path actions = tempDir.resolve("actions");
+        ActionCache cache = new ActionCache(cas, actions);
+        Path pointer = ActionTree.TASKS.under(actions).resolve("compile-main");
+        Files.createDirectories(pointer.getParent());
+        Files.writeString(pointer, "");
+
+        assertThat(cache.lastFor("compile-main")).isEmpty();
     }
 
     @Test

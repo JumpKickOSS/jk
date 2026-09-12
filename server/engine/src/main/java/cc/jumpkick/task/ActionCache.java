@@ -146,14 +146,27 @@ public final class ActionCache {
      * and a vanished entry is a miss, not a failure.
      */
     public Optional<ActionRecord> lookup(String actionKey) throws IOException {
+        // A blank key (a torn tasks/ pointer) names the keys dir itself, not a record.
+        if (actionKey.isBlank()) return Optional.empty();
         Path key = keysDir().resolve(actionKey);
+        String content;
         try {
-            ActionRecord record = parse(Files.readString(key));
-            stampUsed(key);
-            return Optional.of(record);
+            content = Files.readString(key);
         } catch (NoSuchFileException absent) {
             return Optional.empty();
         }
+        ActionRecord record;
+        try {
+            record = parse(content);
+        } catch (RuntimeException torn) {
+            // A record cut short — an engine killed mid-write, a full disk — is a miss, not a
+            // failure of every step that consults this key on every build until --rebuild. The
+            // file goes so the next real run's store is what the key names.
+            Files.deleteIfExists(key);
+            return Optional.empty();
+        }
+        stampUsed(key);
+        return Optional.of(record);
     }
 
     /**
@@ -230,9 +243,12 @@ public final class ActionCache {
             }
             deposit(files, outputDir, outputs, executables);
         }
-        // Refuse empty success records: a non-empty source set that produced zero classes
-        // must not become a cache hit that restores an empty tree on the next build.
-        if (outputs.isEmpty() && hasSourceInputs(inputs)) {
+        // Refuse empty success records, whatever the inputs look like: an action that produced
+        // zero files must not become a hit that restores an empty tree on the next build — for
+        // a plugin step whose scratch dir replaces the classes dir, that is a jar with nothing
+        // in it. A check whose whole result is "nothing to say" records that through
+        // storeVerdict, where the caller asserts there is nothing to restore.
+        if (outputs.isEmpty()) {
             return new ActionRecord(taskId, actionKey, inputs, Map.of(), Map.of());
         }
         return storeWithOutputs(taskId, actionKey, inputs, outputs, Map.of(), executables);
@@ -337,17 +353,6 @@ public final class ActionCache {
     static boolean hasJkScratchSegment(Path rel) {
         for (Path seg : rel) {
             if (seg.toString().startsWith(".jk-")) return true;
-        }
-        return false;
-    }
-
-    /** True when {@code inputs} includes at least one source-file fingerprint (not only flags/cp). */
-    static boolean hasSourceInputs(Map<String, String> inputs) {
-        if (inputs == null || inputs.isEmpty()) return false;
-        for (String k : inputs.keySet()) {
-            if (k.startsWith("cp:") || k.startsWith("pp:")) continue;
-            if (k.equals("release") || k.equals("options")) continue;
-            return true; // absolute source path keys from ActionKey.snapshotInputs
         }
         return false;
     }

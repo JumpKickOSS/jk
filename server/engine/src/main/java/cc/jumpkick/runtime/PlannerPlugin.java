@@ -382,7 +382,9 @@ public final class PlannerPlugin {
                     String actionKey = ActionKey.forArtifact(taskId, BuildIdentity.cacheKeyVersion(), tokens);
                     ActionCache actionCache = cx.actionCache();
                     var hit = actionCache.lookup(actionKey);
-                    if (hit.isPresent()) {
+                    // A record with no outputs is a verdict; for a step that promises files there
+                    // is nothing in it to restore, so it is a miss rather than an empty classes dir.
+                    if (hit.isPresent() && (!hit.get().outputs().isEmpty() || !producesOutputs(step))) {
                         try {
                             if (actionCache.restore(hit.get(), scratch)) {
                                 if (step.transforms()) {
@@ -439,7 +441,15 @@ public final class PlannerPlugin {
                     } finally {
                         Files.deleteIfExists(spec);
                     }
-                    actionCache.store(taskId, actionKey, Map.of(), scratch);
+                    if (hasFiles(scratch)) {
+                        actionCache.store(taskId, actionKey, Map.of(), scratch);
+                    } else if (!producesOutputs(step)) {
+                        // A step that promises no files and wrote none: the run itself is the
+                        // result, and the next build with the same inputs skips it.
+                        actionCache.storeVerdict(taskId, actionKey, Map.of());
+                    } else {
+                        ctx.warn(step.name(), "the step wrote no files; its output is not cached");
+                    }
                     // A transform's output IS the classes dir from here on: re-point MAIN_CLASSES
                     // so packaging, later steps' In.classes, and the native tail read it
                     // (ordering: consumers carry a requires edge on this step).
@@ -449,6 +459,35 @@ public final class PlannerPlugin {
                     ctx.progress(1);
                 })
                 .build();
+    }
+
+    /**
+     * True when {@code step} promises files: it replaces the classes dir, declares outputs, or
+     * contributes classes, resources, sources or test classpath. Such a step's empty run is a
+     * failure to cache, never a verdict.
+     */
+    static boolean producesOutputs(PluginBuild.TaskDecl step) {
+        return step.transforms()
+                || nonEmpty(step.outputs())
+                || nonEmpty(step.contributesClasses())
+                || nonEmpty(step.contributesResources())
+                || nonEmpty(step.contributesSources())
+                || nonEmpty(step.contributesTestClasspath());
+    }
+
+    private static boolean nonEmpty(@Nullable List<String> values) {
+        return values != null && !values.isEmpty();
+    }
+
+    /** True when at least one regular file is anywhere under {@code dir}. */
+    private static boolean hasFiles(Path dir) throws IOException {
+        boolean[] any = {false};
+        PathUtil.forEachEntry(dir, sub -> false, (entry, attrs) -> {
+            if (!attrs.isRegularFile()) return true;
+            any[0] = true;
+            return false;
+        });
+        return any[0];
     }
 
     /**
