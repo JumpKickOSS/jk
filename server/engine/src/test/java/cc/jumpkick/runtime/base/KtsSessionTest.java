@@ -5,9 +5,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import cc.jumpkick.engine.plugin.JobWorkers;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -143,6 +147,115 @@ class KtsSessionTest {
         // The engine is still here, and the next script gets a working session.
         BuildLogicKtsHost.evaluate(survivor, project, out);
         assertEquals("yes", Files.readString(out.resolve("alive.txt")).trim());
+    }
+
+    /**
+     * The host is the engine's, not the build's. A build registers the workers it forks and kills
+     * them when it ends; the host must not be among them, or every build pays a fresh JVM and a
+     * cold compiler, and a build ending while another's script is mid-flight kills that script.
+     */
+    @Test
+    void a_finished_build_does_not_take_the_host_with_it(@TempDir Path dir) throws Exception {
+        Path script = dir.resolve("first.kts");
+        Files.writeString(script, "Files.writeString(outDir.resolve(\"a.txt\"), \"1\")\n");
+        Path project = Files.createDirectories(dir.resolve("p"));
+        Path out = Files.createDirectories(dir.resolve("o"));
+
+        JobWorkers.open(9101L);
+        try {
+            BuildLogicKtsHost.evaluate(script, project, out);
+        } finally {
+            // What JobEnvelope's teardown does when the build ends: kill the request's workers.
+            JobWorkers.shutdownForRequest(9101L, 0L);
+            JobWorkers.close();
+        }
+        long pid = KtsSession.hostPid();
+        assertThat(KtsSession.hostAlive())
+                .as("the host outlives the build that started it")
+                .isTrue();
+
+        JobWorkers.open(9102L);
+        try {
+            BuildLogicKtsHost.evaluate(script, project, out);
+        } finally {
+            JobWorkers.shutdownForRequest(9102L, 0L);
+            JobWorkers.close();
+        }
+        assertThat(KtsSession.hostPid())
+                .as("the next build reuses the same host")
+                .isEqualTo(pid);
+    }
+
+    /** Two builds overlap: the first finishing while the second's script runs does not fail the second. */
+    @Test
+    void the_first_build_finishing_does_not_kill_the_second_builds_running_script(@TempDir Path dir) throws Exception {
+        Path quick = dir.resolve("quick.kts");
+        Files.writeString(quick, "Files.writeString(outDir.resolve(\"quick.txt\"), \"1\")\n");
+        Path slow = dir.resolve("slow.kts");
+        Files.writeString(slow, """
+                Files.writeString(outDir.resolve("started"), "1")
+                Thread.sleep(2500)
+                Files.writeString(outDir.resolve("done"), "1")
+                """);
+        Path project = Files.createDirectories(dir.resolve("p"));
+        Path outA = Files.createDirectories(dir.resolve("a"));
+        Path outB = Files.createDirectories(dir.resolve("b"));
+
+        // Build A runs its script and is about to end.
+        JobWorkers.open(9201L);
+        BuildLogicKtsHost.evaluate(quick, project, outA);
+
+        // Build B's script is in flight on another thread when A ends.
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        Thread b = new Thread(() -> {
+            JobWorkers.open(9202L);
+            try {
+                BuildLogicKtsHost.evaluate(slow, project, outB);
+            } catch (Throwable t) {
+                failure.set(t);
+            } finally {
+                JobWorkers.shutdownForRequest(9202L, 0L);
+                JobWorkers.close();
+            }
+        });
+        b.start();
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+        while (!Files.exists(outB.resolve("started")) && System.nanoTime() < deadline) Thread.sleep(20);
+        assertThat(outB.resolve("started")).as("B's script is running").exists();
+
+        JobWorkers.shutdownForRequest(9201L, 0L);
+        JobWorkers.close();
+
+        b.join(TimeUnit.SECONDS.toMillis(60));
+        assertThat(failure.get())
+                .as("B's run must not see 'the .kts host died'")
+                .isNull();
+        assertThat(outB.resolve("done")).exists();
+    }
+
+    /** With no script for the idle timeout the host is shut down; the next script starts a fresh one. */
+    @Test
+    void an_idle_host_is_shut_down_and_a_later_script_starts_a_fresh_one(@TempDir Path dir) throws Exception {
+        Path script = dir.resolve("idle.kts");
+        Files.writeString(script, "Files.writeString(outDir.resolve(\"a.txt\"), \"1\")\n");
+        Path project = Files.createDirectories(dir.resolve("p"));
+        Path out = Files.createDirectories(dir.resolve("o"));
+
+        KtsSession.idleTimeoutForTests(Duration.ofMillis(300));
+        try {
+            BuildLogicKtsHost.evaluate(script, project, out);
+            long first = KtsSession.hostPid();
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+            while (KtsSession.hostAlive() && System.nanoTime() < deadline) Thread.sleep(50);
+            assertThat(KtsSession.hostAlive())
+                    .as("the reaper ends an idle host")
+                    .isFalse();
+
+            BuildLogicKtsHost.evaluate(script, project, out);
+            assertThat(KtsSession.hostPid()).isNotEqualTo(first);
+        } finally {
+            KtsSession.idleTimeoutForTests(KtsSession.IDLE_TIMEOUT);
+        }
     }
 
     private static long jarCount(Path cache) throws Exception {

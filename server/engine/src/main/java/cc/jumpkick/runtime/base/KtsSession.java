@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.base;
 
-import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
@@ -14,6 +13,7 @@ import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
@@ -29,6 +29,15 @@ import org.jspecify.annotations.Nullable;
  * and compilation. Here the first run of a script compiles it and caches the jar under {@code
  * <store>/cache/kts/}; later runs, in this build or a later one, load the jar. A second script in an
  * already-running session costs milliseconds.
+ *
+ * <h2>Ownership</h2>
+ *
+ * The host belongs to the engine, not to the build that happened to start it. It is forked outside
+ * the request's worker scope — a request's end kills the workers it registered, and a host that
+ * outlives builds must not be one of them — and two owners end it: a reaper that shuts it down once
+ * it has sat {@link #IDLE_TIMEOUT} without a script, and the JVM shutdown hook that drains it when
+ * the engine stops. Nothing else does, so a build finishing while another build's script is running
+ * is not an event the host notices.
  *
  * <h2>What this trades away</h2>
  *
@@ -47,13 +56,20 @@ import org.jspecify.annotations.Nullable;
  */
 final class KtsSession {
 
+    /** How long the host may sit without a script before the reaper shuts it down. */
+    static final Duration IDLE_TIMEOUT = Duration.ofMinutes(10);
+
     private static final Object LOCK = new Object();
     private static @Nullable KtsSession current;
     private static boolean hookRegistered;
+    private static long idleTimeoutNanos = IDLE_TIMEOUT.toNanos();
 
     private final Process process;
     private final BufferedWriter toChild;
     private final BufferedReader fromChild;
+
+    /** When the last script finished, on the monotonic clock; the reaper measures idleness from it. */
+    private long lastUsedNanos = System.nanoTime();
 
     private KtsSession(Process process) {
         this.process = process;
@@ -69,8 +85,9 @@ final class KtsSession {
         synchronized (LOCK) {
             if (current != null && !current.process.isAlive()) current = null;
             if (current == null) current = start();
+            KtsSession session = current;
             try {
-                return current.request(script, projectDir, outDir);
+                return session.request(script, projectDir, outDir);
             } catch (SessionDied e) {
                 // The child is gone; the next script gets a new one rather than inheriting a corpse.
                 current = null;
@@ -79,24 +96,52 @@ final class KtsSession {
                                 + " (a script calling System.exit, or an out-of-memory, takes the shared host with it)"
                                 + (e.tail().isEmpty() ? "" : ":\n" + e.tail()),
                         e);
+            } finally {
+                session.lastUsedNanos = System.nanoTime();
             }
         }
     }
 
-    /** Shut the session down, if one is running. Called at the end of a build. */
+    /** Shut the session down, if one is running: the engine-stop drain, and the test seam. */
     static void shutdown() {
         synchronized (LOCK) {
             if (current == null) return;
             KtsSession s = current;
             current = null;
-            try {
-                s.toChild.write("EXIT\n");
-                s.toChild.flush();
-                if (!s.process.waitFor(5, TimeUnit.SECONDS)) s.process.destroyForcibly();
-            } catch (IOException | InterruptedException e) {
-                s.process.destroyForcibly();
-                if (e instanceof InterruptedException) Thread.currentThread().interrupt();
-            }
+            s.exit();
+        }
+    }
+
+    /** Test seam: whether a host is running. */
+    static boolean hostAlive() {
+        synchronized (LOCK) {
+            return current != null && current.process.isAlive();
+        }
+    }
+
+    /** Test seam: the running host's pid, or -1; two runs served by one host see one pid. */
+    static long hostPid() {
+        synchronized (LOCK) {
+            return current != null && current.process.isAlive() ? current.process.pid() : -1;
+        }
+    }
+
+    /** Test seam: shorten the idle timeout; applies to hosts started afterwards. */
+    static void idleTimeoutForTests(Duration timeout) {
+        synchronized (LOCK) {
+            idleTimeoutNanos = timeout.toNanos();
+        }
+    }
+
+    /** Ask the child to exit and wait briefly; a child that does not go is killed. */
+    private void exit() {
+        try {
+            toChild.write("EXIT\n");
+            toChild.flush();
+            if (!process.waitFor(5, TimeUnit.SECONDS)) process.destroyForcibly();
+        } catch (IOException | InterruptedException e) {
+            process.destroyForcibly();
+            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
         }
     }
 
@@ -155,7 +200,11 @@ final class KtsSession {
         Files.createDirectories(cacheDir);
         pb.environment().put("JK_KTS_CACHE", cacheDir.toString());
 
-        Process p = JobWorkers.start(pb);
+        // Started directly, not through JobWorkers: that registry belongs to the request on this
+        // thread and kills its members when the request ends, and this host is the engine's —
+        // reused by later builds, and possibly mid-script for another build right now. Its own
+        // owners are the idle reaper below and the shutdown hook.
+        Process p = pb.start();
         registerShutdownHook();
         KtsSession session = new KtsSession(p);
         String ready = session.fromChild.readLine();
@@ -164,12 +213,43 @@ final class KtsSession {
             throw new IllegalStateException(
                     "[build] logic: the .kts host did not start" + (ready == null ? "" : " (said: " + ready + ")"));
         }
+        Thread.ofVirtual().name("jk-kts-host-reaper").start(() -> reap(session));
         return session;
     }
 
     /**
-     * The child outlives any single script, so nothing else would reap it if the build exits early
-     * — a cancelled build would leave a JVM holding the compiler open.
+     * Shut {@code session} down once it has been idle for the timeout. Sleeps until the earliest
+     * moment that could be true and re-checks: a script that ran in between moves the deadline.
+     * Taking {@link #LOCK} means a script in flight is waited for, never cut off.
+     */
+    private static void reap(KtsSession session) {
+        while (true) {
+            long wait;
+            synchronized (LOCK) {
+                if (current != session) return; // replaced or shut down by someone else
+                if (!session.process.isAlive()) {
+                    current = null;
+                    return;
+                }
+                long idle = System.nanoTime() - session.lastUsedNanos;
+                if (idle >= idleTimeoutNanos) {
+                    current = null;
+                    session.exit();
+                    return;
+                }
+                wait = idleTimeoutNanos - idle;
+            }
+            try {
+                Thread.sleep(Duration.ofNanos(wait));
+            } catch (InterruptedException e) {
+                return;
+            }
+        }
+    }
+
+    /**
+     * The child outlives any single script, so nothing else would reap it if the engine exits
+     * before the idle timeout — a stopped engine would leave a JVM holding the compiler open.
      */
     private static void registerShutdownHook() {
         if (hookRegistered) return;
