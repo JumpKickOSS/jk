@@ -20,6 +20,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.TreeMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -33,30 +34,78 @@ import org.tomlj.TomlTable;
  * ratchet never blocks progress and never rots.
  *
  * <p>Text measures ({@code lines}, {@code fqcn}, {@code matches:<rule>}, {@code comment-lines}) run
- * in the tree lane over the corpus; facts measures ({@code methods}, {@code params}, {@code
- * public-members}, {@code cyclomatic}) run in the module lane over the facts index; output measures
- * are the output lane's.
+ * in the tree lane over the corpus, every rule of the lane sharing one pass that reads each file
+ * once; facts measures ({@code methods}, {@code params}, {@code public-members}, {@code
+ * cyclomatic}) run in the module lane over the facts index; output measures are the output lane's.
  */
-final class MetricEvaluator implements Evaluator {
+final class MetricEvaluator implements BatchEvaluator {
 
     @Override
-    public Evaluation evaluate(Rule rule, EvalContext ctx) throws IOException {
-        TomlTable t = rule.table();
-        String measure = String.valueOf(t.getString("measure"));
-        String per = t.isString("per") ? String.valueOf(t.getString("per")) : defaultPer(measure);
-        Bound bound = Bound.of(t);
-        if (bound == null) return Evaluation.failed("one of `cap` or `min` is required");
-        return switch (measure) {
-            case "lines", "fqcn", "comment-lines" -> textMeasure(rule, ctx, measure, per, bound);
-            case "methods", "params", "public-members", "cyclomatic" -> factsMeasure(rule, ctx, measure, per, bound);
-            default -> {
-                if (measure.startsWith("matches:"))
-                    yield matchesMeasure(rule, ctx, measure.substring("matches:".length()), per, bound);
-                if (measure.startsWith("coverage.") || measure.equals("jar-size") || measure.equals("native-size"))
-                    yield outputMeasure(rule, ctx, measure, bound);
-                yield Evaluation.failed("unknown measure `" + measure + "`");
+    public Map<String, Evaluation> evaluateAll(List<Rule> rules, EvalContext ctx) throws IOException {
+        Map<String, Evaluation> out = new LinkedHashMap<>();
+        List<TextRun> runs = new ArrayList<>();
+        for (Rule rule : rules) {
+            TomlTable t = rule.table();
+            String measure = String.valueOf(t.getString("measure"));
+            String per = t.isString("per") ? String.valueOf(t.getString("per")) : defaultPer(measure);
+            Bound bound = Bound.of(t);
+            if (bound == null) {
+                out.put(rule.id(), Evaluation.failed("one of `cap` or `min` is required"));
+                continue;
             }
-        };
+            switch (measure) {
+                case "lines", "fqcn", "comment-lines" -> runs.add(new MeasureRun(rule, measure, per, bound));
+                case "methods", "params", "public-members", "cyclomatic" ->
+                    out.put(rule.id(), single(rule, () -> factsMeasure(rule, ctx, measure, per, bound)));
+                default -> {
+                    if (measure.startsWith("matches:")) {
+                        TextRun run = matchesRun(rule, ctx, measure.substring("matches:".length()), per, bound);
+                        if (run.failure != null) out.put(rule.id(), Evaluation.failed(run.failure));
+                        else runs.add(run);
+                    } else if (measure.startsWith("coverage.")
+                            || measure.equals("jar-size")
+                            || measure.equals("native-size")) {
+                        out.put(rule.id(), single(rule, () -> outputMeasure(rule, ctx, measure, bound)));
+                    } else {
+                        out.put(rule.id(), Evaluation.failed("unknown measure `" + measure + "`"));
+                    }
+                }
+            }
+        }
+        if (!runs.isEmpty()) {
+            Path moduleDir = ctx.moduleDir();
+            Path root = ctx.lane() == Lane.MODULE && moduleDir != null ? moduleDir : ctx.root();
+            List<TextRun> here = new ArrayList<>();
+            for (TextFiles.Entry f : TextFiles.corpus(root)) {
+                here.clear();
+                for (TextRun run : runs) if (run.failure == null && run.wants(f)) here.add(run);
+                if (here.isEmpty()) continue;
+                String text = TextFiles.read(f.file());
+                if (text == null) continue;
+                for (TextRun run : here) {
+                    try {
+                        run.see(f, text);
+                    } catch (DeadlineCharSequence.Expired e) {
+                        run.failure = e.getMessage() + " on " + f.rel();
+                    } catch (StackOverflowError e) {
+                        run.failure = "regex overflowed the stack on " + f.rel();
+                    }
+                }
+            }
+            for (TextRun run : runs) {
+                out.put(run.rule.id(), run.failure != null ? Evaluation.failed(run.failure) : run.finish());
+            }
+        }
+        return out;
+    }
+
+    /** One rule's own measure: a throw is that rule's scanner-failed, and the lane's other rules still run. */
+    private static Evaluation single(Rule rule, EvalContext.IoSupplier<Evaluation> body) {
+        try {
+            return body.get();
+        } catch (Exception e) {
+            return Evaluation.failed(e.getClass().getSimpleName() + ": " + String.valueOf(e.getMessage()));
+        }
     }
 
     private static String defaultPer(String measure) {
@@ -102,43 +151,81 @@ final class MetricEvaluator implements Evaluator {
 
     // ---- text ---------------------------------------------------------------------------------
 
-    private Evaluation textMeasure(Rule rule, EvalContext ctx, String measure, String per, Bound bound)
-            throws IOException {
-        List<String> files = ForbidEvaluator.strings(rule.table(), "files");
-        Path moduleDir = ctx.moduleDir();
-        Path root = ctx.lane() == Lane.MODULE && moduleDir != null ? moduleDir : ctx.root();
-        Map<String, Double> perModule = new TreeMap<>();
-        Map<String, String> moduleLanguage = new TreeMap<>();
-        List<Observation> out = new ArrayList<>();
-        Map<Allow, Boolean> allowUsed = new LinkedHashMap<>();
-        for (Allow a : rule.allow()) allowUsed.put(a, false);
-        long units = 0;
-        for (TextFiles.Entry f : TextFiles.corpus(root)) {
-            if (!f.language().code) continue;
-            if (files.isEmpty()
-                    ? !(f.rel().contains("/src/") || f.rel().startsWith("src/"))
-                    : !TextEvaluator.matchesAny(files, f.rel())) continue;
+    /**
+     * One text rule's share of the lane's single corpus pass: which files it wants, what it does
+     * with each one's text, and the evaluation once every file has been seen.
+     */
+    private abstract static class TextRun {
+        final Rule rule;
+        final List<String> files;
+        final Map<Allow, Boolean> allowUsed = new LinkedHashMap<>();
+        final List<Observation> out = new ArrayList<>();
+        long units;
+
+        @Nullable
+        String failure;
+
+        TextRun(Rule rule, List<String> files) {
+            this.rule = rule;
+            this.files = files;
+            for (Allow a : rule.allow()) allowUsed.put(a, false);
+        }
+
+        /** Under {@code files} when the rule names some, else any file under a source root. */
+        boolean inScope(TextFiles.Entry f) {
+            return files.isEmpty()
+                    ? f.rel().contains("/src/") || f.rel().startsWith("src/")
+                    : TextEvaluator.matchesAny(files, f.rel());
+        }
+
+        abstract boolean wants(TextFiles.Entry f);
+
+        abstract void see(TextFiles.Entry f, String text);
+
+        abstract Evaluation finish();
+    }
+
+    /** {@code lines}, {@code fqcn} and {@code comment-lines}: a number per file, method, comment or module. */
+    private static final class MeasureRun extends TextRun {
+        final String measure;
+        final String per;
+        final Bound bound;
+        final Map<String, Double> perModule = new TreeMap<>();
+        final Map<String, String> moduleLanguage = new TreeMap<>();
+
+        MeasureRun(Rule rule, String measure, String per, Bound bound) {
+            super(rule, ForbidEvaluator.strings(rule.table(), "files"));
+            this.measure = measure;
+            this.per = per;
+            this.bound = bound;
+        }
+
+        @Override
+        boolean wants(TextFiles.Entry f) {
+            // a language the cap table does not name is not measured
+            return f.language().code && inScope(f) && bound.limitFor(extension(f.rel())) != null;
+        }
+
+        @Override
+        void see(TextFiles.Entry f, String text) {
             String ext = extension(f.rel());
-            Double limit = bound.limitFor(ext);
-            if (limit == null) continue; // a language the cap table does not name
-            String text = TextFiles.read(f.file());
-            if (text == null) continue;
+            double limit = Objects.requireNonNull(bound.limitFor(ext), "limit");
             Allow allow = allowing(rule.allow(), f.rel());
             if (allow != null) allowUsed.put(allow, true);
             if (measure.equals("comment-lines")) {
-                units += commentBlocks(rule, f, text, limit, bound, allow, out);
-                continue;
+                units += commentBlocks(f, text, limit, bound, allow, out);
+                return;
             }
             if (measure.equals("lines") && per.equals("method")) {
                 units += methodBodies(f, text, ext, limit, bound, allow, out);
-                continue;
+                return;
             }
             double value = measure.equals("lines") ? CodeText.codeLines(text, ext) : fqcns(text, ext);
             if (per.equals("module")) {
                 String module = moduleOf(f.rel());
                 perModule.merge(module, value, Double::sum);
                 moduleLanguage.putIfAbsent(module, ext);
-                continue;
+                return;
             }
             units++;
             if (allow == null && bound.breached(value, limit)) {
@@ -146,23 +233,27 @@ final class MetricEvaluator implements Evaluator {
                         f.rel(), value, f.rel(), measure + " = " + number(value) + " (" + bound.describe(limit) + ")"));
             }
         }
-        if (per.equals("module")) {
-            for (var e : perModule.entrySet()) {
-                units++;
-                Double limit = bound.limitFor(moduleLanguage.getOrDefault(e.getKey(), ""));
-                if (limit != null
-                        && bound.breached(e.getValue(), limit)
-                        && allowing(rule.allow(), e.getKey()) == null) {
-                    out.add(Observation.metric(
-                            e.getKey(),
-                            e.getValue(),
-                            null,
-                            measure + " = " + number(e.getValue()) + " over the module (" + bound.describe(limit)
-                                    + ")"));
+
+        @Override
+        Evaluation finish() {
+            if (per.equals("module")) {
+                for (var e : perModule.entrySet()) {
+                    units++;
+                    Double limit = bound.limitFor(moduleLanguage.getOrDefault(e.getKey(), ""));
+                    if (limit != null
+                            && bound.breached(e.getValue(), limit)
+                            && allowing(rule.allow(), e.getKey()) == null) {
+                        out.add(Observation.metric(
+                                e.getKey(),
+                                e.getValue(),
+                                null,
+                                measure + " = " + number(e.getValue()) + " over the module (" + bound.describe(limit)
+                                        + ")"));
+                    }
                 }
             }
+            return MetricEvaluator.finish(rule, units, out, allowUsed);
         }
-        return finish(rule, units, out, allowUsed);
     }
 
     /**
@@ -215,13 +306,7 @@ final class MetricEvaluator implements Evaluator {
 
     /** {@code comment-lines} per contiguous comment block: {@code //} runs and each block comment. */
     private static long commentBlocks(
-            Rule rule,
-            TextFiles.Entry f,
-            String text,
-            double limit,
-            Bound bound,
-            @Nullable Allow allow,
-            List<Observation> out) {
+            TextFiles.Entry f, String text, double limit, Bound bound, @Nullable Allow allow, List<Observation> out) {
         if (!f.language().lexable) return 0;
         String comments = CodeText.blank(text, CodeText.Blank.CODE);
         String[] lines = comments.split("\n", -1);
@@ -253,28 +338,46 @@ final class MetricEvaluator implements Evaluator {
         return blocks;
     }
 
-    private static Evaluation matchesMeasure(Rule rule, EvalContext ctx, String targetId, String per, Bound bound)
-            throws IOException {
+    /** {@code matches:<rule>}: the named text rule's hits per file, module or tree; its {@code files} scope the pass. */
+    private static TextRun matchesRun(Rule rule, EvalContext ctx, String targetId, String per, Bound bound) {
         Rule target = ctx.rules().rule(targetId).orElse(null);
-        if (target == null) return Evaluation.failed("matches:" + targetId + " names no rule in jk-guards.toml");
-        if (target.kind() != Kind.TEXT) return Evaluation.failed("matches:" + targetId + " must name a text rule");
-        List<Pattern> patterns = new ArrayList<>();
-        TomlTable tt = target.table();
-        if (tt.isString("pattern")) patterns.add(Pattern.compile(String.valueOf(tt.getString("pattern"))));
-        for (String p : ForbidEvaluator.strings(tt, "patterns")) patterns.add(Pattern.compile(p));
-        CodeText.Blank blank = TextFiles.blankMode(tt.isString("blank") ? tt.getString("blank") : null);
-        List<String> files = ForbidEvaluator.strings(tt, "files");
-        Path moduleDir = ctx.moduleDir();
-        Path root = ctx.lane() == Lane.MODULE && moduleDir != null ? moduleDir : ctx.root();
-        Map<String, Double> perUnit = new TreeMap<>();
-        Map<Allow, Boolean> allowUsed = new LinkedHashMap<>();
-        for (Allow a : rule.allow()) allowUsed.put(a, false);
-        for (TextFiles.Entry f : TextFiles.corpus(root)) {
-            if (files.isEmpty()
-                    ? !(f.rel().contains("/src/") || f.rel().startsWith("src/"))
-                    : !TextEvaluator.matchesAny(files, f.rel())) continue;
-            String text = TextFiles.read(f.file());
-            if (text == null) continue;
+        List<String> files = target == null ? List.of() : ForbidEvaluator.strings(target.table(), "files");
+        MatchesRun run = new MatchesRun(rule, files, targetId, per, bound);
+        if (target == null) {
+            run.failure = "matches:" + targetId + " names no rule in jk-guards.toml";
+        } else if (target.kind() != Kind.TEXT) {
+            run.failure = "matches:" + targetId + " must name a text rule";
+        } else {
+            TomlTable tt = target.table();
+            if (tt.isString("pattern")) run.patterns.add(Pattern.compile(String.valueOf(tt.getString("pattern"))));
+            for (String p : ForbidEvaluator.strings(tt, "patterns")) run.patterns.add(Pattern.compile(p));
+            run.blank = TextFiles.blankMode(tt.isString("blank") ? tt.getString("blank") : null);
+        }
+        return run;
+    }
+
+    private static final class MatchesRun extends TextRun {
+        final String targetId;
+        final String per;
+        final Bound bound;
+        final List<Pattern> patterns = new ArrayList<>();
+        final Map<String, Double> perUnit = new TreeMap<>();
+        CodeText.Blank blank = CodeText.Blank.COMMENTS;
+
+        MatchesRun(Rule rule, List<String> files, String targetId, String per, Bound bound) {
+            super(rule, files);
+            this.targetId = targetId;
+            this.per = per;
+            this.bound = bound;
+        }
+
+        @Override
+        boolean wants(TextFiles.Entry f) {
+            return inScope(f);
+        }
+
+        @Override
+        void see(TextFiles.Entry f, String text) {
             String view =
                     f.language().lexable ? CodeText.blank(text, blank, f.language() == TextFiles.Language.JS) : text;
             double n = 0;
@@ -283,22 +386,25 @@ final class MetricEvaluator implements Evaluator {
             perUnit.merge(unit, n, Double::sum);
             if (!per.equals("file")) perUnit.putIfAbsent(unit, 0.0);
         }
-        List<Observation> out = new ArrayList<>();
-        Double limit = bound.limitFor("");
-        if (limit == null && bound.scalar == null && !bound.byLanguage.isEmpty())
-            limit = bound.byLanguage.values().iterator().next();
-        for (var e : perUnit.entrySet()) {
-            Allow allow = allowing(rule.allow(), e.getKey());
-            if (allow != null) allowUsed.put(allow, true);
-            if (limit != null && allow == null && bound.breached(e.getValue(), limit)) {
-                out.add(Observation.metric(
-                        e.getKey(),
-                        e.getValue(),
-                        per.equals("file") ? e.getKey() : null,
-                        "matches:" + targetId + " = " + number(e.getValue()) + " (" + bound.describe(limit) + ")"));
+
+        @Override
+        Evaluation finish() {
+            Double limit = bound.limitFor("");
+            if (limit == null && bound.scalar == null && !bound.byLanguage.isEmpty())
+                limit = bound.byLanguage.values().iterator().next();
+            for (var e : perUnit.entrySet()) {
+                Allow allow = allowing(rule.allow(), e.getKey());
+                if (allow != null) allowUsed.put(allow, true);
+                if (limit != null && allow == null && bound.breached(e.getValue(), limit)) {
+                    out.add(Observation.metric(
+                            e.getKey(),
+                            e.getValue(),
+                            per.equals("file") ? e.getKey() : null,
+                            "matches:" + targetId + " = " + number(e.getValue()) + " (" + bound.describe(limit) + ")"));
+                }
             }
+            return MetricEvaluator.finish(rule, perUnit.size(), out, allowUsed);
         }
-        return finish(rule, perUnit.size(), out, allowUsed);
     }
 
     // ---- facts --------------------------------------------------------------------------------

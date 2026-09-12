@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.concurrent.atomic.LongAdder;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -69,6 +70,9 @@ final class TextFiles {
 
     /** How much of a file's head is checked for a NUL byte before the rest is read. */
     static final int SNIFF_BYTES = 8192;
+
+    /** Files opened by {@link #read} so far: the seam that proves a batch reads each file once. */
+    static final LongAdder READS = new LongAdder();
 
     private TextFiles() {}
 
@@ -144,6 +148,7 @@ final class TextFiles {
      * are not valid UTF-8.
      */
     static @Nullable String read(Path file) throws IOException {
+        READS.increment();
         try (InputStream in = Files.newInputStream(file)) {
             if (!sniff(in.readNBytes(SNIFF_BYTES))) return null;
         }

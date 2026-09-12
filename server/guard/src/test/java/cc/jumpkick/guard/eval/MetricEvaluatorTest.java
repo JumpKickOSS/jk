@@ -123,6 +123,68 @@ class MetricEvaluatorTest {
     }
 
     @Test
+    void every_text_measure_of_the_lane_shares_one_read_of_each_file(@TempDir Path root) throws Exception {
+        tree(root);
+        String rules = """
+                [guards.todo]
+                kind = "text"
+                pattern = "TODO"
+                blank = "none"
+                instead = "TODO(<owner>)"
+                why = "w"
+
+                [guards.lines]
+                kind = "metric"
+                measure = "lines"
+                cap = 5
+                why = "w"
+
+                [guards.fqcn]
+                kind = "metric"
+                measure = "fqcn"
+                cap = 1
+                why = "w"
+
+                [guards.comments]
+                kind = "metric"
+                measure = "comment-lines"
+                cap = 2
+                why = "w"
+
+                [guards.todos]
+                kind = "metric"
+                measure = "matches:todo"
+                per = "module"
+                cap = 0
+                why = "w"
+
+                [guards.methods]
+                kind = "metric"
+                measure = "methods"
+                cap = 1
+                why = "w"
+                """;
+        LoadResult load = load(root, rules);
+        long before = TextFiles.READS.sum();
+        Map<String, Evaluation> r = LaneRun.evaluate(LaneRun.rulesFor(Lane.TREE, load.rules(), ""), ctx(root, load));
+        assertThat(TextFiles.READS.sum() - before)
+                .as("three files under src: one pass for the text rule, one for the four text measures together")
+                .isEqualTo(6);
+        assertThat(r).containsOnlyKeys("todo", "lines", "fqcn", "comments", "todos");
+        assertThat(Objects.requireNonNull(r.get("lines")).observations())
+                .extracting(Observation::key)
+                .containsExactly("mod-a/src/main/java/a/Big.java");
+        assertThat(Objects.requireNonNull(r.get("fqcn")).observations())
+                .extracting(Observation::key)
+                .containsExactly("mod-a/src/main/java/a/Big.java");
+        assertThat(Objects.requireNonNull(r.get("comments")).observations()).hasSize(2);
+        assertThat(Objects.requireNonNull(r.get("todos")).observations())
+                .extracting(Observation::key)
+                .containsExactly("mod-a");
+        assertThat(Objects.requireNonNull(r.get("todos")).population()).containsEntry("units", 2L);
+    }
+
+    @Test
     void matches_counts_another_text_rules_hits_per_unit(@TempDir Path root) throws Exception {
         tree(root);
         String rules = """
