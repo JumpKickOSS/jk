@@ -52,6 +52,13 @@ class CoordinateTest {
     }
 
     @Test
+    void a_trailing_colon_is_an_absent_classifier() {
+        Coordinate c = Coordinate.parse("com.example:widget:1.0:");
+        assertThat(c.classifier()).isNull();
+        assertThat(c.toString()).isEqualTo("com.example:widget:1.0");
+    }
+
+    @Test
     void rejects_malformed() {
         assertThatThrownBy(() -> Coordinate.parse("foo:bar")).isInstanceOf(IllegalArgumentException.class);
     }

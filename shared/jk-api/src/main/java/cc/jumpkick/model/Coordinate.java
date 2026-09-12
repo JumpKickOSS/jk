@@ -89,7 +89,9 @@ public record Coordinate(
             throw new IllegalArgumentException(
                     "coordinate must be group:artifact:version[:classifier][!type], got: " + spec);
         }
-        String classifier = parts.length == 4 ? parts[3] : null;
+        // A trailing colon ("g:a:1.0:") is an absent classifier, not an empty one: an empty
+        // classifier would ask the repository for "a-1.0-.jar".
+        String classifier = parts.length == 4 && !parts[3].isEmpty() ? parts[3] : null;
         return new Coordinate(parts[0], parts[1], parts[2], classifier, type);
     }
 
