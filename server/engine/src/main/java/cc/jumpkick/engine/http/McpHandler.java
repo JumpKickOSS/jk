@@ -15,6 +15,7 @@ import java.util.Optional;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Function;
 import java.util.function.LongFunction;
+import java.util.function.LongPredicate;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
@@ -90,6 +91,11 @@ public final class McpHandler {
     /** Wire the engine's cache maintenance gate so destructive disk tools take the real locks. */
     public void cacheGate(ReentrantReadWriteLock cacheGate) {
         ctx.cacheGate(cacheGate);
+    }
+
+    /** Wire the engine's one-jid liveness probe, what a parked {@code jk_job wait} polls. */
+    public void liveJid(LongPredicate liveJid) {
+        ctx.liveJid(liveJid);
     }
 
     /** Shrink the journal-write settle budget; tests only. */

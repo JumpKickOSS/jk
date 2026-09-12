@@ -34,6 +34,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
 
@@ -524,8 +525,10 @@ public final class BuildJournal {
             } catch (RuntimeException e) {
                 continue;
             }
+            if (parsed == null) continue;
+            index(parsed.id(), dir);
             // Defense in depth: never surface optimize/calibrate fixtures.
-            if (parsed != null && !parsed.synthetic()) out.add(new Loaded(parsed, json, dir));
+            if (!parsed.synthetic()) out.add(new Loaded(parsed, json, dir));
         }
         // Newest first by startedAt / finishedAt
         out.sort(Comparator.comparingLong((Loaded l) -> l.record().finishedAt() > 0
@@ -535,19 +538,13 @@ public final class BuildJournal {
         return out;
     }
 
-    /**
-     * Look up by build-number directory name or by record timestamp {@code id}.
-     */
+    /** Look up by build-number directory name, {@code j-…} job directory, or record {@code id}. */
     public Optional<BuildRecord> get(String idOrLocator) {
-        if (idOrLocator == null || idOrLocator.isBlank()) return Optional.empty();
-        Optional<Path> byDir = findRunDir(idOrLocator);
-        if (byDir.isPresent()) return readRecord(byDir.get());
-        // Timestamp id: scan records
-        for (Path dir : entryDirs()) {
-            Optional<BuildRecord> r = readRecord(dir);
-            if (r.isPresent() && idOrLocator.equals(r.get().id())) return r;
-        }
-        return Optional.empty();
+        return switch (kindOf(idOrLocator)) {
+            case RECORD_ID -> locateById(idOrLocator).map(Located::record);
+            case RUN_NUMBER, JOB_DIR -> findRunDir(idOrLocator).flatMap(this::readRecord);
+            case INVALID -> Optional.empty();
+        };
     }
 
     /**
@@ -631,6 +628,7 @@ public final class BuildJournal {
             }
             // A torn or non-object file must never ride verbatim into a JSON array response.
             if (json.isEmpty() || json.charAt(0) != '{' || json.charAt(json.length() - 1) != '}') continue;
+            index(scanString(json, "id"), dir);
             if (BuildRecord.isSyntheticTrigger(scanString(json, "trigger"))) continue;
             if (filter != null && !filter.test(json)) continue;
             long sort = scanLong(json, "finishedAt");
@@ -710,16 +708,16 @@ public final class BuildJournal {
     }
 
     public Optional<Path> recordFile(String idOrLocator) {
-        return getRunPath(idOrLocator).map(d -> d.resolve(RECORD)).filter(Files::isRegularFile);
+        return findRunDir(idOrLocator).map(d -> d.resolve(RECORD)).filter(Files::isRegularFile);
     }
 
     public Optional<Path> artifact(String idOrLocator, String name) {
         if (!isArtifactName(name)) return Optional.empty();
-        return getRunPath(idOrLocator).map(d -> d.resolve(name)).filter(Files::isRegularFile);
+        return findRunDir(idOrLocator).map(d -> d.resolve(name)).filter(Files::isRegularFile);
     }
 
     public boolean delete(String idOrLocator) {
-        Path dir = getRunPath(idOrLocator).orElse(null);
+        Path dir = findRunDir(idOrLocator).orElse(null);
         if (dir == null || !Files.isDirectory(dir)) return false;
         PathUtil.deleteRecursively(dir);
         return true;
@@ -802,28 +800,69 @@ public final class BuildJournal {
         return findRunDir(locator);
     }
 
-    private Optional<Path> getRunPath(String idOrLocator) {
-        if (idOrLocator == null || idOrLocator.isBlank()) return Optional.empty();
-        Optional<Path> byDir = findRunDir(idOrLocator);
-        if (byDir.isPresent()) return byDir;
-        for (Path dir : entryDirs()) {
-            Optional<BuildRecord> r = readRecord(dir);
-            if (r.isPresent() && idOrLocator.equals(r.get().id())) return Optional.of(dir);
+    /**
+     * The three spellings a run is addressed by: its per-project build number (the directory
+     * name), a {@code j-…} job directory, or the record's timestamp {@code id} — the dashboard's
+     * row key, which names no directory and is found through {@link #locateById}.
+     */
+    private enum LocatorKind {
+        RUN_NUMBER,
+        JOB_DIR,
+        RECORD_ID,
+        INVALID
+    }
+
+    private static LocatorKind kindOf(@Nullable String locator) {
+        if (locator == null || !validLocator(locator)) return LocatorKind.INVALID;
+        if (ProjectBuilds.validRunDirName(locator)) {
+            try {
+                Long.parseLong(locator);
+                return LocatorKind.RUN_NUMBER;
+            } catch (NumberFormatException ignored) {
+                // digits, but not a number a run can carry — judged like any other id
+            }
         }
-        return Optional.empty();
+        return isJobLocator(locator) ? LocatorKind.JOB_DIR : LocatorKind.RECORD_ID;
     }
 
     private Optional<Path> findRunDir(String locator) {
-        if (!validLocator(locator)) return Optional.empty();
-        if (ProjectBuilds.validRunDirName(locator)) {
-            try {
-                long n = Long.parseLong(locator);
-                return ProjectBuilds.findRunDirByNumber(buildsRoot, n);
-            } catch (NumberFormatException ignored) {
-            }
+        return switch (kindOf(locator)) {
+            case RUN_NUMBER -> ProjectBuilds.findRunDirByNumber(buildsRoot, Long.parseLong(locator));
+            case JOB_DIR -> ProjectBuilds.findRunDirByName(buildsRoot, locator);
+            case RECORD_ID -> locateById(locator).map(Located::dir);
+            case INVALID -> Optional.empty();
+        };
+    }
+
+    /** A run found by record id: its directory and the record that proved the id. */
+    private record Located(Path dir, BuildRecord record) {}
+
+    /**
+     * Run dirs by record {@code id}, filled as records are read and listed, so a run the journal
+     * has listed resolves with one record read. Bounded like {@link #runDirsByRequestId}.
+     */
+    private final ConcurrentHashMap<String, Path> runDirsById = new ConcurrentHashMap<>();
+
+    private void index(@Nullable String id, Path dir) {
+        if (id == null || id.isBlank()) return;
+        if (runDirsById.size() >= 1_024) runDirsById.clear();
+        runDirsById.put(id, dir);
+    }
+
+    /**
+     * The indexed dir when its record still carries {@code id} (one read); otherwise one scan of
+     * the journal, which fills the index for every record it passes on the way.
+     */
+    private Optional<Located> locateById(String id) {
+        Path indexed = runDirsById.get(id);
+        if (indexed != null) {
+            Optional<BuildRecord> r = readRecord(indexed);
+            if (r.isPresent() && id.equals(r.get().id())) return Optional.of(new Located(indexed, r.get()));
+            runDirsById.remove(id, indexed); // pruned or rewritten since indexed — re-locate
         }
-        if (isJobLocator(locator)) {
-            return ProjectBuilds.findRunDirByName(buildsRoot, locator);
+        for (Path dir : entryDirs()) {
+            Optional<BuildRecord> r = readRecord(dir);
+            if (r.isPresent() && id.equals(r.get().id())) return Optional.of(new Located(dir, r.get()));
         }
         return Optional.empty();
     }
@@ -843,11 +882,21 @@ public final class BuildJournal {
         return ProjectBuilds.listAllRuns(buildsRoot);
     }
 
-    private static Optional<BuildRecord> readRecord(Path dir) {
+    /** How many {@code record.json} files this journal has read; the lookup-cost seam tests measure. */
+    private final AtomicLong recordReads = new AtomicLong();
+
+    long recordReads() {
+        return recordReads.get();
+    }
+
+    private Optional<BuildRecord> readRecord(Path dir) {
         Path record = dir.resolve(RECORD);
         if (!Files.isRegularFile(record)) return Optional.empty();
+        recordReads.incrementAndGet();
         try {
-            return Optional.of(Json.read(Files.readString(record, StandardCharsets.UTF_8)));
+            BuildRecord parsed = Json.read(Files.readString(record, StandardCharsets.UTF_8));
+            index(parsed.id(), dir);
+            return Optional.of(parsed);
         } catch (IOException | RuntimeException e) {
             return Optional.empty();
         }
@@ -904,7 +953,7 @@ public final class BuildJournal {
                 || DIAGNOSTICS_TXT.equals(name);
     }
 
-    private static boolean validLocator(String locator) {
+    private static boolean validLocator(@Nullable String locator) {
         if (locator == null || locator.isBlank() || locator.startsWith(".")) return false;
         if (locator.indexOf('/') >= 0 || locator.indexOf('\\') >= 0 || locator.contains("..")) return false;
         return true;

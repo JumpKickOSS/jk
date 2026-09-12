@@ -95,7 +95,7 @@ public final class EngineHttpFront {
                 log);
         // Hard-refresh mid-build: history rows carry live requestId/progress/phases; SSE connect
         // delivers one compact run-snapshot per job to the new subscription only.
-        candidate.setLiveRunSupport(liveRuns::snapshot, liveRuns::rehydrate);
+        candidate.setLiveRunSupport(liveRuns::snapshot, liveRuns::isLive, liveRuns::rehydrate);
         // Combined-connection peak observed at every admission point (UDS accept bumps it too) —
         // not only when a status snapshot happens to run.
         candidate.setOnSseAdmitted(() -> peakActiveConnections.accumulateAndGet(liveConnections.getAsInt(), Math::max));

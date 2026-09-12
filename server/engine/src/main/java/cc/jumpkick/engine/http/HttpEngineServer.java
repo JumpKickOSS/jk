@@ -20,6 +20,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Consumer;
+import java.util.function.LongPredicate;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
@@ -85,6 +86,18 @@ public final class HttpEngineServer implements AutoCloseable {
             @Nullable Supplier<List<HttpLive.Run>> liveRuns, Consumer<HttpEvents.Subscription> onEventsConnect) {
         this.liveRuns = liveRuns != null ? liveRuns : List::of;
         sse.onConnect(onEventsConnect);
+    }
+
+    /**
+     * As {@link #setLiveRunSupport(Supplier, Consumer)} with the engine's own membership probe for
+     * one jid, so an MCP wait polls a hold-table lookup rather than the whole snapshot.
+     */
+    public void setLiveRunSupport(
+            @Nullable Supplier<List<HttpLive.Run>> liveRuns,
+            LongPredicate liveJid,
+            Consumer<HttpEvents.Subscription> onEventsConnect) {
+        setLiveRunSupport(liveRuns, onEventsConnect);
+        if (mcp != null) mcp.liveJid(liveJid);
     }
 
     /** Engine hook: bump the combined-connection high-water mark on every SSE admission. */

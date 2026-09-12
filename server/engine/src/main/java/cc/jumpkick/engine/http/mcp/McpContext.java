@@ -16,6 +16,7 @@ import java.util.Optional;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Function;
 import java.util.function.LongFunction;
+import java.util.function.LongPredicate;
 import java.util.function.Supplier;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -52,6 +53,15 @@ public final class McpContext {
     private final ProgressTokenRegistry progressTokens;
 
     private final Supplier<List<HttpLive.Run>> liveRuns;
+
+    /**
+     * Whether one jid is still in flight — the fact a parked wait polls twenty times a second.
+     * The engine wires its in-flight hold table; the fallback walks the live-run snapshot, which
+     * copies every running job's module and step maps and is exactly what a wait must not pay per
+     * poll.
+     */
+    @Setter
+    private volatile LongPredicate liveJid;
 
     private final AdmissionYield admissionYield;
 
@@ -113,6 +123,15 @@ public final class McpContext {
         this.liveRuns = liveRuns == null ? List::of : liveRuns;
         this.admissionYield = admissionYield == null ? AdmissionYield.NONE : admissionYield;
         this.finishedRecords = finishedRecords != null ? finishedRecords : this::scanHistoryForJid;
+        this.liveJid = this::scanLiveRunsForJid;
+    }
+
+    /** Fallback {@link #liveJid}: membership in the live-run snapshot this context already reads. */
+    private boolean scanLiveRunsForJid(long jid) {
+        for (HttpLive.Run r : liveRuns.get()) {
+            if (r.requestId() == jid) return true;
+        }
+        return false;
     }
 
     /** Fallback {@link #finishedRecords}: re-scan the journal rows this context already reads. */

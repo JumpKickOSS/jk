@@ -78,11 +78,8 @@ public final class McpVitals {
         return newest == null ? null : Long.valueOf(newest.requestId());
     }
 
-    /** True while {@code jid} is in the live-run snapshot. */
+    /** True while {@code jid} is in flight — one membership probe, not a snapshot of every run. */
     public static boolean isLive(McpContext ctx, long jid) {
-        for (HttpLive.Run r : ctx.liveRuns().get()) {
-            if (r.requestId() == jid) return true;
-        }
-        return false;
+        return ctx.liveJid().test(jid);
     }
 }

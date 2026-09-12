@@ -74,6 +74,57 @@ class BuildJournalTest {
         assertThat(BuildJournal.scanString(raw.getFirst(), "trigger")).isEqualTo("cli");
     }
 
+    /**
+     * The dashboard addresses a run by its record id, which is not the directory name. Once the
+     * journal has listed its runs, resolving one of those ids is a single record read — not a
+     * parse of every record until the id happens to match.
+     */
+    @Test
+    void a_record_id_resolves_with_one_record_read_once_the_journal_has_been_listed() {
+        BuildJournal j = new BuildJournal(dir);
+        for (int i = 1; i <= 5; i++) {
+            j.append(record(1_700_000_000_000L + i * 1_000L, true, "g:a"), new BuildJournal.Snapshot(null, null, null));
+        }
+        String id = requireNonNull(j.list().get(2).id());
+
+        long before = j.recordReads();
+        assertThat(j.get(id)).isPresent().get().extracting(BuildRecord::id).isEqualTo(id);
+        assertThat(j.recordReads() - before).as("get by id").isEqualTo(1);
+
+        before = j.recordReads();
+        assertThat(j.recordFile(id)).isPresent();
+        assertThat(j.recordReads() - before).as("record file by id").isEqualTo(1);
+    }
+
+    /** A journal opened cold still resolves an id it has never seen, and remembers where it was. */
+    @Test
+    void a_cold_id_lookup_scans_once_and_the_next_lookup_is_a_single_read() {
+        BuildJournal writer = new BuildJournal(dir);
+        for (int i = 1; i <= 4; i++) {
+            writer.append(
+                    record(1_700_000_000_000L + i * 1_000L, true, "g:a"), new BuildJournal.Snapshot(null, null, null));
+        }
+        String id = requireNonNull(writer.list().get(3).id());
+
+        BuildJournal cold = new BuildJournal(dir);
+        assertThat(cold.get(id)).isPresent();
+        long before = cold.recordReads();
+        assertThat(cold.get(id)).isPresent();
+        assertThat(cold.recordReads() - before).isEqualTo(1);
+    }
+
+    @Test
+    void a_deleted_run_no_longer_resolves_by_id() {
+        BuildJournal j = new BuildJournal(dir);
+        j.append(record(1_700_000_001_000L, true, "g:a"), new BuildJournal.Snapshot(null, null, null));
+        j.append(record(1_700_000_002_000L, true, "g:a"), new BuildJournal.Snapshot(null, null, null));
+        String id = requireNonNull(j.list().get(0).id());
+
+        assertThat(j.delete(id)).isTrue();
+        assertThat(j.get(id)).isEmpty();
+        assertThat(j.list()).hasSize(1);
+    }
+
     private static BuildRecord withTrigger(BuildRecord base, String trigger) {
         return new BuildRecord(
                 base.id(),

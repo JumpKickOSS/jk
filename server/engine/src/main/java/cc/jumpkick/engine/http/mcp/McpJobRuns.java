@@ -221,6 +221,10 @@ public final class McpJobRuns {
         }
     }
 
+    /**
+     * Park until {@code jid} leaves the live set, asking the job's own liveness probe each tick —
+     * never the live-run snapshot, which copies every in-flight module and step map per call.
+     */
     private static boolean waitUntilGone(McpContext ctx, long jid, long timeoutMs) {
         long start = System.currentTimeMillis();
         boolean seen = false;

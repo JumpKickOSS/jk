@@ -27,6 +27,11 @@ public final class LiveRuns {
     private final ReentrantReadWriteLock sseConnect;
     private final LongSupplier clock;
 
+    /** Whether {@code requestId} is in flight — the membership fact without the snapshot's copies. */
+    public boolean isLive(long requestId) {
+        return inFlight.get(requestId).isPresent();
+    }
+
     public List<HttpLive.Run> snapshot() {
         List<HttpLive.Run> out = new ArrayList<>();
         for (InFlightBuilds.Hold h : inFlight.list()) {
