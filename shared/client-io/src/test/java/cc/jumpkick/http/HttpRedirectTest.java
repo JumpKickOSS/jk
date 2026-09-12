@@ -12,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
@@ -79,6 +80,26 @@ class HttpRedirectTest {
         assertThatThrownBy(() -> http().get(origin.base().resolve("/loop")))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("redirect");
+    }
+
+    /**
+     * A 3xx that names no target is not a document. Returned as one, it would be a 200-shaped
+     * success with an empty body to every caller that draws the failure line at 400.
+     */
+    @Test
+    void a_redirect_without_a_location_is_an_error_rather_than_an_empty_success() {
+        AtomicInteger hits = new AtomicInteger();
+        origin.server().createContext("/nowhere", exchange -> {
+            hits.incrementAndGet();
+            exchange.sendResponseHeaders(302, -1);
+            exchange.close();
+        });
+
+        assertThatThrownBy(() -> http().get(origin.base().resolve("/nowhere")))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("302")
+                .hasMessageContaining("Location");
+        assertThat(hits).as("a policy answer, not a fault to retry").hasValue(1);
     }
 
     @Test

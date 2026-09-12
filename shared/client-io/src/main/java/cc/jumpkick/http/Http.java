@@ -321,9 +321,10 @@ public final class Http {
     /**
      * One request and the redirect chain it starts. A hop that stays on the request's origin keeps
      * every header; one that leaves it is re-issued without the caller's credentials. A downgrade
-     * from https to http, or a chain longer than {@link #MAX_REDIRECTS}, is an error rather than a
-     * 3xx handed back as if it were a result — a caller reading {@code status >= 400} as failure
-     * would otherwise take a redirect for a success with an empty body.
+     * from https to http, a chain longer than {@link #MAX_REDIRECTS}, or a 3xx without a usable
+     * {@code Location} is an error rather than a 3xx handed back as if it were a result — a caller
+     * reading {@code status >= 400} as failure would otherwise take a redirect for a success with
+     * an empty body.
      */
     private <T> HttpResponse<T> send(
             HttpRequest request, HttpResponse.BodyHandler<T> handler, @Nullable BodyDrain<T> drain)
@@ -331,7 +332,13 @@ public final class Http {
         HttpResponse<T> response = client.send(request, handler);
         for (int hops = 0; isRedirect(response.statusCode()); hops++) {
             URI target = redirectTarget(request.uri(), response);
-            if (target == null) return response;
+            if (target == null) {
+                // Handed back as a result, a Location-less 3xx reads as a success with an empty
+                // body to every caller that takes status >= 400 as the failure line.
+                if (drain != null) drain.handle(response);
+                throw new RedirectRefusedException(response.statusCode() + " redirect without a usable Location from "
+                        + SafeUri.forMessage(request.uri()));
+            }
             if (hops >= MAX_REDIRECTS) {
                 throw new RedirectRefusedException(
                         "too many redirects (" + MAX_REDIRECTS + ") fetching " + SafeUri.forMessage(request.uri()));
@@ -347,7 +354,10 @@ public final class Http {
         return response;
     }
 
-    /** A redirect chain this client will not follow — too long, or a downgrade to http. Not retried. */
+    /**
+     * A redirect this client will not follow — too long a chain, a downgrade to http, or a 3xx
+     * naming no target. Not retried: the same answer would come back.
+     */
     static final class RedirectRefusedException extends IOException {
         RedirectRefusedException(String message) {
             super(message);
