@@ -21,12 +21,33 @@ public final class PartialSolution {
 
     private final List<Assignment> assignments = new ArrayList<>();
 
+    /**
+     * The stack split by package, each list in global order. Satisfier search and universe
+     * rebinding are questions about one package, so they read that package's assignments rather
+     * than the whole stack — on a large BOM graph the stack runs to thousands of entries and those
+     * questions are asked on every conflict.
+     */
+    private final Map<String, List<Assignment>> assignmentsByPackage = new HashMap<>();
+
+    /**
+     * Packages some positive term requires and no decision has settled, keyed by the global index
+     * of the package's first assignment. The next decision is the earliest-mentioned of them, which
+     * is what a scan of the stack in order would find — without the scan.
+     */
+    private final TreeMap<Integer, String> undecidedPositive = new TreeMap<>();
+
     /** Live map owned by the solver; entries appear as packages are interned. */
     private final Map<String, VersionUniverse> universes;
 
     private final Map<String, PackageState> byPackage = new HashMap<>();
     private final Map<String, String> decisionByPackage = new TreeMap<>();
     private int decisionLevel = 0;
+
+    /** Assignments pushed by {@link #decide}/{@link #derive}; replays after a backtrack do not count. */
+    private long assignmentsRecorded;
+
+    /** Assignments handed out for scanning, by {@link #assignments()} and {@link #assignmentsFor}. */
+    private long assignmentsScanned;
 
     /**
      * Per-package constraint state. {@code allowed} is non-null once the package has been bound to
@@ -42,6 +63,9 @@ public final class PartialSolution {
 
         boolean hasPositive;
         boolean mentioned;
+
+        /** Global index of the package's first assignment; -1 until one is registered. */
+        int firstIndex = -1;
     }
 
     public PartialSolution(Map<String, VersionUniverse> universes) {
@@ -63,21 +87,39 @@ public final class PartialSolution {
     public void decide(String pkg, String version) {
         decisionLevel++;
         Term decision = Term.positive(pkg, VersionSet.exact(version));
-        assignments.add(new Assignment.Decision(decision, decisionLevel, assignments.size()));
+        Assignment a = new Assignment.Decision(decision, decisionLevel, assignments.size());
+        push(a);
         decisionByPackage.put(pkg, version);
-        register(decision);
+        register(decision, a.globalIndex());
+        undecidedPositive.remove(Objects.requireNonNull(byPackage.get(pkg)).firstIndex);
     }
 
     public void derive(Term term, Incompatibility cause) {
-        assignments.add(new Assignment.Derivation(term, decisionLevel, assignments.size(), cause));
-        register(term);
+        Assignment a = new Assignment.Derivation(term, decisionLevel, assignments.size(), cause);
+        push(a);
+        register(term, a.globalIndex());
     }
 
-    private void register(Term t) {
+    private void push(Assignment a) {
+        assignments.add(a);
+        index(a);
+        assignmentsRecorded++;
+    }
+
+    private void index(Assignment a) {
+        assignmentsByPackage
+                .computeIfAbsent(a.term().pkg(), k -> new ArrayList<>())
+                .add(a);
+    }
+
+    /** Fold {@code t}, recorded at global index {@code at}, into its package's state. */
+    private void register(Term t, int at) {
         PackageState s = byPackage.computeIfAbsent(t.pkg(), k -> new PackageState());
+        if (s.firstIndex < 0) s.firstIndex = at;
         s.mentioned = true;
-        if (t.positive()) {
+        if (t.positive() && !s.hasPositive) {
             s.hasPositive = true;
+            if (!decisionByPackage.containsKey(t.pkg())) undecidedPositive.put(s.firstIndex, t.pkg());
         }
         VersionSet effective = t.effectiveVersions();
         // The continuous set narrows on every assignment, bitset or not: satisfies() and
@@ -125,8 +167,7 @@ public final class PartialSolution {
         VersionSet cont = VersionSet.ALL;
         boolean hasPos = false;
         boolean mentioned = false;
-        for (Assignment a : assignments) {
-            if (!a.term().pkg().equals(pkg)) continue;
+        for (Assignment a : assignmentsFor(pkg)) {
             mentioned = true;
             if (a.term().positive()) hasPos = true;
             cont = cont.intersect(a.term().effectiveVersions());
@@ -136,6 +177,18 @@ public final class PartialSolution {
         s.hasPositive = hasPos || s.hasPositive;
         s.mentioned = mentioned || s.mentioned;
         s.allowed = u.project(cont);
+        if (s.hasPositive && s.firstIndex >= 0 && !decisionByPackage.containsKey(pkg)) {
+            undecidedPositive.put(s.firstIndex, pkg);
+        }
+    }
+
+    /**
+     * The earliest-mentioned package that a positive term requires and no decision has settled, or
+     * {@code null} when every required package is decided — the solve is then complete.
+     */
+    public @Nullable String nextUndecidedPositive() {
+        Map.Entry<Integer, String> first = undecidedPositive.firstEntry();
+        return first == null ? null : first.getValue();
     }
 
     /**
@@ -284,7 +337,38 @@ public final class PartialSolution {
      * path.
      */
     public List<Assignment> assignments() {
+        assignmentsScanned += assignments.size();
         return Collections.unmodifiableList(assignments);
+    }
+
+    /**
+     * The assignments about {@code pkg}, in global order (unmodifiable view; same retention rule
+     * as {@link #assignments()}). Empty when nothing mentions the package.
+     */
+    public List<Assignment> assignmentsFor(String pkg) {
+        List<Assignment> own = assignmentsByPackage.get(pkg);
+        if (own == null) return List.of();
+        assignmentsScanned += own.size();
+        return Collections.unmodifiableList(own);
+    }
+
+    /** Assignments on the stack right now. */
+    public int size() {
+        return assignments.size();
+    }
+
+    /** How many assignments {@link #decide}/{@link #derive} have pushed over the solve. */
+    public long assignmentsRecorded() {
+        return assignmentsRecorded;
+    }
+
+    /**
+     * How many assignments were handed out for scanning, over the solve. A whole-stack scan per
+     * decision or per satisfier lookup makes this quadratic in the stack; the per-package index
+     * keeps it near the number recorded.
+     */
+    public long assignmentsScanned() {
+        return assignmentsScanned;
     }
 
     /** Snapshot of decisions without sorting (hot path). Prefer over {@link #decisions()} in the solver. */
@@ -304,8 +388,13 @@ public final class PartialSolution {
         decisionLevel = targetLevel;
         decisionByPackage.clear();
         byPackage.clear();
+        assignmentsByPackage.clear();
+        undecidedPositive.clear();
+        // Decisions first, then every term: a package is usually required by a derivation before
+        // it is decided, and register() offers an undecided required package for decision — so
+        // the surviving decisions must all be known before any term is replayed, or a decided
+        // package whose first mention came earlier would be offered a second time.
         for (Assignment a : assignments) {
-            register(a.term());
             // Decisions are always exact singles (VersionSet.exact).
             if (a instanceof Assignment.Decision d
                     && d.term().effectiveVersions() instanceof VersionSet.Range r
@@ -316,6 +405,10 @@ public final class PartialSolution {
                     && r.min().equals(r.max())) {
                 decisionByPackage.put(d.term().pkg(), r.min());
             }
+        }
+        for (Assignment a : assignments) {
+            index(a);
+            register(a.term(), a.globalIndex());
         }
     }
 

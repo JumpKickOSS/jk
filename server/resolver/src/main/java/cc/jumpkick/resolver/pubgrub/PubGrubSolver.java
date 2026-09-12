@@ -432,8 +432,8 @@ public class PubGrubSolver {
             AllowedSet accumulated =
                     given == null ? u.all() : u.project(given.term().effectiveVersions());
             if (given != null && (!term.positive() || sawPositive) && accumulated.subsetOf(target)) return null;
-            for (PartialSolution.Assignment a : solution.assignments()) {
-                if (!a.term().pkg().equals(term.pkg()) || a.globalIndex() >= before) continue;
+            for (PartialSolution.Assignment a : solution.assignmentsFor(term.pkg())) {
+                if (a.globalIndex() >= before) break; // the package's list is in stack order
                 sawPositive |= a.term().positive();
                 accumulated = accumulated.intersect(u.project(a.term().effectiveVersions()));
                 if ((!term.positive() || sawPositive) && accumulated.subsetOf(target)) return a;
@@ -445,8 +445,8 @@ public class PubGrubSolver {
         if (given != null && (!term.positive() || sawPositive) && accumulated.subsetOf(term.effectiveVersions())) {
             return null;
         }
-        for (PartialSolution.Assignment a : solution.assignments()) {
-            if (!a.term().pkg().equals(term.pkg()) || a.globalIndex() >= before) continue;
+        for (PartialSolution.Assignment a : solution.assignmentsFor(term.pkg())) {
+            if (a.globalIndex() >= before) break;
             sawPositive |= a.term().positive();
             accumulated = accumulated.intersect(a.term().effectiveVersions());
             if ((!term.positive() || sawPositive) && accumulated.subsetOf(term.effectiveVersions())) return a;
@@ -508,87 +508,78 @@ public class PubGrubSolver {
     // --- decisions ---------------------------------------------------------
 
     protected @Nullable String makeDecision() throws IOException, InterruptedException {
-        // iterate the assignment stack once without copying into a TreeMap decisions
-        // each time — both were dominant alloc sources on large BOM graphs.
-        Set<String> seen = new LinkedHashSet<>();
-        for (PartialSolution.Assignment a : solution.assignments()) {
-            seen.add(a.term().pkg());
+        // The partial solution keeps the undecided-but-required packages indexed by first
+        // mention, so the next package to decide is a lookup rather than a scan of the stack —
+        // which grew quadratic over a solve on large BOM graphs.
+        String pkg = solution.nextUndecidedPositive();
+        if (pkg == null) return null;
+        ensureUniverse(pkg);
+        // Lazy singleton may project empty (pref outside constraint) or after Unavailable.
+        if (solution.hasNoCandidates(pkg) && widenable(pkg)) {
+            expandUniverse(pkg);
         }
-        Map<String, String> decided = solution.decisionsUnsorted();
+        Set<String> declared = steeringDeclarations(pkg);
+        if (!declared.isEmpty()) admitDeclared(pkg, declared);
 
-        for (String pkg : seen) {
-            if (decided.containsKey(pkg)) continue;
-            if (!solution.hasPositiveTerm(pkg)) continue;
-
-            ensureUniverse(pkg);
-            // Lazy singleton may project empty (pref outside constraint) or after Unavailable.
-            if (solution.hasNoCandidates(pkg) && widenable(pkg)) {
+        String pick = solution.hasNoCandidates(pkg) ? null : solution.choosePreferred(pkg, declared);
+        if (pick == null) {
+            // Diagnostics: if we never widened, expand once for a useful sample.
+            if (widenable(pkg)) {
                 expandUniverse(pkg);
             }
-            Set<String> declared = steeringDeclarations(pkg);
-            if (!declared.isEmpty()) admitDeclared(pkg, declared);
+            VersionUniverse known = universes.get(pkg);
+            boolean unknownPackage = known == null || known.size() == 0;
+            VersionSet allowed = solution.positiveSet(pkg);
+            if (allowed.isEmpty()) allowed = VersionSet.ALL;
+            List<String> available = sampleAvailable(pkg);
+            addIncompatibility(new Incompatibility(
+                    List.of(Term.positive(pkg, allowed)),
+                    new Incompatibility.Cause.NoVersions(pkg, allowed, unknownPackage, available)));
+            return pkg;
+        }
 
-            String pick = solution.hasNoCandidates(pkg) ? null : solution.choosePreferred(pkg, declared);
-            if (pick == null) {
-                // Diagnostics: if we never widened, expand once for a useful sample.
-                if (widenable(pkg)) {
-                    expandUniverse(pkg);
-                }
+        List<Term> deps;
+        try {
+            deps = source.dependencies(pkg, pick);
+        } catch (PackageSource.VersionUnavailableException e) {
+            // Expand before recording Unavailable so unit-prop can exclude `pick` against a
+            // full candidate list (a lazy singleton of only `pick` would mark the inco as
+            // already SATISFIED and short-circuit into a false unsatisfiable).
+            if (widenable(pkg)) {
+                expandUniverse(pkg);
+            }
+            // Exact pin that was never advertised (or only candidate failed): NoVersions gives
+            // better diagnostics ("available: …") than Unavailable alone.
+            if (solution.hasNoCandidates(pkg)) {
                 VersionUniverse known = universes.get(pkg);
                 boolean unknownPackage = known == null || known.size() == 0;
                 VersionSet allowed = solution.positiveSet(pkg);
                 if (allowed.isEmpty()) allowed = VersionSet.ALL;
-                List<String> available = sampleAvailable(pkg);
                 addIncompatibility(new Incompatibility(
                         List.of(Term.positive(pkg, allowed)),
-                        new Incompatibility.Cause.NoVersions(pkg, allowed, unknownPackage, available)));
+                        new Incompatibility.Cause.NoVersions(pkg, allowed, unknownPackage, sampleAvailable(pkg))));
                 return pkg;
             }
-
-            List<Term> deps;
-            try {
-                deps = source.dependencies(pkg, pick);
-            } catch (PackageSource.VersionUnavailableException e) {
-                // Expand before recording Unavailable so unit-prop can exclude `pick` against a
-                // full candidate list (a lazy singleton of only `pick` would mark the inco as
-                // already SATISFIED and short-circuit into a false unsatisfiable).
-                if (widenable(pkg)) {
-                    expandUniverse(pkg);
-                }
-                // Exact pin that was never advertised (or only candidate failed): NoVersions gives
-                // better diagnostics ("available: …") than Unavailable alone.
-                if (solution.hasNoCandidates(pkg)) {
-                    VersionUniverse known = universes.get(pkg);
-                    boolean unknownPackage = known == null || known.size() == 0;
-                    VersionSet allowed = solution.positiveSet(pkg);
-                    if (allowed.isEmpty()) allowed = VersionSet.ALL;
-                    addIncompatibility(new Incompatibility(
-                            List.of(Term.positive(pkg, allowed)),
-                            new Incompatibility.Cause.NoVersions(pkg, allowed, unknownPackage, sampleAvailable(pkg))));
-                    return pkg;
-                }
-                addIncompatibility(new Incompatibility(
-                        List.of(Term.positive(pkg, VersionSet.exact(pick))),
-                        new Incompatibility.Cause.Unavailable(pkg, pick, e.getMessage())));
-                return pkg;
-            }
-            solution.decide(pkg, pick);
-            decisionCount++;
-            noteDecision(pkg, pick);
-            checkBudget();
-            if (onDecision != null) {
-                onDecision.accept(pkg, pick);
-            }
-
-            Term decisionTerm = Term.positive(pkg, VersionSet.exact(pick));
-            for (Term depTerm : deps) {
-                addIncompatibility(new Incompatibility(
-                        List.of(decisionTerm, depTerm.invert()),
-                        new Incompatibility.Cause.Dependency(decisionTerm, depTerm)));
-            }
+            addIncompatibility(new Incompatibility(
+                    List.of(Term.positive(pkg, VersionSet.exact(pick))),
+                    new Incompatibility.Cause.Unavailable(pkg, pick, e.getMessage())));
             return pkg;
         }
-        return null;
+        solution.decide(pkg, pick);
+        decisionCount++;
+        noteDecision(pkg, pick);
+        checkBudget();
+        if (onDecision != null) {
+            onDecision.accept(pkg, pick);
+        }
+
+        Term decisionTerm = Term.positive(pkg, VersionSet.exact(pick));
+        for (Term depTerm : deps) {
+            addIncompatibility(new Incompatibility(
+                    List.of(decisionTerm, depTerm.invert()),
+                    new Incompatibility.Cause.Dependency(decisionTerm, depTerm)));
+        }
+        return pkg;
     }
 
     /**
