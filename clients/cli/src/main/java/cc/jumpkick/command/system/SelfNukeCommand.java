@@ -16,6 +16,7 @@ import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
+import cc.jumpkick.tool.LauncherName;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -38,7 +39,9 @@ import org.jspecify.annotations.Nullable;
  * <ul>
  *   <li>{@code --cache} — {@code <home>/cache}; same as {@code jk cache nuke}
  *   <li>{@code --store} — {@code <home>/store} whole-tree, via {@code jk storage nuke}
- *   <li>{@code --state} — {@code <home>/state}: engine sockets, AOT, builds, scratch tmp
+ *   <li>{@code --state} — {@code <home>/state}: engine sockets, AOT, builds, scratch tmp, and
+ *       the installed tool envs — the launchers {@code jk install} wrote into {@code bin} for
+ *       them go too, see {@link #toolLaunchers}
  *   <li>{@code --config} — {@code <home>/config.toml} and the per-app {@code <home>/config} tree
  *   <li>{@code --all} — every target above (default when none are named)
  * </ul>
@@ -55,7 +58,7 @@ public final class SelfNukeCommand implements CliCommand {
     enum Target {
         CACHE("Cache tier"),
         STORE("Artifact store"),
-        STATE("Engine sockets, AOT, builds"),
+        STATE("Engine sockets, AOT, builds, installed tools"),
         CONFIG("User config");
 
         final String what;
@@ -115,7 +118,7 @@ public final class SelfNukeCommand implements CliCommand {
                 Opt.flag("Nuke every target (default when none named).", "--all"),
                 Opt.flag("Nuke the cache tier only (action outputs).", "--cache"),
                 Opt.flag("Nuke the artifact store (repos, tools, templates, completions).", "--store"),
-                Opt.flag("Nuke engine state, AOT caches, builds, and tmp.", "--state"),
+                Opt.flag("Nuke engine state, AOT caches, builds, tmp, and installed tools.", "--state"),
                 Opt.flag("Nuke user config.", "--config"));
     }
 
@@ -170,7 +173,10 @@ public final class SelfNukeCommand implements CliCommand {
 
         List<PurgeRow> rows = plan(dirs, selected);
         // Cache tier and artifact store are wiped by the shared nukes — drop them from path rows.
-        List<PurgeRow> pathRows = rows.stream().filter(r -> !r.delegated()).toList();
+        List<PurgeRow> pathRows =
+                new ArrayList<>(rows.stream().filter(r -> !r.delegated()).toList());
+        List<PurgeRow> launchers = toolLaunchers(dirs, rows);
+        pathRows.addAll(launchers);
         boolean wantCache = selected.contains(Target.CACHE);
         boolean wantStoreTarget = selected.contains(Target.STORE);
         // The delegated wipes delete whatever root the request names — the store engine-side, the
@@ -191,7 +197,7 @@ public final class SelfNukeCommand implements CliCommand {
             return Exit.SUCCESS;
         }
 
-        printPlan(existing, dirs, wantCacheWipe, wantStore);
+        printPlan(existing, dirs, wantCacheWipe, wantStore, !launchers.isEmpty());
         if (!dryRun && !confirmPrompt()) {
             CommandWedge.printFail("Self", "Nuke aborted.");
             return 1;
@@ -248,21 +254,10 @@ public final class SelfNukeCommand implements CliCommand {
             }
         }
 
-        long removed = 0;
         List<String> failures = new ArrayList<>();
-        for (PurgeRow row : existing) {
-            if (dryRun) {
-                CliOutput.out("  would remove " + pathStyled(row.path()));
-                removed++;
-                continue;
-            }
-            try {
-                PathUtil.deleteRecursivelyOrThrow(row.path());
-                removed++;
-            } catch (IOException e) {
-                failures.add(pathStyled(row.path()) + " (" + e.getMessage() + ")");
-            }
-        }
+        Removal gone = remove(existing, launchers, dryRun, failures);
+        long removed = gone.paths();
+        long launchersRemoved = gone.launchers();
 
         // Say what did NOT happen, always. The whole failure mode this replaced was a command
         // that reported an engine problem and left the user to infer — wrongly — that the paths
@@ -299,16 +294,50 @@ public final class SelfNukeCommand implements CliCommand {
                     "Nuked " + removed + " path" + (removed == 1 ? "" : "s") + "; " + delegatedFailures.size()
                             + " target" + (delegatedFailures.size() == 1 ? "" : "s") + " left in place.");
         } else if (removed > 0 || wantCacheWipe || wantStoreTarget) {
+            // Name the launchers that went: the user sees `widget` vanish from bin and needs to
+            // know it was this command, and that `jk install` brings it back.
+            String tools = launchersRemoved == 0
+                    ? ""
+                    : " and " + launchersRemoved + " installed tool launcher" + (launchersRemoved == 1 ? "" : "s")
+                            + " (jk install restores them)";
             settleGap();
             CommandWedge.printOk(
                     "Self",
-                    "Nuked selected JumpKick data. Kept: active engine "
+                    "Nuked selected JumpKick data" + tools + ". Kept: active engine "
                             + JkVersion.VERSION
-                            + ", PATH, JDKs, installed app jars, credentials"
+                            + ", PATH, JDKs, credentials"
                             + (wantStoreTarget ? "" : ", store")
                             + ".");
         }
         return exit;
+    }
+
+    /** What {@link #remove} took off disk: every row, and how many of those were tool launchers. */
+    record Removal(long paths, long launchers) {}
+
+    /**
+     * Delete each row this process owns — or, on a dry run, print it as "would remove" and count
+     * it. A row that will not go is added to {@code failures} and never stops its siblings.
+     */
+    private static Removal remove(
+            List<PurgeRow> rows, List<PurgeRow> launchers, boolean dryRun, List<String> failures) {
+        long paths = 0;
+        long launcherCount = 0;
+        for (PurgeRow row : rows) {
+            if (dryRun) {
+                CliOutput.out("  would remove " + pathStyled(row.path()));
+                paths++;
+                continue;
+            }
+            try {
+                PathUtil.deleteRecursivelyOrThrow(row.path());
+                paths++;
+                if (launchers.contains(row)) launcherCount++;
+            } catch (IOException e) {
+                failures.add(pathStyled(row.path()) + " (" + e.getMessage() + ")");
+            }
+        }
+        return new Removal(paths, launcherCount);
     }
 
     /** Blank line before a settle when this command prints wedges back-to-back. */
@@ -395,6 +424,46 @@ public final class SelfNukeCommand implements CliCommand {
     }
 
     /**
+     * One row per launcher in {@code <home>/bin} that belongs to a tool env under {@code
+     * <state>/tools/envs} — both the POSIX and the {@code .cmd} spelling. A launcher execs the
+     * absolute classpath its env records, so once the state root is gone it fails with "could not
+     * find or load main class"; it goes with its env and the table says so, rather than the
+     * settle line claiming installed tools survive. {@code bin} itself stays a guarded root: the
+     * rows are single files named by env directories that pass {@link LauncherName}, so jk's own
+     * client under a reserved stem is never one of them. Empty unless the state row is scheduled
+     * — a refused state root deletes no envs, so it orphans no launcher.
+     */
+    static List<PurgeRow> toolLaunchers(JkDirs dirs, List<PurgeRow> rows) {
+        boolean stateGoes = rows.stream().anyMatch(r -> r.target() == Target.STATE && !r.delegated());
+        if (!stateGoes) return List.of();
+        Path envs = dirs.stateDir().resolve("tools").resolve("envs");
+        if (!Files.isDirectory(envs)) return List.of();
+        Path bin = dirs.binDirectory();
+        List<String> names = new ArrayList<>();
+        try {
+            PathUtil.forEachChild(envs, (env, attrs) -> {
+                String name = env.getFileName().toString();
+                if (attrs.isDirectory() && LauncherName.validationError(name).isEmpty()) names.add(name);
+                return true;
+            });
+        } catch (IOException unreadable) {
+            // The state row's own delete reports an unreadable envs directory; nothing to add here.
+        }
+        names.sort(null);
+        List<PurgeRow> out = new ArrayList<>();
+        for (String name : names) {
+            for (String leaf : List.of(name, name + ".cmd")) {
+                Path launcher = LauncherName.resolveChild(bin, leaf);
+                if (Files.exists(launcher, LinkOption.NOFOLLOW_LINKS)) {
+                    out.add(new PurgeRow(
+                            launcher.toAbsolutePath().normalize(), "Launcher of tool " + name, Target.STATE, false));
+                }
+            }
+        }
+        return out;
+    }
+
+    /**
      * Schedule a row unless it would touch a guarded tree: equal to, inside, or an <em>ancestor</em>
      * of bin, jdks, the product lib, or creds. Comparisons also run on real paths, so a root a user
      * has symlinked onto another volume — the reason {@code JK_STORE_DIR} exists — stays safe.
@@ -440,8 +509,12 @@ public final class SelfNukeCommand implements CliCommand {
         return e.getMessage() != null ? e.getMessage() : e.toString();
     }
 
-    /** {@code wantStore} — the store row cleared the guards and will be wiped engine-side. */
-    private static void printPlan(List<PurgeRow> rows, JkDirs dirs, boolean wantCache, boolean wantStore) {
+    /**
+     * {@code wantStore} — the store row cleared the guards and will be wiped engine-side; {@code
+     * launchersGo} — the rows include tool launchers under bin, so the bin line says what survives.
+     */
+    private static void printPlan(
+            List<PurgeRow> rows, JkDirs dirs, boolean wantCache, boolean wantStore, boolean launchersGo) {
         List<String> headers = List.of("Path to Delete", "What");
         List<List<String>> tableRows = new ArrayList<>();
         for (PurgeRow r : rows) {
@@ -461,7 +534,10 @@ public final class SelfNukeCommand implements CliCommand {
         // selection now that each is a root rather than a child of one.
         CliOutput.out("  Kept:  " + pathStyled(dirs.credsDir()) + "  (credentials; remove via jk repo logout)");
         CliOutput.out("  Kept:  " + pathStyled(dirs.productLibDir()) + "  (live engine + installed app jars)");
-        CliOutput.out("  Kept:  " + pathStyled(dirs.binDirectory()) + "  (PATH binaries)");
+        CliOutput.out("  Kept:  " + pathStyled(dirs.binDirectory())
+                + (launchersGo
+                        ? "  (PATH binaries; the tool launchers listed above go with their envs)"
+                        : "  (PATH binaries)"));
         CliOutput.out("  Kept:  " + pathStyled(dirs.jdksDir()) + "  (managed JDKs)");
         CliOutput.out();
     }

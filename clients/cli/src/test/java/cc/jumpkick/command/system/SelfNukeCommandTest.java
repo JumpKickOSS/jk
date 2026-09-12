@@ -27,6 +27,7 @@ import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
@@ -798,13 +799,101 @@ class SelfNukeCommandTest {
         assertThat(SelfNukeCommand.displayPath(under)).isEqualTo("~/cache/jk");
     }
 
+    /**
+     * A launcher in bin execs the absolute classpath its env under {@code <state>/tools/envs}
+     * records. Deleting the state root and leaving the launcher gives a bin full of scripts that
+     * fail with "could not find or load main class" under a settle line saying tools were kept.
+     */
+    @Test
+    void state_nuke_removes_the_launchers_of_the_tool_envs_it_deletes() throws Exception {
+        JkDirs dirs = JkDirs.current();
+        Path bin = Files.createDirectories(dirs.binDirectory());
+        Path launcher = installedTool(dirs, "widget");
+        Path winLauncher = bin.resolve("widget.cmd");
+        Files.writeString(winLauncher, "@echo off\r\n");
+        installedTool(dirs, "alpha");
+        // An env directory under a name jk reserves for its own files never names a launcher row.
+        Files.createDirectories(dirs.stateDir().resolve("tools/envs/jk"));
+        Path product = bin.resolve("jk");
+        Files.writeString(product, "the client");
+        Path foreign = bin.resolve("uv");
+        Files.writeString(foreign, "foreign-tool");
+
+        String out = TestAnsi.strip(captureText(() -> runNuke(new BrokenEngine(), EnumSet.of(Target.STATE), true)));
+
+        assertThat(dirs.stateDir()).doesNotExist();
+        assertThat(launcher).doesNotExist();
+        assertThat(winLauncher).doesNotExist();
+        assertThat(bin.resolve("alpha")).doesNotExist();
+        assertThat(product).as("jk's own client stays").exists();
+        assertThat(foreign).as("a file jk did not install stays").exists();
+        assertThat(out).contains("the tool launchers listed above go with their envs");
+        String settle = out.lines()
+                .filter(l -> l.contains("Nuked selected"))
+                .findFirst()
+                .orElse("");
+        assertThat(settle)
+                .contains("3 installed tool launchers")
+                .as("the settle line does not claim what it just orphaned survives")
+                .doesNotContain("installed app jars");
+    }
+
+    @Test
+    void a_dry_run_lists_the_tool_launchers_and_leaves_them() throws Exception {
+        JkDirs dirs = JkDirs.current();
+        Path launcher = installedTool(dirs, "widget");
+
+        String out = TestAnsi.strip(captureText(() -> runNuke(new BrokenEngine(), EnumSet.of(Target.STATE), false)));
+
+        assertThat(launcher).exists();
+        assertThat(dirs.stateDir().resolve("tools/envs/widget/env.json")).exists();
+        assertThat(out).contains("would remove " + SelfNukeCommand.displayPath(launcher));
+    }
+
+    @Test
+    void launcher_rows_exist_only_when_the_state_row_goes(@TempDir Path root) throws Exception {
+        JkDirs dirs = JkDirs.current();
+        installedTool(dirs, "widget");
+        List<SelfNukeCommand.PurgeRow> stateRows = SelfNukeCommand.plan(dirs, EnumSet.of(Target.STATE));
+        assertThat(SelfNukeCommand.toolLaunchers(dirs, stateRows))
+                .extracting(SelfNukeCommand.PurgeRow::path)
+                .containsExactly(
+                        dirs.binDirectory().resolve("widget").toAbsolutePath().normalize());
+        // Cache or config alone deletes no env, so it orphans no launcher.
+        List<SelfNukeCommand.PurgeRow> configRows = SelfNukeCommand.plan(dirs, EnumSet.of(Target.CONFIG));
+        assertThat(SelfNukeCommand.toolLaunchers(dirs, configRows)).isEmpty();
+        // A refused state root (one that would reach the product lib) deletes nothing under it.
+        Map<String, String> env = new HashMap<>();
+        env.put("JK_HOME", root.toString());
+        env.put("JK_STATE_DIR", root.toString());
+        JkDirs refused = JkDirs.of(env::get, root.toString());
+        assertThat(SelfNukeCommand.toolLaunchers(refused, SelfNukeCommand.plan(refused, EnumSet.of(Target.STATE))))
+                .isEmpty();
+    }
+
+    /** {@code jk install <name>}'s footprint: the env under state and a launcher in bin. */
+    private static Path installedTool(JkDirs dirs, String name) throws IOException {
+        Path env = Files.createDirectories(dirs.stateDir().resolve("tools/envs").resolve(name));
+        Files.writeString(env.resolve("env.json"), "{\"binName\": \"" + name + "\"}");
+        Path launcher = Files.createDirectories(dirs.binDirectory()).resolve(name);
+        Files.writeString(launcher, "#!/usr/bin/env bash\nexec java -cp /store/gone.jar Main \"$@\"\n");
+        return launcher;
+    }
+
     /** {@code self nuke --all} with the engine-hosted nukes stubbed; {@code apply} false = dry run. */
     private static int runNuke(SelfNukeCommand.Hosted hosted, boolean apply) {
-        Invocation in = Invocation.builder()
-                .flag("all", true)
-                .flag("yes", apply)
-                .flag("dry-run", !apply)
-                .build();
+        return runNuke(hosted, EnumSet.allOf(Target.class), apply);
+    }
+
+    /** {@code self nuke} with exactly {@code targets} named on the command line. */
+    private static int runNuke(SelfNukeCommand.Hosted hosted, Set<Target> targets, boolean apply) {
+        Invocation.Builder b = Invocation.builder().flag("yes", apply).flag("dry-run", !apply);
+        if (targets.equals(EnumSet.allOf(Target.class))) {
+            b.flag("all", true);
+        } else {
+            for (Target t : targets) b.flag(t.name().toLowerCase(Locale.ROOT), true);
+        }
+        Invocation in = b.build();
         GlobalOptions.from(in); // installs assume-yes for Confirm
         try {
             return new SelfNukeCommand().run(in, hosted);
