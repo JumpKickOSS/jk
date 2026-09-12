@@ -115,6 +115,20 @@ class ClassesEvaluatorTest {
     }
 
     @Test
+    void a_misspelt_shape_is_the_rules_error_not_a_violation_per_class(@TempDir Path dir) throws Exception {
+        FactsIndex idx = facts(Sample.class, Sample.Inner.class, Tier.class);
+        Evaluation typo = run(dir, "that = { named = \"*\" }\nshould = { be = \"finall\" }\n", idx);
+        assertThat(typo.outcome()).isEqualTo(Outcome.SCANNER_FAILED);
+        assertThat(typo.note()).contains("be = \"finall\"").contains("final");
+        assertThat(typo.observations()).isEmpty();
+        Evaluation negated = run(dir, "that = { named = \"*\" }\nshould = { be = \"!finall\" }\n", idx);
+        assertThat(negated.outcome()).as("a negated typo is not a pass").isEqualTo(Outcome.SCANNER_FAILED);
+        Evaluation modifier = run(dir, "that = { named = \"*\" }\nshould = { have-modifier = \"sealed\" }\n", idx);
+        assertThat(modifier.outcome()).isEqualTo(Outcome.SCANNER_FAILED);
+        assertThat(modifier.note()).contains("have-modifier = \"sealed\"");
+    }
+
+    @Test
     void the_closed_sets_are_closed_and_an_empty_that_is_blind(@TempDir Path dir) throws Exception {
         FactsIndex idx = facts(Sample.class, Tier.class);
         Evaluation unknown = run(dir, "that = { named = \"Sample\" }\nshould = { colour = \"red\" }\n", idx);

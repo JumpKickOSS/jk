@@ -11,24 +11,25 @@ import cc.jumpkick.guard.facts.FieldRef;
 import cc.jumpkick.guard.facts.MethodFacts;
 import cc.jumpkick.guard.rules.Allow;
 import cc.jumpkick.guard.rules.Rule;
-import cc.jumpkick.util.MinimalToml;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeSet;
+import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
 import org.objectweb.asm.Opcodes;
-import org.tomlj.Toml;
 import org.tomlj.TomlArray;
 import org.tomlj.TomlTable;
 
 /**
  * {@code classes}: the classes {@code that} match must {@code should}. ArchUnit's core, as closed
  * predicate sets over the facts index — no DSL, no eager class-graph import. Both sides are ANDed;
- * any value is negatable with a leading {@code !}. An unknown predicate is {@code scanner-failed}
- * naming the closed set. The population is the classes {@code that} selected: none is {@code
- * blind}, the {@code allowEmptyShould(false)} lesson.
+ * any value is negatable with a leading {@code !}. An unknown predicate, or a shape no predicate
+ * understands, is {@code scanner-failed} naming the closed set — every {@code should} value is
+ * compiled once before the first class is looked at, so a typo is the rule's error and never a
+ * violation per class (nor a pass when negated). The population is the classes {@code that}
+ * selected: none is {@code blind}, the {@code allowEmptyShould(false)} lesson.
  *
  * <p>{@code should} predicates: {@code reside-in}, {@code be}, {@code be-annotated-with},
  * {@code implement}, {@code extend}, {@code have-only-private-constructors},
@@ -59,12 +60,9 @@ final class ClassesEvaluator implements Evaluator {
         if (that.error() != null) return Evaluation.failed("that: " + that.error());
         TomlTable should = t.getTable("should");
         if (should == null) return Evaluation.failed("`should` is required");
-        for (String key : should.keySet()) {
-            if (!SHOULD.contains(key)) {
-                return Evaluation.failed(
-                        "should: unknown predicate `" + key + "`; predicates are " + String.join(", ", SHOULD));
-            }
-        }
+        List<Should> shoulds = new ArrayList<>();
+        String error = compileShould(should, shoulds);
+        if (error != null) return Evaluation.failed("should: " + error);
         FactsIndex facts = ctx.facts();
         Map<Allow, Boolean> allowUsed = new LinkedHashMap<>();
         for (Allow a : rule.allow()) allowUsed.put(a, false);
@@ -74,16 +72,12 @@ final class ClassesEvaluator implements Evaluator {
             if (c.isPackageInfo() || c.hasFlag(Opcodes.ACC_SYNTHETIC) || !that.test(c)) continue;
             selected++;
             List<String[]> failed = new ArrayList<>();
-            for (Map.Entry<String, Object> e : should.toMap().entrySet()) {
-                for (String raw : values(e.getValue())) {
-                    boolean negate = raw.startsWith("!");
-                    String v = negate ? raw.substring(1) : raw;
-                    String detail = holds(e.getKey(), v, c, facts, types);
-                    boolean ok = detail == null;
-                    if (ok == negate) {
-                        String what = e.getKey() + " = \"" + raw + "\"";
-                        failed.add(new String[] {what, detail != null && !negate ? what + " (" + detail + ")" : what});
-                    }
+            for (Should s : shoulds) {
+                String detail = holds(s, c, facts, types);
+                boolean ok = detail == null;
+                if (ok == s.negate()) {
+                    String what = s.key() + " = \"" + s.raw() + "\"";
+                    failed.add(new String[] {what, detail != null && !s.negate() ? what + " (" + detail + ")" : what});
                 }
             }
             if (failed.isEmpty()) continue;
@@ -117,16 +111,51 @@ final class ClassesEvaluator implements Evaluator {
         return Evaluation.of(population, sites);
     }
 
+    /**
+     * One {@code should} value as written: the predicate key, the raw value with its {@code !}, and
+     * for the shape predicates ({@code be}, {@code have-modifier}) the shape resolved once.
+     */
+    private record Should(
+            String key,
+            String raw,
+            boolean negate,
+            String value,
+            @Nullable Predicate<ClassFacts> shape) {}
+
+    /** Every {@code should} value compiled, or the text of the first problem. */
+    private static @Nullable String compileShould(TomlTable should, List<Should> into) {
+        for (Map.Entry<String, Object> e : should.toMap().entrySet()) {
+            String key = e.getKey();
+            if (!SHOULD.contains(key)) {
+                return "unknown predicate `" + key + "`; predicates are " + String.join(", ", SHOULD);
+            }
+            for (String raw : values(e.getValue())) {
+                boolean negate = raw.startsWith("!");
+                String v = negate ? raw.substring(1) : raw;
+                Predicate<ClassFacts> shape = null;
+                if (key.equals("be") || key.equals("have-modifier")) {
+                    shape = ClassPredicates.shape(v);
+                    if (shape == null) {
+                        return key + " = \"" + raw + "\" is not understood; shapes are "
+                                + String.join(", ", ClassPredicates.SHAPES);
+                    }
+                }
+                into.add(new Should(key, raw, negate, v, shape));
+            }
+        }
+        return null;
+    }
+
     /** {@code null} when the predicate holds for {@code c}; otherwise what was found instead. */
-    private static @Nullable String holds(String key, String v, ClassFacts c, FactsIndex facts, TypeHierarchy types) {
-        switch (key) {
+    private static @Nullable String holds(Should should, ClassFacts c, FactsIndex facts, TypeHierarchy types) {
+        String v = should.value();
+        switch (should.key()) {
             case "reside-in" -> {
                 return ClassPredicates.packageMatches(v, c.packageName()) ? null : "in " + c.packageName();
             }
             case "be", "have-modifier" -> {
-                ClassPredicates.Compiled p = ClassPredicates.compile(single(v), types);
-                if (p.error() != null) return p.error();
-                return p.test(c) ? null : "is not " + v;
+                Predicate<ClassFacts> shape = should.shape();
+                return shape == null || shape.test(c) ? null : "is not " + v;
             }
             case "be-annotated-with" -> {
                 return c.hasAnnotation(v) ? null : "carries no @" + v.substring(v.lastIndexOf('.') + 1);
@@ -173,7 +202,7 @@ final class ClassesEvaluator implements Evaluator {
                 return outsiders.isEmpty() ? null : "accessed by " + String.join(", ", outsiders);
             }
             default -> {
-                return "unknown predicate " + key;
+                return "unknown predicate " + should.key();
             }
         }
     }
@@ -193,10 +222,6 @@ final class ClassesEvaluator implements Evaluator {
         return binary.equals(v)
                 || Rule.globMatches(v, binary)
                 || Descriptors.binaryName(Descriptors.outermost(internalName)).equals(v);
-    }
-
-    private static TomlTable single(String value) {
-        return Toml.parse("be = " + MinimalToml.quote(value));
     }
 
     /** Values as negatable names; a TOML boolean is the predicate itself ({@code true}) or its negation. */

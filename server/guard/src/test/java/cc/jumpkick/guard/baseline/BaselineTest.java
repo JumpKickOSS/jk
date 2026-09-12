@@ -120,6 +120,24 @@ class BaselineTest {
     }
 
     @Test
+    void observations_sharing_a_fingerprint_are_one_site_and_one_entry() {
+        RuleBaseline before = RuleBaseline.of(Map.of("classes", 10L), List.of(new Entry.Site("a", "ra")));
+        List<Observation> observed = List.of(
+                Observation.site("a", "A.java", 1, "first"),
+                Observation.site("a", "A.java", 9, "lambda folded onto its method"),
+                Observation.site("b", null, 0, ""),
+                Observation.site("b", null, 0, ""));
+        Reconciliation r = Reconciliation.of("x", before, observed, Map.of("classes", 10L));
+        assertThat(r.baselined()).extracting(Observation::key).containsExactly("a");
+        assertThat(r.fresh()).extracting(Observation::key).containsExactly("b");
+        assertThat(r.tightened().entries()).extracting(Entry::key).containsExactly("a");
+        assertThat(r.tighteningNeeded())
+                .as("the same entry seen twice is not a change")
+                .isFalse();
+        assertThat(r.frozen("because").entries()).extracting(Entry::key).containsExactly("a", "b");
+    }
+
+    @Test
     void metrics_tighten_on_shrink_and_are_red_on_growth() {
         RuleBaseline before = RuleBaseline.of(Map.of(), List.of(new Entry.Metric("F.java", 1000, "r")));
         Reconciliation shrink = Reconciliation.of(

@@ -2,7 +2,6 @@
 package cc.jumpkick.guard.baseline;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -14,7 +13,9 @@ import org.jspecify.annotations.Nullable;
  * One rule's observations against its baseline.
  *
  * <p>Sites: an observed fingerprint with an entry is {@code baselined}; without one it is {@code
- * fresh} (red); an entry nobody observed is {@code stale} and is dropped on tightening. Metrics: a
+ * fresh} (red); an entry nobody observed is {@code stale} and is dropped on tightening. Several
+ * observations of one fingerprint (a lambda folded onto its method, one {@code depend} site per ban
+ * pattern) are one site and one entry, never a duplicate block. Metrics: a
  * unit that has not moved past its entry in the bad direction is baselined, and the entry follows
  * a move in the good direction; past it is fresh; a unit with no entry and no bound breach is
  * nothing. Which direction is bad, and how far a unit may drift either way and still hold, is the
@@ -62,13 +63,14 @@ public record Reconciliation(
         Map<String, Entry> byKey = new LinkedHashMap<>();
         List<Entry> slice = before.entries(lane);
         for (Entry e : slice) byKey.put(e.key(), e);
+        Map<String, Observation> distinct = new LinkedHashMap<>();
+        for (Observation o : observed) distinct.putIfAbsent(o.key(), o);
         List<Observation> fresh = new ArrayList<>();
         List<Observation> baselined = new ArrayList<>();
         List<Entry> kept = new ArrayList<>();
-        Set<String> seen = new HashSet<>();
-        for (Observation o : observed) {
+        Set<String> seen = distinct.keySet();
+        for (Observation o : distinct.values()) {
             Entry e = byKey.get(o.key());
-            seen.add(o.key());
             if (e == null) {
                 fresh.add(o);
             } else if (o.isMetric() && e instanceof Entry.Metric m) {

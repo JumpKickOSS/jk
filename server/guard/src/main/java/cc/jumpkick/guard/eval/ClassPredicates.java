@@ -44,6 +44,20 @@ final class ClassPredicates {
             "name-matching",
             "simple-name-ending-with");
 
+    /** The shapes {@code are} / {@code be} / {@code have-modifier} understand. */
+    static final List<String> SHAPES = List.of(
+            "interface",
+            "abstract",
+            "enum",
+            "record",
+            "annotation",
+            "public",
+            "final",
+            "nested",
+            "top-level",
+            "static",
+            "tests");
+
     private ClassPredicates() {}
 
     /** A compiled predicate, or the text of the first problem. */
@@ -111,7 +125,8 @@ final class ClassPredicates {
         return name.substring(Math.max(name.lastIndexOf('.'), name.lastIndexOf('$')) + 1);
     }
 
-    private static @Nullable Predicate<ClassFacts> shape(String v) {
+    /** The predicate for one shape name, or {@code null} for a name outside {@link #SHAPES}. */
+    static @Nullable Predicate<ClassFacts> shape(String v) {
         return switch (v) {
             case "interface" -> c -> c.hasFlag(Opcodes.ACC_INTERFACE) && !c.hasFlag(Opcodes.ACC_ANNOTATION);
             case "abstract" -> c -> c.hasFlag(Opcodes.ACC_ABSTRACT) && !c.hasFlag(Opcodes.ACC_INTERFACE);

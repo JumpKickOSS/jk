@@ -98,8 +98,15 @@ final class ParityRules {
     void manifestDepParity(Model model, Text text, Violations v) {
         String settings = textOrNull(text, SETTINGS);
         if (settings == null) {
-            v.population(0);
-            return; // the Gradle build is gone; nothing to reconcile
+            // No Gradle build to compare against: every module manifest is examined for a script
+            // twin and none has one, so there is nothing to reconcile and no site. The population
+            // is the manifests looked at — zero would read as a rule that examined nothing.
+            long manifests = 0;
+            for (String module : model.modules()) {
+                if (!module.isEmpty() && exists(text, module + "/jk.toml")) manifests++;
+            }
+            v.population(manifests);
+            return;
         }
         Map<String, String> dirOf = new LinkedHashMap<>();
         Matcher pd = PROJECT_DIR.matcher(settings);
