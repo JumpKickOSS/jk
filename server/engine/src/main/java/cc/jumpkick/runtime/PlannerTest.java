@@ -142,7 +142,14 @@ public final class PlannerTest {
                     compileKotlinTests(ctx, in, cas, actionCache, src, baseCp, ktTestOut, testClasses, mixedTest);
                     compileJavaTests(
                             ctx, in, cas, src, baseCp, testClasses, ktTestOut, gvTestOut, mixedTest, mixedTestGv);
-                    mergeLanguageOutputs(src, testClasses, ktTestOut, gvTestOut, mixedTest, mixedTestGv);
+                    mergeLanguageOutputs(
+                            src,
+                            testClasses,
+                            ktTestOut,
+                            gvTestOut,
+                            ctx.require(LAYOUT).buildDir(),
+                            mixedTest,
+                            mixedTestGv);
                     copySuiteResources(ctx, in, compact, suiteNames, testClasses);
                     Files.createDirectories(testClasses);
                     Files.writeString(testClasses.resolve(SUITE_MARKER), selectionKey);
@@ -393,15 +400,21 @@ public final class PlannerTest {
      * Java test output already went there directly.
      */
     private static void mergeLanguageOutputs(
-            TestSources src, Path testClasses, Path ktTestOut, Path gvTestOut, boolean mixedTest, boolean mixedTestGv)
+            TestSources src,
+            Path testClasses,
+            Path ktTestOut,
+            Path gvTestOut,
+            Path buildDir,
+            boolean mixedTest,
+            boolean mixedTestGv)
             throws IOException {
         if (mixedTest && !src.ktTest().isEmpty()) {
             Files.createDirectories(testClasses);
-            copyResources(ktTestOut, testClasses);
+            PlannerSupport.mergeLanguageOutput(ktTestOut, testClasses, buildDir, "kotlin-test");
         }
         if (mixedTestGv && !src.gvTest().isEmpty()) {
             Files.createDirectories(testClasses);
-            copyResources(gvTestOut, testClasses);
+            PlannerSupport.mergeLanguageOutput(gvTestOut, testClasses, buildDir, "groovy-test");
         }
     }
 

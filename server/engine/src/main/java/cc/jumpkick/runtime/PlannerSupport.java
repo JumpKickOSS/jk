@@ -47,6 +47,7 @@ import cc.jumpkick.runtime.base.GroovyPluginSetup;
 import cc.jumpkick.runtime.base.GroovyToolResolver;
 import cc.jumpkick.runtime.base.KotlinPluginSetup;
 import cc.jumpkick.runtime.base.Perf;
+import cc.jumpkick.runtime.base.ResourceMirror;
 import cc.jumpkick.runtime.base.TestEnv;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ClasspathFingerprint;
@@ -332,9 +333,23 @@ public final class PlannerSupport {
      * <p>{@link PathUtil#copyTree} skips byte-identical files so mtimes stay put: {@code
      * mainStampClasspath} feeds those dirs to {@code FreshnessStamp}, which compares by mtime.
      */
-    /** Merge one compiled-output tree ({@code kotlin}, {@code groovy}) into the main classes tree. */
     static void copyResources(Path resourceDir, Path classesDir) throws IOException {
         PathUtil.copyTree(resourceDir, classesDir);
+    }
+
+    /**
+     * Mirror one compiled-output tree ({@code kotlin}, {@code groovy}) into a shared classes tree.
+     *
+     * <p>A ledger under {@code incremental/} records what the previous merge copied, so a class the
+     * language compiler no longer produces — a renamed or deleted source; kotlinc's incremental
+     * compiler prunes its own output dir — leaves the classes tree before the copy. A plain copy is
+     * additive and would keep it, and the jar would ship the old class beside the new one. The
+     * ledger is per language, so a Java class beside the merged ones is never the mirror's to
+     * remove. Byte-identical files are left alone so mtimes stay put (see {@link #copyResources}).
+     */
+    static void mergeLanguageOutput(Path langOut, Path classes, Path buildDir, String ledgerName) throws IOException {
+        Path ledger = buildDir.resolve("incremental").resolve("merged-" + ledgerName + ".txt");
+        ResourceMirror.sync(List.of(langOut), classes, ledger);
     }
 
     /**

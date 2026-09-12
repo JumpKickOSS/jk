@@ -8,7 +8,6 @@ import static cc.jumpkick.runtime.PlannerNative.kotlinSources;
 import static cc.jumpkick.runtime.PlannerPlugin.applicationSbom;
 import static cc.jumpkick.runtime.PlannerPlugin.packagePlugin;
 import static cc.jumpkick.runtime.PlannerSupport.contributionsToken;
-import static cc.jumpkick.runtime.PlannerSupport.copyResources;
 import static cc.jumpkick.runtime.PlannerSupport.existingContributedDirs;
 import static cc.jumpkick.runtime.PlannerSupport.groovyCompileJar;
 import static cc.jumpkick.runtime.PlannerSupport.mainStampClasspath;
@@ -386,11 +385,18 @@ public final class PlannerPackage {
                     }
                     ctx.label("assemble classes");
                     Files.createDirectories(classes);
-                    // Java output already lives in classes (java/main/); merge the other
+                    // Java output already lives in classes (java/main/); mirror the other
                     // language dirs in. The Groovy merge runs after javac, so real Groovy
                     // classes overwrite any stub-compiled duplicates.
-                    if (mixed) copyResources(ctx.require(LAYOUT).kotlinClassesDir(), classes);
-                    if (mixedGroovy) copyResources(ctx.require(LAYOUT).groovyClassesDir(), classes);
+                    Path buildDir = ctx.require(LAYOUT).buildDir();
+                    if (mixed) {
+                        PlannerSupport.mergeLanguageOutput(
+                                ctx.require(LAYOUT).kotlinClassesDir(), classes, buildDir, "kotlin");
+                    }
+                    if (mixedGroovy) {
+                        PlannerSupport.mergeLanguageOutput(
+                                ctx.require(LAYOUT).groovyClassesDir(), classes, buildDir, "groovy");
+                    }
                     ctx.progress(1);
                 })
                 .build();

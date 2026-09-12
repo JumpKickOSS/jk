@@ -11,9 +11,9 @@ import static cc.jumpkick.runtime.PlannerLang.compileKotlinSources;
 import static cc.jumpkick.runtime.PlannerNative.groovySources;
 import static cc.jumpkick.runtime.PlannerNative.javaSources;
 import static cc.jumpkick.runtime.PlannerNative.kotlinSources;
-import static cc.jumpkick.runtime.PlannerSupport.copyResources;
 import static cc.jumpkick.runtime.PlannerSupport.groovyCompileJar;
 import static cc.jumpkick.runtime.PlannerSupport.mainStampClasspath;
+import static cc.jumpkick.runtime.PlannerSupport.mergeLanguageOutput;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.CompileRequest;
@@ -375,6 +375,7 @@ public final class PlannerCompile {
         }
         if (sources.isEmpty()) {
             ctx.label("no Java sources");
+            dropOutputOfRemovedSources(javaOut);
             Files.createDirectories(javaOut);
             ctx.put(BUILD_OUTCOME, "no-sources");
             return;
@@ -460,6 +461,19 @@ public final class PlannerCompile {
         ctx.put(COMPILED_MAIN_SOURCES, r.compiledSources());
         advanceAbiIndex(ctx, in, r, abiFile, preAbi);
         ctx.progress(sources.size());
+    }
+
+    /**
+     * The empty-source-set arm's cleanup: a stamp that recorded sources means {@code javaOut} still
+     * holds their classes, and with nothing left to compile nothing would ever replace them — they
+     * would be packaged as if current. The tree starts clean and the stamp goes with it, so a
+     * source that reappears compiles instead of stamp-skipping. Sibling languages that merge into
+     * this tree re-merge in assemble-classes, which runs after every compile.
+     */
+    static void dropOutputOfRemovedSources(Path javaOut) throws IOException {
+        if (!FreshnessStamp.hasRemovedSources(javaOut, BuildStamps.JAVA, List.of())) return;
+        PathUtil.deleteRecursively(javaOut);
+        Files.createDirectories(javaOut);
     }
 
     /**
@@ -713,7 +727,9 @@ public final class PlannerCompile {
                     }
                     // Kotlin-only: publish straight into the classes dir. Mixed:
                     // leave it in ktOut for `assemble-classes` to merge after javac.
-                    if (!mixedWithJava) copyResources(ktOut, classes);
+                    if (!mixedWithJava) {
+                        mergeLanguageOutput(ktOut, classes, ctx.require(LAYOUT).buildDir(), "kotlin");
+                    }
                     ctx.put(KOTLIN_OUTCOME, "compiled");
                     ctx.progress(ktSources.size());
                 })
@@ -840,7 +856,9 @@ public final class PlannerCompile {
                     }
                     // Groovy-only: publish straight into the classes dir. Mixed:
                     // leave it in gvOut for `assemble-classes` to merge after javac.
-                    if (!mixedGroovy) copyResources(gvOut, classes);
+                    if (!mixedGroovy) {
+                        mergeLanguageOutput(gvOut, classes, ctx.require(LAYOUT).buildDir(), "groovy");
+                    }
                     ctx.put(GROOVY_OUTCOME, "compiled");
                     ctx.progress(gvSources.size());
                 })
