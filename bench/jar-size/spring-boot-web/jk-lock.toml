@@ -559,7 +559,7 @@ deps = [
 [[plugin]]
 coordinate = "cc.jumpkick:jk-spring-boot"
 version    = "0.13.2"
-checksum   = "sha256:5c7a8e518e93176b7836719a0d35fcc9599dad3076dfe303455f260fb0e49f72"
+checksum   = "sha256:76be1337d9ed830d6e24091a7ffd26ad636b927f7201b2a61d8de2d489ff153f"
 
 [[module]]
 path    = "."
