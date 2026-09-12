@@ -36,6 +36,9 @@ public final class Log {
     /** Lazily bound so a caller that only parses a level name never reaches the logging backend. */
     private static final class Backend {
         static final System.Logger LOGGER = System.getLogger("jk");
+
+        /** The backend logger the level is set on; held so the level is not garbage-collected. */
+        static @Nullable Logger JK;
     }
 
     /** True when a {@link #debug} line would be written; guards detail that is costly to build. */
@@ -106,9 +109,11 @@ public final class Log {
     }
 
     /**
-     * Bind the JDK logging backend to {@code out}: every record on this process's root logger at
-     * {@code level} or above is written as one {@code HH:mm:ss.SSS LEVEL message} line (a cause
-     * follows as its stack), and the whole text passes through {@code redact} first. Replaces
+     * Bind the JDK logging backend to {@code out}: every record at {@code level} or above on jk's
+     * own logger, and every record at INFO or above from any other logger in the process, is
+     * written as one {@code HH:mm:ss.SSS LEVEL message} line (a cause follows as its stack), and
+     * the whole text passes through {@code redact} first. The level is jk's alone on purpose: at
+     * DEBUG the JDK's HTTP server and TLS internals would otherwise drown jk's lines. Replaces
      * whatever handlers the backend had; calling it again re-binds — the engine does so once its
      * log sink has taken over {@code System.err}.
      */
@@ -132,7 +137,10 @@ public final class Log {
             throw new IllegalStateException(impossible);
         }
         root.addHandler(handler);
-        root.setLevel(julLevel(level));
+        root.setLevel(Level.INFO);
+        Logger jk = Logger.getLogger(Backend.LOGGER.getName());
+        jk.setLevel(julLevel(level));
+        Backend.JK = jk;
     }
 
     private static void log(

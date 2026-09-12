@@ -7,6 +7,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.util.function.UnaryOperator;
+import java.util.logging.Logger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -82,5 +83,17 @@ class LogTest {
         assertThat(Log.level(" error ")).contains(System.Logger.Level.ERROR);
         assertThat(Log.level("verbose")).isEmpty();
         assertThat(Log.level(null)).isEmpty();
+    }
+
+    @Test
+    void the_level_is_jk_s_alone_and_other_loggers_stay_at_info() {
+        install(System.Logger.Level.DEBUG, UnaryOperator.identity());
+        Logger.getLogger("jdk.httpserver.probe").fine("platform chatter");
+        Logger.getLogger("jdk.httpserver.probe").info("platform notice");
+        Log.debug("jk detail");
+        String out = bytes.toString(StandardCharsets.UTF_8);
+        assertThat(out).doesNotContain("platform chatter");
+        assertThat(out).contains("platform notice");
+        assertThat(out).contains("jk detail");
     }
 }
