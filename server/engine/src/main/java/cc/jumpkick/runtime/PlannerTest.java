@@ -515,9 +515,11 @@ public final class PlannerTest {
                     // count is decided once the gate is held: a suite parked at the gate is
                     // not running, and the ones running when it starts are what it shares with.
                     boolean gated = !in.session().parallelTests();
-                    if (gated) awaitTestGate();
                     // The agent and the report tool come first: a coverage run that cannot fetch
                     // JaCoCo fails before any suite starts, not after the suite ran uninstrumented.
+                    // And before the gate: the fetch can take seconds or fail outright, and the
+                    // gate is process-wide — held here, every other module's suite waits on a
+                    // download, and a failed fetch would leave the gate held for good.
                     CoverageTools.Jacoco jacoco = null;
                     Path coverageExec = null;
                     if (coverage) {
@@ -526,6 +528,7 @@ public final class PlannerTest {
                         Files.deleteIfExists(coverageExec);
                         Files.createDirectories(coverageExec.getParent());
                     }
+                    if (gated) awaitTestGate();
                     TestSummary result;
                     try {
                         // Module pin ([test] workers / [build] test-workers) wins over CLI for
