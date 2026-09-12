@@ -2,6 +2,7 @@
 package cc.jumpkick.task;
 
 import cc.jumpkick.host.BuildStamps;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -22,6 +23,11 @@ import java.util.TreeSet;
  * {@code stat} per input, fall through to CAS when anything looks stale. Mtime equality is
  * treated as stale (ms truncation); spoofed mtimes are caught by the action-cache layer.
  *
+ * <p>Files are not the only compile inputs. Compiler options, compiler plugins and the JDK decide
+ * the output too, and none of them touches a source or a classpath entry's mtime — so the stamp
+ * also records a digest of those option-bearing inputs and a stamp whose digest differs is stale.
+ * The producer of each stamp owns the digest recipe; {@link #optionsDigest} folds the parts.
+ *
  * <p>The stamp names and the predicate that recognises them live on the host leaf instead, where
  * the forked plugin workers that must keep stamps out of their archives can reach them.
  */
@@ -29,9 +35,17 @@ public final class FreshnessStamp {
 
     private FreshnessStamp() {}
 
-    /** True when the stamp matches the current source/classpath sets and no input is newer. */
+    /**
+     * True when the stamp matches the current source/classpath sets and option digest and no
+     * input is newer.
+     */
     public static boolean isFresh(
-            Path outputDir, String stampName, List<Path> sources, List<Path> classpath, int release)
+            Path outputDir,
+            String stampName,
+            List<Path> sources,
+            List<Path> classpath,
+            int release,
+            String optionsDigest)
             throws IOException {
         Optional<Stamp> read = read(outputDir, stampName);
         if (read.isEmpty()) return false;
@@ -39,6 +53,8 @@ public final class FreshnessStamp {
 
         // A stamp written before release tracking was added has release=0; treat as stale.
         if (stamp.release() != release) return false;
+        // Options, plugins, the JDK: a change there moves no file mtime, only this digest.
+        if (!stamp.optionsDigest().equals(optionsDigest)) return false;
 
         Set<Path> currentSrc = normalise(sources);
         Set<Path> recordedSrc = normalise(stamp.sources());
@@ -109,6 +125,15 @@ public final class FreshnessStamp {
         }
     }
 
+    /**
+     * One digest over the option-bearing inputs of a compile, in the producer's order. Each part
+     * is one fact ({@code arg:-parameters}, {@code jdk:<sha>}); the join is newline-separated so
+     * two parts cannot run together into a third.
+     */
+    public static String optionsDigest(List<String> parts) {
+        return Hashing.sha256Hex(String.join("\n", parts));
+    }
+
     /** Record inputs that produced {@code outputDir} so the next build can short-circuit. */
     public static void write(
             Path outputDir,
@@ -117,7 +142,8 @@ public final class FreshnessStamp {
             String actionKey,
             List<Path> sources,
             List<Path> classpath,
-            int release)
+            int release,
+            String optionsDigest)
             throws IOException {
         Files.createDirectories(outputDir);
         // Same-clock stamping: isFresh compares stampMillis against input mtimes, which come
@@ -134,6 +160,7 @@ public final class FreshnessStamp {
         sb.append("KEY ").append(actionKey).append('\n');
         sb.append("STAMP_MILLIS ").append(stampMillis).append('\n');
         sb.append("RELEASE ").append(release).append('\n');
+        sb.append("DIGEST ").append(optionsDigest).append('\n');
         for (Path src : sortedAbs(sources)) {
             sb.append("SOURCE ").append(src).append('\n');
         }
@@ -151,6 +178,8 @@ public final class FreshnessStamp {
         String actionKey = null;
         long stampMillis = 0;
         int release = 0;
+        // A stamp without a DIGEST line records no options; it matches only a producer with none.
+        String optionsDigest = "";
         List<Path> sources = new ArrayList<>();
         List<Path> classpath = new ArrayList<>();
         for (String line : content.split("\n")) {
@@ -164,6 +193,8 @@ public final class FreshnessStamp {
                         Long.parseLong(line.substring("STAMP_MILLIS ".length()).trim());
             } else if (line.startsWith("RELEASE ")) {
                 release = Integer.parseInt(line.substring("RELEASE ".length()).trim());
+            } else if (line.startsWith("DIGEST ")) {
+                optionsDigest = line.substring("DIGEST ".length()).trim();
             } else if (line.startsWith("SOURCE ")) {
                 sources.add(Path.of(line.substring("SOURCE ".length()).trim()));
             } else if (line.startsWith("CP ")) {
@@ -171,14 +202,21 @@ public final class FreshnessStamp {
             }
         }
         if (taskId == null || actionKey == null) return Optional.empty();
-        return Optional.of(new Stamp(taskId, actionKey, stampMillis, release, sources, classpath));
+        return Optional.of(new Stamp(taskId, actionKey, stampMillis, release, optionsDigest, sources, classpath));
     }
 
     public record Stamp(
-            String taskId, String actionKey, long stampMillis, int release, List<Path> sources, List<Path> classpath) {
+            String taskId,
+            String actionKey,
+            long stampMillis,
+            int release,
+            String optionsDigest,
+            List<Path> sources,
+            List<Path> classpath) {
         public Stamp {
             Objects.requireNonNull(taskId, "taskId");
             Objects.requireNonNull(actionKey, "actionKey");
+            Objects.requireNonNull(optionsDigest, "optionsDigest");
             sources = List.copyOf(sources);
             classpath = List.copyOf(classpath);
         }

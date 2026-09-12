@@ -52,18 +52,7 @@ public final class ActionKey {
         StringBuilder sb = new StringBuilder();
         sb.append("task:").append(taskId).append('\n');
         sb.append("jk:").append(jkVersion).append('\n');
-        sb.append("release:").append(request.release()).append('\n');
-        sb.append("encoding:").append(SOURCE_ENCODING).append('\n');
-        // The project JDK is a compile INPUT, not a consequence of --release: ForkedJavac launches
-        // javac out of this very home, so it is where the platform classes (and the compiler) come
-        // from. Switching jdk = 17 to 21 leaves --release alone, so without this the key never
-        // moves and the build restores bytecode compiled by the old javac against the old
-        // platform. Same reasoning, same rendering, as forKotlinc's `jdk:`.
-        sb.append("jdk:").append(jdkToken(request.javaHome())).append('\n');
-        sb.append("options:");
-        List<String> opts = new ArrayList<>(request.extraOptions());
-        opts.sort(Comparator.naturalOrder());
-        sb.append(String.join(",", opts)).append('\n');
+        appendJavacOptions(sb, request);
 
         // Sources: path + content hash (FileHashMemo — at most one content read per path/thread).
         appendSources(sb, request.sources());
@@ -85,6 +74,35 @@ public final class ActionKey {
             appendCpToken(sb, "pp:", entry);
         }
 
+        return Hashing.sha256Hex(sb.toString());
+    }
+
+    /**
+     * Digest of a javac request's option-bearing inputs — everything {@link #forJavac} hashes
+     * apart from the sources and the class/processor paths: {@code --release}, the encoding, the
+     * JDK, the options (which carry the {@code [javac]} plugins) and the Scala toolchain. The
+     * freshness stamp records it so an option or toolchain change is stale even though no file
+     * moved; the same request the build keys with feeds it, so the forecast's answer matches.
+     */
+    public static String javacOptionsDigest(CompileRequest request) throws IOException {
+        StringBuilder sb = new StringBuilder();
+        appendJavacOptions(sb, request);
+        return Hashing.sha256Hex(sb.toString());
+    }
+
+    private static void appendJavacOptions(StringBuilder sb, CompileRequest request) throws IOException {
+        sb.append("release:").append(request.release()).append('\n');
+        sb.append("encoding:").append(SOURCE_ENCODING).append('\n');
+        // The project JDK is a compile INPUT, not a consequence of --release: ForkedJavac launches
+        // javac out of this very home, so it is where the platform classes (and the compiler) come
+        // from. Switching jdk = 17 to 21 leaves --release alone, so without this the key never
+        // moves and the build restores bytecode compiled by the old javac against the old
+        // platform. Same reasoning, same rendering, as forKotlinc's `jdk:`.
+        sb.append("jdk:").append(jdkToken(request.javaHome())).append('\n');
+        sb.append("options:");
+        List<String> opts = new ArrayList<>(request.extraOptions());
+        opts.sort(Comparator.naturalOrder());
+        sb.append(String.join(",", opts)).append('\n');
         if (request.mixedScala()) {
             sb.append("scala:").append(request.scalaVersion()).append('\n');
             List<Path> scp = new ArrayList<>(request.compilerClasspath());
@@ -93,8 +111,6 @@ public final class ActionKey {
                 appendCpToken(sb, "sc:", entry);
             }
         }
-
-        return Hashing.sha256Hex(sb.toString());
     }
 
     /**

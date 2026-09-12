@@ -258,7 +258,8 @@ public final class PlannerPackage {
                             actionKey,
                             sources,
                             stampInputs,
-                            ctx.require(RELEASE));
+                            ctx.require(RELEASE),
+                            ctx.require(JAVA_STAMP_DIGEST));
                     ctx.progress(1);
                 })
                 .build();
@@ -302,7 +303,8 @@ public final class PlannerPackage {
                             "",
                             freshInputs,
                             classpath,
-                            ctx.require(RELEASE));
+                            ctx.require(RELEASE),
+                            ctx.require(KOTLIN_STAMP_DIGEST));
                     ctx.progress(1);
                 })
                 .build();
@@ -337,7 +339,8 @@ public final class PlannerPackage {
                             "",
                             freshInputs,
                             classpath,
-                            ctx.require(RELEASE));
+                            ctx.require(RELEASE),
+                            ctx.require(GROOVY_STAMP_DIGEST));
                     ctx.progress(1);
                 })
                 .build();

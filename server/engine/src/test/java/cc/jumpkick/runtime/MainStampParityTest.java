@@ -3,9 +3,12 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.model.JavacConfig;
+import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.FreshnessStamp;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -61,12 +64,12 @@ class MainStampParityTest {
 
         List<Path> written =
                 PlannerSupport.mainStampClasspath(List.of(dep), List.of(processor), true, false, layout, null);
-        FreshnessStamp.write(out, BuildStamps.JAVA, "compile-main", "", sources, written, 21);
+        FreshnessStamp.write(out, BuildStamps.JAVA, "compile-main", "", sources, written, 21, "");
 
         // The forecast/check recompute through the same recipe → fresh.
         List<Path> recomputed =
                 PlannerSupport.mainStampClasspath(List.of(dep), List.of(processor), true, false, layout, null);
-        assertThat(FreshnessStamp.isFresh(out, BuildStamps.JAVA, sources, recomputed, 21))
+        assertThat(FreshnessStamp.isFresh(out, BuildStamps.JAVA, sources, recomputed, 21, ""))
                 .isTrue();
 
         // The pre-fix forecast recipe (base classpath + processors only, no kotlin classes dir)
@@ -74,7 +77,7 @@ class MainStampParityTest {
         // recipe closes.
         List<Path> oldForecast = new ArrayList<>(List.of(dep));
         oldForecast.add(processor);
-        assertThat(FreshnessStamp.isFresh(out, BuildStamps.JAVA, sources, oldForecast, 21))
+        assertThat(FreshnessStamp.isFresh(out, BuildStamps.JAVA, sources, oldForecast, 21, ""))
                 .isFalse();
     }
 
@@ -101,14 +104,16 @@ class MainStampParityTest {
                 "",
                 sources,
                 PlannerSupport.mainStampClasspath(List.of(dep), List.of(processor), false, false, layout, null),
-                21);
+                21,
+                "");
 
         assertThat(FreshnessStamp.isFresh(
                         out,
                         BuildStamps.JAVA,
                         sources,
                         PlannerSupport.mainStampClasspath(List.of(dep), List.of(processor), false, false, layout, null),
-                        21))
+                        21,
+                        ""))
                 .isTrue();
 
         // A processor bump must invalidate — it is not on the compile classpath.
@@ -118,8 +123,62 @@ class MainStampParityTest {
                         BuildStamps.JAVA,
                         sources,
                         PlannerSupport.mainStampClasspath(List.of(dep), List.of(processor), false, false, layout, null),
-                        21))
+                        21,
+                        ""))
                 .isFalse();
+    }
+
+    /**
+     * The build and the forecast derive the stamp's option digest from the same compile-main
+     * request, so a {@code [javac] args} edit with untouched sources reads stale on both sides,
+     * and an unchanged manifest reads fresh on both.
+     */
+    @Test
+    void javac_args_bust_the_stamp_through_the_shared_request(@TempDir Path dir) throws Exception {
+        BuildLayout layout = layout(dir);
+        Path src = dir.resolve("src/main/java/A.java");
+        Files.createDirectories(src.getParent());
+        Files.writeString(src, "public class A {}");
+        aged(src);
+        List<Path> sources = List.of(src);
+        Path out = layout.classesDir();
+        Path javaHome = Path.of(System.getProperty("java.home"));
+        List<Path> inputs = PlannerSupport.mainStampClasspath(List.of(), List.of(), false, false, layout, null);
+
+        CompileRequest lenient =
+                PlannerCompile.mainCompileRequest(mainCompile(sources, layout, out, List.of(), javaHome));
+        FreshnessStamp.write(
+                out, BuildStamps.JAVA, "compile-main", "", sources, inputs, 21, ActionKey.javacOptionsDigest(lenient));
+
+        CompileRequest same = PlannerCompile.mainCompileRequest(mainCompile(sources, layout, out, List.of(), javaHome));
+        assertThat(FreshnessStamp.isFresh(
+                        out, BuildStamps.JAVA, sources, inputs, 21, ActionKey.javacOptionsDigest(same)))
+                .isTrue();
+
+        CompileRequest strict = PlannerCompile.mainCompileRequest(
+                mainCompile(sources, layout, out, List.of("-Xlint:all", "-Werror"), javaHome));
+        assertThat(FreshnessStamp.isFresh(
+                        out, BuildStamps.JAVA, sources, inputs, 21, ActionKey.javacOptionsDigest(strict)))
+                .as("changed [javac] args with untouched sources recompile")
+                .isFalse();
+    }
+
+    private static PlannerCompile.MainCompile mainCompile(
+            List<Path> sources, BuildLayout layout, Path out, List<String> javacArgs, Path javaHome) {
+        return new PlannerCompile.MainCompile(
+                sources,
+                List.of(),
+                List.of(),
+                layout,
+                out,
+                21,
+                javacArgs,
+                JavacConfig.EMPTY,
+                javaHome,
+                false,
+                false,
+                null,
+                null);
     }
 
     @Test

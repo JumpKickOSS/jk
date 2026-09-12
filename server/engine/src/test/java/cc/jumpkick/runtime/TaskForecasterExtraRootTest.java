@@ -78,7 +78,7 @@ class TaskForecasterExtraRootTest {
         // A stored build stamped every source the compile actually read — both roots.
         var layout = BuildLayout.of(mod, JkBuildParser.parse(mod.resolve("jk.toml")));
         FreshnessStamp.write(
-                layout.classesDir(), BuildStamps.GROOVY, "compile-groovy", "", List.of(foo, bar), List.of(), 21);
+                layout.classesDir(), BuildStamps.GROOVY, "compile-groovy", "", List.of(foo, bar), List.of(), 21, "");
         TaskForecast.Task warm = groovyStep(TaskForecaster.of(graph, cas, actionCache, cache));
         assertThat(warm.cached()).isTrue();
 

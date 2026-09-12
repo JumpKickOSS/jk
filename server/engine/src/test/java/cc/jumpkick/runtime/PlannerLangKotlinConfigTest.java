@@ -99,4 +99,69 @@ class PlannerLangKotlinConfigTest {
         assertThat(elsewhere.plugins()).isEmpty();
         assertThat(elsewhere.args()).doesNotContain("-Xopener-flag");
     }
+
+    /**
+     * The stamp digest moves with everything kotlinc is told that no source or classpath mtime
+     * reflects: a declared compiler plugin, its options, the JVM target.
+     */
+    @Test
+    void the_stamp_digest_moves_with_plugins_and_options_but_not_with_sources(@TempDir Path tmp) throws Exception {
+        Path module = Files.createDirectories(tmp.resolve("app"));
+        Path javaHome = Path.of(System.getProperty("java.home"));
+        Lockfile lock = new Lockfile(
+                Lockfile.CURRENT_VERSION,
+                "test",
+                Lockfile.RESOLUTION_ALGORITHM,
+                null,
+                null,
+                null,
+                null,
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                null,
+                null,
+                null,
+                null);
+        String plain = """
+                name    = "demo"
+                group   = "com.demo"
+                version = "0.1.0"
+                java    = 25
+                kotlin  = "2.4.10"
+                """;
+        String withPlugin = plain + """
+
+                [[kotlin-plugins]]
+                coordinate = "org.jetbrains.kotlin:kotlin-serialization-compiler-plugin-embeddable"
+                """;
+        String withOptions = plain + """
+
+                [[kotlin-plugins]]
+                coordinate = "org.jetbrains.kotlin:kotlin-serialization-compiler-plugin-embeddable"
+                options    = ["mode=strict"]
+                """;
+
+        String base = digest(plain, lock, module, 25, javaHome);
+        assertThat(digest(plain, lock, module, 25, javaHome)).isEqualTo(base);
+        assertThat(digest(withPlugin, lock, module, 25, javaHome)).isNotEqualTo(base);
+        assertThat(digest(withOptions, lock, module, 25, javaHome))
+                .isNotEqualTo(digest(withPlugin, lock, module, 25, javaHome));
+        // -module-name shapes internal-member mangling, so the name is an input too.
+        assertThat(digest(plain.replace("\"demo\"", "\"renamed\""), lock, module, 25, javaHome))
+                .isNotEqualTo(base);
+        // A mixed module's Java roots are an argument too; a different root set is a different digest.
+        JkBuild project = JkBuildParser.parse(plain);
+        assertThat(PlannerLang.kotlinConfig(
+                                project, lock, module, 25, javaHome, List.of(module.resolve("src/main/java")))
+                        .digest())
+                .isNotEqualTo(base);
+    }
+
+    private static String digest(String manifest, Lockfile lock, Path module, int release, Path javaHome)
+            throws Exception {
+        return PlannerLang.kotlinConfig(JkBuildParser.parse(manifest), lock, module, release, javaHome, null)
+                .digest();
+    }
 }

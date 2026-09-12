@@ -299,10 +299,26 @@ final class ModuleForecast {
                             : null;
             List<Path> stampInputs = PlannerCompile.mainStampInputs(
                     cp, processorCp, mixedKotlin, mixedGroovy, layout, groovyJar, scalaSetup);
+            // The same request the live compile keys with: its option digest is a stamp input.
+            CompileRequest req = PlannerCompile.mainCompileRequest(new PlannerCompile.MainCompile(
+                    mainSrc,
+                    cp,
+                    processorCp,
+                    layout,
+                    out,
+                    release,
+                    javacArgs,
+                    project.build().javac(),
+                    javaHome,
+                    mixedKotlin,
+                    mixedGroovy,
+                    groovyJar,
+                    scalaSetup));
             boolean stampFresh = false;
             if (!compileDepDirty && !force && !groovyJarUnavailable) {
                 try {
-                    stampFresh = FreshnessStamp.isFresh(out, BuildStamps.JAVA, mainSrc, stampInputs, release);
+                    stampFresh = FreshnessStamp.isFresh(
+                            out, BuildStamps.JAVA, mainSrc, stampInputs, release, ActionKey.javacOptionsDigest(req));
                 } catch (IOException ignored) {
                     stampFresh = false;
                 }
@@ -310,20 +326,6 @@ final class ModuleForecast {
             if (stampFresh) {
                 steps.add(new TaskForecast.Task(TaskNames.COMPILE_MAIN, TaskForecast.Status.CACHED, "", null));
             } else {
-                CompileRequest req = PlannerCompile.mainCompileRequest(new PlannerCompile.MainCompile(
-                        mainSrc,
-                        cp,
-                        processorCp,
-                        layout,
-                        out,
-                        release,
-                        javacArgs,
-                        project.build().javac(),
-                        javaHome,
-                        mixedKotlin,
-                        mixedGroovy,
-                        groovyJar,
-                        scalaSetup));
                 String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_MAIN, out);
                 Path actions = CacheTree.ACTIONS.under(cache);
                 Path stateDir = ActionTree.INCREMENTAL_JAVA.under(actions).resolve(taskId);

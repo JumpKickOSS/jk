@@ -45,7 +45,7 @@ class KotlinForecastStampTest {
 
         // Exactly what compile-kotlin's stamp step does (BuildPlanner: MAIN_CLASSES).
         Files.createDirectories(layout.classesDir());
-        FreshnessStamp.write(layout.classesDir(), BuildStamps.KOTLIN, "compile-kotlin", "", sources, List.of(), 25);
+        FreshnessStamp.write(layout.classesDir(), BuildStamps.KOTLIN, "compile-kotlin", "", sources, List.of(), 25, "");
 
         assertThat(FreshnessStamp.looksFresh(layout.classesDir(), BuildStamps.KOTLIN, sources))
                 .isTrue();
@@ -66,7 +66,7 @@ class KotlinForecastStampTest {
         agedByAnHour(source);
 
         Files.createDirectories(layout.classesDir());
-        FreshnessStamp.write(layout.classesDir(), BuildStamps.KOTLIN, "compile-kotlin", "", sources, List.of(), 25);
+        FreshnessStamp.write(layout.classesDir(), BuildStamps.KOTLIN, "compile-kotlin", "", sources, List.of(), 25, "");
         assertThat(FreshnessStamp.looksFresh(layout.classesDir(), BuildStamps.KOTLIN, sources))
                 .isTrue();
 

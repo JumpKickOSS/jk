@@ -26,6 +26,7 @@ import cc.jumpkick.runtime.base.GroovyPluginSetup;
 import cc.jumpkick.runtime.base.KotlinPluginSetup;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
+import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.task.LangCompile;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -71,6 +72,54 @@ public final class PlannerLang {
             args = List.copyOf(args);
             plugins = List.copyOf(plugins);
         }
+
+        /**
+         * Digest of every option-bearing input for the freshness stamp: the compiler version, the
+         * JVM target, the module name, the JDK's identity, the args and the plugins with their
+         * options. A change here moves no source or classpath mtime; only this does.
+         */
+        String digest() throws IOException {
+            List<String> parts = new ArrayList<>();
+            parts.add("kotlin:" + (kotlinVersion == null ? "" : kotlinVersion));
+            parts.add("jvmTarget:" + jvmTarget);
+            parts.add("moduleName:" + moduleName);
+            parts.add("jdk:" + ActionKey.jdkToken(javaHome));
+            for (String arg : args) parts.add("arg:" + arg);
+            for (KotlinPluginUse p : plugins) {
+                parts.add("plugin:" + p.id() + ":" + p.group() + ":" + p.artifact() + ":" + p.version() + ":"
+                        + String.join(",", p.options()));
+            }
+            return FreshnessStamp.optionsDigest(parts);
+        }
+    }
+
+    /** The groovyc free args: the installed plugins' contributions (grails' {@code --parameters}), deduped. */
+    static List<String> groovyArgs(JkBuild project, Lockfile lock, Path moduleDir) {
+        List<String> args = new ArrayList<>();
+        for (String arg : PluginContributions.groovyArgs(project, moduleDir, lockModules(lock))) {
+            if (!args.contains(arg)) args.add(arg);
+        }
+        return args;
+    }
+
+    /**
+     * Digest of a Groovy compile's option-bearing inputs for its freshness stamp: the Groovy
+     * version, the JVM target and the args — the facts {@link #compileGroovySources} builds its
+     * request from that no source or classpath mtime reflects.
+     */
+    static String groovyStampDigest(JkBuild project, Lockfile lock, Path moduleDir, int release, Path javaHome) {
+        List<String> parts = new ArrayList<>();
+        String groovyVersion = CompileToolchain.groovyVersionFor(lock, project);
+        parts.add("groovy:" + (groovyVersion == null ? "" : groovyVersion));
+        parts.add("jvmTarget:" + CompileSupport.effectiveRelease(release, JvmOptions.hostFeature(javaHome)));
+        for (String arg : groovyArgs(project, lock, moduleDir)) parts.add("arg:" + arg);
+        return FreshnessStamp.optionsDigest(parts);
+    }
+
+    /** {@link #groovyStampDigest} from the running step's published state. */
+    static String groovyStampDigest(TaskContext ctx, Path moduleDir) {
+        return groovyStampDigest(
+                ctx.require(PROJECT), ctx.require(LOCKFILE), moduleDir, ctx.require(RELEASE), ctx.require(JAVA_HOME));
     }
 
     /**
@@ -275,11 +324,7 @@ public final class PlannerLang {
         if (stubsOut != null) Files.createDirectories(stubsOut);
         // Contributed groovyc args (e.g. grails' --parameters — data binding reflects on
         // parameter names), deduped; mirrors the javac/kotlinc lanes.
-        List<String> gvArgs = new ArrayList<>();
-        for (String arg :
-                PluginContributions.groovyArgs(ctx.require(PROJECT), in.dir(), lockModules(ctx.require(LOCKFILE)))) {
-            if (!gvArgs.contains(arg)) gvArgs.add(arg);
-        }
+        List<String> gvArgs = groovyArgs(ctx.require(PROJECT), ctx.require(LOCKFILE), in.dir());
         // Joint mode sweeps.java sources through a real javac pass — annotation processors
         // must run there or generated members fail resolution.
         List<Path> processorCp =

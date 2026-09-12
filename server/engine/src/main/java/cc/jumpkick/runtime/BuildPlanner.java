@@ -79,6 +79,17 @@ public final class BuildPlanner {
     public static final BuildPlanKey<String> COMPILE_TEST_ACTION_KEY =
             BuildPlanKey.scalar("compile-test-action-key", String.class);
 
+    /**
+     * The option digest each compile checked its freshness stamp against, published for the
+     * write-stamp step so the stamp records exactly what the compile compared.
+     */
+    public static final BuildPlanKey<String> JAVA_STAMP_DIGEST = BuildPlanKey.scalar("java-stamp-digest", String.class);
+
+    public static final BuildPlanKey<String> KOTLIN_STAMP_DIGEST =
+            BuildPlanKey.scalar("kotlin-stamp-digest", String.class);
+    public static final BuildPlanKey<String> GROOVY_STAMP_DIGEST =
+            BuildPlanKey.scalar("groovy-stamp-digest", String.class);
+
     public static final BuildPlanKey<List<Path>> TEST_SOURCES = BuildPlanKey.list("test-sources", Path.class);
 
     /** Suite resource dirs copied into classes/test — a TestStamp input. */
@@ -125,6 +136,9 @@ public final class BuildPlanner {
             TEST_RUNTIME_CP,
             ACTION_KEY,
             COMPILE_TEST_ACTION_KEY,
+            JAVA_STAMP_DIGEST,
+            KOTLIN_STAMP_DIGEST,
+            GROOVY_STAMP_DIGEST,
             TEST_SOURCES,
             TEST_RESOURCE_DIRS,
             BUILD_OUTCOME,

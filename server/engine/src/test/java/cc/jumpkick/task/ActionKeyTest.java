@@ -272,6 +272,44 @@ class ActionKeyTest {
     }
 
     @Test
+    void javac_options_digest_moves_with_options_and_jdk_but_not_with_sources(@TempDir Path tempDir)
+            throws IOException {
+        // The freshness stamp records this digest: it has to move on every option-bearing input
+        // the action key hashes, and on nothing the stamp already compares by mtime.
+        Path src = tempDir.resolve("Hello.java");
+        Files.writeString(src, "class Hello {}");
+        Path jdk17 = jdk(tempDir.resolve("temurin-17"), "17.0.12+7");
+        Path jdk21 = jdk(tempDir.resolve("temurin-21"), "21.0.5+11");
+        String digest = ActionKey.javacOptionsDigest(optioned(src, tempDir, jdk17, 17, List.of(), List.of()));
+
+        assertThat(ActionKey.javacOptionsDigest(optioned(src, tempDir, jdk17, 17, List.of(), List.of())))
+                .isEqualTo(digest);
+        assertThat(ActionKey.javacOptionsDigest(optioned(src, tempDir, jdk21, 17, List.of(), List.of())))
+                .isNotEqualTo(digest);
+        assertThat(ActionKey.javacOptionsDigest(optioned(src, tempDir, jdk17, 17, List.of("-parameters"), List.of())))
+                .isNotEqualTo(digest);
+        assertThat(ActionKey.javacOptionsDigest(optioned(src, tempDir, jdk17, 21, List.of(), List.of())))
+                .isNotEqualTo(digest);
+        // Sources and classpath are the stamp's own business — editing one leaves the digest alone.
+        Files.writeString(src, "class Hello { void edited() {} }");
+        assertThat(ActionKey.javacOptionsDigest(
+                        optioned(src, tempDir, jdk17, 17, List.of(), List.of(tempDir.resolve("dep.jar")))))
+                .isEqualTo(digest);
+    }
+
+    private static CompileRequest optioned(
+            Path src, Path tempDir, Path javaHome, int release, List<String> options, List<Path> classpath) {
+        return CompileRequest.builder()
+                .sources(List.of(src))
+                .classpath(classpath)
+                .outputDir(tempDir.resolve("out"))
+                .release(release)
+                .extraOptions(options)
+                .javaHome(javaHome)
+                .build();
+    }
+
+    @Test
     void javac_jdk_identity_is_content_not_path(@TempDir Path tempDir) throws IOException {
         // A point release upgraded in place — same JAVA_HOME, different javac. One renderer
         // (ActionKey.jdkToken) serves forJavac, forKotlinc and both PlannerPlugin arms, so this

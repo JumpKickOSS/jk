@@ -16,6 +16,9 @@ class FreshnessStampTest {
 
     private static final int RELEASE = 21;
 
+    /** The option digest every stamp here is written and checked with; the digest test varies it. */
+    private static final String DIGEST = "options-a";
+
     @Test
     void removed_sources_are_detected_and_absent_stamp_is_not(@TempDir Path tempDir) throws IOException {
         Path classes = tempDir.resolve("classes");
@@ -26,7 +29,14 @@ class FreshnessStampTest {
         assertThat(FreshnessStamp.hasRemovedSources(classes, BuildStamps.JAVA, List.of(kept)))
                 .isFalse();
         FreshnessStamp.write(
-                classes, BuildStamps.JAVA, "compile-main", "key123", List.of(kept, dropped), List.of(), RELEASE);
+                classes,
+                BuildStamps.JAVA,
+                "compile-main",
+                "key123",
+                List.of(kept, dropped),
+                List.of(),
+                RELEASE,
+                DIGEST);
         // Same set: no removals. Grown set: no removals. Shrunk set: removal detected —
         // the variant-switch case (an extra-src root left the selection).
         assertThat(FreshnessStamp.hasRemovedSources(classes, BuildStamps.JAVA, List.of(kept, dropped)))
@@ -42,7 +52,7 @@ class FreshnessStampTest {
     void absent_stamp_is_not_fresh(@TempDir Path tempDir) throws IOException {
         Path classes = tempDir.resolve("classes");
         Files.createDirectories(classes);
-        assertThat(FreshnessStamp.isFresh(classes, BuildStamps.JAVA, List.of(), List.of(), RELEASE))
+        assertThat(FreshnessStamp.isFresh(classes, BuildStamps.JAVA, List.of(), List.of(), RELEASE, DIGEST))
                 .isFalse();
     }
 
@@ -53,14 +63,15 @@ class FreshnessStampTest {
         Path src = writeFile(tempDir.resolve("A.java"), "class A {}");
         Path jar = writeFile(tempDir.resolve("dep.jar"), "stub");
 
-        FreshnessStamp.write(classes, BuildStamps.JAVA, "compile-main", "key123", List.of(src), List.of(jar), RELEASE);
+        FreshnessStamp.write(
+                classes, BuildStamps.JAVA, "compile-main", "key123", List.of(src), List.of(jar), RELEASE, DIGEST);
         // Backdate the inputs by a second to make sure the mtime comparison
         // sees them as <= the stamp's millis (filesystem timestamp resolution
         // varies; same-millisecond can flake either way).
         Files.setLastModifiedTime(src, FileTime.fromMillis(System.currentTimeMillis() - 1000));
         Files.setLastModifiedTime(jar, FileTime.fromMillis(System.currentTimeMillis() - 1000));
 
-        assertThat(FreshnessStamp.isFresh(classes, BuildStamps.JAVA, List.of(src), List.of(jar), RELEASE))
+        assertThat(FreshnessStamp.isFresh(classes, BuildStamps.JAVA, List.of(src), List.of(jar), RELEASE, DIGEST))
                 .isTrue();
     }
 
@@ -71,10 +82,10 @@ class FreshnessStampTest {
         Path classes = tempDir.resolve("classes");
         Files.createDirectories(classes);
         Path src = writeFile(tempDir.resolve("A.java"), "class A {}");
-        FreshnessStamp.write(classes, BuildStamps.JAVA, "compile-main", "key123", List.of(src), List.of(), 17);
+        FreshnessStamp.write(classes, BuildStamps.JAVA, "compile-main", "key123", List.of(src), List.of(), 17, DIGEST);
         Files.setLastModifiedTime(src, FileTime.fromMillis(System.currentTimeMillis() - 1000));
 
-        assertThat(FreshnessStamp.isFresh(classes, BuildStamps.JAVA, List.of(src), List.of(), 21))
+        assertThat(FreshnessStamp.isFresh(classes, BuildStamps.JAVA, List.of(src), List.of(), 21, DIGEST))
                 .isFalse();
     }
 
@@ -83,11 +94,12 @@ class FreshnessStampTest {
         Path classes = tempDir.resolve("classes");
         Files.createDirectories(classes);
         Path src = writeFile(tempDir.resolve("A.java"), "class A {}");
-        FreshnessStamp.write(classes, BuildStamps.JAVA, "compile-main", "key123", List.of(src), List.of(), RELEASE);
+        FreshnessStamp.write(
+                classes, BuildStamps.JAVA, "compile-main", "key123", List.of(src), List.of(), RELEASE, DIGEST);
         // Bump mtime forward; the stat will now exceed the stamp time.
         Files.setLastModifiedTime(src, FileTime.fromMillis(System.currentTimeMillis() + 5_000));
 
-        assertThat(FreshnessStamp.isFresh(classes, BuildStamps.JAVA, List.of(src), List.of(), RELEASE))
+        assertThat(FreshnessStamp.isFresh(classes, BuildStamps.JAVA, List.of(src), List.of(), RELEASE, DIGEST))
                 .isFalse();
     }
 
@@ -98,11 +110,12 @@ class FreshnessStampTest {
         Path src = writeFile(tempDir.resolve("A.java"), "class A {}");
         Path jar = writeFile(tempDir.resolve("guava-33.4.8.jar"), "payload");
 
-        FreshnessStamp.write(classes, BuildStamps.JAVA, "compile-main", "key123", List.of(src), List.of(jar), RELEASE);
+        FreshnessStamp.write(
+                classes, BuildStamps.JAVA, "compile-main", "key123", List.of(src), List.of(jar), RELEASE, DIGEST);
         Files.setLastModifiedTime(src, FileTime.fromMillis(System.currentTimeMillis() - 1000));
         Files.setLastModifiedTime(jar, FileTime.fromMillis(System.currentTimeMillis() + 5_000));
 
-        assertThat(FreshnessStamp.isFresh(classes, BuildStamps.JAVA, List.of(src), List.of(jar), RELEASE))
+        assertThat(FreshnessStamp.isFresh(classes, BuildStamps.JAVA, List.of(src), List.of(jar), RELEASE, DIGEST))
                 .isTrue();
     }
 
@@ -114,11 +127,11 @@ class FreshnessStampTest {
         Path localJar = writeFile(tempDir.resolve("dep.jar"), "stub");
 
         FreshnessStamp.write(
-                classes, BuildStamps.JAVA, "compile-main", "key123", List.of(src), List.of(localJar), RELEASE);
+                classes, BuildStamps.JAVA, "compile-main", "key123", List.of(src), List.of(localJar), RELEASE, DIGEST);
         Files.setLastModifiedTime(src, FileTime.fromMillis(System.currentTimeMillis() - 1000));
         Files.writeString(localJar, "stub-MUTATED");
 
-        assertThat(FreshnessStamp.isFresh(classes, BuildStamps.JAVA, List.of(src), List.of(localJar), RELEASE))
+        assertThat(FreshnessStamp.isFresh(classes, BuildStamps.JAVA, List.of(src), List.of(localJar), RELEASE, DIGEST))
                 .isFalse();
     }
 
@@ -131,13 +144,14 @@ class FreshnessStampTest {
         Path classes = tempDir.resolve("classes");
         Files.createDirectories(classes);
         Path src = writeFile(tempDir.resolve("A.java"), "class A {}");
-        FreshnessStamp.write(classes, BuildStamps.JAVA, "compile-main", "key123", List.of(src), List.of(), RELEASE);
+        FreshnessStamp.write(
+                classes, BuildStamps.JAVA, "compile-main", "key123", List.of(src), List.of(), RELEASE, DIGEST);
 
         long stampMillis =
                 FreshnessStamp.read(classes, BuildStamps.JAVA).orElseThrow().stampMillis();
         Files.setLastModifiedTime(src, FileTime.fromMillis(stampMillis));
 
-        assertThat(FreshnessStamp.isFresh(classes, BuildStamps.JAVA, List.of(src), List.of(), RELEASE))
+        assertThat(FreshnessStamp.isFresh(classes, BuildStamps.JAVA, List.of(src), List.of(), RELEASE, DIGEST))
                 .isFalse();
     }
 
@@ -146,7 +160,8 @@ class FreshnessStampTest {
         Path classes = tempDir.resolve("classes");
         Files.createDirectories(classes);
         Path a = writeFile(tempDir.resolve("A.java"), "class A {}");
-        FreshnessStamp.write(classes, BuildStamps.JAVA, "compile-main", "key123", List.of(a), List.of(), RELEASE);
+        FreshnessStamp.write(
+                classes, BuildStamps.JAVA, "compile-main", "key123", List.of(a), List.of(), RELEASE, DIGEST);
 
         Path b = writeFile(tempDir.resolve("B.java"), "class B {}");
         Files.setLastModifiedTime(a, FileTime.fromMillis(System.currentTimeMillis() - 1000));
@@ -154,7 +169,7 @@ class FreshnessStampTest {
 
         // Source set composition changed → not fresh, even though both files
         // are older than the stamp.
-        assertThat(FreshnessStamp.isFresh(classes, BuildStamps.JAVA, List.of(a, b), List.of(), RELEASE))
+        assertThat(FreshnessStamp.isFresh(classes, BuildStamps.JAVA, List.of(a, b), List.of(), RELEASE, DIGEST))
                 .isFalse();
     }
 
@@ -164,11 +179,12 @@ class FreshnessStampTest {
         Files.createDirectories(classes);
         Path a = writeFile(tempDir.resolve("A.java"), "class A {}");
         Path b = writeFile(tempDir.resolve("B.java"), "class B {}");
-        FreshnessStamp.write(classes, BuildStamps.JAVA, "compile-main", "key123", List.of(a, b), List.of(), RELEASE);
+        FreshnessStamp.write(
+                classes, BuildStamps.JAVA, "compile-main", "key123", List.of(a, b), List.of(), RELEASE, DIGEST);
 
         // Caller passes a smaller source list — stamp said it covered two.
         Files.setLastModifiedTime(a, FileTime.fromMillis(System.currentTimeMillis() - 1000));
-        assertThat(FreshnessStamp.isFresh(classes, BuildStamps.JAVA, List.of(a), List.of(), RELEASE))
+        assertThat(FreshnessStamp.isFresh(classes, BuildStamps.JAVA, List.of(a), List.of(), RELEASE, DIGEST))
                 .isFalse();
     }
 
@@ -177,10 +193,11 @@ class FreshnessStampTest {
         Path classes = tempDir.resolve("classes");
         Files.createDirectories(classes);
         Path src = writeFile(tempDir.resolve("A.java"), "class A {}");
-        FreshnessStamp.write(classes, BuildStamps.JAVA, "compile-main", "key123", List.of(src), List.of(), RELEASE);
+        FreshnessStamp.write(
+                classes, BuildStamps.JAVA, "compile-main", "key123", List.of(src), List.of(), RELEASE, DIGEST);
 
         Files.delete(src);
-        assertThat(FreshnessStamp.isFresh(classes, BuildStamps.JAVA, List.of(src), List.of(), RELEASE))
+        assertThat(FreshnessStamp.isFresh(classes, BuildStamps.JAVA, List.of(src), List.of(), RELEASE, DIGEST))
                 .isFalse();
     }
 
@@ -191,12 +208,13 @@ class FreshnessStampTest {
         Path classes = tempDir.resolve("classes");
         Files.createDirectories(classes);
         Path src = writeFile(tempDir.resolve("A.java"), "class A {}");
-        FreshnessStamp.write(classes, BuildStamps.JAVA, "compile-main", "key123", List.of(src), List.of(), RELEASE);
+        FreshnessStamp.write(
+                classes, BuildStamps.JAVA, "compile-main", "key123", List.of(src), List.of(), RELEASE, DIGEST);
 
         Files.delete(classes.resolve(BuildStamps.JAVA));
         Files.delete(classes);
 
-        assertThat(FreshnessStamp.isFresh(classes, BuildStamps.JAVA, List.of(src), List.of(), RELEASE))
+        assertThat(FreshnessStamp.isFresh(classes, BuildStamps.JAVA, List.of(src), List.of(), RELEASE, DIGEST))
                 .isFalse();
     }
 
@@ -206,12 +224,13 @@ class FreshnessStampTest {
         Files.createDirectories(classes);
         Path src = writeFile(tempDir.resolve("A.java"), "class A {}");
         Path jar = writeFile(tempDir.resolve("dep.jar"), "stub");
-        FreshnessStamp.write(classes, BuildStamps.JAVA, "compile-main", "key123", List.of(src), List.of(jar), RELEASE);
+        FreshnessStamp.write(
+                classes, BuildStamps.JAVA, "compile-main", "key123", List.of(src), List.of(jar), RELEASE, DIGEST);
 
         Files.setLastModifiedTime(src, FileTime.fromMillis(System.currentTimeMillis() - 1000));
         Files.writeString(jar, "stub-rebuilt");
 
-        assertThat(FreshnessStamp.isFresh(classes, BuildStamps.JAVA, List.of(src), List.of(jar), RELEASE))
+        assertThat(FreshnessStamp.isFresh(classes, BuildStamps.JAVA, List.of(src), List.of(jar), RELEASE, DIGEST))
                 .isFalse();
     }
 
@@ -220,10 +239,55 @@ class FreshnessStampTest {
         Path classes = tempDir.resolve("classes");
         Files.createDirectories(classes);
         Path src = writeFile(tempDir.resolve("A.java"), "class A {}");
-        FreshnessStamp.write(classes, BuildStamps.JAVA, "compile-main", "key123", List.of(src), List.of(), RELEASE);
+        FreshnessStamp.write(
+                classes, BuildStamps.JAVA, "compile-main", "key123", List.of(src), List.of(), RELEASE, DIGEST);
 
-        assertThat(FreshnessStamp.isFresh(classes, BuildStamps.JAVA, List.of(src), List.of(), 17))
+        assertThat(FreshnessStamp.isFresh(classes, BuildStamps.JAVA, List.of(src), List.of(), 17, DIGEST))
                 .isFalse();
+    }
+
+    @Test
+    void changed_options_digest_is_not_fresh(@TempDir Path tempDir) throws IOException {
+        // Compiler options, plugins and the JDK move no file mtime; the digest is the only
+        // input that records them, so a stamp written under other options is stale.
+        Path classes = tempDir.resolve("classes");
+        Files.createDirectories(classes);
+        Path src = writeFile(tempDir.resolve("A.java"), "class A {}");
+        FreshnessStamp.write(
+                classes, BuildStamps.JAVA, "compile-main", "key123", List.of(src), List.of(), RELEASE, DIGEST);
+        Files.setLastModifiedTime(src, FileTime.fromMillis(System.currentTimeMillis() - 1000));
+
+        assertThat(FreshnessStamp.isFresh(classes, BuildStamps.JAVA, List.of(src), List.of(), RELEASE, DIGEST))
+                .isTrue();
+        assertThat(FreshnessStamp.isFresh(classes, BuildStamps.JAVA, List.of(src), List.of(), RELEASE, "options-b"))
+                .isFalse();
+        assertThat(FreshnessStamp.read(classes, BuildStamps.JAVA).orElseThrow().optionsDigest())
+                .isEqualTo(DIGEST);
+    }
+
+    @Test
+    void a_stamp_without_a_digest_matches_only_a_producer_without_options(@TempDir Path tempDir) throws IOException {
+        Path classes = tempDir.resolve("classes");
+        Files.createDirectories(classes);
+        Path src = writeFile(tempDir.resolve("A.java"), "class A {}");
+        FreshnessStamp.write(classes, BuildStamps.JAVA, "compile-main", "key123", List.of(src), List.of(), RELEASE, "");
+        Files.setLastModifiedTime(src, FileTime.fromMillis(System.currentTimeMillis() - 1000));
+
+        assertThat(FreshnessStamp.isFresh(classes, BuildStamps.JAVA, List.of(src), List.of(), RELEASE, ""))
+                .isTrue();
+        assertThat(FreshnessStamp.isFresh(classes, BuildStamps.JAVA, List.of(src), List.of(), RELEASE, DIGEST))
+                .isFalse();
+    }
+
+    @Test
+    void options_digest_is_order_sensitive_and_part_boundaries_are_kept() {
+        String ab = FreshnessStamp.optionsDigest(List.of("arg:--add-modules", "arg:a"));
+        assertThat(FreshnessStamp.optionsDigest(List.of("arg:--add-modules", "arg:a")))
+                .isEqualTo(ab);
+        assertThat(FreshnessStamp.optionsDigest(List.of("arg:a", "arg:--add-modules")))
+                .isNotEqualTo(ab);
+        assertThat(FreshnessStamp.optionsDigest(List.of("arg:--add-modulesarg:a")))
+                .isNotEqualTo(ab);
     }
 
     private static Path writeFile(Path file, String body) throws IOException {

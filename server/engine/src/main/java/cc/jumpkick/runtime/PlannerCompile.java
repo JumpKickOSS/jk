@@ -395,14 +395,6 @@ public final class PlannerCompile {
         // The shared stamp recipe — the forecast and write-stamp use it too.
         List<Path> stampInputs = mainStampInputs(
                 baseClasspath, processorCp, cx.mixed(), cx.mixedGroovy(), ctx.require(LAYOUT), groovyJar, scalaSetup);
-        if (!rerun && FreshnessStamp.isFresh(javaOut, BuildStamps.JAVA, sources, stampInputs, ctx.require(RELEASE))) {
-            ctx.reweight(EffortWeights.TOKEN); // stamp skip — token tick
-            ctx.label("up to date");
-            ctx.cached();
-            ctx.put(BUILD_OUTCOME, "up-to-date");
-            ctx.progress(sources.size());
-            return;
-        }
         List<String> javacArgs = ctx.require(JAVAC_ARGS);
         CompileRequest request = mainCompileRequest(new MainCompile(
                 sources,
@@ -418,6 +410,22 @@ public final class PlannerCompile {
                 cx.mixedGroovy(),
                 groovyJar,
                 scalaSetup));
+        // The stamp gates on the option-bearing inputs too — [build] lint/debug, [javac] args and
+        // plugins, --profile args, the JDK — through the digest of the very request the action
+        // key hashes. write-stamp records the same digest, so an option edit with untouched
+        // sources reads stale here instead of packaging the old classes.
+        String optionsDigest = ActionKey.javacOptionsDigest(request);
+        ctx.put(JAVA_STAMP_DIGEST, optionsDigest);
+        if (!rerun
+                && FreshnessStamp.isFresh(
+                        javaOut, BuildStamps.JAVA, sources, stampInputs, ctx.require(RELEASE), optionsDigest)) {
+            ctx.reweight(EffortWeights.TOKEN); // stamp skip — token tick
+            ctx.label("up to date");
+            ctx.cached();
+            ctx.put(BUILD_OUTCOME, "up-to-date");
+            ctx.progress(sources.size());
+            return;
+        }
         String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_MAIN, javaOut);
         Path javaStateDir = ActionTree.INCREMENTAL_JAVA
                 .under(CacheTree.ACTIONS.under(in.cache()))
@@ -657,9 +665,24 @@ public final class PlannerCompile {
                         Files.createDirectories(classes);
                     }
                     boolean rerun = in.session().config().rebuildOr(false);
+                    // Mixed module: Kotlin reads the Java declarations from source
+                    // (analysis only — it emits no Java bytecode; javac does next).
+                    List<Path> javaRoots =
+                            kotlinJavaSourceRoots(mixedWithJava, compact, in.dir(), ctx.require(LAYOUT), pluginDecls);
+                    // The kotlinc config is resolved ahead of the stamp check, without fetching:
+                    // its digest is a stamp input, so a kotlinc arg, a [[kotlin-plugins]] entry or
+                    // a JDK switch is stale here even though no source moved.
+                    PlannerLang.KotlinConfig config = PlannerLang.kotlinConfig(ctx, in.dir(), javaRoots);
+                    String optionsDigest = config.digest();
+                    ctx.put(KOTLIN_STAMP_DIGEST, optionsDigest);
                     if (!rerun
                             && FreshnessStamp.isFresh(
-                                    classes, BuildStamps.KOTLIN, freshInputs, classpath, ctx.require(RELEASE))) {
+                                    classes,
+                                    BuildStamps.KOTLIN,
+                                    freshInputs,
+                                    classpath,
+                                    ctx.require(RELEASE),
+                                    optionsDigest)) {
                         ctx.reweight(EffortWeights.TOKEN); // stamp skip — token tick
                         ctx.label("up to date");
                         ctx.cached();
@@ -677,21 +700,8 @@ public final class PlannerCompile {
                     Path workingDir = ActionTree.INCREMENTAL_KOTLIN
                             .under(CacheTree.ACTIONS.under(in.cache()))
                             .resolve(taskId);
-                    // Mixed module: Kotlin reads the Java declarations from source
-                    // (analysis only — it emits no Java bytecode; javac does next).
-                    List<Path> javaRoots =
-                            kotlinJavaSourceRoots(mixedWithJava, compact, in.dir(), ctx.require(LAYOUT), pluginDecls);
                     LangCompile.Result kr = compileKotlinSources(
-                            ctx,
-                            in,
-                            cas,
-                            actionCache,
-                            ktSources,
-                            classpath,
-                            ktOut,
-                            taskId,
-                            workingDir,
-                            PlannerLang.kotlinConfig(ctx, in.dir(), javaRoots));
+                            ctx, in, cas, actionCache, ktSources, classpath, ktOut, taskId, workingDir, config);
                     if (!kr.success()) {
                         PlannerSupport.forwardWorkerDiagnostics(
                                 ctx, "kotlinc", kr.diagnostics(), "kotlinc failed without diagnostics");
@@ -779,9 +789,17 @@ public final class PlannerCompile {
                         Files.createDirectories(classes);
                     }
                     boolean rerun = in.session().config().rebuildOr(false);
+                    // The groovyc args and toolchain are stamp inputs too (see compile-kotlin).
+                    String optionsDigest = PlannerLang.groovyStampDigest(ctx, in.dir());
+                    ctx.put(GROOVY_STAMP_DIGEST, optionsDigest);
                     if (!rerun
                             && FreshnessStamp.isFresh(
-                                    classes, BuildStamps.GROOVY, freshInputs, classpath, ctx.require(RELEASE))) {
+                                    classes,
+                                    BuildStamps.GROOVY,
+                                    freshInputs,
+                                    classpath,
+                                    ctx.require(RELEASE),
+                                    optionsDigest)) {
                         ctx.reweight(EffortWeights.TOKEN); // stamp skip — token tick
                         ctx.label("up to date");
                         ctx.cached();

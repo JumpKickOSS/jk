@@ -169,7 +169,7 @@ class EffortWeightsTest {
 
         // The groovy stamp lives in the merged classes dir (where write-stamp-groovy writes it).
         var layout = BuildLayout.of(dir, JkBuildParser.parse(dir.resolve("jk.toml")));
-        FreshnessStamp.write(layout.classesDir(), BuildStamps.GROOVY, "compile-groovy", "", sources, List.of(), 21);
+        FreshnessStamp.write(layout.classesDir(), BuildStamps.GROOVY, "compile-groovy", "", sources, List.of(), 21, "");
         var warm = EffortWeights.predict(in, cas, true, false, false, true, false);
         assertThat(warm.compileGroovy()).isEqualTo(EffortWeights.TOKEN);
     }

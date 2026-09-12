@@ -181,7 +181,7 @@ class ThirdPartyPackagerForecastTest {
         JkBuild project = JkBuildParser.reparse(proj.resolve("jk.toml"));
         BuildLayout layout = BuildLayout.of(proj, project);
         FreshnessStamp.write(
-                layout.classesDir(), BuildStamps.GROOVY, "compile-groovy", "", List.of(hello), List.of(), 21);
+                layout.classesDir(), BuildStamps.GROOVY, "compile-groovy", "", List.of(hello), List.of(), 21, "");
 
         // The plugin declares a packager and keeps the main artifact, so the build packs with it.
         var owner = requireNonNull(PackagingKeys.pluginFor(project, layout, cache));

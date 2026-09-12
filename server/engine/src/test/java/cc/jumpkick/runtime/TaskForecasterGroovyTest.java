@@ -78,7 +78,7 @@ class TaskForecasterGroovyTest {
         // Stamp the merged classes dir (where write-stamp-groovy writes it) — CACHED.
         var layout = BuildLayout.of(mod, JkBuildParser.parse(mod.resolve("jk.toml")));
         FreshnessStamp.write(
-                layout.classesDir(), BuildStamps.GROOVY, "compile-groovy", "", List.of(foo), List.of(), 21);
+                layout.classesDir(), BuildStamps.GROOVY, "compile-groovy", "", List.of(foo), List.of(), 21, "");
         List<TaskForecast.Module> warm = TaskForecaster.of(graph, cas, actionCache, cache);
         TaskForecast.Task warmGv =
                 warm.stream().filter(m -> m.dir().endsWith("a")).findFirst().orElseThrow().steps().stream()

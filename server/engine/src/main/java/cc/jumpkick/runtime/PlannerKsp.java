@@ -18,6 +18,7 @@ import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.kotlin.KotlinResolver;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.repo.RepoGroup;
@@ -30,6 +31,7 @@ import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.CompileToolchain;
 import cc.jumpkick.runtime.base.KotlinBtaResolver;
 import cc.jumpkick.runtime.base.KspResolver;
+import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.FreshnessStamp;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -220,7 +222,18 @@ public final class PlannerKsp {
         List<Path> stampCp = new ArrayList<>(classpath);
         stampCp.addAll(split.ksp());
         boolean rerun = in.session().config().rebuildOr(false);
-        if (!rerun && FreshnessStamp.isFresh(outBase, BuildStamps.KSP, stampInputs, stampCp, ctx.require(RELEASE))) {
+        JkBuild project = ctx.require(PROJECT);
+        String kotlinVersion = CompileToolchain.kotlinVersionFor(ctx.require(LOCKFILE), project);
+        if (kotlinVersion == null || kotlinVersion.isBlank()) {
+            kotlinVersion = KotlinResolver.DEFAULT_VERSION;
+        }
+        // Processor options and the toolchain are round inputs no file mtime reflects; the digest
+        // is what makes a `ksp-options` edit with untouched sources re-run the round.
+        String optionsDigest = kspStampDigest(
+                project, ctx.require(LOCKFILE), in.dir(), kotlinVersion, ctx.require(JAVA_HOME), ctx.require(RELEASE));
+        if (!rerun
+                && FreshnessStamp.isFresh(
+                        outBase, BuildStamps.KSP, stampInputs, stampCp, ctx.require(RELEASE), optionsDigest)) {
             ctx.reweight(EffortWeights.TOKEN); // cache/stamp skip — token tick
             ctx.label("up to date");
             ctx.progress(1);
@@ -228,11 +241,6 @@ public final class PlannerKsp {
         }
 
         ctx.label("KSP: " + split.ksp().size() + " processor jar(s)");
-        JkBuild project = ctx.require(PROJECT);
-        String kotlinVersion = CompileToolchain.kotlinVersionFor(ctx.require(LOCKFILE), project);
-        if (kotlinVersion == null || kotlinVersion.isBlank()) {
-            kotlinVersion = KotlinResolver.DEFAULT_VERSION;
-        }
         KspToolchain toolchain = resolveKspToolchain(project, cx.cas(), kotlinVersion);
 
         // A stale round's outputs must not survive into the source union.
@@ -255,8 +263,37 @@ public final class PlannerKsp {
         for (BuildPlanner.KspDiagnostic diagnostic : kspDiagnostics(output)) {
             ctx.warn(diagnostic.severity(), diagnostic.message());
         }
-        FreshnessStamp.write(outBase, BuildStamps.KSP, TaskNames.KSP, "", stampInputs, stampCp, ctx.require(RELEASE));
+        FreshnessStamp.write(
+                outBase, BuildStamps.KSP, TaskNames.KSP, "", stampInputs, stampCp, ctx.require(RELEASE), optionsDigest);
         ctx.progress(1);
+    }
+
+    /**
+     * The round's processor options ({@code key=value}): plugin-contributed ([[contribute.compiler-args]]
+     * ksp — Hilt's superclass-validation toggle) first, then the project's {@code [build]
+     * ksp-options} (Room's schemaLocation), so the project overrides.
+     */
+    static List<String> kspOptions(JkBuild project, Path moduleDir, Lockfile lock) {
+        List<String> options = new ArrayList<>(PluginContributions.kspOptions(project, moduleDir, lockModules(lock)));
+        options.addAll(project.build().kspOptions());
+        return options;
+    }
+
+    /**
+     * Digest of the round's option-bearing inputs for its freshness stamp: the Kotlin version
+     * (language and API level, and the KSP2 runtime resolved against it), the JDK, the module
+     * name and every processor option.
+     */
+    static String kspStampDigest(
+            JkBuild project, Lockfile lock, Path moduleDir, String kotlinVersion, Path javaHome, int release)
+            throws IOException {
+        List<String> parts = new ArrayList<>();
+        parts.add("kotlin:" + kotlinVersion);
+        parts.add("jvmTarget:" + CompileSupport.kotlinJvmTarget(release, JvmOptions.hostFeature(javaHome)));
+        parts.add("jdk:" + ActionKey.jdkToken(javaHome));
+        parts.add("moduleName:" + project.project().name());
+        for (String option : kspOptions(project, moduleDir, lock)) parts.add("option:" + option);
+        return FreshnessStamp.optionsDigest(parts);
     }
 
     /** The KSP2 runtime classpath and the Kotlin stdlib the round compiles against. */
@@ -340,15 +377,9 @@ public final class PlannerKsp {
                 + CompileSupport.kotlinJvmTarget(ctx.require(RELEASE), JvmOptions.hostFeature(javaHome)));
         cmd.add("-jdk-home=" + javaHome.toAbsolutePath());
         cmd.add("-libraries=" + Classpaths.join(libs));
-        // Processor options: plugin-contributed ([[contribute.compiler-args]] ksp
-        // Hilt's superclass-validation toggle) plus project-declared ([build]
-        // ksp-options — Room's schemaLocation; last wins, so the project overrides).
-        // KSP's map syntax joins entries with the platform path separator, same as
-        // its list args; relative option paths resolve against the module dir (the
-        // KSP process CWD).
-        List<String> kspOptions =
-                new ArrayList<>(PluginContributions.kspOptions(project, in.dir(), lockModules(ctx.require(LOCKFILE))));
-        kspOptions.addAll(project.build().kspOptions());
+        // KSP's map syntax joins entries with the platform path separator, same as its list
+        // args; relative option paths resolve against the module dir (the KSP process CWD).
+        List<String> kspOptions = kspOptions(project, in.dir(), ctx.require(LOCKFILE));
         if (!kspOptions.isEmpty()) {
             cmd.add("-processor-options=" + String.join(Classpaths.SEPARATOR, kspOptions));
         }
