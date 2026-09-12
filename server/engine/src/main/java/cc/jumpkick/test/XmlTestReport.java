@@ -79,7 +79,9 @@ public final class XmlTestReport {
 
     /**
      * Write one {@code TEST-<classname>.xml} per accumulated class into {@code dir}, creating the
-     * directory if needed. Silently no-ops when no test events were recorded.
+     * directory if needed. Silently no-ops when no test events were recorded. Every class gets its
+     * attempt: a class whose file cannot be written is reported after the rest have landed, as the
+     * first such failure.
      */
     public synchronized void writeAll(Path dir) throws IOException {
         if (entries.isEmpty()) return;
@@ -90,10 +92,37 @@ public final class XmlTestReport {
             byClass.computeIfAbsent(e.className(), k -> new ArrayList<>()).add(e);
         }
 
+        IOException first = null;
         for (var kv : byClass.entrySet()) {
-            Path file = dir.resolve("TEST-" + kv.getKey() + ".xml");
-            Files.writeString(file, buildXml(kv.getKey(), kv.getValue()));
+            Path file = dir.resolve("TEST-" + fileNameComponent(kv.getKey()) + ".xml");
+            try {
+                Files.writeString(file, buildXml(kv.getKey(), kv.getValue()));
+            } catch (IOException e) {
+                if (first == null) first = e;
+            }
         }
+        if (first != null) throw first;
+    }
+
+    /**
+     * The class name as a file-name component: anything outside {@code [A-Za-z0-9._$-]} becomes
+     * {@code _}, so an id-shaped name with {@code /} or {@code :} cannot point outside {@code dir}
+     * or at a name Windows refuses.
+     */
+    static String fileNameComponent(String className) {
+        StringBuilder sb = new StringBuilder(className.length());
+        for (int i = 0; i < className.length(); i++) {
+            char c = className.charAt(i);
+            boolean ok = (c >= 'A' && c <= 'Z')
+                    || (c >= 'a' && c <= 'z')
+                    || (c >= '0' && c <= '9')
+                    || c == '.'
+                    || c == '_'
+                    || c == '$'
+                    || c == '-';
+            sb.append(ok ? c : '_');
+        }
+        return sb.isEmpty() ? "_" : sb.toString();
     }
 
     private String buildXml(String className, List<Entry> classEntries) {
@@ -147,13 +176,25 @@ public final class XmlTestReport {
     }
 
     /**
-     * Fully-qualified class name from a JUnit Platform uniqueId via the shared
-     * {@link JUnitUniqueIds} walk. Falls back to the raw uniqueId when the {@code [class:…]}
-     * segment is absent.
+     * The segments engines use for the class-like node when there is no {@code [class:…]}: Spock and
+     * Kotest name the spec, Vintage the runner, Cucumber the feature. In lookup order.
+     */
+    private static final List<String> CLASS_LIKE_SEGMENTS = List.of("spec", "runner", "feature");
+
+    /**
+     * The test class a uniqueId belongs to: the shared {@link JUnitUniqueIds} walk over
+     * {@code [class:…]}/{@code [nested-class:…]} first, then the engine-specific class-like segment,
+     * then the engine id, and the raw id only when the id has no recognisable segment at all.
      */
     static String classNameFrom(String uniqueId) {
         String cls = JUnitUniqueIds.classOf(uniqueId);
-        return cls.isEmpty() ? uniqueId : cls;
+        if (!cls.isEmpty()) return cls;
+        for (String segment : CLASS_LIKE_SEGMENTS) {
+            String value = JUnitUniqueIds.segment(uniqueId, segment);
+            if (!value.isEmpty()) return value;
+        }
+        String engine = JUnitUniqueIds.engineOf(uniqueId);
+        return engine.isEmpty() ? uniqueId : engine;
     }
 
     private static String esc(String s) {
