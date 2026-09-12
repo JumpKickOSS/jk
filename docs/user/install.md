@@ -26,11 +26,14 @@ evidence comes from `JK_RELEASES_URL/<version>/`, so an arbitrary archive URL ca
 own trust metadata.
 
 Windows PATH install dir: `%USERPROFILE%\.jk\bin` — the same `bin/` every other platform
-uses. `install.ps1` prepends it to your **User PATH** (visible from cmd and PowerShell),
-sets **CurrentUser** PowerShell execution policy to `RemoteSigned` when a new session would
-otherwise be `Restricted`/`AllSigned` (so `$PROFILE` hooks can load), and runs
-`jk activate --yes` for profile hooks. Group Policy that locks the policy is left alone with
-a note — ask an admin, or run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` yourself.
+uses. `install.ps1` prepends it to your **User PATH** (visible from cmd and PowerShell) and runs
+`jk activate --yes` for profile hooks. When a new session's execution policy would be
+`Restricted`/`AllSigned` (so `$PROFILE` hooks cannot load), the installer prints
+`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` for you to run; it applies that command
+itself only with `-SetExecutionPolicy` or `JK_SET_EXECUTION_POLICY=1`, because a persistent
+policy change is nothing an uninstall reverts. Group Policy that locks the policy is reported
+with a note — ask an admin. Windows on ARM64 installs the `windows-x86_64` build, which runs
+under x64 emulation; no `windows-aarch64` release exists.
 
 Local dogfood from this repository:
 

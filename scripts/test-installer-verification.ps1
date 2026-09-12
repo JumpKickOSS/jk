@@ -1,5 +1,6 @@
-# Network-free PowerShell 5.1 exercise of install.ps1 release authentication.
-# Uses an ephemeral RSA-3072 key and never installs or executes the fixture artifact.
+# Network-free PowerShell 5.1 exercise of install.ps1: release authentication, the host-to-artifact
+# mapping, download settings and the execution-policy default. Uses an ephemeral RSA-3072 key and
+# never installs or executes the fixture artifact.
 #Requires -Version 5.1
 $ErrorActionPreference = "Stop"
 
@@ -17,6 +18,55 @@ $public = $rsa.ExportParameters($false)
 $modulus = [Convert]::ToBase64String($public.Modulus)
 $exponent = [Convert]::ToBase64String($public.Exponent)
 $powershell = (Get-Process -Id $PID).Path
+
+# The installer's functions are lifted from install.ps1 by their AST, so the script body never runs
+# here; the cmdlets they call are shadowed below by recording functions.
+$parseTokens = $null
+$parseErrors = $null
+$installerAst = [Management.Automation.Language.Parser]::ParseFile($installer, [ref] $parseTokens, [ref] $parseErrors)
+if ($parseErrors.Count -gt 0) {
+    throw "install.ps1 does not parse: $($parseErrors[0].Message) at line $($parseErrors[0].Extent.StartLineNumber)"
+}
+function Import-InstallerFunction([string] $Name) {
+    $definition = $installerAst.Find({
+        param($node)
+        $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $Name
+    }.GetNewClosure(), $true)
+    if (-not $definition) { throw "install.ps1 defines no function $Name" }
+    $text = $definition.Extent.Text -replace "^function\s+$([regex]::Escape($Name))", "function script:$Name"
+    . ([scriptblock]::Create($text))
+}
+
+$script:notes = @()
+function script:Write-Note([string] $Message) { $script:notes += $Message }
+function script:Write-Info([string] $Message) { $script:notes += $Message }
+function script:Die([string] $Message) { throw $Message }
+
+$script:seenProgress = @()
+function script:Invoke-WebRequest {
+    param([switch] $UseBasicParsing, [string] $Uri, [string] $OutFile)
+    $script:seenProgress += [string] $ProgressPreference
+    if ($OutFile) { [IO.File]::WriteAllText($OutFile, "fixture", [Text.Encoding]::ASCII) }
+    return [pscustomobject] @{ Content = "1.2.3`n" }
+}
+
+$script:policies = @()
+$script:policyChanges = @()
+function script:Get-ExecutionPolicy { param([switch] $List) return $script:policies }
+function script:Set-ExecutionPolicy {
+    param($Scope, $ExecutionPolicy, [switch] $Force)
+    $script:policyChanges += "$Scope=$ExecutionPolicy"
+}
+function Set-PolicyFixture([string] $CurrentUser, [string] $LocalMachine, [string] $MachinePolicy = "Undefined") {
+    $script:policies = @(
+        [pscustomobject] @{ Scope = "MachinePolicy"; ExecutionPolicy = $MachinePolicy },
+        [pscustomobject] @{ Scope = "UserPolicy"; ExecutionPolicy = "Undefined" },
+        [pscustomobject] @{ Scope = "Process"; ExecutionPolicy = "Bypass" },
+        [pscustomobject] @{ Scope = "CurrentUser"; ExecutionPolicy = $CurrentUser },
+        [pscustomobject] @{ Scope = "LocalMachine"; ExecutionPolicy = $LocalMachine })
+    $script:policyChanges = @()
+    $script:notes = @()
+}
 
 function Get-ArtifactHash {
     $sha = [Security.Cryptography.SHA256]::Create()
@@ -109,6 +159,58 @@ try {
     Write-Evidence "$(Get-ArtifactHash)  $artifactName`n"
     Remove-Item -LiteralPath $signature -Force
     Assert-Fails "missing signature"
+
+    # ---- host mapping: releases publish windows-x86_64 only ---------------------------------
+    Import-InstallerFunction "Get-JkTarget"
+    $script:notes = @()
+    $target = Get-JkTarget -ArchName "Arm64" -ProcessorArchitecture "ARM64"
+    if ($target -cne "windows-x86_64") { throw "Arm64 mapped to $target instead of the windows-x86_64 build" }
+    if (-not ($script:notes -match "windows-x86_64")) { throw "Arm64 mapping printed no note naming the x86_64 build" }
+    $script:notes = @()
+    if ((Get-JkTarget -ArchName "X64" -ProcessorArchitecture "AMD64") -cne "windows-x86_64") { throw "X64 did not map to windows-x86_64" }
+    if ($script:notes.Count -ne 0) { throw "X64 mapping printed a note: $($script:notes -join ' | ')" }
+    if ((Get-JkTarget -ArchName "" -ProcessorArchitecture "ARM64") -cne "windows-x86_64") { throw "PROCESSOR_ARCHITECTURE=ARM64 fallback did not map to windows-x86_64" }
+    if ((Get-JkTarget -ArchName "" -ProcessorArchitecture "x86") -cne "windows-x86_64") { throw "PROCESSOR_ARCHITECTURE=x86 fallback did not map to windows-x86_64" }
+    try {
+        Get-JkTarget -ArchName "Mips" -ProcessorArchitecture "MIPS" | Out-Null
+        throw "an unknown architecture was accepted"
+    } catch {
+        if ($_.Exception.Message -notmatch "unsupported architecture") { throw }
+    }
+
+    # ---- downloads run with the progress bar off, without touching the caller's preference ---
+    Import-InstallerFunction "Save-Url"
+    Import-InstallerFunction "Get-TextUrl"
+    $script:seenProgress = @()
+    $ProgressPreference = "Continue"
+    Save-Url "https://fixture/releases/1.0.0/x.zip" (Join-Path $work "download.zip")
+    if ((Get-TextUrl "https://fixture/releases/latest/VERSION") -cne "1.2.3") { throw "Get-TextUrl did not return the trimmed body" }
+    if (($script:seenProgress -join ",") -cne "SilentlyContinue,SilentlyContinue") {
+        throw "downloads ran with ProgressPreference $($script:seenProgress -join ',')"
+    }
+    if ([string] $ProgressPreference -cne "Continue") { throw "a download changed the caller's ProgressPreference" }
+
+    # ---- execution policy: printed by default, applied only on request -----------------------
+    Import-InstallerFunction "Ensure-ProfileExecutionPolicy"
+    $suggestion = "Set-ExecutionPolicy -Scope CurrentUser RemoteSigned"
+
+    Set-PolicyFixture -CurrentUser "Undefined" -LocalMachine "Restricted"
+    Ensure-ProfileExecutionPolicy
+    if ($script:policyChanges.Count -ne 0) { throw "the default changed the execution policy: $($script:policyChanges -join ',')" }
+    if (-not ($script:notes -match [regex]::Escape($suggestion))) { throw "a blocking policy did not print the $suggestion suggestion" }
+
+    Set-PolicyFixture -CurrentUser "Undefined" -LocalMachine "Restricted"
+    Ensure-ProfileExecutionPolicy -Apply $true
+    if (($script:policyChanges -join ",") -cne "CurrentUser=RemoteSigned") { throw "opting in did not set CurrentUser RemoteSigned: $($script:policyChanges -join ',')" }
+
+    Set-PolicyFixture -CurrentUser "RemoteSigned" -LocalMachine "Restricted"
+    Ensure-ProfileExecutionPolicy -Apply $true
+    if ($script:policyChanges.Count -ne 0 -or $script:notes.Count -ne 0) { throw "a permissive policy was changed or reported" }
+
+    Set-PolicyFixture -CurrentUser "Undefined" -LocalMachine "Restricted" -MachinePolicy "AllSigned"
+    Ensure-ProfileExecutionPolicy -Apply $true
+    if ($script:policyChanges.Count -ne 0) { throw "a policy locked by MachinePolicy was changed" }
+    if (-not ($script:notes -match "MachinePolicy")) { throw "a locked policy did not name the locking scope" }
 
     Write-Host "PowerShell installer verification fixtures passed."
 } finally {

@@ -16,6 +16,9 @@
 #                    under it. The client is installed to $JK_HOME\bin.
 #   JK_NONINTERACTIVE / CI  Force non-interactive path.
 #   JK_LOCAL_PATH    Local binary/archive when invoking via irm|iex (no positional args).
+#   JK_SET_EXECUTION_POLICY=1  Apply `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` when
+#                    the current policy would block profile hooks (same as -SetExecutionPolicy).
+#                    By default the installer only prints that command.
 #
 # On-disk layout (JkDirs): one home, %USERPROFILE%\.jk, holding bin\, cache\, config\,
 # config.toml, creds\, lib\, state\ and store\ — the same tree on every platform.
@@ -31,6 +34,11 @@ param(
 
     # Skip engine warm-up (CI / PATH-only install).
     [switch] $SkipEngineWarm,
+
+    # Persist a CurrentUser RemoteSigned execution policy when the effective one would block
+    # profile hooks. Off by default: the installer prints the command instead of changing a
+    # setting no uninstall reverts. irm|iex callers use JK_SET_EXECUTION_POLICY=1.
+    [switch] $SetExecutionPolicy,
 
     # Network-free CI seam: authenticate files without installing or executing them.
     [string] $VerifyOnlyDirectory = "",
@@ -105,23 +113,31 @@ function Test-Command([string] $Name) {
 }
 
 function Get-JkTarget {
-    $os = "windows"
-    $archName = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
-    switch -Regex ($archName) {
-        "^(X64|Amd64)$" { $arch = "x86_64" }
-        "^(Arm64)$" { $arch = "aarch64" }
-        default {
-            # Fallback for older hosts / unusual report strings.
-            $procArch = $env:PROCESSOR_ARCHITECTURE
-            if ($procArch -match "(?i)ARM64") { $arch = "aarch64" }
-            elseif ($procArch -match "(?i)AMD64|X86") { $arch = "x86_64" }
-            else { Die "unsupported architecture: $archName (supported: x86_64, aarch64)" }
-        }
+    # Releases publish windows-x86_64 only. Windows on ARM runs that build under x64 emulation,
+    # so an ARM64 host installs it and is told so rather than asking for an artifact that does
+    # not exist. The inputs are parameters so the mapping is testable off the host.
+    param(
+        [string] $ArchName = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString(),
+        # Fallback for older hosts / unusual report strings.
+        [string] $ProcessorArchitecture = $env:PROCESSOR_ARCHITECTURE
+    )
+    $arm64 = ($ArchName -match "^Arm64$") -or
+        ($ArchName -notmatch "^(X64|Amd64)$" -and $ProcessorArchitecture -match "(?i)ARM64")
+    $x64 = ($ArchName -match "^(X64|Amd64)$") -or ($ProcessorArchitecture -match "(?i)AMD64|X86")
+    if ($arm64) {
+        Write-Note "Windows on ARM64: no windows-aarch64 release exists yet; installing the windows-x86_64 build (runs under x64 emulation)."
+    } elseif (-not $x64) {
+        Die "unsupported architecture: $ArchName (supported: x86_64; ARM64 installs the x86_64 build)"
     }
-    return "$os-$arch"
+    return "windows-x86_64"
 }
 
+# Windows PowerShell 5.1 repaints its progress bar on every received chunk, which makes a
+# multi-megabyte Invoke-WebRequest many times slower. The preference is set in the function
+# scope, so the caller's session keeps its own value.
+
 function Get-TextUrl([string] $Url) {
+    $ProgressPreference = "SilentlyContinue"
     # PS 5.1 may return a byte[] for some content types; normalize to string.
     $resp = Invoke-WebRequest -UseBasicParsing -Uri $Url
     if ($resp.Content -is [byte[]]) {
@@ -131,6 +147,7 @@ function Get-TextUrl([string] $Url) {
 }
 
 function Save-Url([string] $Url, [string] $OutFile) {
+    $ProgressPreference = "SilentlyContinue"
     Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $OutFile
 }
 
@@ -379,6 +396,8 @@ function Ensure-ProfileExecutionPolicy {
     # jk activate writes $PROFILE; Restricted/AllSigned block loading it.
     # This installer often runs under Process Bypass, so Get-ExecutionPolicy alone
     # is not what a *new* PowerShell session will see — ignore Process scope.
+    # A persistent policy change is the user's call: without -Apply the fix is printed, not made.
+    param([bool] $Apply = $false)
     $byScope = @{}
     foreach ($e in @(Get-ExecutionPolicy -List)) {
         $byScope[$e.Scope.ToString()] = $e.ExecutionPolicy.ToString()
@@ -405,6 +424,12 @@ function Ensure-ProfileExecutionPolicy {
         return
     }
 
+    if (-not $Apply) {
+        Write-Note "PowerShell execution policy is $newSession; profile hooks (jk activate) will not load in new sessions."
+        Write-Note "To allow them, run: Set-ExecutionPolicy -Scope CurrentUser RemoteSigned"
+        Write-Note "(or re-run the installer with -SetExecutionPolicy / JK_SET_EXECUTION_POLICY=1 to apply it)"
+        return
+    }
     try {
         Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force
         Write-Info "Set PowerShell CurrentUser execution policy to RemoteSigned (so profile hooks can load)"
@@ -614,10 +639,10 @@ REM jkx - jk tool run launcher (generated by jk; do not edit)
     #
     # Writes the installer block into every discovered profile (pwsh + Windows
     # PowerShell 5.1, plus bash/zsh/fish rc files that already exist).
-    # Profile scripts need a non-Restricted CurrentUser policy — set that first
-    # so a new PowerShell can load the block (installer Process Bypass does not).
+    # Profile scripts need a non-Restricted CurrentUser policy; a blocking policy is
+    # reported here (and only changed on request) before the block is written.
 
-    Ensure-ProfileExecutionPolicy
+    Ensure-ProfileExecutionPolicy -Apply ([bool]$SetExecutionPolicy -or $env:JK_SET_EXECUTION_POLICY -eq "1")
 
     Write-Info "Running ``jk activate --yes``... This may download a JDK and optimize your installation"
     try {
