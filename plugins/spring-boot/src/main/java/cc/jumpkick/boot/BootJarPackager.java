@@ -41,6 +41,19 @@ public final class BootJarPackager {
     private static final String LAYERS_IDX = "BOOT-INF/layers.idx";
     private static final String LOADER_PREFIX = "org/";
 
+    /** The loader's service registrations that ride along with its classes ({@code nested:} URLs). */
+    private static final String SERVICES_PREFIX = "META-INF/services/";
+
+    /**
+     * Manifest {@code Spring-Boot-Jar-Type} values Boot's Gradle and Maven plugins leave out of
+     * {@code BOOT-INF/lib}: a starter is a POM with a manifest, a processor runs at compile time,
+     * and devtools is never meant to ship.
+     */
+    static final Set<String> EXCLUDED_JAR_TYPES =
+            Set.of("annotation-processor", "dependencies-starter", "development-tool");
+
+    private static final String JAR_TYPE_ATTRIBUTE = "Spring-Boot-Jar-Type";
+
     /** Classpath locations Boot's own readers use ({@code BuildProperties}, the sbom actuator). */
     static final String BUILD_INFO_ENTRY = CLASSES_PREFIX + "META-INF/build-info.properties";
 
@@ -54,8 +67,9 @@ public final class BootJarPackager {
 
         try (OutputStream out = DeterministicZip.archiveStream(request.outputJar());
                 JarOutputStream jos = new JarOutputStream(out)) {
+            // The archive's own META-INF directory entry comes first, as Boot's plugins write it.
+            zip.writeDir(jos, "META-INF/", dirsWritten);
             zip.writeManifest(jos, manifest);
-            dirsWritten.add("META-INF/");
 
             // 1. Loader classes exploded at the root — java -jar must find
             //    Main-Class before anything else is resolvable.
@@ -92,17 +106,41 @@ public final class BootJarPackager {
                 zip.writeEntry(jos, SBOM_ENTRY, request.sbom());
             }
 
-            // 4. Nested dependency jars — STORED with a precomputed CRC.
+            // 4. Nested dependency jars — STORED with a precomputed CRC. Jars whose manifest
+            //    declares a type Boot does not nest are dropped here and from both indexes.
+            List<Lib> nested = nestable(request.libs());
             zip.writeDir(jos, LIB_PREFIX, dirsWritten);
-            for (Lib lib : request.libs()) {
+            for (Lib lib : nested) {
                 zip.writeStored(jos, LIB_PREFIX + lib.fileName(), lib.jar());
             }
 
             // 5. The two index files the manifest points at.
-            zip.writeEntry(jos, CLASSPATH_IDX, classpathIndex(request.libs()));
-            zip.writeEntry(jos, LAYERS_IDX, layersIndex(request.libs()));
+            zip.writeEntry(jos, CLASSPATH_IDX, classpathIndex(nested));
+            zip.writeEntry(jos, LAYERS_IDX, layersIndex(nested));
         }
         return request.outputJar();
+    }
+
+    /** The libs that belong under {@code BOOT-INF/lib}, in the given order. */
+    private static List<Lib> nestable(List<Lib> libs) throws IOException {
+        List<Lib> out = new ArrayList<>(libs.size());
+        for (Lib lib : libs) {
+            if (nests(lib.jar())) out.add(lib);
+        }
+        return out;
+    }
+
+    /**
+     * Whether Boot's own plugins would nest {@code jar}: yes unless its manifest's {@code
+     * Spring-Boot-Jar-Type} is one of {@link #EXCLUDED_JAR_TYPES}. Reads the manifest only.
+     */
+    static boolean nests(Path jar) throws IOException {
+        try (JarFile jf = new JarFile(jar.toFile(), false)) {
+            Manifest manifest = jf.getManifest();
+            if (manifest == null) return true;
+            String type = manifest.getMainAttributes().getValue(JAR_TYPE_ATTRIBUTE);
+            return type == null || !EXCLUDED_JAR_TYPES.contains(type);
+        }
     }
 
     /**
@@ -154,8 +192,10 @@ public final class BootJarPackager {
     }
 
     /**
-     * Copy every class from the loader jar to the boot jar's root. Loader jars ship their own
-     * signature-free META-INF which we drop (our manifest already points at the launcher).
+     * Copy the loader jar's classes and its {@code META-INF/services} registrations to the boot
+     * jar's root, exactly the entries Boot's own plugins copy. The launcher registers a {@code
+     * nested:} filesystem through {@code java.nio.file.spi.FileSystemProvider}, so that service
+     * file is load-bearing; the loader's manifest, licence and notice are not and are dropped.
      */
     private static void explodeLoader(
             JarOutputStream jos, Path loaderJar, DeterministicZip zip, Set<String> dirsWritten) throws IOException {
@@ -165,7 +205,7 @@ public final class BootJarPackager {
             entries.sort(Comparator.comparing(JarEntry::getName));
             for (JarEntry e : entries) {
                 String name = e.getName();
-                if (name.startsWith("META-INF/")) continue;
+                if (!name.endsWith(".class") && !name.startsWith(SERVICES_PREFIX)) continue;
                 zip.writeParentDirs(jos, name, dirsWritten);
                 zip.writeEntryStreaming(jos, name, jf.getInputStream(e));
             }

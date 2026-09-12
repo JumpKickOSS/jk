@@ -21,6 +21,9 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.jar.Attributes;
+import java.util.jar.JarFile;
+import java.util.jar.Manifest;
 import java.util.stream.Stream;
 
 /**
@@ -139,11 +142,7 @@ public final class SpringBootPlugin implements Plugin, BuildExtension, PackageEx
             Path tools = io.extra(TOOLS_EXTRA)
                     .orElseThrow(() -> new IOException(
                             TOOLS_EXTRA + " artifact missing from the packager inputs (include-tools is on)"));
-            // Unversioned deliberately. The tools jar is fetched against its own `^` selector, so
-            // its version need not equal the closure's Boot version — stamping either one into the
-            // entry name would be a claim about bytes nobody checked. Nothing reads this name;
-            // `-Djarmode=tools` finds the jar by its classes.
-            libs.add(new BootJarPackager.Lib(TOOLS_EXTRA + ".jar", tools, false, BOOT_GROUP));
+            libs.add(new BootJarPackager.Lib(toolsFileName(tools), tools, false, BOOT_GROUP));
         }
 
         // Build-info (opt-in): the coordinates BuildProperties surfaces via /actuator/info.
@@ -202,5 +201,21 @@ public final class SpringBootPlugin implements Plugin, BuildExtension, PackageEx
                         sbom,
                         aotDirs,
                         0L));
+    }
+
+    /**
+     * {@code spring-boot-jarmode-tools-<version>.jar}, the name {@code bootJar} nests it under. The
+     * tools jar resolves against its own selector, so its version is read off the bytes that
+     * arrived — the jar's {@code Implementation-Version} — never off the closure's Boot version.
+     * A jar that does not state one is nested unversioned.
+     */
+    static String toolsFileName(Path tools) throws IOException {
+        try (JarFile jf = new JarFile(tools.toFile(), false)) {
+            Manifest manifest = jf.getManifest();
+            String version = manifest == null
+                    ? null
+                    : manifest.getMainAttributes().getValue(Attributes.Name.IMPLEMENTATION_VERSION);
+            return version == null || version.isBlank() ? TOOLS_EXTRA + ".jar" : TOOLS_EXTRA + "-" + version + ".jar";
+        }
     }
 }

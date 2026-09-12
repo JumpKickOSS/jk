@@ -7,11 +7,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import cc.jumpkick.plugin.build.PackageIo;
 import cc.jumpkick.plugin.testing.FakeBuildIo;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
+import java.util.jar.JarOutputStream;
+import java.util.jar.Manifest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -40,15 +43,24 @@ class SpringBootPluginTest {
     }
 
     /**
-     * The nested jarmode tools entry carried the same selector: {@code
-     * BOOT-INF/lib/spring-boot-jarmode-tools-latest.jar}. It is now unversioned, because the tools
-     * jar resolves against its own selector and its version need not equal the closure's.
+     * The nested tools entry is named the way {@code bootJar} names it, {@code
+     * spring-boot-jarmode-tools-<version>.jar}, with the version the jar itself states in its
+     * manifest. The declared {@code [spring-boot] version} is a selector and never reaches the name.
      */
     @Test
-    void the_jarmode_tools_entry_claims_no_version(@TempDir Path tmp) throws Exception {
+    void the_jarmode_tools_entry_carries_the_version_its_own_manifest_states(@TempDir Path tmp) throws Exception {
         FakeBuildIo io = fake(tmp, Map.of("version", "latest", "include-tools", Boolean.TRUE));
         io.entry("spring-boot-4.1.2.jar", "org.springframework.boot", "spring-boot", "4.1.2");
-        io.extra("spring-boot-jarmode-tools", io.jar("tools.jar", "org/springframework/boot/jarmode/Tool.class"));
+        Path tools = tmp.resolve("blobs/0123abcd");
+        Files.createDirectories(tools.getParent());
+        Manifest manifest = new Manifest();
+        manifest.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifest.getMainAttributes().put(Attributes.Name.IMPLEMENTATION_VERSION, "4.1.1");
+        try (JarOutputStream jos = new JarOutputStream(Files.newOutputStream(tools), manifest)) {
+            jos.putNextEntry(new JarEntry("org/springframework/boot/jarmode/tools/Tool.class"));
+            jos.closeEntry();
+        }
+        io.extra("spring-boot-jarmode-tools", tools);
 
         SpringBootPlugin.produceBootJar(io);
 
@@ -56,8 +68,23 @@ class SpringBootPluginTest {
             assertThat(jar.stream()
                             .map(JarEntry::getName)
                             .filter(n -> n.startsWith("BOOT-INF/lib/") && !n.endsWith("/")))
-                    .containsExactly("BOOT-INF/lib/spring-boot-4.1.2.jar", "BOOT-INF/lib/spring-boot-jarmode-tools.jar")
-                    .noneMatch(n -> n.contains("latest"));
+                    .containsExactly(
+                            "BOOT-INF/lib/spring-boot-4.1.2.jar", "BOOT-INF/lib/spring-boot-jarmode-tools-4.1.1.jar");
+        }
+    }
+
+    /** A tools jar whose manifest states no version is nested without claiming one. */
+    @Test
+    void a_tools_jar_without_an_implementation_version_is_nested_unversioned(@TempDir Path tmp) throws Exception {
+        FakeBuildIo io = fake(tmp, Map.of("version", "latest", "include-tools", Boolean.TRUE));
+        io.entry("spring-boot-4.1.2.jar", "org.springframework.boot", "spring-boot", "4.1.2");
+        io.extra("spring-boot-jarmode-tools", io.jar("tools.jar", "org/springframework/boot/jarmode/Tool.class"));
+
+        SpringBootPlugin.produceBootJar(io);
+
+        try (JarFile jar = new JarFile(io.artifactPath().toFile())) {
+            assertThat(jar.getEntry("BOOT-INF/lib/spring-boot-jarmode-tools.jar"))
+                    .isNotNull();
         }
     }
 

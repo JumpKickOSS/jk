@@ -16,6 +16,7 @@ import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.jar.JarOutputStream;
+import java.util.jar.Manifest;
 import java.util.zip.ZipEntry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -275,12 +276,138 @@ class BootJarPackagerTest {
         }
     }
 
+    /**
+     * Boot's Gradle and Maven plugins leave a jar out of {@code BOOT-INF/lib} when its manifest's
+     * {@code Spring-Boot-Jar-Type} names a starter, an annotation processor or a development tool:
+     * a starter carries dependencies and no classes, the other two never belong at runtime. jk
+     * applies the same rule, so the jar and both indexes agree with {@code bootJar}.
+     */
+    @Test
+    void jars_boot_would_not_nest_are_left_out_of_lib_and_both_indexes(@TempDir Path tmp) throws Exception {
+        Path classes = Files.createDirectories(tmp.resolve("classes"));
+        Path loader = writeJar(tmp.resolve("loader.jar"), "org/springframework/boot/loader/launch/JarLauncher.class");
+        Path core = writeJar(tmp.resolve("spring-core-7.0.1.jar"), "org/springframework/core/Marker.class");
+        Path starter = writeJar(
+                tmp.resolve("spring-boot-starter-webmvc-4.1.1.jar"),
+                Map.of("Spring-Boot-Jar-Type", "dependencies-starter"),
+                "META-INF/NOTICE.txt");
+        Path processor = writeJar(
+                tmp.resolve("spring-boot-configuration-processor-4.1.1.jar"),
+                Map.of("Spring-Boot-Jar-Type", "annotation-processor"),
+                "org/springframework/boot/configurationprocessor/Processor.class");
+        Path devtools = writeJar(
+                tmp.resolve("spring-boot-devtools-4.1.1.jar"),
+                Map.of("Spring-Boot-Jar-Type", "development-tool"),
+                "org/springframework/boot/devtools/Marker.class");
+        Path typed = writeJar(
+                tmp.resolve("acme-lib-1.0.jar"), Map.of("Spring-Boot-Jar-Type", "library"), "com/acme/Marker.class");
+
+        Path out = tmp.resolve("app.jar");
+        new BootJarPackager()
+                .packageBootJar(new BootJarPackager.BootJarRequest(
+                        classes,
+                        List.of(
+                                new BootJarPackager.Lib("spring-core-7.0.1.jar", core, false, "org.springframework"),
+                                new BootJarPackager.Lib(
+                                        "spring-boot-starter-webmvc-4.1.1.jar",
+                                        starter,
+                                        false,
+                                        "org.springframework.boot"),
+                                new BootJarPackager.Lib(
+                                        "spring-boot-configuration-processor-4.1.1.jar",
+                                        processor,
+                                        false,
+                                        "org.springframework.boot"),
+                                new BootJarPackager.Lib(
+                                        "spring-boot-devtools-4.1.1.jar", devtools, false, "org.springframework.boot"),
+                                new BootJarPackager.Lib("acme-lib-1.0.jar", typed, false, "com.acme")),
+                        loader,
+                        out,
+                        "com.example.App",
+                        "4.1.1",
+                        Map.of(),
+                        Map.of(),
+                        new byte[0],
+                        List.of(),
+                        0L));
+
+        try (JarFile jar = new JarFile(out.toFile())) {
+            assertThat(jar.stream()
+                            .map(JarEntry::getName)
+                            .filter(n -> n.startsWith("BOOT-INF/lib/") && !n.endsWith("/")))
+                    .containsExactly("BOOT-INF/lib/spring-core-7.0.1.jar", "BOOT-INF/lib/acme-lib-1.0.jar");
+            assertThat(entryText(jar, "BOOT-INF/classpath.idx"))
+                    .isEqualTo("- \"BOOT-INF/lib/spring-core-7.0.1.jar\"\n" + "- \"BOOT-INF/lib/acme-lib-1.0.jar\"\n");
+            assertThat(entryText(jar, "BOOT-INF/layers.idx"))
+                    .doesNotContain("starter", "configuration-processor", "devtools")
+                    .contains(
+                            "  - \"BOOT-INF/lib/spring-core-7.0.1.jar\"\n" + "  - \"BOOT-INF/lib/acme-lib-1.0.jar\"\n");
+        }
+    }
+
+    /**
+     * The loader registers its {@code nested:} filesystem through {@code
+     * META-INF/services/java.nio.file.spi.FileSystemProvider}; without that file {@code
+     * -Djarmode=tools extract} cannot open the nested jars. Boot's plugins copy the loader's
+     * classes and its service registrations and nothing else from its META-INF, and so does jk.
+     */
+    @Test
+    void the_exploded_loader_keeps_its_service_registrations_and_nothing_else_from_meta_inf(@TempDir Path tmp)
+            throws Exception {
+        Path classes = Files.createDirectories(tmp.resolve("classes"));
+        String provider = "org.springframework.boot.loader.nio.file.NestedFileSystemProvider\n";
+        Path loader = tmp.resolve("spring-boot-loader-4.1.1.jar");
+        try (JarOutputStream jos = new JarOutputStream(Files.newOutputStream(loader))) {
+            for (String name : List.of(
+                    "META-INF/MANIFEST.MF",
+                    "META-INF/LICENSE.txt",
+                    "META-INF/NOTICE.txt",
+                    "org/springframework/boot/loader/launch/JarLauncher.class")) {
+                jos.putNextEntry(new JarEntry(name));
+                jos.write(new byte[] {0xC, 0xA});
+                jos.closeEntry();
+            }
+            jos.putNextEntry(new JarEntry("META-INF/services/java.nio.file.spi.FileSystemProvider"));
+            jos.write(provider.getBytes(StandardCharsets.UTF_8));
+            jos.closeEntry();
+        }
+
+        Path out = tmp.resolve("app.jar");
+        new BootJarPackager()
+                .packageBootJar(new BootJarPackager.BootJarRequest(
+                        classes,
+                        List.of(),
+                        loader,
+                        out,
+                        "com.example.App",
+                        "4.1.1",
+                        Map.of(),
+                        Map.of(),
+                        new byte[0],
+                        List.of(),
+                        0L));
+
+        try (JarFile jar = new JarFile(out.toFile())) {
+            assertThat(entryText(jar, "META-INF/services/java.nio.file.spi.FileSystemProvider"))
+                    .isEqualTo(provider);
+            assertThat(jar.getEntry("META-INF/services/"))
+                    .as("directory entry, as bootJar writes it")
+                    .isNotNull();
+            assertThat(jar.getEntry("org/springframework/boot/loader/launch/JarLauncher.class"))
+                    .isNotNull();
+            assertThat(jar.getEntry("META-INF/LICENSE.txt")).isNull();
+            assertThat(jar.getEntry("META-INF/NOTICE.txt")).isNull();
+            // The archive's manifest is jk's own, not the loader's.
+            assertThat(jar.getManifest().getMainAttributes().getValue("Start-Class"))
+                    .isEqualTo("com.example.App");
+        }
+    }
+
     /** UTF-8 text of one jar entry. */
     private static String entryText(JarFile jar, String name) throws IOException {
         return new String(jar.getInputStream(jar.getEntry(name)).readAllBytes(), StandardCharsets.UTF_8);
     }
 
-    /** A minimal jar carrying one entry and nothing else. */
     @Test
     void build_info_entries_with_separators_and_spaces_survive_properties_load(@TempDir Path tmp) throws Exception {
         Path classes = Files.createDirectories(tmp.resolve("classes"));
@@ -314,7 +441,20 @@ class BootJarPackagerTest {
     }
 
     private static Path writeJar(Path path, String entryName) throws IOException {
+        return writeJar(path, Map.of(), entryName);
+    }
+
+    /** A minimal jar: a manifest carrying {@code attributes} when any, plus one entry. */
+    private static Path writeJar(Path path, Map<String, String> attributes, String entryName) throws IOException {
         try (JarOutputStream jos = new JarOutputStream(Files.newOutputStream(path))) {
+            if (!attributes.isEmpty()) {
+                Manifest manifest = new Manifest();
+                manifest.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
+                attributes.forEach((k, v) -> manifest.getMainAttributes().put(new Attributes.Name(k), v));
+                jos.putNextEntry(new JarEntry(JarFile.MANIFEST_NAME));
+                manifest.write(jos);
+                jos.closeEntry();
+            }
             jos.putNextEntry(new JarEntry(entryName));
             jos.write(new byte[] {0xC, 0xA});
             jos.closeEntry();

@@ -34,6 +34,6 @@ date              = "2026-09-11"
 jk-bytes          = 19542089
 shadow-bytes      = 19540024
 shade-bytes       = 19546121
-jk-boot-bytes     = 19935456
+jk-boot-bytes     = 19906362
 gradle-boot-bytes = 19902721
 maven-boot-bytes  = 19904803

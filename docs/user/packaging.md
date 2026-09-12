@@ -110,11 +110,13 @@ are equal across all three tools, so there is no compression gap left. What diff
   BOM manages `2.22`, and on the Kotlin fixture jk resolves `org.jetbrains:annotations 26.1.0` where
   Gradle takes 23.0.0 and Maven 13.0. Neither is a packaging cost; both are reported as their own
   line so they cannot hide inside "overhead".
-- **The Boot jar** is 32.7 KB (0.16 %) above Gradle's `bootJar`: jk nests the six
-  `spring-boot-starter-*` jars (about 29 KB of `META-INF`-only archives that Boot's own plugins skip
-  by their `Spring-Boot-Jar-Type: dependencies-starter` manifest attribute), relocates the 3 KB SBOM
-  under `BOOT-INF/classes`, and writes longer `classpath.idx` / `layers.idx` files. It also lacks the
-  loader's `META-INF/services/java.nio.file.spi.FileSystemProvider` entry that both Boot plugins keep.
+- **The Boot jar** nests what `bootJar` nests: a dependency whose manifest `Spring-Boot-Jar-Type` is
+  `dependencies-starter`, `annotation-processor` or `development-tool` (the `spring-boot-starter-*`
+  POM-with-a-manifest jars, the configuration processor, devtools) is left out of `BOOT-INF/lib` and
+  both index files, because Boot's own plugins leave it out and it has no classes to load. The
+  exploded loader keeps its `META-INF/services/java.nio.file.spi.FileSystemProvider` registration,
+  which the `nested:` filesystem behind `-Djarmode=tools extract` needs. What remains above `bootJar`
+  is the 3 KB SBOM relocated under `BOOT-INF/classes`.
 - **Headers.** Every tool writes the same local header, central record and 16-byte data descriptor
   per entry. jk's only extra field is the 8-byte JAR-magic marker on the first entry, which Shade
   also writes and Shadow does not. Entries are all DEFLATE; there is no STORED waste.
