@@ -157,7 +157,7 @@ public final class InstallPlans {
                     BuildLayout layout = ctx.require(BuildPlanner.LAYOUT);
                     var p = project.project();
                     Coordinate coord = Coordinate.of(p.group(), p.name(), p.version());
-                    if (alreadyInstalled(project, layout, cache)) {
+                    if (alreadyInstalled(project, layout, cache, m2Dir)) {
                         ctx.label("already in local repo");
                         ctx.cached();
                         ctx.put(PRIMARY, coord);
@@ -309,9 +309,18 @@ public final class InstallPlans {
 
     /**
      * True when this module's thin jar and POM are on the shelf at the same SHA-256 — and, when
-     * {@code [m2] install} is on, in the Maven local repo too.
+     * {@code [m2] install} is on, in the machine's Maven local repo too.
      */
     public static boolean alreadyInstalled(JkBuild project, BuildLayout layout, Path cacheDir) {
+        return alreadyInstalled(project, layout, cacheDir, null);
+    }
+
+    /**
+     * As above, checking the Maven local repo under {@code m2Dir} — the caller-resolved {@code ~/.m2}
+     * root that {@code --m2-dir} redirects, the same one the install writes to. Null means the
+     * machine's.
+     */
+    public static boolean alreadyInstalled(JkBuild project, BuildLayout layout, Path cacheDir, @Nullable Path m2Dir) {
         if (project == null || layout == null) return false;
         Path jar = layout.mainJar();
         if (!Files.isRegularFile(jar)) return false;
@@ -326,7 +335,7 @@ public final class InstallPlans {
             if (local.locate(jarRel, jarHex).isEmpty()
                     || local.locate(pomRel, pomHex).isEmpty()) return false;
             if (!installToMavenLocal(p)) return true;
-            Path m2 = M2Dirs.localRepository();
+            Path m2 = m2Dir == null ? M2Dirs.localRepository() : m2Dir.resolve("repository");
             return sameBytes(m2.resolve(jarRel), jarHex) && sameBytes(m2.resolve(pomRel), pomHex);
         } catch (RuntimeException | IOException e) {
             return false;
