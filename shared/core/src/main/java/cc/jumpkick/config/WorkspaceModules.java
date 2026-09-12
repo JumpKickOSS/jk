@@ -12,6 +12,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 /**
  * The one reading of {@code [workspace] modules}: literal module paths and single-segment globs
@@ -88,8 +90,15 @@ public final class WorkspaceModules {
         return true;
     }
 
+    /**
+     * Compiled matchers by glob segment. A root finder asks for one per segment per ancestor per
+     * call, and the segments a tree uses are a handful of fixed strings, so compiling each once
+     * removes a regex compile from every workspace lookup.
+     */
+    private static final ConcurrentMap<String, PathMatcher> MATCHERS = new ConcurrentHashMap<>();
+
     private static PathMatcher matcher(String segment) {
-        return FileSystems.getDefault().getPathMatcher("glob:" + segment);
+        return MATCHERS.computeIfAbsent(segment, s -> FileSystems.getDefault().getPathMatcher("glob:" + s));
     }
 
     private static void collect(Path root, Path dir, String[] segments, int index, Set<String> out) {

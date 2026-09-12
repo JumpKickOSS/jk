@@ -5,14 +5,20 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.Profiles;
+import cc.jumpkick.model.Project;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.atomic.LongAdder;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -25,6 +31,18 @@ public final class WorkspaceLoader {
 
     private WorkspaceLoader() {}
 
+    /** How often the module list was built rather than answered from a memo. */
+    private static final LongAdder LOADS = new LongAdder();
+
+    /**
+     * Test seam: module lists built since process start. The ratio of this to the calls made is the
+     * property under test — a memo that rebuilt the list on every call would pass every correctness
+     * test there is.
+     */
+    public static long loads() {
+        return LOADS.sum();
+    }
+
     public static Map<Path, JkBuild> loadModules(Path workspaceRoot, JkBuild root) throws IOException {
         Objects.requireNonNull(workspaceRoot, "workspaceRoot");
         Objects.requireNonNull(root, "root");
@@ -33,7 +51,55 @@ public final class WorkspaceLoader {
             throw new JkBuildParseException("workspace root must set concrete project values"
                     + " (`*.workspace = true` is only valid on workspace modules)");
         }
+        MemoKey key = MemoKey.of(workspaceRoot, root);
+        if (key == null) return Collections.unmodifiableMap(load(workspaceRoot, root));
+        try {
+            return RequestScope.current().get(key, k -> {
+                try {
+                    return Collections.unmodifiableMap(load(workspaceRoot, root));
+                } catch (IOException e) {
+                    throw new UncheckedIOException(e);
+                }
+            });
+        } catch (UncheckedIOException e) {
+            throw e.getCause();
+        }
+    }
 
+    /**
+     * What one module list is a function of: the root directory, the root manifest as it stands
+     * (size and mtime — a request's inputs are fixed at launch, so a stamp is enough), and the two
+     * parts of the parsed root the load reads, its project and its module entries. Two callers in one
+     * request handing in different root objects for the same manifest share a list only when those
+     * agree. {@code null} when the root manifest cannot be stat'ed — a root parsed from text in a
+     * test, say — in which case the list is built for the caller and not remembered.
+     */
+    private record MemoKey(Path root, long size, FileTime mtime, Project project, List<String> modules) {
+        static @Nullable MemoKey of(Path workspaceRoot, JkBuild root) {
+            Path dir = workspaceRoot.toAbsolutePath().normalize();
+            try {
+                BasicFileAttributes attrs =
+                        Files.readAttributes(dir.resolve(ManifestPaths.MANIFEST), BasicFileAttributes.class);
+                return new MemoKey(
+                        dir,
+                        attrs.size(),
+                        attrs.lastModifiedTime(),
+                        root.project(),
+                        List.copyOf(root.workspaceModules()));
+            } catch (IOException | RuntimeException unstattable) {
+                return null;
+            }
+        }
+    }
+
+    /**
+     * The uncached build of the list: expand the entries, parse each member's manifest, inherit from
+     * the root, refuse nested workspaces and artifact collisions. {@code loadModules} answers this
+     * once per request; the cost is a directory listing per glob segment plus a stat and a parse per
+     * member, and a request parsing every member would otherwise pay it once per member.
+     */
+    private static Map<Path, JkBuild> load(Path workspaceRoot, JkBuild root) throws IOException {
+        LOADS.increment();
         Map<Path, JkBuild> modules = new LinkedHashMap<>();
         List<String> bad = new ArrayList<>();
         for (String module : WorkspaceModules.expand(workspaceRoot, root.workspaceModules())) {
