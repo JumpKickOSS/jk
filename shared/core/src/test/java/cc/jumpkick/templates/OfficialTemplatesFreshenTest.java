@@ -319,6 +319,43 @@ class OfficialTemplatesFreshenTest {
         return out.strip();
     }
 
+    /**
+     * The cache key names a directory under the shared store that a refresh deletes and re-clones.
+     * A source that reduces to {@code .} or {@code ..} would name the templates directory or the
+     * store itself, so such a source is refused before anything resolves a path from it.
+     */
+    @Test
+    void a_source_that_reduces_to_a_dot_directory_is_refused() {
+        for (String source : List.of(".", "..", "https://..", "https://.", "git@..")) {
+            assertThrows(
+                    IllegalArgumentException.class,
+                    () -> OfficialTemplatesFreshen.parse(source),
+                    "source " + source + " must not yield a cache directory");
+        }
+    }
+
+    @Test
+    void a_cache_directory_is_always_a_direct_child_of_the_store(@TempDir Path store) throws Exception {
+        assertEquals(
+                store.resolve("github.com_acme_t"), OfficialTemplatesFreshen.destination(store, "github.com_acme_t"));
+        for (String key : List.of("..", ".", "", "a/b", "../x")) {
+            assertThrows(
+                    IOException.class,
+                    () -> OfficialTemplatesFreshen.destination(store, key),
+                    "key " + key + " must not resolve to a deletable directory");
+        }
+    }
+
+    @Test
+    void a_refresh_of_a_dot_source_leaves_the_store_untouched(@TempDir Path store) throws Exception {
+        Path sentinel = store.resolve("jdks.json");
+        Files.writeString(sentinel, "{}");
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> OfficialTemplatesFreshen.refreshRef("https://..", store, line -> {}));
+        assertTrue(Files.exists(sentinel), "nothing under the store was deleted");
+    }
+
     @Test
     void a_real_source_key_is_its_host_and_path() {
         // The bound only fires past MAX_CACHE_KEY; a real source keys as its readable host and path.

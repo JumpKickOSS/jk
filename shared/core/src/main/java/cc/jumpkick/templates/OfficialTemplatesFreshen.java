@@ -16,6 +16,7 @@ import java.util.Locale;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -133,6 +134,10 @@ public final class OfficialTemplatesFreshen {
                     refreshRef(ref, cacheRoot, log);
                 } catch (IOException e) {
                     if (first == null) first = e;
+                } catch (IllegalArgumentException unusable) {
+                    // A source that names no usable cache directory fails like a source that
+                    // cannot be cloned: this ref only, the others still get their attempt.
+                    if (first == null) first = new IOException(unusable.getMessage(), unusable);
                 }
             }
             if (first != null) throw first;
@@ -141,7 +146,7 @@ public final class OfficialTemplatesFreshen {
 
     static void refreshRef(String ref, Path cacheRoot, Consumer<String> log) throws IOException {
         Parsed p = parse(ref);
-        Path dest = cacheRoot.resolve(p.cacheKey());
+        Path dest = destination(cacheRoot, p.cacheKey());
         // Incomplete clones (e.g. only a .git dir left from a failed private-repo attempt) must be
         // wiped and re-cloned — fetch/reset cannot recover them. So must a catalog-shaped directory
         // that is not a repository of its own: a fetch and reset there would act on whatever
@@ -368,7 +373,36 @@ public final class OfficialTemplatesFreshen {
         if (rev != null && !rev.isBlank()) {
             base = base + "_" + rev.replaceAll("[^a-zA-Z0-9._-]+", "_");
         }
-        return bound(base, rev == null ? url : url + "#" + rev);
+        String key = bound(base, rev == null ? url : url + "#" + rev);
+        if (!CACHE_KEY.matcher(key).matches()) {
+            throw new IllegalArgumentException("templates source `" + url + "` does not name a cache directory"
+                    + " (a source must reduce to a host and path, not to `" + key + "`)");
+        }
+        return key;
+    }
+
+    /**
+     * The shape of a usable cache key: a plain directory name that starts with a letter or digit.
+     * The sanitiser above keeps dots, so a source of {@code https://..} would otherwise key as
+     * {@code ..} and name the store itself.
+     */
+    private static final Pattern CACHE_KEY = Pattern.compile("[a-z0-9][a-z0-9._-]*");
+
+    /**
+     * The directory {@code cacheKey} names under {@code cacheRoot}. Refuses anything that is not a
+     * direct child of the store: the refresh deletes this directory before it clones, and the store
+     * also holds repositories, tools and the registry.
+     */
+    static Path destination(Path cacheRoot, String cacheKey) throws IOException {
+        Path store = cacheRoot.toAbsolutePath().normalize();
+        Path dest = store.resolve(cacheKey).normalize();
+        if (cacheKey.isEmpty()
+                || !store.equals(dest.getParent())
+                || !cacheKey.equals(dest.getFileName().toString())) {
+            throw new IOException(
+                    "templates cache key `" + cacheKey + "` does not name a directory directly under " + store);
+        }
+        return dest;
     }
 
     /**
