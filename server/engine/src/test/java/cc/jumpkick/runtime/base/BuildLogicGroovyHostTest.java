@@ -32,6 +32,18 @@ class BuildLogicGroovyHostTest {
                 project.toAbsolutePath().normalize().toString())));
     }
 
+    /**
+     * The wrapper runs in a child JVM whose classpath is Groovy and Ant alone; a call into jk's
+     * own logging there is an unresolved symbol, and the catch that hides a missing Ant would
+     * itself be the script's failure.
+     */
+    @Test
+    void the_wrapper_names_nothing_the_child_cannot_resolve(@TempDir Path dir) {
+        String wrapped = BuildLogicGroovyHost.wrap(dir.resolve("s.groovy"), dir.resolve("p"), dir.resolve("o"));
+        assertThat(wrapped).doesNotContain("Log.");
+        assertThat(wrapped).contains("catch (Throwable ignored)");
+    }
+
     @Test
     void groovyString_escapes_quotes_and_backslashes() {
         assertTrue(BuildLogicGroovyHost.groovyString("a'b\\c").contains("\\'"));

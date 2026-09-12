@@ -97,8 +97,8 @@ public final class BuildLogicGroovyHost {
                 binding.setVariable('properties', new java.util.HashMap())
                 try {
                   binding.setVariable('ant', new groovy.ant.AntBuilder())
-                } catch (Throwable e) {
-                    Log.debug("wrap: Throwable ignored", e);
+                } catch (Throwable ignored) {
+                  // no Ant on the child's classpath: the script has no `ant` binding
                 }
                 new groovy.lang.GroovyShell(binding).evaluate(new File(%s))
                 """.formatted(
