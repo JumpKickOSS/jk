@@ -297,6 +297,23 @@ class ActionKeyTest {
                 .isEqualTo(digest);
     }
 
+    @Test
+    void option_pairing_is_part_of_the_key(@TempDir Path tempDir) throws IOException {
+        // The two argv hold the same words: a flag pairs with the value after it, so they are
+        // different compiles and must not share a key.
+        Path src = tempDir.resolve("Hello.java");
+        Files.writeString(src, "class Hello {}");
+        Path jdk = jdk(tempDir.resolve("temurin-21"), "21.0.5+11");
+        CompileRequest ab =
+                optioned(src, tempDir, jdk, 21, List.of("--add-modules", "a", "--limit-modules", "b"), List.of());
+        CompileRequest ba =
+                optioned(src, tempDir, jdk, 21, List.of("--add-modules", "b", "--limit-modules", "a"), List.of());
+
+        assertThat(ActionKey.forJavac("compile-main", ab, "0.1.0"))
+                .isNotEqualTo(ActionKey.forJavac("compile-main", ba, "0.1.0"));
+        assertThat(ActionKey.javacOptionsDigest(ab)).isNotEqualTo(ActionKey.javacOptionsDigest(ba));
+    }
+
     private static CompileRequest optioned(
             Path src, Path tempDir, Path javaHome, int release, List<String> options, List<Path> classpath) {
         return CompileRequest.builder()

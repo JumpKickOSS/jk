@@ -99,10 +99,10 @@ public final class ActionKey {
         // moves and the build restores bytecode compiled by the old javac against the old
         // platform. Same reasoning, same rendering, as forKotlinc's `jdk:`.
         sb.append("jdk:").append(jdkToken(request.javaHome())).append('\n');
-        sb.append("options:");
-        List<String> opts = new ArrayList<>(request.extraOptions());
-        opts.sort(Comparator.naturalOrder());
-        sb.append(String.join(",", opts)).append('\n');
+        // In argv order, never sorted: options pair with the value that follows them, so
+        // `--add-modules a --limit-modules b` and `--add-modules b --limit-modules a` hold the
+        // same words and are different compiles.
+        sb.append("options:").append(String.join(",", request.extraOptions())).append('\n');
         if (request.mixedScala()) {
             sb.append("scala:").append(request.scalaVersion()).append('\n');
             List<Path> scp = new ArrayList<>(request.compilerClasspath());
@@ -115,7 +115,7 @@ public final class ActionKey {
 
     /**
      * Action key for a Kotlin worker invocation. Same shape as {@link #forJavac}: task + jk version +
-     * jvm target + the project JDK + sorted free args + each source's content hash + classpath paths
+     * jvm target + the project JDK + the free args in order + each source's content hash + classpath paths
      * (both the compilation classpath and the worker's Build Tools API closure — whose CAS paths
      * encode the compiler version, so a compiler bump invalidates the key).
      */
@@ -133,10 +133,8 @@ public final class ActionKey {
         if (request.moduleName() != null) {
             sb.append("moduleName:").append(request.moduleName()).append('\n');
         }
-        sb.append("args:");
-        List<String> args = new ArrayList<>(request.extraArgs());
-        args.sort(Comparator.naturalOrder());
-        sb.append(String.join(",", args)).append('\n');
+        // Argv order, as forJavac: a flag pairs with the value after it.
+        sb.append("args:").append(String.join(",", request.extraArgs())).append('\n');
 
         // Compiler plugins reshape the output (all-open/no-arg synthesize members)
         // key on id + jar CONTENT + options so a plugin change re-compiles.
@@ -163,7 +161,7 @@ public final class ActionKey {
 
     /**
      * Action key for a Groovy worker invocation. Same shape as {@link #forKotlinc}: task + jk
-     * version + jvm target + sorted free args + each source's content hash + Java-source-root file
+     * version + jvm target + the free args in order + each source's content hash + Java-source-root file
      * hashes (they feed joint resolution) + classpath paths (both the compilation classpath and the
      * worker's Groovy closure — whose CAS paths encode the compiler version, so a compiler bump
      * invalidates the key).
@@ -173,10 +171,7 @@ public final class ActionKey {
         sb.append("task:").append(taskId).append('\n');
         sb.append("jk:").append(jkVersion).append('\n');
         sb.append("jvmTarget:").append(request.jvmTarget()).append('\n');
-        sb.append("args:");
-        List<String> args = new ArrayList<>(request.extraArgs());
-        args.sort(Comparator.naturalOrder());
-        sb.append(String.join(",", args)).append('\n');
+        sb.append("args:").append(String.join(",", request.extraArgs())).append('\n');
 
         // The hashed set IS the spec's SOURCE set (GroovycInputs): explicit sources plus every
         // .java the roots feed joint resolution — an edit to a swept file invalidates the key
