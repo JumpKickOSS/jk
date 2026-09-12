@@ -129,6 +129,30 @@ class CommandDispatchTest {
         assertThat(CommandDispatch.commandIndex(List.of("--", "build"))).isEqualTo(1);
     }
 
+    @Test
+    void own_args_end_at_a_literal_double_dash() {
+        // The parser stops reading options there; the pre-scans that run before it must too, or
+        // `jk run . -- -q` mutes jk and `-- -C /elsewhere` rebases its working directory.
+        assertThat(CommandDispatch.ownArgsEnd(List.of("run", ".", "--", "-q"))).isEqualTo(2);
+        assertThat(CommandDispatch.ownArgsEnd(List.of("-q", "--", "build", "--list")))
+                .isEqualTo(1);
+        assertThat(CommandDispatch.ownArgsEnd(List.of("build", "-q"))).isEqualTo(2);
+        assertThat(CommandDispatch.ownArgsEnd(List.of())).isZero();
+    }
+
+    @Test
+    void own_args_end_at_a_passthrough_command_name() {
+        // Everything after `jk mvn` is Maven's: -C is its strict-checksums flag, not jk's directory.
+        assertThat(CommandDispatch.ownArgsEnd(List.of("mvn", "-C", "install"))).isZero();
+        assertThat(CommandDispatch.ownArgsEnd(List.of("gradle", "-q", "build"))).isZero();
+        assertThat(CommandDispatch.ownArgsEnd(List.of("-C", "app", "mvn", "install")))
+                .isEqualTo(2);
+        // A unique prefix names the command just as dispatch resolves it.
+        assertThat(CommandDispatch.ownArgsEnd(List.of("gradl", "-q"))).isZero();
+        // Other commands keep jk's globals anywhere.
+        assertThat(CommandDispatch.ownArgsEnd(List.of("build", "-C", "app"))).isEqualTo(3);
+    }
+
     /**
      * ArgParser indexes option names last-wins and globals are merged after command options, so a
      * name collision silently replaces a command's option with the global (this once broke

@@ -229,23 +229,51 @@ public final class CommandDispatch {
             if (pluginExit != null) return pluginExit;
             return null; // let the caller show top-level help
         }
-        return dispatch(cmd, "jk " + cmd.name(), carryGlobals(all, commandAt), ansiEnabled());
+        return dispatch(cmd, "jk " + cmd.name(), split(List.of(), all, commandAt), ansiEnabled());
     }
 
     /**
-     * Args for the resolved command: the tokens after it, with any global flags that appeared
-     * <em>before</em> it carried along so the leaf parse still sees them ({@code jk -y self purge}
-     * must reach {@code Confirm.setAssumeYes} exactly like {@code jk self nuke -y}). A literal
-     * {@code --} separator is not carried — it only marked the command boundary.
+     * Where jk's own reading of argv stops — the bound for the global pre-scans that run before
+     * dispatch (quiet, directory, config file, the {@code --list} rewrite). A literal {@code --}
+     * ends it, exactly as it does for the parser, so {@code jk run . -- -q} hands {@code -q} to the
+     * program instead of muting jk. So does a passthrough command's name: everything after {@code
+     * jk mvn} belongs to Maven.
      */
-    private static List<String> carryGlobals(List<String> args, int commandAt) {
-        if (commandAt == 0) return args.subList(1, args.size());
-        List<String> carried = new ArrayList<>();
+    public static int ownArgsEnd(List<String> args) {
+        int end = args.size();
+        int commandAt = commandIndex(args);
+        if (commandAt >= 0) {
+            CliCommand cmd = Abbreviations.resolve(args.get(commandAt), BY_NAME).value();
+            if (cmd != null && cmd.passthrough()) end = commandAt;
+        }
+        for (int i = 0; i < end; i++) {
+            if (args.get(i).equals("--")) return i;
+        }
+        return end;
+    }
+
+    /**
+     * Args for a resolved command: the global flags that appeared <em>before</em> its name, kept
+     * apart from the tokens after it. Most commands parse the two joined, so {@code jk -y self
+     * purge} reaches {@code Confirm.setAssumeYes} exactly like {@code jk self nuke -y}; a
+     * passthrough command reads globals only from {@code leading}. A literal {@code --} separator
+     * before the name is not carried — it only marked the command boundary.
+     */
+    record Split(List<String> leading, List<String> rest) {
+        List<String> joined() {
+            if (leading.isEmpty()) return rest;
+            List<String> all = new ArrayList<>(leading);
+            all.addAll(rest);
+            return all;
+        }
+    }
+
+    private static Split split(List<String> leading, List<String> args, int commandAt) {
+        List<String> carried = new ArrayList<>(leading);
         for (String a : args.subList(0, commandAt)) {
             if (!a.equals("--")) carried.add(a);
         }
-        carried.addAll(args.subList(commandAt + 1, args.size()));
-        return carried;
+        return new Split(List.copyOf(carried), args.subList(commandAt + 1, args.size()));
     }
 
     /**
@@ -310,18 +338,23 @@ public final class CommandDispatch {
      * exception escaping {@code run} into the error line below.
      */
     static int dispatch(CliCommand cmd, String qualified, List<String> rest, boolean ansi) {
+        return dispatch(cmd, qualified, new Split(List.of(), rest), ansi);
+    }
+
+    private static int dispatch(CliCommand cmd, String qualified, Split args, boolean ansi) {
         if (!cmd.subcommands().isEmpty()) {
+            List<String> rest = args.rest();
             int subAt = commandIndex(rest);
             if (subAt < 0) {
                 // Bare group: optional default leaf, else print the subcommand list.
                 // `--help` always shows help.
-                if (helpRequested(cmd, rest)) {
+                if (helpRequested(cmd, args.joined())) {
                     System.out.print(renderHelp(cmd, qualified, ansi));
                     return 0;
                 }
                 CliCommand def = cmd.defaultSubcommand();
                 if (def != null) {
-                    return dispatch(def, qualified + " " + def.name(), rest, ansi);
+                    return dispatch(def, qualified + " " + def.name(), args, ansi);
                 }
                 System.out.print(renderHelp(cmd, qualified, ansi));
                 return Exit.USAGE;
@@ -337,18 +370,19 @@ public final class CommandDispatch {
                 printUnknownSubcommand(cmd, qualified, subName, ansi);
                 return Exit.USAGE;
             }
-            return dispatch(sub, qualified + " " + sub.name(), carryGlobals(rest, subAt), ansi);
+            return dispatch(sub, qualified + " " + sub.name(), split(args.leading(), rest, subAt), ansi);
         }
 
         // --help wins over parse validation (e.g. a missing required argument),
         // matching picocli — so `jk <cmd> --help` always shows help.
-        if (helpRequested(cmd, rest)) {
+        boolean passthrough = cmd.passthrough();
+        if (helpRequested(cmd, passthrough ? args.leading() : args.joined())) {
             System.out.print(renderHelp(cmd, qualified, ansi));
             return 0;
         }
         Invocation in;
         try {
-            in = ArgParser.parse(withGlobals(cmd), rest, cmd.passthrough());
+            in = passthrough ? parsePassthrough(cmd, args) : ArgParser.parse(withGlobals(cmd), args.joined());
         } catch (ParseException e) {
             printError(qualified, cmd, e, ansi);
             return Exit.USAGE;
@@ -384,6 +418,19 @@ public final class CommandDispatch {
             // print it themselves, and an exec handoff suppresses it outright.
             CliOutput.closeEnvelope();
         }
+    }
+
+    /**
+     * A passthrough command ({@code jk mvn}, {@code jk gradle}) owns nothing after its name but its
+     * own options, matched exactly; every other token is the child tool's. jk's globals are read
+     * only before the name, so {@code jk mvn -v} asks Maven for its version, {@code jk gradle -q
+     * build} keeps Gradle quiet, and {@code jk mvn -C install} is Maven's strict-checksums flag
+     * followed by a goal rather than jk's directory switch eating the goal.
+     */
+    static Invocation parsePassthrough(CliCommand cmd, Split args) throws ParseException {
+        Invocation globals = ArgParser.parse(withGlobals(cmd), args.leading());
+        Invocation own = ArgParser.parse(cmd, args.rest(), true);
+        return Invocation.builder().merge(globals).merge(own).build();
     }
 
     /**

@@ -217,7 +217,8 @@ public final class Jk {
      * stdout before the first subcommand println). Only flags that affect global behavior are read
      * here; everything else flows through the dispatcher.
      */
-    private static void applyCliOverrides(String[] args) {
+    static void applyCliOverrides(String[] args) {
+        int end = CommandDispatch.ownArgsEnd(List.of(args));
         JkConfig.ColorChoice color = null;
         Boolean offline = null;
         Boolean force = null;
@@ -229,7 +230,7 @@ public final class Jk {
         Boolean quiet = null;
         Boolean verbose = null;
         Path directory = null;
-        for (int i = 0; i < args.length; i++) {
+        for (int i = 0; i < end; i++) {
             String a = args[i];
             switch (a) {
                 case "-q", "--quiet" -> quiet = true;
@@ -246,11 +247,11 @@ public final class Jk {
                 case "--notify" -> notify = JkConfig.NotifyChoice.ALWAYS;
                 case "--no-notify" -> notify = JkConfig.NotifyChoice.NEVER;
                 case "--color" -> {
-                    if (i + 1 < args.length)
+                    if (i + 1 < end)
                         color = JkConfig.ColorChoice.parse(args[++i]).orElse(null);
                 }
                 case "-C", "--dir", "--directory" -> {
-                    if (i + 1 < args.length) directory = Path.of(args[++i]);
+                    if (i + 1 < end) directory = Path.of(args[++i]);
                 }
                 default -> {
                     if (a.startsWith("--color=")) {
@@ -291,18 +292,7 @@ public final class Jk {
      * GlobalOptions} mixin reads them after parsing.
      */
     private static void loadAndInstallConfig(String[] args) {
-        boolean noConfig = false;
-        Optional<Path> explicit = Optional.empty();
-        for (int i = 0; i < args.length; i++) {
-            String a = args[i];
-            if ("--no-config".equals(a)) {
-                noConfig = true;
-            } else if ("--config-file".equals(a) && i + 1 < args.length) {
-                explicit = Optional.of(Path.of(args[++i]));
-            } else if (a.startsWith("--config-file=")) {
-                explicit = Optional.of(Path.of(a.substring("--config-file=".length())));
-            }
-        }
+        ConfigSwitches switches = ConfigSwitches.scan(args);
         Path cwd;
         try {
             cwd = Path.of("").toAbsolutePath();
@@ -313,7 +303,7 @@ public final class Jk {
             throw e;
         }
         try {
-            JkConfig resolved = JkConfigLoader.load(cwd, noConfig, explicit);
+            JkConfig resolved = JkConfigLoader.load(cwd, switches.noConfig(), switches.explicit());
             SessionContext.installConfig(resolved);
         } catch (IOException e) {
             // Best-effort — a broken user/project config shouldn't kill the CLI.
@@ -322,14 +312,36 @@ public final class Jk {
         }
     }
 
+    /** {@code --no-config} / {@code --config-file} as they appear within jk's own args. */
+    record ConfigSwitches(boolean noConfig, Optional<Path> explicit) {
+        static ConfigSwitches scan(String[] args) {
+            int end = CommandDispatch.ownArgsEnd(List.of(args));
+            boolean noConfig = false;
+            Optional<Path> explicit = Optional.empty();
+            for (int i = 0; i < end; i++) {
+                String a = args[i];
+                if ("--no-config".equals(a)) {
+                    noConfig = true;
+                } else if ("--config-file".equals(a) && i + 1 < end) {
+                    explicit = Optional.of(Path.of(args[++i]));
+                } else if (a.startsWith("--config-file=")) {
+                    explicit = Optional.of(Path.of(a.substring("--config-file=".length())));
+                }
+            }
+            return new ConfigSwitches(noConfig, explicit);
+        }
+    }
+
     /**
-     * Rewrite any {@code --list} occurrence to {@code --help}. {@code --list} is an undocumented
-     * alias so muscle memory from tools like {@code rustup} / {@code cargo} keeps working; downstream
-     * code never sees it.
+     * Rewrite any {@code --list} occurrence within jk's own args to {@code --help}. {@code --list}
+     * is an undocumented alias so muscle memory from tools like {@code rustup} / {@code cargo} keeps
+     * working; downstream code never sees it. Past {@link CommandDispatch#ownArgsEnd} the token is
+     * someone else's — {@code jk run mytool -- --list} hands the tool {@code --list}.
      */
     static String[] rewriteListToHelp(String[] args) {
+        int end = CommandDispatch.ownArgsEnd(List.of(args));
         String[] out = null;
-        for (int i = 0; i < args.length; i++) {
+        for (int i = 0; i < end; i++) {
             if ("--list".equals(args[i])) {
                 if (out == null) out = args.clone();
                 out[i] = "--help";

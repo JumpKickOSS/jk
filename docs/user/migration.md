@@ -13,6 +13,10 @@ jk export idea | vscode
 jk export bom                  # freeze lock as a Maven BOM — see Platforms
 ```
 
+Everything after `jk mvn` / `jk gradle` belongs to the tool — `jk mvn -v` prints Maven's
+version, `jk gradle -q build` keeps Gradle quiet. jk's own flags go before the command name
+(`jk -q mvn package`, `jk -C app gradle build`).
+
 **POM import** is the high-fidelity path.
 
 **Gradle import** does not execute build scripts (no Groovy/Kotlin evaluation). It does

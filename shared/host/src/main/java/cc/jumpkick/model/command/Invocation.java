@@ -90,6 +90,19 @@ public final class Invocation {
             return this;
         }
 
+        /**
+         * Lay {@code other} over this builder: its flags and values replace, its positionals append.
+         * How two parses of one command line become one invocation.
+         */
+        public Builder merge(Invocation other) {
+            for (Map.Entry<String, List<String>> e : other.values.entrySet()) {
+                values.put(e.getKey(), new ArrayList<>(e.getValue()));
+            }
+            flags.putAll(other.flags);
+            positionals.addAll(other.positionals);
+            return this;
+        }
+
         public Invocation build() {
             return new Invocation(values, flags, positionals);
         }
