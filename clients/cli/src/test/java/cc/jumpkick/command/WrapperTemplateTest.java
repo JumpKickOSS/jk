@@ -7,6 +7,8 @@ import cc.jumpkick.command.toolchain.WrapperCommand;
 import cc.jumpkick.repo.ReleaseVerifier;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -59,9 +61,48 @@ class WrapperTemplateTest {
         assertThat(bat).contains("%BIN_DIR%\\jk.exe").contains("%USERPROFILE%\\.jk");
         assertThat(bat).doesNotContain("JK_BIN_DIR").doesNotContain("JK_INSTALL_DIR");
         // Windows wrapper matches install.ps1: .zip (no system xz). Not .exe.zip.
-        assertThat(bat).contains("jk-windows-x86_64-%VERSION%.zip");
+        assertThat(bat).contains("jk-windows-x86_64-!VERSION!.zip");
         assertThat(bat).contains("JK_HOME must be an absolute path");
         assertThat(bat).doesNotContain(".exe.zip").doesNotContain(".xz");
         assertThat(bat).doesNotContain(".sock").doesNotContain("endpoint");
+    }
+
+    /**
+     * The Windows wrapper reads three values it does not control — the latest {@code VERSION}
+     * from the release host, the {@code jk-min} floor from the repository's lock, and the
+     * installed {@code VERSION} file — and every PowerShell snippet it runs is a command string.
+     * A value spliced into one could end a quoted literal and run code before the signature is
+     * ever checked, so each is checked to be a version token first and then handed over through
+     * the environment only.
+     */
+    @Test
+    void windows_wrapper_validates_untrusted_values_and_never_splices_them_into_powershell() throws Exception {
+        String bat = template("jk.bat");
+        // The gate: a findstr regex over the whole value, letters/digits/._- only.
+        assertThat(bat).contains("findstr /r /c:\"^[0-9A-Za-z._-][0-9A-Za-z._-]*$\"");
+        // Every untrusted value passes the gate before anything uses it.
+        for (String value : List.of("VERSION", "FLOOR", "INSTALLED")) {
+            assertThat(bat).as("%s is checked", value).contains("call :require_version_token " + value + " ");
+        }
+        assertThat(bat.indexOf("call :require_version_token VERSION"))
+                .as("VERSION is checked before it names a download")
+                .isLessThan(bat.indexOf("$env:JK_WRAPPER_VERSION"));
+        assertThat(bat.indexOf("call :require_version_token FLOOR"))
+                .as("FLOOR is checked before the first version compare")
+                .isLessThan(bat.indexOf("call :version_ge"));
+        assertThat(bat.indexOf("call :require_version_token INSTALLED"))
+                .as("INSTALLED is checked before it is compared")
+                .isLessThan(bat.indexOf("call :version_ge INSTALLED"));
+        // No PowerShell command line carries a wrapper variable; values travel as $env:.
+        Pattern spliced = Pattern.compile("[%!](VERSION|FLOOR|INSTALLED|FILE|TMP|JK_RELEASES_URL)[%!]");
+        for (String line : bat.split("\\R")) {
+            if (!line.contains("powershell")) continue;
+            assertThat(spliced.matcher(line).find())
+                    .as("a wrapper variable is spliced into PowerShell text: %s", line)
+                    .isFalse();
+        }
+        // %VAR% expands when cmd parses the line, before any check could run and with & | " live.
+        // Only delayed expansion (!VAR!) is inert, so the untrusted values are never read that way.
+        assertThat(bat).doesNotContain("%VERSION%").doesNotContain("%FLOOR%").doesNotContain("%INSTALLED%");
     }
 }
