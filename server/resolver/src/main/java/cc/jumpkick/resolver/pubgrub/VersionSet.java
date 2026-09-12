@@ -55,6 +55,13 @@ public sealed interface VersionSet permits VersionSet.Empty, VersionSet.All, Ver
         return Optional.empty();
     }
 
+    /**
+     * True when some version is too high for this set: a caret, tilde, or closed range says so, a
+     * bare lower bound or {@link #ALL} does not. The solver reads it to tell "newest in range" asks
+     * from "at least this" floors.
+     */
+    boolean hasUpperBound();
+
     /** True iff this set is a (non-strict) subset of {@code other}. */
     default boolean subsetOf(VersionSet other) {
         // Cheap structural short-circuits before the full a ∩ ¬b = ∅ check.
@@ -92,6 +99,11 @@ public sealed interface VersionSet permits VersionSet.Empty, VersionSet.All, Ver
         static final Empty INSTANCE = new Empty();
 
         private Empty() {}
+
+        @Override
+        public boolean hasUpperBound() {
+            return true;
+        }
 
         @Override
         public boolean contains(String version) {
@@ -160,6 +172,11 @@ public sealed interface VersionSet permits VersionSet.Empty, VersionSet.All, Ver
         }
 
         @Override
+        public boolean hasUpperBound() {
+            return false;
+        }
+
+        @Override
         public String toString() {
             return "*";
         }
@@ -211,6 +228,11 @@ public sealed interface VersionSet permits VersionSet.Empty, VersionSet.All, Ver
                 return Optional.of(min);
             }
             return Optional.empty();
+        }
+
+        @Override
+        public boolean hasUpperBound() {
+            return max != null;
         }
 
         @Override
@@ -476,6 +498,12 @@ public sealed interface VersionSet permits VersionSet.Empty, VersionSet.All, Ver
                 if (part.contains(version)) return true;
             }
             return false;
+        }
+
+        /** Parts are sorted by lower bound, so only the last one can reach upward without end. */
+        @Override
+        public boolean hasUpperBound() {
+            return parts.getLast().hasUpperBound();
         }
 
         @Override

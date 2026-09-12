@@ -45,10 +45,9 @@ class LockOrchestratorScopeTest {
 
     @Test
     void processor_cannot_force_main_version_of_shared_module(@TempDir Path tempDir) throws Exception {
-        // Main: guava@31 → listenablefuture >= 1.0 (picks empty 9999 prefer… we model as two versions)
-        // Actually: main depends on lib-main which needs shared >= 1.0 (picks highest 2.0)
-        // Processor depends on lib-proc which needs shared = 1.0 exactly
-        // Unified solve would force shared=1.0 on main. Per-scope: main keeps 2.0, processor dual-rows 1.0.
+        // Main depends on lib-main, which declares shared 2.0; processor depends on lib-proc, which
+        // needs shared = 1.0 exactly. A unified solve would force shared=1.0 on main. Per-scope:
+        // main keeps 2.0, processor dual-rows 1.0.
         upstream.metadata("com.foo", "lib-main", "1.0");
         upstream.metadata("com.foo", "lib-proc", "1.0");
         upstream.metadata("com.foo", "shared", "1.0", "2.0");
@@ -57,7 +56,7 @@ class LockOrchestratorScopeTest {
                   <groupId>com.foo</groupId><artifactId>lib-main</artifactId><version>1.0</version>
                   <dependencies>
                     <dependency>
-                      <groupId>com.foo</groupId><artifactId>shared</artifactId><version>1.0</version>
+                      <groupId>com.foo</groupId><artifactId>shared</artifactId><version>2.0</version>
                     </dependency>
                   </dependencies>
                 </project>
@@ -134,7 +133,7 @@ class LockOrchestratorScopeTest {
 
     @Test
     void test_cannot_force_main_version_of_shared_module(@TempDir Path tempDir) throws Exception {
-        // Main wants shared highest (>=1.0 → 2.0); test wants exact 1.0. Separate graphs.
+        // Main's library declares shared 2.0; test's wants exact 1.0. Separate graphs.
         upstream.metadata("com.foo", "lib-main", "1.0");
         upstream.metadata("com.foo", "lib-test", "1.0");
         upstream.metadata("com.foo", "shared", "1.0", "2.0");
@@ -143,7 +142,7 @@ class LockOrchestratorScopeTest {
                   <groupId>com.foo</groupId><artifactId>lib-main</artifactId><version>1.0</version>
                   <dependencies>
                     <dependency>
-                      <groupId>com.foo</groupId><artifactId>shared</artifactId><version>1.0</version>
+                      <groupId>com.foo</groupId><artifactId>shared</artifactId><version>2.0</version>
                     </dependency>
                   </dependencies>
                 </project>

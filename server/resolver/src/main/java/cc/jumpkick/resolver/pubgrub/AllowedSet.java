@@ -4,6 +4,7 @@ package cc.jumpkick.resolver.pubgrub;
 import cc.jumpkick.resolver.Versions;
 import java.util.BitSet;
 import java.util.Objects;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -85,19 +86,33 @@ public final class AllowedSet {
      * <em>stable</em> version, then the first pre-release, else {@code null} when empty.
      */
     public @Nullable String choosePreferred() {
+        return choosePreferred(Set.of());
+    }
+
+    /**
+     * As {@link #choosePreferred()}, but a version in {@code declared} — one some dependency edge
+     * named outright — beats every version nobody asked for, stable or not. The soft-prefer front
+     * still wins over both.
+     */
+    public @Nullable String choosePreferred(Set<String> declared) {
         int first = bits.nextSetBit(0);
         if (first < 0) return null;
         // Soft-prefer front: index 0 is not a strict max of the universe → pin was front-loaded.
         if (first == 0 && isSoftPreferFront()) {
             return universe.version(0);
         }
+        String stable = null;
         String prerelease = null;
         for (int i = first; i >= 0; i = bits.nextSetBit(i + 1)) {
             String v = universe.version(i);
-            if (Versions.isStable(v)) return v;
-            if (prerelease == null) prerelease = v;
+            if (declared.contains(v)) return v;
+            if (Versions.isStable(v)) {
+                if (stable == null) stable = v;
+            } else if (prerelease == null) {
+                prerelease = v;
+            }
         }
-        return prerelease;
+        return stable != null ? stable : prerelease;
     }
 
     /**

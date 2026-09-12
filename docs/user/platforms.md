@@ -43,13 +43,13 @@ way Gradle's `platform()` does, while an exact version you declare yourself stil
 the BOM. Inside the BOM the precedence is Maven's: entries the BOM (or its parents)
 declares win over the BOMs it imports, and among imports the first wins.
 
-GAs the platform does **not** manage keep **highest-wins** by default (Maven/Gradle
-parity). Opt into exact fills for unmanaged GAs with `[resolve] unmapped = "strict"`
-(every unmanaged diamond is a hard error). Exact user roots still override the BOM for
-that GA.
+GAs the platform does **not** manage resolve to the highest version the POMs that name
+them declare (Maven/Gradle parity). Opt into exact fills for unmanaged GAs with
+`[resolve] unmapped = "strict"` (every unmanaged diamond is a hard error). Exact user
+roots still override the BOM for that GA.
 
-Without any platform BOM, bare transitives still use highest-version-wins floors (not
-Maven nearest-wins), with PubGrub prose on conflict.
+Without any platform BOM, the same highest-declared rule applies to every transitive
+(see [Dependencies](dependencies.md)), with PubGrub prose on conflict.
 
 ## Export a BOM from your lock
 

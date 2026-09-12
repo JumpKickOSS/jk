@@ -4,9 +4,11 @@ package cc.jumpkick.resolver.pubgrub;
 import cc.jumpkick.resolver.Versions;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.Consumer;
 
 /**
@@ -25,10 +27,15 @@ public final class InMemoryPackageSource implements PackageSource {
 
     private final Map<String, List<String>> versionsByPackage;
     private final Map<String, List<Term>> depsByCoord;
+    private final Map<String, Set<String>> declaredByPackage;
 
-    private InMemoryPackageSource(Map<String, List<String>> versionsByPackage, Map<String, List<Term>> depsByCoord) {
+    private InMemoryPackageSource(
+            Map<String, List<String>> versionsByPackage,
+            Map<String, List<Term>> depsByCoord,
+            Map<String, Set<String>> declaredByPackage) {
         this.versionsByPackage = Map.copyOf(versionsByPackage);
         this.depsByCoord = Map.copyOf(depsByCoord);
+        this.declaredByPackage = Map.copyOf(declaredByPackage);
     }
 
     @Override
@@ -47,6 +54,12 @@ public final class InMemoryPackageSource implements PackageSource {
         return depsByCoord.getOrDefault(coord(pkg, version), List.of());
     }
 
+    /** Every plain version any edge in the graph names for {@code pkg}, known up front. */
+    @Override
+    public Set<String> declaredVersions(String pkg) {
+        return declaredByPackage.getOrDefault(pkg, Set.of());
+    }
+
     public static Builder builder() {
         return new Builder();
     }
@@ -58,6 +71,7 @@ public final class InMemoryPackageSource implements PackageSource {
     public static final class Builder {
         private final Map<String, List<String>> versionsByPackage = new HashMap<>();
         private final Map<String, List<Term>> depsByCoord = new HashMap<>();
+        private final Map<String, Set<String>> declaredByPackage = new HashMap<>();
 
         public Builder version(String pkg, String version) {
             return version(pkg, version, deps -> {});
@@ -67,7 +81,7 @@ public final class InMemoryPackageSource implements PackageSource {
             Objects.requireNonNull(pkg, "pkg");
             Objects.requireNonNull(version, "version");
             versionsByPackage.computeIfAbsent(pkg, k -> new ArrayList<>()).add(version);
-            Deps captured = new Deps();
+            Deps captured = new Deps(declaredByPackage);
             deps.accept(captured);
             depsByCoord.put(coord(pkg, version), List.copyOf(captured.entries));
             return this;
@@ -81,16 +95,29 @@ public final class InMemoryPackageSource implements PackageSource {
                 copy.sort((a, b) -> Versions.compare(b, a)); // descending
                 sorted.put(pkg, List.copyOf(copy));
             });
-            return new InMemoryPackageSource(sorted, depsByCoord);
+            Map<String, Set<String>> declared = new HashMap<>();
+            declaredByPackage.forEach((pkg, set) -> declared.put(pkg, Set.copyOf(set)));
+            return new InMemoryPackageSource(sorted, depsByCoord, declared);
         }
     }
 
     public static final class Deps {
         private final List<Term> entries = new ArrayList<>();
+        private final Map<String, Set<String>> declaredByPackage;
+
+        private Deps(Map<String, Set<String>> declaredByPackage) {
+            this.declaredByPackage = declaredByPackage;
+        }
 
         public Deps require(String pkg, VersionSet versions) {
             entries.add(Term.positive(pkg, versions));
             return this;
+        }
+
+        /** A POM-style plain version: a floor for the solver, and a declared version it steers to. */
+        public Deps requirePlain(String pkg, String version) {
+            declaredByPackage.computeIfAbsent(pkg, k -> new LinkedHashSet<>()).add(version);
+            return require(pkg, VersionSet.atLeast(version, true));
         }
     }
 }

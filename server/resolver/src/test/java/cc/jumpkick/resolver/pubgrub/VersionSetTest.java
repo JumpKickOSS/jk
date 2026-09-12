@@ -24,6 +24,24 @@ class VersionSetTest {
     }
 
     @Test
+    void only_a_set_with_a_ceiling_has_an_upper_bound() {
+        assertThat(VersionSet.atLeast("1.0", true).hasUpperBound()).isFalse();
+        assertThat(VersionSet.ALL.hasUpperBound()).isFalse();
+        assertThat(VersionSet.between("1.0", true, "2.0", false).hasUpperBound())
+                .isTrue();
+        assertThat(VersionSet.exact("1.0").hasUpperBound()).isTrue();
+        assertThat(VersionSet.lessThan("2.0", false).hasUpperBound()).isTrue();
+        // A floor with one version excluded still reaches upward without end.
+        VersionSet holed = VersionSet.atLeast("1.0", true)
+                .intersect(VersionSet.exact("1.5").complement());
+        assertThat(holed).isInstanceOf(VersionSet.Union.class);
+        assertThat(holed.hasUpperBound()).isFalse();
+        VersionSet twoRanges =
+                VersionSet.between("1.0", true, "1.5", false).union(VersionSet.between("2.0", true, "3.0", false));
+        assertThat(twoRanges.hasUpperBound()).isTrue();
+    }
+
+    @Test
     void exact_contains_only_that_version() {
         VersionSet v = VersionSet.exact("1.2.3");
         assertThat(v.contains("1.2.3")).isTrue();

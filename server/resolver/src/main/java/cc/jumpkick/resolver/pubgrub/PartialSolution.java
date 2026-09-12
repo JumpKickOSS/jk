@@ -8,6 +8,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.TreeMap;
 import org.jspecify.annotations.Nullable;
 
@@ -179,9 +180,23 @@ public final class PartialSolution {
      * Requires {@link #bindUniverse} / a universe entry first.
      */
     public @Nullable String choosePreferred(String pkg) {
+        return choosePreferred(pkg, Set.of());
+    }
+
+    /** As {@link #choosePreferred(String)}, steering to a version in {@code declared} when one is allowed. */
+    public @Nullable String choosePreferred(String pkg, Set<String> declared) {
         PackageState s = byPackage.get(pkg);
         if (s == null || s.allowed == null) return null;
-        return s.allowed.choosePreferred();
+        return s.allowed.choosePreferred(declared);
+    }
+
+    /**
+     * The intersection of every term recorded about {@code pkg}, as a continuous set — the shape of
+     * what was asked (a floor, a range), independent of which versions the universe advertises.
+     */
+    public VersionSet constraint(String pkg) {
+        PackageState s = byPackage.get(pkg);
+        return s == null ? VersionSet.ALL : s.continuous;
     }
 
     /** True iff every version still allowed for {@code term.pkg()} satisfies {@code term}. */

@@ -4,6 +4,7 @@ package cc.jumpkick.resolver.pubgrub;
 import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -37,6 +38,16 @@ public interface PackageSource {
      */
     default Optional<String> preferredVersion(String pkg) {
         return Optional.empty();
+    }
+
+    /**
+     * Versions that dependency edges expanded so far have named for {@code pkg} as a plain version
+     * (a POM's {@code <version>1.2</version>}, not a range). The solver resolves a package whose
+     * constraints are all such floors to the highest of these rather than to the newest release
+     * the repository advertises. Default: none known.
+     */
+    default Set<String> declaredVersions(String pkg) {
+        return Set.of();
     }
 
     /**

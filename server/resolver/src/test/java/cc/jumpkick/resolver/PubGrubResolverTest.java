@@ -68,10 +68,12 @@ class PubGrubResolverTest {
 
     @Test
     void platform_active_unmapped_bare_transitive_mediates_by_default(@TempDir Path tempDir) throws Exception {
-        // platform map has an unrelated pin (project still "has a BOM"). middle →
-        // leaf@1.0 bare; metadata offers 2.0. Default mediates highest-wins → leaf=2.0
-        // (Maven/Gradle parity); [resolve] unmapped = "strict" restores the exact fill.
+        // platform map has an unrelated pin (project still "has a BOM"). middle → leaf@1.0 and
+        // other → leaf@1.5, both bare; metadata also offers 2.0. Default mediates to the highest
+        // declared version → leaf=1.5 (Maven/Gradle parity, no float to 2.0); [resolve] unmapped =
+        // "strict" restores the exact fill.
         upstream.metadata("com.foo", "middle", "1.0");
+        upstream.metadata("com.foo", "other", "1.0");
         upstream.metadata("com.foo", "leaf", "1.0", "1.5", "2.0");
         upstream.pomOnly("com.foo", "middle", "1.0", """
                 <project>
@@ -85,6 +87,18 @@ class PubGrubResolverTest {
                   </dependencies>
                 </project>
                 """);
+        upstream.pomOnly("com.foo", "other", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId>
+                  <artifactId>other</artifactId>
+                  <version>1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>leaf</artifactId><version>1.5</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
         upstream.pomOnly("com.foo", "leaf", "1.0", MavenStub.emptyPom("com.foo", "leaf", "1.0"));
         upstream.pomOnly("com.foo", "leaf", "1.5", MavenStub.emptyPom("com.foo", "leaf", "1.5"));
         upstream.pomOnly("com.foo", "leaf", "2.0", MavenStub.emptyPom("com.foo", "leaf", "2.0"));
@@ -93,9 +107,11 @@ class PubGrubResolverTest {
         Map<String, String> bom = Map.of("com.foo:unrelated", "0.1");
 
         Resolution mediated = new PubGrubResolver(repos, bom)
-                .resolve(List.of(new Dependency("com.foo:middle", VersionSelector.parse("=1.0"))));
+                .resolve(List.of(
+                        new Dependency("com.foo:middle", VersionSelector.parse("=1.0")),
+                        new Dependency("com.foo:other", VersionSelector.parse("=1.0"))));
         assertThat(requireNonNull(mediated.modules().get("com.foo:leaf:jar:")).version())
-                .isEqualTo("2.0");
+                .isEqualTo("1.5");
 
         Resolution strict = new PubGrubResolver(
                         repos, bom, Map.of(), KmpRedirects.NONE, PlatformPolicy.ENFORCED, UnmappedPolicy.STRICT)

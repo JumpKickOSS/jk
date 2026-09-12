@@ -35,8 +35,13 @@ Version syntax: [Projects](projects.md#version-strings). Scopes:
 Main, **test**, and **processor** graphs are solved **separately** so annotation-processor
 constraints do not force main classpath versions.
 
-Without a platform BOM, bare transitives use **highest-version-wins** (not Maven
-nearest-wins), with PubGrub prose on conflict. With a BOM: [Platforms](platforms.md).
+A dependency that only transitive POMs name resolves to the **highest version any of those
+POMs declares** (Gradle's rule, not Maven nearest-wins), never to a newer release the
+repository happens to advertise; only your own floating selectors (`1.2`, `^`, `~`, `latest`,
+ranges) reach for the newest release in range. Version order is Maven's, so an unknown
+qualifier such as `2.0.1.MR` counts as newer than `2.0.1` when a selector floats — a POM
+that declares `2.0.1` still gets `2.0.1`. Conflicts get PubGrub prose. With a BOM:
+[Platforms](platforms.md).
 
 **Maven relocations are followed** (`distributionManagement/relocation`).
 

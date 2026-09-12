@@ -49,6 +49,15 @@ class VersionsTest {
     }
 
     @Test
+    void unknown_dotted_qualifier_ranks_above_the_release_like_maven() {
+        // Maven reads `.MR` as an unknown qualifier and sorts it after the plain release, so a
+        // selector that asks for the newest version sees 2.0.1.MR as newer than 2.0.1. A POM that
+        // declares 2.0.1 outright still resolves to 2.0.1, because a declared version never floats.
+        assertThat(Versions.compare("2.0.1.MR", "2.0.1")).isPositive();
+        assertThat(Versions.isStable("2.0.1.MR")).isTrue();
+    }
+
+    @Test
     void unknown_qualifier_ranks_after_sp() {
         assertThat(Versions.compare("1.0-sp1", "1.0-xyzzy")).isNegative();
         // Two unknowns compare lexicographically.

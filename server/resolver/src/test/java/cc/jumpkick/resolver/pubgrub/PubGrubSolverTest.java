@@ -347,6 +347,122 @@ class PubGrubSolverTest {
                 .isInstanceOf(UnsatisfiableException.class);
     }
 
+    @Test
+    void transitive_floors_resolve_to_the_highest_declared_version() throws Exception {
+        // stdlib names 13.0, coroutines names 23.0.0, the repository has 26.1.0: nothing asked for
+        // 26.1.0, so the pick is the highest version an edge declared.
+        PackageSource src = InMemoryPackageSource.builder()
+                .version("annotations", "13.0")
+                .version("annotations", "23.0.0")
+                .version("annotations", "26.1.0")
+                .version("stdlib", "2.4", d -> d.requirePlain("annotations", "13.0"))
+                .version("coroutines", "1.11", d -> d.requirePlain("annotations", "23.0.0"))
+                .build();
+        Map<String, String> solution = new PubGrubSolver(src)
+                .solve(
+                        "root",
+                        "1.0",
+                        List.of(
+                                Term.positive("stdlib", VersionSet.exact("2.4")),
+                                Term.positive("coroutines", VersionSet.exact("1.11"))));
+        assertThat(solution).containsEntry("annotations", "23.0.0");
+    }
+
+    @Test
+    void a_floating_root_selector_still_takes_the_newest_release_in_its_range() throws Exception {
+        // The manifest asked for annotations with a floor; that is a request for the newest
+        // release, and a transitive naming 23.0.0 does not hold it back.
+        PackageSource src = InMemoryPackageSource.builder()
+                .version("annotations", "13.0")
+                .version("annotations", "23.0.0")
+                .version("annotations", "26.1.0")
+                .version("coroutines", "1.11", d -> d.requirePlain("annotations", "23.0.0"))
+                .build();
+        Map<String, String> solution = new PubGrubSolver(src)
+                .solve(
+                        "root",
+                        "1.0",
+                        List.of(
+                                Term.positive("annotations", VersionSet.atLeast("13.0", true)),
+                                Term.positive("coroutines", VersionSet.exact("1.11"))));
+        assertThat(solution).containsEntry("annotations", "26.1.0");
+    }
+
+    @Test
+    void a_range_edge_takes_the_newest_release_in_range_over_a_declared_version() throws Exception {
+        // A Maven range on any edge asks for the newest release inside it (Maven and Gradle both
+        // resolve a range that way), so a plain 23.0.0 elsewhere does not steer the pick.
+        PackageSource src = InMemoryPackageSource.builder()
+                .version("annotations", "13.0")
+                .version("annotations", "23.0.0")
+                .version("annotations", "26.1.0")
+                .version(
+                        "ranged", "1.0", d -> d.require("annotations", VersionSet.between("13.0", true, "27.0", false)))
+                .version("coroutines", "1.11", d -> d.requirePlain("annotations", "23.0.0"))
+                .build();
+        Map<String, String> solution = new PubGrubSolver(src)
+                .solve(
+                        "root",
+                        "1.0",
+                        List.of(
+                                Term.positive("ranged", VersionSet.exact("1.0")),
+                                Term.positive("coroutines", VersionSet.exact("1.11"))));
+        assertThat(solution).containsEntry("annotations", "26.1.0");
+    }
+
+    @Test
+    void a_declared_pre_release_is_taken_over_a_newer_stable_nobody_named() throws Exception {
+        PackageSource src = InMemoryPackageSource.builder()
+                .version("widget", "1.0-M3")
+                .version("widget", "1.0")
+                .version("lib", "1.0", d -> d.requirePlain("widget", "1.0-M3"))
+                .build();
+        Map<String, String> solution =
+                new PubGrubSolver(src).solve("root", "1.0", List.of(Term.positive("lib", VersionSet.exact("1.0"))));
+        assertThat(solution).containsEntry("widget", "1.0-M3");
+    }
+
+    @Test
+    void a_preferred_pin_is_kept_over_the_declared_version() throws Exception {
+        // A lock (or BOM) preference at 26.1.0 is what the project already has; the declared
+        // 23.0.0 only steers packages nothing pinned.
+        PackageSource inner = InMemoryPackageSource.builder()
+                .version("annotations", "13.0")
+                .version("annotations", "23.0.0")
+                .version("annotations", "26.1.0")
+                .version("coroutines", "1.11", d -> d.requirePlain("annotations", "23.0.0"))
+                .build();
+        PackageSource src = preferring(inner, "annotations", "26.1.0");
+        Map<String, String> solution = new PubGrubSolver(src)
+                .solve("root", "1.0", List.of(Term.positive("coroutines", VersionSet.exact("1.11"))));
+        assertThat(solution).containsEntry("annotations", "26.1.0");
+    }
+
+    /** Wrap a source with a soft-prefer pin for one package. */
+    private static PackageSource preferring(PackageSource delegate, String pkg, String version) {
+        return new PackageSource() {
+            @Override
+            public List<String> versions(String p) throws IOException, InterruptedException {
+                return delegate.versions(p);
+            }
+
+            @Override
+            public List<Term> dependencies(String p, String v) throws IOException, InterruptedException {
+                return delegate.dependencies(p, v);
+            }
+
+            @Override
+            public Set<String> declaredVersions(String p) {
+                return delegate.declaredVersions(p);
+            }
+
+            @Override
+            public Optional<String> preferredVersion(String p) {
+                return p.equals(pkg) ? Optional.of(version) : Optional.empty();
+            }
+        };
+    }
+
     /** Wrap a source so the given {@code pkg@version} coords throw the unavailable signal. */
     private static PackageSource withUnavailable(PackageSource delegate, String... coords) {
         Set<String> dead = Set.of(coords);

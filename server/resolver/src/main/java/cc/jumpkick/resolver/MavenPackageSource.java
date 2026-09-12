@@ -76,8 +76,18 @@ public final class MavenPackageSource implements PackageSource {
      */
     private final Map<String, List<RawEdge>> rawDepsCache = new ConcurrentHashMap<>();
 
-    /** One compile/runtime edge before inherited-exclusion filtering. */
-    private record RawEdge(String depPkg, VersionSet constraint, Set<String> edgeExclusions) {}
+    /**
+     * One compile/runtime edge before inherited-exclusion filtering. {@code declaredVersion} is the
+     * plain version the POM wrote, or {@code null} when it wrote a range or the edge is synthetic.
+     */
+    private record RawEdge(
+            String depPkg,
+            VersionSet constraint,
+            Set<String> edgeExclusions,
+            @Nullable String declaredVersion) {}
+
+    /** Package key → plain versions edges expanded in this solve have declared for it. */
+    private final ConcurrentHashMap<String, Set<String>> declaredVersions = new ConcurrentHashMap<>();
 
     /**
      * Modules to strip when expanding a package, keyed by package module id.
@@ -205,6 +215,13 @@ public final class MavenPackageSource implements PackageSource {
     public void resetSolveScopedState() {
         exclusionsWhenExpanding.clear();
         filteredAtExpansion.clear();
+        declaredVersions.clear();
+    }
+
+    @Override
+    public Set<String> declaredVersions(String pkg) {
+        Set<String> declared = declaredVersions.get(pkg);
+        return declared == null ? Set.of() : Set.copyOf(declared);
     }
 
     /** True when {@code pkg} was requested with the {@code snapshot} selector. */
@@ -447,6 +464,11 @@ public final class MavenPackageSource implements PackageSource {
             Set<String> merged = new LinkedHashSet<>(excl);
             merged.addAll(edge.edgeExclusions());
             registerExclusions(edge.depPkg(), merged);
+            if (edge.declaredVersion() != null) {
+                declaredVersions
+                        .computeIfAbsent(edge.depPkg(), k -> ConcurrentHashMap.newKeySet())
+                        .add(edge.declaredVersion());
+            }
             out.add(Term.positive(edge.depPkg(), edge.constraint()));
         }
         // Remember what this expansion dropped so the resolver can detect a stale expansion
@@ -487,7 +509,7 @@ public final class MavenPackageSource implements PackageSource {
         if (moved != null && moved.redirects(coord)) {
             Coordinate to = moved.applyTo(coord);
             String toPkg = PackageId.ofGa(to.group() + ":" + to.artifact()).key();
-            List<RawEdge> redirect = List.of(new RawEdge(toPkg, VersionSet.exact(to.version()), Set.of()));
+            List<RawEdge> redirect = List.of(new RawEdge(toPkg, VersionSet.exact(to.version()), Set.of(), null));
             rawDepsCache.put(key, redirect);
             return redirect;
         }
@@ -499,7 +521,7 @@ public final class MavenPackageSource implements PackageSource {
             var target = kmpSelection.get().target();
             String targetPkg =
                     PackageId.ofGa(target.group() + ":" + target.module()).key();
-            out.add(new RawEdge(targetPkg, VersionSet.exact(target.version()), Set.of()));
+            out.add(new RawEdge(targetPkg, VersionSet.exact(target.version()), Set.of(), null));
             kmpDropped = kmpSelection.get().allTargets();
         }
         for (Pom.Dep dep : pom.dependencies()) {
@@ -510,7 +532,9 @@ public final class MavenPackageSource implements PackageSource {
             if (dep.version() == null || dep.version().isBlank()) continue;
             String depPkg = packageKey(dep);
             Set<String> edgeExcl = modulesOf(dep.exclusions());
-            out.add(new RawEdge(depPkg, constraintForManagedEdge(depPkg, dep.version()), edgeExcl));
+            String edgeVersion = dep.version().trim();
+            String declared = VersionSelectors.looksLikeMavenRange(edgeVersion) ? null : edgeVersion;
+            out.add(new RawEdge(depPkg, constraintForManagedEdge(depPkg, edgeVersion), edgeExcl, declared));
         }
         List<RawEdge> immutable = List.copyOf(out);
         rawDepsCache.put(key, immutable);

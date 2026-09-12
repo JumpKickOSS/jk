@@ -2,6 +2,7 @@
 package cc.jumpkick.resolver.pubgrub;
 
 import cc.jumpkick.resolve.ResolveProfile;
+import cc.jumpkick.resolver.Versions;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -67,6 +68,12 @@ public class PubGrubSolver {
 
     /** Packages whose universe is the compact {@code versions()} list — widenable. */
     private final Set<String> cappedUniverses = new HashSet<>();
+
+    /**
+     * Root dependencies declared with anything but an exact version. The manifest asked for the
+     * newest release its selector admits, so versions transitive POMs declare do not steer these.
+     */
+    private final Set<String> floatingRoots = new HashSet<>();
 
     protected final PartialSolution solution;
     protected final List<Incompatibility> incompatibilities = new ArrayList<>();
@@ -187,9 +194,11 @@ public class PubGrubSolver {
         this.conflictedDecisionFingerprints.clear();
         Term rootTerm = Term.positive(rootPkg, VersionSet.exact(rootVersion));
 
+        floatingRoots.clear();
         for (Term dep : rootDeps) {
             addIncompatibility(new Incompatibility(
                     List.of(rootTerm, dep.invert()), new Incompatibility.Cause.Dependency(rootTerm, dep)));
+            if (dep.versions().asExactSingleton().isEmpty()) floatingRoots.add(dep.pkg());
         }
 
         // Root is not fetched from the package source — seed a singleton universe for bit space.
@@ -516,8 +525,10 @@ public class PubGrubSolver {
             if (solution.hasNoCandidates(pkg) && widenable(pkg)) {
                 expandUniverse(pkg);
             }
+            Set<String> declared = steeringDeclarations(pkg);
+            if (!declared.isEmpty()) admitDeclared(pkg, declared);
 
-            String pick = solution.hasNoCandidates(pkg) ? null : solution.choosePreferred(pkg);
+            String pick = solution.hasNoCandidates(pkg) ? null : solution.choosePreferred(pkg, declared);
             if (pick == null) {
                 // Diagnostics: if we never widened, expand once for a useful sample.
                 if (widenable(pkg)) {
@@ -578,6 +589,50 @@ public class PubGrubSolver {
             return pkg;
         }
         return null;
+    }
+
+    /**
+     * The versions dependency edges declared for {@code pkg} when those should decide its version:
+     * nothing asked for "newest in range" (no floating root selector, no range or caret anywhere
+     * in its constraint) and no lock/BOM pin is still in play. Empty otherwise, which leaves the
+     * highest allowed release as the pick.
+     */
+    private Set<String> steeringDeclarations(String pkg) {
+        if (floatingRoots.contains(pkg)) return Set.of();
+        if (lazyUniverses.contains(pkg)) return Set.of();
+        if (solution.constraint(pkg).hasUpperBound()) return Set.of();
+        Set<String> declared = source.declaredVersions(pkg);
+        if (declared.isEmpty()) return Set.of();
+        Optional<String> preferred = source.preferredVersion(pkg);
+        if (preferred.isPresent() && solution.constraint(pkg).contains(preferred.get())) return Set.of();
+        return declared;
+    }
+
+    /**
+     * Make sure every declared version is a candidate. The compact window holds the newest
+     * releases, and a version an edge names is usually older than all of them; a universe that
+     * cannot see it would resolve past it.
+     */
+    private void admitDeclared(String pkg, Set<String> declared) {
+        VersionUniverse u = universes.get(pkg);
+        if (u == null) return;
+        List<String> missing = new ArrayList<>();
+        for (String v : declared) {
+            if (u.indexOf(v) < 0) missing.add(v);
+        }
+        if (missing.isEmpty()) return;
+        List<String> current = u.versions();
+        String front = current.getFirst();
+        boolean pinnedFront = current.stream().anyMatch(v -> Versions.compare(v, front) > 0);
+        List<String> merged = new ArrayList<>(current);
+        merged.addAll(missing);
+        merged.sort((a, b) -> Versions.compare(b, a));
+        if (pinnedFront) {
+            merged.remove(front);
+            merged.addFirst(front);
+        }
+        universes.put(pkg, VersionUniverse.of(pkg, merged));
+        solution.rebindAfterUniverseExpand(pkg);
     }
 
     private List<String> sampleAvailable(String pkg) {
