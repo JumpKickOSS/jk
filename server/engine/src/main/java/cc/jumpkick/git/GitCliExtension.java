@@ -2,6 +2,7 @@
 package cc.jumpkick.git;
 
 import cc.jumpkick.engine.plugin.JobWorkers;
+import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.forge.ForgeGitCredentials;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.GitSource;
@@ -15,6 +16,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -34,6 +36,11 @@ import org.jspecify.annotations.Nullable;
  * <p>Credentials (forge tokens, HTTP Basic over https) are fed to git through the child process
  * <em>environment</em> ({@code GIT_CONFIG_*} → a URL-scoped {@code http.<url>.extraHeader}) so the
  * secret never appears in {@code argv} ({@code ps}) or on disk.
+ *
+ * <p>git is a worker like every other fork: it runs with the {@link WorkerEnv} allow-list plus what
+ * this class adds for it, never the engine's whole environment. The shell that started the daemon
+ * carries every {@code JK_REPO_*_TOKEN}, cloud key and {@code GIT_DIR}/{@code GIT_CONFIG_GLOBAL}
+ * override, and all of it would otherwise reach git, its transport helpers and the user's hooks.
  */
 public final class GitCliExtension implements GitBackend {
 
@@ -74,27 +81,43 @@ public final class GitCliExtension implements GitBackend {
     private static Optional<GitCli> probe() {
         String override = System.getenv("JK_GIT");
         String exe = (override != null && !override.isBlank()) ? override.trim() : "git";
+        return probe(exe, PROBE_TIMEOUT_MS);
+    }
+
+    /** How long {@code git --version} gets before the command is judged unusable. */
+    private static final long PROBE_TIMEOUT_MS = 5_000L;
+
+    /**
+     * Run {@code exe --version} and read its version, or empty when it is not a usable git — one
+     * that cannot be started, exits non-zero, prints something else, or has not exited within
+     * {@code timeoutMs}. Every {@link GitFetcher} waits on this probe's lock, so its stdout is
+     * drained off-thread and the bound applies to the process, not to reaching end-of-stream.
+     */
+    static Optional<GitCli> probe(String exe, long timeoutMs) {
+        Process p = null;
         try {
             // ProcessBuilder resolves git.exe on Windows via CreateProcess's implicit .exe search;
             // no PATH scanning needed. It does NOT go through cmd.exe, so git.bat/.cmd shims are not
             // found — the canonical installs ship git.exe, which is what we target.
             ProcessBuilder pb = new ProcessBuilder(exe, "--version").redirectErrorStream(true);
-            pb.environment().put("LC_ALL", "C");
-            Process p = pb.start();
+            replaceEnvironment(pb, Map.of("LC_ALL", "C"));
+            p = pb.start();
             p.getOutputStream().close();
-            String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8).strip();
-            boolean done = p.waitFor(5, TimeUnit.SECONDS);
-            if (!done) {
-                p.destroyForcibly();
+            ByteArrayOutputStream buf = new ByteArrayOutputStream();
+            Thread reader = drain(p, buf);
+            if (!p.waitFor(timeoutMs, TimeUnit.MILLISECONDS)) {
+                JobWorkers.destroyTree(p);
                 return Optional.empty();
             }
+            reader.join(1_000);
             if (p.exitValue() != 0) return Optional.empty();
-            Matcher m = VERSION.matcher(out);
+            Matcher m = VERSION.matcher(buf.toString(StandardCharsets.UTF_8).strip());
             if (!m.find()) return Optional.empty();
             return Optional.of(new GitCli(exe, Integer.parseInt(m.group(1)), Integer.parseInt(m.group(2))));
         } catch (IOException e) { // command-not-found lands here
             return Optional.empty();
         } catch (InterruptedException e) {
+            if (p != null) JobWorkers.destroyTree(p);
             Thread.currentThread().interrupt();
             return Optional.empty();
         }
@@ -103,11 +126,21 @@ public final class GitCliExtension implements GitBackend {
     private final Path gitRoot;
     private final ForgeGitCredentials credentials;
     private final GitCli git;
+    private final long localTimeoutSec;
+    private final long networkTimeoutSec;
 
     public GitCliExtension(Path gitRoot, ForgeGitCredentials credentials, GitCli git) {
+        this(gitRoot, credentials, git, LOCAL_TIMEOUT_SEC, NETWORK_TIMEOUT_SEC);
+    }
+
+    /** With explicit timeouts for local and network commands, in seconds; tests shorten them. */
+    GitCliExtension(
+            Path gitRoot, ForgeGitCredentials credentials, GitCli git, long localTimeoutSec, long networkTimeoutSec) {
         this.gitRoot = Objects.requireNonNull(gitRoot, "gitRoot");
         this.credentials = Objects.requireNonNull(credentials, "credentials");
         this.git = Objects.requireNonNull(git, "git");
+        this.localTimeoutSec = localTimeoutSec;
+        this.networkTimeoutSec = networkTimeoutSec;
     }
 
     // --- operations ----------------------------------------------------------
@@ -115,7 +148,7 @@ public final class GitCliExtension implements GitBackend {
     @Override
     public GitFetcher.RemoteRefs listRefs(GitSource source) throws IOException {
         String url = source.canonicalUrl();
-        ProcResult r = exec(null, url, List.of("ls-remote", url), NETWORK_TIMEOUT_SEC);
+        ProcResult r = exec(null, url, List.of("ls-remote", url), networkTimeoutSec);
         if (r.exit != 0) throw new IOException("git ls-remote failed: " + r.output.strip());
         List<String> tags = new ArrayList<>();
         String head = null;
@@ -155,7 +188,7 @@ public final class GitCliExtension implements GitBackend {
         Path bareDir = ensureBareClone(source);
         String sha = resolveRefSha(source, bareDir);
         ProcResult t =
-                exec(bareDir, null, List.of("show", "-s", "--format=%ct", "--end-of-options", sha), LOCAL_TIMEOUT_SEC);
+                exec(bareDir, null, List.of("show", "-s", "--format=%ct", "--end-of-options", sha), localTimeoutSec);
         if (t.exit != 0) throw new IOException("git show failed for " + sha + ": " + t.output.strip());
         long epoch;
         try {
@@ -182,7 +215,7 @@ public final class GitCliExtension implements GitBackend {
                             "origin",
                             "+refs/heads/*:refs/heads/*",
                             "+refs/tags/*:refs/tags/*"),
-                    NETWORK_TIMEOUT_SEC);
+                    networkTimeoutSec);
             if (r.exit != 0) throw new IOException("git fetch failed: " + r.output.strip());
             return bareDir;
         }
@@ -203,7 +236,7 @@ public final class GitCliExtension implements GitBackend {
         args.add("--");
         args.add(url);
         args.add(bareDir.toString());
-        ProcResult r = exec(null, url, args, NETWORK_TIMEOUT_SEC);
+        ProcResult r = exec(null, url, args, networkTimeoutSec);
         if (r.exit != 0) {
             JGitExtension.deleteRecursively(bareDir);
             throw new IOException("git clone failed: " + r.output.strip());
@@ -232,7 +265,7 @@ public final class GitCliExtension implements GitBackend {
             }
         }
         ProcResult res =
-                exec(bareDir, null, List.of("rev-parse", "--verify", "--end-of-options", rev), LOCAL_TIMEOUT_SEC);
+                exec(bareDir, null, List.of("rev-parse", "--verify", "--end-of-options", rev), localTimeoutSec);
         if (res.exit != 0) {
             String detail = res.output.strip();
             throw new IOException("ref " + display + " not found" + (detail.isEmpty() ? "" : ": " + detail));
@@ -253,7 +286,7 @@ public final class GitCliExtension implements GitBackend {
                 null,
                 null,
                 List.of("clone", "--no-checkout", "--", bareDir.toString(), dir.toString()),
-                LOCAL_TIMEOUT_SEC);
+                localTimeoutSec);
         if (clone.exit != 0) {
             JGitExtension.deleteRecursively(dir);
             throw new IOException("checkout clone failed: " + clone.output.strip());
@@ -263,7 +296,7 @@ public final class GitCliExtension implements GitBackend {
         // path argument '--end-of-options'" (seen on git 2.43). `sha` is an already-resolved full
         // 40-hex commit id (resolveRefSha → rev-parse --verify), so it can't be mistaken for an
         // option or a path; the plain form is safe and works across git versions (Linux/macOS).
-        ProcResult co = exec(dir, null, List.of("checkout", "--detach", sha), LOCAL_TIMEOUT_SEC);
+        ProcResult co = exec(dir, null, List.of("checkout", "--detach", sha), localTimeoutSec);
         if (co.exit != 0) {
             JGitExtension.deleteRecursively(dir);
             throw new IOException("checkout failed: " + co.output.strip());
@@ -272,7 +305,7 @@ public final class GitCliExtension implements GitBackend {
     }
 
     private Optional<String> describeNearestTag(Path bareDir, String sha) throws IOException {
-        ProcResult d = exec(bareDir, null, List.of("describe", "--tags", "--end-of-options", sha), LOCAL_TIMEOUT_SEC);
+        ProcResult d = exec(bareDir, null, List.of("describe", "--tags", "--end-of-options", sha), localTimeoutSec);
         if (d.exit != 0) return Optional.empty(); // "fatal: No names found"
         String out = d.output.strip();
         if (out.isEmpty()) return Optional.empty();
@@ -285,9 +318,12 @@ public final class GitCliExtension implements GitBackend {
     private record ProcResult(int exit, String output) {}
 
     /**
-     * Run {@code git <args>} with a clean, deterministic environment. When {@code credUrl} is a
-     * https URL with resolvable forge credentials, inject an {@code Authorization: Basic} header
-     * scoped to that URL through the environment (never argv).
+     * Run {@code git <args>} with the worker allow-list environment plus git's own switches (no
+     * prompts, no pager, C locale). When {@code credUrl} is a https URL with resolvable forge
+     * credentials, inject an {@code Authorization: Basic} header scoped to that URL through the
+     * environment (never argv). A command that outlives {@code timeoutSec} dies with its whole
+     * process tree: {@code git-remote-https} and {@code ssh} are children that would otherwise
+     * keep the transfer, and the stdout pipe, going.
      */
     private ProcResult exec(@Nullable Path cwd, @Nullable String credUrl, List<String> args, long timeoutSec)
             throws IOException {
@@ -302,11 +338,12 @@ public final class GitCliExtension implements GitBackend {
 
         ProcessBuilder pb = new ProcessBuilder(cmd).redirectErrorStream(true);
         if (cwd != null) pb.directory(cwd.toFile());
-        Map<String, String> env = pb.environment();
-        env.put("GIT_TERMINAL_PROMPT", "0");
-        env.put("GIT_PAGER", "cat");
-        env.put("LC_ALL", "C");
-        env.putAll(credEnv);
+        Map<String, String> extras = new LinkedHashMap<>();
+        extras.put("GIT_TERMINAL_PROMPT", "0");
+        extras.put("GIT_PAGER", "cat");
+        extras.put("LC_ALL", "C");
+        extras.putAll(credEnv);
+        replaceEnvironment(pb, extras);
 
         Process p;
         try {
@@ -319,25 +356,18 @@ public final class GitCliExtension implements GitBackend {
         } catch (IOException ignored) {
         }
         ByteArrayOutputStream buf = new ByteArrayOutputStream();
-        Thread reader = new Thread(() -> {
-            try {
-                p.getInputStream().transferTo(buf);
-            } catch (IOException ignored) {
-            }
-        });
-        reader.setDaemon(true);
-        reader.start();
+        Thread reader = drain(p, buf);
 
         boolean done;
         try {
             done = p.waitFor(timeoutSec, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
-            p.destroyForcibly();
+            JobWorkers.destroyTree(p);
             Thread.currentThread().interrupt();
             throw new IOException("git interrupted", e);
         }
         if (!done) {
-            p.destroyForcibly();
+            JobWorkers.destroyTree(p);
             throw new IOException("git timed out after " + timeoutSec + "s: git " + String.join(" ", args));
         }
         try {
@@ -346,6 +376,35 @@ public final class GitCliExtension implements GitBackend {
             Thread.currentThread().interrupt();
         }
         return new ProcResult(p.exitValue(), buf.toString(StandardCharsets.UTF_8));
+    }
+
+    /**
+     * The child's whole environment: the worker allow-list, {@code SSH_AUTH_SOCK} so an ssh remote
+     * can still reach the user's agent (a socket path, not a secret), then {@code extras} on top.
+     * The inherited map is cleared first — never the engine's own plus additions.
+     */
+    private static void replaceEnvironment(ProcessBuilder pb, Map<String, String> extras) {
+        Map<String, String> layered = new LinkedHashMap<>();
+        String agent = System.getenv("SSH_AUTH_SOCK");
+        if (agent != null && !agent.isBlank()) layered.put("SSH_AUTH_SOCK", agent);
+        layered.putAll(extras);
+        Map<String, String> env = pb.environment();
+        env.clear();
+        env.putAll(WorkerEnv.strict().with(layered).environment());
+    }
+
+    /** Copy the child's merged stdout/stderr into {@code buf} on a daemon thread until EOF. */
+    private static Thread drain(Process p, ByteArrayOutputStream buf) {
+        Thread reader = new Thread(() -> {
+            try {
+                p.getInputStream().transferTo(buf);
+            } catch (IOException ignored) {
+                // the pipe closed under a kill; whatever arrived is the output
+            }
+        });
+        reader.setDaemon(true);
+        reader.start();
+        return reader;
     }
 
     /** Populate leading {@code -c} args and/or credential env for an authenticated https remote. */
