@@ -191,4 +191,15 @@ class GuardRulesTest {
         Files.writeString(dir.resolve(GuardsPresence.RULES_FILE), "");
         assertThat(GuardsPresence.detect(dir, false, false)).isTrue();
     }
+
+    @Test
+    void a_glob_is_compiled_once_and_matches_as_before() {
+        assertThat(Rule.globPattern("server/*")).isSameAs(Rule.globPattern("server/*"));
+        assertThat(Rule.globMatches("server/*", "server/engine")).isTrue();
+        assertThat(Rule.globMatches("server/*", "server/engine/x")).isFalse();
+        assertThat(Rule.globMatches("**/src/**", "src/x")).isTrue();
+        assertThat(Rule.globMatches("a.b.*", "a.b.C")).isTrue();
+        assertThat(Rule.globMatches("a.b.*", "a-b.C")).isFalse();
+        assertThat(Rule.globMatches("*", "anything/at/all")).isTrue();
+    }
 }

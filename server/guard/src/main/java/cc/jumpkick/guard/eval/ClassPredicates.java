@@ -7,6 +7,7 @@ import cc.jumpkick.guard.rules.Rule;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
@@ -149,25 +150,34 @@ final class ClassPredicates {
      */
     static boolean packageMatches(String pattern, String pkg) {
         if (pattern.contains("..")) {
-            StringBuilder re = new StringBuilder();
-            String[] parts = pattern.split("\\.\\.", -1);
-            for (int i = 0; i < parts.length; i++) {
-                String part = parts[i];
-                boolean first = i == 0;
-                boolean last = i == parts.length - 1;
-                if (part.isEmpty()) {
-                    if (first && last) return true;
-                    continue;
-                }
-                if (!first) re.append("(?:.*\\.)?");
-                re.append(Pattern.quote(part));
-                if (!last) re.append("(?:\\..*)?");
-            }
-            String prefix = parts[0].isEmpty() ? "(?:.*\\.)?" : "";
-            String suffix = parts[parts.length - 1].isEmpty() ? "(?:\\..*)?" : "";
-            return pkg.matches(prefix + re + suffix);
+            return DOTTED.computeIfAbsent(pattern, ClassPredicates::dotted)
+                    .matcher(pkg)
+                    .matches();
         }
         if (pattern.indexOf('*') >= 0) return Rule.globMatches(pattern, pkg);
         return pkg.equals(pattern);
+    }
+
+    /** The dots-of-two patterns compiled once: they are matched against every class the rule selects. */
+    private static final Map<String, Pattern> DOTTED = new ConcurrentHashMap<>();
+
+    private static Pattern dotted(String pattern) {
+        StringBuilder re = new StringBuilder();
+        String[] parts = pattern.split("\\.\\.", -1);
+        for (int i = 0; i < parts.length; i++) {
+            String part = parts[i];
+            boolean first = i == 0;
+            boolean last = i == parts.length - 1;
+            if (part.isEmpty()) {
+                if (first && last) return Pattern.compile(".*");
+                continue;
+            }
+            if (!first) re.append("(?:.*\\.)?");
+            re.append(Pattern.quote(part));
+            if (!last) re.append("(?:\\..*)?");
+        }
+        String prefix = parts[0].isEmpty() ? "(?:.*\\.)?" : "";
+        String suffix = parts[parts.length - 1].isEmpty() ? "(?:\\..*)?" : "";
+        return Pattern.compile(prefix + re + suffix);
     }
 }

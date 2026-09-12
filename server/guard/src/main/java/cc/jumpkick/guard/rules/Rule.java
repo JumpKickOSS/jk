@@ -4,7 +4,10 @@ package cc.jumpkick.guard.rules;
 import cc.jumpkick.guard.schema.Kind;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 import org.tomlj.TomlTable;
 
@@ -77,8 +80,29 @@ public record Rule(
         return false;
     }
 
+    /** Whether {@code path} matches {@code glob}; {@code *} stays within a segment, {@code **} crosses them. */
     public static boolean globMatches(String glob, String path) {
         if (glob.equals("*") || glob.equals("**")) return true;
+        return globPattern(glob).matcher(path).matches();
+    }
+
+    private static final Map<String, Pattern> GLOBS = new ConcurrentHashMap<>();
+
+    /**
+     * The compiled form of {@code glob}, one per distinct spelling for the life of the engine: the
+     * globs come from rule text, so the set is small, and the evaluators match them in loops over
+     * every class, file and jar entry.
+     */
+    public static Pattern globPattern(String glob) {
+        Pattern p = GLOBS.get(glob);
+        if (p == null) {
+            p = Pattern.compile(regexOf(glob));
+            GLOBS.put(glob, p);
+        }
+        return p;
+    }
+
+    private static String regexOf(String glob) {
         StringBuilder re = new StringBuilder();
         for (int i = 0; i < glob.length(); i++) {
             char c = glob.charAt(i);
@@ -103,6 +127,6 @@ public record Rule(
                 re.append(c);
             }
         }
-        return path.matches(re.toString());
+        return re.toString();
     }
 }
