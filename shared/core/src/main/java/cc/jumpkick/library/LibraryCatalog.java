@@ -2,6 +2,7 @@
 package cc.jumpkick.library;
 
 import cc.jumpkick.config.TomlScan;
+import cc.jumpkick.config.WorkspaceModules;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
@@ -12,7 +13,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -150,13 +150,17 @@ public final class LibraryCatalog {
         return nearestJkTomlDir != null ? nearestJkTomlDir : normalized;
     }
 
-    /** True when {@code projectDir} is the workspace root or an exact {@code [workspace] modules} path. */
+    /**
+     * True when {@code projectDir} is the workspace root or a module its {@code [workspace] modules}
+     * lists — literally or through a glob entry such as {@code libs/*}. Membership is {@link
+     * WorkspaceModules#lists} so a glob-selected member sees the same catalog root as a literal one.
+     */
     static boolean isWorkspaceOrDeclaredModule(Path workspaceRoot, Path projectDir, Path workspaceJkToml) {
         if (workspaceRoot.equals(projectDir)) return true;
         Path rel = workspaceRoot.relativize(projectDir);
         if (rel.getNameCount() == 0 || rel.startsWith("..")) return false;
         String relPath = rel.toString().replace('\\', '/');
-        return workspaceModulePaths(workspaceJkToml).contains(relPath);
+        return WorkspaceModules.lists(workspaceModulePaths(workspaceJkToml), relPath);
     }
 
     /**
@@ -169,9 +173,9 @@ public final class LibraryCatalog {
         return !workspaceModulePaths(jkToml).isEmpty();
     }
 
-    /** Paths in {@code [workspace] modules} of {@code jkToml}. Empty on unreadable. */
-    static Set<String> workspaceModulePaths(Path jkToml) {
-        return new LinkedHashSet<>(TomlScan.scan(jkToml, WORKSPACE_MODULES).stringArray(WORKSPACE_MODULES));
+    /** Entries of {@code [workspace] modules} in {@code jkToml}, as written. Empty on unreadable. */
+    static List<String> workspaceModulePaths(Path jkToml) {
+        return TomlScan.scan(jkToml, WORKSPACE_MODULES).stringArray(WORKSPACE_MODULES);
     }
 
     /** Test seam: build a catalog from a single in-memory map. */

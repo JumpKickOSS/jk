@@ -102,6 +102,40 @@ class LibraryCatalogLayeringTest {
     }
 
     /**
+     * Membership follows the one reading of {@code [workspace] modules}: a member selected by a glob
+     * entry ({@code libs/*}) is as much a member as one listed literally, so its catalog root is the
+     * workspace root and the root {@code jk-libs.toml} reaches it.
+     */
+    @Test
+    void for_project_resolves_the_root_catalog_for_a_glob_listed_member(@TempDir Path tmp) throws Exception {
+        Path root = tmp.resolve("ws");
+        Path mod = root.resolve("libs").resolve("foo");
+        Files.createDirectories(mod);
+        Files.writeString(root.resolve("jk.toml"), """
+                group = "com.example"
+                name = "ws"
+                version = "1.0.0"
+
+                [workspace]
+                modules = ["libs/*"]
+                """);
+        Files.writeString(mod.resolve("jk.toml"), """
+                name = "foo"
+                """);
+        Files.writeString(root.resolve("jk-libs.toml"), """
+                [libraries]
+                internal = "com.acme:internal"
+                """);
+
+        assertThat(LibraryCatalog.catalogRoot(mod))
+                .isEqualTo(root.toAbsolutePath().normalize());
+        assertThat(LibraryCatalog.forProject(mod).lookup("internal"))
+                .get()
+                .extracting(LibraryCatalog.Module::moduleKey)
+                .isEqualTo("com.acme:internal");
+    }
+
+    /**
      * Catalog-root discovery reads {@code workspace.modules} through {@link
      * cc.jumpkick.config.TomlScan}, the owner of that scan, instead of a private line loop. The
      * private loop keyed on a {@code [workspace]} header and a line starting with {@code modules},
