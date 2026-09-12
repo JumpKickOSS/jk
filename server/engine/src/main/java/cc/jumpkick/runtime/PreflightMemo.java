@@ -8,6 +8,7 @@ import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.layout.ModuleLayout;
@@ -24,11 +25,8 @@ import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -774,28 +772,18 @@ public final class PreflightMemo {
                 if (!Files.isDirectory(r)) continue;
                 var snap = InputTrees.of(r);
                 if (snap.overflow()) {
-                    Files.walkFileTree(r, new SimpleFileVisitor<>() {
-                        @Override
-                        public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
-                            if (attrs.isRegularFile()) {
-                                feedFingerprint(
-                                        md,
-                                        moduleDir,
-                                        file,
-                                        attrs.size(),
-                                        attrs.lastModifiedTime().toMillis(),
-                                        mtimeMode);
-                            }
-                            return FileVisitResult.CONTINUE;
-                        }
-
-                        @Override
-                        public FileVisitResult visitFileFailed(Path file, IOException failure) {
-                            // A file that vanished or cannot be statted is not a reason to
-                            // abandon the fingerprint into the always-rebuild fallback.
-                            return FileVisitResult.CONTINUE;
-                        }
-                    });
+                    // A file that vanished mid-walk is skipped by the helper; a directory that
+                    // cannot be opened surfaces as an uncertain fingerprint, which is the honest
+                    // answer — a fingerprint over a tree with a hole in it would look stable.
+                    PathUtil.forEachRegularFile(
+                            r,
+                            (file, attrs) -> feedFingerprint(
+                                    md,
+                                    moduleDir,
+                                    file,
+                                    attrs.size(),
+                                    attrs.lastModifiedTime().toMillis(),
+                                    mtimeMode));
                     continue;
                 }
                 for (var ref : snap.files()) {
