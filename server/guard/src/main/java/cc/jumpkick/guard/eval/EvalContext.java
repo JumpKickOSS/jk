@@ -60,6 +60,18 @@ public record EvalContext(
         }
     }
 
+    /**
+     * Release the hierarchy built for this context, closing the classpath jars it opened; the lane
+     * run calls this once its rules are evaluated, and the next {@link #hierarchy()} builds afresh.
+     */
+    public void closeHierarchy() {
+        TypeHierarchy built;
+        synchronized (HIERARCHIES) {
+            built = HIERARCHIES.remove(this);
+        }
+        if (built != null) built.close();
+    }
+
     /** This module's main-source-set facts; loaded on first use. */
     public FactsIndex facts() {
         return factsSupplier.get();

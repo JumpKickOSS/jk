@@ -134,9 +134,18 @@ public final class LaneRun {
     /**
      * Every rule's evaluation: batch kinds (the text lane) run once over all their rules, the rest one
      * by one. A throwing evaluator is that rule's — or, for a batch, those rules' — {@code
-     * scanner-failed}; the next kind still runs.
+     * scanner-failed}; the next kind still runs. The type hierarchy the rules resolved through, and
+     * the classpath jars it opened, are released once the last rule has run.
      */
     static Map<String, Evaluation> evaluate(List<Rule> rules, EvalContext ctx) {
+        try {
+            return evaluateAll(rules, ctx);
+        } finally {
+            ctx.closeHierarchy();
+        }
+    }
+
+    private static Map<String, Evaluation> evaluateAll(List<Rule> rules, EvalContext ctx) {
         Map<String, Evaluation> out = new LinkedHashMap<>();
         Map<Kind, List<Rule>> batches = new EnumMap<>(Kind.class);
         for (Rule rule : rules) {

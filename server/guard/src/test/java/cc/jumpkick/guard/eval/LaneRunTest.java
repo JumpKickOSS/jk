@@ -7,6 +7,11 @@ import cc.jumpkick.guard.baseline.Baseline;
 import cc.jumpkick.guard.baseline.Entry;
 import cc.jumpkick.guard.baseline.Observation;
 import cc.jumpkick.guard.baseline.RuleBaseline;
+import cc.jumpkick.guard.extract.FactsExtractor;
+import cc.jumpkick.guard.extract.fixture.FixtureBytes;
+import cc.jumpkick.guard.extract.fixture.Sample;
+import cc.jumpkick.guard.extract.fixture.Tier;
+import cc.jumpkick.guard.facts.ClassFacts;
 import cc.jumpkick.guard.facts.FactsIndex;
 import cc.jumpkick.guard.rules.GuardRules;
 import cc.jumpkick.guard.rules.GuardsPresence;
@@ -22,6 +27,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.jar.JarOutputStream;
+import java.util.zip.ZipEntry;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -210,5 +217,44 @@ class LaneRunTest {
                 ctx(dir, Lane.WORKSPACE, ""),
                 Baseline.EMPTY);
         assertThat(blind.reports().get(0).outcome()).isEqualTo(Outcome.BLIND);
+    }
+
+    @Test
+    void the_classpath_jars_a_lane_opened_are_closed_when_its_rules_are_evaluated(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve(GuardsPresence.RULES_FILE), """
+                [guards.tier]
+                kind = "classes"
+                that = { named = "Sample" }
+                should = { extend = "cc.jumpkick.guard.extract.fixture.Tier" }
+                why = "w"
+                """);
+        LoadResult load = GuardRules.load(dir, GuardsConfig.ABSENT);
+        assertThat(load.hasErrors()).as(load.problems().toString()).isFalse();
+        ClassFacts sample = FactsExtractor.extract(FixtureBytes.of(Sample.class));
+        FactsIndex facts = new FactsIndex(Map.of(sample.name(), sample), Map.of(), "");
+        // a one-class jar on the compile classpath: the hierarchy opens every jar on its first lookup
+        Path jar = dir.resolve("tier.jar");
+        try (JarOutputStream out = new JarOutputStream(Files.newOutputStream(jar))) {
+            out.putNextEntry(new ZipEntry("cc/jumpkick/guard/extract/fixture/Tier.class"));
+            out.write(FixtureBytes.of(Tier.class));
+            out.closeEntry();
+        }
+        EvalContext ctx = new EvalContext(
+                Lane.MODULE,
+                dir,
+                "m",
+                dir.resolve("m"),
+                List.of(dir.resolve("m")),
+                () -> facts,
+                () -> null,
+                () -> List.of(jar));
+        TypeHierarchy built = ctx.hierarchy();
+        Map<String, Evaluation> out = LaneRun.evaluate(LaneRun.rulesFor(Lane.MODULE, load.rules(), "m"), ctx);
+        assertThat(Objects.requireNonNull(out.get("tier")).outcome()).isEqualTo(Outcome.VIOLATIONS);
+        assertThat(built.openJars())
+                .as("the lane resolved through the jar and closed it")
+                .isZero();
+        assertThat(ctx.hierarchy()).as("a later use builds afresh").isNotSameAs(built);
+        ctx.closeHierarchy();
     }
 }

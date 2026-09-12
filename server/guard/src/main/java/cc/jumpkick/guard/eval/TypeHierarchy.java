@@ -218,6 +218,12 @@ public final class TypeHierarchy {
         return zs;
     }
 
+    /** How many classpath jars are open: none before the first classpath lookup, none after {@link #close()}. */
+    synchronized int openJars() {
+        List<ZipFile> open = jars;
+        return open == null ? 0 : open.size();
+    }
+
     /** Close the jars opened for resolution. Idempotent. */
     public synchronized void close() {
         List<ZipFile> open = jars;
