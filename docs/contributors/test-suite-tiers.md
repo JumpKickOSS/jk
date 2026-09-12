@@ -12,6 +12,8 @@ re-derives it from the root manifest's `[test]` and `[profiles.*]` tables ([self
 `./gradlew checkFast` is the Gradle branch gate: every subproject `check` task (unit tests plus the
 one Gradle-only guard, G64), buildSrc's tests and the two registry tasks. It is network-free.
 `checkAll` adds the integration tier. The house rules run under `jk build` ([self-host](self-host.md#house-rule-gate)).
+`scripts/test-tier-parity.sh` runs the integration tier under both builds and compares the classes,
+cases and verdicts; the nightly `integration` job is that comparison.
 
 <!-- test-tiers:start -->
 | Command | Includes | Excludes | In `checkAll`? |

@@ -69,8 +69,10 @@ optional parity run:
 
 1. **Bootstrap without in-tree Gradle** — a published release, or a sibling checkout, installs a
    `jk` capable of building this tree, so a clean product checkout never runs `./gradlew`.
-2. **Coverage parity** — `jk test --profile integration` runs every class
+2. **Coverage parity** — `jk test --profile integration` runs every class and every test case
    `./gradlew integrationTest` runs, with the same pass/fail verdict on the same commit.
+   Measured, not asserted: `scripts/test-tier-parity.sh` runs both tiers and compares their
+   JUnit XML; the nightly `integration` job runs it and fails on any difference.
 3. **Guard parity with no exceptions that could be ported** — `guard-parity.txt` holds only
    letters that genuinely cannot live in both builds.
 4. **Green on every supported OS** — the self-host lane passes on Linux, macOS and Windows, not

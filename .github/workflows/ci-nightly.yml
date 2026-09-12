@@ -16,20 +16,61 @@ env:
   TERM: xterm-256color
 
 jobs:
+  # The integration tier under both builds, on one commit, compared: every class and every test
+  # case Gradle's integrationTest ran, jk's integration profile ran too, with the same verdict.
+  # This is cut-over gate two (docs/contributors/self-host.md) measured nightly rather than
+  # asserted; a difference fails the job and the report names it.
   integration:
-    name: Gradle integration test
+    name: Integration tier (Gradle and jk, compared)
     runs-on: ubuntu-latest
+    env:
+      JK_HOME: ${{ github.workspace }}/.ci-jk-home
+      JK_AOT_TRAIN: 'off'
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v4
+      - uses: graalvm/setup-graalvm@0def53c0fd8534bc13416c9469f5be45265824fd # v1.6.3
         with:
-          distribution: temurin
-          java-version: "25"
-          cache: gradle
+          java-version: '25'
+          distribution: 'graalvm'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache: 'gradle'
 
-      - name: Integration test
-        run: ./gradlew integrationTest --no-daemon
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Bootstrap jk from Gradle artifacts
+        run: |
+          set -euo pipefail
+          ./gradlew dist installLocal --no-daemon
+          ./install.sh build/dist/jk
+          echo "$JK_HOME/bin" >> "$GITHUB_PATH"
+
+      # A red class is a verdict the comparison reads, not a reason to stop before jk's half runs.
+      - name: Gradle integration tier
+        run: ./gradlew integrationTest --continue --no-daemon
+
+      - name: jk integration profile
+        run: scripts/test-tier-parity.sh run-jk
+
+      - name: Compare the two runs
+        run: scripts/test-tier-parity.sh compare
+
+      - name: Publish the comparison
+        if: always()
+        run: |
+          if [ -f target/tier-parity/report.txt ]; then
+            { echo '## Integration tier parity'; echo '```'; cat target/tier-parity/report.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tier-parity
+          path: target/tier-parity/
+          if-no-files-found: warn
+          retention-days: 14
 
   # @Tag("slow") lives here. Framework/language e2e — Android, Grails, Scala, KSP,
   # Protobuf, Groovy, Minified — measured at 426s of integrationTest's 1419s for 28 tests, 15s
