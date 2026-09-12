@@ -5,9 +5,8 @@ import java.io.BufferedReader;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.Reader;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
@@ -25,11 +24,29 @@ public final class BoundedLineReader extends BufferedReader {
     /** Default gap between protocol lines before a stream is declared dead: 60 minutes. */
     public static final long DEFAULT_STREAM_IDLE_MS = 60L * 60_000L;
 
-    private static final ScheduledExecutorService WATCHDOG = Executors.newSingleThreadScheduledExecutor(r -> {
-        Thread t = new Thread(r, "jk-protocol-idle-watchdog");
-        t.setDaemon(true);
-        return t;
-    });
+    private static final ScheduledThreadPoolExecutor WATCHDOG = watchdog();
+
+    /**
+     * One daemon thread whose cancelled tasks leave the queue immediately. Every {@link #readLine}
+     * under a live bound schedules a guard and cancels it once the line arrives; a cancelled task
+     * that stayed queued until its delay passed would pin one task and its captured peer per line
+     * for the length of the idle window, and the CLI reads every streamed event line under a
+     * 60-minute one.
+     */
+    private static ScheduledThreadPoolExecutor watchdog() {
+        ScheduledThreadPoolExecutor executor = new ScheduledThreadPoolExecutor(1, r -> {
+            Thread t = new Thread(r, "jk-protocol-idle-watchdog");
+            t.setDaemon(true);
+            return t;
+        });
+        executor.setRemoveOnCancelPolicy(true);
+        return executor;
+    }
+
+    /** Test seam: guards still queued, cancelled or not. */
+    static int pendingWatchdogs() {
+        return WATCHDOG.getQueue().size();
+    }
 
     private final int maxLine;
     private final @Nullable Closeable onTimeout;

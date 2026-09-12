@@ -4,8 +4,10 @@ package cc.jumpkick.jsonl;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.StringReader;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
@@ -54,5 +56,29 @@ class BoundedLineReaderTest {
                 assertThat(accepted.isOpen()).as("the timer closed the peer").isFalse();
             }
         }
+    }
+
+    /**
+     * Every read with a live bound schedules a guard and cancels it once the line arrives. A
+     * cancelled guard must leave the scheduler queue at once: the CLI reads every streamed event
+     * line under a 60-minute bound, so a guard that lingered for its delay would pin one task and
+     * its captured peer per line for the length of a build.
+     */
+    @Test
+    void a_cancelled_guard_leaves_the_queue_at_once() throws IOException {
+        int lines = 1000;
+        StringBuilder text = new StringBuilder();
+        for (int i = 0; i < lines; i++) text.append("event ").append(i).append('\n');
+        Closeable peer = () -> {};
+        BoundedLineReader reader = new BoundedLineReader(new StringReader(text.toString()), peer, 60L * 60_000L);
+
+        int before = BoundedLineReader.pendingWatchdogs();
+        for (int i = 0; i < lines; i++) {
+            assertThat(reader.readLine()).isEqualTo("event " + i);
+        }
+
+        assertThat(BoundedLineReader.pendingWatchdogs())
+                .as("the queue stays flat across reads; a stalled read elsewhere may hold one")
+                .isLessThanOrEqualTo(before + 1);
     }
 }
