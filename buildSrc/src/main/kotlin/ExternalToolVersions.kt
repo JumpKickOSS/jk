@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import java.io.File
+import java.time.Duration
 import java.util.concurrent.TimeUnit
 
 /**
@@ -27,7 +28,7 @@ import java.util.concurrent.TimeUnit
 object ExternalToolVersions {
 
     /** A hung `--version` must not hang the build; nothing legitimate takes this long. */
-    private const val PROBE_TIMEOUT_SECONDS = 20L
+    val PROBE_TIMEOUT: Duration = Duration.ofSeconds(20)
 
     /**
      * The identity of [tool] as this build's tests will find it: its version line, or an explicit "absent" marker.
@@ -43,6 +44,7 @@ object ExternalToolVersions {
      * @param override the value of the product's own binary-override variable (`JK_GIT` for git), likewise read from
      *   the invoking environment, so the build probes what the test will run
      * @param versionArgs how to ask it (`--version` for every tool jk execs today)
+     * @param timeout how long the probe may run before it is killed and reported as timed out
      */
     fun identity(
         cacheDir: File,
@@ -50,6 +52,7 @@ object ExternalToolVersions {
         searchPath: String,
         override: String? = null,
         versionArgs: List<String> = listOf("--version"),
+        timeout: Duration = PROBE_TIMEOUT,
     ): String {
         val exe = resolve(tool, searchPath, override) ?: return "$tool: absent"
         val key = exe.absolutePath + "|" + exe.length() + "|" + exe.lastModified()
@@ -58,7 +61,7 @@ object ExternalToolVersions {
             val lines = memo.readLines()
             if (lines.size >= 2 && lines[0] == key) return lines[1]
         }
-        val version = probe(exe, versionArgs)
+        val version = probe(exe, versionArgs, timeout)
         cacheDir.mkdirs()
         memo.writeText(key + "\n" + version + "\n")
         return version
@@ -81,26 +84,33 @@ object ExternalToolVersions {
             .firstOrNull { it.isFile && it.canExecute() }
     }
 
-    /** `<exe> --version`, first non-blank line, prefixed with the resolved path. */
-    private fun probe(exe: File, versionArgs: List<String>): String {
-        return try {
-            val pb = ProcessBuilder(listOf(exe.absolutePath) + versionArgs).redirectErrorStream(true)
+    /**
+     * `<exe> --version`, first non-blank line, prefixed with the resolved path. The child's output goes to a file, so
+     * the wait is bounded by [timeout] alone: a pipe would be read to EOF first, and a tool that never closes its
+     * stdout (a client that talks to an engine) would hold the build's configuration for as long as it lived.
+     */
+    private fun probe(exe: File, versionArgs: List<String>, timeout: Duration): String {
+        val log = File.createTempFile("jk-tool-version", ".txt")
+        try {
+            val pb =
+                ProcessBuilder(listOf(exe.absolutePath) + versionArgs).redirectErrorStream(true).redirectOutput(log)
             pb.environment()["LC_ALL"] = "C" // a localised version line is still a version change
             val p = pb.start()
             p.outputStream.close()
-            val out = p.inputStream.readBytes().toString(Charsets.UTF_8)
-            if (!p.waitFor(PROBE_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+            if (!p.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS)) {
                 p.destroyForcibly()
                 return "${exe.absolutePath}: version probe timed out"
             }
-            val line = out.lineSequence().firstOrNull { it.isNotBlank() }?.trim()
-            if (p.exitValue() != 0 || line.isNullOrEmpty()) {
+            val line = log.readText().lineSequence().firstOrNull { it.isNotBlank() }?.trim()
+            return if (p.exitValue() != 0 || line.isNullOrEmpty()) {
                 "${exe.absolutePath}: version probe exited ${p.exitValue()}"
             } else {
                 "${exe.absolutePath}: $line"
             }
         } catch (e: Exception) {
-            "${exe.absolutePath}: version probe failed (${e.javaClass.simpleName})"
+            return "${exe.absolutePath}: version probe failed (${e.javaClass.simpleName})"
+        } finally {
+            log.delete()
         }
     }
 }
