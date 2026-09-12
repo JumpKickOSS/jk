@@ -5,4 +5,7 @@
  * [guards] extends} in its root rules file; the module exists so both builds package the pack the
  * same way and stage it beside the worker jars.
  */
+@NullMarked
 package cc.jumpkick.guards.android;
+
+import org.jspecify.annotations.NullMarked;

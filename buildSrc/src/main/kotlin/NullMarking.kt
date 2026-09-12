@@ -44,6 +44,11 @@ object NullMarking {
             "plugins/kotlin-compiler/src/main/java",
             "plugins/publisher/src/main/java",
             "plugins/quarkus/src/main/java",
+            "server/guard/packs/android/src/main/java",
+            "server/guard/packs/library/src/main/java",
+            "server/guard/packs/monorepo/src/main/java",
+            "server/guard/packs/quarkus/src/main/java",
+            "server/guard/packs/spring/src/main/java",
         )
 
     /**

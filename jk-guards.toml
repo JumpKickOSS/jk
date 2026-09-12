@@ -595,13 +595,13 @@ why      = "a cyclic component has no edge anyone can name to cut, so the count 
 # G53. Every production package in a null-marked root carries package-level @NullMarked: NullAway
 # enforces nullness only where the package says so, and a package that forgets the marker is a
 # package where every finding is silently off. The scope is every module NullMarking.enforcedRoots
-# names that jk builds (the guard rule packs under server/guard/packs are not yet among them);
-# a package left unmarked on purpose is an allow entry with its reason, and a stale one is red.
+# names that jk builds; a package left unmarked on purpose is an allow entry with its reason, and
+# a stale one is red.
 [guards.null-marked-packages]
 kind    = "annotate"
 require = "org.jspecify.annotations.NullMarked"
 on      = "package"
-scope   = ["shared/*", "server/engine", "server/guard", "server/io", "server/resolver", "server/toolchain", "clients/cli", "clients/cli-terminal", "plugins/*"]
+scope   = ["shared/*", "server/**", "clients/cli", "clients/cli-terminal", "plugins/*"]
 instead = "a package-info.java in the package carrying @NullMarked"
 why     = "NullAway checks a package only where it says @NullMarked; an unmarked package is one where every nullness finding is off"
 

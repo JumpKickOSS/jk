@@ -2,7 +2,7 @@ version = 1
 generated-by = "jk 0.13.2"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "a20e90ac5da753a03e6a820d54cb311839ca2602208021f9e14c292b0697f367"
+manifests-sha256 = "07094020da8fe7bc9bc9fa0a2c991601b4406586a5504f7b9e5a6bc901a4060f"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [jdk]
@@ -2441,7 +2441,7 @@ scopes   = ["main"]
 [[plugin]]
 coordinate = "cc.jumpkick:jk-guards-junit"
 version    = "0.13.2"
-checksum   = "sha256:530d9778ecd6cdc55a5ea39b9d7a98f5b4a140d385a558e55f084405063feda4"
+checksum   = "sha256:adc3c29cefd3c52f18be15ca2652cbd85faed4c7405cc83b48591f516458ad79"
 
 [[module]]
 path    = "."
