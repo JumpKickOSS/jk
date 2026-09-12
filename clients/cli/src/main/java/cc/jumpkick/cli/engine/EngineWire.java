@@ -57,14 +57,27 @@ public final class EngineWire {
      * when this returns, however it returns.
      */
     static <T> T stream(EnginePaths.Paths paths, String requestLine, Reply<T> reply) throws IOException {
+        return stream(paths, requestLine, reply, EngineSpawn::ensure);
+    }
+
+    /** How {@link #stream} brings up an engine; the seam a test replaces to count attempts. */
+    @FunctionalInterface
+    interface Ensure {
+        void run(EnginePaths.Paths paths, String clientVersion) throws IOException;
+    }
+
+    static <T> T stream(EnginePaths.Paths paths, String requestLine, Reply<T> reply, Ensure ensure) throws IOException {
+        // Ensuring is not retried: it already spawns twice with backoff behind a 30 s ceiling per
+        // attempt, and a refusal ("engine is shutting down") is an answer, not a stale socket. Only
+        // the connect is — the remembered endpoint may be dead because the engine died, was
+        // replaced, or the socket moved; forgetting it and ensuring once more may spawn.
+        Path socket = ensuredSocket(paths, ensure);
         SocketChannel opened;
         try {
-            opened = connect(ensuredSocket(paths));
+            opened = connect(socket);
         } catch (IOException stale) {
-            // The remembered endpoint did not answer: the engine died, was replaced, or the socket
-            // moved. Forget it and take the full ensure path once — which may spawn.
             ENSURED = null;
-            opened = connect(ensuredSocket(paths));
+            opened = connect(ensuredSocket(paths, ensure));
         }
         try (SocketChannel ch = opened) {
             BufferedWriter writer =
@@ -88,18 +101,18 @@ public final class EngineWire {
      *
      * <p>Ensuring once per process is safe because the thing it establishes — that a live,
      * version-matched engine is listening here — is exactly what a failed connect disproves. So the
-     * memo is only ever wrong in the direction the next connect catches, and {@code stream} retries
-     * through the full path when that happens.
+     * memo is only ever wrong in the direction the next connect catches, and {@code stream} then
+     * forgets it and ensures once more.
      */
     private static volatile @Nullable Ensured ENSURED;
 
     private record Ensured(EnginePaths.Paths paths, Path socket) {}
 
     /** The socket for {@code paths}, ensuring a live engine the first time this process asks. */
-    private static Path ensuredSocket(EnginePaths.Paths paths) throws IOException {
+    private static Path ensuredSocket(EnginePaths.Paths paths, Ensure ensure) throws IOException {
         Ensured hit = ENSURED;
         if (hit != null && hit.paths().equals(paths)) return hit.socket();
-        EngineSpawn.ensure(paths, JkVersion.VERSION);
+        ensure.run(paths, JkVersion.VERSION);
         Path socket = EnginePaths.activeSocket(paths);
         ENSURED = new Ensured(paths, socket);
         return socket;
@@ -108,6 +121,11 @@ public final class EngineWire {
     /** Test seam: forget the ensured endpoint, so the next RPC re-probes. */
     static void forgetEnsured() {
         ENSURED = null;
+    }
+
+    /** Test seam: remember {@code socket} as {@code paths}' ensured endpoint without probing it. */
+    static void rememberEnsured(EnginePaths.Paths paths, Path socket) {
+        ENSURED = new Ensured(paths, socket);
     }
 
     /**
