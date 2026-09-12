@@ -3,6 +3,7 @@ package cc.jumpkick.task;
 
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.host.BuildStamps;
@@ -11,9 +12,12 @@ import cc.jumpkick.testing.Await;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 class CasPrewriterTest {
@@ -35,6 +39,31 @@ class CasPrewriterTest {
                     Duration.ofSeconds(30),
                     () -> Files.exists(cas.pathFor(hex)),
                     () -> "the prewriter never ingested " + content + " (sha " + hex + ")");
+        }
+    }
+
+    /**
+     * {@code finish} walks and hashes the whole output tree and can fail on what a dying compiler
+     * left behind; {@code close} only stops the poller. The compile's failure path uses close so a
+     * walk failure cannot replace the compiler's own exception.
+     */
+    @Test
+    @EnabledOnOs({OS.LINUX, OS.MAC})
+    void close_does_not_walk_the_tree_finish_would_fail_on(@TempDir Path tempDir) throws Exception {
+        Path classes = tempDir.resolve("classes");
+        Files.createDirectories(classes);
+        Cas cas = new Cas(tempDir.resolve("cas"));
+        Path unreadable = classes.resolve("Half.class");
+        Files.writeString(unreadable, "half-written");
+        Files.setPosixFilePermissions(unreadable, PosixFilePermissions.fromString("---------"));
+        try {
+            CasPrewriter failing = CasPrewriter.watching(cas, classes);
+            assertThatThrownBy(failing::finish).isInstanceOf(IOException.class);
+
+            CasPrewriter abandoned = CasPrewriter.watching(cas, classes);
+            abandoned.close();
+        } finally {
+            Files.setPosixFilePermissions(unreadable, PosixFilePermissions.fromString("rw-------"));
         }
     }
 

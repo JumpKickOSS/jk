@@ -130,7 +130,6 @@ public final class JavaCompile {
 
         CasPrewriter prewriter = CasPrewriter.watching(cas, out);
         ForkedJavac.Result wr;
-        Map<String, String> outputs;
         try {
             wr = ForkedJavac.compile(new ForkedJavac.Request(
                     request.javaHome(),
@@ -149,9 +148,14 @@ public final class JavaCompile {
                     request.scalaCompilerJar(),
                     request.scalaBridgeJar(),
                     env));
-        } finally {
-            outputs = prewriter.finish();
+        } catch (RuntimeException | Error compileFailure) {
+            // The failure is the result. finish() walks and hashes the output tree, and a walk
+            // over what a dying compiler left behind can throw too — from a finally block that
+            // throw would replace the compiler's own exception with a filesystem one.
+            prewriter.close();
+            throw compileFailure;
         }
+        Map<String, String> outputs = prewriter.finish();
         if (!wr.success()) {
             return new Result(false, "errors", key, wr.diagnostics(), wr.compiledSources(), wr.waitMillis());
         }
