@@ -21,6 +21,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -123,6 +124,25 @@ public final class WorkspaceScheduler {
             LevelSink<U, R> sink,
             int maxConcurrency,
             BooleanSupplier cancelled) {
+        return run(units, dirOf, edges, task, sink, maxConcurrency, cancelled, u -> false);
+    }
+
+    /**
+     * As above, where a unit {@code awaitsCompletion} accepts is admitted only once every prereq
+     * has <em>finished</em>, tests and terminal tails included — not when its artifacts are ready.
+     * That is the workspace root running its after-build scripts over what the members produced:
+     * a client's native binary is a terminal tail, and a dist assembled at artifact-ready time
+     * shipped the previous build's client beside this build's engine.
+     */
+    public static <U, R> @Nullable R run(
+            List<U> units,
+            Function<U, Path> dirOf,
+            Map<Path, Set<Path>> edges,
+            PhasedUnitTask<U, R> task,
+            LevelSink<U, R> sink,
+            int maxConcurrency,
+            BooleanSupplier cancelled,
+            Predicate<U> awaitsCompletion) {
         BooleanSupplier stop = cancelled == null ? () -> false : cancelled;
         Set<Path> unitDirs = new HashSet<>();
         for (U u : units) unitDirs.add(dirOf.apply(u));
@@ -188,9 +208,10 @@ public final class WorkspaceScheduler {
             while (inFlight < maxConcurrency && !stop.getAsBoolean()) {
                 U next = null;
                 for (U u : notStarted) {
+                    Set<Path> gate = awaitsCompletion.test(u) ? done : artifactsReady;
                     boolean ready = edges.getOrDefault(dirOf.apply(u), Set.of()).stream()
                             .filter(unitDirs::contains)
-                            .allMatch(artifactsReady::contains);
+                            .allMatch(gate::contains);
                     if (ready) {
                         next = u;
                         break;

@@ -95,7 +95,10 @@ final class WorkspaceRunPhase {
                     (ready, results, _) ->
                             collect(request, prepared.plans(), workspaceLinks, ready, results, outcomes, observedRates),
                     request.maxModuleConcurrency(),
-                    SessionCancel::cancelled);
+                    SessionCancel::cancelled,
+                    // The root's after-build scripts read what the members produced, native
+                    // tails included, so the root waits for the members to finish, not to publish.
+                    unit -> unit.origin() == BuildGraph.Origin.ROOT);
         }
         Perf.end("ws-schedule-run", scheduleStart);
         long executeWallMs = Math.max(0L, clock.millis() - executeStartMs);

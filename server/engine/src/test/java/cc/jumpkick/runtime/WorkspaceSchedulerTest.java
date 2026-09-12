@@ -211,6 +211,49 @@ class WorkspaceSchedulerTest {
     }
 
     @Test
+    void a_unit_that_awaits_completion_starts_only_after_its_prereq_finishes() throws Exception {
+        // "up" publishes early and keeps running; "root" depends on it and awaits completion, so it
+        // must not start until "finish:up" is on record — unlike an ordinary dependent.
+        CountDownLatch releaseUp = new CountDownLatch(1);
+        List<String> order = Collections.synchronizedList(new ArrayList<>());
+        WorkspaceScheduler.PhasedUnitTask<String, String> task = (unit, artifactsReady) -> {
+            order.add("start:" + unit);
+            if (unit.equals("up")) {
+                artifactsReady.run();
+                try {
+                    assertThat(releaseUp.await(10, TimeUnit.SECONDS)).isTrue();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                order.add("finish:up");
+            } else {
+                order.add("finish:" + unit);
+            }
+            return unit;
+        };
+        Thread releaser = new Thread(() -> {
+            try {
+                Thread.sleep(150); // long enough for a wrongly admitted root to have started
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            releaseUp.countDown();
+        });
+        releaser.start();
+        WorkspaceScheduler.run(
+                List.of("up", "root"),
+                WorkspaceSchedulerTest::p,
+                Map.of(p("up"), Set.of(), p("root"), Set.of(p("up"))),
+                task,
+                (justCompleted, results, remaining) -> null,
+                4,
+                () -> false,
+                "root"::equals);
+        releaser.join();
+        assertThat(order).containsExactly("start:up", "finish:up", "start:root", "finish:root");
+    }
+
+    @Test
     void a_unit_that_never_publishes_unblocks_dependents_on_completion() {
         // Compile/package failure (or no package steps): completion publishes implicitly so
         // dependents run and fail accurately instead of wedging the schedule.
