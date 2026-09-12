@@ -255,11 +255,21 @@ final class PlannerGuards {
     }
 
     /**
-     * {@code guard}: this module's bytecode rules, after its compile(s) — and after compile-test when
-     * the plan has one, since the lane indexes the test classes too; the stage follows the last step
-     * it waits for, because a step cannot require one from a later stage.
+     * Whether this build's module lane indexes the test classes: only when the plan compiles them.
+     * Under {@code --skip-tests} or {@code --compile-only} no compile-test runs, and {@code
+     * classes/test} holds whatever a previous build left there — indexing it would judge bytecode
+     * the sources no longer describe.
      */
-    static Task moduleStep(BuildPlanner.Ctx cx, BuildStage stage, String... requires) {
+    static boolean indexesTestClasses(BuildPlanner.Inputs in) {
+        return !in.compileOnly() && !PlannerResources.skipJUnit(in);
+    }
+
+    /**
+     * {@code guard}: this module's bytecode rules, after its compile(s) — and after compile-test when
+     * the plan has one, since the lane indexes the test classes too ({@code indexTests}); the stage
+     * follows the last step it waits for, because a step cannot require one from a later stage.
+     */
+    static Task moduleStep(BuildPlanner.Ctx cx, BuildStage stage, boolean indexTests, String... requires) {
         GuardsPlan g = cx.guards();
         return Task.builder(TaskNames.GUARD)
                 .stage(stage)
@@ -274,7 +284,7 @@ final class PlannerGuards {
                     Path buildDir = ctx.require(LAYOUT).buildDir();
                     FactsIndexing.Ensured main =
                             FactsIndexing.ensure(ctx.require(MAIN_CLASSES), FactsIndexing.indexPath(buildDir, "main"));
-                    Path testClasses = ctx.get(TEST_CLASSES).orElse(null);
+                    Path testClasses = indexTests ? ctx.get(TEST_CLASSES).orElse(null) : null;
                     FactsIndexing.Ensured test = testClasses != null && Files.isDirectory(testClasses)
                             ? FactsIndexing.ensure(testClasses, FactsIndexing.indexPath(buildDir, "test"))
                             : null;

@@ -36,6 +36,45 @@ class GuardStepWaitsForCompileTestTest {
         assertThat(step(compileOnly, TaskNames.GUARD).requires()).doesNotContain(TaskNames.COMPILE_TEST);
     }
 
+    /**
+     * The lane indexes {@code classes/test} exactly when this plan compiles it. Under --skip-tests
+     * or --compile-only no compile-test runs, and the directory holds whatever a previous build
+     * left — bytecode the current sources no longer describe.
+     */
+    @Test
+    void the_module_lane_indexes_test_classes_only_when_the_plan_compiles_them(@TempDir Path dir) {
+        assertThat(PlannerGuards.indexesTestClasses(inputs(dir, false, false, false)))
+                .isTrue();
+        assertThat(PlannerGuards.indexesTestClasses(inputs(dir, true, false, false)))
+                .as("--skip-tests: classes/test is a previous build's")
+                .isFalse();
+        assertThat(PlannerGuards.indexesTestClasses(inputs(dir, false, false, true)))
+                .as("--compile-only")
+                .isFalse();
+        assertThat(PlannerGuards.indexesTestClasses(inputs(dir, true, true, false)))
+                .as("a test-only run compiles its tests whatever --skip-tests says")
+                .isTrue();
+    }
+
+    private static BuildPlanner.Inputs inputs(Path dir, boolean skipTests, boolean testOnly, boolean compileOnly) {
+        return new BuildPlanner.Inputs(
+                dir,
+                dir.resolve("cache"),
+                dir.resolve("jk.toml"),
+                dir.resolve("jk-lock.toml"),
+                dir,
+                1,
+                0,
+                null,
+                null,
+                skipTests,
+                false,
+                testOnly,
+                compileOnly,
+                Set.of(),
+                SessionContext.current());
+    }
+
     private static void scaffold(Path dir) throws Exception {
         Files.writeString(
                 dir.resolve("jk.toml"), "group=\"com.example\"\nname=\"g\"\nversion=\"0.1.0\"\njdk=25\njava=25\n");

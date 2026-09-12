@@ -412,12 +412,12 @@ final class CorePlan {
             if (useGroovy) after.add(TaskNames.COMPILE_GROOVY);
             if (cx.mixed() || cx.mixedGroovy()) after.add(TaskNames.ASSEMBLE_CLASSES);
             if (s.hasGuardSuite()) after.add(TaskNames.COMPILE_GUARD);
-            // The lane indexes the test classes too, so it waits for compile-test whenever the plan
-            // has one; without the edge a rebuild rewrites classes/test under the indexer.
-            boolean afterTests = !in.compileOnly() && !PlannerResources.skipJUnit(in);
+            // The lane indexes the test classes exactly when the plan compiles them, and then waits
+            // for compile-test; without the edge a rebuild rewrites classes/test under the indexer.
+            boolean afterTests = PlannerGuards.indexesTestClasses(in);
             if (afterTests) after.add(TaskNames.COMPILE_TEST);
             BuildStage guardStage = afterTests ? BuildStage.TEST : BuildStage.COMPILE;
-            b.addTask(PlannerGuards.moduleStep(cx, guardStage, after.toArray(String[]::new)));
+            b.addTask(PlannerGuards.moduleStep(cx, guardStage, afterTests, after.toArray(String[]::new)));
             boolean packagesHere = !in.testOnly() && !in.compileOnly();
             PlannerGuards.appendRootLanes(b, cx, TaskNames.GUARD, packagesHere, guardStage);
             // Nothing downstream consumes a lane; keep them through the terminal prune.
