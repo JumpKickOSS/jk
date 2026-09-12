@@ -523,9 +523,4 @@ public final class BuildService {
                 || name.contains(TaskNames.KSP)
                 || name.startsWith("transform");
     }
-
-    /** Apply the subset of {@code workspaceLinks} whose sources live under {@code moduleDir} (best-effort). */
-    public static void linkModuleArtifacts(Path moduleDir, Map<Path, Path> workspaceLinks) {
-        WorkspaceArtifacts.linkModule(moduleDir, workspaceLinks);
-    }
 }

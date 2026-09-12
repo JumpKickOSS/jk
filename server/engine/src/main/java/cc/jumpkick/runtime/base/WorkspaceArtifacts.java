@@ -73,13 +73,24 @@ public final class WorkspaceArtifacts {
         return links;
     }
 
-    /** Apply links whose sources belong to {@code moduleDir}; failures are best-effort. */
-    public static void linkModule(Path moduleDir, Map<Path, Path> workspaceLinks) {
+    /**
+     * Apply links whose sources are {@code moduleDir}'s outputs; failures are best-effort. A
+     * workspace member's outputs live under the workspace's {@code target/<module>/}, not under
+     * the module directory, so both roots count. Matching the module directory alone linked nothing
+     * for any member and left every link to the root's own completion — after the root's after-build
+     * scripts had already looked for them.
+     */
+    public static void linkModule(Path workspaceRoot, Path moduleDir, Map<Path, Path> workspaceLinks) {
         if (workspaceLinks.isEmpty()) return;
         Path normalDir = moduleDir.toAbsolutePath().normalize();
+        Path outputDir = BuildLayout.moduleTargetDir(workspaceRoot, moduleDir)
+                .toAbsolutePath()
+                .normalize();
         for (var entry : workspaceLinks.entrySet()) {
             Path source = entry.getKey();
-            if (!source.startsWith(normalDir) || !Files.isRegularFile(source)) continue;
+            if (!(source.startsWith(normalDir) || source.startsWith(outputDir)) || !Files.isRegularFile(source)) {
+                continue;
+            }
             try {
                 Linking.linkOrCopy(source, entry.getValue());
             } catch (IOException ignored) {

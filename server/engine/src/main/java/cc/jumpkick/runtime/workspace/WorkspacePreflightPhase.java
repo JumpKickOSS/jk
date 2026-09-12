@@ -227,7 +227,7 @@ public final class WorkspacePreflightPhase {
 
         Map<Path, Path> workspaceLinks = WorkspaceArtifacts.computeLinks(moduleDirs, request.entryDir());
         for (BuildGraph.BuildUnit unit : units) {
-            WorkspaceArtifacts.linkModule(unit.dir(), workspaceLinks);
+            WorkspaceArtifacts.linkModule(request.entryDir(), unit.dir(), workspaceLinks);
         }
         if (request.dirtyHint() == null && !request.testOnly()) {
             Map<Path, String> fingerprints = preflight

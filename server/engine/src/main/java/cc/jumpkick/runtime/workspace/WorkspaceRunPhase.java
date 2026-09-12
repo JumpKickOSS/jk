@@ -66,7 +66,7 @@ final class WorkspaceRunPhase {
         Map<Path, Path> workspaceLinks =
                 WorkspaceArtifacts.computeLinks(resources.preflight().moduleDirs(), request.entryDir());
         for (BuildGraph.BuildUnit unit : resources.cleanUnits()) {
-            WorkspaceArtifacts.linkModule(unit.dir(), workspaceLinks);
+            WorkspaceArtifacts.linkModule(request.entryDir(), unit.dir(), workspaceLinks);
         }
 
         // Whose test compilation any sibling can actually read. Computed once, off the manifests
@@ -124,7 +124,7 @@ final class WorkspaceRunPhase {
             outcomes.add(outcome);
             ModuleOutcome stop = stoppingFailure(request.keepGoing(), outcome);
             if (stop != null) return stop;
-            WorkspaceArtifacts.linkModule(ready.get(i).dir(), workspaceLinks);
+            WorkspaceArtifacts.linkModule(request.entryDir(), ready.get(i).dir(), workspaceLinks);
             ModulePlan plan = plans.get(ready.get(i).dir());
             if (plan != null && !plan.fullyCached() && plan.weight() > 0 && outcome.millis() > 0) {
                 observedRates.add(outcome.millis() / (double) plan.weight());
