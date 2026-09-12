@@ -14,12 +14,15 @@ import cc.jumpkick.host.Os;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.runtime.workspace.BuildService;
+import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.task.IoLedger;
+import cc.jumpkick.task.TestStamp;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.Comparator;
 import java.util.List;
@@ -94,6 +97,44 @@ class PreflightMemoTest {
         PreflightMemo.storeDirty(tmp, graph, false, "strict", Set.of(), fps);
         assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false, "strict")).isPresent();
         assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false, null)).isEmpty();
+    }
+
+    /**
+     * The preflight, the test stamp and a second preflight all read the same files; the bytes of
+     * each are read once per build and the rest are memo hits on the stat identity.
+     */
+    @Test
+    void source_bytes_are_read_once_across_the_preflight_and_the_test_stamp(@TempDir Path tmp) throws Exception {
+        writeProject(tmp);
+        Path testSrc = tmp.resolve("src/test/java/AppTest.java");
+        Files.createDirectories(testSrc.getParent());
+        Files.writeString(testSrc, "class AppTest {}\n");
+        Path lock = tmp.resolve("jk-lock.toml");
+        // The memo trusts a self-hash only once the file has settled past the mtime tick window.
+        for (Path f : List.of(tmp.resolve("jk.toml"), lock, tmp.resolve("src/main/java/App.java"), testSrc)) {
+            Files.setLastModifiedTime(f, FileTime.fromMillis(System.currentTimeMillis() - 60_000));
+        }
+        SessionContext.runWhere(Session.defaults().withCacheDir(tmp.resolve("cache")), () -> {
+            FileHashMemo.reset();
+            FileHashMemo.resetStats();
+            assertThat(PreflightMemo.fingerprintModule(tmp, false)).isInstanceOf(PreflightMemo.Known.class);
+            long readsAfterPreflight = FileHashMemo.contentReads();
+            assertThat(readsAfterPreflight)
+                    .as("manifest, lock and the two sources: each read once")
+                    .isEqualTo(4);
+
+            TestStamp.computeKey(
+                    List.of(testSrc), tmp.resolve("target/classes"), List.of(), lock, List.of(), List.of());
+            assertThat(FileHashMemo.contentReads())
+                    .as("the stamp's test source and lock are memo hits")
+                    .isEqualTo(readsAfterPreflight);
+
+            PreflightMemo.fingerprintModule(tmp, false);
+            assertThat(FileHashMemo.contentReads())
+                    .as("a second preflight over the same tree reads no bytes")
+                    .isEqualTo(readsAfterPreflight);
+            assertThat(FileHashMemo.memoHits()).isGreaterThanOrEqualTo(6);
+        });
     }
 
     @Test

@@ -114,10 +114,16 @@ public final class StepTimings {
         }
     }
 
-    /** Hydrate per-unit rates from harvested project/host metrics. */
+    /**
+     * Per-unit rates hydrated from harvested project/host metrics — the same project-preferring
+     * aggregates as {@link BuildMetrics} (stale identity homes must not poison rates), folded once
+     * per session-aggregate window rather than on every load.
+     */
     static StepTimings fromAggregates() {
-        // Same project-preferring aggregates as BuildMetrics (stale identity homes must not poison rates).
-        AggregatedMetrics agg = BuildMetrics.aggregatesForSession();
+        return BuildMetrics.foldedForSession(StepTimings.class, StepTimings::fold);
+    }
+
+    private static StepTimings fold(AggregatedMetrics agg) {
         Map<String, Entry> m = new HashMap<>();
         long now = System.currentTimeMillis();
         for (var e : agg.meanMap().entrySet()) {

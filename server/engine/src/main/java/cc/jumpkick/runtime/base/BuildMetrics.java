@@ -26,6 +26,7 @@ import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
@@ -202,9 +203,16 @@ public final class BuildMetrics {
         }
     }
 
-    /** Hydrate invocation/task stats from {@code project-metrics.toml} / {@code host-metrics.toml}. */
+    /**
+     * Invocation/task stats hydrated from {@code project-metrics.toml} / {@code host-metrics.toml},
+     * folded once per session-aggregate window: every priced step loads this, and re-splitting
+     * every mean-map key per load cost a dirty monorepo's ETA seed hundreds of identical folds.
+     */
     static BuildMetrics fromAggregates() {
-        AggregatedMetrics agg = aggregatesForSession();
+        return foldedForSession(BuildMetrics.class, BuildMetrics::fold);
+    }
+
+    private static BuildMetrics fold(AggregatedMetrics agg) {
         Map<String, Entry> inv = new LinkedHashMap<>();
         Map<String, Entry> steps = new LinkedHashMap<>();
         long now = System.currentTimeMillis();
@@ -213,6 +221,55 @@ public final class BuildMetrics {
         foldAggregateEntries(agg.meanMap(), agg, inv, steps, wall1, now, false);
         foldAggregateEntries(agg.hostMeanMap(), agg, inv, steps, wall1, now, true);
         return new BuildMetrics(inv, steps, wall1);
+    }
+
+    /**
+     * Per-class test walls by module, indexed once from the session aggregates: the key space
+     * holds one {@code test-class.<fqcn>.wall-ms} row per test class in the workspace, and
+     * scanning it per module priced was a walk of the whole space for every module.
+     */
+    public record ClassWallIndex(Map<String, Map<String, Long>> byModule) {
+        public ClassWallIndex {
+            byModule = Map.copyOf(byModule);
+        }
+
+        /** The walls harvested for {@code moduleDir} (an absolute module path), or empty. */
+        public Map<String, Long> forModule(String moduleDir) {
+            return byModule.getOrDefault(AggregatedMetrics.sanitize(moduleDir), Map.of());
+        }
+
+        static ClassWallIndex of(AggregatedMetrics agg) {
+            Map<String, Map<String, Long>> byModule = new LinkedHashMap<>();
+            index(agg.meanMap(), byModule, false);
+            index(agg.lastMap(), byModule, true);
+            Map<String, Map<String, Long>> frozen = new LinkedHashMap<>();
+            for (var e : byModule.entrySet()) frozen.put(e.getKey(), Map.copyOf(e.getValue()));
+            return new ClassWallIndex(frozen);
+        }
+
+        private static void index(
+                Map<String, Double> source, Map<String, Map<String, Long>> into, boolean onlyIfAbsent) {
+            String marker = ".test-class.";
+            String suffix = ".wall-ms";
+            for (var e : source.entrySet()) {
+                String key = e.getKey();
+                if (!key.startsWith("module.") || !key.endsWith(suffix) || !(e.getValue() > 0)) continue;
+                int at = key.indexOf(marker);
+                if (at <= "module.".length()) continue;
+                String module = key.substring("module.".length(), at);
+                String fqcn = key.substring(at + marker.length(), key.length() - suffix.length());
+                if (fqcn.isEmpty()) continue;
+                Map<String, Long> walls = into.computeIfAbsent(module, k -> new LinkedHashMap<>());
+                long wall = Math.round(e.getValue());
+                if (onlyIfAbsent) walls.putIfAbsent(fqcn, wall);
+                else walls.put(fqcn, wall);
+            }
+        }
+    }
+
+    /** The class-wall index for the session, built once per session-aggregate window. */
+    public static ClassWallIndex classWallsForSession() {
+        return foldedForSession(ClassWallIndex.class, ClassWallIndex::of);
     }
 
     /**
@@ -233,6 +290,25 @@ public final class BuildMetrics {
      * TOML parses. Harvest rewrites land between builds, well past the TTL.
      */
     public static AggregatedMetrics aggregatesForSession() {
+        return sessionMemo().agg();
+    }
+
+    /**
+     * A view folded from the session aggregates, computed once per memo window under {@code key}
+     * and shared by every caller in it. The views live beside the aggregates they were folded
+     * from, so they expire together: a new window reloads the TOML and refolds each view on its
+     * first use, and nothing can serve a view of aggregates that are gone.
+     */
+    public static <T> T foldedForSession(Class<T> key, Function<AggregatedMetrics, T> fold) {
+        AggMemo memo = sessionMemo();
+        Object view = memo.folds().computeIfAbsent(key, k -> {
+            SESSION_FOLDS.incrementAndGet();
+            return fold.apply(memo.agg());
+        });
+        return key.cast(view);
+    }
+
+    private static AggMemo sessionMemo() {
         Path builds = JkDirs.builds();
         Path work = null;
         try {
@@ -251,23 +327,41 @@ public final class BuildMetrics {
                 && memo.builds().equals(builds)
                 && Objects.equals(memo.work(), memoKey)
                 && now - memo.atMillis() < AGG_MEMO_TTL_MS) {
-            return memo.agg();
+            return memo;
         }
         AggregatedMetrics agg = work != null && projectSession
                 ? AggregatedMetrics.load(builds, null, work)
                 : AggregatedMetrics.loadAll(builds);
-        AGG_MEMO.set(new AggMemo(builds, memoKey, now, agg));
-        return agg;
+        AggMemo fresh = new AggMemo(builds, memoKey, now, agg, new ConcurrentHashMap<>());
+        AGG_MEMO.set(fresh);
+        return fresh;
     }
 
-    private record AggMemo(Path builds, @Nullable Path work, long atMillis, AggregatedMetrics agg) {}
+    /** The aggregates of one memo window and the views folded from them so far. */
+    private record AggMemo(
+            Path builds,
+            @Nullable Path work,
+            long atMillis,
+            AggregatedMetrics agg,
+            ConcurrentHashMap<Class<?>, Object> folds) {}
 
     private static final AtomicReference<@Nullable AggMemo> AGG_MEMO = new AtomicReference<>();
     private static final long AGG_MEMO_TTL_MS = 3_000;
+    private static final AtomicLong SESSION_FOLDS = new AtomicLong();
 
     /** Test seam: drop the session-aggregate memo (tests repoint JK_STATE_DIR between cases). */
     public static void clearSessionAggregatesMemo() {
         AGG_MEMO.set(null);
+    }
+
+    /** Test seam: views folded from session aggregates since process start (or the last reset). */
+    public static long sessionFoldCount() {
+        return SESSION_FOLDS.get();
+    }
+
+    /** Test seam. */
+    public static void resetSessionFoldCount() {
+        SESSION_FOLDS.set(0);
     }
 
     /**

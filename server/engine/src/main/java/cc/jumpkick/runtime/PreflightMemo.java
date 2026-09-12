@@ -21,6 +21,7 @@ import cc.jumpkick.plugin.manifest.PluginModule;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.CompileSupport;
+import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
@@ -35,6 +36,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -830,11 +832,13 @@ public final class PreflightMemo {
                                     file,
                                     attrs.size(),
                                     attrs.lastModifiedTime().toMillis(),
+                                    attrs.lastModifiedTime().to(TimeUnit.NANOSECONDS),
                                     mtimeMode));
                     continue;
                 }
                 for (var ref : snap.files()) {
-                    feedFingerprint(md, moduleDir, ref.path(), ref.size(), ref.mtimeMillis(), mtimeMode);
+                    feedFingerprint(
+                            md, moduleDir, ref.path(), ref.size(), ref.mtimeMillis(), ref.mtimeNanos(), mtimeMode);
                 }
             }
             return new Known(Hashing.hex(md.digest()));
@@ -846,30 +850,30 @@ public final class PreflightMemo {
     /**
      * One byte contract for both walk shapes: the digest must not depend on whether the tree came
      * from a snapshot or a live walk, or a module crossing the retain boundary between runs would
-     * rebuild for no input change.
+     * rebuild for no input change. Content goes through {@link FileHashMemo}, so a file the memo
+     * has already hashed under this stat identity costs a map read: the preflight, the test stamp
+     * and the compile keys all read the same sources, and each build reads their bytes once.
      */
     private static void feedFingerprint(
-            MessageDigest md, Path moduleDir, Path file, long size, long mtimeMillis, boolean mtimeMode) {
+            MessageDigest md,
+            Path moduleDir,
+            Path file,
+            long size,
+            long mtimeMillis,
+            long mtimeNanos,
+            boolean mtimeMode) {
         feed(md, moduleDir.relativize(file).toString().replace('\\', '/'));
         if (mtimeMode) {
             feed(md, Long.toString(size));
             feed(md, Long.toString(mtimeMillis));
             return;
         }
-        try (var in = Files.newInputStream(file)) {
-            byte[] buf = HASH_BUFFER.get();
-            int n;
-            while ((n = in.read(buf)) > 0) {
-                md.update(buf, 0, n);
-            }
-            md.update((byte) 0);
+        try {
+            feed(md, FileHashMemo.contentHash(file.toAbsolutePath().normalize(), size, mtimeMillis, mtimeNanos));
         } catch (IOException e) {
             feed(md, "unreadable");
         }
     }
-
-    /** Reused per hashing thread so streaming a tree does not allocate a buffer per file. */
-    private static final ThreadLocal<byte[]> HASH_BUFFER = ThreadLocal.withInitial(() -> new byte[64 * 1024]);
 
     static String fingerprintMode() {
         return useMtimeMode() ? "mtime" : "content";
@@ -889,17 +893,21 @@ public final class PreflightMemo {
         return rel.isEmpty() ? "." : rel;
     }
 
+    /**
+     * A manifest, lock or rule file as a digest input, through the memo: every module of a
+     * workspace feeds the one root lock, and reading a monorepo-sized lock once per module scaled
+     * the preflight by modules × lock size.
+     */
     private static void feedFile(MessageDigest md, Path file) throws IOException {
         if (!Files.isRegularFile(file)) {
             feed(md, "missing");
             return;
         }
         try {
-            md.update(Files.readAllBytes(file));
+            feed(md, FileHashMemo.contentHash(file));
         } catch (IOException e) {
             throw new UnreadableInput(file, e);
         }
-        md.update((byte) 0);
     }
 
     private static void feed(MessageDigest md, String s) {

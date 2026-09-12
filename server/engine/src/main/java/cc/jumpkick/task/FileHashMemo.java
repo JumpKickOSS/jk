@@ -95,10 +95,20 @@ public final class FileHashMemo {
      * build. {@code file} must already be absolute and normalized.
      */
     public static String contentHash(Path file, BasicFileAttributes attrs) throws IOException {
+        return contentHash(
+                file,
+                attrs.size(),
+                attrs.lastModifiedTime().toMillis(),
+                attrs.lastModifiedTime().to(TimeUnit.NANOSECONDS));
+    }
+
+    /**
+     * As {@link #contentHash(Path, BasicFileAttributes)} for a caller holding the stat identity
+     * itself — a retained tree snapshot carries size and both mtime resolutions without the
+     * attributes object. {@code file} must already be absolute and normalized.
+     */
+    public static String contentHash(Path file, long size, long mtime, long nanos) throws IOException {
         CONTENT_HASH_INVOCATIONS.incrementAndGet();
-        long size = attrs.size();
-        long mtime = attrs.lastModifiedTime().toMillis();
-        long nanos = attrs.lastModifiedTime().to(TimeUnit.NANOSECONDS);
 
         Store store = store();
         if (store != null) {

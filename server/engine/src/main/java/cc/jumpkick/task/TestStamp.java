@@ -110,7 +110,7 @@ public final class TestStamp {
             sortedSources.sort(Comparator.comparing(Path::toString));
             for (Path src : sortedSources) {
                 if (!Files.isRegularFile(src)) continue; // generated / deleted
-                feed(md, "src:" + PortablePath.of(src) + ":" + Hashing.sha256Hex(Files.readAllBytes(src)));
+                feed(md, "src:" + PortablePath.of(src) + ":" + FileHashMemo.contentHash(src));
             }
 
             // The module's own compiled main output — a main-only change busts the
@@ -134,7 +134,7 @@ public final class TestStamp {
 
             // Lock file: content hash — catches any dep version / JDK change.
             if (Files.isRegularFile(lockFile)) {
-                feed(md, "lock:" + Hashing.sha256Hex(Files.readAllBytes(lockFile)));
+                feed(md, "lock:" + FileHashMemo.contentHash(lockFile));
             }
 
             // Runtime classpath by CONTENT: a sibling module's change ripples in,

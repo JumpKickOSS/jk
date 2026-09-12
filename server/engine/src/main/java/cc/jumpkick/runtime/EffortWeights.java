@@ -32,7 +32,6 @@ import cc.jumpkick.runtime.base.StepTimings;
 import cc.jumpkick.runtime.base.TestClassWalls;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.test.TestWorkers;
-import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.runtime.ModuleWorkCost;
 import cc.jumpkick.wire.runtime.WorkSchedule;
 import java.io.IOException;
@@ -41,7 +40,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -560,29 +558,17 @@ public final class EffortWeights {
         return new ModuleCost(dir, prereqs, weight, testWeight, tailWeight);
     }
 
-    /** Class walls from this process buffer or harvested project metrics (no class-file scan). */
+    /**
+     * Class walls from this process buffer or harvested project metrics (no class-file scan). The
+     * harvested walls come from the session's class-wall index, built once per aggregate window
+     * over the same project-preferring aggregates every other learned weight reads.
+     */
     static Map<String, Long> loadClassWalls(String moduleDir) {
         Map<String, Long> live = TestClassWalls.get(moduleDir);
         if (!live.isEmpty()) return live;
         if (moduleDir == null || moduleDir.isBlank()) return Map.of();
         try {
-            var agg = AggregatedMetrics.loadAll(JkDirs.builds());
-            String prefix = "module." + AggregatedMetrics.sanitize(moduleDir) + ".test-class.";
-            String suffix = ".wall-ms";
-            Map<String, Long> out = new LinkedHashMap<>();
-            for (var e : agg.meanMap().entrySet()) {
-                String k = e.getKey();
-                if (!k.startsWith(prefix) || !k.endsWith(suffix)) continue;
-                String fqcn = k.substring(prefix.length(), k.length() - suffix.length());
-                if (!fqcn.isEmpty() && e.getValue() > 0) out.put(fqcn, Math.round(e.getValue()));
-            }
-            for (var e : agg.lastMap().entrySet()) {
-                String k = e.getKey();
-                if (!k.startsWith(prefix) || !k.endsWith(suffix)) continue;
-                String fqcn = k.substring(prefix.length(), k.length() - suffix.length());
-                if (!fqcn.isEmpty() && e.getValue() > 0) out.putIfAbsent(fqcn, Math.round(e.getValue()));
-            }
-            return out;
+            return BuildMetrics.classWallsForSession().forModule(moduleDir);
         } catch (RuntimeException e) {
             return Map.of();
         }
@@ -716,8 +702,10 @@ public final class EffortWeights {
 
         int sync = predictSync(in, cas);
         // Learned per-unit rates (cold ⇒ empty ⇒ static Task-1 weights). Keyed by
-        // module dir, the same key the recorder writes at build end.
+        // module dir, the same key the recorder writes at build end. One metrics view for the
+        // whole prediction: every step below prices against the same fold.
         StepTimings timings = StepTimings.load(in.cache());
+        BuildMetrics metrics = BuildMetrics.load(BuildMetrics.defaultFile());
         String mod = in.dir().toString();
         // Sibling modules of this build, for the project-tier learned fallback (empty ⇒ host-median).
         List<String> projectDirs =
@@ -736,16 +724,18 @@ public final class EffortWeights {
                         () -> CompileSupport.collectJavaSources(
                                 compact ? in.dir().resolve("src") : in.dir().resolve("src/main/java")));
                 javaRun = rerun || !FreshnessStamp.looksFresh(layout.classesDir(), BuildStamps.JAVA, src);
-                compileJava =
-                        javaRun ? learnedCompile(timings, mod, TaskNames.COMPILE_JAVA, src.size(), projectDirs) : SKIP;
+                compileJava = javaRun
+                        ? learnedCompile(timings, metrics, mod, TaskNames.COMPILE_JAVA, src.size(), projectDirs)
+                        : SKIP;
             }
             boolean ktRun = false;
             if (useKotlin) {
                 List<Path> src = SourceRefs.get(
                         shared.kotlin(), () -> PlannerCompile.mainKotlinSources(project, in.dir(), compact));
                 ktRun = rerun || !FreshnessStamp.looksFresh(layout.kotlinClassesDir(), BuildStamps.KOTLIN, src);
-                compileKotlin =
-                        ktRun ? learnedCompile(timings, mod, TaskNames.COMPILE_KOTLIN, src.size(), projectDirs) : SKIP;
+                compileKotlin = ktRun
+                        ? learnedCompile(timings, metrics, mod, TaskNames.COMPILE_KOTLIN, src.size(), projectDirs)
+                        : SKIP;
             }
             boolean gvRun = false;
             if (useGroovy) {
@@ -754,8 +744,9 @@ public final class EffortWeights {
                 List<Path> src = SourceRefs.get(
                         shared.groovy(), () -> PlannerCompile.mainGroovySources(project, in.dir(), compact));
                 gvRun = rerun || !FreshnessStamp.looksFresh(layout.classesDir(), BuildStamps.GROOVY, src);
-                compileGroovy =
-                        gvRun ? learnedCompile(timings, mod, TaskNames.COMPILE_GROOVY, src.size(), projectDirs) : SKIP;
+                compileGroovy = gvRun
+                        ? learnedCompile(timings, metrics, mod, TaskNames.COMPILE_GROOVY, src.size(), projectDirs)
+                        : SKIP;
             }
             boolean compileRun = javaRun || ktRun || gvRun;
 
@@ -777,17 +768,18 @@ public final class EffortWeights {
             compileTest = testWillRun
                     ? learned(
                             timings,
+                            metrics,
                             mod,
                             TaskNames.COMPILE_TEST,
                             1,
                             coldWorkWeight(TaskNames.COMPILE_TEST, Math.max(1, testSrc.size())),
                             projectDirs)
                     : SKIP;
-            runTests = predictRunTests(in, compact, timings, mod, projectDirs, testWillRun);
+            runTests = predictRunTests(in, compact, timings, metrics, mod, projectDirs, testWillRun);
 
             boolean jarFresh = !rerun && !compileRun && Files.isRegularFile(layout.mainJar());
             int staticPkg = coldWorkWeight(TaskNames.PACKAGE_JAR, 1);
-            pkg = jarFresh ? SKIP : learnedFixedWeight(mod, TaskNames.PACKAGE_JAR, staticPkg);
+            pkg = jarFresh ? SKIP : learnedFixedWeight(metrics, mod, TaskNames.PACKAGE_JAR, staticPkg);
         } catch (Exception e) {
             // Unparseable project / layout — parse-build will surface the real
             // error; skip-ish weights + auto-fill keep the bar honest meanwhile.
@@ -817,8 +809,8 @@ public final class EffortWeights {
 
     /** A compile step's learned per-source weight, with the cold static weight for the same count as fallback. */
     private static int learnedCompile(
-            StepTimings timings, String mod, String task, int sources, List<String> projectDirs) {
-        return learned(timings, mod, task, sources, coldWorkWeight(task, sources), projectDirs);
+            StepTimings timings, BuildMetrics metrics, String mod, String task, int sources, List<String> projectDirs) {
+        return learned(timings, metrics, mod, task, sources, coldWorkWeight(task, sources), projectDirs);
     }
 
     /** Every suite's test sources; on a suite-walk failure, the default suite only. */
@@ -843,6 +835,7 @@ public final class EffortWeights {
             BuildPlanner.Inputs in,
             boolean compact,
             StepTimings timings,
+            BuildMetrics metrics,
             String mod,
             List<String> projectDirs,
             boolean testWillRun)
@@ -854,11 +847,11 @@ public final class EffortWeights {
                 coldWorkWeight(TaskNames.RUN_TESTS, methods > 0 ? methods : Math.max(1, classes * 3), testWorkers);
         if (!testWillRun) return SKIP;
         if (methods > 0) {
-            return learned(timings, mod, TaskNames.RUN_TESTS, methods, staticTests, projectDirs);
+            return learned(timings, metrics, mod, TaskNames.RUN_TESTS, methods, staticTests, projectDirs);
         } else if (classes > 0) {
-            return learned(timings, mod, "run-tests-class", classes, staticTests, projectDirs);
+            return learned(timings, metrics, mod, "run-tests-class", classes, staticTests, projectDirs);
         }
-        return learned(timings, mod, TaskNames.RUN_TESTS, 1, staticTests, projectDirs);
+        return learned(timings, metrics, mod, TaskNames.RUN_TESTS, 1, staticTests, projectDirs);
     }
 
     /** True when weight is absent or only a token (no real compile/test/package work). */
