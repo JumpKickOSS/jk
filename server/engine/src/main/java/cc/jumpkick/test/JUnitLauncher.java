@@ -276,7 +276,7 @@ public final class JUnitLauncher {
     }
 
     /** List-only discovery with {@code extraExcludes} folded in — the serial-tag partition view. */
-    private List<String> discoverWithExtraExcludes(
+    private Discovery discoverWithExtraExcludes(
             Path javaBinary, String classpath, Path testClassesDir, List<String> extraExcludes)
             throws IOException, InterruptedException {
         List<String> saved = excludeTags;
@@ -419,7 +419,9 @@ public final class JUnitLauncher {
             if (preDiscovered.size() <= 1) resolvedWorkers = 1;
         } else if (wanted == 0) {
             // Discover once so auto can size the pool; reuse the list when W>1.
-            preDiscovered = discoverClasses(javaBinary, classpath, testClassesDir, listener);
+            Discovery discovery = discoverClasses(javaBinary, classpath, testClassesDir, listener);
+            if (discovery.crashed()) return discoveryCrash(discovery).withWorkers(1);
+            preDiscovered = discovery.classes();
             resolvedWorkers = TestWorkers.resolve(0, preDiscovered.size(), TestWorkers.effectiveJobs());
         } else if (wanted > 1) {
             resolvedWorkers = TestWorkers.resolve(wanted, Integer.MAX_VALUE, TestWorkers.effectiveJobs());
@@ -489,24 +491,18 @@ public final class JUnitLauncher {
             Path testClassesDir,
             int workers,
             TestProgressListener listener,
-            @Nullable Path testResultsDir)
-            throws IOException, InterruptedException {
-        return runParallel(javaBinary, classpath, testClassesDir, workers, listener, testResultsDir, null);
-    }
-
-    private TestSummary runParallel(
-            Path javaBinary,
-            String classpath,
-            Path testClassesDir,
-            int workers,
-            TestProgressListener listener,
             @Nullable Path testResultsDir,
             @Nullable List<String> preDiscovered)
             throws IOException, InterruptedException {
         // 1. Discovery — one fork, list-only mode, harvest class FQCNs (skip if auto already did).
-        List<String> classes = preDiscovered != null
-                ? preDiscovered
-                : discoverClasses(javaBinary, classpath, testClassesDir, listener);
+        List<String> classes;
+        if (preDiscovered != null) {
+            classes = preDiscovered;
+        } else {
+            Discovery discovery = discoverClasses(javaBinary, classpath, testClassesDir, listener);
+            if (discovery.crashed()) return discoveryCrash(discovery);
+            classes = discovery.classes();
+        }
         if (classes.isEmpty()) {
             return new TestSummary(0, 0, 0, 0, List.of());
         }
@@ -517,8 +513,9 @@ public final class JUnitLauncher {
         // never enter the picture.
         List<String> serialClasses = List.of();
         if (!serialTags.isEmpty()) {
-            Set<String> parallelView =
-                    new HashSet<>(discoverWithExtraExcludes(javaBinary, classpath, testClassesDir, serialTags));
+            Discovery view = discoverWithExtraExcludes(javaBinary, classpath, testClassesDir, serialTags);
+            if (view.crashed()) return discoveryCrash(view);
+            Set<String> parallelView = new HashSet<>(view.classes());
             List<String> par = new ArrayList<>();
             List<String> ser = new ArrayList<>();
             for (String c : classes) (parallelView.contains(c) ? par : ser).add(c);
@@ -767,11 +764,12 @@ public final class JUnitLauncher {
      * {@code Launcher.discover} (not {@code execute}) so this completes in 100–300 ms even for big
      * suites.
      */
-    private List<String> discoverClasses(
+    private Discovery discoverClasses(
             Path javaBinary, String classpath, Path testClassesDir, TestProgressListener listener)
             throws IOException, InterruptedException {
         var classes = new ArrayList<String>();
-        PluginLoader.run(
+        var crash = new CaptureBuffer();
+        int exit = PluginLoader.run(
                 javaBinary,
                 classpath,
                 jvmFlags(JvmRole.DISCOVERY, 1, testTmpDir),
@@ -787,8 +785,13 @@ public final class JUnitLauncher {
                         listener.onDiscoveryTotal(Jsonl.intValue(json, "classes", 0), Jsonl.intValue(json, "tests", 0));
                     }
                 },
-                null);
-        return classes;
+                crash::add);
+        return new Discovery(List.copyOf(classes), exit, crash.text());
+    }
+
+    /** The verdict for a discovery fork that died before naming a class — see {@link Discovery#failure}. */
+    private TestSummary discoveryCrash(Discovery discovery) {
+        return discovery.failure(moduleLabel);
     }
 
     // -------- shared helpers --------------------------------------------

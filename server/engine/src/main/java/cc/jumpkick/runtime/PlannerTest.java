@@ -567,7 +567,7 @@ public final class PlannerTest {
                         result = TestClassMatch.asFailure(moduleLabel, effectiveSel.classes());
                     }
                     ctx.put(TEST_RESULT, result);
-                    recordOutcome(ctx, in, actionCache, testTaskId, stampKey, result, snippets);
+                    recordOutcome(ctx, in, actionCache, testTaskId, stampKey, result, !testSrcs.isEmpty(), snippets);
                 })
                 .build();
     }
@@ -812,7 +812,8 @@ public final class PlannerTest {
      * path can replay them in its summary. Always stored on success — including --redo/--force.
      * Rerun only means "do not restore/skip the runner"; the marker still uses the normal content
      * key (not a verify scratch salt), so the next explain must see it (same contract as compile).
-     * Skipped only when the key failed open.
+     * Skipped only when the key failed open, or when the run is no evidence — see
+     * {@link #greenStampAllowed}.
      */
     private static void recordOutcome(
             TaskContext ctx,
@@ -821,6 +822,7 @@ public final class PlannerTest {
             String testTaskId,
             @Nullable String stampKey,
             TestSummary result,
+            boolean testSourcesExist,
             TestFailureSource.Cache snippets)
             throws Exception {
         if (!result.allPassed()) {
@@ -835,13 +837,24 @@ public final class PlannerTest {
             if (SessionCancel.cancelled()) throw new RuntimeException("test run cancelled");
             throw new RuntimeException(result.failed() + " test failure" + (result.failed() == 1 ? "" : "s"));
         }
-        if (stampKey != null) {
+        if (stampKey != null && greenStampAllowed(result, testSourcesExist)) {
             actionCache.storeWithOutputs(
                     testTaskId,
                     stampKey,
                     Map.of(),
                     TestStamp.outcome(result.total(), result.succeeded(), result.skipped(), 0));
         }
+    }
+
+    /**
+     * Whether a run may be stored as the green marker later builds skip on. A module with test
+     * sources whose run executed nothing has produced no evidence — a discovery that named no
+     * class, a runner that started nothing — and a marker for it would replay "tests up-to-date"
+     * for tests that never ran; the next build runs the suite again instead. A module without test
+     * sources has nothing to run, and its empty run is the whole truth.
+     */
+    static boolean greenStampAllowed(TestSummary result, boolean testSourcesExist) {
+        return result.allPassed() && (result.total() > 0 || !testSourcesExist);
     }
 
     /** The green run's counts replayed off a run-tests marker; {@code null} for markers written
