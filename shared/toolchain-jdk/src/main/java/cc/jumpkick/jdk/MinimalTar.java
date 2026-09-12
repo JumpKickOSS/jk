@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.EnumSet;
@@ -146,10 +147,13 @@ public final class MinimalTar {
      *
      * <p>An archive is untrusted input, and the usual entry-name check is purely lexical — it does
      * not stop an entry named {@code lib} that is a symlink to {@code /etc}, followed by an entry
-     * named {@code lib/passwd} whose write then lands outside the destination. Real JDK/tool
-     * archives only ever link <em>within</em> the extracted tree ({@code jre/lib -> ../lib}), so
-     * resolving the target against the link's own parent and requiring containment keeps every
-     * legitimate archive working while closing the escape.
+     * named {@code lib/passwd} whose write then lands outside the destination. Nor does it stop a
+     * chain of in-tree links: {@code d/l -> ..} resolves inside, but a second link created
+     * <em>through</em> it, {@code d/l/l2 -> ..}, physically lands at {@code <dest>/l2} and points
+     * one level above the destination. The target is therefore resolved against the parent's
+     * <em>real</em> path, following whatever links the archive has already planted, and the link
+     * itself is created at that real location. Real JDK/tool archives only ever link within the
+     * extracted tree ({@code jre/lib -> ../lib}), so every legitimate archive keeps working.
      */
     public static void createSymlinkInside(Path destDir, Path out, String linkName) throws IOException {
         if (linkName == null || linkName.isBlank()) {
@@ -160,28 +164,96 @@ public final class MinimalTar {
             throw new IOException("tar symlink target is absolute: " + linkName);
         }
         Path parent = out.getParent() == null ? destDir : out.getParent();
-        Path resolved = parent.resolve(target).normalize();
-        if (!resolved.startsWith(destDir.normalize())) {
+        Path realParent = createDirectoryInside(destDir, parent);
+        Path resolved = resolveFollowingLinks(realParent, target, linkName);
+        if (!resolved.startsWith(destDir.toRealPath())) {
             throw new IOException("tar symlink escapes destination: " + out.getFileName() + " -> " + linkName);
         }
-        if (out.getParent() != null) Files.createDirectories(out.getParent());
-        Files.deleteIfExists(out);
-        Files.createSymbolicLink(out, target);
+        Path link = realParent.resolve(out.getFileName());
+        Files.deleteIfExists(link);
+        Files.createSymbolicLink(link, target);
+    }
+
+    /**
+     * Where {@code target}, read relative to {@code start} (a real path), lands: {@code ..} steps
+     * up the real path and any existing link met on the way is followed, so a target that routes
+     * through a link the archive planted earlier is judged by where it actually goes. Components
+     * that do not exist yet stay lexical.
+     */
+    private static Path resolveFollowingLinks(Path start, Path target, String linkName) throws IOException {
+        Path current = start;
+        for (Path component : target) {
+            String c = component.toString();
+            if (c.isEmpty() || c.equals(".")) continue;
+            if (c.equals("..")) {
+                Path up = current.getParent();
+                current = up == null ? current : up;
+                continue;
+            }
+            current = current.resolve(c);
+            if (Files.isSymbolicLink(current)) {
+                try {
+                    current = current.toRealPath();
+                } catch (IOException dangling) {
+                    throw new IOException("tar symlink target crosses a dangling link: " + linkName, dangling);
+                }
+            }
+        }
+        return current;
+    }
+
+    /**
+     * Create {@code dir} and any missing parents, refusing when the path resolves — through links
+     * the archive planted earlier — outside {@code destDir}. Returns {@code dir}'s real path.
+     *
+     * <p>The check runs on the nearest ancestor that already exists, <em>before</em> anything is
+     * created: creating first and comparing real paths afterwards leaves the escaped directory in
+     * place, and every entry beneath it is then written outside the tree.
+     */
+    public static Path createDirectoryInside(Path destDir, Path dir) throws IOException {
+        Path destReal = destDir.toRealPath();
+        Path existing = dir;
+        while (!Files.exists(existing, LinkOption.NOFOLLOW_LINKS)) {
+            Path up = existing.getParent();
+            if (up == null) throw new IOException("tar entry has no existing ancestor: " + dir);
+            existing = up;
+        }
+        Path existingReal;
+        try {
+            existingReal = existing.toRealPath();
+        } catch (IOException dangling) {
+            throw new IOException("tar entry resolves through a dangling link: " + describe(destDir, dir), dangling);
+        }
+        if (!existingReal.startsWith(destReal)) {
+            throw new IOException(
+                    "tar entry resolves through a link outside the destination: " + describe(destDir, dir));
+        }
+        if (!Files.isDirectory(existingReal)) {
+            throw new IOException("tar entry resolves through a file: " + describe(destDir, dir));
+        }
+        Files.createDirectories(dir);
+        Path real = dir.toRealPath();
+        if (!real.startsWith(destReal)) {
+            throw new IOException(
+                    "tar entry resolves through a link outside the destination: " + describe(destDir, dir));
+        }
+        return real;
+    }
+
+    private static String describe(Path destDir, Path path) {
+        return path.startsWith(destDir) ? destDir.relativize(path).toString() : path.toString();
     }
 
     /**
      * Fail when {@code out}'s parent directories resolve (through symlinks) outside {@code
      * destDir} — the second half of the tar-symlink escape: a link entry planted earlier in the
-     * same archive must not become a write path out of the tree.
+     * same archive must not become a write path out of the tree. Creates the parent when the
+     * check passes.
      */
     public static void requireParentInside(Path destDir, Path out) throws IOException {
         Path parent = out.getParent();
         if (parent == null) return;
-        Files.createDirectories(parent);
-        Path realParent = parent.toRealPath();
-        if (!realParent.startsWith(destDir.toRealPath())) {
-            throw new IOException("tar entry writes through a link outside the destination: " + out.getFileName());
-        }
+        createDirectoryInside(destDir, parent);
     }
 
     public static void applyMode(Path file, int mode) {

@@ -456,7 +456,7 @@ public final class JdkInstaller {
                     throw new IOException("tar entry escapes destination: " + name);
                 }
                 if (isDir) {
-                    Files.createDirectories(out);
+                    MinimalTar.createDirectoryInside(destDir, out);
                 } else if (isLink) {
                     MinimalTar.createSymlinkInside(destDir, out, linkName);
                 } else {

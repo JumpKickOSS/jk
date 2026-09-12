@@ -57,8 +57,63 @@ class MinimalTarContainmentTest {
         Files.createSymbolicLink(dest.resolve("lib"), outside);
         assertThatThrownBy(() -> MinimalTar.requireParentInside(dest, dest.resolve("lib/evil.service")))
                 .isInstanceOf(IOException.class)
-                .hasMessageContaining("writes through a link");
+                .hasMessageContaining("outside the destination");
         assertThat(outside.resolve("evil.service")).doesNotExist();
+    }
+
+    @Test
+    void a_link_created_through_an_in_tree_link_is_judged_by_where_it_lands(@TempDir Path tmp) throws Exception {
+        // d/l -> .. resolves to the destination itself, which is fine. A second link written
+        // through it, d/l/l2 -> .., physically lands at <dest>/l2 and points one level above.
+        Path dest = Files.createDirectories(tmp.resolve("jdk"));
+        Files.createDirectories(dest.resolve("d"));
+        MinimalTar.createSymlinkInside(dest, dest.resolve("d/l"), "..");
+        assertThat(dest.resolve("d/l").toRealPath()).isEqualTo(dest.toRealPath());
+
+        assertThatThrownBy(() -> MinimalTar.createSymlinkInside(dest, dest.resolve("d/l/l2"), ".."))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("escapes destination");
+        assertThat(dest.resolve("l2")).doesNotExist();
+    }
+
+    @Test
+    void a_directory_entry_through_a_planted_link_chain_is_refused_before_anything_is_created(@TempDir Path tmp)
+            throws Exception {
+        Path dest = Files.createDirectories(tmp.resolve("jdk"));
+        // The chain as an attacker would leave it: l2 sits in the destination and points above it.
+        Files.createDirectories(dest.resolve("d"));
+        Files.createSymbolicLink(dest.resolve("d/l"), Path.of(".."));
+        Files.createSymbolicLink(dest.resolve("l2"), Path.of(".."));
+
+        assertThatThrownBy(() -> MinimalTar.createDirectoryInside(dest, dest.resolve("d/l/l2/pwn/deeper")))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("outside the destination");
+        assertThat(tmp.resolve("pwn")).doesNotExist();
+
+        assertThatThrownBy(() -> MinimalTar.requireParentInside(dest, dest.resolve("d/l/l2/pwn/evil")))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("outside the destination");
+        assertThat(tmp.resolve("pwn")).doesNotExist();
+    }
+
+    @Test
+    void a_link_target_that_routes_through_a_planted_link_is_followed(@TempDir Path tmp) throws Exception {
+        Path dest = Files.createDirectories(tmp.resolve("jdk"));
+        Path outside = Files.createDirectories(tmp.resolve("outside"));
+        Files.createSymbolicLink(dest.resolve("hop"), outside);
+        // Lexically hop/../etc stays in the tree; on disk hop is <outside>, so it does not.
+        assertThatThrownBy(() -> MinimalTar.createSymlinkInside(dest, dest.resolve("lib"), "hop/sub"))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("escapes destination");
+        assertThat(dest.resolve("lib")).doesNotExist();
+    }
+
+    @Test
+    void nested_directories_are_created_and_reported_by_real_path(@TempDir Path tmp) throws Exception {
+        Path dest = Files.createDirectories(tmp.resolve("jdk"));
+        Path real = MinimalTar.createDirectoryInside(dest, dest.resolve("lib/security/policy"));
+        assertThat(real).isEqualTo(dest.toRealPath().resolve("lib/security/policy"));
+        assertThat(dest.resolve("lib/security/policy")).isDirectory();
     }
 
     @Test

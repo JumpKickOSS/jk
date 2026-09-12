@@ -27,6 +27,8 @@ import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 class JdkInstallerTest {
@@ -216,6 +218,41 @@ class JdkInstallerTest {
     }
 
     @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void a_symlink_chain_cannot_create_directories_outside_the_destination(@TempDir Path tempDir) throws Exception {
+        // d/l -> .. resolves to the extraction root; d/l/l2 -> .. is written through it, so it
+        // lands in the root and points one level above; d/l/l2/pwn/ would then be created
+        // beside the jdks root, and the file beneath it written there.
+        byte[] archive = buildTarGzRaw(new String[][] {
+            {"jdk/", null},
+            {"jdk/bin/", null},
+            {"jdk/bin/java", "#!/fake"},
+            {"d/", null},
+            {"d/l", null, ".."},
+            {"d/l/l2", null, ".."},
+            {"d/l/l2/pwn/", null},
+            {"d/l/l2/pwn/owned", "outside"},
+        });
+        served.put("/jdk.tar.gz", archive);
+        Path jdksRoot = tempDir.resolve("jdks");
+
+        JdkInstaller installer = new JdkInstaller(new Http(), new JdkRegistry(jdksRoot));
+        JdkCatalog.Entry entry = entry("linux", "x86_64", "", base.resolve("/jdk.tar.gz"), Hashing.sha256Hex(archive));
+        assertThatThrownBy(() -> installer.install(entry))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("escapes destination");
+
+        assertThat(jdksRoot.resolve("pwn")).doesNotExist();
+        assertThat(tempDir.resolve("pwn")).doesNotExist();
+        try (var children = Files.list(jdksRoot)) {
+            assertThat(children.filter(Files::isDirectory)
+                            .filter(p -> !p.getFileName().toString().startsWith(".")))
+                    .as("no install published from the refused archive")
+                    .isEmpty();
+        }
+    }
+
+    @Test
     void second_install_is_idempotent(@TempDir Path tempDir) throws Exception {
         byte[] archive = buildTarGz("jdk", Map.of("bin/java", "x", "bin/javac", "x"));
         served.put("/jdk.tar.gz", archive);
@@ -357,14 +394,16 @@ class JdkInstallerTest {
      */
     /**
      * Build a tar.gz using hand-rolled 512-byte TAR blocks — no external library. {@code null} body =
-     * directory entry.
+     * directory entry; a third element makes the entry a symlink to that target.
      */
     private static byte[] buildTarGzRaw(String[][] rawEntries) throws IOException {
         ByteArrayOutputStream raw = new ByteArrayOutputStream();
         for (String[] e : rawEntries) {
             String name = e[0];
+            String linkTarget = e.length > 2 ? e[2] : null;
             byte[] data = e[1] != null ? e[1].getBytes(StandardCharsets.UTF_8) : null;
-            boolean isDir = data == null;
+            boolean isLink = linkTarget != null;
+            boolean isDir = data == null && !isLink;
             byte[] header = new byte[512];
             // name (0-99)
             byte[] nameBytes = name.getBytes(StandardCharsets.US_ASCII);
@@ -379,7 +418,12 @@ class JdkInstallerTest {
             // mtime (136-147)
             putOctal(header, 136, 12, 0);
             // type (156)
-            header[156] = (byte) (isDir ? '5' : '0');
+            header[156] = (byte) (isLink ? '2' : isDir ? '5' : '0');
+            // link target (157-256)
+            if (linkTarget != null) {
+                byte[] linkBytes = linkTarget.getBytes(StandardCharsets.US_ASCII);
+                System.arraycopy(linkBytes, 0, header, 157, Math.min(linkBytes.length, 99));
+            }
             // ustar magic (257-262)
             System.arraycopy("ustar ".getBytes(StandardCharsets.US_ASCII), 0, header, 257, 6);
             header[263] = ' ';
