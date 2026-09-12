@@ -7,13 +7,13 @@ import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.SearchPath;
 import cc.jumpkick.jdk.JdkFingerprint;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -370,17 +370,23 @@ final class AotCacheTrainer {
         return cmd;
     }
 
-    /** True for a docker CLI fronting a rootful daemon (probe fails → assume rootful). */
+    /** True for a docker CLI fronting a rootful daemon (a probe that fails or times out → rootful). */
     private static boolean rootfulDocker(String runtime) {
+        return rootfulDocker(runtime, Duration.ofSeconds(5));
+    }
+
+    static boolean rootfulDocker(String runtime, Duration timeout) {
         String name = Path.of(runtime).getFileName().toString();
         if (!name.startsWith("docker")) return false;
         try {
+            // The runtime is a PATH name; the daemon behind it may be stuck, so the answer is
+            // read beside a deadline rather than to EOF.
             Process p = new ProcessBuilder(runtime, "info", "--format", "{{.SecurityOptions}}")
                     .redirectErrorStream(true)
                     .start();
-            String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            p.waitFor(5, TimeUnit.SECONDS);
-            return !out.contains("rootless");
+            return BoundedRun.await(p, timeout)
+                    .map(run -> !run.output().contains("rootless"))
+                    .orElse(true);
         } catch (IOException e) {
             return true;
         } catch (InterruptedException e) {

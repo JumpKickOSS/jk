@@ -14,17 +14,16 @@ import com.google.cloud.tools.jib.api.RegistryException;
 import com.google.cloud.tools.jib.api.TarImage;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.FileTime;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
 import java.util.zip.GZIPInputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
@@ -64,6 +63,9 @@ final class BaseJre {
         if (a.equals("aarch64") || a.equals("arm64")) return "arm64";
         return a;
     }
+
+    /** How long {@code java -version} gets before the candidate is judged not to run. */
+    private static final Duration VERSION_PROBE = Duration.ofSeconds(60);
 
     /** How long a mutable-tag extraction is trusted before the registry is re-asked. */
     private static final long REVALIDATE_MILLIS = 24L * 60 * 60 * 1000;
@@ -300,12 +302,17 @@ final class BaseJre {
 
     /** True when {@code java -version} exits 0 and says something. */
     private static boolean runsVersion(Path javaBin) throws InterruptedException {
+        return runsVersion(javaBin, VERSION_PROBE);
+    }
+
+    static boolean runsVersion(Path javaBin, Duration timeout) throws InterruptedException {
         try {
-            // start(), not run(): the 60s bound below is the point of this probe, and run() drains
-            // to EOF. The argv comes from the SDK's one fork owner either way.
+            // start(), not run(): the bound is the point of this probe, and run() drains to EOF.
+            // The argv comes from the SDK's one fork owner either way.
             Process p = new TaskExec.ToolRun(javaBin).arg("-version").start();
-            String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            return p.waitFor(60, TimeUnit.SECONDS) && p.exitValue() == 0 && !out.isBlank();
+            return BoundedRun.await(p, timeout)
+                    .map(run -> run.exit() == 0 && !run.output().isBlank())
+                    .orElse(false);
         } catch (IOException e) {
             return false;
         }
