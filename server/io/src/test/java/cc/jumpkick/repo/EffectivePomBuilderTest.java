@@ -275,6 +275,204 @@ class EffectivePomBuilderTest {
     }
 
     @Test
+    void own_dependency_management_entry_beats_a_later_bom_import(@TempDir Path tempDir) throws Exception {
+        // Maven fills imported entries only where the POM (or its parents) declared nothing, so the
+        // POM's own 2.22 wins over the 2.21 the imported BOM carries even though the import is
+        // declared after it.
+        registerPom("tools.jackson", "jackson-bom", "3.1.6", """
+                <project>
+                  <groupId>tools.jackson</groupId>
+                  <artifactId>jackson-bom</artifactId>
+                  <version>3.1.6</version>
+                  <packaging>pom</packaging>
+                  <dependencyManagement>
+                    <dependencies>
+                      <dependency>
+                        <groupId>com.fasterxml.jackson.core</groupId>
+                        <artifactId>jackson-annotations</artifactId>
+                        <version>2.21</version>
+                      </dependency>
+                      <dependency>
+                        <groupId>tools.jackson.core</groupId>
+                        <artifactId>jackson-core</artifactId>
+                        <version>3.1.6</version>
+                      </dependency>
+                    </dependencies>
+                  </dependencyManagement>
+                </project>
+                """);
+        registerPom("org.example", "platform", "1.0", """
+                <project>
+                  <groupId>org.example</groupId>
+                  <artifactId>platform</artifactId>
+                  <version>1.0</version>
+                  <packaging>pom</packaging>
+                  <dependencyManagement>
+                    <dependencies>
+                      <dependency>
+                        <groupId>com.fasterxml.jackson.core</groupId>
+                        <artifactId>jackson-annotations</artifactId>
+                        <version>2.22</version>
+                      </dependency>
+                      <dependency>
+                        <groupId>tools.jackson</groupId>
+                        <artifactId>jackson-bom</artifactId>
+                        <version>3.1.6</version>
+                        <type>pom</type>
+                        <scope>import</scope>
+                      </dependency>
+                    </dependencies>
+                  </dependencyManagement>
+                </project>
+                """);
+
+        EffectivePom pom = newBuilder(tempDir).build(Coordinate.of("org.example", "platform", "1.0"));
+        assertThat(managedVersion(pom, "com.fasterxml.jackson.core:jackson-annotations"))
+                .isEqualTo("2.22");
+        assertThat(managedVersion(pom, "tools.jackson.core:jackson-core")).isEqualTo("3.1.6");
+    }
+
+    @Test
+    void first_bom_import_wins_over_a_later_import_of_the_same_module(@TempDir Path tempDir) throws Exception {
+        registerPom("org.example", "bom-a", "1.0", bomManaging("bom-a", "com.foo", "widget", "1.0"));
+        registerPom("org.example", "bom-b", "1.0", bomManaging("bom-b", "com.foo", "widget", "2.0"));
+        registerPom("org.example", "platform", "1.0", """
+                <project>
+                  <groupId>org.example</groupId>
+                  <artifactId>platform</artifactId>
+                  <version>1.0</version>
+                  <packaging>pom</packaging>
+                  <dependencyManagement>
+                    <dependencies>
+                      <dependency>
+                        <groupId>org.example</groupId><artifactId>bom-a</artifactId><version>1.0</version>
+                        <type>pom</type><scope>import</scope>
+                      </dependency>
+                      <dependency>
+                        <groupId>org.example</groupId><artifactId>bom-b</artifactId><version>1.0</version>
+                        <type>pom</type><scope>import</scope>
+                      </dependency>
+                    </dependencies>
+                  </dependencyManagement>
+                </project>
+                """);
+
+        EffectivePom pom = newBuilder(tempDir).build(Coordinate.of("org.example", "platform", "1.0"));
+        assertThat(managedVersion(pom, "com.foo:widget")).isEqualTo("1.0");
+    }
+
+    @Test
+    void parent_dependency_management_entry_beats_the_child_bom_import(@TempDir Path tempDir) throws Exception {
+        // Imports are expanded after inheritance, so an entry inherited from the parent is a
+        // declaration the import must not override.
+        registerPom("org.example", "the-bom", "1.0", bomManaging("the-bom", "com.foo", "widget", "2.0"));
+        registerPom("org.example", "parent", "1.0", """
+                <project>
+                  <groupId>org.example</groupId>
+                  <artifactId>parent</artifactId>
+                  <version>1.0</version>
+                  <packaging>pom</packaging>
+                  <dependencyManagement>
+                    <dependencies>
+                      <dependency>
+                        <groupId>com.foo</groupId><artifactId>widget</artifactId><version>1.0</version>
+                      </dependency>
+                    </dependencies>
+                  </dependencyManagement>
+                </project>
+                """);
+        registerPom("org.example", "child", "1.0", """
+                <project>
+                  <parent>
+                    <groupId>org.example</groupId><artifactId>parent</artifactId><version>1.0</version>
+                  </parent>
+                  <artifactId>child</artifactId>
+                  <packaging>pom</packaging>
+                  <dependencyManagement>
+                    <dependencies>
+                      <dependency>
+                        <groupId>org.example</groupId><artifactId>the-bom</artifactId><version>1.0</version>
+                        <type>pom</type><scope>import</scope>
+                      </dependency>
+                    </dependencies>
+                  </dependencyManagement>
+                </project>
+                """);
+
+        EffectivePom pom = newBuilder(tempDir).build(Coordinate.of("org.example", "child", "1.0"));
+        assertThat(managedVersion(pom, "com.foo:widget")).isEqualTo("1.0");
+    }
+
+    @Test
+    void child_bom_import_beats_the_import_the_parent_made(@TempDir Path tempDir) throws Exception {
+        // Both are imports; the child's own import is expanded first, so it wins.
+        registerPom("org.example", "old-bom", "1.0", bomManaging("old-bom", "com.foo", "widget", "1.0"));
+        registerPom("org.example", "new-bom", "1.0", bomManaging("new-bom", "com.foo", "widget", "2.0"));
+        registerPom("org.example", "parent", "1.0", """
+                <project>
+                  <groupId>org.example</groupId>
+                  <artifactId>parent</artifactId>
+                  <version>1.0</version>
+                  <packaging>pom</packaging>
+                  <dependencyManagement>
+                    <dependencies>
+                      <dependency>
+                        <groupId>org.example</groupId><artifactId>old-bom</artifactId><version>1.0</version>
+                        <type>pom</type><scope>import</scope>
+                      </dependency>
+                    </dependencies>
+                  </dependencyManagement>
+                </project>
+                """);
+        registerPom("org.example", "child", "1.0", """
+                <project>
+                  <parent>
+                    <groupId>org.example</groupId><artifactId>parent</artifactId><version>1.0</version>
+                  </parent>
+                  <artifactId>child</artifactId>
+                  <packaging>pom</packaging>
+                  <dependencyManagement>
+                    <dependencies>
+                      <dependency>
+                        <groupId>org.example</groupId><artifactId>new-bom</artifactId><version>1.0</version>
+                        <type>pom</type><scope>import</scope>
+                      </dependency>
+                    </dependencies>
+                  </dependencyManagement>
+                </project>
+                """);
+
+        EffectivePom pom = newBuilder(tempDir).build(Coordinate.of("org.example", "child", "1.0"));
+        assertThat(managedVersion(pom, "com.foo:widget")).isEqualTo("2.0");
+    }
+
+    private static String managedVersion(EffectivePom pom, String module) {
+        return pom.managedDependencies().stream()
+                .filter(d -> d.module().equals(module))
+                .map(Pom.Dep::version)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError(module + " is not managed by " + pom.artifactId()));
+    }
+
+    private static String bomManaging(String artifact, String group, String managed, String version) {
+        return """
+                <project>
+                  <groupId>org.example</groupId>
+                  <artifactId>%s</artifactId>
+                  <version>1.0</version>
+                  <packaging>pom</packaging>
+                  <dependencyManagement>
+                    <dependencies>
+                      <dependency>
+                        <groupId>%s</groupId><artifactId>%s</artifactId><version>%s</version>
+                      </dependency>
+                    </dependencies>
+                  </dependencyManagement>
+                </project>
+                """.formatted(artifact, group, managed, version);
+    }
+
+    @Test
     void substitutes_chained_property_refs_across_parent(@TempDir Path tempDir) throws Exception {
         registerPom("org.example", "parent", "1.0", """
                 <project>
@@ -307,27 +505,7 @@ class EffectivePomBuilderTest {
 
     @Test
     void later_dependency_management_entry_overrides_earlier(@TempDir Path tempDir) throws Exception {
-        // The child first declares a local managed version (1.0), then
-        // imports a BOM that constrains the same coord to 2.0. Per
-        // EffectivePomBuilder's "later wins on collision" rule, the merged
-        // managed list should carry 2.0.
-        registerPom("org.example", "the-bom", "1.0", """
-                <project>
-                  <groupId>org.example</groupId>
-                  <artifactId>the-bom</artifactId>
-                  <version>1.0</version>
-                  <packaging>pom</packaging>
-                  <dependencyManagement>
-                    <dependencies>
-                      <dependency>
-                        <groupId>org.example</groupId>
-                        <artifactId>widget</artifactId>
-                        <version>2.0</version>
-                      </dependency>
-                    </dependencies>
-                  </dependencyManagement>
-                </project>
-                """);
+        // Two direct entries for one module in the same POM: the later declaration wins.
         registerPom("org.example", "child", "1.0", """
                 <project>
                   <groupId>org.example</groupId>
@@ -343,10 +521,8 @@ class EffectivePomBuilderTest {
                       </dependency>
                       <dependency>
                         <groupId>org.example</groupId>
-                        <artifactId>the-bom</artifactId>
-                        <version>1.0</version>
-                        <type>pom</type>
-                        <scope>import</scope>
+                        <artifactId>widget</artifactId>
+                        <version>2.0</version>
                       </dependency>
                     </dependencies>
                   </dependencyManagement>

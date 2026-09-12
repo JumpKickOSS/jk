@@ -217,6 +217,79 @@ class LockOrchestratorBomTest {
     }
 
     @Test
+    void platform_bom_own_entry_beats_the_bom_it_imports_on_transitive_edges(@TempDir Path tempDir) throws Exception {
+        // The platform declares leaf 2.22 itself and imports a BOM that manages leaf 2.21. Maven
+        // gives the platform's own entry precedence, so 2.22 is the managed version that lands on
+        // middle's edge, over the 2.21 import and over the 2.23 the repository also advertises.
+        upstream.pom("org.example", "inner-bom", "1.0", """
+                <project>
+                  <groupId>org.example</groupId>
+                  <artifactId>inner-bom</artifactId>
+                  <version>1.0</version>
+                  <packaging>pom</packaging>
+                  <dependencyManagement>
+                    <dependencies>
+                      <dependency>
+                        <groupId>com.foo</groupId><artifactId>leaf</artifactId><version>2.21</version>
+                      </dependency>
+                    </dependencies>
+                  </dependencyManagement>
+                </project>
+                """);
+        upstream.pom("org.example", "platform", "1.0", """
+                <project>
+                  <groupId>org.example</groupId>
+                  <artifactId>platform</artifactId>
+                  <version>1.0</version>
+                  <packaging>pom</packaging>
+                  <dependencyManagement>
+                    <dependencies>
+                      <dependency>
+                        <groupId>com.foo</groupId><artifactId>leaf</artifactId><version>2.22</version>
+                      </dependency>
+                      <dependency>
+                        <groupId>org.example</groupId><artifactId>inner-bom</artifactId><version>1.0</version>
+                        <type>pom</type><scope>import</scope>
+                      </dependency>
+                    </dependencies>
+                  </dependencyManagement>
+                </project>
+                """);
+        upstream.metadata("com.foo", "middle", "1.0");
+        upstream.metadata("com.foo", "leaf", "2.21", "2.22", "2.23");
+        upstream.pom("com.foo", "middle", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId>
+                  <artifactId>middle</artifactId>
+                  <version>1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>leaf</artifactId><version>2.22</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        upstream.jar("com.foo", "middle", "1.0");
+        for (String v : List.of("2.21", "2.22", "2.23")) {
+            upstream.pom("com.foo", "leaf", v, leafVersioned("leaf", v));
+            upstream.jar("com.foo", "leaf", v);
+        }
+
+        JkBuild project = jkBuildWithDeps(Map.of(
+                Scope.PLATFORM,
+                        List.of(Dependency.of("platform", "org.example:platform", VersionSelector.parse("=1.0"))),
+                Scope.MAIN, List.of(new Dependency("com.foo:middle", VersionSelector.parse("=1.0")))));
+
+        Lockfile lock = new LockOrchestrator(repoGroup(tempDir)).lock(project, "test");
+        Lockfile.Artifact leafArt = lock.artifacts().stream()
+                .filter(p -> p.packageKey().equals("com.foo:leaf:jar:"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(leafArt.version()).isEqualTo("2.22");
+        assertThat(leafArt.pinnedBy()).isEqualTo("org.example:platform:1.0");
+    }
+
+    @Test
     void platform_managed_versionless_root_resolves_through_the_bom(@TempDir Path tempDir) throws Exception {
         // The Spring Boot flow: import spring-boot-dependencies, declare starters with
         // NO version at all (spring-boot plan §3.1) — the BOM supplies the pin.

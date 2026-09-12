@@ -38,6 +38,11 @@ the BOM pin are rejected.
 jk tree -s platform          # BOM under the platform section, tagged (platform)
 ```
 
+A version the platform BOM manages replaces the version a transitive POM declares, the
+way Gradle's `platform()` does, while an exact version you declare yourself still beats
+the BOM. Inside the BOM the precedence is Maven's: entries the BOM (or its parents)
+declares win over the BOMs it imports, and among imports the first wins.
+
 GAs the platform does **not** manage keep **highest-wins** by default (Maven/Gradle
 parity). Opt into exact fills for unmanaged GAs with `[resolve] unmapped = "strict"`
 (every unmanaged diamond is a hard error). Exact user roots still override the BOM for

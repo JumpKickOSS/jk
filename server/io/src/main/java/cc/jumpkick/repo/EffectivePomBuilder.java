@@ -272,11 +272,18 @@ public final class EffectivePomBuilder {
         props.put("project.version", version);
         props.put("project.packaging", child.packaging());
 
-        // 3. Managed deps — parent first, then child in declaration order (later wins via dedupe).
-        // BOM imports: prefetch/expand unique BOM POMs in parallel, then splice results
-        // back in original order so override semantics stay Maven-correct.
-        List<Pom.Dep> mergedManaged = new ArrayList<>();
-        if (parent != null) mergedManaged.addAll(parent.managedDependencies());
+        // 3. Managed deps, with Maven's precedence: entries the chain declares itself (parent
+        // first, then the child; later wins) beat anything an import supplies, and imports fill
+        // only the keys still open — the child's imports in declaration order, then the ones the
+        // parent inherited, first wins. The imports are expanded in parallel, then spliced back in
+        // that order.
+        List<Pom.Dep> declaredManaged = new ArrayList<>();
+        List<Pom.Dep> importedManaged = new ArrayList<>();
+        if (parent != null) {
+            for (Pom.Dep m : parent.managedDependencies()) {
+                (parent.importedManagedKeys().contains(depKey(m)) ? importedManaged : declaredManaged).add(m);
+            }
+        }
         List<Coordinate> bomCoordsOrdered = new ArrayList<>();
         for (Pom.Dep dep : child.managedDependencies()) {
             if (isBomImport(dep)) {
@@ -284,6 +291,7 @@ public final class EffectivePomBuilder {
             }
         }
         Map<String, EffectivePom> bomsByGav = buildBomImportsParallel(bomCoordsOrdered, visiting, depth + 1);
+        List<Pom.Dep> childImported = new ArrayList<>();
         for (Pom.Dep dep : child.managedDependencies()) {
             if (isBomImport(dep)) {
                 Coordinate bomCoord = bomCoordinate(dep, props);
@@ -292,12 +300,21 @@ public final class EffectivePomBuilder {
                     // Should not happen; fall back to serial expand.
                     bom = buildInternal(bomCoord, visiting, depth + 1);
                 }
-                mergedManaged.addAll(bom.managedDependencies());
+                childImported.addAll(bom.managedDependencies());
             } else {
-                mergedManaged.add(dep);
+                declaredManaged.add(dep);
             }
         }
-        mergedManaged = substituteAll(dedupeByModule(mergedManaged), props);
+        importedManaged.addAll(0, childImported);
+        List<Pom.Dep> mergedManaged = dedupeByModule(declaredManaged);
+        Set<String> declaredKeys = new HashSet<>();
+        for (Pom.Dep m : mergedManaged) declaredKeys.add(depKey(m));
+        Set<String> importedKeys = new HashSet<>();
+        for (Pom.Dep m : importedManaged) {
+            if (declaredKeys.contains(depKey(m))) continue;
+            if (importedKeys.add(depKey(m))) mergedManaged.add(m);
+        }
+        mergedManaged = substituteAll(mergedManaged, props);
 
         // 4. Effective deps — parent first, child overrides by module.
         List<Pom.Dep> mergedDeps = new ArrayList<>();
@@ -326,7 +343,9 @@ public final class EffectivePomBuilder {
         // retain dependencyManagement only on packaging=pom (parents/BOMs). Jar/war
         // artifacts already had management applied into finalDeps; keeping a full flattened
         // managed list (~2k entries for quarkus-bom parents) on every GAV dominated engine heap.
-        List<Pom.Dep> retainedManaged = "pom".equalsIgnoreCase(child.packaging()) ? mergedManaged : List.of();
+        boolean pomPackaging = "pom".equalsIgnoreCase(child.packaging());
+        List<Pom.Dep> retainedManaged = pomPackaging ? mergedManaged : List.of();
+        Set<String> retainedImportedKeys = pomPackaging ? importedKeys : Set.of();
 
         // Same rule for properties: the flattened ancestor map is only read when this
         // POM serves as a parent or BOM — always packaging=pom (Maven rejects non-pom parents).
@@ -352,6 +371,7 @@ public final class EffectivePomBuilder {
                 retainedProps,
                 finalDeps,
                 retainedManaged,
+                retainedImportedKeys,
                 child.relocation());
     }
 
@@ -480,7 +500,7 @@ public final class EffectivePomBuilder {
     }
 
     /** Maven dependency identity: {@code groupId:artifactId:type:classifier} (type defaults to jar). */
-    private static String depKey(Pom.Dep dep) {
+    static String depKey(Pom.Dep dep) {
         String type = blank(dep.type()) ? "jar" : dep.type();
         String classifier = blank(dep.classifier()) ? "" : dep.classifier();
         return dep.module() + ":" + type + ":" + classifier;
