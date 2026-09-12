@@ -249,8 +249,8 @@ final class CorePlan {
         // with lazy init: whichever side fires first populates the cache; the
         // other side finds the value already set.
         // Build-logic anchors each call BuildLogicSupport.run() independently; share one lazy
-        // source-tree hash across anchors (same pattern as javaMainSrcRef).
-        final AtomicReference<@Nullable List<String>> buildLogicInputTokensRef = new AtomicReference<>();
+        // walk per scope across anchors and the guard's tree lane (same pattern as javaMainSrcRef).
+        final BuildLogicInputTokens buildLogicInputTokens = new BuildLogicInputTokens();
         final Path javaMainSrcDir = compact ? in.dir().resolve("src") : in.dir().resolve("src/main/java");
         final boolean kspEnabled = useKotlin && parsedBuild != null && PlannerCompile.hasProcessorDeps(parsedBuild);
         return new BuildPlanner.Ctx(
@@ -261,7 +261,7 @@ final class CorePlan {
                 javaMainSrcRef,
                 kotlinMainSrcRef,
                 groovyMainSrcRef,
-                buildLogicInputTokensRef,
+                buildLogicInputTokens,
                 BuildLogicScope.of(in.dir()),
                 javaMainSrcDir,
                 compact,

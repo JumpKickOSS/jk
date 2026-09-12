@@ -6,11 +6,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.model.BuildIdentity;
+import cc.jumpkick.runtime.base.BuildLogicAnchor;
 import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.task.ActionKey;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 
 /** Shared setup for stem-script build-logic tests. */
@@ -75,5 +80,45 @@ final class BuildLogicFixtures {
                 project, layout, ac, classes, s -> labels.append(s).append(';')));
         assertTrue(labels.toString().contains("cache hit"), labels.toString());
         assertEquals(first, Files.readString(generated).trim());
+    }
+
+    /** A standalone project: one manifest and one main class under {@code src/main/java}. */
+    static Path scaffold(Path dir) throws Exception {
+        Path project = dir.resolve("proj");
+        Files.createDirectories(project.resolve("src/main/java/demo"));
+        Files.writeString(project.resolve("jk.toml"), """
+                group = "t"
+                name = "t"
+                version = "0.0.1"
+                jdk = 25
+                """);
+        Files.writeString(
+                project.resolve("src/main/java/demo/App.java"),
+                "package demo; public class App { public static void main(String[] a) {} }\n");
+        return project;
+    }
+
+    /** The action key a cache-consulting task at {@code anchor} records under, when {@code script} is the only stem. */
+    static String expectedKey(Path projectDir, Path script, BuildLogicAnchor anchor, List<String> inputTokens)
+            throws Exception {
+        return expectedKey(projectDir, List.of(script), script, anchor, inputTokens);
+    }
+
+    /** The key of {@code script}'s task when {@code scripts} are every stem in its logic dir. */
+    static String expectedKey(
+            Path projectDir, List<Path> scripts, Path script, BuildLogicAnchor anchor, List<String> inputTokens)
+            throws Exception {
+        String stem = script.getFileName().toString().replaceFirst("\\.groovy$", "");
+        List<String> tokens = new ArrayList<>();
+        tokens.add("dir:" + projectDir.relativize(script.getParent()));
+        for (Path s : scripts) {
+            tokens.add("script:" + s.getFileName() + ":" + Hashing.sha256Hex(Files.readAllBytes(s)));
+        }
+        tokens.add("anchor:" + anchor.name());
+        tokens.addAll(inputTokens);
+        tokens.add("task:" + stem);
+        tokens.add("kind:script");
+        return ActionKey.forArtifact(
+                ActionKey.qualifiedTaskId("build-logic-" + stem, projectDir), BuildIdentity.cacheKeyVersion(), tokens);
     }
 }

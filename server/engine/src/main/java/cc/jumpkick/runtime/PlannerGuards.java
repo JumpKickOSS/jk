@@ -514,14 +514,8 @@ final class PlannerGuards {
                 .weight(() -> cx.plan().get().fullyCached() ? 0 : 2)
                 .ticks(1)
                 .execute(ctx -> {
-                    EvalContext.IoSupplier<List<String>> tokens = () -> {
-                        List<String> t = cx.buildLogicInputTokensRef().get();
-                        if (t == null) {
-                            t = BuildLogicSupport.workspaceInputTokens(g.root());
-                            cx.buildLogicInputTokensRef().compareAndSet(null, t);
-                        }
-                        return t;
-                    };
+                    EvalContext.IoSupplier<List<String>> tokens =
+                            () -> cx.buildLogicInputTokens().workspace(g.root());
                     List<Path> modules = moduleDirs(g.root(), ctx.get(PROJECT).orElse(null));
                     EvalContext ectx =
                             new EvalContext(Lane.TREE, g.root(), "", null, modules, noFacts(), () -> null, List::of);

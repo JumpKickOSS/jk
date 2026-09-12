@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
-import static java.util.Objects.requireNonNull;
-
 import cc.jumpkick.config.BuildLogicToml;
 import cc.jumpkick.config.BuildLogicToml.Logic;
 import cc.jumpkick.config.SessionContext;
@@ -34,7 +32,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
@@ -53,8 +50,8 @@ public final class BuildLogicSupport {
 
     /**
      * As {@link #run(Path, BuildLayout, ActionCache, Path, BuildLogicAnchor, BuildLogicScope,
-     * Consumer, Consumer, AtomicReference)}, classifying the directory here, with no output sink
-     * and no cross-anchor token cache.
+     * Consumer, Consumer, BuildLogicInputTokens)}, classifying the directory here, with no output
+     * sink and no cross-anchor token cache.
      */
     public static boolean run(
             Path projectDir,
@@ -73,7 +70,7 @@ public final class BuildLogicSupport {
                 BuildLogicScope.of(projectDir),
                 label,
                 line -> {},
-                new AtomicReference<>());
+                new BuildLogicInputTokens());
     }
 
     /**
@@ -155,10 +152,10 @@ public final class BuildLogicSupport {
      * planner and applied on every anchor's pass, so the stems the build accepts and the stems the
      * guard accepts are the same set.
      *
-     * <p>{@code inputTokensRef} caches the scope's input tokens across the (up to four) anchor
-     * calls one module's build makes: walked once by the first task that consults the cache,
-     * reused by the rest, and never walked at all when every task runs unconditionally. Caller
-     * owns the reference's lifetime — one per module per build, never reused across builds.
+     * <p>{@code inputTokens} caches each scope's input tokens across the anchor calls one module's
+     * build makes: walked once by the first task at that scope that consults the cache, reused by
+     * the rest, and never walked at all when every task runs unconditionally. Caller owns its
+     * lifetime — one per module per build, never reused across builds.
      *
      * <p>{@code output} is a separate sink from {@code label}: a label is a one-line status the
      * live view replaces in place, and script output is a transcript that belongs above the region
@@ -175,7 +172,7 @@ public final class BuildLogicSupport {
             BuildLogicScope scope,
             Consumer<String> label,
             Consumer<String> output,
-            AtomicReference<@Nullable List<String>> inputTokensRef)
+            BuildLogicInputTokens inputTokens)
             throws IOException, InterruptedException {
         Optional<Logic> cfg = BuildLogicToml.resolve(projectDir);
         if (cfg.isEmpty()) return false;
@@ -194,17 +191,7 @@ public final class BuildLogicSupport {
         Map<BuildLogicAnchor, List<RegisteredTask>> byAnchor = emptyByAnchor();
         registerScripts(byAnchor, scripts);
         return runAnchor(
-                projectDir,
-                layout,
-                actionCache,
-                classesDir,
-                anchor,
-                label,
-                output,
-                c,
-                scripts,
-                byAnchor,
-                inputTokensRef);
+                projectDir, layout, actionCache, classesDir, anchor, label, output, c, scripts, byAnchor, inputTokens);
     }
 
     /** Run (or restore) every task registered at {@code anchor}. */
@@ -219,7 +206,7 @@ public final class BuildLogicSupport {
             Logic c,
             List<BuildLogicScripts.ScriptTask> scripts,
             Map<BuildLogicAnchor, List<RegisteredTask>> byAnchor,
-            AtomicReference<@Nullable List<String>> inputTokensRef)
+            BuildLogicInputTokens inputTokens)
             throws IOException, InterruptedException {
 
         List<RegisteredTask> tasks = byAnchor.getOrDefault(anchor, List.of());
@@ -261,7 +248,7 @@ public final class BuildLogicSupport {
             @Nullable String key = null;
             if (!task.always()) {
                 List<String> tokens = new ArrayList<>(sourceTokens);
-                tokens.addAll(scopeInputTokens(projectDir, anchor, inputTokensRef));
+                tokens.addAll(inputTokens.forAnchor(projectDir, anchor));
                 tokens.add("task:" + simple);
                 tokens.add("kind:" + task.kind());
                 key = ActionKey.forArtifact(taskId, BuildIdentity.cacheKeyVersion(), tokens);
@@ -319,24 +306,6 @@ public final class BuildLogicSupport {
             if (mergesIntoClasses) mergeIntoClasses(outDir, classesDir);
         }
         return true;
-    }
-
-    /**
-     * The scope's input tokens for a task that consults the cache, walked on the first such task of
-     * the build and shared by every later one through {@code ref}, whichever anchor it runs at.
-     *
-     * <p>The key must cover everything the script can read, and the two scopes read different
-     * things: a module script sees its own module, a root script sees the whole workspace. Keying a
-     * workspace-wide check on one directory's inputs would replay a stale verdict the moment any
-     * other module changed.
-     */
-    private static List<String> scopeInputTokens(
-            Path projectDir, BuildLogicAnchor anchor, AtomicReference<@Nullable List<String>> ref) throws IOException {
-        List<String> tokens = ref.get();
-        if (tokens != null) return tokens;
-        tokens = anchor.workspaceScoped() ? workspaceInputTokens(projectDir) : projectInputTokens(projectDir);
-        ref.compareAndSet(null, tokens);
-        return requireNonNull(ref.get());
     }
 
     /** Run {@link BuildLogicAnchor#AFTER_RESOURCES} only. */

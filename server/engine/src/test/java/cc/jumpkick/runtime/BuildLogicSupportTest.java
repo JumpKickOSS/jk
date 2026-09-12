@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import static cc.jumpkick.runtime.BuildLogicFixtures.expectedKey;
 import static cc.jumpkick.runtime.BuildLogicFixtures.generated;
 import static cc.jumpkick.runtime.BuildLogicFixtures.mergedFiles;
 import static cc.jumpkick.runtime.BuildLogicFixtures.runTwice;
+import static cc.jumpkick.runtime.BuildLogicFixtures.scaffold;
 import static cc.jumpkick.runtime.BuildLogicFixtures.writeLineCountGroovy;
 import static cc.jumpkick.runtime.BuildLogicFixtures.writeStampGroovy;
 import static java.util.Objects.requireNonNull;
@@ -17,19 +19,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.BuildLogicToml;
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
-import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.runtime.base.BuildLogicAnchor;
 import cc.jumpkick.task.ActionCache;
-import cc.jumpkick.task.ActionKey;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicReference;
-import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -251,7 +247,7 @@ class BuildLogicSupportTest {
         int before = BuildLogicSupport.SCOPE_WALKS_FOR_TESTS.get();
         // One scope and one token cache for the build, as the planner carries them.
         BuildLogicScope scope = BuildLogicScope.of(project);
-        var sharedTokens = new AtomicReference<@Nullable List<String>>();
+        var sharedTokens = new BuildLogicInputTokens();
         for (BuildLogicAnchor anchor : List.of(
                 BuildLogicAnchor.BEFORE_COMPILE, BuildLogicAnchor.AFTER_COMPILE, BuildLogicAnchor.BEFORE_PACKAGE)) {
             assertTrue(BuildLogicSupport.run(
@@ -349,7 +345,7 @@ class BuildLogicSupportTest {
         BuildLayout layout = BuildLayout.of(project, JkBuildParser.parse(project.resolve("jk.toml")));
         Path classes = Files.createDirectories(layout.classesDir());
         BuildLogicScope scope = BuildLogicScope.of(project);
-        var sharedTokens = new AtomicReference<@Nullable List<String>>();
+        var sharedTokens = new BuildLogicInputTokens();
 
         int before = BuildLogicSupport.SCOPE_WALKS_FOR_TESTS.get();
         StringBuilder labels = new StringBuilder();
@@ -897,20 +893,6 @@ class BuildLogicSupportTest {
     }
 
     /** The key {@code runAnchor} files a task's record under, derived from the same public pieces. */
-    private static String expectedKey(Path projectDir, Path script, BuildLogicAnchor anchor, List<String> inputTokens)
-            throws Exception {
-        String stem = script.getFileName().toString().replaceFirst("\\.groovy$", "");
-        List<String> tokens = new ArrayList<>();
-        tokens.add("dir:" + projectDir.relativize(script.getParent()));
-        tokens.add("script:" + script.getFileName() + ":" + Hashing.sha256Hex(Files.readAllBytes(script)));
-        tokens.add("anchor:" + anchor.name());
-        tokens.addAll(inputTokens);
-        tokens.add("task:" + stem);
-        tokens.add("kind:script");
-        return ActionKey.forArtifact(
-                ActionKey.qualifiedTaskId("build-logic-" + stem, projectDir), BuildIdentity.cacheKeyVersion(), tokens);
-    }
-
     /** A sourceless workspace root with one member and an empty {@code .jk/}. */
     private static Path workspace(Path dir) throws Exception {
         Path root = dir.resolve("ws");
@@ -933,20 +915,5 @@ class BuildLogicSupportTest {
                 """);
         Files.writeString(root.resolve("core/src/main/java/demo/A.java"), "package demo; class A {}\n");
         return root;
-    }
-
-    private static Path scaffold(Path dir) throws Exception {
-        Path project = dir.resolve("proj");
-        Files.createDirectories(project.resolve("src/main/java/demo"));
-        Files.writeString(project.resolve("jk.toml"), """
-                group = "t"
-                name = "t"
-                version = "0.0.1"
-                jdk = 25
-                """);
-        Files.writeString(
-                project.resolve("src/main/java/demo/App.java"),
-                "package demo; public class App { public static void main(String[] a) {} }\n");
-        return project;
     }
 }

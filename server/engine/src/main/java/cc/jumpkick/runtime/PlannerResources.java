@@ -44,7 +44,7 @@ public final class PlannerResources {
         Supplier<EffortWeights.Plan> plan = cx.plan();
         AtomicReference<@Nullable List<Path>> javaMainSrcRef = cx.javaMainSrcRef();
         AtomicReference<@Nullable List<Path>> kotlinMainSrcRef = cx.kotlinMainSrcRef();
-        AtomicReference<@Nullable List<String>> buildLogicInputTokensRef = cx.buildLogicInputTokensRef();
+        BuildLogicInputTokens buildLogicInputTokens = cx.buildLogicInputTokens();
         Path javaMainSrcDir = cx.javaMainSrcDir();
         boolean compact = cx.compact();
         boolean mixed = cx.mixed();
@@ -118,7 +118,7 @@ public final class PlannerResources {
                                 cx.buildLogicScope(),
                                 ctx::label,
                                 ctx::output,
-                                buildLogicInputTokensRef);
+                                buildLogicInputTokens);
                         if (logicRan) ctx.label("build-logic applied");
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
@@ -177,7 +177,7 @@ public final class PlannerResources {
         BuildPlanner.Inputs in = cx.in();
         ActionCache actionCache = cx.actionCache();
         Supplier<EffortWeights.Plan> plan = cx.plan();
-        AtomicReference<@Nullable List<String>> buildLogicInputTokensRef = cx.buildLogicInputTokensRef();
+        BuildLogicInputTokens buildLogicInputTokens = cx.buildLogicInputTokens();
         return Task.builder(TaskNames.BUILD_LOGIC_BEFORE_COMPILE)
                 .stage(BuildLogicAnchor.BEFORE_COMPILE.stage())
                 .label("Build logic (before compile)")
@@ -197,7 +197,7 @@ public final class PlannerResources {
                                 cx.buildLogicScope(),
                                 ctx::label,
                                 ctx::output,
-                                buildLogicInputTokensRef);
+                                buildLogicInputTokens);
                         if (ran) ctx.label("build-logic applied");
                         else ctx.cached(); // SKIPPED — no generate/before-compile logic this run
                     } catch (InterruptedException e) {
@@ -215,7 +215,7 @@ public final class PlannerResources {
         ActionCache actionCache = cx.actionCache();
         Supplier<EffortWeights.Plan> plan = cx.plan();
         String mainCompile = cx.mainCompile();
-        AtomicReference<@Nullable List<String>> buildLogicInputTokensRef = cx.buildLogicInputTokensRef();
+        BuildLogicInputTokens buildLogicInputTokens = cx.buildLogicInputTokens();
         return Task.builder(TaskNames.BUILD_LOGIC_AFTER_COMPILE)
                 .stage(BuildLogicAnchor.AFTER_COMPILE.stage())
                 .label("Build logic (after compile)")
@@ -235,7 +235,7 @@ public final class PlannerResources {
                                 cx.buildLogicScope(),
                                 ctx::label,
                                 ctx::output,
-                                buildLogicInputTokensRef);
+                                buildLogicInputTokens);
                         if (ran) ctx.label("build-logic applied");
                         else ctx.cached(); // SKIPPED — no after-compile logic this run
                     } catch (InterruptedException e) {
@@ -252,7 +252,7 @@ public final class PlannerResources {
         BuildPlanner.Inputs in = cx.in();
         ActionCache actionCache = cx.actionCache();
         Supplier<EffortWeights.Plan> plan = cx.plan();
-        AtomicReference<@Nullable List<String>> buildLogicInputTokensRef = cx.buildLogicInputTokensRef();
+        BuildLogicInputTokens buildLogicInputTokens = cx.buildLogicInputTokens();
         return Task.builder(TaskNames.BUILD_LOGIC_BEFORE_PACKAGE)
                 .stage(BuildLogicAnchor.BEFORE_PACKAGE.stage())
                 .label("Build logic (before package)")
@@ -272,7 +272,7 @@ public final class PlannerResources {
                                 cx.buildLogicScope(),
                                 ctx::label,
                                 ctx::output,
-                                buildLogicInputTokensRef);
+                                buildLogicInputTokens);
                         if (ran) ctx.label("build-logic applied");
                         else ctx.cached(); // SKIPPED — no before-package logic this run
                     } catch (InterruptedException e) {
@@ -297,7 +297,7 @@ public final class PlannerResources {
         BuildPlanner.Inputs in = cx.in();
         ActionCache actionCache = cx.actionCache();
         Supplier<EffortWeights.Plan> plan = cx.plan();
-        AtomicReference<@Nullable List<String>> buildLogicInputTokensRef = cx.buildLogicInputTokensRef();
+        BuildLogicInputTokens buildLogicInputTokens = cx.buildLogicInputTokens();
         return Task.builder(TaskNames.BUILD_LOGIC_AFTER_BUILD)
                 .stage(BuildLogicAnchor.AFTER_BUILD.stage())
                 .label("Build logic (after build)")
@@ -316,7 +316,7 @@ public final class PlannerResources {
                                 cx.buildLogicScope(),
                                 ctx::label,
                                 ctx::output,
-                                buildLogicInputTokensRef);
+                                buildLogicInputTokens);
                         if (ran) ctx.label("build-logic applied");
                         else ctx.cached(); // SKIPPED — no workspace build logic this run
                     } catch (InterruptedException e) {
@@ -336,7 +336,7 @@ public final class PlannerResources {
         BuildPlanner.Inputs in = cx.in();
         ActionCache actionCache = cx.actionCache();
         Supplier<EffortWeights.Plan> plan = cx.plan();
-        AtomicReference<@Nullable List<String>> buildLogicInputTokensRef = cx.buildLogicInputTokensRef();
+        BuildLogicInputTokens buildLogicInputTokens = cx.buildLogicInputTokens();
         return Task.builder(TaskNames.BUILD_LOGIC_GUARD)
                 .stage(BuildLogicAnchor.GUARD.stage())
                 .label("Build logic (guard)")
@@ -355,7 +355,7 @@ public final class PlannerResources {
                                 cx.buildLogicScope(),
                                 ctx::label,
                                 ctx::output,
-                                buildLogicInputTokensRef);
+                                buildLogicInputTokens);
                         if (ran) ctx.label("build-logic applied");
                         else ctx.cached();
                     } catch (InterruptedException e) {
