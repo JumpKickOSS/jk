@@ -40,6 +40,16 @@ class PluginProcessTest {
     }
 
     @Test
+    void a_protocol_line_glued_to_unterminated_chatter_is_still_an_event() throws Exception {
+        var events = new ArrayList<String>();
+        var chatter = new ArrayList<String>();
+        int exit = PluginProcess.run(cmd("glued"), "##T:", json -> events.add(Jsonl.str(json, "e")), chatter::add);
+        assertThat(exit).isZero();
+        assertThat(events).containsExactly("a", "b");
+        assertThat(chatter).contains("progress 42%");
+    }
+
+    @Test
     void run_drops_passthrough_when_sink_is_null() throws Exception {
         var events = new ArrayList<String>();
         int exit = PluginProcess.run(cmd("oneshot"), "##T:", json -> events.add(Jsonl.str(json, "e")), null);

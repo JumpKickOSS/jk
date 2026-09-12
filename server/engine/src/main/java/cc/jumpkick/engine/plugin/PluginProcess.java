@@ -281,11 +281,19 @@ public final class PluginProcess {
                     while ((line = reader.readLine()) != null) {
                         if (abandoned.get()) continue; // orphan chatter after the job moved on
                         lastLineAt.set(System.currentTimeMillis());
-                        if (line.startsWith(prefix)) {
-                            onProtocol.accept(line.substring(prefix.length()), convo);
-                        } else if (onPassthrough != null) {
-                            onPassthrough.accept(line);
+                        // The protocol shares the child's stdout with everything else the child
+                        // prints. Output that ends without a newline — a progress line, a
+                        // library's banner — glues the next protocol line onto itself, and a
+                        // marker only recognised at column 0 then loses that event: the test
+                        // whose finish it announced was never recorded. The marker is found
+                        // wherever it sits; what precedes it is the chatter it was glued to.
+                        int at = line.indexOf(prefix);
+                        if (at < 0) {
+                            if (onPassthrough != null) onPassthrough.accept(line);
+                            continue;
                         }
+                        if (at > 0 && onPassthrough != null) onPassthrough.accept(line.substring(0, at));
+                        onProtocol.accept(line.substring(at + prefix.length()), convo);
                     }
                 } catch (IOException e) {
                     pumpError.set(e);

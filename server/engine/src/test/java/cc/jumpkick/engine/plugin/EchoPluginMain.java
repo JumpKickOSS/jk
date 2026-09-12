@@ -16,6 +16,8 @@ import java.nio.charset.StandardCharsets;
  * <ul>
  *   <li>{@code oneshot} — emit a passthrough line and two protocol events, then exit. Drives {@link
  *       PluginProcess#run}.
+ *   <li>{@code glued} — as {@code oneshot}, but the passthrough text has no newline, so the first
+ *       protocol line shares its physical line.
  *   <li>{@code env NAME…} — emit one {@code env} event carrying each named variable as this process
  *       sees it ({@code <unset>} when absent), then exit. What {@link WorkerEnv} let through.
  *   <li>(default) <b>pull</b> — emit a passthrough line and an initial {@code ready}, then loop on
@@ -47,6 +49,14 @@ public final class EchoPluginMain {
                         .append('"');
             }
             out.println(json.append('}'));
+            return;
+        }
+        if (args.length > 0 && args[0].equals("glued")) {
+            // A progress line left without its newline, the way a spinner or a library banner
+            // leaves stdout; the first protocol line lands on the same physical line.
+            out.print("progress 42%");
+            out.println("##T:{\"e\":\"a\"}");
+            out.println("##T:{\"e\":\"b\"}");
             return;
         }
         if (args.length > 0 && args[0].equals("oneshot")) {
