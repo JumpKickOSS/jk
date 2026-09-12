@@ -232,12 +232,15 @@ public final class PreflightMemo {
             Set<Path> restoreNeeded = new LinkedHashSet<>();
             Map<Path, String> fps = new LinkedHashMap<>();
             Set<String> seen = new LinkedHashSet<>();
+            Map<Path, String> saltByRoot = new LinkedHashMap<>();
             for (BuildGraph.BuildUnit u : units) {
                 Path dir = u.dir().toAbsolutePath().normalize();
                 String rel = relKey(root, dir);
                 MemoRow row = rows.get(rel);
                 if (row == null) return Optional.empty();
-                Fingerprint now = fingerprintModule(dir, skipTests);
+                // The same salt the stored rows carry: a guarded workspace's rows never matched a
+                // bare recomputation, so its memo missed on every build.
+                Fingerprint now = fingerprintModule(dir, skipTests, guardSaltFor(dir, saltByRoot));
                 if (!(now instanceof Known known) || !row.fp().equals(known.hex())) return Optional.empty();
                 seen.add(rel);
                 fps.put(dir, row.fp());
@@ -278,14 +281,22 @@ public final class PreflightMemo {
         Map<Path, String> saltByRoot = new LinkedHashMap<>();
         for (BuildGraph.BuildUnit u : graph.topoOrder()) {
             Path dir = u.dir().toAbsolutePath().normalize();
-            Path root = WorkspaceScan.findRoot(dir).orElse(dir).toAbsolutePath().normalize();
-            String salt = saltByRoot.computeIfAbsent(root, PreflightMemo::guardSalt);
-            switch (fingerprintModule(dir, skipTests, salt)) {
+            switch (fingerprintModule(dir, skipTests, guardSaltFor(dir, saltByRoot))) {
                 case Known k -> fps.put(dir, k.hex());
                 case Uncertain u2 -> uncertain.put(dir, u2);
             }
         }
         return new Snapshot(fps, uncertain);
+    }
+
+    /**
+     * The guard salt for the workspace root owning {@code dir}, computed once per root and
+     * remembered in {@code saltByRoot}. Store and load must call this the same way, or a
+     * module's stored row can never match its recomputation.
+     */
+    private static String guardSaltFor(Path dir, Map<Path, String> saltByRoot) {
+        Path root = WorkspaceScan.findRoot(dir).orElse(dir).toAbsolutePath().normalize();
+        return saltByRoot.computeIfAbsent(root, PreflightMemo::guardSalt);
     }
 
     /**

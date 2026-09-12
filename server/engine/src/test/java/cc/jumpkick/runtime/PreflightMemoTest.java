@@ -52,6 +52,29 @@ class PreflightMemoTest {
         assertThat(hit.get().dirty()).isEqualTo(dirty);
     }
 
+    /**
+     * A guarded workspace salts every stored row with its rule files; the load must recompute
+     * with the same salt or the memo misses on every build and the walk is paid each time.
+     */
+    @Test
+    void a_guarded_workspace_stores_and_reloads_a_clean_memo(@TempDir Path tmp) throws Exception {
+        writeProject(tmp);
+        Files.writeString(tmp.resolve("jk-guards.toml"), "# rules\n");
+        BuildGraph.Result graph =
+                BuildGraph.resolve(tmp, JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml"))));
+        storeDirty(tmp, graph, Set.of());
+
+        Optional<PreflightMemo.DirtyMemo> hit = PreflightMemo.tryLoadDirty(tmp, graph, false);
+        assertThat(hit)
+                .as("stored and recomputed rows carry the same guard salt")
+                .isPresent();
+        assertThat(hit.get().dirty()).isEmpty();
+
+        // A rule edit must re-plan every module: the salt is an input, so the memo misses.
+        Files.writeString(tmp.resolve("jk-guards.toml"), "# rules, edited\n");
+        assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false)).isEmpty();
+    }
+
     @Test
     void source_content_change_misses_memo_even_if_size_unchanged(@TempDir Path tmp) throws Exception {
         writeProject(tmp);
