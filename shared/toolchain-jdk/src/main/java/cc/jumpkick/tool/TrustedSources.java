@@ -4,6 +4,7 @@ package cc.jumpkick.tool;
 import cc.jumpkick.util.MinimalToml;
 import java.io.IOException;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -12,15 +13,27 @@ import java.util.List;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Client-side URL-prefix allowlist for {@code jk tool run|install} ({@code trusted-sources.toml}).
- * Matches the user-typed URL (before rewrite); scheme/host lowercased, path case-sensitive.
+ * Matches the user-typed URL (before rewrite).
+ *
+ * <p>A prefix is a URL with a scheme and a host; an empty path means {@code /}. Both sides are
+ * compared in canonical form — scheme and host lowercased, a default port dropped, the path as
+ * the server sees it (case-sensitive, still percent-encoded) — and a match stops at a path
+ * segment boundary: trusting {@code https://github.com/acme} covers {@code
+ * https://github.com/acme/…} but not {@code https://github.com/acme-evil/…}, and trusting {@code
+ * https://github.com} covers no other host. A URL whose path carries a {@code .} or {@code ..}
+ * segment, an empty segment, or a percent-encoded slash or dot is never trusted: what the origin
+ * resolves it to is not what the prefix names. Credentials in the authority are refused for the
+ * same reason — {@code https://github.com@evil.example/} reads as GitHub and is not.
  */
 public final class TrustedSources {
 
     private static final String FILE_NAME = "trusted-sources.toml";
     private static final Pattern QUOTED = Pattern.compile("\"([^\"]*)\"");
+    private static final Pattern ENCODED_SLASH_OR_DOT = Pattern.compile("%2[EeFf]");
 
     private final Path file;
     private final List<String> prefixes;
@@ -67,17 +80,25 @@ public final class TrustedSources {
 
     /** True when {@code url} falls under any trusted prefix. */
     public boolean isTrusted(String url) {
-        String normalized = normalize(url);
+        String candidate = canonical(url);
+        if (candidate == null) return false;
         for (String prefix : prefixes) {
-            if (normalized.startsWith(normalize(prefix))) return true;
+            String p = canonical(prefix);
+            if (p != null && covers(p, candidate)) return true;
         }
         return false;
     }
 
-    /** Add {@code prefix}; returns false when it was already present. Persists on change. */
+    /**
+     * Add {@code prefix} in its canonical form; returns false when it was already present.
+     * Persists on change.
+     *
+     * @throws IllegalArgumentException when {@code prefix} is not a usable URL prefix; the
+     *     message says why
+     */
     public boolean add(String prefix) throws IOException {
-        String p = prefix.trim();
-        if (prefixes.stream().anyMatch(e -> normalize(e).equals(normalize(p)))) return false;
+        String p = canonicalPrefix(prefix);
+        if (prefixes.stream().anyMatch(e -> p.equals(canonical(e)))) return false;
         prefixes.add(p);
         save();
         return true;
@@ -85,9 +106,78 @@ public final class TrustedSources {
 
     /** Remove {@code prefix}; returns false when it wasn't present. Persists on change. */
     public boolean remove(String prefix) throws IOException {
-        boolean removed = prefixes.removeIf(e -> normalize(e).equals(normalize(prefix)));
+        String p = canonical(prefix);
+        String raw = prefix.trim();
+        boolean removed = prefixes.removeIf(e -> e.trim().equals(raw) || (p != null && p.equals(canonical(e))));
         if (removed) save();
         return removed;
+    }
+
+    /**
+     * The form a prefix is stored and compared in — see the class comment.
+     *
+     * @throws IllegalArgumentException when {@code prefix} is not a usable URL prefix; the
+     *     message says why
+     */
+    public static String canonicalPrefix(String prefix) {
+        String u = prefix.trim();
+        URI uri;
+        try {
+            uri = new URI(u);
+        } catch (URISyntaxException e) {
+            throw new IllegalArgumentException("not a URL: " + u);
+        }
+        String scheme = uri.getScheme();
+        String host = uri.getHost();
+        if (scheme == null || host == null || host.isEmpty()) {
+            throw new IllegalArgumentException("not a URL with a scheme and a host: " + u);
+        }
+        if (uri.getRawUserInfo() != null) {
+            throw new IllegalArgumentException("a URL with credentials in it is not a source: " + u);
+        }
+        String rawPath = uri.getRawPath() == null || uri.getRawPath().isEmpty() ? "/" : uri.getRawPath();
+        if (ENCODED_SLASH_OR_DOT.matcher(rawPath).find()) {
+            throw new IllegalArgumentException("the path percent-encodes a slash or a dot: " + u);
+        }
+        for (String segment : rawPath.substring(1).split("/", -1)) {
+            if (segment.equals(".") || segment.equals("..")) {
+                throw new IllegalArgumentException("the path has a . or .. segment: " + u);
+            }
+        }
+        if (rawPath.contains("//")) {
+            throw new IllegalArgumentException("the path has an empty segment: " + u);
+        }
+        int port = uri.getPort();
+        String lowerScheme = scheme.toLowerCase(Locale.ROOT);
+        if (port == defaultPort(lowerScheme)) port = -1;
+        return lowerScheme + "://" + host.toLowerCase(Locale.ROOT) + (port >= 0 ? ":" + port : "") + rawPath;
+    }
+
+    /** {@link #canonicalPrefix}, or {@code null} for a value that is not a usable URL. */
+    static @Nullable String canonical(String url) {
+        try {
+            return canonicalPrefix(url);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    /**
+     * Whether canonical {@code url} falls under canonical {@code prefix}: a prefix ending in
+     * {@code /} covers everything below it, any other prefix covers itself and the segments
+     * below it — never a sibling that merely starts with the same characters.
+     */
+    static boolean covers(String prefix, String url) {
+        if (prefix.endsWith("/")) return url.startsWith(prefix);
+        return url.equals(prefix) || url.startsWith(prefix + "/");
+    }
+
+    private static int defaultPort(String scheme) {
+        return switch (scheme) {
+            case "http" -> 80;
+            case "https" -> 443;
+            default -> -1;
+        };
     }
 
     /**
@@ -136,16 +226,5 @@ public final class TrustedSources {
         sb.append("]\n");
         Files.createDirectories(file.getParent());
         Files.writeString(file, sb.toString(), StandardCharsets.UTF_8);
-    }
-
-    /** Lowercase the scheme and host; leave the path alone. Unparseable input returns as-is. */
-    static String normalize(String url) {
-        String u = url.trim();
-        int schemeEnd = u.indexOf("://");
-        if (schemeEnd < 0) return u;
-        int pathStart = u.indexOf('/', schemeEnd + 3);
-        String schemeHost = pathStart < 0 ? u : u.substring(0, pathStart);
-        String rest = pathStart < 0 ? "" : u.substring(pathStart);
-        return schemeHost.toLowerCase(Locale.ROOT) + rest;
     }
 }

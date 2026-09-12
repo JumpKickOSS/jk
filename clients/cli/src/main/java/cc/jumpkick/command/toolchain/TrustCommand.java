@@ -17,11 +17,13 @@ import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
- * {@code jk trust} — manage URL prefixes allowed for {@code jk tool run|install} (prefix-matched;
- * store at {@code $JK_STATE_DIR/trusted-sources.toml}).
+ * {@code jk trust} — manage URL prefixes allowed for {@code jk tool run|install} (matched at a
+ * path-segment boundary, see {@link TrustedSources}; store at {@code
+ * $JK_STATE_DIR/trusted-sources.toml}).
  */
 public final class TrustCommand extends GroupCommand {
 
@@ -72,9 +74,11 @@ public final class TrustCommand extends GroupCommand {
 
         @Override
         public int run(Invocation in) throws IOException {
-            String prefix = in.positionals().get(0);
-            if (!prefix.contains("://")) {
-                CommandWedge.printFail("Trust", "not a URL prefix: " + prefix);
+            String prefix;
+            try {
+                prefix = TrustedSources.canonicalPrefix(in.positionals().get(0));
+            } catch (IllegalArgumentException e) {
+                CommandWedge.printFail("Trust", "not a URL prefix — " + e.getMessage());
                 return Exit.USAGE;
             }
             boolean added = TrustedSources.load(stateDir(in)).add(prefix);
@@ -230,12 +234,18 @@ public final class TrustCommand extends GroupCommand {
             List<String> imported = TrustedSources.parseJBang(Files.readString(source));
             TrustedSources store = TrustedSources.load(stateDir(in));
             int added = 0;
+            List<String> skipped = new ArrayList<>();
             for (String p : imported) {
-                if (store.add(p)) added++;
+                try {
+                    if (store.add(p)) added++;
+                } catch (IllegalArgumentException notAPrefix) {
+                    skipped.add(p);
+                }
             }
             if (!GlobalOptions.from(in).outputIsJson()) {
                 CommandWedge.printOk(
                         "Trust", "Imported " + added + " trusted source" + (added == 1 ? "" : "s") + " from " + source);
+                for (String p : skipped) CliOutput.err("  skipped " + p + " — not a URL prefix");
             }
             return 0;
         }

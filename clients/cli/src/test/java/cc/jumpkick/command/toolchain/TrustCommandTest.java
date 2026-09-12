@@ -63,4 +63,38 @@ class TrustCommandTest {
         assertThat(Jk.execute("trust", "import", "--state-dir", state.toString()))
                 .isEqualTo(64);
     }
+
+    @Test
+    void add_rejects_a_prefix_without_a_host_or_with_a_dot_segment(@TempDir Path state) {
+        assertThat(Jk.execute("trust", "add", "--state-dir", state.toString(), "https:///x/"))
+                .isEqualTo(64);
+        assertThat(Jk.execute("trust", "add", "--state-dir", state.toString(), "https://github.com/acme/../"))
+                .isEqualTo(64);
+        String listed = Capture.stdout(() -> Jk.execute("trust", "list", "--state-dir", state.toString()));
+        assertThat(listed).contains("No trusted sources");
+    }
+
+    @Test
+    void add_stores_a_bare_host_as_that_host_with_a_trailing_slash(@TempDir Path state) {
+        assertThat(Jk.execute("trust", "add", "--state-dir", state.toString(), "https://GitHub.com"))
+                .isEqualTo(0);
+        String listed = Capture.stdout(() -> Jk.execute("trust", "list", "--state-dir", state.toString()));
+        assertThat(listed).contains("https://github.com/").doesNotContain("GitHub");
+    }
+
+    @Test
+    void import_jbang_skips_entries_that_are_not_url_prefixes(@TempDir Path tmp) throws Exception {
+        Path json = tmp.resolve("trusted-sources.json");
+        Files.writeString(json, """
+                [
+                  "https://github.com/jbangdev/",
+                  "gist.github.com/no-scheme/"
+                ]
+                """);
+        Path state = tmp.resolve("state");
+        int exit = Jk.execute("trust", "import", "--jbang", "--file", json.toString(), "--state-dir", state.toString());
+        assertThat(exit).isEqualTo(0);
+        String listed = Capture.stdout(() -> Jk.execute("trust", "list", "--state-dir", state.toString()));
+        assertThat(listed).contains("https://github.com/jbangdev/").doesNotContain("no-scheme");
+    }
 }
