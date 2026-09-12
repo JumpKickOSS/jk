@@ -30,6 +30,11 @@ tasks.withType<Test>().configureEach {
         "test JK_HOME must be outside the checkout, was $testHomeDir under $rootDir"
     }
     val testJkHome = testHomeDir.absolutePath
+    // A hosted runner sets CI, and jk's own forked test JVMs never see it (WorkerEnv passes an
+    // allow-list). The guard freezer refuses to write under CI, so a suite that exercises it must
+    // not learn from the environment which machine it is on; the two builds' test JVMs agree here.
+    environment.remove("CI")
+    environment.remove("GITHUB_ACTIONS")
     environment("JK_HOME", testJkHome)
     environment("JK_JDKS_DIR", "$testJkHome/jdks")
     // The probe chain is the machine's unless narrowed: sdkman, mise, IntelliJ, /usr/lib/jvm. A jdk
