@@ -216,11 +216,10 @@ public final class EngineInstall {
         displaceToOld(jkx);
         Path tmp = jk.resolveSibling("." + jkName + "-new");
         Files.deleteIfExists(tmp);
-        try {
-            Files.createLink(tmp, clientSource);
-        } catch (IOException | UnsupportedOperationException noHardlink) {
-            Files.copy(clientSource, tmp, StandardCopyOption.REPLACE_EXISTING);
-        }
+        // A copy, never a link: the source is a CAS blob whose bytes its digest vouches for, and a
+        // linked bin/jk would share its inode — the chmod below, or any later rewrite of the PATH
+        // client, would then change the verified blob in place.
+        Files.copy(clientSource, tmp, StandardCopyOption.REPLACE_EXISTING);
         makeExecutable(tmp);
         AtomicWrites.moveInto(tmp, jk);
         try {
