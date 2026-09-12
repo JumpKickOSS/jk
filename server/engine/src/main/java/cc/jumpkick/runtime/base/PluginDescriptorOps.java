@@ -56,6 +56,7 @@ public final class PluginDescriptorOps {
         Cas cas = JkStores.storeCas();
         for (Lockfile.PluginEntry entry : lockfile.plugins()) {
             String sha = entry.sha256Hex();
+            if (sha == null) continue; // a workspace module: no jar to extract a manifest from
             Path target = PluginDescriptorStore.fileFor(moduleDir, sha);
             if (Files.isRegularFile(target)) continue;
             Path jar = cas.pathFor(sha);
@@ -91,12 +92,16 @@ public final class PluginDescriptorOps {
     /** The locked + synced jar for {@code decl}, or empty (remediation: {@code jk sync}). */
     public static Optional<Path> jarFor(Path moduleDir, PluginDeclaration decl, Path cache) {
         Optional<Lockfile.PluginEntry> entry = PluginDescriptorStore.lockEntry(moduleDir, decl);
+        if (entry.isEmpty()) return Optional.empty();
+        Lockfile.PluginEntry e = entry.get();
+        String hex = e.sha256Hex();
+        if (hex == null) return Optional.empty(); // a workspace module is built, not synced
         if (decl.isPathPin()) {
             // Path pins have no Maven coordinate or POM; the sha-verified blob is the whole
             // classpath (WorkerLaunchClasspath recognizes blob paths as self-contained).
-            return entry.map(e -> JkStores.storeCas().pathFor(e.sha256Hex())).filter(Files::isRegularFile);
+            return Optional.of(JkStores.storeCas().pathFor(hex)).filter(Files::isRegularFile);
         }
-        return entry.flatMap(e -> pinnedLayoutJar(JkStores.storeCas(), e.coordinate(), e.version(), e.sha256Hex()));
+        return pinnedLayoutJar(JkStores.storeCas(), e.coordinate(), e.version(), hex);
     }
 
     /**

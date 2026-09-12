@@ -882,8 +882,10 @@ public final class PluginBuild {
         String coord = "cc.jumpkick:" + workerArtifact;
         for (var e : lock.plugins()) {
             if (!coord.equals(e.coordinate())) continue;
-            var pinned = PluginDescriptorOps.pinnedLayoutJar(
-                    JkStores.storeCas(), e.coordinate(), e.version(), e.sha256Hex());
+            // A workspace module has no pinned bytes: the build that produced it is the verification.
+            String hex = e.sha256Hex();
+            if (hex == null) return null;
+            var pinned = PluginDescriptorOps.pinnedLayoutJar(JkStores.storeCas(), e.coordinate(), e.version(), hex);
             if (pinned.isPresent()) return pinned.get();
             // A jar this jk can already point at — a `-D<worker>.plugin.jar` override, or a repo
             // store — honors the pin when its bytes ARE the pinned bytes. That is the pin
@@ -898,9 +900,7 @@ public final class PluginBuild {
             Path offered = PluginJar.byArtifactId(workerArtifact)
                     .map(jar -> jar.locateStored(JkStores.storeCas()))
                     .orElse(null);
-            if (offered != null
-                    && Files.isRegularFile(offered)
-                    && e.sha256Hex().equalsIgnoreCase(Hashing.sha256Hex(offered))) {
+            if (offered != null && Files.isRegularFile(offered) && hex.equalsIgnoreCase(Hashing.sha256Hex(offered))) {
                 return offered;
             }
             String fetchFailure = null;
@@ -908,8 +908,7 @@ public final class PluginBuild {
                 PluginJar.fetchOfficial(
                         JkStores.storeCas(),
                         MavenLayout.artifactPath(Coordinate.ofModule(e.coordinate(), e.version())));
-                pinned = PluginDescriptorOps.pinnedLayoutJar(
-                        JkStores.storeCas(), e.coordinate(), e.version(), e.sha256Hex());
+                pinned = PluginDescriptorOps.pinnedLayoutJar(JkStores.storeCas(), e.coordinate(), e.version(), hex);
                 if (pinned.isPresent()) return pinned.get();
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
@@ -918,7 +917,7 @@ public final class PluginBuild {
                 fetchFailure = fetchEx.getMessage();
             }
             throw new IOException("jk-lock.toml pins " + coord + ":" + e.version()
-                    + " (sha256 " + e.sha256Hex() + ") but no matching jar exists in the store"
+                    + " (sha256 " + hex + ") but no matching jar exists in the store"
                     + (fetchFailure != null
                             ? " and the official fetch failed: " + fetchFailure
                             : " and the official repo serves different bytes")

@@ -307,4 +307,43 @@ class LockfileRoundTripTest {
                         checksum = "sha256:dead"
                         """).nativeMetadata()).isNull();
     }
+
+    @Test
+    void plugin_rows_pin_a_jar_by_checksum_or_a_workspace_module_by_path() {
+        Lockfile original = Lockfile.empty("0.1.0-SNAPSHOT")
+                .withPlugins(List.of(
+                        new Lockfile.PluginEntry("com.acme:rules", "2.0.0", "sha256:" + "ab".repeat(32)),
+                        Lockfile.PluginEntry.workspace("cc.jumpkick:jk-guards-junit", "0.1.0", "shared/guard-api")));
+        String rendered = LockfileWriter.render(original);
+        assertThat(rendered)
+                .contains("checksum   = \"sha256:" + "ab".repeat(32) + "\"")
+                .contains("path       = \"shared/guard-api\"");
+
+        Lockfile parsed = LockfileReader.parse(rendered);
+        assertThat(parsed.plugins()).containsExactlyInAnyOrderElementsOf(original.plugins());
+        Lockfile.PluginEntry workspace = parsed.plugins().stream()
+                .filter(Lockfile.PluginEntry::isWorkspace)
+                .findFirst()
+                .orElseThrow();
+        assertThat(workspace.checksum()).isNull();
+        assertThat(workspace.sha256Hex()).isNull();
+        assertThat(workspace.path()).isEqualTo("shared/guard-api");
+
+        // A row is one or the other: a digest and a module path together say nothing about which verifies.
+        assertThatThrownBy(() -> new Lockfile.PluginEntry("com.acme:rules", "2.0.0", "sha256:00", "rules"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("exactly one of `checksum` or `path`");
+        String neither = """
+                version = 1
+                generated-by = "jk 0.1.0"
+                resolution-algorithm = "pubgrub-v1"
+
+                [[plugin]]
+                coordinate = "com.acme:rules"
+                version    = "2.0.0"
+                """;
+        assertThatThrownBy(() -> LockfileReader.parse(neither))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("exactly one of `checksum` or `path`");
+    }
 }

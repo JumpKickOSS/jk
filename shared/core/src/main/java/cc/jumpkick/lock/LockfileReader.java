@@ -145,17 +145,7 @@ public final class LockfileReader {
             }
         }
 
-        List<Lockfile.PluginEntry> plugins = new ArrayList<>();
-        TomlArray pluginArray = result.getArray("plugin");
-        if (pluginArray != null) {
-            for (int i = 0; i < pluginArray.size(); i++) {
-                TomlTable t = pluginArray.getTable(i);
-                String coord = requireString(t, "coordinate");
-                String ver = requireString(t, "version");
-                String chk = requireString(t, "checksum");
-                plugins.add(new Lockfile.PluginEntry(coord, ver, chk));
-            }
-        }
+        List<Lockfile.PluginEntry> plugins = readPlugins(result);
 
         List<Lockfile.SdkEntry> sdk = new ArrayList<>();
         TomlArray sdkArray = result.getArray("sdk");
@@ -334,6 +324,26 @@ public final class LockfileReader {
             throw new IllegalArgumentException("jk-lock.toml is missing required key `" + key + "`");
         }
         return value;
+    }
+
+    /** The {@code [[plugin]]} rows: each pinned by a jar {@code checksum} or a workspace module {@code path}. */
+    private static List<Lockfile.PluginEntry> readPlugins(TomlParseResult result) {
+        List<Lockfile.PluginEntry> plugins = new ArrayList<>();
+        TomlArray pluginArray = result.getArray("plugin");
+        if (pluginArray == null) return plugins;
+        for (int i = 0; i < pluginArray.size(); i++) {
+            TomlTable t = pluginArray.getTable(i);
+            String coord = requireString(t, "coordinate");
+            String ver = requireString(t, "version");
+            String chk = t.getString("checksum");
+            String path = t.getString("path");
+            if ((chk == null) == (path == null)) {
+                throw new IllegalArgumentException(
+                        "[[plugin]] " + coord + " needs exactly one of `checksum` or `path`");
+            }
+            plugins.add(new Lockfile.PluginEntry(coord, ver, chk, path));
+        }
+        return plugins;
     }
 
     private static String requireString(TomlTable table, String key) {

@@ -476,20 +476,15 @@ public final class LockPipeline {
             floor = PluginDescriptors.maxFloor(floor, PluginDescriptors.jkCompatFloor(d.jkCompat()));
         }
         // A guard suite anywhere in the workspace pins the provisioned jk-guards-junit like a built-in
-        // plugin: same version, same store. jk's own tree compiles against its workspace module, which
-        // has no jar to pin.
+        // plugin: same version, same store. A workspace that builds the library itself pins the module.
         if (hasGuardSuite()) {
-            Path jar = GuardSuiteLibrary.stored(cas);
-            if (jar != null) {
-                try {
-                    String coord = GuardSuiteLibrary.COORDINATE;
-                    if (seen.add(coord + ":" + JkVersion.VERSION)) {
-                        entries.add(
-                                new Lockfile.PluginEntry(coord, JkVersion.VERSION, "sha256:" + Hashing.sha256Hex(jar)));
-                    }
-                } catch (IOException unreadable) {
-                    progress.note("note: " + GuardSuiteLibrary.COORDINATE + " could not be hashed; not pinned");
+            try {
+                Lockfile.PluginEntry library = GuardSuiteLibrary.pin(lockDir, cas);
+                if (library != null && seen.add(library.coordinate() + ":" + library.version())) {
+                    entries.add(library);
                 }
+            } catch (IOException unreadable) {
+                progress.note("note: " + GuardSuiteLibrary.COORDINATE + " could not be hashed; not pinned");
             }
         }
         // Rule packs pin like plugins: the root jk-guards.toml names them, the lock fixes the bytes.

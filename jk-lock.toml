@@ -2441,7 +2441,7 @@ scopes   = ["main"]
 [[plugin]]
 coordinate = "cc.jumpkick:jk-guards-junit"
 version    = "0.13.2"
-checksum   = "sha256:adc3c29cefd3c52f18be15ca2652cbd85faed4c7405cc83b48591f516458ad79"
+path       = "shared/guard-api"
 
 [[module]]
 path    = "."

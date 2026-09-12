@@ -98,7 +98,7 @@ public final class GuardPacks {
     /** The pinned pack's jar in the store, by content address then by repository layout; {@code null} when absent. */
     public static @Nullable Path locateJar(Coordinate c, Lockfile.PluginEntry pin, Path store) throws IOException {
         String hex = pin.sha256Hex();
-        if (hex.length() > 4) {
+        if (hex != null && hex.length() > 4) {
             Path cas = store.resolve("sha256")
                     .resolve(hex.substring(0, 2))
                     .resolve(hex.substring(2, 4))
@@ -174,18 +174,19 @@ public final class GuardPacks {
             }
             Lockfile.PluginEntry pin = pin(root, c);
             Path dir = unpackedDir(root, c);
-            if (pin == null) {
+            String hex = pin == null ? null : pin.sha256Hex();
+            if (pin == null || hex == null) {
                 if (Files.isRegularFile(fragment(dir))) continue; // an earlier unpack still stands
-                problems.add("pack " + c.gav() + " is not pinned in jk-lock.toml — run `jk lock`");
+                problems.add("pack " + c.gav() + " is not pinned to a jar in jk-lock.toml — run `jk lock`");
                 continue;
             }
-            if (unpackedAs(dir, pin.sha256Hex())) continue; // `jk lock` already unpacked these bytes
+            if (unpackedAs(dir, hex)) continue; // `jk lock` already unpacked these bytes
             Path jar = locateJar(c, pin, store);
             if (jar == null) {
                 problems.add("pack " + c.gav() + " is pinned but neither unpacked nor in the store — run `jk lock`");
                 continue;
             }
-            unpack(jar, dir, pin.sha256Hex());
+            unpack(jar, dir, hex);
         }
         return problems;
     }

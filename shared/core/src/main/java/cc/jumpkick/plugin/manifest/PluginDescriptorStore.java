@@ -61,6 +61,7 @@ public final class PluginDescriptorStore {
         Optional<Lockfile.PluginEntry> entry = lockEntry(moduleDir, decl);
         if (entry.isEmpty()) return Optional.empty();
         String sha = entry.get().sha256Hex();
+        if (sha == null) return Optional.empty(); // a workspace module carries no jar manifest
         PluginDescriptor memo = BY_SHA.get(sha);
         if (memo != null) return Optional.of(memo);
         Path file = fileFor(moduleDir, sha);

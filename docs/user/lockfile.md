@@ -163,6 +163,15 @@ metadata-repository` in `jk.toml`. It is not an `[[artifact]]` row: it is on no 
 and in no scope. It *is* an input to `native-image`, so it is pinned like one. See
 [Native images](native.md#the-graalvm-metadata-repository).
 
+A `[[plugin]]` row normally pins the plugin jar by `checksum`: a jar that is fetched later and
+disagrees with it is refused. A plugin the workspace builds itself — a module whose
+coordinate is the plugin's, such as jk's own tree building `cc.jumpkick:jk-guards-junit` for
+its guard suites — is pinned by `path` to that module instead, with no digest. Its identity is
+its source (the module's manifest is already inside `manifests-sha256`), and it is verified by
+being built from the workspace, so the row is the same whichever jar happens to be installed or
+staged and `jk lock` on a clean checkout rewrites nothing. Third-party and provisioned plugins
+keep their digest.
+
 ## Related
 
 [Dependencies](dependencies.md) · [Platforms](platforms.md) · [Repositories](repositories.md)

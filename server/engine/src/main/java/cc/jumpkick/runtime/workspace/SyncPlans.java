@@ -325,6 +325,11 @@ public final class SyncPlans {
         for (var pe : pluginEntries) {
             ctx.label("sync " + pe.coordinate());
             String hex = pe.sha256Hex();
+            if (hex == null) {
+                // A workspace module: the build produces it, there is nothing to fetch.
+                ctx.progress(1);
+                continue;
+            }
             if (pe.coordinate().indexOf(':') < 0) {
                 ctx.error("plugin", "malformed coordinate: " + pe.coordinate());
                 ctx.progress(1);

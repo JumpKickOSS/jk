@@ -676,16 +676,44 @@ public record Lockfile(
         }
     }
 
-    /** Third-party plugin pin: Maven {@code group:name}, version, {@code sha256:<hex>}. */
-    public record PluginEntry(String coordinate, String version, String checksum) {
+    /**
+     * One {@code [[plugin]]} row: Maven {@code group:name}, version, and exactly one of a jar
+     * {@link #checksum} ({@code sha256:<hex>}, the bytes a fetched plugin must have) or a workspace
+     * {@link #path} (the module directory, relative to the lock, that builds the plugin — its
+     * identity is its source, so no jar digest is recorded).
+     */
+    public record PluginEntry(
+            String coordinate,
+            String version,
+            @Nullable String checksum,
+            @Nullable String path) {
         public PluginEntry {
             Objects.requireNonNull(coordinate, "coordinate");
             Objects.requireNonNull(version, "version");
-            Objects.requireNonNull(checksum, "checksum");
+            if ((checksum == null) == (path == null)) {
+                throw new IllegalArgumentException(
+                        "[[plugin]] " + coordinate + " needs exactly one of `checksum` or `path`");
+            }
         }
 
-        /** Raw hex SHA-256 (strips a {@code "sha256:"} prefix). */
-        public String sha256Hex() {
+        /** A plugin fetched as a jar, pinned to its bytes. */
+        public PluginEntry(String coordinate, String version, String checksum) {
+            this(coordinate, version, checksum, null);
+        }
+
+        /** A plugin built from the workspace module at {@code path}. */
+        public static PluginEntry workspace(String coordinate, String version, String path) {
+            return new PluginEntry(coordinate, version, null, path);
+        }
+
+        /** True when the plugin is a workspace module: verified by being built, not by a digest. */
+        public boolean isWorkspace() {
+            return path != null;
+        }
+
+        /** Raw hex SHA-256 (strips a {@code "sha256:"} prefix); {@code null} for a workspace plugin. */
+        public @Nullable String sha256Hex() {
+            if (checksum == null) return null;
             return checksum.startsWith("sha256:") ? checksum.substring(7) : checksum;
         }
     }
