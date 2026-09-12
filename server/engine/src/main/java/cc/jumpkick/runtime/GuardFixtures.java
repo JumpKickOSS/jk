@@ -26,6 +26,7 @@ import cc.jumpkick.model.GuardsConfig;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.runtime.base.GuardSuiteLibrary;
+import cc.jumpkick.task.ClasspathFingerprint;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintStream;
@@ -312,7 +313,11 @@ public final class GuardFixtures {
         StringBuilder key = new StringBuilder();
         for (Path f : files)
             key.append(f).append('=').append(Hashing.sha256Hex(f)).append('\n');
-        for (Path p : classpath) key.append("cp:").append(p).append('\n');
+        // Classpath entries key by content, not by path: the module's own classes dir keeps its
+        // path across every build, and fixtures compiled against last build's bytecode would
+        // otherwise be reused after the module changed under them.
+        for (Path p : classpath)
+            key.append("cp:").append(ClasspathFingerprint.entry(p)).append('\n');
         String digest = Hashing.sha256Hex(key.toString().getBytes(StandardCharsets.UTF_8));
         Path keyFile = outDir.resolveSibling("fixtures.key");
         if (Files.isRegularFile(keyFile)

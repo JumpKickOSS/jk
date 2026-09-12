@@ -8,6 +8,7 @@ import cc.jumpkick.guard.eval.FixtureCheck;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -109,6 +110,36 @@ class GuardFixturesTest {
                         .orElseThrow()
                         .outcome())
                 .isEqualTo("bites");
+    }
+
+    /**
+     * The compile key names classpath entries by content. The owning module's classes dir keeps
+     * its path across builds, so a path-keyed entry would reuse fixtures compiled against the
+     * previous build's bytecode after the module changed under them.
+     */
+    @Test
+    void a_changed_classpath_entry_recompiles_the_fixtures(@TempDir Path root) throws Exception {
+        Path src = Files.createDirectories(root.resolve("fx"));
+        Path ok = Files.writeString(src.resolve("Ok.java"), "class Ok {}\n");
+        Path moduleClasses = Files.createDirectories(root.resolve("target/classes/main"));
+        Files.writeString(moduleClasses.resolve("Dep.class"), "bytes-v1");
+        Path out = root.resolve("target/jk-guards/fixtures/classes");
+        int before = GuardFixtures.COMPILES.get();
+
+        assertThat(GuardFixtures.compile(List.of(ok), List.of(moduleClasses), out))
+                .isNull();
+        assertThat(GuardFixtures.compile(List.of(ok), List.of(moduleClasses), out))
+                .isNull();
+        assertThat(GuardFixtures.COMPILES.get() - before)
+                .as("same sources, same classpath bytes: one javac")
+                .isEqualTo(1);
+
+        Files.writeString(moduleClasses.resolve("Dep.class"), "bytes-v2-longer");
+        assertThat(GuardFixtures.compile(List.of(ok), List.of(moduleClasses), out))
+                .isNull();
+        assertThat(GuardFixtures.COMPILES.get() - before)
+                .as("the same path holding different bytes is a different classpath")
+                .isEqualTo(2);
     }
 
     @Test
