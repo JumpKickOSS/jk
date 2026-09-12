@@ -399,7 +399,9 @@ public final class EngineInstall {
         keys.put("engine-sha256", engineJarSha);
         keys.put("protocol", "1");
         keys.put("jar", jarFileName);
-        AtomicWrites.replace(configFile(), AppInstallConfig.render(keys));
+        // Durably: a pointer torn by a power loss names no jar, and every later command sees an
+        // install it cannot start rather than one it can re-derive.
+        AtomicWrites.replaceDurably(configFile(), AppInstallConfig.render(keys));
     }
 
     private Optional<Materialized> readLive() {

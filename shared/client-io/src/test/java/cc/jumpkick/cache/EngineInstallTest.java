@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.resolver.Versions;
+import cc.jumpkick.testing.RepoRoot;
 import cc.jumpkick.util.AotManifest;
 import cc.jumpkick.util.AppInstallConfig;
 import java.io.IOException;
@@ -367,6 +368,37 @@ class EngineInstallTest {
         assertThat(bin.resolve("jkx")).hasContent("new-jk");
         assertThat(bin.resolve("jk.old")).hasContent("old-jk");
         assertThat(bin.resolve("jkx.old")).hasContent("old-jkx");
+    }
+
+    /**
+     * The source is a CAS blob its digest vouches for. A hard link would make bin/jk the same
+     * inode, so rewriting the PATH client — or the chmod the install itself performs — would change
+     * the verified bytes; the install takes its own copy.
+     */
+    @Test
+    void install_binaries_copies_the_source_instead_of_linking_it(@TempDir Path tmp) throws Exception {
+        Path bin = Files.createDirectories(tmp.resolve("bin"));
+        Path src = Files.writeString(tmp.resolve("blob"), "verified-bytes");
+
+        EngineInstall.installBinaries(src, bin, false);
+
+        assertThat(Files.isSameFile(bin.resolve("jk"), src)).isFalse();
+        Files.writeString(bin.resolve("jk"), "rewritten client");
+        assertThat(src).hasContent("verified-bytes");
+    }
+
+    /**
+     * The pointer is one of the four files {@link cc.jumpkick.util.AtomicWrites} names as written
+     * durably: torn, it names no jar and the install cannot start. An fsync is not observable from
+     * a test, so this pins the call the way the durable variant itself is pinned.
+     */
+    @Test
+    void the_pointer_is_written_durably() throws Exception {
+        String source = Files.readString(RepoRoot.dir(EngineInstallTest.class, "shared/client-io")
+                .resolve("src/main/java/cc/jumpkick/cache/EngineInstall.java"));
+        int body = source.indexOf("private void writePointer(");
+        int end = source.indexOf("\n    }", body);
+        assertThat(source.substring(body, end)).contains("AtomicWrites.replaceDurably(configFile()");
     }
 
     @Test
