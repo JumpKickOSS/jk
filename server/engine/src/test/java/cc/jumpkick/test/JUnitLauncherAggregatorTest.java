@@ -5,14 +5,34 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.plugin.protocol.JUnitUniqueIds;
 import cc.jumpkick.run.TestFailureInfo;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Whitebox tests for {@link JUnitLauncher.ResultAggregator}. The aggregator processes the JSONL
  * event stream the workers emit; we feed it raw lines here rather than spinning up a real fork.
  */
 class JUnitLauncherAggregatorTest {
+
+    @Test
+    void the_xml_names_an_invocation_by_its_display_name_and_a_plain_test_by_its_method(@TempDir Path dir)
+            throws Exception {
+        var xml = new XmlTestReport();
+        var agg = new JUnitLauncher.ResultAggregator(xml);
+        agg.accept(
+                "{\"event\":\"finished\",\"uniqueId\":\"[engine:junit-jupiter]/[class:C]/[test-template:t(String)]"
+                        + "/[test-template-invocation:#1]\",\"testEngine\":\"junit-jupiter\",\"testClass\":\"C\","
+                        + "\"testMethod\":\"t(String)[#1]\",\"display\":\"[1] a\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
+        agg.accept("{\"event\":\"finished\",\"uniqueId\":\"[engine:junit-jupiter]/[class:C]/[method:p()]\","
+                + "\"testEngine\":\"junit-jupiter\",\"testClass\":\"C\",\"testMethod\":\"p()\","
+                + "\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
+        xml.writeAll(dir);
+        String report = Files.readString(dir.resolve("TEST-C.xml"));
+        assertThat(report).contains("testcase name=\"[1] a\"").contains("testcase name=\"p()\"");
+    }
 
     @Test
     void counts_successful_failed_and_skipped_tests() {

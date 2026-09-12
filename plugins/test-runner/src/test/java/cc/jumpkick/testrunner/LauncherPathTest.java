@@ -11,6 +11,8 @@ import java.util.Objects;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 /**
  * {@link LauncherPath} is the runner's only tag filter and only event emitter. These tests pin both
@@ -66,6 +68,18 @@ class LauncherPathTest {
     @Test
     void discovery_announces_a_nested_class_through_its_enclosing_class_only() {
         assertThat(LauncherPath.discoveredClassesOf(WithNested.class)).containsExactly(WithNested.class.getName());
+    }
+
+    @Test
+    void a_parameterized_invocation_carries_its_display_name_and_a_plain_test_does_not() {
+        var events = new Recorder();
+        LauncherPath.runClass(Parameterized.class.getName(), List.of(), List.of(), 0, events);
+        List<Map<String, Object>> finished = events.finishedTests();
+        assertThat(finished).hasSize(3);
+        assertThat(finished.stream().filter(e -> e.containsKey("display")).map(e -> e.get("display")))
+                .containsExactlyInAnyOrder("[1] \"a\"", "[2] \"b\"");
+        assertThat(finished.stream().filter(e -> !e.containsKey("display")).map(e -> e.get("testMethod")))
+                .containsExactly("plain()");
     }
 
     // --- the one emitter -----------------------------------------------------
@@ -202,6 +216,17 @@ class LauncherPathTest {
             }
             return out;
         }
+    }
+
+    /** Two invocations of one method, and a plain test beside them. */
+    static class Parameterized {
+
+        @ParameterizedTest
+        @ValueSource(strings = {"a", "b"})
+        void takes(String value) {}
+
+        @Test
+        void plain() {}
     }
 
     /** A class with a {@code @Nested} child: one class to the pull workers, not two. */

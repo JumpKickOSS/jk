@@ -840,6 +840,11 @@ public final class JUnitLauncher {
             this(TestProgressListener.noop(), 0, null, null, "");
         }
 
+        /** For tests of the XML naming. */
+        ResultAggregator(XmlTestReport xml) {
+            this(TestProgressListener.noop(), 0, xml, null, "");
+        }
+
         ResultAggregator(TestProgressListener listener, int workerId) {
             this(listener, workerId, null, null, "");
         }
@@ -936,11 +941,12 @@ public final class JUnitLauncher {
             listener.onTestFinished(id, label, status, isTest, wasStatic, duration, w);
             if (isTest) {
                 String throwable = Jsonl.nested(json, "throwable");
+                String xmlName = xmlName(json, label);
                 if ("ABORTED".equals(status)) {
-                    if (xmlReport != null) xmlReport.recordSkipped(id, label, "aborted");
+                    if (xmlReport != null) xmlReport.recordSkipped(id, xmlName, "aborted");
                     if (mdReport != null) mdReport.recordSkipped(id, label, "aborted");
                 } else {
-                    if (xmlReport != null) xmlReport.recordFinished(id, label, duration, throwable);
+                    if (xmlReport != null) xmlReport.recordFinished(id, xmlName, duration, throwable);
                     if (mdReport != null) mdReport.recordFinished(id, label, duration, throwable);
                 }
             }
@@ -985,7 +991,7 @@ public final class JUnitLauncher {
             int w = eventWorker(json);
             listener.onTestSkipped(id, label, reason != null ? reason : "", isTest, wasStatic, w);
             if (isTest) {
-                if (xmlReport != null) xmlReport.recordSkipped(id, label, reason);
+                if (xmlReport != null) xmlReport.recordSkipped(id, xmlName(json, label), reason);
                 if (mdReport != null) mdReport.recordSkipped(id, label, reason);
             }
         }
@@ -996,6 +1002,16 @@ public final class JUnitLauncher {
             if (uid != null && !uid.isBlank()) return uid;
             String legacy = Jsonl.str(json, "id");
             return legacy == null ? "" : legacy;
+        }
+
+        /**
+         * The {@code <testcase name>}: the runner's display name when it sent one — a parameterized
+         * invocation's {@code [1] "build"}, a Spock feature — else the method label. That is what
+         * every other JUnit XML writer records, so a report reader sees one convention.
+         */
+        private static String xmlName(String json, String label) {
+            String display = Jsonl.str(json, "display");
+            return display != null && !display.isBlank() ? display : label;
         }
 
         private static String progressLabel(String json) {

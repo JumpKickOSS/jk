@@ -304,12 +304,19 @@ final class LauncherPath {
     /**
      * Structured identity from the uniqueId, plus the human display name when the engine has no
      * class/method segments (Spock spec/feature, Cucumber feature/scenario) — without it, progress
-     * and FAILED labels regress to the raw bracketed uniqueId.
+     * and FAILED labels regress to the raw bracketed uniqueId — and for every invocation of a
+     * parameterized or dynamic test, whose display name is its only distinct name.
      */
     static void putIdentity(String uniqueId, @Nullable String displayName, Map<String, Object> payload) {
-        JUnitUniqueId.parse(uniqueId).putIdentity(payload);
-        if (payload.containsKey("testClass") || payload.containsKey("testMethod")) return;
-        if (displayName != null && !displayName.isBlank()) payload.put("display", displayName);
+        JUnitUniqueId id = JUnitUniqueId.parse(uniqueId);
+        id.putIdentity(payload);
+        if (displayName == null || displayName.isBlank()) return;
+        boolean unnamed = !payload.containsKey("testClass") && !payload.containsKey("testMethod");
+        // An invocation of a parameterized or dynamic test is one of several under one method; its
+        // display name ("[1] "build"") is what tells them apart, and what every other JUnit XML
+        // writer records for it.
+        boolean invocation = id.testMethod.endsWith("]");
+        if (unnamed || invocation) payload.put("display", displayName);
     }
 
     /** The one listener: every event the parent sees is written here. */
