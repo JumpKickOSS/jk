@@ -7,6 +7,7 @@ import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.WalkSkip;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
@@ -24,6 +25,10 @@ import org.jspecify.annotations.Nullable;
  * build output, VCS metadata and binaries. Pruned by name <em>and position</em>: {@code build} beside
  * a Gradle script is output, {@code cc/jumpkick/plugin/build} under {@code src/} is a package. A nested
  * checkout (a worktree, recognised by its {@code .git}) is another branch's tree.
+ *
+ * <p>Binaries are recognised three ways, cheapest first: by extension, by size — a file over
+ * {@link #MAX_BYTES} is a model, an archive or a dump, not source, and is never read — and by a
+ * NUL byte in the first {@link #SNIFF_BYTES}, checked before the whole file is read or decoded.
  */
 final class TextFiles {
 
@@ -59,6 +64,12 @@ final class TextFiles {
             ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".jar", ".zip", ".xz", ".gz", ".tar", ".class", ".aot",
             ".woff", ".woff2", ".ttf", ".pdf", ".so", ".dylib", ".exe", ".dll", ".bin", ".idx", ".lock");
 
+    /** The largest file a text rule reads; source files are kilobytes, anything past this is data. */
+    static final long MAX_BYTES = 2L * 1024 * 1024;
+
+    /** How much of a file's head is checked for a NUL byte before the rest is read. */
+    static final int SNIFF_BYTES = 8192;
+
     private TextFiles() {}
 
     record Entry(Path file, String rel, Language language) {}
@@ -68,6 +79,7 @@ final class TextFiles {
         Path r = root.toAbsolutePath().normalize();
         List<Entry> out = new ArrayList<>();
         PathUtil.forEachRegularFile(r, d -> skip(r, d), (p, attrs) -> {
+            if (attrs.size() > MAX_BYTES) return;
             String name = p.getFileName().toString();
             for (String ext : BINARY_EXT) if (name.endsWith(ext)) return;
             String rel = r.relativize(p.toAbsolutePath().normalize()).toString().replace('\\', '/');
@@ -127,8 +139,14 @@ final class TextFiles {
         };
     }
 
-    /** UTF-8 text, or {@code null} for a file that is not valid UTF-8 (a binary by another name). */
+    /**
+     * UTF-8 text, or {@code null} for a binary by another name: a NUL in the head, or bytes that
+     * are not valid UTF-8.
+     */
     static @Nullable String read(Path file) throws IOException {
+        try (InputStream in = Files.newInputStream(file)) {
+            if (!sniff(in.readNBytes(SNIFF_BYTES))) return null;
+        }
         byte[] bytes = Files.readAllBytes(file);
         try {
             return StandardCharsets.UTF_8
@@ -140,6 +158,12 @@ final class TextFiles {
         } catch (CharacterCodingException e) {
             return null;
         }
+    }
+
+    /** Whether {@code head} looks like text: no NUL byte, which no text encoding a rule reads emits. */
+    static boolean sniff(byte[] head) {
+        for (byte b : head) if (b == 0) return false;
+        return true;
     }
 
     /** The {@code blank} spelling → the projection. */
