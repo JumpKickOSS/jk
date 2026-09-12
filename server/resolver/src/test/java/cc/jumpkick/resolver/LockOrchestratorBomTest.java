@@ -290,6 +290,80 @@ class LockOrchestratorBomTest {
     }
 
     @Test
+    void a_boms_classified_variants_do_not_contradict_its_own_plain_entry(@TempDir Path tempDir) throws Exception {
+        // The platform manages leaf 2.0 itself; the BOM it imports manages leaf's linux-x86_64
+        // classifier at 1.5. Maven keeps both (they are different keys); the platform map is per
+        // module, so the plain entry is leaf's version and no conflict is raised.
+        upstream.pom("org.example", "inner-bom", "1.0", """
+                <project>
+                  <groupId>org.example</groupId>
+                  <artifactId>inner-bom</artifactId>
+                  <version>1.0</version>
+                  <packaging>pom</packaging>
+                  <dependencyManagement>
+                    <dependencies>
+                      <dependency>
+                        <groupId>com.foo</groupId><artifactId>leaf</artifactId><version>1.5</version>
+                        <classifier>linux-x86_64</classifier>
+                      </dependency>
+                    </dependencies>
+                  </dependencyManagement>
+                </project>
+                """);
+        upstream.pom("org.example", "platform", "1.0", """
+                <project>
+                  <groupId>org.example</groupId>
+                  <artifactId>platform</artifactId>
+                  <version>1.0</version>
+                  <packaging>pom</packaging>
+                  <dependencyManagement>
+                    <dependencies>
+                      <dependency>
+                        <groupId>com.foo</groupId><artifactId>leaf</artifactId><version>2.0</version>
+                      </dependency>
+                      <dependency>
+                        <groupId>org.example</groupId><artifactId>inner-bom</artifactId><version>1.0</version>
+                        <type>pom</type><scope>import</scope>
+                      </dependency>
+                    </dependencies>
+                  </dependencyManagement>
+                </project>
+                """);
+        upstream.metadata("com.foo", "middle", "1.0");
+        upstream.metadata("com.foo", "leaf", "1.5", "2.0");
+        upstream.pom("com.foo", "middle", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId>
+                  <artifactId>middle</artifactId>
+                  <version>1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>leaf</artifactId><version>1.5</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        upstream.jar("com.foo", "middle", "1.0");
+        for (String v : List.of("1.5", "2.0")) {
+            upstream.pom("com.foo", "leaf", v, leafVersioned("leaf", v));
+            upstream.jar("com.foo", "leaf", v);
+        }
+
+        JkBuild project = jkBuildWithDeps(Map.of(
+                Scope.PLATFORM,
+                        List.of(Dependency.of("platform", "org.example:platform", VersionSelector.parse("=1.0"))),
+                Scope.MAIN, List.of(new Dependency("com.foo:middle", VersionSelector.parse("=1.0")))));
+
+        Lockfile lock = new LockOrchestrator(repoGroup(tempDir)).lock(project, "test");
+        Lockfile.Artifact leafArt = lock.artifacts().stream()
+                .filter(p -> p.packageKey().equals("com.foo:leaf:jar:"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(leafArt.version()).isEqualTo("2.0");
+        assertThat(leafArt.pinnedBy()).isEqualTo("org.example:platform:1.0");
+    }
+
+    @Test
     void platform_managed_versionless_root_resolves_through_the_bom(@TempDir Path tempDir) throws Exception {
         // The Spring Boot flow: import spring-boot-dependencies, declare starters with
         // NO version at all (spring-boot plan §3.1) — the BOM supplies the pin.

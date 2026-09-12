@@ -83,23 +83,22 @@ public final class PlatformConstraints {
             Coordinate bomCoord = Coordinate.of(platformDep.group(), platformDep.name(), bomVersion);
             EffectivePom bomPom = pomBuilder.build(bomCoord);
             String bomLabel = bomCoord.toGav();
-            for (Pom.Dep m : bomPom.managedDependencies()) {
-                if (m.version() == null || m.version().isBlank()) continue;
-                String existing = bomConstraints.get(m.module());
+            for (Map.Entry<String, String> m : managedVersionsByModule(bomPom).entrySet()) {
+                String existing = bomConstraints.get(m.getKey());
                 if (existing == null) {
-                    bomConstraints.put(m.module(), m.version());
-                    constraintProvenance.put(m.module(), bomLabel);
-                } else if (!existing.equals(m.version())) {
+                    bomConstraints.put(m.getKey(), m.getValue());
+                    constraintProvenance.put(m.getKey(), bomLabel);
+                } else if (!existing.equals(m.getValue())) {
                     throw new IllegalStateException("platform BOM conflict on `"
-                            + m.module()
+                            + m.getKey()
                             + "`: "
-                            + constraintProvenance.get(m.module())
+                            + constraintProvenance.get(m.getKey())
                             + " constrains to "
                             + existing
                             + ", but "
                             + bomLabel
                             + " constrains to "
-                            + m.version()
+                            + m.getValue()
                             + ". Pick one BOM or pin the coord explicitly.");
                 }
             }
@@ -109,6 +108,24 @@ public final class PlatformConstraints {
             // edge arrives without a fill.
             alignMavenResolverFamily(bomConstraints, constraintProvenance, bomPom, bomLabel);
         }
+    }
+
+    /**
+     * One version per {@code group:artifact} from a BOM's managed entries. Maven manages per
+     * classifier, and a BOM's own plain entry can sit beside classified variants an import
+     * carries at another version; the platform map is per module, so the plain entry is the
+     * module's version and a classified entry only speaks for a module that has no plain one.
+     */
+    private static Map<String, String> managedVersionsByModule(EffectivePom bomPom) {
+        Map<String, String> plain = new LinkedHashMap<>();
+        Map<String, String> classifiedOnly = new LinkedHashMap<>();
+        for (Pom.Dep m : bomPom.managedDependencies()) {
+            if (m.version() == null || m.version().isBlank()) continue;
+            boolean classified = m.classifier() != null && !m.classifier().isBlank();
+            (classified ? classifiedOnly : plain).putIfAbsent(m.module(), m.version());
+        }
+        for (Map.Entry<String, String> e : classifiedOnly.entrySet()) plain.putIfAbsent(e.getKey(), e.getValue());
+        return plain;
     }
 
     /**
