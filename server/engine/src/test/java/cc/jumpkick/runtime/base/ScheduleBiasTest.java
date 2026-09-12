@@ -6,6 +6,8 @@ import static org.assertj.core.data.Offset.offset;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -38,6 +40,39 @@ class ScheduleBiasTest {
     void restore() {
         if (prevBuilds == null) System.clearProperty("jk.env.JK_STATE_DIR");
         else System.setProperty("jk.env.JK_STATE_DIR", prevBuilds);
+    }
+
+    /**
+     * Builds finish together in one engine. Each observation is a read-fold-write of the whole
+     * file, so without serialisation one build's row is overwritten by another's stale read.
+     */
+    @Test
+    void concurrent_observations_all_land() throws Exception {
+        int builds = 12;
+        CountDownLatch start = new CountDownLatch(1);
+        CountDownLatch done = new CountDownLatch(builds);
+        for (int i = 0; i < builds; i++) {
+            Path proj = home.resolve("proj-" + i);
+            Thread t = new Thread(() -> {
+                try {
+                    start.await();
+                    ScheduleBias.observe(proj, 90_000, 120_000, 29);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                } finally {
+                    done.countDown();
+                }
+            });
+            t.start();
+        }
+        start.countDown();
+        assertThat(done.await(30, TimeUnit.SECONDS)).isTrue();
+
+        for (int i = 0; i < builds; i++) {
+            assertThat(ScheduleBias.current(home.resolve("proj-" + i), 29))
+                    .as("build %d's observation survived the others", i)
+                    .isCloseTo(120_000 / 90_000.0, offset(1e-3)); // the store keeps four decimals
+        }
     }
 
     @Test

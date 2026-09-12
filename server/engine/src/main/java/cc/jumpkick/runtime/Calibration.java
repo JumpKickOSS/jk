@@ -133,7 +133,12 @@ public final class Calibration {
 
     private static final AtomicReference<@Nullable Calibration> MEMO = new AtomicReference<>();
 
-    private static final ReentrantLock PROBE = new ReentrantLock();
+    /**
+     * One writer of the host-metrics file at a time in this engine: the probe, and every learned
+     * read-fold-write (refine, learnFromSuccess, recordEngineColdStart). Two builds finishing
+     * together would otherwise each persist from their own read and one loses its samples.
+     */
+    private static final ReentrantLock STORE = new ReentrantLock();
 
     private final double msPerWeight;
     private final long jvmForkMs;
@@ -632,7 +637,7 @@ public final class Calibration {
         if (!force && failedRecently()) return current;
         // One probe at a time in this engine: two jobs admitted together on a cold host would
         // otherwise time each other and both write the file.
-        PROBE.lock();
+        STORE.lock();
         try {
             current = load();
             if (!force && current.settled(clock.millis())) return current;
@@ -653,7 +658,7 @@ public final class Calibration {
             recordFailure();
             return current;
         } finally {
-            PROBE.unlock();
+            STORE.unlock();
         }
     }
 
@@ -703,9 +708,14 @@ public final class Calibration {
      */
     public static void refine(double observedMsPerWeight, long nowMillis) {
         if (!(observedMsPerWeight > 0)) return;
-        Calibration merged = foldRefine(load(), observedMsPerWeight, nowMillis);
-        persist(merged);
-        MEMO.set(merged);
+        STORE.lock();
+        try {
+            Calibration merged = foldRefine(load(), observedMsPerWeight, nowMillis);
+            persist(merged);
+            MEMO.set(merged);
+        } finally {
+            STORE.unlock();
+        }
     }
 
     /**
@@ -714,6 +724,7 @@ public final class Calibration {
      */
     public static void learnFromSuccess(List<HostLearnedRates.HostSample> samples) {
         if (samples == null || samples.isEmpty()) return;
+        STORE.lock();
         try {
             Calibration cur = load();
             HostLearnedRates next = cur.learned.withSamples(samples);
@@ -726,6 +737,8 @@ public final class Calibration {
         } catch (RuntimeException e) {
             // advisory
             Log.debug("learnFromSuccess: advisory", e);
+        } finally {
+            STORE.unlock();
         }
     }
 
@@ -754,25 +767,30 @@ public final class Calibration {
 
     public static Calibration recordEngineColdStart(long coldMs, long nowMillis) {
         long c = Math.max(0, coldMs);
-        Calibration cur = load();
-        Calibration next;
-        if (cur.present()) {
-            next = cur.withEngineColdStartMs(c).touch(nowMillis);
-        } else {
-            next = builder()
-                    .msPerWeight(EffortWeights.MS_PER_WEIGHT)
-                    .engineColdStartMs(c)
-                    .loadAtCalibration(safeLoadAverage())
-                    .cores(Runtime.getRuntime().availableProcessors())
-                    .jkVersion(JkVersion.VERSION)
-                    .updated(nowMillis)
-                    .schema(SCHEMA)
-                    .learned(cur.learned)
-                    .build();
+        STORE.lock();
+        try {
+            Calibration cur = load();
+            Calibration next;
+            if (cur.present()) {
+                next = cur.withEngineColdStartMs(c).touch(nowMillis);
+            } else {
+                next = builder()
+                        .msPerWeight(EffortWeights.MS_PER_WEIGHT)
+                        .engineColdStartMs(c)
+                        .loadAtCalibration(safeLoadAverage())
+                        .cores(Runtime.getRuntime().availableProcessors())
+                        .jkVersion(JkVersion.VERSION)
+                        .updated(nowMillis)
+                        .schema(SCHEMA)
+                        .learned(cur.learned)
+                        .build();
+            }
+            persist(next);
+            MEMO.set(next);
+            return next;
+        } finally {
+            STORE.unlock();
         }
-        persist(next);
-        MEMO.set(next);
-        return next;
     }
 
     static Calibration foldRefine(Calibration prev, double observedMsPerWeight, long nowMillis) {

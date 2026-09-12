@@ -130,18 +130,25 @@ public final class ScheduleBias {
         // Wider than the read clamp: let the fold see mild over-estimates (ratio < 1) so the
         // bias can come back DOWN when the sim stops running hot.
         ratio = Math.max(0.5, Math.min(2.5, ratio));
-        try {
-            Path f = file();
-            Map<String, Double> m = load(f);
-            String k = shapeKey(entryDir, dirtyModules);
-            Double prev = m.get(k);
-            m.put(k, prev == null ? ratio : prev + ALPHA * (ratio - prev));
-            write(f, m);
-        } catch (RuntimeException | IOException e) {
-            // best-effort — an unlearned bias just means the raw schedule is used
-            Log.debug("observe: best-effort", e);
+        // Read-fold-write under one lock: two builds finishing together in one engine otherwise
+        // each rewrite the whole file from their own read, and one of them loses its row.
+        synchronized (STORE) {
+            try {
+                Path f = file();
+                Map<String, Double> m = load(f);
+                String k = shapeKey(entryDir, dirtyModules);
+                Double prev = m.get(k);
+                m.put(k, prev == null ? ratio : prev + ALPHA * (ratio - prev));
+                write(f, m);
+            } catch (RuntimeException | IOException e) {
+                // best-effort — an unlearned bias just means the raw schedule is used
+                Log.debug("observe: best-effort", e);
+            }
         }
     }
+
+    /** Serialises the store's read-fold-write cycles within this engine. */
+    private static final Object STORE = new Object();
 
     private static String key(Path entryDir) {
         return entryDir.toAbsolutePath().normalize().toString();
