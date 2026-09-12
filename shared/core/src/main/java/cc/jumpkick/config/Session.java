@@ -29,6 +29,7 @@ import org.jspecify.annotations.Nullable;
  * @param cancel never null after construction; {@code null} input becomes {@link CancelToken#NONE}
  * @param testSelection suite/tag selection for {@code jk test}+)
  * @param debugJvm JDWP listener for the JVM under test/run, or {@code null}
+ * @param coverage the suite JVMs run under the JaCoCo agent and the test step writes a report
  * @param io per-run byte accounting (network + local cache); shared by every copy of this session
  */
 public record Session(
@@ -71,6 +72,11 @@ public record Session(
          * null for an ordinary run. Never applied to the engine or to any other worker.
          */
         @With @Nullable DebugJvm debugJvm,
+        /**
+         * {@code --coverage}: every suite JVM runs under the JaCoCo agent and the module's test step
+         * writes {@code reports/jacoco.xml}. A coverage run never replays a green marker.
+         */
+        @With boolean coverage,
         /** {@code jk_run kind=test affected=true}: rank and run WIP test classes. */
         @With boolean affected,
         /** Cross-module changed-type carrier for {@code --affected}; shared by every copy. */
@@ -111,6 +117,7 @@ public record Session(
                 assemblyOverride,
                 testSelection,
                 debugJvm,
+                coverage,
                 affected,
                 affectedChanged,
                 io);
@@ -184,6 +191,7 @@ public record Session(
                 TestSelection.DEFAULT,
                 null,
                 false,
+                false,
                 new AffectedChanged(),
                 IoLedger.currentOrNew());
     }
@@ -207,6 +215,7 @@ public record Session(
                 assemblyOverride,
                 testSelection,
                 debugJvm,
+                coverage,
                 affected,
                 affectedChanged,
                 io);
@@ -231,6 +240,7 @@ public record Session(
                 assemblyOverride,
                 testSelection,
                 debugJvm,
+                coverage,
                 affected,
                 affectedChanged,
                 io);
@@ -259,6 +269,7 @@ public record Session(
                 assemblyOverride,
                 testSelection,
                 debugJvm,
+                coverage,
                 affected,
                 affectedChanged,
                 io);

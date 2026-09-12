@@ -16,6 +16,7 @@ jk test --exclude-tags slow,bench
 jk test --include-tags smoke
 jk test --class OrdersTest           # one class (simple or qualified name, * wildcards; repeatable)
 jk test --debug-jvm                  # suspended test JVM listening on localhost:5005 — attach and go
+jk test --coverage                   # every suite JVM under the JaCoCo agent; reports/jacoco.xml per module
 jk test --affected                   # ranked classes for the working tree (does not run them)
 jk test --affected-since=HEAD~2      # ranked classes since that ref (does not run them)
 jk build --guard                      # package with the guards green (same flag on assemble, image, native, install)

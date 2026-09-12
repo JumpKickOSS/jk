@@ -105,6 +105,23 @@ class ProtoSessionRequestTest {
 
     /** A test or build line asking for a debugger lands the listener on the session; a silent line leaves it null. */
     @Test
+    void a_coverage_request_on_the_line_lands_on_the_session_and_is_absent_otherwise() {
+        String test = new TestRequest(
+                        DIR, CACHE, JDKS, 3, "ci", true, false, false, false, SELECTION, null, null, null, true)
+                .encode();
+        String build = new BuildRequest(
+                        DIR, CACHE, JDKS, 3, "ci", false, true, 4, false, false, false, false, false, false, null,
+                        SELECTION, null, List.of(), false, null, Map.of(), null, null, null, true)
+                .encode();
+        assertThat(ProtoSession.sessionOf(test, TOKEN).coverage()).isTrue();
+        assertThat(ProtoSession.sessionOf(build, TOKEN).coverage()).isTrue();
+        assertThat(ProtoSession.sessionOf(testLine(), TOKEN).coverage()).isFalse();
+        assertThat(testLine()).as("a plain run does not spell the flag").doesNotContain("\"coverage\"");
+        assertThat(TestRequest.decode(test).coverage()).isTrue();
+        assertThat(BuildRequest.decode(build).coverage()).isTrue();
+    }
+
+    @Test
     void a_debug_listener_on_the_line_lands_on_the_session() {
         DebugJvm debug = DebugJvm.parse("*:6006,suspend=n");
         String test = new TestRequest(

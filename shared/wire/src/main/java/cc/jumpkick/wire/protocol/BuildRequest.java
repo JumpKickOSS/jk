@@ -43,7 +43,9 @@ public record BuildRequest(
         /** Who started the build ({@code cli}, {@code web}, {@code ci}, …); the requester's answer, journaled as such. */
         @Nullable String trigger,
         /** Progress-bar mode the requester's environment asked for; null for auto. */
-        @Nullable String progressMode) {
+        @Nullable String progressMode,
+        /** {@code --coverage}: suite JVMs under the JaCoCo agent, a report per module. */
+        boolean coverage) {
 
     public BuildRequest {
         dirtyHint = dirtyHint == null || dirtyHint.isEmpty() ? null : List.copyOf(dirtyHint);
@@ -51,6 +53,60 @@ public record BuildRequest(
         modules = modules == null ? List.of() : List.copyOf(modules);
         workspaceTarget = workspaceTarget == null || workspaceTarget.isBlank() ? null : workspaceTarget;
         graalHomes = graalHomes == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(graalHomes));
+    }
+
+    /** No coverage. */
+    public BuildRequest(
+            @Nullable String dir,
+            @Nullable String cache,
+            @Nullable String jdksDir,
+            int workers,
+            @Nullable String profile,
+            boolean skipTests,
+            boolean verbose,
+            int maxModuleConcurrency,
+            boolean parallelTests,
+            boolean offline,
+            boolean force,
+            boolean freshenLock,
+            boolean ephemeralActions,
+            boolean testOnly,
+            @Nullable List<String> dirtyHint,
+            TestSelection selection,
+            @Nullable String debugJvm,
+            List<String> modules,
+            boolean keepGoing,
+            @Nullable String workspaceTarget,
+            Map<String, String> graalHomes,
+            @Nullable String m2Dir,
+            @Nullable String trigger,
+            @Nullable String progressMode) {
+        this(
+                dir,
+                cache,
+                jdksDir,
+                workers,
+                profile,
+                skipTests,
+                verbose,
+                maxModuleConcurrency,
+                parallelTests,
+                offline,
+                force,
+                freshenLock,
+                ephemeralActions,
+                testOnly,
+                dirtyHint,
+                selection,
+                debugJvm,
+                modules,
+                keepGoing,
+                workspaceTarget,
+                graalHomes,
+                m2Dir,
+                trigger,
+                progressMode,
+                false);
     }
 
     public String encode() {
@@ -79,6 +135,7 @@ public record BuildRequest(
                 .optionalNonBlankString("m2Dir", m2Dir)
                 .optionalNonBlankString("trigger", trigger)
                 .optionalNonBlankString("progressMode", progressMode)
+                .optionalTrue(ProtoJobs.COVERAGE, coverage)
                 .finish();
     }
 
@@ -108,6 +165,7 @@ public record BuildRequest(
                 Jsonl.strMap(json, "graalHomes"),
                 Jsonl.str(json, "m2Dir"),
                 Jsonl.str(json, "trigger"),
-                Jsonl.str(json, "progressMode"));
+                Jsonl.str(json, "progressMode"),
+                Jsonl.bool(json, ProtoJobs.COVERAGE, false));
     }
 }

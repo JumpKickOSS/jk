@@ -22,10 +22,44 @@ public record TestRequest(
         /** Who started the build ({@code cli}, {@code web}, {@code ci}, …); the requester's answer, journaled as such. */
         @Nullable String trigger,
         /** Progress-bar mode the requester's environment asked for; null for auto. */
-        @Nullable String progressMode) {
+        @Nullable String progressMode,
+        /** {@code --coverage}: suite JVMs under the JaCoCo agent, a report per module. */
+        boolean coverage) {
 
     public TestRequest {
         selection = selection == null ? TestSelection.DEFAULT : selection;
+    }
+
+    /** No coverage. */
+    public TestRequest(
+            @Nullable String dir,
+            @Nullable String cache,
+            @Nullable String jdksDir,
+            int workers,
+            @Nullable String profile,
+            boolean verbose,
+            boolean offline,
+            boolean force,
+            boolean parallelTests,
+            TestSelection selection,
+            @Nullable String debugJvm,
+            @Nullable String trigger,
+            @Nullable String progressMode) {
+        this(
+                dir,
+                cache,
+                jdksDir,
+                workers,
+                profile,
+                verbose,
+                offline,
+                force,
+                parallelTests,
+                selection,
+                debugJvm,
+                trigger,
+                progressMode,
+                false);
     }
 
     public String encode() {
@@ -43,6 +77,7 @@ public record TestRequest(
                 .optionalNonBlankString(ProtoJobs.DEBUG_JVM, debugJvm)
                 .optionalNonBlankString("trigger", trigger)
                 .optionalNonBlankString("progressMode", progressMode)
+                .optionalTrue(ProtoJobs.COVERAGE, coverage)
                 .finish();
     }
 
@@ -60,6 +95,7 @@ public record TestRequest(
                 ProtoJobs.testSelectionOf(json),
                 Jsonl.str(json, ProtoJobs.DEBUG_JVM),
                 Jsonl.str(json, "trigger"),
-                Jsonl.str(json, "progressMode"));
+                Jsonl.str(json, "progressMode"),
+                Jsonl.bool(json, ProtoJobs.COVERAGE, false));
     }
 }

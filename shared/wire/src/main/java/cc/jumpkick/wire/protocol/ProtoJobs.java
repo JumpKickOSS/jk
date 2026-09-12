@@ -15,6 +15,9 @@ public final class ProtoJobs {
     /** The {@link DebugJvm#spelling()} a test, build or exec-plan line carries when a JDWP listener was asked for. */
     public static final String DEBUG_JVM = "debugJvm";
 
+    /** {@code --coverage}: present and true only on a coverage run. */
+    public static final String COVERAGE = "coverage";
+
     private ProtoJobs() {}
 
     /** Per-request progress mode, falling back to the engine environment when omitted. */

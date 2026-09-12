@@ -127,7 +127,8 @@ final class EngineJobs {
                         graalHomes,
                         spec != null && spec.m2Dir() != null ? spec.m2Dir().toString() : null,
                         RequestEnvironment.trigger(),
-                        RequestEnvironment.progressMode())
+                        RequestEnvironment.progressMode(),
+                        session.coverage())
                 .encode();
     }
 
@@ -171,7 +172,8 @@ final class EngineJobs {
                                                 sel,
                                                 ProtoJobs.debugJvmSpelling(debug),
                                                 RequestEnvironment.trigger(),
-                                                RequestEnvironment.progressMode())
+                                                RequestEnvironment.progressMode(),
+                                                req.coverage() || session.coverage())
                                         .encode(),
                                 session.variant(),
                                 session.clientEnv(),

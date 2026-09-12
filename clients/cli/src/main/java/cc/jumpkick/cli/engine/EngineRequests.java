@@ -31,7 +31,37 @@ public final class EngineRequests {
             boolean parallelTests,
             TestSelection testSelection,
             /** JDWP listener for the one JVM under test ({@code --debug-jvm}); null for an ordinary run. */
-            @Nullable DebugJvm debugJvm) {
+            @Nullable DebugJvm debugJvm,
+            /** {@code --coverage}: suite JVMs under the JaCoCo agent, a report per module. */
+            boolean coverage) {
+        /** No coverage. */
+        public TestRequest(
+                Path entryDir,
+                Path cache,
+                @Nullable Path jdksDir,
+                int workers,
+                @Nullable String profile,
+                boolean verbose,
+                boolean offline,
+                boolean force,
+                boolean parallelTests,
+                TestSelection testSelection,
+                @Nullable DebugJvm debugJvm) {
+            this(
+                    entryDir,
+                    cache,
+                    jdksDir,
+                    workers,
+                    profile,
+                    verbose,
+                    offline,
+                    force,
+                    parallelTests,
+                    testSelection,
+                    debugJvm,
+                    false);
+        }
+
         /** Serial cross-module gate, default suite. */
         public TestRequest(
                 Path entryDir,

@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.test;
 
+import static cc.jumpkick.test.TestEventFields.classNameOf;
+import static cc.jumpkick.test.TestEventFields.engineOf;
+import static cc.jumpkick.test.TestEventFields.identityKey;
+import static cc.jumpkick.test.TestEventFields.methodOf;
+import static cc.jumpkick.test.TestEventFields.progressLabel;
+import static cc.jumpkick.test.TestEventFields.xmlName;
+
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.DebugJvm;
 import cc.jumpkick.engine.plugin.JvmOptions;
@@ -113,10 +120,26 @@ public final class JUnitLauncher {
         return this;
     }
 
-    /** {@link #runnerFlags} for {@code role}, plus the JDWP agent when the suite JVM is under debug. */
+    /** The JaCoCo agent every test-running JVM starts with ({@code --coverage}); null for a plain run. */
+    private @Nullable CoverageAgent coverage;
+
+    /**
+     * Start every JVM that runs tests — the single suite runner and each pull-mode shard — with the
+     * JaCoCo agent. Discovery only lists classes and stays uninstrumented.
+     */
+    public JUnitLauncher withCoverage(@Nullable CoverageAgent coverage) {
+        this.coverage = coverage;
+        return this;
+    }
+
+    /**
+     * {@link #runnerFlags} for {@code role}, plus the JDWP agent when the suite JVM is under debug
+     * and the JaCoCo agent on every test-running JVM of a coverage run.
+     */
     List<String> jvmFlags(JvmRole role, int concurrency, @Nullable Path tmpDir) {
         List<String> flags = new ArrayList<>(runnerFlags(concurrency, tmpDir));
         if (role == JvmRole.SUITE && debug != null) flags.add(debug.agentArg());
+        if (role != JvmRole.DISCOVERY && coverage != null) flags.add(coverage.agentArg());
         return flags;
     }
 
@@ -994,54 +1017,6 @@ public final class JUnitLauncher {
                 if (xmlReport != null) xmlReport.recordSkipped(id, xmlName(json, label), reason);
                 if (mdReport != null) mdReport.recordSkipped(id, label, reason);
             }
-        }
-
-        /** Prefer split fields; fall back to uniqueId / legacy id / display. */
-        private static String identityKey(String json) {
-            String uid = Jsonl.str(json, "uniqueId");
-            if (uid != null && !uid.isBlank()) return uid;
-            String legacy = Jsonl.str(json, "id");
-            return legacy == null ? "" : legacy;
-        }
-
-        /**
-         * The {@code <testcase name>}: the runner's display name when it sent one — a parameterized
-         * invocation's {@code [1] "build"}, a Spock feature — else the method label. That is what
-         * every other JUnit XML writer records, so a report reader sees one convention.
-         */
-        private static String xmlName(String json, String label) {
-            String display = Jsonl.str(json, "display");
-            return display != null && !display.isBlank() ? display : label;
-        }
-
-        private static String progressLabel(String json) {
-            String method = methodOf(json);
-            if (!method.isEmpty()) return method;
-            String cls = classNameOf(json);
-            if (!cls.isEmpty()) {
-                int dot = cls.lastIndexOf('.');
-                return dot < 0 ? cls : cls.substring(dot + 1);
-            }
-            String display = Jsonl.str(json, "display");
-            if (display != null && !display.isBlank()) return display;
-            return identityKey(json);
-        }
-
-        private static String classNameOf(String json) {
-            String c = Jsonl.str(json, "testClass");
-            if (c != null && !c.isBlank()) return c;
-            return classFromUniqueId(identityKey(json));
-        }
-
-        private static String methodOf(String json) {
-            String m = Jsonl.str(json, "testMethod");
-            return m == null ? "" : m;
-        }
-
-        private static String engineOf(String json) {
-            String e = Jsonl.str(json, "testEngine");
-            if (e != null && !e.isBlank()) return e;
-            return engineFromUniqueId(identityKey(json));
         }
 
         /** Event {@code worker} field, else this aggregator's id. */

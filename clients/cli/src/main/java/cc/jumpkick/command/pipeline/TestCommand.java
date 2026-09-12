@@ -109,6 +109,7 @@ public final class TestCommand implements CliCommand {
                 .repeat());
         opts.add(Opt.value("<port>", "Debug test JVM (JDWP; 5005, 0=free)", "--debug-jvm")
                 .withFallback(""));
+        opts.add(Opt.flag("JaCoCo agent; jacoco.xml per module", "--coverage"));
         opts.addAll(VariantSelection.options());
         return opts;
     }
@@ -147,6 +148,9 @@ public final class TestCommand implements CliCommand {
     @Nullable
     DebugJvm debugJvm;
 
+    /** {@code --coverage}: suite JVMs under the JaCoCo agent, a report per module. */
+    boolean coverage;
+
     private @Nullable CliSessionTranscript session;
 
     @Override
@@ -170,6 +174,7 @@ public final class TestCommand implements CliCommand {
         try {
             this.testSelection = resolveTestSelection(in);
             this.debugJvm = DebugAttach.fromFlag(in);
+            this.coverage = in.isSet("coverage");
         } catch (IllegalArgumentException e) {
             CommandWedge.printFail("Test", e.getMessage());
             return Exit.CONFIG;
@@ -177,8 +182,10 @@ public final class TestCommand implements CliCommand {
         // One listener means one JVM at a time: module suites take the port in turn.
         if (debugJvm != null) this.parallelTests = false;
         warnGateOverride(in, global);
-        SessionContext.install(
-                SessionContext.current().withParallelTests(parallelTests).withTestSelection(testSelection));
+        SessionContext.install(SessionContext.current()
+                .withParallelTests(parallelTests)
+                .withTestSelection(testSelection)
+                .withCoverage(coverage));
         Path dir = global.workingDir();
         VariantSelection.install(in, dir);
         var proj = ProjectContext.require(dir, "test").orElse(null);
@@ -265,7 +272,8 @@ public final class TestCommand implements CliCommand {
                             SessionContext.current().force(),
                             parallelTests,
                             testSelection,
-                            debugJvm),
+                            debugJvm,
+                            coverage),
                     steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, module),
                     testResultHolder);
         } catch (IOException e) {

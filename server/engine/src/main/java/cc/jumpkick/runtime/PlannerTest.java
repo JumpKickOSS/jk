@@ -19,10 +19,12 @@ import static cc.jumpkick.runtime.PlannerSupport.testStampWorkerJars;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.engine.plugin.WorkerEnv;
+import cc.jumpkick.guard.eval.OutputArtifacts;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.JkBuild;
@@ -46,6 +48,7 @@ import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.LangCompile;
 import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.test.AffectedTestRun;
+import cc.jumpkick.test.CoverageAgent;
 import cc.jumpkick.test.JUnitLauncher;
 import cc.jumpkick.test.TestProgressListener;
 import cc.jumpkick.test.TestWorkers;
@@ -479,8 +482,11 @@ public final class PlannerTest {
                     // the user explicitly asked to bypass build caches.
                     // A debug request is a request for a JVM to attach to; a replayed green
                     // marker would leave the debugger with nothing to reach.
+                    // A coverage run is a request for a report; a replayed green marker has none.
+                    boolean coverage = in.session().coverage();
                     boolean rerun = in.session().config().rebuildOr(false)
-                            || in.session().debugJvm() != null;
+                            || in.session().debugJvm() != null
+                            || coverage;
                     if (!rerun && stampKey != null && replayGreenRun(ctx, actionCache, stampKey)) {
                         return; // skip — nothing changed since last green run
                     }
@@ -495,6 +501,16 @@ public final class PlannerTest {
                     // not running, and the ones running when it starts are what it shares with.
                     boolean gated = !in.session().parallelTests();
                     if (gated) awaitTestGate();
+                    // The agent and the report tool come first: a coverage run that cannot fetch
+                    // JaCoCo fails before any suite starts, not after the suite ran uninstrumented.
+                    CoverageTools.Jacoco jacoco = null;
+                    Path coverageExec = null;
+                    if (coverage) {
+                        jacoco = CoverageTools.resolve(projectUnderTest, cas);
+                        coverageExec = ctx.require(LAYOUT).reportsDir().resolve("jacoco.exec");
+                        Files.deleteIfExists(coverageExec);
+                        Files.createDirectories(coverageExec.getParent());
+                    }
                     TestSummary result;
                     try {
                         // Module pin ([test] workers / [build] test-workers) wins over CLI for
@@ -512,10 +528,16 @@ public final class PlannerTest {
                                 .withSerialTags(projectUnderTest.build().testSerialTags())
                                 .withClassPatterns(effectiveSel.classes())
                                 .withDebug(in.session().debugJvm());
+                        if (jacoco != null && coverageExec != null) {
+                            launcher.withCoverage(new CoverageAgent(jacoco.agentJar(), coverageExec));
+                        }
                         if (affected != null) launcher.withClassNames(affected.classNames());
                         result = launch(ctx, in, launcher, runtimeCp, testWorkers, workerJars, testEnv, listener);
                     } finally {
                         if (gated) TEST_GATE.release();
+                    }
+                    if (jacoco != null && coverageExec != null) {
+                        writeCoverageReport(ctx, in, jacoco, coverageExec, moduleLabel);
                     }
                     if (TestClassMatch.nothingMatched(effectiveSel, affected != null, result)) {
                         // A workspace judges the patterns across its modules; this one skips.
@@ -530,6 +552,26 @@ public final class PlannerTest {
                     recordOutcome(ctx, in, actionCache, testTaskId, stampKey, result, snippets);
                 })
                 .build();
+    }
+
+    /**
+     * The module's JaCoCo XML, where the {@code coverage.*} guard measures look for it: the report
+     * over every class directory the build produced, from the execution data every suite JVM of
+     * this module appended to.
+     */
+    private static void writeCoverageReport(
+            TaskContext ctx, BuildPlanner.Inputs in, CoverageTools.Jacoco jacoco, Path exec, String moduleLabel)
+            throws Exception {
+        BuildLayout layout = ctx.require(LAYOUT);
+        Path xml = layout.reportsDir().resolve(OutputArtifacts.DEFAULT_COVERAGE);
+        List<Path> classDirs = List.of(ctx.require(MAIN_CLASSES), layout.kotlinClassesDir(), layout.groovyClassesDir());
+        try {
+            CoverageTools.writeReport(ctx.require(JAVA_HOME), jacoco, exec, classDirs, xml, moduleLabel);
+        } catch (IOException e) {
+            ctx.error("coverage", Errors.text(e));
+            throw e;
+        }
+        ctx.output("coverage: jacoco " + jacoco.version() + " → " + in.dir().relativize(xml));
     }
 
     /**
