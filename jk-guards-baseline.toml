@@ -1631,6 +1631,137 @@ in     = "shared/toolchain-jdk"
 at     = "cc.jumpkick.jdk.JdkRegistry#listHits()Ljava/util/List; -> java.lang.System#nanoTime()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 
+[coverage-band]
+population = { units = 32 }
+[[coverage-band.entries]]
+unit   = "clients/cli"
+value  = 46.900354470263885
+reason = "seeded at the first jk test --coverage measurement; the ratchet only moves up from here"
+[[coverage-band.entries]]
+unit   = "clients/cli-terminal"
+value  = 38.57566765578635
+reason = "seeded at the first jk test --coverage measurement; the ratchet only moves up from here"
+[[coverage-band.entries]]
+unit   = "plugins/android"
+value  = 49.08789386401327
+reason = "seeded at the first jk test --coverage measurement; the ratchet only moves up from here"
+[[coverage-band.entries]]
+unit   = "plugins/auditor"
+value  = 81
+reason = "seeded at the first jk test --coverage measurement; the ratchet only moves up from here"
+[[coverage-band.entries]]
+unit   = "plugins/formatter"
+value  = 80.73136427566807
+reason = "seeded at the first jk test --coverage measurement; the ratchet only moves up from here"
+[[coverage-band.entries]]
+unit   = "plugins/grails"
+value  = 80
+reason = "seeded at the first jk test --coverage measurement; the ratchet only moves up from here"
+[[coverage-band.entries]]
+unit   = "plugins/groovy-compiler"
+value  = 78.89908256880734
+reason = "seeded at the first jk test --coverage measurement; the ratchet only moves up from here"
+[[coverage-band.entries]]
+unit   = "plugins/image-builder"
+value  = 25.9020618556701
+reason = "seeded at the first jk test --coverage measurement; the ratchet only moves up from here"
+[[coverage-band.entries]]
+unit   = "plugins/java-compiler"
+value  = 70.31558185404339
+reason = "seeded at the first jk test --coverage measurement; the ratchet only moves up from here"
+[[coverage-band.entries]]
+unit   = "plugins/kotlin-compiler"
+value  = 35.03649635036496
+reason = "seeded at the first jk test --coverage measurement; the ratchet only moves up from here"
+[[coverage-band.entries]]
+unit   = "plugins/micronaut"
+value  = 43.220338983050844
+reason = "seeded at the first jk test --coverage measurement; the ratchet only moves up from here"
+[[coverage-band.entries]]
+unit   = "plugins/minified"
+value  = 59.00277008310249
+reason = "seeded at the first jk test --coverage measurement; the ratchet only moves up from here"
+[[coverage-band.entries]]
+unit   = "plugins/protobuf"
+value  = 97.87234042553192
+reason = "seeded at the first jk test --coverage measurement; the ratchet only moves up from here"
+[[coverage-band.entries]]
+unit   = "plugins/publisher"
+value  = 81.96392785571142
+reason = "seeded at the first jk test --coverage measurement; the ratchet only moves up from here"
+[[coverage-band.entries]]
+unit   = "plugins/quarkus"
+value  = 36.03238866396761
+reason = "seeded at the first jk test --coverage measurement; the ratchet only moves up from here"
+[[coverage-band.entries]]
+unit   = "plugins/spring-boot"
+value  = 76.83823529411765
+reason = "seeded at the first jk test --coverage measurement; the ratchet only moves up from here"
+[[coverage-band.entries]]
+unit   = "plugins/test-runner"
+value  = 71.70868347338936
+reason = "seeded at the first jk test --coverage measurement; the ratchet only moves up from here"
+[[coverage-band.entries]]
+unit   = "server/engine"
+value  = 54.19548872180451
+reason = "seeded at the first jk test --coverage measurement; the ratchet only moves up from here"
+[[coverage-band.entries]]
+unit   = "server/guard"
+value  = 89.92703045685279
+reason = "seeded at the first jk test --coverage measurement; the ratchet only moves up from here"
+[[coverage-band.entries]]
+unit   = "server/io"
+value  = 85.18248175182482
+reason = "seeded at the first jk test --coverage measurement; the ratchet only moves up from here"
+[[coverage-band.entries]]
+unit   = "server/resolver"
+value  = 87.34556345937851
+reason = "seeded at the first jk test --coverage measurement; the ratchet only moves up from here"
+[[coverage-band.entries]]
+unit   = "server/toolchain"
+value  = 64.21818181818182
+reason = "seeded at the first jk test --coverage measurement; the ratchet only moves up from here"
+[[coverage-band.entries]]
+unit   = "shared/client-io"
+value  = 77.59287925696594
+reason = "seeded at the first jk test --coverage measurement; the ratchet only moves up from here"
+[[coverage-band.entries]]
+unit   = "shared/core"
+value  = 79.99350702053405
+reason = "seeded at the first jk test --coverage measurement; the ratchet only moves up from here"
+[[coverage-band.entries]]
+unit   = "shared/dynamic-surface"
+value  = 91.8859649122807
+reason = "seeded at the first jk test --coverage measurement; the ratchet only moves up from here"
+[[coverage-band.entries]]
+unit   = "shared/guard-api"
+value  = 96.42857142857143
+reason = "seeded at the first jk test --coverage measurement; the ratchet only moves up from here"
+[[coverage-band.entries]]
+unit   = "shared/host"
+value  = 76.04166666666667
+reason = "seeded at the first jk test --coverage measurement; the ratchet only moves up from here"
+[[coverage-band.entries]]
+unit   = "shared/ide"
+value  = 95.79081632653062
+reason = "seeded at the first jk test --coverage measurement; the ratchet only moves up from here"
+[[coverage-band.entries]]
+unit   = "shared/jk-api"
+value  = 59.960629921259844
+reason = "seeded at the first jk test --coverage measurement; the ratchet only moves up from here"
+[[coverage-band.entries]]
+unit   = "shared/plugin-sdk"
+value  = 72.42083758937692
+reason = "seeded at the first jk test --coverage measurement; the ratchet only moves up from here"
+[[coverage-band.entries]]
+unit   = "shared/toolchain-jdk"
+value  = 69.24798567591763
+reason = "seeded at the first jk test --coverage measurement; the ratchet only moves up from here"
+[[coverage-band.entries]]
+unit   = "shared/wire"
+value  = 92.0785999385938
+reason = "seeded at the first jk test --coverage measurement; the ratchet only moves up from here"
+
 [engine-log-owner]
 [engine-log-owner.populations]
 "server/engine" = { classes = 905, sites = 58835 }
@@ -2140,6 +2271,9 @@ population = { left = 735, right = 735 }
 
 [published-installer-sh]
 population = { left = 448, right = 448 }
+
+[published-poms]
+population = { poms = 38 }
 
 [repository-names]
 population = { constants = 5, files = 1918, literals = 34619 }

@@ -182,8 +182,9 @@ Workers after a pure-jk build: `jk install`.
 | **Nightly** (`ci-nightly.yml`) | Daily cron + manual `workflow_dispatch` | Linux: `integrationTest`, `slowTest`, `networkTest`, `benchTest`, coverage inventory, heap guard, doc examples. macOS + Windows: product smoke (`scripts/ci-product-smoke.sh`). |
 
 Native multi-OS **images** stay on the **release** matrix (`release.yml`). Coverage is an
-inventory (`./gradlew coverageReport -Pjk.coverage`); it never fails on a percentage. The
-JaCoCo agent stays off unless that property is set, so `checkFast` does not pay for it.
+inventory (`./gradlew coverageReport -Pjk.coverage`) plus a per-module ratchet on the jk side
+(`jk test --coverage`, then `jk guard`; G91); neither has a percentage target. The JaCoCo agent
+stays off unless asked for, so `checkFast` does not pay for it.
 
 **Reproduce locally**
 
@@ -192,6 +193,7 @@ JaCoCo agent stays off unless that property is set, so `checkFast` does not pay 
 ./gradlew integrationTest                    # nightly Linux integration
 ./gradlew benchTest                          # nightly microbenchmarks
 ./gradlew coverageReport -Pjk.coverage       # nightly coverage inventory
+jk test --coverage && jk guard               # nightly coverage ratchet (G91)
 ./gradlew checkAll                           # unit + integration before merge when you touch heavy paths
 ./scripts/ci-product-smoke.sh                # nightly macOS/Windows smoke (jk on PATH)
 ```

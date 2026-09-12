@@ -402,9 +402,12 @@ final class MetricEvaluator implements Evaluator {
                         continue;
                     }
                     Double pct = CoverageReport.percent(file, measure.substring("coverage.".length()));
-                    if (pct == null)
-                        return Evaluation.failed(file + " has no " + measure.substring("coverage.".length())
-                                + " counter; is it a JaCoCo XML report?");
+                    if (pct == null) {
+                        // A report with no counter of this kind is a module with nothing to cover
+                        // — a resources-only module's JaCoCo XML has no classes and no counters.
+                        lookedFor = file + " (no " + measure.substring("coverage.".length()) + " counter)";
+                        continue;
+                    }
                     value = pct;
                     what = measure + " = " + number(value) + "%";
                 }

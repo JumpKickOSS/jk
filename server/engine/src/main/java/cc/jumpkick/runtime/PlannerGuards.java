@@ -26,6 +26,7 @@ import cc.jumpkick.guard.eval.GuardSuites;
 import cc.jumpkick.guard.eval.GuardThrash;
 import cc.jumpkick.guard.eval.LaneRun;
 import cc.jumpkick.guard.eval.Outcome;
+import cc.jumpkick.guard.eval.OutputArtifacts;
 import cc.jumpkick.guard.eval.RuleReport;
 import cc.jumpkick.guard.eval.WorkspaceModules;
 import cc.jumpkick.guard.explain.BiteEvidence;
@@ -39,6 +40,7 @@ import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.guard.rules.LoadError;
 import cc.jumpkick.guard.rules.LoadResult;
 import cc.jumpkick.guard.rules.Rule;
+import cc.jumpkick.guard.schema.Kind;
 import cc.jumpkick.guard.schema.Lane;
 import cc.jumpkick.guard.validate.EngineValidations;
 import cc.jumpkick.guard.validate.Fault;
@@ -593,6 +595,7 @@ final class PlannerGuards {
             return;
         }
         List<Rule> rules = new ArrayList<>(LaneRun.rulesFor(lane, load.rules(), ectx.module()));
+        if (lane == Lane.OUTPUT && !coverageAsked(env, ectx)) rules.removeIf(PlannerGuards::readsCoverage);
         rules.addAll(extraRules);
         ectx = ectx.withRules(load.rules());
         Path baselineFile = GuardsPresence.baselineFile(g.root());
@@ -691,6 +694,32 @@ final class PlannerGuards {
      * thirty run with the build's parallelism would multiply that against the engine's heap. A few
      * at a time keep the peak bounded and the wall unchanged.
      */
+    /**
+     * A {@code coverage.*} measure reads the reports a coverage run writes, so the lane asks it only
+     * when the tree holds them and this run is not the one writing them: modules finish in any
+     * order, and the root's lane would otherwise judge whatever subset exists mid-run. A plain
+     * build with no report asked no coverage question and leaves the rules aside; {@code jk guard}
+     * after {@code jk test --coverage} reads every module's report.
+     */
+    private static boolean coverageAsked(LaneEnv env, EvalContext ectx) {
+        if (env.in().session().coverage()) return false;
+        GuardsPlan g = env.guards();
+        try {
+            for (OutputArtifacts.Module m :
+                    OutputArtifacts.of(g.root(), ectx.modules(), g.config().coverageReport())) {
+                if (m.existingCoverage() != null) return true;
+            }
+        } catch (IOException e) {
+            return false;
+        }
+        return false;
+    }
+
+    private static boolean readsCoverage(Rule rule) {
+        return rule.kind() == Kind.METRIC
+                && String.valueOf(rule.table().getString("measure")).startsWith("coverage.");
+    }
+
     private static LaneRun.Result runLane(Lane lane, List<Rule> rules, EvalContext ectx, Baseline baseline)
             throws IOException {
         if (lane != Lane.MODULE) return LaneRun.run(lane, rules, ectx, baseline);

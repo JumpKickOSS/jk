@@ -1011,13 +1011,15 @@ object Guards {
             ),
             spec(
                 91,
-                "checkCoverageBand",
-                "a module's unit-test line coverage falling below its `coverage-baseline.txt` line — and an improvement that is not banked, because a number nobody tightens stops meaning anything",
-                "ratchet, one line per module (`coverage-baseline.txt`); nightly, with the JaCoCo agent",
-                GuardHome.ROOT,
+                "coverage-band",
+                "a module's unit-test line coverage falling below its baselined entry — and an improvement that is not banked, because a number nobody tightens stops meaning anything",
+                "metric, `coverage.line` per module against a floor, baselined with a half-point band; nightly, after `jk test --coverage`",
+                GuardHome.SELF_HOSTED,
+                tableTask = "`coverage-band` (jk-guards.toml, `metric`)",
                 inFastGate = false,
-                description =
-                    "Fail when a module's unit-test line coverage falls below its coverage-baseline.txt line; bank an improvement",
+                gradleLetter = false,
+                attach = emptySet(),
+                ruleId = "coverage-band",
             ),
         )
 

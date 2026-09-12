@@ -3,6 +3,7 @@ package cc.jumpkick.guard.eval;
 
 import cc.jumpkick.host.DomXml;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
 import org.jspecify.annotations.Nullable;
@@ -17,7 +18,10 @@ final class CoverageReport {
     private CoverageReport() {}
 
     static @Nullable Double percent(Path report, String kind) throws IOException {
-        Element root = DomXml.parse(report).getDocumentElement();
+        // JaCoCo writes a DOCTYPE naming its report DTD; the hardened parser refuses any DOCTYPE
+        // and nothing here needs the DTD, so the declaration is dropped before parsing.
+        String xml = Files.readString(report).replaceFirst("<!DOCTYPE[^>]*>", "");
+        Element root = DomXml.parse(xml).getDocumentElement();
         String type = kind.toUpperCase(Locale.ROOT);
         for (Element c : DomXml.childElements(root, "counter")) {
             if (!type.equals(c.getAttribute("type"))) continue;

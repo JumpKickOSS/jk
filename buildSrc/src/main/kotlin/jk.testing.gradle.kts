@@ -106,7 +106,7 @@ tasks.withType<Test>().configureEach {
     }
 }
 
-// The per-module XML the coverage ratchet (checkCoverageBand) reads; produced only when the agent ran.
+// The per-module XML the coverage inventory (coverageReport) aggregates; produced only when the agent ran.
 tasks.named<org.gradle.testing.jacoco.tasks.JacocoReport>("jacocoTestReport") {
     reports {
         xml.required.set(true)

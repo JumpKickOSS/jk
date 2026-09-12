@@ -1066,3 +1066,16 @@ per      = "file"
 cap      = 0
 baseline = true
 why      = "a broad catch that only comments has written down its intent and dropped its evidence"
+
+# G91. A module's unit-test line coverage: no target, and the only direction the number moves
+# without a hand is up. Baselined per module at the measured value; within half a point the entry
+# holds, above it the entry rises with the run, below it the module is red. Evaluated only when the
+# build left a JaCoCo report (`jk test --coverage`, nightly); a plain build has no report and the
+# rule is not-evaluated.
+[guards.coverage-band]
+kind     = "metric"
+measure  = "coverage.line"
+min      = 100
+band     = 0.5
+baseline = true
+why      = "a coverage number nobody tightens stops meaning anything"

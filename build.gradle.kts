@@ -92,51 +92,6 @@ tasks.register<org.gradle.testing.jacoco.tasks.JacocoReport>("coverageReport") {
     }
 }
 
-// Per-module line-coverage ratchet (G91). Nightly, not the branch gate: it needs the JaCoCo agent
-// (-Pjk.coverage) and every module's unit tier. One line per module in coverage-baseline.txt; a module
-// below its line fails, a module above it rewrites its line in the same run, a new module is added.
-// The jk side of this letter waits for `jk test` to write a JaCoCo XML (guard-parity.txt).
-tasks.register("checkCoverageBand") {
-    group = "verification"
-    description = "Fail when a module's unit-test line coverage falls below its coverage-baseline.txt line; bank an improvement"
-    dependsOn(subprojects.map { it.tasks.matching { t -> t.name == "test" || t.name == "jacocoTestReport" } })
-    val baselineFile = layout.projectDirectory.file("coverage-baseline.txt")
-    val reports = subprojects.associate { sub ->
-        sub.projectDir.relativeTo(layout.projectDirectory.asFile).path.replace(File.separatorChar, '/') to
-            sub.layout.buildDirectory.file("reports/jacoco/test/jacocoTestReport.xml")
-    }
-    val coverage = project.hasProperty("jk.coverage")
-    inputs.property("jk.coverage", coverage)
-    doLast {
-        if (!coverage) {
-            throw GradleException("checkCoverageBand needs the JaCoCo agent — pass -Pjk.coverage")
-        }
-        val measured = reports.mapNotNull { (module, xml) ->
-            val f = xml.get().asFile
-            if (f.isFile) CoverageBand.parseReport(module, f.readText()) else null
-        }
-        if (measured.isEmpty()) {
-            throw GradleException("checkCoverageBand read no JaCoCo reports — did the unit tier run with -Pjk.coverage?")
-        }
-        val (header, baseline) = CoverageBand.readBaseline(baselineFile.asFile)
-        val verdicts = CoverageBand.judge(baseline, measured)
-        val next = CoverageBand.render(header, baseline, verdicts)
-        val banked = verdicts.filter { it.kind == CoverageBand.Kind.IMPROVED || it.kind == CoverageBand.Kind.ADDED }
-        if (next != (if (baselineFile.asFile.isFile) baselineFile.asFile.readText() else "")) {
-            baselineFile.asFile.writeText(next)
-            logger.lifecycle("coverage-baseline.txt tightened for " + banked.joinToString(", ") {
-                "%s (%s -> %.1f)".format(it.module, it.baseline?.let { b -> "%.1f".format(b) } ?: "new", it.measured)
-            } + " — commit it")
-        }
-        val regressions = CoverageBand.regressions(verdicts)
-        if (regressions.isNotEmpty()) {
-            throw GradleException("unit-test line coverage fell below coverage-baseline.txt —\n  "
-                    + regressions.joinToString("\n  ")
-                    + "\n  Cover the change, or move the line and say why in the commit.")
-        }
-    }
-}
-
 // buildSrc's own tests (the guard catalog's invariants: letters total and unique, task names
 // unique, MODULE guards that scan tests off the jar hook, owners declared) are not run by the
 // root build — Gradle only compiles buildSrc — so they are run here as a nested invocation and
@@ -171,7 +126,7 @@ val testBuildSrc = tasks.register<Exec>("testBuildSrc") {
     doLast { marker.get().asFile.writeText("buildSrc tests passed\n") }
 }
 
-val nonGateChecks = setOf("check", "checkFast", "checkAll", "checkCoverageBand")
+val nonGateChecks = setOf("check", "checkFast", "checkAll")
 val rootBranchGuards = tasks.matching { it.name.startsWith("check") && it.name !in nonGateChecks }
 val checkFast = tasks.register("checkFast") {
     group = "verification"

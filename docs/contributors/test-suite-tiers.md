@@ -114,16 +114,16 @@ generator moves on.
 
 ## Coverage ratchet (nightly)
 
-`coverage-baseline.txt` holds one line per module: `<module-rel> <unit-test line coverage %>`.
-`./gradlew checkCoverageBand -Pjk.coverage` (G91; the nightly coverage job runs it after the
-inventory report) measures every module's unit tier with the JaCoCo agent and compares:
+`jk test --coverage` runs every module's unit tier under the JaCoCo agent and writes
+`target/<module>/reports/jacoco.xml`; `jk guard` then evaluates `coverage-band` (G91), a `metric`
+floor over `coverage.line` baselined per module in `jk-guards-baseline.toml` with a half-point band:
 
-- more than 0.5 points **below** the line: the job fails, naming the module, the measured and the
-  recorded value — cover the change, or move the line in the same commit and say why;
-- more than 0.5 points **above** the line: the file is rewritten with the new value in the same run.
-  Locally that is a modified file to commit; in the nightly job it is the step summary's diff and the
-  `coverage-baseline` artifact, for a contributor to bank;
-- a module the file has never seen is added at its measured value.
+- more than 0.5 points **below** the entry: red, naming the module, the measured and the recorded
+  value — cover the change, or `jk guard freeze coverage-band --reason "…"` and say why;
+- more than 0.5 points **above** the entry: the entry is tightened in the same run. Locally that is
+  a modified baseline to commit; in the nightly job it is reported as a would-tighten, for a
+  contributor to bank;
+- a module with no entry yet is a fresh violation until frozen at its measured value.
 
 There is no percentage target and no badge. The number only moves without a hand in one direction.
 To re-baseline after an intentional drop (a deleted test tier, a module split), edit the line and
@@ -181,15 +181,16 @@ Measured profiling of a full `integrationTest` is expensive; use this as a **man
 
 - **PR / push (`ci.yml`):** `./gradlew checkFast` (unit tier, buildSrc tests, the Gradle-only guard), the self-host job (`jk build`: the house-rule lanes), the curated
   integration lane in its own job, and the commit-authorship scan. No coverage, no benches.
-- **Nightly (`ci-nightly.yml`):** Linux `integrationTest`, `slowTest`, `networkTest`, `benchTest`,
-  and `coverageReport -Pjk.coverage`. macOS and Windows run `scripts/ci-product-smoke.sh`.
+- **Nightly (`ci-nightly.yml`):** Linux `integrationTest` (compared with jk's profile), `slowTest`,
+  `networkTest`, `benchTest`, `coverageReport -Pjk.coverage` and the jk coverage ratchet
+  (`jk test --coverage`, `jk guard`). macOS and Windows run `scripts/ci-product-smoke.sh`.
 - Local branch gate: `./gradlew checkFast`, plus `./gradlew curatedIntegrationTest` to run what the
   pull request's boundary lane will run.
 - Local pre-merge when you touch wire/engine/CLI: `./gradlew checkAll` (`checkFast` plus
   `integrationTest`). Never `networkTest` or `benchTest` as a merge gate.
 - `./gradlew benchTest` runs nightly; it still gates nothing on deltas.
-- `./gradlew coverageReport -Pjk.coverage` is the coverage inventory; it is not part of
-  `checkFast` or `checkAll`.
+- `./gradlew coverageReport -Pjk.coverage` is the coverage inventory and `jk test --coverage` +
+  `jk guard` the ratchet; neither is part of `checkFast` or `checkAll`.
 
 ## Measuring integration wall time
 

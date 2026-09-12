@@ -130,16 +130,20 @@ jobs:
   # Unit-test coverage inventory. Not a gate: no percentage, and the JaCoCo agent stays off
   # unless -Pjk.coverage so checkFast does not pay for it.
   coverage:
-    name: Coverage inventory
+    name: Coverage inventory and ratchet
     runs-on: ubuntu-latest
+    env:
+      JK_HOME: ${{ github.workspace }}/.ci-jk-home
+      JK_AOT_TRAIN: 'off'
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v4
+      - uses: graalvm/setup-graalvm@0def53c0fd8534bc13416c9469f5be45265824fd # v1.6.3
         with:
-          distribution: temurin
-          java-version: "25"
-          cache: gradle
+          java-version: '25'
+          distribution: 'graalvm'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache: 'gradle'
 
       - uses: actions/setup-node@v4
         with:
@@ -148,27 +152,30 @@ jobs:
       - name: Aggregate JaCoCo report
         run: ./gradlew coverageReport -Pjk.coverage --no-daemon
 
-      # The per-module ratchet (G91): a module below its coverage-baseline.txt line fails the job; a
-      # module above it rewrites its line, which this run cannot commit — the diff is the artifact and
-      # the summary, for a contributor to bank.
-      - name: Coverage ratchet
-        run: ./gradlew checkCoverageBand -Pjk.coverage --no-daemon
-
-      - name: Report a tightened baseline
-        if: always()
+      # The per-module ratchet (G91) runs on the jk side: every module's unit tier under the JaCoCo
+      # agent, then the house-rule gate reads each module's reports/jacoco.xml against its baselined
+      # entry. A module more than half a point below its entry fails the job; one above it would
+      # tighten the baseline, which a CI run reports instead of writing — run `jk test --coverage`
+      # and `jk guard` locally and commit jk-guards-baseline.toml.
+      - name: Bootstrap jk from Gradle artifacts
         run: |
-          if ! git diff --quiet -- coverage-baseline.txt; then
-            echo "## coverage-baseline.txt tightened — commit this" >> "$GITHUB_STEP_SUMMARY"
-            echo '```diff' >> "$GITHUB_STEP_SUMMARY"
-            git diff -- coverage-baseline.txt >> "$GITHUB_STEP_SUMMARY"
-            echo '```' >> "$GITHUB_STEP_SUMMARY"
-          fi
+          set -euo pipefail
+          ./gradlew dist installLocal --no-daemon
+          ./install.sh build/dist/jk
+          echo "$JK_HOME/bin" >> "$GITHUB_PATH"
+
+      - name: Unit tier under the JaCoCo agent
+        run: jk test --coverage
+
+      - name: Coverage ratchet
+        run: jk guard
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: coverage-baseline
-          path: coverage-baseline.txt
+          name: jacoco-per-module
+          path: target/**/reports/jacoco.xml
+          if-no-files-found: warn
           retention-days: 14
 
       - uses: actions/upload-artifact@v4

@@ -35,11 +35,11 @@ class GuardsTest {
                 "checkGuardParity",
                 "checkGuardRegistry",
                 "checkGateCoverage",
-                "checkCoverageBand",
             )
-        val g91 = Guards.named("checkCoverageBand")
+        val g91 = Guards.letter(91)
         assertThat(g91.letter).isEqualTo(91)
-        assertThat(g91.home).isEqualTo(GuardHome.ROOT)
+        assertThat(g91.home).isEqualTo(GuardHome.SELF_HOSTED)
+        assertThat(g91.ruleId).isEqualTo("coverage-band")
         assertThat(g91.inFastGate).describedAs("nightly: needs the JaCoCo agent").isFalse()
         val g64 = Guards.named("checkNoDisabledCompile")
         assertThat(g64.letter).isEqualTo(64)
@@ -71,6 +71,6 @@ class GuardsTest {
 
     @Test
     fun only_the_task_graph_letter_the_registry_tasks_and_the_coverage_ratchet_are_gradle_letters() {
-        assertThat(Guards.gradleLetters).containsExactlyInAnyOrder(51, 64, 79, 91)
+        assertThat(Guards.gradleLetters).containsExactlyInAnyOrder(51, 64, 79)
     }
 }

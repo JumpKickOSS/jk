@@ -443,6 +443,9 @@ final class ParityRules {
         if (!nightly.contains("./gradlew benchTest")) problems.add(NIGHTLY + " must run ./gradlew benchTest");
         if (!nightly.contains("coverageReport") || !nightly.contains("-Pjk.coverage"))
             problems.add(NIGHTLY + " must run coverageReport -Pjk.coverage");
+        if (!nightly.contains("jk test --coverage"))
+            problems.add(
+                    NIGHTLY + " must run jk test --coverage before its jk guard step — the coverage ratchet (G91)");
         if (!nightly.contains("macos-")) problems.add(NIGHTLY + " must have a macOS smoke runner");
         if (!nightly.contains("windows-")) problems.add(NIGHTLY + " must have a Windows smoke runner");
         if (!nightly.contains("ci-product-smoke.sh")) problems.add(NIGHTLY + " must run scripts/ci-product-smoke.sh");
