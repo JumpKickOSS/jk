@@ -3,6 +3,7 @@ package cc.jumpkick.wire.protocol;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.PluginTuning;
 import java.nio.file.Path;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -60,5 +61,41 @@ class ProtoSessionToolchainTest {
         assertThat(ProtoSession.graalHomeOf(line)).isEqualTo(Path.of("/opt/graal-25"));
         assertThat(ProtoSession.variantOf(line)).isEqualTo("alpha");
         assertThat(ProtoSession.clientEnvOf(line)).containsEntry("PATH", "/usr/bin");
+    }
+
+    /**
+     * The env map's keys are the user's variable names and ride the same line as a nested object.
+     * A variable that happens to be called {@code jdk} is a value for a plugin, not a toolchain
+     * selection, and must not be read as one however the two splices are ordered.
+     */
+    @Test
+    void an_env_entry_named_like_an_envelope_field_is_not_the_envelope_field() {
+        Map<String, String> env = Map.of(
+                "jdk",
+                "17",
+                "graal",
+                "graal-17",
+                "graalHome",
+                "/opt/x",
+                "variant",
+                "bogus",
+                "assemblyOverride",
+                "fat",
+                "jvmMaxRam",
+                "99",
+                "jvmGc",
+                "Z",
+                "jvmStringDedup",
+                "true");
+        String line = ProtoSession.withToolchain(
+                ProtoSession.withSession("{\"dir\":\"/w\"}", null, env, null), null, null, null);
+
+        assertThat(ProtoSession.jdkSpecOf(line)).isNull();
+        assertThat(ProtoSession.graalSpecOf(line)).isNull();
+        assertThat(ProtoSession.graalHomeOf(line)).isNull();
+        assertThat(ProtoSession.variantOf(line)).isEmpty();
+        assertThat(ProtoSession.assemblyOverrideOf(line)).isEmpty();
+        assertThat(ProtoSession.jvmTuning(line)).isEqualTo(PluginTuning.NONE);
+        assertThat(ProtoSession.clientEnvOf(line)).containsEntry("jdk", "17");
     }
 }

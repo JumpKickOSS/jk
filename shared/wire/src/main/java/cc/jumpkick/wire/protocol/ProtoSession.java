@@ -221,9 +221,15 @@ public final class ProtoSession {
                 request, RequestJson.fields().string("trigger", trigger).body());
     }
 
+    /*
+     * Every envelope decoder below reads the root object only. The client-resolved env map rides
+     * the same line as a nested object whose keys are the user's own variable names, so an any-
+     * depth read of "jdk" would take `x = "env:jdk"` for a toolchain selection the user never made.
+     */
+
     /** Decode {@code assemblyOverride} from a session envelope ({@code fat}/{@code minified}/empty). */
     public static String assemblyOverrideOf(String request) {
-        String v = Jsonl.str(request, "assemblyOverride");
+        String v = Jsonl.topStr(request, "assemblyOverride");
         return v == null ? "" : v;
     }
 
@@ -242,13 +248,13 @@ public final class ProtoSession {
      * {@code SWITCH} tier sees the caller's choice instead of an empty one.
      */
     public static @Nullable String jdkSpecOf(String request) {
-        String v = Jsonl.str(request, "jdk");
+        String v = Jsonl.topStr(request, "jdk");
         return v == null || v.isBlank() ? null : v;
     }
 
     /** Decode side of {@link #withToolchain}: the request's GraalVM selection, or {@code null}. */
     public static @Nullable String graalSpecOf(String request) {
-        String v = Jsonl.str(request, "graal");
+        String v = Jsonl.topStr(request, "graal");
         return v == null || v.isBlank() ? null : v;
     }
 
@@ -260,13 +266,13 @@ public final class ProtoSession {
      * engine answers from the shell that started the daemon.
      */
     public static @Nullable Path graalHomeOf(String request) {
-        String v = Jsonl.str(request, "graalHome");
+        String v = Jsonl.topStr(request, "graalHome");
         return v == null || v.isBlank() ? null : Path.of(v);
     }
 
     /** Decode side of {@link #withSession}: the selection, or {@code ""}. */
     public static String variantOf(String request) {
-        String v = Jsonl.str(request, "variant");
+        String v = Jsonl.topStr(request, "variant");
         return v == null ? "" : v;
     }
 
@@ -277,9 +283,9 @@ public final class ProtoSession {
 
     /** Decode side of {@link #withSession}; NONE when the request carries no tuning fields. */
     public static PluginTuning jvmTuning(String request) {
-        String maxRam = Jsonl.str(request, "jvmMaxRam");
-        String gc = Jsonl.str(request, "jvmGc");
-        String dedup = Jsonl.str(request, "jvmStringDedup");
+        String maxRam = Jsonl.topStr(request, "jvmMaxRam");
+        String gc = Jsonl.topStr(request, "jvmGc");
+        String dedup = Jsonl.topStr(request, "jvmStringDedup");
         List<String> args = Jsonl.strArray(request, "jvmArgs");
         if (maxRam == null && gc == null && dedup == null && args.isEmpty()) {
             return PluginTuning.NONE;
