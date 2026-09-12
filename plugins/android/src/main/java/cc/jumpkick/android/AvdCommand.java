@@ -5,11 +5,14 @@ import cc.jumpkick.host.Os;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.build.PluginCommandExec;
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -147,19 +150,42 @@ final class AvdCommand {
                 .env("ANDROID_AVD_HOME", avdHome.toAbsolutePath().toString())
                 .env("ANDROID_SDK_ROOT", root.toAbsolutePath().toString())
                 .start();
-        // Stream until the boot line (or EOF) — the emulator keeps running detached after.
-        try (BufferedReader reader =
-                new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (!line.isBlank()) exec.out("  " + line);
-                if (line.contains("boot completed") || line.contains("Successfully loaded snapshot")) {
-                    exec.out("emulator is up (leave it running; `adb devices` sees it)");
-                    return 0;
+        return awaitBoot(process, exec::out);
+    }
+
+    /**
+     * Follow the emulator's output up to the boot line and return; the emulator keeps running.
+     *
+     * <p>Its stdout is never closed: the emulator writes to that pipe for as long as it runs, and a
+     * closed reader turns its next line into a broken pipe. A daemon thread keeps draining it
+     * after the command has returned. An emulator that exits before booting is reaped and its
+     * status returned.
+     */
+    static int awaitBoot(Process process, Consumer<String> out) throws InterruptedException {
+        CompletableFuture<Boolean> booted = new CompletableFuture<>();
+        Thread.ofVirtual().name("emulator-drain").start(() -> {
+            BufferedReader reader =
+                    new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
+            try {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    if (booted.isDone()) continue; // the command has returned; only keep the pipe drained
+                    if (!line.isBlank()) out.accept("  " + line);
+                    if (line.contains("boot completed") || line.contains("Successfully loaded snapshot")) {
+                        booted.complete(true);
+                    }
                 }
+            } catch (IOException ignored) {
+                // The pipe closed with the emulator.
+            } finally {
+                booted.complete(false);
             }
+        });
+        if (booted.join()) {
+            out.accept("emulator is up (leave it running; `adb devices` sees it)");
+            return 0;
         }
-        return process.isAlive() ? 0 : process.waitFor();
+        return process.waitFor();
     }
 
     private static @Nullable String flag(List<String> args, String name) {
