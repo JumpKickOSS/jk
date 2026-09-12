@@ -58,18 +58,66 @@ if [ -x "$BIN" ]; then
     exec "$BIN" "$@"
   fi
 fi
+# Canonical path of $1: symlinks resolved, relative made absolute. realpath and readlink -f
+# are not on every host (older macOS has neither), so the fallback resolves the directory
+# with pwd -P and keeps the leaf.
+real_path() {
+  if command -v realpath >/dev/null 2>&1 && realpath "$1" 2>/dev/null; then
+    return 0
+  fi
+  if readlink -f "$1" >/dev/null 2>&1; then
+    readlink -f "$1"
+    return 0
+  fi
+  case "$1" in */*) RP_DIR="${1%/*}"; RP_LEAF="${1##*/}" ;; *) RP_DIR="."; RP_LEAF="$1" ;; esac
+  if RP_DIR="$(cd "$RP_DIR" 2>/dev/null && pwd -P)"; then
+    printf '%s/%s\n' "$RP_DIR" "$RP_LEAF"
+  else
+    printf '%s\n' "$1"
+  fi
+}
+
+# True when $1 is a copy of this wrapper (any generation): the first lines carry its banner.
+is_wrapper() {
+  head -n 3 "$1" 2>/dev/null | grep -q "JumpKick bootstrap wrapper"
+}
+
 # A jk already on PATH (a distro package, or a home this JK_HOME did not name) beats a
 # bootstrap download; a current jk enforces the lock floor itself. Never re-exec the very
-# binary the floor check above just rejected.
+# binary the floor check above just rejected, and never exec this wrapper again: with `.`
+# on PATH, or the committed wrapper symlinked or copied into a PATH directory, `command -v jk`
+# answers with the wrapper itself, and exec-ing it is a loop that never reaches the download.
 if command -v jk >/dev/null 2>&1; then
   PATH_JK="$(command -v jk)"
-  if [ "$PATH_JK" != "$BIN" ]; then
+  case "$PATH_JK" in
+    /*|./*|../*) ;;
+    *) PATH_JK="" ;;
+  esac
+  if [ -n "$PATH_JK" ] && [ "$PATH_JK" != "$BIN" ] &&
+    [ "$(real_path "$PATH_JK")" != "$(real_path "$0")" ] && ! is_wrapper "$PATH_JK"; then
     exec "$PATH_JK" "$@"
   fi
 fi
 
-# Nothing suitable installed — bootstrap the latest published release.
-VERSION="$(curl -fsSL "$RELEASES/latest/VERSION" | tr -d '[:space:]')"
+# Nothing suitable installed — bootstrap the latest published release. The fetch is checked
+# on its own: in a pipeline `set -e` would see only tr's status, and an offline host would
+# carry an empty VERSION into a vacuous floor check and a download of `jk-…-.xz`.
+if ! VERSION_RAW="$(curl -fsSL "$RELEASES/latest/VERSION")"; then
+  echo "jk wrapper: could not read $RELEASES/latest/VERSION — offline, or JK_RELEASES_URL is wrong." >&2
+  exit 1
+fi
+VERSION="$(printf '%s' "$VERSION_RAW" | tr -d '[:space:]')"
+if [ -z "$VERSION" ]; then
+  echo "jk wrapper: $RELEASES/latest/VERSION is empty — check JK_RELEASES_URL." >&2
+  exit 1
+fi
+# The version names a directory and a file below; accept only a version token.
+case "$VERSION" in
+  *[!0-9A-Za-z._-]*)
+    echo "jk wrapper: $RELEASES/latest/VERSION is not a version: $VERSION — refusing." >&2
+    exit 1
+    ;;
+esac
 if [ -n "$FLOOR" ] && ! ver_ge "$VERSION" "$FLOOR"; then
   echo "jk wrapper: this lock requires jk >= $FLOOR but the latest release is $VERSION — check JK_RELEASES_URL." >&2
   exit 1
