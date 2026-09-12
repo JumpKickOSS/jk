@@ -56,6 +56,36 @@ class ExternalToolVersionsTest {
     }
 
     @Test
+    fun a_timed_out_probe_is_asked_again_and_the_answer_replaces_it(@TempDir dir: Path) {
+        val bin = Files.createDirectories(dir.resolve("bin"))
+        // Hangs on its first run (a client waiting on a busy engine), answers on every later one.
+        val hungOnce = dir.resolve("hung-once")
+        val exe = tool(bin, "flaky", "if [ ! -e '$hungOnce' ]; then : > '$hungOnce'; exec sleep 30; fi; echo fake 2.0")
+        val cache = dir.resolve("cache").toFile()
+
+        val first = ExternalToolVersions.identity(cache, "flaky", bin.toString(), timeout = Duration.ofMillis(500))
+        assertThat(first).endsWith("/flaky: version probe timed out")
+        assertThat(File(cache, "flaky.probe")).doesNotExist()
+
+        val second = ExternalToolVersions.identity(cache, "flaky", bin.toString(), timeout = Duration.ofMillis(500))
+        assertThat(second).isEqualTo("${exe.absolutePath}: fake 2.0")
+        assertThat(File(cache, "flaky.probe")).isFile()
+    }
+
+    @Test
+    fun a_failed_probe_is_not_memoised_but_an_answer_is(@TempDir dir: Path) {
+        val bin = Files.createDirectories(dir.resolve("bin"))
+        val cache = dir.resolve("cache").toFile()
+        tool(bin, "fails", "echo nope; exit 3")
+        ExternalToolVersions.identity(cache, "fails", bin.toString())
+        assertThat(File(cache, "fails.probe")).doesNotExist()
+
+        tool(bin, "answers", "echo fake 1.2.3")
+        ExternalToolVersions.identity(cache, "answers", bin.toString())
+        assertThat(File(cache, "answers.probe")).isFile()
+    }
+
+    @Test
     fun a_tool_missing_from_the_search_path_is_an_absent_identity(@TempDir dir: Path) {
         val bin = Files.createDirectories(dir.resolve("bin"))
         assertThat(ExternalToolVersions.identity(dir.resolve("cache").toFile(), "nowhere", bin.toString()))

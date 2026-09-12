@@ -24,6 +24,13 @@ import java.util.concurrent.TimeUnit
  * is a real cost, so the answer is cached under the root build directory keyed on the resolved binary's **absolute
  * path, size and mtime**: steady state is one `File.length()` and one `File.lastModified()` per tool, and the fork
  * happens only on the build after the tool actually changes. `clean` costs one fork per tool, once.
+ *
+ * Only an answer is memoised. A probe that times out (a client waiting on a busy engine) or fails is a fact about this
+ * build, not about the tool: memoising it under the binary's key would make every following build carry a wrong
+ * identity until the binary itself changes, and a wrong identity that is stable is exactly the replayed green this
+ * class exists to remove. Remembering a failure for a short window is not done either — inside the window the same
+ * wrong identity would stand, and the cost it would save is bounded: one timeout per configuration, paid only while the
+ * tool is actually hanging, which is a condition worth noticing rather than hiding.
  */
 object ExternalToolVersions {
 
@@ -44,7 +51,8 @@ object ExternalToolVersions {
      * @param override the value of the product's own binary-override variable (`JK_GIT` for git), likewise read from
      *   the invoking environment, so the build probes what the test will run
      * @param versionArgs how to ask it (`--version` for every tool jk execs today)
-     * @param timeout how long the probe may run before it is killed and reported as timed out
+     * @param timeout how long the probe may run before it is killed and reported as timed out; a timed-out or failed
+     *   probe is reported for this build and asked again on the next one
      */
     fun identity(
         cacheDir: File,
@@ -61,11 +69,16 @@ object ExternalToolVersions {
             val lines = memo.readLines()
             if (lines.size >= 2 && lines[0] == key) return lines[1]
         }
-        val version = probe(exe, versionArgs, timeout)
-        cacheDir.mkdirs()
-        memo.writeText(key + "\n" + version + "\n")
-        return version
+        val probe = probe(exe, versionArgs, timeout)
+        if (probe.answered) {
+            cacheDir.mkdirs()
+            memo.writeText(key + "\n" + probe.identity + "\n")
+        }
+        return probe.identity
     }
+
+    /** What a fork of the tool produced: its identity line, and whether that line is an answer worth remembering. */
+    private class Probe(val identity: String, val answered: Boolean)
 
     /**
      * The binary an exec of [tool] would reach: [override] if it names one, otherwise the first executable match on
@@ -89,7 +102,7 @@ object ExternalToolVersions {
      * the wait is bounded by [timeout] alone: a pipe would be read to EOF first, and a tool that never closes its
      * stdout (a client that talks to an engine) would hold the build's configuration for as long as it lived.
      */
-    private fun probe(exe: File, versionArgs: List<String>, timeout: Duration): String {
+    private fun probe(exe: File, versionArgs: List<String>, timeout: Duration): Probe {
         val log = File.createTempFile("jk-tool-version", ".txt")
         try {
             val pb =
@@ -99,16 +112,16 @@ object ExternalToolVersions {
             p.outputStream.close()
             if (!p.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS)) {
                 p.destroyForcibly()
-                return "${exe.absolutePath}: version probe timed out"
+                return Probe("${exe.absolutePath}: version probe timed out", answered = false)
             }
             val line = log.readText().lineSequence().firstOrNull { it.isNotBlank() }?.trim()
             return if (p.exitValue() != 0 || line.isNullOrEmpty()) {
-                "${exe.absolutePath}: version probe exited ${p.exitValue()}"
+                Probe("${exe.absolutePath}: version probe exited ${p.exitValue()}", answered = false)
             } else {
-                "${exe.absolutePath}: $line"
+                Probe("${exe.absolutePath}: $line", answered = true)
             }
         } catch (e: Exception) {
-            return "${exe.absolutePath}: version probe failed (${e.javaClass.simpleName})"
+            return Probe("${exe.absolutePath}: version probe failed (${e.javaClass.simpleName})", answered = false)
         } finally {
             log.delete()
         }
