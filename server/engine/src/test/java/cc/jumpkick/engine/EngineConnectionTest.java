@@ -120,6 +120,24 @@ class EngineConnectionTest extends EngineServerHarness {
         }
     }
 
+    /**
+     * A {@code dir} that cannot be a path (a NUL inside it) is a malformed request, and the answer
+     * is the typed protocol error every other malformed request gets — not the bare EOF a runtime
+     * exception escaping the serve loop leaves the client with.
+     */
+    @Test
+    void a_request_whose_dir_is_not_a_valid_path_is_refused_with_a_typed_error_and_the_connection_keeps_serving()
+            throws Exception {
+        EnginePaths.Paths p = start();
+        try (Client c = new Client(EnginePaths.activeSocket(p))) {
+            String reply = c.send("{\"type\":\"" + EngineProtocol.BUILD_REQUEST + "\",\"dir\":\"/tmp/a\\u0000b\"}");
+            assertThat(reply).as("a typed refusal, never a silent close").isNotNull();
+            assertThat(EngineProtocol.typeOf(reply)).isEqualTo(EngineProtocol.ERROR);
+            assertThat(Jsonl.str(reply, "code")).isEqualTo(EngineProtocol.ERR_PROTOCOL);
+            assertThat(EngineProtocol.typeOf(c.send(ProtoLifecycle.ping()))).isEqualTo(EngineProtocol.PONG);
+        }
+    }
+
     private EnginePaths.Paths start() throws Exception {
         EnginePaths.Paths p = paths(shortTempDir());
         EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0", null);

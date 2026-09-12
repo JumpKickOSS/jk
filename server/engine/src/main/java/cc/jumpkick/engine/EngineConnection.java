@@ -120,82 +120,98 @@ final class EngineConnection {
         while ((line = reader.readLine()) != null) {
             // The peer has spoken: from here the gap between requests is the stream-idle bound.
             reader.idleTimeout(streamIdleMillis);
-            String type = EngineProtocol.typeOf(line);
-            if (type == null) {
-                // A garbled REQUEST gets a typed refusal, never silence — a silently-dropped
-                // request wedges a streaming client that is waiting for a terminal event.
+            try {
+                if (serveRequest(line, reader, writer, ch)) return;
+            } catch (RuntimeException e) {
+                // A request the decoders cannot make sense of — a dir that is not a path, a field
+                // of the wrong shape — is malformed, and malformed gets the same typed refusal
+                // garbage does. Left to escape, the exception closes the socket and the client
+                // reads a bare EOF it can only report as an engine crash.
                 WireWriter.sendQuiet(
                         writer,
                         ProtoLifecycle.error(
-                                EngineProtocol.ERR_PROTOCOL, "unparseable request line (no \"type\" discriminator)"));
-                continue;
+                                EngineProtocol.ERR_PROTOCOL,
+                                "malformed request: " + e.getClass().getSimpleName()
+                                        + (e.getMessage() == null ? "" : ": " + e.getMessage())));
             }
-            // Lock floor: a jk older than the lock's jk-min refuses with the upgrade error —
-            // newer always wins, and nothing runs an older engine to satisfy a lock.
-            if (LockFloor.GUARDED.contains(type)) {
-                String dir = Jsonl.str(line, "dir");
-                String floor = dir == null ? null : LockFloor.requiredNewer(Path.of(dir), ctx.version());
-                if (floor != null) {
+        }
+    }
+
+    /** One request line to its reply or its job. {@code true} when the connection is finished with. */
+    private boolean serveRequest(String line, BoundedLineReader reader, BufferedWriter writer, SocketChannel ch)
+            throws IOException {
+        String type = EngineProtocol.typeOf(line);
+        if (type == null) {
+            // A garbled REQUEST gets a typed refusal, never silence — a silently-dropped
+            // request wedges a streaming client that is waiting for a terminal event.
+            WireWriter.sendQuiet(
+                    writer,
+                    ProtoLifecycle.error(
+                            EngineProtocol.ERR_PROTOCOL, "unparseable request line (no \"type\" discriminator)"));
+            return false;
+        }
+        // Lock floor: a jk older than the lock's jk-min refuses with the upgrade error —
+        // newer always wins, and nothing runs an older engine to satisfy a lock.
+        if (LockFloor.GUARDED.contains(type)) {
+            String dir = Jsonl.str(line, "dir");
+            String floor = dir == null ? null : LockFloor.requiredNewer(Path.of(dir), ctx.version());
+            if (floor != null) {
+                WireWriter.send(
+                        writer,
+                        ProtoLifecycle.error(EngineProtocol.ERR_VERSION_SKEW, LockFloor.message(floor, ctx.version())));
+                return true;
+            }
+        }
+        HostedVerb verb = ctx.verbs().find(type);
+        if (verb != null) return dispatchVerb(verb, line, reader, writer, ch);
+        switch (type) {
+            case EngineProtocol.HELLO -> {
+                int clientProto = Jsonl.intValue(line, "proto", EngineProtocol.PROTOCOL);
+                if (clientProto > EngineProtocol.PROTOCOL) {
+                    // A newer-protocol client: this engine must not serve wire semantics
+                    // it postdates — the client reacts by taking over (spawn + drain).
                     WireWriter.send(
                             writer,
                             ProtoLifecycle.error(
-                                    EngineProtocol.ERR_VERSION_SKEW, LockFloor.message(floor, ctx.version())));
-                    return;
+                                    EngineProtocol.ERR_VERSION_SKEW,
+                                    "client speaks protocol " + clientProto + " but this engine speaks "
+                                            + EngineProtocol.PROTOCOL + " — start a matching engine"));
+                    return true;
                 }
+                WireWriter.send(
+                        writer,
+                        ProtoLifecycle.helloAck(
+                                ctx.version(),
+                                ctx.pid(),
+                                ctx.startedAtMillis(),
+                                ctx.draining().getAsBoolean(),
+                                ctx.buildId()));
             }
-            HostedVerb verb = ctx.verbs().find(type);
-            if (verb != null) {
-                if (dispatchVerb(verb, line, reader, writer, ch)) return;
-                continue;
+            case EngineProtocol.PING -> WireWriter.send(writer, ProtoLifecycle.pong());
+            case EngineProtocol.STATUS -> {
+                StatusSnapshot s = ctx.status().get();
+                HttpEngineServer hs = ctx.http().server();
+                String ack = ProtoLifecycle.statusAck(
+                        s.vitals(),
+                        ctx.draining().getAsBoolean(),
+                        hs != null ? hs.url() : null,
+                        ctx.http().error(),
+                        hs != null && hs.mcpEnabled());
+                WireWriter.send(writer, InputTrees.appendToStatusAck(ack));
             }
-            switch (type) {
-                case EngineProtocol.HELLO -> {
-                    int clientProto = Jsonl.intValue(line, "proto", EngineProtocol.PROTOCOL);
-                    if (clientProto > EngineProtocol.PROTOCOL) {
-                        // A newer-protocol client: this engine must not serve wire semantics
-                        // it postdates — the client reacts by taking over (spawn + drain).
-                        WireWriter.send(
-                                writer,
-                                ProtoLifecycle.error(
-                                        EngineProtocol.ERR_VERSION_SKEW,
-                                        "client speaks protocol " + clientProto + " but this engine speaks "
-                                                + EngineProtocol.PROTOCOL + " — start a matching engine"));
-                        return;
-                    }
-                    WireWriter.send(
-                            writer,
-                            ProtoLifecycle.helloAck(
-                                    ctx.version(),
-                                    ctx.pid(),
-                                    ctx.startedAtMillis(),
-                                    ctx.draining().getAsBoolean(),
-                                    ctx.buildId()));
-                }
-                case EngineProtocol.PING -> WireWriter.send(writer, ProtoLifecycle.pong());
-                case EngineProtocol.STATUS -> {
-                    StatusSnapshot s = ctx.status().get();
-                    HttpEngineServer hs = ctx.http().server();
-                    String ack = ProtoLifecycle.statusAck(
-                            s.vitals(),
-                            ctx.draining().getAsBoolean(),
-                            hs != null ? hs.url() : null,
-                            ctx.http().error(),
-                            hs != null && hs.mcpEnabled());
-                    WireWriter.send(writer, InputTrees.appendToStatusAck(ack));
-                }
-                case EngineProtocol.SHUTDOWN -> {
-                    ctx.shutdown().handle(line, writer);
-                    return;
-                }
-                case EngineProtocol.DRAIN_STATUS ->
-                    ctx.drain().predecessorDraining(Jsonl.longValue(line, "pid", -1), Jsonl.intValue(line, "plans", 0));
-                case EngineProtocol.DRAIN_DONE -> ctx.drain().predecessorFinished(Jsonl.longValue(line, "pid", -1));
-                case EngineProtocol.CANCEL_REQUEST -> handleCancelRequest(line, writer);
-                default ->
-                    WireWriter.sendQuiet(
-                            writer, ProtoLifecycle.error(EngineProtocol.ERR_PROTOCOL, "unknown request type: " + type));
+            case EngineProtocol.SHUTDOWN -> {
+                ctx.shutdown().handle(line, writer);
+                return true;
             }
+            case EngineProtocol.DRAIN_STATUS ->
+                ctx.drain().predecessorDraining(Jsonl.longValue(line, "pid", -1), Jsonl.intValue(line, "plans", 0));
+            case EngineProtocol.DRAIN_DONE -> ctx.drain().predecessorFinished(Jsonl.longValue(line, "pid", -1));
+            case EngineProtocol.CANCEL_REQUEST -> handleCancelRequest(line, writer);
+            default ->
+                WireWriter.sendQuiet(
+                        writer, ProtoLifecycle.error(EngineProtocol.ERR_PROTOCOL, "unknown request type: " + type));
         }
+        return false;
     }
 
     /**
